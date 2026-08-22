@@ -65,10 +65,10 @@ jobs:
           test "$PROFILE_PATH" = '.release/release-profile.json'
           git ls-files --error-unmatch -- "$PROFILE_PATH" >/dev/null
           evidence_root="$RUNNER_TEMP/ai-novel-release-evidence-$GITHUB_RUN_ID"
-          node scripts/release-evidence-v2.mjs init --platform macos --evidence-root "$evidence_root" --repository "$GITHUB_REPOSITORY" --commit "$EXPECTED_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --runner-label 'macos-14' --image-os "$ImageOS" --image-version "$ImageVersion" --expected-node-version 22.23.1 --expected-pnpm-version 11.11.0 --workflow-path '.github/workflows/macos-arm64-cloud-build.yml' --workflow-name 'macOS ARM64 cloud package qualification' --actor "$GITHUB_ACTOR" --event "$GITHUB_EVENT_NAME" --dispatch-inputs-json '{}'
-          common_root="$RUNNER_TEMP/macos-qualified"
-          legacy_release_root="$RUNNER_TEMP/macos-legacy-release"
-          node .release/scripts/freeze-release-contract.mjs --repository "$GITHUB_REPOSITORY" --expected-sha "$EXPECTED_SHA" --tag "$RELEASE_TAG" --version "$RELEASE_VERSION" --profile "$PROFILE_PATH" --output-root "$common_root" --platform macos --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --workflow '.github/workflows/macos-arm64-cloud-build.yml' --actor "$GITHUB_ACTOR" --event "$GITHUB_EVENT_NAME"
+          node scripts/release-evidence-v2.mjs init --platform macos-arm64 --evidence-root "$evidence_root" --repository "$GITHUB_REPOSITORY" --commit "$EXPECTED_SHA" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --runner-label 'macos-14' --image-os "$ImageOS" --image-version "$ImageVersion" --expected-node-version 22.23.1 --expected-pnpm-version 11.11.0 --workflow-path '.github/workflows/macos-arm64-cloud-build.yml' --workflow-name 'macOS ARM64 cloud package qualification' --actor "$GITHUB_ACTOR" --event "$GITHUB_EVENT_NAME" --dispatch-inputs-json '{}'
+          common_root="$RUNNER_TEMP/macos-arm64-qualified"
+          legacy_release_root="$RUNNER_TEMP/macos-arm64-legacy-release"
+          node .release/scripts/freeze-release-contract.mjs --repository "$GITHUB_REPOSITORY" --expected-sha "$EXPECTED_SHA" --tag "$RELEASE_TAG" --version "$RELEASE_VERSION" --profile "$PROFILE_PATH" --output-root "$common_root" --platform macos-arm64 --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --workflow '.github/workflows/macos-arm64-cloud-build.yml' --actor "$GITHUB_ACTOR" --event "$GITHUB_EVENT_NAME"
           echo "AI_NOVEL_RELEASE_EVIDENCE_ROOT=$evidence_root" >> "$GITHUB_ENV"
           echo "AI_NOVEL_COMMON_EVIDENCE_ROOT=$common_root" >> "$GITHUB_ENV"
           echo "AI_NOVEL_LEGACY_RELEASE_ROOT=$legacy_release_root" >> "$GITHUB_ENV"
@@ -90,10 +90,10 @@ jobs:
         run: node scripts/release-evidence-v2.mjs record --evidence-root "$AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step test-suite -- pnpm test
 
       - name: Build unsigned macOS ARM64 package
-        run: node scripts/release-evidence-v2.mjs record --evidence-root "$AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step build-macos-arm64-package -- pnpm run build:mac:artifacts
+        run: node scripts/release-evidence-v2.mjs record --evidence-root "$AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step build-macos-arm64-package -- pnpm run build:mac:arm64:artifacts
 
       - name: Run mounted-DMG smoke
-        run: node scripts/release-evidence-v2.mjs record --evidence-root "$AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step mounted-dmg-smoke -- pnpm run smoke:mac-dmg
+        run: node scripts/release-evidence-v2.mjs record --evidence-root "$AI_NOVEL_RELEASE_EVIDENCE_ROOT" --step mounted-dmg-smoke -- env AI_NOVEL_RELEASE_TARGET_ARCH=arm64 pnpm run smoke:mac-dmg
 
       - name: Record verified toolchain
         if: ${{ success() }}
@@ -108,20 +108,20 @@ jobs:
         run: |
           set -euo pipefail
           version='${{ inputs.release_version }}'
-          node scripts/release-evidence-v2.mjs finalize --platform macos --evidence-root "$AI_NOVEL_RELEASE_EVIDENCE_ROOT" --release-root "release/$version"
-          node .release/scripts/project-legacy-qualification.mjs --platform macos --version "$version" --source-root "release/$version" --output-root "$AI_NOVEL_LEGACY_RELEASE_ROOT" --profile '${{ inputs.profile_path }}'
+          node scripts/release-evidence-v2.mjs finalize --platform macos-arm64 --evidence-root "$AI_NOVEL_RELEASE_EVIDENCE_ROOT" --release-root "release/$version"
+          node .release/scripts/project-legacy-qualification.mjs --platform macos-arm64 --version "$version" --source-root "release/$version" --output-root "$AI_NOVEL_LEGACY_RELEASE_ROOT" --profile '${{ inputs.profile_path }}'
           raw_hash="$(node --input-type=module -e "import{createHash}from'node:crypto';import{readFileSync}from'node:fs';process.stdout.write(createHash('sha256').update(readFileSync('pnpm-lock.yaml')).digest('hex'))")"
           canonical_hash="$(node --input-type=module -e "import{canonicalPnpmLockfileSha256}from'./scripts/canonical-pnpm-lockfile-hash.mjs';process.stdout.write(canonicalPnpmLockfileSha256('./pnpm-lock.yaml'))")"
-          node scripts/release-evidence-v2.mjs verify-bundle --platform macos --bundle-root "$AI_NOVEL_LEGACY_RELEASE_ROOT" --expected-commit '${{ inputs.expected_sha }}' --expected-lockfile-sha256 "$canonical_hash" --expected-lockfile-raw-sha256 "$raw_hash" --version "$version" --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --expected-workflow-path '.github/workflows/macos-arm64-cloud-build.yml' --expected-workflow-name 'macOS ARM64 cloud package qualification' --expected-actor "$GITHUB_ACTOR" --expected-event "$GITHUB_EVENT_NAME"
-          node .release/scripts/finalize-legacy-qualification.mjs --platform macos --legacy-root "$AI_NOVEL_LEGACY_RELEASE_ROOT" --output-root "$AI_NOVEL_COMMON_EVIDENCE_ROOT" --profile '${{ inputs.profile_path }}' --expected-sha '${{ inputs.expected_sha }}' --version "$version"
+          node scripts/release-evidence-v2.mjs verify-bundle --platform macos-arm64 --bundle-root "$AI_NOVEL_LEGACY_RELEASE_ROOT" --expected-commit '${{ inputs.expected_sha }}' --expected-lockfile-sha256 "$canonical_hash" --expected-lockfile-raw-sha256 "$raw_hash" --version "$version" --repository "$GITHUB_REPOSITORY" --run-id "$GITHUB_RUN_ID" --run-attempt "$GITHUB_RUN_ATTEMPT" --expected-workflow-path '.github/workflows/macos-arm64-cloud-build.yml' --expected-workflow-name 'macOS ARM64 cloud package qualification' --expected-actor "$GITHUB_ACTOR" --expected-event "$GITHUB_EVENT_NAME"
+          node .release/scripts/finalize-legacy-qualification.mjs --platform macos-arm64 --legacy-root "$AI_NOVEL_LEGACY_RELEASE_ROOT" --output-root "$AI_NOVEL_COMMON_EVIDENCE_ROOT" --profile '${{ inputs.profile_path }}' --expected-sha '${{ inputs.expected_sha }}' --version "$version"
 
       - name: Upload runtime-verified macOS ARM64 package
         if: ${{ success() }}
         id: upload-qualified
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: qualified-macos
+          name: qualified-macos-arm64
           retention-days: 14
           compression-level: 0
           if-no-files-found: error
-          path: ${{ runner.temp }}/macos-qualified
+          path: ${{ runner.temp }}/macos-arm64-qualified
