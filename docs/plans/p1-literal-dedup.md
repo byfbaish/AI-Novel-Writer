@@ -129,9 +129,48 @@ continuationPrompt = `${hardRequirements}\n\n${lengthContract}\n\n${authorMateri
 >
 > **不变量 I2**：续写 / 压缩等后续请求**复用初始请求已确立的内容，只增补本轮真正新增的部分**（新增正文、本轮篇幅指令）。
 
-### 3.2 分三步（可独立验收，逐级放量）
+### 3.2 实施分阶段（Phase 0 已完成；1/2 待做）
 
-#### 步骤 1 · 消除初始请求内部的并排重复（D2–D5）
+> ⚠️ 下方「步骤 1/2/3」是 v2 稿的原表述，**已被 Phase 0 实测修正**（见 §1.0/§1.1）。
+> 实际要做的是 **Phase 1**（下面 3.2.1）与 **Phase 2**（3.2.3），原文保留作历史对照。
+
+#### 3.2.1 ★ Phase 1（✅ 已完成 2026-10-10）· 消除「蓝图 JSON ↔ 执行合同 authorItems」的作者字段重复
+
+**问题（Phase 0 实测，D1）**：同一份作者字段在同一轮请求里出现 **2** 次。
+
+**两处来源（代码定位）**：
+| 位置 | 初始请求 | 续写/压缩请求 |
+|---|---|---|
+| 蓝图 JSON | `template.content` 的 `【本章信息】{{chapter_info}}`（=`JSON.stringify(writerChapterInfo)`） | `draftAuthorMaterialBlock` 的 `【本章蓝图】${JSON.stringify(chapterInfo)}` |
+| 执行合同 | `composeInitialPrompt` 末尾追加 `chapterExecutionContract.authorItems`（`- 必需事件/章节钩子/作者本章指导`） | `draftAuthorMaterialBlock` 末尾拼同一份 `authorItems` |
+
+**为什么 `authorItems` 不能直接删**（护栏测试 `retains all three author fields … when a custom draft template omits chapter_info`）：
+它是**自定义模板把 `{{chapter_info}}` 去掉时的兜底**——那时作者三个字段就只剩这一处呈现。
+
+**实现（条件化，非删除）**：新增 `templateRendersChapterInfo(template)` 判断生效模板的
+`content / systemSuffix / taskGuidance` 是否含 `{{chapter_info}}` 占位符；
+含则**不注入** `authorItems`（消掉 D1 的第二次），不含则照旧注入（兜底不变）。
+初始、续写、压缩三处统一走同一判定。
+
+- ✅ 生效模板 = 内置 `first/next_chapter_draft` → 不注入兜底；
+- ✅ 生效模板 = 删掉 `{{chapter_info}}` 的自定义模板 → 仍注入兜底（两条护栏测试继续通过）。
+
+**实测收益（同 fixture，作者字段按真实体量放大）**：
+
+| 请求 | Phase 1 前 | Phase 1 后 | 降幅 |
+|---|---|---|---|
+| 初始请求 | 7711 字符 | 5401 字符 | **−30.0%** |
+| 续写请求 | 6396 字符 | 4088 字符 | **−36.1%** |
+| 作者字段出现次数（每轮） | 2 | **1** | — |
+
+> ⚠️ 降幅**随作者字段体量放大而增大**（作者字段越长，省下的越多）。
+> 上面是「三字段各重复 30 遍」的构造；真实章节的降幅取决于作者在该章的 keyEvents/钩子/指导篇幅。
+> 原文里「目标 >50%」的验收线是 v2 稿基于**错误前提**（以为 chapterMaterials 整体装两遍）估的，**此处按实测修正**。
+
+**风险**：低——改动面是「是否追加一个字符串」，未触碰 `chapter-materials.ts` 构成与 hash。
+**验收**：Phase 0 D1 断言已从 `{2,2}` 改为 `{1,1}` 并通过；新增 `does not duplicate author fields when the builtin template already renders chapter_info` 直接锁定不变量。
+
+#### 3.2.2 步骤 1 原文（保留作对照）· 消除初始请求内部的并排重复（D2–D5）
 
 **问题**：`chapterMaterials.text` 与 `promptBuilder.build()` 并排拼接，内容重叠。
 
@@ -145,21 +184,23 @@ continuationPrompt = `${hardRequirements}\n\n${lengthContract}\n\n${authorMateri
 **风险**：中。`chapter-materials.ts` 的 `decision` / `omissions` / 容量准入（S07）都依赖这段文本的存在与 hash，
 移除会触碰 `materialDecision.promptHash` 与覆盖缺口日志。**必须保 hash 稳定或同步更新。**
 
-#### 步骤 2 · 统一续写/压缩的作者资料来源（D1 的核心）
+#### 3.2.3 步骤 2 原文（保留作对照）· 统一续写/压缩的作者资料来源
 
-**问题**：续写/压缩用路径 B 重新拼一套，且把 `chapterMaterials.text` 整个再装一遍。
+**问题**：续写/压缩用路径 B 重新拼一套（`draftAuthorMaterialBlock`）。
 
-**做法**：改为**复用**，不再重拼。两种实现选一：
+**做法**：改为**复用**，不再重拼。方向上已由 §3.2.1 收敛为「条件化 authorItems」——
+注意：`draftAuthorMaterialBlock` 里的 `【本章蓝图】/【全局写作要求】/【文风要求】/【小说配置事实】` 各一份，
+**它们在续写轮内并未与别的块重复**（Phase 0 实测 D3/D7 均为 1），所以**不需要**在这一轮删它们。
+唯一重复的是 `authorItems`。
 
-- **① 复用初始请求的 system**：续写沿用同一 `params.systemRole`（现在已经这么做，`:1586` 用 `params.systemRole`），
-  只需把 `draftAuthorMaterialBlock` 里与 system / template 重叠的段落删掉，只保留**本章蓝图 + 已写正文**。
-- **② 显式「增量」语义**：续写 prompt 只写「以下是你上一轮已收到的同一本作品，本章已写正文如下」，
-  把 `chapterMaterials.text` 彻底移出续写请求（依赖服务端/模型侧的上下文缓存，但这不保证，需评估）。
+**风险**：低。**不需要**为了「少装一份资料」而让续写失去自包含性。
 
-**推荐 ①**：不依赖任何外部缓存行为，纯本地组装层收敛，**收益确定**。
-**风险**：中。续写必须仍能「自包含」——如果 provider 不缓存上下文，续写请求少了作者资料可能导致偏离。
-但注意：**当前续写的 system 已经带了 `params.systemRole`（= `promptBuilder.getSystemRole()` + 执行合同 rules），
-其中已含 `novel_config` 与文风边界**，所以删掉路径 B 的重复段并不会让续写「失去」这些约束。
+#### 3.2.4 步骤 3 · 收尾（D6；D7 经实测无需处理）
+
+- **D6**：`user_guidance` 目前出现 3 处（`system` 尾部 ★额外指导★ / `【本章信息】` JSON / `authorItems` 的 `- 作者本章指导:`）。
+  Phase 1 消掉 `authorItems` 那份后会降到 2 处，是否继续收敛到 1 处（去掉 `【本章信息】` JSON 里的）**待 Phase 1 后再评估**。
+- **D7**：Phase 0 实测续写轮内 `【本章篇幅合同】` 仅 1 次 → **无需处理**，已降为护栏断言。
+
 
 ### 3.2.5 ★ 对「收敛组装层能否解决多轮成倍增长」的回答（作者提问，结论有更正）
 
@@ -244,15 +285,18 @@ continuationPrompt = `${hardRequirements}\n\n${lengthContract}\n\n${authorMateri
 
 1. **逐字计数断言**（核心）：构造一个含作者资料、架构、文风的用例，跑完初始 + 1 次续写 + 1 次压缩，
    对每份作者原文做 `match(/片段/g)`，**每一次请求内均为 1**。
-   ✅ **Phase 0 已落地**：`generate-draft.command.test.ts` 的 `P1 Phase 0 · literal duplication counts` 四条断言，
-   当前把实测值（D1 = 2/2、D3 = 1、D7 = 1）钉成固定值。Phase 1 只需把 D1 的期望值改成 1 即完成该条验收。
+   ✅ **Phase 0 落地、Phase 1 达标**：`generate-draft.command.test.ts` 的 `P1 Phase 0 · literal duplication counts`
+   四条断言，D1 已从 `{2,2}` 收敛为 `{1,1}`；D3/D7 实测本就为 1（降为护栏）。
    ⚠️ 注意口径是「**每次请求内**为 1」，**不是「整次生成内为 1」** —— 多轮之间重复发送是架构决定的，
    I1 不承诺消除它（见 §3.2.5）。
 2. `chapterMaterials.text` 在同一轮请求内不再重复出现（初始请求内不再与 `promptBuilder.build()` 并排重复）。
-3. 续写请求的 system 仍含 `novel_config` 与执行合同 rules（约束链不丢）。
-4. 全部既有测试通过；失败集与基线逐条 diff 一致。
-5. `tsc --noEmit` EXIT=0。
-6. **量化对比**：给一个真实章节的 prompt 体积前后对比（目标：**单轮**体积下降 > 50%）。
+   ✅ Phase 1 已消掉重复的作者字段重列；`chapterMaterials` 与 `template` 的**语义级**重叠属 Phase 2/后续。
+3. 续写请求的 system 仍含 `novel_config` 与执行合同 rules（约束链不丢）。 ✅ 未触碰。
+4. 全部既有测试通过；失败集与基线逐条 diff 一致。 ✅ 18/18 与基线一致，0 真回归。
+5. `tsc --noEmit` EXIT=0。 ✅
+6. **量化对比**：单轮体积下降 —— 实测 **初始 −30.0% / 续写 −36.1%**（作者字段按真实体量放大）。
+   ⚠️ v2 稿的「>50%」是基于**错误前提**（以为 chapterMaterials 整体装两遍）估的，按实测修正；
+   降幅随作者字段长度放大，越长的章节收益越大。
 
 ---
 
@@ -296,7 +340,20 @@ continuationPrompt = `${hardRequirements}\n\n${lengthContract}\n\n${authorMateri
 **修订后的实施顺序**：
 - ✅ **Phase 0（已完成，2026-10-10）**：加「逐字计数」断言（证明 D1 存在 + 作为护栏）。零业务改动。
   实测把 D1 从「设计稿的推测」变成「初始 2 / 续写 2」的确定事实，并**排除了 D3/D7**（实测均为 1）。
-- ⏭️ **Phase 1**：合并原步骤 1 + 步骤 2 —— 消除「蓝图 JSON ↔ 执行合同 authorItems」的作者字段重复。**收益最大。**
-- **Phase 2**：步骤 3 收尾（仅剩 D6 `user_guidance`；D7 经实测无需处理）。
+- ✅ **Phase 1（已完成，2026-10-10）**：条件化 `authorItems` 兜底 → D1 收敛为 1/1。
+  实测单轮体积下降 **初始 −30.0% / 续写 −36.1%**（随作者字段体量放大）。
+  **未触碰** `chapter-materials.ts`（比原计划风险更低——原计划以为要改它）。
+- ⏭️ **Phase 2（待办）**：仅剩 D6 `user_guidance`（当前 3 处：`system` ★额外指导★ / `【本章信息】` JSON / 已消掉的 authorItems 那份）。
+  消掉 authorItems 后降为 2 处；是否继续收敛到 1 处待评估（D7 经实测无需处理）。
 - **P1-B（并行，不阻塞）**：加轮数/体积埋点，为「多轮成本」积累数据。
+
+### 6.2 Phase 1 落地记录
+
+- **改动文件**：`src/services/workflows/commands/generate-draft.command.ts`
+  （新增 `templateRendersChapterInfo()`；`draftAuthorMaterialBlock` 增加 `includeAuthorItemsFallback`；初始/续写/压缩三处按判定传参）。
+- **测试**：`generate-draft.command.test.ts` 205/205 通过；
+  受影响断言逐个判定为「断言过期」（作者字段从独立重列行改为只留在蓝图 JSON），已同步更新并**补强**为「恰好出现 1 次」的不变量断言。
+- **回归验证**：`tsc --noEmit` EXIT=0；工作流目录失败集与基线**逐条 diff 完全一致**（18/18 均为 better-sqlite3 ABI 145 vs 127 环境问题），新增 0 条真回归。
+- **两条兜底护栏继续通过**：`retains all three author fields … when a custom draft template omits chapter_info`、
+  `omits the execution card when all three author fields are empty`。
 

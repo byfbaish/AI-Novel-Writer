@@ -18,6 +18,7 @@ import { useLLMStore } from '../../../stores/llm-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { hashAuthorText } from '../../../shared/source-ref'
 import { resolvePromptTemplate } from '../../prompt-templates'
+import type { PromptTemplate } from '../../builtin-prompt-templates'
 import { ChapterPromptBuilder } from '../../prompts/prompt-builder'
 import { ipc } from '../../ipc-client'
 import { unwrapKnowledgeValue } from '../../knowledge-service'
@@ -469,6 +470,24 @@ function chapterLengthContractText(writingLanguage: WritingLanguage, targetUnits
 }
 
 /**
+ * P1 Phase 1 · 判断生效模板是否会把「本章信息」渲染进请求。
+ *
+ * `chapterExecutionContractText().authorItems`（作者原文重列）是**兜底**：
+ * 当自定义模板删掉了 `{{chapter_info}}` 占位符时，作者三个字段（必需事件/章节钩子/作者本章指导）
+ * 就只剩这一处呈现，必须注入。
+ *
+ * 但内置模板（first/next_chapter_draft）都含 `{{chapter_info}}`，
+ * 且其 JSON 已逐字包含同样的三个字段 —— 此时再注入 authorItems 就是**同一份作者原文在同一轮请求里装两遍**
+ * （Phase 0 实测 D1：初始与续写各 2 次）。
+ *
+ * 所以统一按「模板是否渲染 chapter_info」来决定是否注入兜底，而不是无条件注入。
+ */
+function templateRendersChapterInfo(template: Pick<PromptTemplate, 'content' | 'systemSuffix' | 'taskGuidance'>): boolean {
+  return [template.content, template.systemSuffix, template.taskGuidance]
+    .some(section => typeof section === 'string' && section.includes('{{chapter_info}}'))
+}
+
+/**
  * 固定解释规则与作者原文分开角色；规则仅按写作语言和是否有前驱分支。
  * 首稿、续写、压缩和历史恢复共用规则，但不扩大各次请求的操作范围。
  */
@@ -517,8 +536,19 @@ function draftAuthorMaterialBlock(writingLanguage: WritingLanguage, material: {
   chapterMaterials: string
   /** 生成前定稿对账注入块；无对账时为空。 */
   reconciliation?: string
+  /**
+   * 是否追加「作者原文重列」兜底（authorItems）。
+   *
+   * 本块开头的【本章蓝图】JSON 已逐字包含必需事件/章节钩子/作者本章指导三个字段，
+   * 再拼一份 authorItems 就是同一轮内重复装载（Phase 0 实测 D1）。
+   * 仅当本轮 system / 模板都未呈现这些字段时才需要兜底 → 默认不追加。
+   */
+  includeAuthorItemsFallback?: boolean
 }): string {
   const reconciliation = material.reconciliation ? `${material.reconciliation}\n\n` : ''
+  const authorItems = material.includeAuthorItemsFallback
+    ? chapterExecutionContractText(writingLanguage, material.chapterInfo).authorItems
+    : ''
   return promptLanguageText(
     writingLanguage,
     `【本章蓝图】
@@ -539,7 +569,7 @@ ${material.novelConfigFacts}
 
 ${material.chapterMaterials}
 
-${reconciliation}${chapterExecutionContractText(writingLanguage, material.chapterInfo).authorItems}`,
+${reconciliation}${authorItems}`,
     `[Current chapter blueprint]
 ${JSON.stringify(material.chapterInfo, null, 2)}
 
@@ -558,7 +588,7 @@ ${material.novelConfigFacts}
 
 ${material.chapterMaterials}
 
-${reconciliation}${chapterExecutionContractText(writingLanguage, material.chapterInfo).authorItems}`,
+${reconciliation}${authorItems}`,
   )
 }
 
@@ -924,8 +954,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // 仅历史恢复沿用已记录的对账块；新 run 直接使用作者材料与定稿事实。
     const chapterExecutionContract = chapterExecutionContractText(writingLanguage, writerChapterInfo)
     const systemRole = `${promptBuilder.getSystemRole()}\n\n${chapterExecutionContract.rules}`
+    // P1 Phase 1：生效模板已渲染 {{chapter_info}}（其 JSON 逐字含作者三字段）时，
+    // 不再追加 authorItems 兜底，避免同一份作者原文在同一轮请求里装两遍。
+    const templateCoversAuthorFields = templateRendersChapterInfo(template)
+    const authorItemsFallback = templateCoversAuthorFields ? '' : chapterExecutionContract.authorItems
     const composeInitialPrompt = (reconciliationBlock: string) => [chapterMaterials.text, promptBuilder.build(),
-      reconciliationBlock, chapterExecutionContract.authorItems, chapterLengthContract]
+      reconciliationBlock, authorItemsFallback, chapterLengthContract]
       .filter(Boolean)
       .join('\n\n')
     const prompt = composeInitialPrompt('')
@@ -1191,6 +1225,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             reconciliation: reconciliationBlock,
             writingLanguage,
             reasoning: initialReasoning,
+            // 续写的【本章蓝图】JSON 已含作者三字段；仅模板未渲染 chapter_info 时才需兜底。
+            includeAuthorItemsFallback: !templateCoversAuthorFields,
             onRecoverableCandidate: candidate => { recoverableDraftCandidate = candidate },
           })
           recoverableDraftCandidate = completedDraft.text
@@ -1213,6 +1249,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             chapterMaterials: chapterMaterials.text,
             reconciliation: reconciliationBlock,
             writingLanguage,
+            // 压缩同理：本块蓝图 JSON 已含作者三字段，仅模板未渲染时才兜底。
+            includeAuthorItemsFallback: !templateCoversAuthorFields,
           })
           recoverableDraftCandidate = lengthCheckedDraft
           return lengthCheckedDraft
@@ -1466,6 +1504,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     reconciliation?: string
     writingLanguage: WritingLanguage
     reasoning: boolean
+    /** P1 Phase 1：本轮是否需要追加 authorItems 兜底（见 draftAuthorMaterialBlock）。 */
+    includeAuthorItemsFallback?: boolean
     onRecoverableCandidate(candidate: string): void
   }): Promise<DraftCandidate> {
     const uiText = (zhCNText: string, enUSText: string) => workflowUiText(
@@ -1702,6 +1742,8 @@ ${visibleDraft}`,
     chapterMaterials: string
     reconciliation?: string
     writingLanguage: WritingLanguage
+    /** P1 Phase 1：本轮是否需要追加 authorItems 兜底（见 draftAuthorMaterialBlock）。 */
+    includeAuthorItemsFallback?: boolean
   }): Promise<string> {
     const uiText = (zhCNText: string, enUSText: string) => workflowUiText(params.context, zhCNText, enUSText)
     const range = draftTargetUnitRange(params.targetChars)
