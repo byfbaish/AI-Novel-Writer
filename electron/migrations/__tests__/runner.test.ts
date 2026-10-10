@@ -86,7 +86,7 @@ describe('desktop single schema lane', () => {
     }
   })
 
-  it('reserves exactly seven consecutive versions with a single declared owner for each', () => {
+  it('reserves exactly eight consecutive versions with a single declared owner for each', () => {
     expect(MIGRATION_LANE.map(s => [s.id, s.from, s.to, s.owner])).toEqual([
       ['M00', 0, 1, 'S04'], ['M01', 1, 2, 'S05'], ['M02', 2, 3, 'S08'],
       ['M03', 3, 4, 'S11'], ['M04', 4, 5, 'S12'], ['M05', 5, 6, 'F03'],
