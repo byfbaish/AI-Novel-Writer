@@ -10,6 +10,8 @@ const desktopStartup: AppearanceBootstrapDependencies = {
   acknowledgeReadback: ack => ipc.invoke('startup:appearance-ack', ack),
 }
 const loadApp = () => import('../../App')
+/** A migration notice informs; it must never become a permanent overlay. */
+export const MIGRATION_NOTICE_AUTO_DISMISS_MS = 15_000
 
 /** Business modules are not imported until main and the renderer storage writer acknowledge readiness. */
 export default function RendererStartup({
@@ -43,6 +45,15 @@ export default function RendererStartup({
       void ipc.invoke('window:resolve-close', requestId, 'proceed').catch(() => undefined)
     })
   }, [Workspace])
+  // The banner is plain state, not the appearance store: acknowledging a notice once must
+  // never depend on the preference writer, which may report a failure while the workspace
+  // keeps running. Let it also clear itself so a stuck session cannot end up with copy that
+  // covers the title bar and accepts no clicks.
+  useEffect(() => {
+    if (noticeDismissed || !migrationNotice) return
+    const timer = setTimeout(() => setNoticeDismissed(true), MIGRATION_NOTICE_AUTO_DISMISS_MS)
+    return () => clearTimeout(timer)
+  }, [noticeDismissed, migrationNotice])
   useEffect(() => {
     let disposed = false
     void useAppearanceStore.getState().bootstrap(startupDependencies).then(async ready => {
