@@ -13,6 +13,7 @@ import { cn } from '../../../lib/utils'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { getCharacterRoleLabels } from '../../../shared/character-role'
 import { CharacterCardImportButton } from '../../characters/CharacterCardImportButton'
+import { CharacterCardGenerateButton } from '../../characters/CharacterCardGenerateButton'
 import { FinalizedCharacterProposalPanel } from '../../characters/FinalizedCharacterProposalPanel'
 import { FinalizedCharacterStateCandidatePanel } from '../../characters/FinalizedCharacterStateCandidatePanel'
 import { useCharacterAvatars } from '../../editor/use-character-avatars'
@@ -81,6 +82,7 @@ export default function CharactersView() {
           {text(`角色列表（${visibleCharacters.length}）`, `Characters (${visibleCharacters.length})`)}
         </span>
         <div className="flex items-center gap-0.5">
+          <CharacterCardGenerateButton projectKey={currentProject.path} compact disabled={identityBusy || !dataReady} />
           <CharacterCardImportButton projectKey={currentProject.path} compact disabled={identityBusy || !dataReady} />
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => load(currentProject.path)} disabled={identityBusy || loadingProjectKey !== null} title={text('刷新列表', 'Refresh list')}>
             <RefreshCw size={14} strokeWidth={2} />

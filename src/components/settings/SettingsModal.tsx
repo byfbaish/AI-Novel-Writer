@@ -1276,12 +1276,37 @@ function EditorSection() {
   const [autoOpenNextChapterAfterFinalize, setAutoOpenNextChapterAfterFinalize] = useState(false)
   const [autoOpenNextSaving, setAutoOpenNextSaving] = useState(false)
   const [autoOpenNextError, setAutoOpenNextError] = useState<string | null>(null)
+  // Default on: the author asked for the prompt by default and only wants the
+  // ability to silence it during bulk generation.
+  const [autoPromptBlueprintCharacterSync, setAutoPromptBlueprintCharacterSyncState] = useState(true)
+  const [autoPromptBlueprintSaving, setAutoPromptBlueprintSaving] = useState(false)
+  const [autoPromptBlueprintError, setAutoPromptBlueprintError] = useState<string | null>(null)
 
   useEffect(() => {
     ipc.invoke('config:get').then((config) => {
       setAutoOpenNextChapterAfterFinalize(config.autoOpenNextChapterAfterFinalize === true)
+      setAutoPromptBlueprintCharacterSyncState(config.autoPromptBlueprintCharacterSync !== false)
     }).catch(() => {})
   }, [])
+
+  const setAutoPromptBlueprintSync = async (checked: boolean) => {
+    const previous = autoPromptBlueprintCharacterSync
+    setAutoPromptBlueprintCharacterSyncState(checked)
+    setAutoPromptBlueprintSaving(true)
+    setAutoPromptBlueprintError(null)
+    try {
+      const result = await ipc.invoke('config:set', { autoPromptBlueprintCharacterSync: checked })
+      if (!result.success) throw new Error(result.error || text('未知错误', 'Unknown error'))
+    } catch (error) {
+      setAutoPromptBlueprintCharacterSyncState(previous)
+      setAutoPromptBlueprintError(text(
+        `角色卡提示设置保存失败：${error instanceof Error ? error.message : String(error)}`,
+        `Could not save the character-prompt setting: ${error instanceof Error ? error.message : String(error)}`,
+      ))
+    } finally {
+      setAutoPromptBlueprintSaving(false)
+    }
+  }
 
   const setAutoOpenNext = async (checked: boolean) => {
     const previous = autoOpenNextChapterAfterFinalize
@@ -1356,6 +1381,17 @@ function EditorSection() {
         <Switch checked={autoOpenNextChapterAfterFinalize} onCheckedChange={(checked) => void setAutoOpenNext(checked)} disabled={autoOpenNextSaving} aria-label={text('定稿后打开下一章', 'Open next chapter after finalizing')} />
       </div>
       {autoOpenNextError && <p role="alert" className="text-xs" style={{ color: 'var(--color-error-text)' }}>{autoOpenNextError}</p>}
+
+      <div className="flex items-center justify-between gap-4 rounded-xl p-4" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-panel)' }}>
+        <div>
+          <p className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>{text('蓝图提交后提示角色卡', 'Prompt for character cards after blueprint commit')}</p>
+          <p className="text-[0.68rem] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+            {text('蓝图提交后发现新角色候选时自动提示落卡。关掉只影响自动提示；角色卡界面的角标始终保留。', 'Shows a prompt when new character candidates appear after a blueprint commit. Turning this off only hides the automatic prompt; the character-view badge always remains.')}
+          </p>
+        </div>
+        <Switch checked={autoPromptBlueprintCharacterSync} onCheckedChange={(checked) => void setAutoPromptBlueprintSync(checked)} disabled={autoPromptBlueprintSaving} aria-label={text('蓝图提交后提示角色卡', 'Prompt for character cards after blueprint commit')} />
+      </div>
+      {autoPromptBlueprintError && <p role="alert" className="text-xs" style={{ color: 'var(--color-error-text)' }}>{autoPromptBlueprintError}</p>}
 
       {/* 说明 */}
       <div

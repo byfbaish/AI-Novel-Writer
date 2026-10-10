@@ -1,14 +1,58 @@
 import type { ApproveCharacterProposalRequest, CharacterProposalBatch } from '../shared/character-proposal'
 import { defaultCharacterProposalRelationships, defaultCharacterProposalSelections } from './workflows/character-proposal-preview'
 
+/**
+ * A relationship row as the panel holds it while the author decides. `sourceCharacterId` marks
+ * an author-created outgoing edge from an existing card; such rows carry no proposal target and
+ * are therefore never auto-derived from the batch.
+ */
+export interface CharacterProposalRelationshipChoice {
+  sourceSelectionKey?: string
+  sourceCharacterId?: string
+  targetSelectionKey?: string
+  targetCharacterId?: string
+  relation: string
+}
+
 export interface CharacterProposalChoices {
   proposalBatchId: string
   revision: number
   selections: ApproveCharacterProposalRequest['selections']
-  relationships: NonNullable<ApproveCharacterProposalRequest['relationships']>
+  relationships: CharacterProposalRelationshipChoice[]
+  /**
+   * Targets the author marked as "the blueprint will build this person later".
+   *
+   * These are author intent, not relationships — no edge exists until a card does, so they never
+   * enter the approve request. They are carried separately so the marker survives to feed P1's
+   * candidate set rather than being silently lost.
+   */
+  blueprintPendingRelations?: { sourceSelectionKey: string; targetName: string }[]
   edits?: NonNullable<ApproveCharacterProposalRequest['edits']>
 }
+
 export function createCharacterProposalChoices(batch: CharacterProposalBatch): CharacterProposalChoices {
   return { proposalBatchId: batch.proposalBatchId, revision: batch.revision,
     selections: defaultCharacterProposalSelections(batch), relationships: defaultCharacterProposalRelationships(batch) }
+}
+
+/**
+ * Synthesizes the request payload. Rows whose `sourceCharacterId` equals a candidate's adopted
+ * id are collapsed back onto that candidate's selection key, because an identity being created by
+ * this very batch has no id until the commit runs.
+ */
+export function toApproveCharacterProposalRequest(choices: CharacterProposalChoices, operationId: string): ApproveCharacterProposalRequest {
+  const keyByCharacterId = new Map(choices.selections.flatMap(selection =>
+    selection.action === 'map' ? [[selection.characterId, selection.selectionKey] as const] : []))
+  const relationships = choices.relationships.flatMap(relationship => {
+    // A row whose "source" is a card being mapped in this very batch has no id yet: fold it back
+    // onto that candidate's selection key. Every other row keeps whichever source it declares.
+    if (relationship.sourceCharacterId && keyByCharacterId.has(relationship.sourceCharacterId))
+      return [{ sourceSelectionKey: keyByCharacterId.get(relationship.sourceCharacterId), targetSelectionKey: relationship.targetSelectionKey, targetCharacterId: relationship.targetCharacterId, relation: relationship.relation }]
+    if (relationship.sourceSelectionKey || relationship.sourceCharacterId) return [relationship]
+    // A row with no source at all is not an edge; dropping it is the only safe reading.
+    return []
+  }).map(({ sourceCharacterId, ...rest }) => sourceCharacterId ? { ...rest, sourceCharacterId } : rest)
+  return { proposalBatchId: choices.proposalBatchId, expectedRevision: choices.revision,
+    operationId, selections: choices.selections, relationships,
+    ...(choices.edits?.length ? { edits: choices.edits } : {}) }
 }

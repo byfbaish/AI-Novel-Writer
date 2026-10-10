@@ -33,6 +33,8 @@ import {
   sameProjectSessionContext,
 } from './shared/project-session-context'
 import { getAutoNextChapterPrefill, type NextChapterBlueprint } from './services/auto-next-chapter'
+import { pendingBlueprintCandidates } from './services/character-card-generation-sources'
+import type { BlueprintCharacterSyncOperation } from '../electron/repositories/blueprint-repository'
 import type { SkinId } from './shared/skin-types'
 
 // eslint-disable-next-line react-refresh/only-export-components
@@ -151,8 +153,7 @@ export default function App() {
       )
     })
 
-    const unsubAutoOpenNextChapter = globalEventBus.on('FINALIZE_COMPLETE', ({
-      chapterNumber,
+    const unsubAutoOpenNextChapter = globalEventBus.on('FINALIZE_COMPLETE', ({      chapterNumber,
       projectSession,
       source,
     }) => {
@@ -197,6 +198,52 @@ export default function App() {
       })()
     })
 
+    // P1: after a blueprint commit, offer to build the newly declared characters.
+    // The prompt is best-effort — a failure must never disturb the finished run.
+    const unsubBlueprintCharacterPrompt = globalEventBus.on('WORKFLOW_COMPLETE', ({ projectSession, runId }) => {
+      void (async () => {
+        try {
+          if (!sameProjectSessionContext(
+            projectSession,
+            projectSessionContextFromProject(useProjectStore.getState().currentProject),
+          )) return
+          const { activeRuns, history } = useWorkflowStore.getState()
+          const run = activeRuns.find(r => r.id === runId) ?? history.find(r => r.id === runId)
+          if (!run || (run.type !== 'directory' && run.type !== 'novel_import')) return
+          const config = await ipc.invoke('config:get')
+          if (config.autoPromptBlueprintCharacterSync === false) return
+          if (!sameProjectSessionContext(
+            projectSession,
+            projectSessionContextFromProject(useProjectStore.getState().currentProject),
+          )) return
+          const [operations, cards] = await Promise.all([
+            ipc.invokeWithProjectSession(projectSession, 'db:blueprint-character-sync-list-pending', projectSession.projectPath),
+            ipc.invokeWithProjectSession(projectSession, 'db:character-get-all', projectSession.projectPath),
+          ])
+          if (!sameProjectSessionContext(
+            projectSession,
+            projectSessionContextFromProject(useProjectStore.getState().currentProject),
+          )) return
+          const pending = pendingBlueprintCandidates(
+            operations as BlueprintCharacterSyncOperation[],
+            (cards as { name: string }[]).map(card => card.name),
+          )
+          // No candidates means no prompt: an empty notice is pure noise.
+          if (!pending.length) return
+          const text = useLocaleStore.getState().text
+          actionToast.workflowComplete(
+            text(
+              `发现 ${pending.length} 个待建卡角色（${pending.slice(0, 3).map(candidate => candidate.name).join('、')}${pending.length > 3 ? ' 等' : ''}）`,
+              `${pending.length} character(s) awaiting cards (${pending.slice(0, 3).map(candidate => candidate.name).join(', ')}${pending.length > 3 ? ', …' : ''})`,
+            ),
+            () => useLayoutStore.getState().setSidebarView('characters'),
+          )
+        } catch (error) {
+          console.warn('[BlueprintCharacterPrompt] 无法读取待建卡角色:', error)
+        }
+      })()
+    })
+
     return () => {
       // App 卸载时销毁 ProjectService（开发环境 HMR 时会触发）
       import('./services/project-service').then(({ disposeProjectService }) => {
@@ -204,6 +251,7 @@ export default function App() {
       }).catch(() => {})
       unsubActionToast()
       unsubAutoOpenNextChapter()
+      unsubBlueprintCharacterPrompt()
     }
   }, [initLocale, initTheme, initLLM, loadRecentProjects])
 

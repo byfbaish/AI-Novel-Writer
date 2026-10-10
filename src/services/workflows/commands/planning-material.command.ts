@@ -1,6 +1,6 @@
 import { characterProposalMaterialChunks as materialChunks, parseMaterialExtraction as parseExtraction, type MaterialExtraction, type MaterialChunk } from '../../../shared/character-proposal-parser'
 import type { CharacterProposalBatch } from '../../../shared/character-proposal'
-import type { CharacterProposalChoices } from '../../character-proposal-choices'
+import { toApproveCharacterProposalRequest, type CharacterProposalChoices } from '../../character-proposal-choices'
 import { defaultCharacterProposalRelationships, defaultCharacterProposalSelections, formatCharacterProposalPreview } from '../character-proposal-preview'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import { composePromptSystemRole, resolvePromptTemplate, renderPrompt } from '../../prompt-templates'
@@ -177,13 +177,11 @@ export class CommitPlanningMaterialCharactersCommand extends BaseWorkflowCommand
     if (shown.status === 'approved') return
     const choices = context.data.characterProposalChoices as CharacterProposalChoices | undefined
     if (choices && (choices.proposalBatchId !== shown.proposalBatchId || choices.revision !== shown.revision)) throw new Error('CHARACTER_PROPOSAL_CHOICES_STALE')
-    const result = await ipc.invokeWithProjectSession(projectSession, 'character-proposal:approve', {
-      proposalBatchId: shown.proposalBatchId, expectedRevision: shown.revision,
-      operationId: `planning-material-${context.runId}`,
-      selections: choices?.selections ?? defaultCharacterProposalSelections(shown),
-      relationships: choices?.relationships ?? defaultCharacterProposalRelationships(shown),
-      ...(choices?.edits?.length ? { edits: choices.edits } : {}),
-    })
+    const result = await ipc.invokeWithProjectSession(projectSession, 'character-proposal:approve',
+      choices ? toApproveCharacterProposalRequest(choices, `planning-material-${context.runId}`)
+        : { proposalBatchId: shown.proposalBatchId, expectedRevision: shown.revision,
+            operationId: `planning-material-${context.runId}`,
+            selections: defaultCharacterProposalSelections(shown), relationships: defaultCharacterProposalRelationships(shown) })
     context.data.characterProposalBatch = result.batch
     callbacks.setProgress(100)
     callbacks.log(text(

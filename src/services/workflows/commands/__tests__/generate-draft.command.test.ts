@@ -4603,4 +4603,60 @@ ${headingPrefix}第3章：潮门
     await expect(command.execute({ step: {}, context, callbacks })).rejects.toThrow('lease unavailable')
     expectNoDraftPersistence(invoke)
   })
+
+  /**
+   * P1 验收：一张**已经落地**的角色卡（即采用决策已写入名册之后）必须逐字进入 Prompt。
+   *
+   * 这条测试刻意不碰 `toWriterChapterInfo` / `writerChapterInfo` —— 只断言名册读取 →
+   * `readCharacterProfiles` → prompt 文本这条链路，因此不会扰动恢复指纹
+   * （`GENERATION_DRAFT_RECOVERY_AUTHOR_INPUT_CHANGED` 依赖 `JSON.stringify(writerChapterInfo)`）。
+   */
+  it('P1 acceptance: a landed card enters the prompt verbatim, including its outgoing relationship', async () => {
+    const runtime = fakeOutcomes(outcome('本章正文。'.repeat(125), 'stop'))
+    const f = setup({
+      runtime, wordsTarget: 500, characters: ['沈舟', '沈晚'],
+      characterCards: [
+        { name: '沈舟', characterId: 'card-shenzhou', role: 'protagonist', currentState: {},
+          personality: 'LANDED_CARD_PERSONALITY', background: 'LANDED_CARD_BACKGROUND',
+          notes: '来源：第 3 章蓝图',
+          relationships: [{ target: '沈晚', relation: '情感锚点' }] },
+        { name: '沈晚', characterId: 'card-shenwan', role: 'supporting', currentState: {},
+          personality: 'TARGET_CARD_PERSONALITY' },
+      ],
+    })
+    await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+
+    const prompt = runtime.complete.mock.calls[0]![0].messages.map(message => message.content).join('\n')
+    // 卡片本体：姓名 / 定位 / 事实字段全部逐字进 prompt。
+    expect(prompt).toContain('沈舟 (protagonist)')
+    expect(prompt).toContain('LANDED_CARD_PERSONALITY')
+    expect(prompt).toContain('LANDED_CARD_BACKGROUND')
+    expect(prompt).toContain('来源：第 3 章蓝图')
+    // 出边：作者填的方向与措辞原样出现，且不镜像出反向边。
+    expect(prompt).toContain('relationship: 沈晚 (情感锚点)')
+    expect(prompt).not.toContain('relationship: 沈舟 (')
+    // 对面的卡也照常注入，但只带它自己的入边（本用例没有）。
+    expect(prompt).toContain('沈晚 (supporting)')
+    expect(prompt).toContain('TARGET_CARD_PERSONALITY')
+  })
+
+  it('P1 acceptance: a card the author left unadopted never reaches the prompt', async () => {
+    const runtime = fakeOutcomes(outcome('本章正文。'.repeat(125), 'stop'))
+    const f = setup({
+      runtime, wordsTarget: 500, characters: ['沈舟'],
+      characterCards: [
+        { name: '沈舟', characterId: 'card-shenzhou', role: 'protagonist', currentState: {},
+          personality: 'ADOPTED_CARD_SENTINEL' },
+        { name: '陆危楼', characterId: 'card-lu', role: 'antagonist', currentState: {},
+          personality: 'UNADOPTED_CANDIDATE_SENTINEL' },
+      ],
+    })
+    await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+
+    const prompt = runtime.complete.mock.calls[0]![0].messages.map(message => message.content).join('\n')
+    expect(prompt).toContain('ADOPTED_CARD_SENTINEL')
+    // 未采用候选不是名册成员，本章蓝图也没点名 → 不得出现在任何 prompt 里。
+    expect(prompt).not.toContain('UNADOPTED_CANDIDATE_SENTINEL')
+    expect(prompt).not.toContain('陆危楼')
+  })
 })
