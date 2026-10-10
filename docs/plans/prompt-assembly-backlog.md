@@ -152,12 +152,21 @@
 
 ## P3（中）· 任务 #8 · B 类「请求前语义去重」（默认关）
 
-> 📄 **详细设计稿**：[`p3-semantic-dedup.md`](./p3-semantic-dedup.md)（2026-10-10，设计待审）
-> 核心结论：**推荐只做「只读检测」**（报告疑似语义重复段，不改 prompt 一个字节）；
-> 「AI 建议 → 人工确认」需作者显式批准；**不建议**自动删段（与 ADR 0020 精神冲突 + 重复常是刻意的强调）。
-> ⚠️ **实施前必读**：设计稿 §3.3 —— `promptHash` 是**发送前逐字节强校验**
-> （`main-generation-owner.ts:543/:561`），一旦去重改变 prompt 就必须同步重算，
-> 否则被 `GENERATION_MATERIAL_PROMPT_MISMATCH` 拦下。**这使"只读优先"成为近乎唯一低风险路径。**
+> 📄 **详细设计稿**：[`p3-semantic-dedup.md`](./p3-semantic-dedup.md)（2026-10-10 **v2**，按作者三项决策重写）
+> **作者已定**：① 可以**直接判定并删除**，配"结果可查 log"；② 提出**提示词头缓存**；
+> ③ `promptHash` 收据契约"直接改掉"。
+> ⚠️ **v2 先纠正一个会做反方向的误解**：作者设想的"头的本地校验 + 免预请求"——
+> 头**本来就是本地字符串**（`composeInitialPrompt` / `draftAuthorMaterialBlock` 纯拼接、零 AI），
+> 续写/压缩**已经在复用同一份头**（同一个函数 + 同一个 `systemRole`）。
+> 所以**拼接不花钱**，要省的不是拼接，而是**LLM 语义判定的费用**。
+> 作者方案的真实价值 = **把一次 LLM 判定摊销到多次请求上**（作者的成本直觉正确）。
+> ⚠️ **v2 新增关键风险**：头的头部在**当前架构下几乎每章都变**
+> （`chapterMaterials.text` 含上一章定稿正文）→ 缓存会频繁失效、收益打折。
+> 设计稿给两条路：**H2（保守、不动 `chapter-materials.ts`、建议先做）** vs H1（提纯、需动 P1 刻意绕开的区域）。
+> ⚠️ **收据契约**：设计稿 §1.3 建议改成「**可归因**」而非整个删掉 ——
+> 保住"防渲染层夹带"的安全边界，放开"防配置漂移"的过强约束。
+> 代价：要动 `main-generation-owner.ts` + `generate-draft.command.ts` 两侧，
+> 并逐条归类 `main-generation-owner.test.ts` 里 **9 处** `GENERATION_MATERIAL_PROMPT_MISMATCH` 断言。
 
 ### 缘起
 
