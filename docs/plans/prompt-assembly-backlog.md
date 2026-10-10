@@ -43,6 +43,10 @@
 
 ## P1（高）· 蓝图角色 ↔ 角色卡 roster 同步
 
+> 📄 **详细设计稿**：[`p1-blueprint-roster-sync.md`](./p1-blueprint-roster-sync.md)（2026-10-10，设计待审）
+> 关键发现：蓝图→角色的 durability 骨架**已存在**（`blueprint_character_sync_operations` +
+> `newCharacterCandidates` 契约 + `character-proposal:stage` 通道），缺的是**触发时机与 UI 入口**。
+
 ### 缘起
 
 作者提问（原话）：
@@ -106,6 +110,10 @@
 ---
 
 ## P2（高）· 角色卡管理界面的 AI 生成增强
+
+> 📄 **详细设计稿**：[`p2-character-card-ai-generation.md`](./p2-character-card-ai-generation.md)（2026-10-10，设计待审）
+> 评估结论：**容易**。已有 `CharacterCardImportButton` 是先例，链路/安全/预览 UI 全部可复用，
+> 只差「一个不同的输入来源 + 一个按钮」。**建议与 P1 共用同一 UI 入口。**
 
 ### 缘起
 
