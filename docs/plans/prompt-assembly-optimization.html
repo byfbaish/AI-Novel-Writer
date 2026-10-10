@@ -537,6 +537,111 @@ function normalizeForFingerprint(text: string): string {
   「必要原文不得静默截除」三条硬约束：<b>只改写法与组织方式，不删减任何作者事实与红线</b>。
 </div>
 
+<h2 id="s13">十三、剩余任务优先级（按收益率排序）</h2>
+
+<div class="box box-blue">
+  <span class="bt">排序口径</span>
+  收益率 = <b>（每次生成的确定性收益 × 触发频率 × 用户可感知度）÷（实现成本 × 回归风险）</b>。
+  本表只列仍未完成的项；已完成项见 §12。
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width:44px">#</th>
+      <th>任务</th>
+      <th style="width:104px">类型</th>
+      <th style="width:150px">收益来源</th>
+      <th style="width:74px">成本</th>
+      <th style="width:74px">风险</th>
+      <th style="width:60px">ROI</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><b>P1</b></td>
+      <td><b>第 6 项</b> · 拆解 <code>user_guidance</code>：把「通用写作规范」与「本章微操」分离，通用部分上浮到缓存命中区</td>
+      <td><span class="tag t-purple">架构</span></td>
+      <td>占 prompt <b>约 36%</b>，是最大单一变量段；上浮后可跨章命中缓存，直接省钱省延迟</td>
+      <td><span class="tag t-amber">中高</span></td>
+      <td><span class="tag t-red">高</span></td>
+      <td><b>★★★★☆</b></td>
+    </tr>
+    <tr>
+      <td><b>P2</b></td>
+      <td><b>新增</b> · 蓝图场景 → AI 生成角色卡（第 N 章出现的「老猫」→ 依本章剧情 + 全书蓝图，判定其活跃于副本还是主线，产出候选卡交作者审阅）</td>
+      <td><span class="tag t-purple">新功能</span></td>
+      <td>打通「有剧情无人卡」的核心断点；复用已有 70–80% 提案闭环，补齐审阅入口</td>
+      <td><span class="tag t-blue">中</span></td>
+      <td><span class="tag t-amber">中</span></td>
+      <td><b>★★★★☆</b></td>
+    </tr>
+    <tr>
+      <td><b>P3</b></td>
+      <td><b>第 8 项</b> · B 类预请求去重（AI 优化重复描述，<b>默认关闭</b>，设置里可开）</td>
+      <td><span class="tag t-purple">新功能</span></td>
+      <td>对「跨层继承式重复」的兜底；默认关 → 零意外消耗，收益确定性高但覆盖面窄</td>
+      <td><span class="tag t-amber">中高</span></td>
+      <td><span class="tag t-blue">低</span></td>
+      <td><b>★★★☆☆</b></td>
+    </tr>
+    <tr>
+      <td><b>P4</b></td>
+      <td><b>第 7 项</b> · A 类固化（AI 建议 → 人工确认 → 替换原配置）</td>
+      <td><span class="tag t-purple">新功能</span></td>
+      <td>治本：把重复描述在<b>源头</b>合并掉，一次确认长期受益；但需 UI 工作流与回滚设计</td>
+      <td><span class="tag t-red">高</span></td>
+      <td><span class="tag t-red">高</span></td>
+      <td><b>★★☆☆☆</b></td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>P1 · 第 6 项为何排第一</h3>
+<ul>
+  <li><code>user_guidance</code> 是 prompt 中<b>体量最大且逐章变化</b>的段（约 36%）。它目前排在 builder 链的可变后缀区，导致其后所有内容每章都无法命中前缀缓存。</li>
+  <li>拆解逻辑：把其中「作者全局写作规范」部分（跨章稳定）上浮到 <code>withGlobalGuidance</code> 之后的缓存区，「本章微操」保留在后缀区。</li>
+  <li><b>风险点</b>：拆分判据若由启发式规则判断，可能误判「本章微操」为「通用规范」→ 破坏作者意图。建议改为<b>显式字段</b>（作者侧拆成两个输入框）或<b>仅在模板层面分离呈现</b>，不做内容级自动切分。必须先出判据方案再动手。</li>
+</ul>
+
+<h3>P2 · 蓝图场景 → AI 角色卡（可行性评估已通过）</h3>
+<div class="box box-green">
+  <span class="bt">结论：可做，约 70–80% 后端与契约可复用</span>
+  现有闭环：<code>directory</code> 蓝图 → <code>commitDirectoryBlueprintRange</code> →
+  <code>retryDirectoryCharacterSync</code> → <code>syncBlueprintCharacterCandidates</code> →
+  <code>character-proposal:stage</code>（<code>{kind:'directory'}</code>）→
+  <code>generation-character-proposal-proof.ts</code> 转成待定提案。
+  角色卡数据结构 <code>CharacterRosterEntry</code> 已是权威定义，<code>project_core.characters_arch</code> 只是它的派生投影。
+</div>
+
+<h4>缺口（4 处，即真正要写的新代码）</h4>
+<ol>
+  <li><b>缺「按场景富化生成」的 prompt / command</b>：现有 directory 路径只携带 <code>name + role</code>（<code>BlueprintNewCharacterCandidate</code>），
+      不带该角色在本章的剧情上下文。需要新增一个「读本章蓝图剧情 + 该书总体蓝图 → 产出完整角色卡 JSON」的生成命令。</li>
+  <li><b>缺审阅列表</b>：<code>listPendingFinalized()</code>（<code>character-proposal-service.ts</code>）目前只返回
+      <code>import</code> 与 <code>finalized-generation</code> 两种来源，<code>directory</code> / <code>generation</code>
+      提案没有对应的 UI 列表 → 作者看不到、批不了。</li>
+  <li><b>缺入口按钮</b>：<code>CharactersView.tsx</code> 角色卡管理界面没有「从蓝图 AI 生成」的入口。</li>
+  <li><b>缺「副本 / 主线」语义</b>：<code>CharacterRole</code> 枚举只有 protagonist / antagonist / supporting / minor，
+      没有「活跃于某个副本」还是「加入主线」的概念。方案：先写进 <code>notes</code> / <code>arc</code> 字段（零 schema 改动），
+      确有必要再评估新增字段。</li>
+</ol>
+
+<h4>建议落地顺序</h4>
+<div class="flow">
+  <div class="step"><b>1</b><span>新增生成命令：输入 = 本章蓝图（含 keyEvents、suspenseHook）+ 全书大纲 + 已有 roster（去重）；输出 = 完整角色卡 JSON（<code>CharacterRosterEntry</code> 形状）。</span></div>
+  <div class="step"><b>2</b><span>用 <code>character-proposal:stage</code> 走 <code>{kind:'generation'}</code> 落库，复用现有 proof 转换。</span></div>
+  <div class="step"><b>3</b><span>放开 <code>listPendingFinalized()</code> 使其返回 <code>generation</code> 来源，让待定提案进入现有审阅 UI。</span></div>
+  <div class="step"><b>4</b><span>在 <code>CharactersView.tsx</code> 加入口：从某章蓝图一键生成候选卡 → 作者逐项 <code>approve</code>（create / map / keep-unresolved）。</span></div>
+</div>
+<p>预计改动 6–9 个文件。硬约束不变：<b>AI 只产出候选，绝不直接写入 roster</b>；作者审阅确认后才落库（ADR 0020）。</p>
+
+<h3>P3 / P4 说明</h3>
+<ul>
+  <li><b>P3（B 类预请求去重）</b>：放在 P2 之后，因为它是「锦上添花」而非「堵漏」。默认关闭 + 设置开关的策略已经确定，实现路径清晰、风险低，所以排在中段。</li>
+  <li><b>P4（A 类固化）</b>：收益最治本（源头消除重复），但要动「作者确认 → 替换原配置」这条<b>触碰权威数据</b>的路径，需要完整的 diff 预览、撤销与审计设计。在 P1 的拆解判据稳定之前不宜开工，故排末位。</li>
+</ul>
+
 </div>
 </body>
 </html>
