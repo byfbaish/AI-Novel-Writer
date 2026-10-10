@@ -152,6 +152,13 @@
 
 ## P3（中）· 任务 #8 · B 类「请求前语义去重」（默认关）
 
+> 📄 **详细设计稿**：[`p3-semantic-dedup.md`](./p3-semantic-dedup.md)（2026-10-10，设计待审）
+> 核心结论：**推荐只做「只读检测」**（报告疑似语义重复段，不改 prompt 一个字节）；
+> 「AI 建议 → 人工确认」需作者显式批准；**不建议**自动删段（与 ADR 0020 精神冲突 + 重复常是刻意的强调）。
+> ⚠️ **实施前必读**：设计稿 §3.3 —— `promptHash` 是**发送前逐字节强校验**
+> （`main-generation-owner.ts:543/:561`），一旦去重改变 prompt 就必须同步重算，
+> 否则被 `GENERATION_MATERIAL_PROMPT_MISMATCH` 拦下。**这使"只读优先"成为近乎唯一低风险路径。**
+
 ### 缘起
 
 P1 只做**逐字重复**消除。作者明确区分：
@@ -255,4 +262,5 @@ P1 只做**逐字重复**消除。作者明确区分：
   ② `npx tsc --noEmit` EXIT=0；③ 全量扫描的失败集与基线 diff 一致。
 - **硬约束**：ADR 0020（保留作者原始资料与关系）；不得改
   `toWriterChapterInfo` / `writerChapterInfo`（恢复指纹 `GENERATION_DRAFT_RECOVERY_AUTHOR_INPUT_CHANGED`）。
-- **相关文档**：`docs/plans/p1-literal-dedup.md`（P1 完整设计与实测数据）。
+- **相关文档**：`docs/plans/p1-literal-dedup.md`（P1 完整设计与实测数据）；
+  `docs/plans/p3-semantic-dedup.md`（P3 设计稿）。
