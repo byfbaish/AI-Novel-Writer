@@ -187,6 +187,15 @@ P2 要「不用作者手填」，那 AI 生成角色卡的**输入上下文**从
 3. **`notes` 预填溯源**：写「来源：第 N 章蓝图 + AI 推断」，
    让作者一眼分清「哪些来自蓝图、哪些是推断」（**可编辑**）。
 
+**⭐ 生成质量是第一优先级（作者决策 #9）**：作者要求「**越精确越好、越有张力越好**」，
+且明确「可修改这块不是那么重要」。因此：
+- 来源 D 的**提示词工程**是 P2 的核心投入点，需要人工打磨与迭代（建议单独开一轮「提示词起草 + 试跑对比」）；
+- 模板变量至少包含：角色名、该角色在蓝图中的**全部提及段落**、前后章蓝图、故事前提、小说配置、
+  **已有角色卡（用于避冲突，尤其同阵营/同家族）**、可选作者补充描述；
+- 输出要求：完整 `CharacterStaticFields` + 一段 `background` 推断说明 + `relationships` 建议。
+
+**粒度（待作者确认）**：建议**严格一次一个角色**（命中作者原话场景，实现最简单）。
+
 **实现选择（实施期定）**：
 - **优先复用** `GenerateCharactersCommand` 的 **manifest（身份清单）→ details（详情批处理）** 两段式
   （`architecture.command.ts:1234-1338`）：来源 D 可视为「**清单只含 1 个槽位**」的特例 ——
@@ -213,9 +222,9 @@ src/components/characters/AiCharacterCardButton.tsx   ← 与 P1 的入口合并
 
 - 位置：`CharactersView.tsx` 顶部操作栏（`:83-91` 那一排，紧邻现有「粘贴/导入」与「新建」）。
 - 形态：**一个按钮 + 一个对话框**，对话框内含：
-  1. **来源多选**（✅ 已确认按此区分，来源见 §4.2 的 A/B/C）；
+  1. **来源多选**（✅ 已确认按此区分，来源见 §4.2 的 A/B/C/D）；
   2. **模型确认 + 发送披露**（**完全对齐** `CharacterCardImportButton:118-121` 的既有交互）；
-  3. **历史生成入口**（✅ 新增需求，见 §8.1）。
+  3. **历史生成入口**（✅ 新增需求，含回看 / 让旧版生效 / 删除，见 §8.1）。
 - 发送前**必须**披露模型与端点（沿用 `:119-121` 的 confirm 文案模式）。
 - **不做批量生成**（✅ 已确认）：对话框只产出一次生成；不满意就再点一次，历史自动累积。
 
@@ -228,8 +237,11 @@ src/components/characters/AiCharacterCardButton.tsx   ← 与 P1 的入口合并
 3. **可回滚/幂等**：复用 `character-proposal` 的 `proposalBatchId` + `expectedRevision`，
    重复提交不会重复建卡（沿用 `CHARACTER_PROPOSAL_CHOICES_STALE` 保护）。
 4. **模型变更保护**：发送前再次校验模型未变（沿用 `:125-129` 的做法）。
-5. **历史可回溯**（✅ 新增）：能列出历次生成批次，并能回看；作者能对「觉得最好的一版」重新采用。
-6. **回归**：`tsc --noEmit` EXIT=0；定向测试全绿；全量失败集与基线一致。
+5. **历史可回溯**（✅ 新增）：能列出历次生成批次（**按来源分组**），并能回看。
+6. **旧版可生效**（✅ 新增）：作者可对「觉得最好的一版」重新采用（旧内容 → 新批次 → 采用）。
+7. **历史可删除**（✅ 新增）：可删除 **`cancelled` / `pending-approval`** 且来源为 `generation` 类的批次；
+   **`directory` / `import` / `approved` 不可删**（§8.1 硬红线），且 UI 不显示删除按钮。
+8. **回归**：`tsc --noEmit` EXIT=0；定向测试全绿；全量失败集与基线一致。
 
 ---
 
@@ -238,10 +250,11 @@ src/components/characters/AiCharacterCardButton.tsx   ← 与 P1 的入口合并
 | 风险 | 说明 | 缓解 |
 |---|---|---|
 | **R1 与 P1 造两套入口** | 作者明确要「角色卡界面」的入口 | ✅ **已确认合并**：同一按钮/对话框内以「来源」区分 |
-| **R2 生成质量** | 无上下文时 AI 会编造 | 来源至少选一项才允许发送；预览阶段默认 `keep-unresolved` 需作者确认 |
+| **R2 生成质量** | 作者定调「**越精确越好、越有张力越好**」；无上下文时 AI 会编造 | 来源至少选一项才允许发送；来源 D 提示词单独打磨（Step 4）；预览阶段默认 `keep-unresolved` 需作者确认 |
 | **R3 与「角色图谱」混淆** | 选项 B 生成整套图谱，P2 只想补一张 | **日常补卡走选项 A**；整图谱走既有架构流程 |
 | **R4 ADR 0020** | 不得删改既有角色 | 只 `create` 新卡；对已有角色只允许 `map`，不覆盖字段 |
 | **R5 成本** | AI 调用产生费用 | 发送前披露模型/端点（已有先例）；不做自动重试 |
+| **R8 删除破坏工作流回执** ⚠️ | 删掉被 `findCharacterProposalEvidence` 匹配的批次会抛 `CHARACTER_PROPOSAL_EVIDENCE_REQUIRED` | **限域**：只允许删 `generation` 类且非 `approved` 的批次；`directory`/`import` 一律拒绝（§8.1） |
 | **R6 历史回退的状态机** | ✅ 已核实：多版本天然成立（新 run ⇒ 新批次）；唯一约束是 `cancelled` 批次不可再 approve | 回退走「旧批次内容 → 重新 stage 成新批次 → 采用」，不动 identity 状态机 |
 | **R7 DB 增长** | 每次生成都落一条持久批次 | §9 待确认是否设上限；不设时 UI 默认折叠 |
 
@@ -260,9 +273,16 @@ src/components/characters/AiCharacterCardButton.tsx   ← 与 P1 的入口合并
 | 阶段 | 内容 | 依赖 |
 |---|---|---|
 | **Step 0** | 只读**测试**固化候选集不变量（P1 Step 0；⚠️ 是测试，不是产品只读环节） | 无 |
-| **Step 1** | 合并入口组件（按钮 + 对话框）：来源多选（A/C）+ 模型披露 + **历史列表**（P2 主体） | 无 |
+| **Step 1** | 合并入口组件（按钮 + 对话框）：来源多选（A/C/D）+ 模型披露 + **历史列表/回看/删除/让旧版生效**（P2 主体） | 无 |
 | **Step 2** | 接入**来源 B**（P1 主路径）+ 角标 + 提交后提示（含设置开关） | P1 Step 1 |
 | **Step 3** | 「落卡后进入 Prompt」的逐字验收测试 | Step 1/2 |
+| **Step 4** | **来源 D 提示词打磨**（独立一轮：起草 → 试跑 → 对比 → 定稿；质量优先，作者定调） | 可并行 |
+
+> **新增通道汇总（P2 本次）**：
+> - `character-proposal:list-history`（只读）
+> - `character-proposal:delete-history`（限域删除，见 §8.1）
+> - 「让旧版生效」走既有 `commitCharacterIdentities` 的 `adopt-generated` 路径（**无需新通道**，
+>   只需一个「把旧 items 重新 stage」的封装）。
 
 ---
 
@@ -317,7 +337,7 @@ if (batch.status !== 'pending-approval') throw new Error('CHARACTER_PROPOSAL_CAN
 处理建议（**实施期小决策，不阻断**）：回退采用时**不复用旧批次**，而是把旧批次的 `items`
 **重新 stage 成一个新批次**再 approve —— 纯新增、`apply` 路径已有先例，**不动 identity 状态机**。
 
-#### 需要新增的通道（只读）
+#### 历史列表通道（只读）
 
 当前只有 `list-pending-finalized`（`character-proposal-service.ts:124`），**没有「列出全部生成历史」**。
 建议新增：
@@ -332,45 +352,121 @@ if (batch.status !== 'pending-approval') throw new Error('CHARACTER_PROPOSAL_CAN
 }[] }
 ```
 
-- 实现参考 `listPendingFinalized()`（`:124-127`）的既有 SELECT 写法。
+- 实现参考 `listPendingFinalized()`（`:124-127`）的既有 SELECT + `readEnvelope` 写法。
 - **只读**，绝不改任何数据。
 
 > ⚠️ **已核实的限制（无 `created_at`）**：`character_identity_proposals` 建表列只有
 > `proposal_id, owner_character_id, source_key, source_hash, raw_value, candidate_ids_json`
-> （`electron/migrations/m02-character-identity.ts:18-21`）——**没有时间列**。
-> 因此历史列表**无法按生成时间排序**。三种应对（**建议 ①**）：
+> （`electron/migrations/m02-character-identity.ts:18-22`）——**没有时间列**。
+> 因此历史列表**无法按生成时间排序**。三种应对（**✅ 采用 ①**，作者已同意）：
 > ① **不加列**：按 `source` 的语义分组展示（如「来自蓝图」「来自前提+配置」「来自指定角色补背景」），
->    组内不承诺时间序 —— **零迁移风险，先满足「回看」**；
+>    组内不承诺时间序 —— **零迁移风险**；
 > ② 加一个**只读派生**的时间列（需要 migration，且只能对**此后**生成的批次记录时间，历史批次为空）；
 > ③ 从 `raw_value` 的 envelope 里派生时间 —— **已核实不可行**：`Envelope`（`character-proposal-service.ts:19-29`）
 >    字段为 `version / projectId / proof / batch / decision / created / approvalProof / authorEditProof`，**无时间字段**。
->
-> 作者「重新生成 3 次、对比 3 版」主要关心**内容差异**而非时间戳，故方案 ① 足够；如需时间序再升级到 ②。
+
+#### ⭐ 历史删除通道（作者新增需求 · ✅ 技术上可行，但有 1 条硬红线）
+
+作者要「把生成得太差的删掉，增强候选审批体验」。**结论：可以做，但必须限域。**
+
+**为什么必须限域**（已读代码核实，非推测）——`character-proposal-service.ts:326-335`：
+
+```ts
+export function findCharacterProposalEvidence(db, source, prove) {
+  const rows = db.prepare("SELECT raw_value FROM character_identity_proposals
+                           WHERE source_key LIKE 'character-proposal-v1:%'").all()
+  const matches = rows.map(...).filter(e => isDeepStrictEqual(e.batch?.source, source))
+  if (matches.length !== 1) throw new Error('CHARACTER_PROPOSAL_EVIDENCE_REQUIRED')   // ← 必须是「恰好 1 条」
+  ...
+}
+```
+
+它被两个**工作流完成回执**消费：
+- `blueprint-repository.ts:363`（蓝图提交的 `proposal-staged` 回执，kind `directory`）；
+- `import-global-facts-repository.ts:109`（导入回执，kind `import`）。
+
+**因此：删掉一条被回执引用的批次行 → 该工作流的完成校验会抛 `CHARACTER_PROPOSAL_EVIDENCE_REQUIRED`，
+蓝图/导入的幂等回执被破坏。** 这是不可逾越的红线。
+
+**删除规则（建议）**：
+
+| 维度 | 规则 | 理由 |
+|---|---|---|
+| **状态** | 只允许删 **`cancelled`** 和 **`pending-approval`** 的批次 | `approved` 是已完成的事实记录 + 有 `character_identity_approvals` 外键（`m02:21`），删了会悬空 |
+| **来源** | **禁止**删 `kind:'directory'`（蓝图同步）与 `kind:'import'` | 二者正是上面两个 `findCharacterProposalEvidence` 的消费者 |
+| **来源** | 允许删 `kind:'generation'`（含 P2 的来源 A/C/D）与 `kind:'finalized-generation'`、`legacy-roster-generation` | 这三类的完成回执走别的证据路径，不依赖这一行 |
+| **安全阀** | 删除时**二次确认**，并显示将删除的批次（来源 + 角色数） | 不可逆 |
+
+**通道设计**：
+
+```
+'character-proposal:delete-history': {
+  args: [{ proposalBatchId: string }]
+  return: { deleted: boolean }
+}
+```
+
+主进程实现（`deleteHistoryBatch()`）：
+```
+1. readEnvelope(id)              // 复用既有校验（含 source_hash 完整性）
+2. 若 batch.status === 'approved'            → throw CHARACTER_PROPOSAL_DELETE_FORBIDDEN
+3. 若 batch.source.kind 为 'directory'|'import' → throw CHARACTER_PROPOSAL_DELETE_FORBIDDEN
+4. DELETE FROM character_identity_proposals WHERE proposal_id=? AND source_key='character-proposal-v1:<projectId>'
+   // source_key 限定 = 只可能删本项目、只可能删 cpb: 开头的提案行；
+   // fcs: / legacy: 等其他 source_key 的行天然不会被误删
+5. return { deleted: rowsAffected === 1 }
+```
+- **不碰** `character_identity_approvals`（那是不变回执表，且只在 approved 时才有对应行，而 approved 已被规则 2 挡掉）。
+- **不重算 revision**：删提案不改变角色事实，`character_identity_meta.revision` 不动。
+- `deleteHistoryBatch` 的返回不进入 `findCharacterProposalEvidence` 的匹配集，
+  所以删一条 `generation` 批次**不会**让任何已有工作流回执失效（它本来就不在那些匹配集里）。
+
+> **一条需要注意的边界**：若作者先「取消」了某个 `generation` 批次，之后又删除它，
+> 该次 AI 生成的内容就彻底没了；但**这不影响任何已落地的角色卡**（approve 才会写 roster）。
+> 这与「删除只删候选、不删事实」的原则一致。
 
 #### UI
 
 - 在 AI 生成对话框里提供「历史生成」入口（列表：来源 / 角色数 / 状态）。
 - 点击某批次 → **只读回看**（复用 `formatCharacterProposalPreview` 或 `CharacterProposalSelectionPanel` 展示）。
-- 若作者需要「让旧版生效」：对旧批次走「**clone → 新批次 → 采用**」（见上方遗留约束的处理建议）。
+- **让旧版生效**（✅ 作者已确认要）：对旧批次走「**clone → 新批次 → 采用**」（见上方遗留约束的处理建议）。
+- **删除**（✅ 作者新增）：列表项上提供删除按钮，**仅对 `cancelled` / `pending-approval` 的 `generation` 类来源可见**；
+  删除前二次确认。`directory` / `import` / `approved` 的条目**不显示删除按钮**（而非置灰，避免误导）。
 - **不做**：批量生成；自动挑最优；版本 diff。
 
 #### 不做（明确排除）
 
 - **不**改 `proposalBatchId` 的哈希规则 —— ✅ **已无必要**（多版本天然成立），
   且改动会破坏「重复 stage 的幂等保护」。
+- **不**开放删除 `directory` / `import` / `approved` 批次（见上方硬红线）。
 
 ---
 
-## 9. 仍需确认的小问题
+## 9. ✅ 作者已确认的决策（第二/三轮补充）
 
-1. **历史是否要「可回退采用」**（§8.1 遗留约束）：
-   作者要的是「**只读回看**」还是「**能让旧版生效**」？
-   —— 若是后者，回退走「旧批次内容 → 重新 stage 成新批次 → 采用」；
-   前者则只需只读列表（不做任何写操作）。**这个决定只影响工作量、不影响可行性。**
-2. **历史排序**（§8.1 已核实无时间列）：接受「按来源分组、组内不承诺时间序」（方案 ①）吗？
-   若希望有时间序，需要加一列（migration，且只对**此后**的批次有效）。
-3. **来源 D（指定角色补背景）的上下文组装**：
-   是否复用既有 `manifest → details` 两段式（`architecture.command.ts:1234-1338`）？
-   —— 建议**先复用**，并**默认把大纲/蓝图中提到该角色的段落全量喂入**，由作者在预览里判断取舍。
+| # | 问题 | 作者决定 |
+|---|---|---|
+| 4 | **历史能否「让旧版生效」** | ✅ **要**。原话：「当然是要能让旧版生效，不然的话，回看旧的意义何在？」 |
+| 5 | **历史排序** | ✅ 接受**按来源分组**（无时间列）。原话：「如果没有时间排序的话，那按照分组展示是可接受的。」 |
+| 6 | **历史删除** | ✅ **新增需求**：「要增加一个删除……有一些可能生成出来实在太差了，删除掉一些，也可以增强候选的审批体验。」（见 §8.1 删除规则） |
+| 7 | **来源 D 的上下文组装** | ✅ 同意复用 `manifest → details`，并**默认把大纲/蓝图中提到该角色的段落全量喂入**。 |
+| 8 | **来源 A 粒度** | ✅ 同意**默认全选 + 折叠的高级勾选**。 |
+| 9 | **可编辑的投入程度** | ✅ **「酌情做就好」**。原话：「你要**明确目标是生成一个角色的模板，当然越精确越好，越具有张力越好**。但实际上角色卡在现有功能后续都是可以由作者自行查阅修改的。所以说，在可修改这一块，其实也不是那么重要，酌情做就好。」 |
+
+> **⭐ 第 9 条对设计重心的影响**：作者把 P2 的目标定为「**生成一个有张力、尽量精确的模板**」，
+> 而「可编辑」降级为非重点（因为落地后作者反正能改）。
+> → 设计重心因此从「编辑自由度」拨回 **「生成质量」**：
+> 1. 来源 D 的**提示词质量**是 P2 的第一优先级（要求：基于蓝图事实推断、人物有张力、不得与已有设定冲突）；
+> 2. `edits` 通道**沿用既有**（`ApproveCharacterProposalRequest.edits`，仅 `planning-material` 来源已接通，
+>    见 `character-proposal-service.ts:204-205`）—— **不额外扩展**编辑能力，够用即可；
+> 3. 预览阶段保留「编辑」按钮即可，不做富文本/字段级高级编辑。
+
+## 10. 仍需确认的小问题
+
+1. **删除的可见性**：确认「`directory`/`import`/`approved` 条目**不显示**删除按钮」，对吗？
+2. **来源 D 的提示词口径**：是否有你希望**必须体现**的要素（例如「至少一个内在矛盾」「与卷纲主线挂钩」）？
+   这条直接决定生成质量，建议你来定调（比我在设计里瞎猜强）。
+3. **来源 D 是否也要能「组合多个角色」**（一次补 2–3 个蓝图提到的新角色），还是**严格一次一个**？
+   （建议：先严格一个，简单且命中你的原话场景。）
 4. **来源 A 的粒度**：默认全选（前提+配置），还是让作者勾选具体字段？
    （建议：默认全选，提供折叠的高级勾选。）

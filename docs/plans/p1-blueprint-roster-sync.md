@@ -160,8 +160,9 @@ src/components/characters/BlueprintCharacterSyncButton.tsx
 - **动作**：点击 → 调 `retryDirectoryCharacterSync(operationId)`（**注意语义**：它只 stage 提议，
   不写 roster，见 `directory-character-sync-recovery.ts:49-50` 注释）→ 拿到 `CharacterProposalBatch`
   → 打开既有的**预览/选择面板**（`CharacterProposalSelectionPanel`）。
-- **可编辑**（作者确认要自由度）：预览面板里作者**可逐字段编辑**候选，编辑走既有的
-  `ApproveCharacterProposalRequest.edits`（`character-proposal.ts:54-55`），**不新造编辑通道**。
+- **可编辑**（作者确认要自由度，但**投入程度「酌情」**，见 §8 决策 4）：预览面板里作者**可逐字段编辑**候选，
+  编辑走既有的 `ApproveCharacterProposalRequest.edits`（`character-proposal.ts:54-55`），**不新造编辑通道**，
+  也**不额外扩展**编辑能力（不做富文本/字段级高级编辑）。
 - **确认**：面板确认后走**既有的** `character-proposal:approve`（与 `AdoptGeneratedCharactersCommand` 同源）。
 
 > ⚠️ **命名澄清**：`retryDirectoryCharacterSync` 这个名字有歧义（"retry" 听起来像 recovery）。
@@ -248,7 +249,8 @@ src/components/characters/BlueprintCharacterSyncButton.tsx
 |---|---|---|
 | 1 | 触发时机 | **两者都要**：①蓝图提交后**自动提示**；②角色卡界面**永久显示角标**。<br>⚠️ 自动提示**必须在设置里可关闭**（作者原话：「否则批量生成的时候提示会干扰体验」）。<br>**角标不受该开关影响，始终存在。** |
 | 2 | 候选 notes 溯源 | **要预填**「来源：第 N 章蓝图」。 |
-| 3 | 是否先做只读检测 | **不需要**。作者原话：「只读检测就没必要了吧，**甚至可能还需要可以编辑**，以提供自由度。」<br>→ 候选**必须可编辑**（`CharacterProposalSelectionPanel` 已支持 `edits`，见 `character-proposal.ts:54-55`）。 |
+| 3 | 是否先做只读检测 | **不需要**。作者原话：「只读检测就没必要了吧，**甚至可能还需要可以编辑**，以提供自由度。」<br>→ 候选**可编辑**（`CharacterProposalSelectionPanel` 已支持 `edits`，见 `character-proposal.ts:54-55`）。 |
+| 4 | 可编辑的投入程度（第三轮补充） | **「酌情做就好」**。作者原话：「你要**明确目标是生成一个角色的模板，当然越精确越好，越具有张力越好**。但实际上角色卡在现有功能后续都是可以由作者自行查阅修改的。所以说，在可修改这一块，其实也不是那么重要，酌情做就好。」<br>→ **沿用既有 `edits` 通道即可，不额外扩展编辑能力**；重心放在**生成质量**（来源 D 提示词）。 |
 
 ### 8.1 设置开关的具体设计（响应决策 1）
 
