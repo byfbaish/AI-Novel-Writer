@@ -597,11 +597,29 @@ function normalizeForFingerprint(text: string): string {
   </tbody>
 </table>
 
-<h3>P1 · 第 6 项为何排第一</h3>
+<h3>P1 · 第 6 项为何排第一<span style="color:var(--amber)">（结论已更正，见设计稿）</span></h3>
+<div class="box box-amber">
+  <span class="bt">更正：本节原表述有误，P1 已重新定义</span>
+  经逐行核对代码，<code>user_guidance</code> <b>并非</b>「占 prompt 约 36% 的大字段」。
+  它是<b>章节蓝图里的单章字段</b>（<code>ChapterCardEditor</code> 一个 3 行 textarea，提示语写明
+  「写稿时作为最高优先级注入」），语义按设计就是<b>逐章变化的本章微操</b>，典型 1–2 句。
+  原先的「36%」是 <code>globalGuidance</code> + <code>user_guidance</code> + 执行合同静态长文
+  <b>合计</b>按「逐章可变」归类得到的比例，被我误写成单字段占比。
+  <br><br>
+  因此 <b>「把通用规范上浮、本章微操留守」不成立</b>——该字段里没有可上浮的稳定部分，
+  强行做内容级切分反而会污染跨章缓存前缀，让后续所有章节缓存失效。
+  <br><br>
+  <b>P1 重新定义为</b>：消除 <code>user_guidance</code> 的<b>三处重复注入</b>
+  （<code>system</code> 尾部 ★额外指导★ + <code>【本章信息】</code> JSON + <code>【本章执行合同】</code> 行），
+  确立「单次请求中恰好出现 1 次」的不变量。纯减法、零新依赖、收益确定。
+  详见 <a href="./p1-user-guidance-split.md">P1 设计稿</a>。
+</div>
 <ul>
-  <li><code>user_guidance</code> 是 prompt 中<b>体量最大且逐章变化</b>的段（约 36%）。它目前排在 builder 链的可变后缀区，导致其后所有内容每章都无法命中前缀缓存。</li>
-  <li>拆解逻辑：把其中「作者全局写作规范」部分（跨章稳定）上浮到 <code>withGlobalGuidance</code> 之后的缓存区，「本章微操」保留在后缀区。</li>
-  <li><b>风险点</b>：拆分判据若由启发式规则判断，可能误判「本章微操」为「通用规范」→ 破坏作者意图。建议改为<b>显式字段</b>（作者侧拆成两个输入框）或<b>仅在模板层面分离呈现</b>，不做内容级自动切分。必须先出判据方案再动手。</li>
+  <li><b>真实问题</b>：同一段作者文字在单次 prompt 里出现 <b>3 次</b>（含 JSON 序列化的 key 名与缩进开销）。</li>
+  <li><b>唯一实质风险</b>：移除【本章执行合同】里的「作者本章指导」行后，
+    <code>【作者本章任务】</code> 这段约束规则的覆盖范围会缩水。设计稿给出两种保全方案，建议「收紧措辞」。</li>
+  <li><b>明确不做</b>：语义级跨段去重（<code>coreOutline</code> ↔ <code>premise</code> 措辞不同但语义重叠）
+    属于改写作者原文，触碰 ADR 0020 红线，且需预请求 AI —— 与第 7/8 项是同一件事，应在那两项里统一设计。</li>
 </ul>
 
 <h3>P2 · 蓝图场景 → AI 角色卡（可行性评估已通过）</h3>
@@ -641,6 +659,39 @@ function normalizeForFingerprint(text: string): string {
   <li><b>P3（B 类预请求去重）</b>：放在 P2 之后，因为它是「锦上添花」而非「堵漏」。默认关闭 + 设置开关的策略已经确定，实现路径清晰、风险低，所以排在中段。</li>
   <li><b>P4（A 类固化）</b>：收益最治本（源头消除重复），但要动「作者确认 → 替换原配置」这条<b>触碰权威数据</b>的路径，需要完整的 diff 预览、撤销与审计设计。在 P1 的拆解判据稳定之前不宜开工，故排末位。</li>
 </ul>
+
+<h3>P5 · 地图 / 区域架构约束<span class="tag t-hold" style="margin-left:8px">评估项</span></h3>
+<div class="box box-amber">
+  <span class="bt">待评估：工程目前缺乏地图与方位层面的架构约束</span>
+  观察（来自 P2 讨论）：从通用视角看，<b>「副本」与「区域地图」本质是同一件事</b>——
+  都是「角色 / 事件所处的空间容器」。差别只在粒度与用途：
+</div>
+<table>
+  <thead><tr><th style="width:150px">类型</th><th>说明</th><th style="width:210px">与「副本」的关系</th></tr></thead>
+  <tbody>
+    <tr><td><b>世界地图</b></td><td>全局空间骨架，定义大区、势力范围、地理关系</td><td>副本是世界地图上的一块可进入区域</td></tr>
+    <tr><td><b>通用地图</b></td><td>可复用区域模板（如「标准城市街区」「标准地下城层」）</td><td>多个副本共享同一空间模板</td></tr>
+    <tr><td><b>专用地图</b></td><td>为特定副本定制的唯一空间</td><td>一对一绑定</td></tr>
+    <tr><td><b>副本</b></td><td>角色活跃的剧情空间容器（可含多场景）</td><td>即「区域地图」的一种叙事化叫法</td></tr>
+  </tbody>
+</table>
+<h4>为什么值得单列</h4>
+<ul>
+  <li><b>与 P2 直接相关</b>：P2 要判定的「这个角色该活跃在副本里还是加入主线」，
+    本质是「角色归属哪个空间容器 + 该容器的空间关系」。没有地图架构，这个判定只能塞进 <code>notes</code> 文本，无法校验、无法复用、无法可视化。</li>
+  <li><b>与 prompt 组装相关</b>：场景描写的连续性依赖空间事实（谁在哪、距离几何、方位是否矛盾）。
+    目前这类事实散落在 <code>worldbuilding</code> / <code>premise</code> 自由文本里，既无法去重也无法做一致性检查。</li>
+  <li><b>与一致性检查相关</b>：方位 / 空间矛盾是最容易发生的硬伤之一，但没有结构化数据就无从自动检出。</li>
+</ul>
+<h4>评估要点（开工前需回答）</h4>
+<ol>
+  <li>是否需要独立的 <code>maps</code> / <code>regions</code> 表？还是先扩展 <code>project_core</code> 的 JSON 字段？</li>
+  <li>「角色 ↔ 空间容器」的归属关系是否需要独立关系表（类似 <code>character_relationships</code>）？</li>
+  <li>是否需要可视化（世界地图 → 区域 → 场景的下钻视图）？若是，成本量级会显著上升。</li>
+  <li>是否会与现有 <code>blueprint</code> 的 <code>characters</code> / <code>keyEvents</code> 语义冲突？</li>
+</ol>
+<p><b>排期建议</b>：作为<b>独立立项</b>评估，不并入本轮 prompt 优化。若只做「P2 的归属判定有地方落」，可先设计最小子集
+（世界地图 + 副本两层 + 角色归属关系），避免一次性做完 4 层地图体系。</p>
 
 </div>
 </body>
