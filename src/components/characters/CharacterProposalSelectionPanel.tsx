@@ -55,9 +55,11 @@ export function CharacterProposalSelectionPanel({ batch, identities, choices, on
             const adopted = new Set(selections.filter(current => current.action !== 'keep-unresolved').map(current => current.selectionKey))
             onChange({ ...choices, selections,
               edits: selection.action === 'keep-unresolved' ? choices.edits?.filter(edit => edit.selectionKey !== item.selectionKey) : choices.edits,
-              relationships: choices.relationships.filter(relation => relation.sourceSelectionKey !== undefined
-                && !!relation.targetSelectionKey && adopted.has(relation.sourceSelectionKey)
-                && adopted.has(relation.targetSelectionKey)) })
+              // Drop a proposal-derived edge only when one of its two candidate endpoints stops
+              // being adopted. An author-declared edge from an existing card has no selection key
+              // and must survive: it was not derived from this batch.
+              relationships: choices.relationships.filter(relation => relation.sourceSelectionKey === undefined
+                || (!!relation.targetSelectionKey && adopted.has(relation.sourceSelectionKey) && adopted.has(relation.targetSelectionKey))) })
           }}>
           <option value="keep-unresolved">{text('暂不采用，保留候选', 'Keep unresolved')}</option>
           <option value="create">{text('新建独立角色', 'Create a separate character')}</option>
@@ -152,39 +154,44 @@ function ExistingSourceRelations({ identities, choices, onChange, disabled }: {
   disabled: boolean
 }) {
   const text = useLocaleStore(state => state.text)
-  const existing = choices.relationships.filter(value => Boolean(value.sourceCharacterId))
+  /** Author-declared rows, addressed by position in this list — not in the full relationships array. */
+  const rows = choices.relationships.filter(value => Boolean(value.sourceCharacterId))
   const [draft, setDraft] = useState({ sourceCharacterId: '', targetCharacterId: '', relation: '' })
-  const options = identities
-  const update = (index: number, patch: Partial<{ sourceCharacterId: string; targetCharacterId: string; relation: string }>) =>
-    onChange({ ...choices, relationships: choices.relationships.map((value, current) => current === index ? { ...value, ...patch } : value) })
+
+  /** Rewrites only the author-declared rows, leaving every proposal-derived edge untouched. */
+  const commit = (next: typeof rows) => onChange({ ...choices,
+    relationships: [...choices.relationships.filter(value => !value.sourceCharacterId), ...next] })
+  const update = (index: number, patch: Partial<(typeof rows)[number]>) =>
+    commit(rows.map((value, current) => current === index ? { ...value, ...patch } : value))
+
   const patchDraft = (next: Partial<typeof draft>) => {
+    setDraft({ ...draft, ...next })
+    // The row already exists as soon as both endpoints are chosen; the text field edits it live
+    // so a half-typed relation is never committed as a blank edge.
     const merged = { ...draft, ...next }
-    setDraft(merged)
-    if (existing.some(value => value.sourceCharacterId === merged.sourceCharacterId && value.targetCharacterId === merged.targetCharacterId))
-      return
-    const rows = choices.relationships.filter(value => Boolean(value.sourceCharacterId))
-    onChange({ ...choices, relationships: [...rows.slice(0, rows.length - (draft.sourceCharacterId && draft.targetCharacterId ? 1 : 0)),
-      ...(merged.sourceCharacterId && merged.targetCharacterId ? [merged] : [])] })
+    const complete = merged.sourceCharacterId && merged.targetCharacterId
+    const withoutDraft = rows.filter(value => !(value.sourceCharacterId === draft.sourceCharacterId && value.targetCharacterId === draft.targetCharacterId))
+    commit(complete ? [...withoutDraft, merged] : withoutDraft)
   }
   return <details className="text-xs">
     <summary className="cursor-pointer">{text('同时为已有角色添加出边', 'Also add an outgoing edge from an existing character')}</summary>
     <div className="grid gap-2 pt-2">
       <p className="text-[var(--color-text-secondary)]">{text('仅写入你在此填写的方向；反向关系请到那张卡上单独决定。', 'Only the direction you fill in here is written; decide the reverse edge on that card separately.')}</p>
-      {existing.map((row, index) => <div className="flex flex-wrap items-center gap-2" key={`${row.sourceCharacterId}:${index}`}>
+      {rows.map((row, index) => <div className="flex flex-wrap items-center gap-2" key={index}>
         <NativeSelect aria-label={text('起点角色', 'Source character')} disabled={disabled} value={row.sourceCharacterId ?? ''}
           onChange={event => update(index, { sourceCharacterId: event.target.value })}>
-          {options.map(identity => <option key={identity.characterId} value={identity.characterId}>{identity.name}</option>)}
+          {identities.map(identity => <option key={identity.characterId} value={identity.characterId}>{identity.name}</option>)}
         </NativeSelect>
         <span>→</span>
         <NativeSelect aria-label={text('目标角色', 'Target character')} disabled={disabled} value={row.targetCharacterId ?? ''}
           onChange={event => update(index, { targetCharacterId: event.target.value })}>
-          {options.map(identity => <option key={identity.characterId} value={identity.characterId}>{identity.name}</option>)}
+          {identities.map(identity => <option key={identity.characterId} value={identity.characterId}>{identity.name}</option>)}
         </NativeSelect>
         <input aria-label={text('关系', 'Relationship')} disabled={disabled} placeholder={text('关系（由你填写）', 'Relationship (you write it)')}
           className="flex-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1"
           value={row.relation} onChange={event => update(index, { relation: event.target.value })} />
         <button type="button" className="text-[var(--color-text-secondary)]" disabled={disabled}
-          onClick={() => onChange({ ...choices, relationships: choices.relationships.filter((_, current) => current !== choices.relationships.indexOf(row)) })}>
+          onClick={() => commit(rows.filter((_, current) => current !== index))}>
           {text('移除', 'Remove')}
         </button>
       </div>)}
@@ -192,13 +199,13 @@ function ExistingSourceRelations({ identities, choices, onChange, disabled }: {
         <NativeSelect aria-label={text('新增起点角色', 'New source character')} disabled={disabled} value={draft.sourceCharacterId}
           onChange={event => patchDraft({ sourceCharacterId: event.target.value })}>
           <option value="">{text('选择起点角色', 'Choose a source')}</option>
-          {options.map(identity => <option key={identity.characterId} value={identity.characterId}>{identity.name}</option>)}
+          {identities.map(identity => <option key={identity.characterId} value={identity.characterId}>{identity.name}</option>)}
         </NativeSelect>
         <span>→</span>
         <NativeSelect aria-label={text('新增目标角色', 'New target character')} disabled={disabled} value={draft.targetCharacterId}
           onChange={event => patchDraft({ targetCharacterId: event.target.value })}>
           <option value="">{text('选择目标角色', 'Choose a target')}</option>
-          {options.map(identity => <option key={identity.characterId} value={identity.characterId}>{identity.name}</option>)}
+          {identities.map(identity => <option key={identity.characterId} value={identity.characterId}>{identity.name}</option>)}
         </NativeSelect>
         <input aria-label={text('新增关系', 'New relationship')} disabled={disabled} placeholder={text('关系（由你填写）', 'Relationship (you write it)')}
           className="flex-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1"
