@@ -50,13 +50,31 @@ export interface ApproveCharacterProposalRequest {
   expectedRevision: number
   operationId: string
   selections: CharacterProposalDecision[]
-  relationships?: { sourceSelectionKey: string; targetSelectionKey?: string; targetCharacterId?: string; relation: string }[]
+  /**
+   * An outgoing edge may originate from either a candidate created/mapped by this batch
+   * (`sourceSelectionKey`) or an existing character card the author picked directly
+   * (`sourceCharacterId`). Exactly one of the two must be present; the storage layer
+   * already treats both endpoints symmetrically.
+   */
+  relationships?: { sourceSelectionKey?: string; sourceCharacterId?: string; targetSelectionKey?: string; targetCharacterId?: string; relation: string }[]
   /** Author changes to planning-material candidates, applied only with an explicit adoption decision. */
   edits?: { selectionKey: string; fields: Partial<CharacterStaticFields> }[]
 }
 export interface CancelCharacterProposalRequest {
   proposalBatchId: string
   expectedRevision: number
+}
+/** Read-only summary of one staged batch. Deliberately carries no timestamp: the table has no time column. */
+export interface CharacterProposalHistoryEntry {
+  proposalBatchId: string
+  revision: number
+  status: 'pending-approval' | 'approved' | 'cancelled'
+  source: CharacterProposalSource
+  /** Semantic grouping key derived from `source`; history cannot be time-ordered. */
+  sourceGroup: 'architecture' | 'planning-material' | 'directory' | 'import' | 'finalized-generation' | 'legacy-roster-generation'
+  itemCount: number
+  /** Display label, e.g. 「来自前提+配置 · 5 个角色」. Author-facing only. */
+  label: string
 }
 export type PendingFinalizedCharacterProposalSummary = {
   proposalBatchId: string
@@ -72,6 +90,7 @@ export interface CharacterIdentitySnapshot {
 export interface CharacterProposalChannels {
   'character-proposal:stage': { args: [{ source: CharacterProposalSource }]; return: CharacterProposalBatch }
   'character-proposal:read': { args: [{ proposalBatchId: string }]; return: CharacterProposalBatch }
+  'character-proposal:list-history': { args: []; return: CharacterProposalHistoryEntry[] }
   'character-proposal:list-pending-finalized': { args: []; return: PendingFinalizedCharacterProposalSummary[] }
   'character-proposal:read-pending-finalized': { args: [{ proposalBatchId: string }]; return: CharacterProposalBatch }
   'character-proposal:approve': { args: [ApproveCharacterProposalRequest]; return: { batch: CharacterProposalBatch; created: { selectionKey: string; characterId: string }[] } }

@@ -196,6 +196,11 @@ export interface GlobalConfig {
   defaultEmbeddingModelId?: string | null
   /** 定稿与后处理成功后，打开下一章的创作窗口（默认关闭）。 */
   autoOpenNextChapterAfterFinalize?: boolean
+  /**
+   * 蓝图提交后自动提示落卡（默认开启）。关掉只影响自动弹出的提示，
+   * 角色卡界面的常驻角标不受影响。
+   */
+  autoPromptBlueprintCharacterSync?: boolean
   editorFontSize: number
   editorFontFamily: string
   autoSaveInterval: number

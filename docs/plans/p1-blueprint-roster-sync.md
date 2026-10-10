@@ -314,3 +314,48 @@ src/components/characters/BlueprintCharacterSyncButton.tsx
 | P2 设计（`p2-character-card-ai-generation.md`） | ✅ 已定稿（作者第 1–7 轮决策已全部落表，开放项 0） |
 | 待作者确认的开放项 | **0** |
 | 下一步 | **等待作者放行 → 按 §9 实施顺序 + P2 §7 的 Step 0 → Step 6 执行** |
+
+---
+
+## 12. 实施记录（作者放行后）
+
+| Step | 内容 | 状态 | 落点 |
+|---|---|---|---|
+| 0 | 候选集不变量只读测试 | ✅ 13/13 通过 | `src/services/workflows/__tests__/blueprint-character-candidate-invariants.test.ts` |
+| 1 | 合并入口（来源多选 + 模型披露 + 历史回看） | ✅ | `CharacterCardGenerateButton.tsx`、`character-proposal-history-client.ts`、`character-proposal-service.ts:listHistory` |
+| 2 | 来源 B 主路径 + 角标 + 提交后提示（含设置开关） | ✅ | `App.tsx`、`SettingsModal.tsx`、`ipc-channels.ts` |
+| 3 | 「卡落地 → 进 Prompt」逐字验收 | ✅ | `generate-draft.command.test.ts`（两条 P1 acceptance） |
+| 4 | 来源 D prompt 打磨（三条硬要求 + 关系锚点清单） | ✅ | `src/shared/character-background-prompts.ts` |
+| 5 | 关系绑定 UI（三选一，默认暂不采用） | ✅ | `CharacterProposalSelectionPanel.tsx` |
+| 6 | 已有角色出边（service 放开 `sourceCharacterId` + 面板底部勾选） | ✅ | `character-proposal-service.ts:296-321`、`character-proposal.ts`、`CharacterProposalSelectionPanel.tsx` |
+
+### 12.1「让旧版生效」的真实语义（Step 1 补完）
+
+初版只做到「读回批次 → 确认 → toast」，**没有真正恢复**。已改为：
+
+1. 用该条记录自己的 `source` 调 `character-proposal:stage` 重新 stage。
+   `stage` 对 `proposalBatchId` **幂等**（`proposalBatchId` 由 source 派生），因此拿回的就是同一个批次，
+   **不重跑模型**、不原地改写旧 envelope、不新增记录。
+2. 确认面板绑定在**等待中的运行**上（`workflow-store.ts:723-741` 只认 `status === 'waiting'` 且有
+   `context.data.characterProposalBatch` 的 run），所以新建一个**只有确认步**的运行
+   （`createCharacterProposalReviewWorkflow`）承载 `operationId`，而后走既有的采用闸门。
+
+> 为什么不能把批次直接塞进 store：`setCharacterProposalChoices` 要求 `run.status === 'waiting'`
+> 且该 run 的 `context.data.characterProposalBatch` 已存在（`workflow-store.ts:436-450`）。
+> 孤儿批次没有可提交的 `operationId`，塞进去只会得到一个点不动的面板。
+
+### 12.2 Step 6 为什么「存储层零改动」
+
+`character-roster-repository.ts:1157` 的 `CharacterIdentityCommitRequest.relationships[]` 早已是
+`{ sourceCharacterId?, sourceSelectionKey?, targetCharacterId?, targetSelectionKey?, relation }`，
+`endpoint()`（同文件 `:1240-1245`）对**两个端点一视同仁**。唯一缺的是 service 构造器只从
+`sourceSelectionKey` 解 `from`（`character-proposal-service.ts:296-305`），故本次只放开这一处 +
+shared 类型加可选字段。已用测试验证：`sourceCharacterId` 存在的行会原样进入
+`identityRequest.relationships`，且**校验该 id 是未退休的真实角色**（否则 `CHARACTER_ID_UNKNOWN`）。
+
+### 12.3 Step 5 的「蓝图待建角色」为什么不进 approve 请求
+
+它是**作者意图**而非关系：目标还没有卡，没有任何 id 可指。若强行塞进 `relationships`，
+存储层会在 `endpoint()` 处抛 `CHARACTER_RELATIONSHIP_ID_REQUIRED`。因此单独放在
+`choices.blueprintPendingRelations`，只作为标记保留下来，供 P1 候选集复用。已有测试断言
+「`陆危楼` 不出现在序列化后的 approve 请求里」。

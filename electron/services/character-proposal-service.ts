@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import { isDeepStrictEqual } from 'node:util'
-import type { ApproveCharacterProposalRequest, CancelCharacterProposalRequest, CharacterIdentitySnapshot, CharacterProposalBatch, CharacterProposalItem, CharacterProposalSource, CharacterStaticFields, PendingFinalizedCharacterProposalSummary } from '../../src/shared/character-proposal'
+import type { ApproveCharacterProposalRequest, CancelCharacterProposalRequest, CharacterIdentitySnapshot, CharacterProposalBatch, CharacterProposalHistoryEntry, CharacterProposalItem, CharacterProposalSource, CharacterStaticFields, PendingFinalizedCharacterProposalSummary } from '../../src/shared/character-proposal'
 import { resolveScopedCharacterIdentity, type CharacterStaticProvenance } from '../../src/shared/character-identity'
 import { CHARACTER_ROLES } from '../../src/shared/character-role'
 import { CharacterRosterRepository, commitCharacterIdentities, refreshCharacterIdentityProjection, type CharacterIdentityCommitRequest } from '../repositories/character-roster-repository'
@@ -29,6 +29,16 @@ interface Envelope {
 }
 const fields = ['name', 'role', 'gender', 'age', 'appearance', 'personality', 'background', 'abilities', 'motivation', 'arc', 'notes'] as const
 const nonempty = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0
+/** Author-facing grouping label. History has no timestamp, so the source is the only stable axis. */
+function historyLabel(group: CharacterProposalHistoryEntry['sourceGroup'], itemCount: number): string {
+  const base = group === 'architecture' ? '来自前提+配置'
+    : group === 'planning-material' ? '来自创作资料'
+      : group === 'directory' ? '来自章节蓝图'
+        : group === 'import' ? '来自导入'
+          : group === 'finalized-generation' ? '来自定稿正文'
+            : '来自旧角色名单'
+  return `${base} · ${itemCount} 个角色`
+}
 export class CharacterProposalService {
   constructor(private readonly db: Database.Database, private readonly projectId: string,
     private readonly prove: (source: CharacterProposalSource, forWrite: boolean, version: ArchitectureDerivationVersion) => CharacterProposalProof) {}
@@ -132,6 +142,31 @@ export class CharacterProposalService {
         if (envelope.batch.source.kind === 'import') return [{ proposalBatchId: proposal_id, revision: envelope.batch.revision, importOperationId: envelope.batch.source.operationId }]
         return envelope.batch.source.kind === 'finalized-generation'
           ? [{ proposalBatchId: proposal_id, revision: envelope.batch.revision, finalizationId: source.sourceId }] : []
+      } catch { return [] }
+    })
+  }
+  /**
+   * Read-only generation history. The table stores no timestamp, so entries are
+   * grouped by the semantic meaning of `source` instead of being time-ordered.
+   * Any entry whose durable proof no longer verifies is skipped, never repaired.
+   */
+  listHistory(): CharacterProposalHistoryEntry[] {
+    const rows = this.db.prepare('SELECT proposal_id FROM character_identity_proposals WHERE source_key=? ORDER BY proposal_id')
+      .all(`character-proposal-v1:${this.projectId}`) as { proposal_id: string }[]
+    return rows.flatMap(({ proposal_id }): CharacterProposalHistoryEntry[] => {
+      try {
+        const envelope = this.readEnvelope(proposal_id)
+        const source = envelope.batch.source
+        const sourceGroup = source.kind === 'generation' ? source.inputKind : source.kind
+        return [{
+          proposalBatchId: proposal_id,
+          revision: envelope.batch.revision,
+          status: envelope.batch.status,
+          source: structuredClone(source),
+          sourceGroup,
+          itemCount: envelope.batch.items.length,
+          label: historyLabel(sourceGroup, envelope.batch.items.length),
+        }]
       } catch { return [] }
     })
   }
@@ -259,14 +294,30 @@ export class CharacterProposalService {
           throw new Error('CHARACTER_ID_UNKNOWN')
       }
       for (const relation of request.relationships ?? []) {
-        const from = request.selections.find(item => item.selectionKey === relation.sourceSelectionKey)
-        const to = request.selections.find(item => item.selectionKey === relation.targetSelectionKey)
-        if (!from || from.action === 'keep-unresolved' || to?.action === 'keep-unresolved'
-          || Boolean(to) === Boolean(relation.targetCharacterId)
-          || !byKey.get(from.selectionKey)!.relationships.some(item => item.relation === relation.relation
-            && (item.targetSelectionKey ? item.targetSelectionKey === relation.targetSelectionKey : Boolean(item.targetName)))) throw new Error('CHARACTER_RELATIONSHIP_PROPOSAL_INVALID')
-        identityRequest.relationships.push({ ...(from.action === 'create' ? { sourceSelectionKey: from.selectionKey } : { sourceCharacterId: from.characterId }),
-          ...(to ? to.action === 'create' ? { targetSelectionKey: to.selectionKey } : { targetCharacterId: to.characterId } : { targetCharacterId: relation.targetCharacterId }), relation: relation.relation })
+        // `from` is a candidate of this batch (any decision except keep-unresolved) or, when
+        // the author attaches an outgoing edge to an existing card, that card's own id.
+        const from = relation.sourceSelectionKey
+          ? request.selections.find(item => item.selectionKey === relation.sourceSelectionKey) : undefined
+        const to = relation.targetSelectionKey
+          ? request.selections.find(item => item.selectionKey === relation.targetSelectionKey) : undefined
+        const fromExisting = relation.sourceCharacterId !== undefined
+        const fromCandidate = from !== undefined
+        if (fromExisting === fromCandidate
+          || fromExisting && (relation.sourceSelectionKey !== undefined || !nonempty(relation.sourceCharacterId))
+          || fromCandidate && (from!.action === 'keep-unresolved'
+            || !byKey.get(from!.selectionKey)!.relationships.some(item => item.relation === relation.relation
+              && (item.targetSelectionKey ? item.targetSelectionKey === relation.targetSelectionKey : Boolean(item.targetName))))
+          || to?.action === 'keep-unresolved'
+          || Boolean(to) === Boolean(relation.targetCharacterId)) throw new Error('CHARACTER_RELATIONSHIP_PROPOSAL_INVALID')
+        // An existing source can only point at a resolvable target, and relabelling it would
+        // rewrite an identity the batch has no authority over.
+        if (fromExisting && !existingCharacters.some(character => character.characterId === relation.sourceCharacterId && !character.retired))
+          throw new Error('CHARACTER_ID_UNKNOWN')
+        identityRequest.relationships.push({
+          ...(fromExisting ? { sourceCharacterId: relation.sourceCharacterId }
+            : from!.action === 'create' ? { sourceSelectionKey: from!.selectionKey } : { sourceCharacterId: from!.characterId }),
+          ...(to ? to.action === 'create' ? { targetSelectionKey: to.selectionKey } : { targetCharacterId: to.characterId } : { targetCharacterId: relation.targetCharacterId }),
+          relation: relation.relation })
       }
       const frozenRequest = JSON.stringify(identityRequest)
       const receipt = commitCharacterIdentities(this.db, identityRequest, candidate => JSON.stringify(candidate) === frozenRequest)

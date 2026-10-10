@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { ipc } from '../../services/ipc-client'
-import { createCharacterProposalChoices, type CharacterProposalChoices } from '../../services/character-proposal-choices'
+import { createCharacterProposalChoices, toApproveCharacterProposalRequest, type CharacterProposalChoices } from '../../services/character-proposal-choices'
 import type { CharacterProposalBatch, PendingFinalizedCharacterProposalSummary } from '../../shared/character-proposal'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import { useCharacterStore } from '../../stores/character-store'
@@ -62,11 +62,8 @@ function SessionPanel({ session }: { session: ProjectSessionContext }) {
     if (!batch || !choices || busy) return
     setBusy(true); setError('')
     try {
-      if (action === 'approve') await ipc.invokeWithProjectSession(session, 'character-proposal:approve', {
-        proposalBatchId: batch.proposalBatchId, expectedRevision: batch.revision,
-        operationId: `finalized-character-adoption:${batch.proposalBatchId}`,
-        selections: choices.selections, relationships: choices.relationships,
-      })
+      if (action === 'approve') await ipc.invokeWithProjectSession(session, 'character-proposal:approve',
+        toApproveCharacterProposalRequest(choices, `finalized-character-adoption:${batch.proposalBatchId}`))
       else await ipc.invokeWithProjectSession(session, 'character-proposal:cancel', {
         proposalBatchId: batch.proposalBatchId, expectedRevision: batch.revision,
       })

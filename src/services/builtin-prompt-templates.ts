@@ -1,4 +1,5 @@
 import type { Locale } from '../i18n/types'
+import { getCharacterBackgroundSynthesisTemplate } from '../shared/character-background-prompts'
 import { getPlanningMaterialExtractionTemplate } from '../shared/planning-material-prompts'
 import { resolveWritingLanguage, type WritingLanguage } from '../shared/writing-language'
 import { EN_US_BUILTIN_PROMPTS, isCoreLocalizedBuiltinPromptKey, type PromptLanguageTemplate } from './prompt-language'
@@ -43,6 +44,7 @@ export const EDITABLE_PROMPT_KEYS: string[] = [
   'consistency_check',
   'analyze_writing_style',
   'planning_material_character_extraction',
+  'character_background_synthesis',
   'refine_from_review',
   'generate_chapter_notes',
   'update_character_cards',
@@ -188,6 +190,20 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     ...getPlanningMaterialExtractionTemplate('zh-CN'),
     variables: { requested_ids: '必须覆盖的资料块标识', sources: '作者提供的原始资料块' },
     requiredContextVariables: ['requested_ids', 'sources'],
+  },
+
+  {
+    key: 'character_background_synthesis',
+    name: '指定角色背景补全',
+    description: '为一个尚无角色卡的新角色，依据卷纲与蓝图推断有张力的人物背景',
+    ...getCharacterBackgroundSynthesisTemplate('zh-CN'),
+    variables: {
+      character_name: '要补全背景的角色名（一次一个）',
+      mainline: '卷纲与主线文本',
+      mentions: '蓝图中提到该角色的段落',
+      existing_roster: '既有角色卡摘要（仅用于避免同质化）',
+    },
+    requiredContextVariables: ['character_name', 'mainline', 'mentions', 'existing_roster'],
   },
 
   {
@@ -1503,6 +1519,7 @@ export function getBuiltinPromptTemplate(
   if (!builtin) return undefined
   if (resolveWritingLanguage(writingLanguage) !== 'en-US') return builtin
   if (key === 'planning_material_character_extraction') return { ...builtin, ...getPlanningMaterialExtractionTemplate('en-US'), name: 'Planning material character extraction', description: 'Extract character candidates from explicit author material' }
+  if (key === 'character_background_synthesis') return { ...builtin, ...getCharacterBackgroundSynthesisTemplate('en-US'), name: 'Synthesize a specified character background', description: 'Infer a high-tension background for a named character that has no card yet' }
   if (key === 'assistant_writing_identity') return { ...builtin, ...EN_US_ASSISTANT_IDENTITY }
   const translated: PromptLanguageTemplate | undefined = EN_US_BUILTIN_PROMPTS[
     key as keyof typeof EN_US_BUILTIN_PROMPTS
