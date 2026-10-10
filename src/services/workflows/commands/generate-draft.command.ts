@@ -140,18 +140,80 @@ export function synopsisForDraftChapter(synopsis: string, chapterNumber: number)
   return projected.join('\n').trim()
 }
 
-function exactParagraphs(values: readonly string[]): ReadonlySet<string> {
-  return new Set(values.flatMap(value => (
-    value.split(/\r?\n\s*\r?\n/u).map(paragraph => paragraph.trim()).filter(Boolean)
-  )))
+/**
+ * 段落级去重指纹。
+ *
+ * 历史实现用「逐字节精确相等」判重，对「同内容不同 Markdown 形态」完全失效：
+ * 旧版项目的 project_core.premise/worldbuilding/synopsis 是带 `#`/`##` 标题的
+ * Markdown 大纲，而 novel_config.coreOutline/worldSetting 是同一份内容被剥掉
+ * Markdown 标记后的纯文本，两侧切段后字符串永不相等 → 命中 0 段 → 设定整份
+ * 注入两遍（实测约 13394 字节 / 占 prompt 26%）。
+ *
+ * 这里改为「规范化后比较」：只用于判等，不改变最终注入给模型的原文。
+ * 仅剥离结构与格式差异（标题符号、列表符号、强调符、空白、标点、大小写），
+ * 不做任何语义近似 —— 长度或措辞不同的段落一律视为不重复。
+ */
+function deduplicationFingerprint(text: string): string {
+  return text
+    .normalize('NFKC')
+    .replace(/^\s*#{1,6}\s*/gmu, '') // 去 Markdown 标题前缀
+    .replace(/^\s*[-*+>]\s+/gmu, '') // 去列表 / 引用前缀
+    .replace(/[*_`~]/gu, '') // 去行内强调 / 代码符号
+    .replace(/[\s\p{P}\p{S}]+/gu, '') // 折叠空白与标点，只留实义字符
+    .toLowerCase()
 }
 
-function withoutExactParagraphDuplicates(content: string, duplicates: ReadonlySet<string>): string {
-  return content
-    .split(/\r?\n\s*\r?\n/u)
-    .map(paragraph => paragraph.trim())
-    .filter(paragraph => paragraph && !duplicates.has(paragraph))
-    .join('\n\n')
+function splitParagraphs(content: string): string[] {
+  return content.split(/\r?\n\s*\r?\n/u).map(paragraph => paragraph.trim()).filter(Boolean)
+}
+
+function paragraphFingerprints(values: readonly string[]): ReadonlySet<string> {
+  const fingerprints = new Set<string>()
+  for (const value of values) {
+    for (const paragraph of splitParagraphs(value)) {
+      const fingerprint = deduplicationFingerprint(paragraph)
+      if (fingerprint) fingerprints.add(fingerprint)
+    }
+  }
+  return fingerprints
+}
+
+function authoredFactFingerprints(values: readonly string[]): ReadonlySet<string> {
+  const fingerprints = new Set<string>(paragraphFingerprints(values))
+  // 整块指纹：某个作者配置字段整体就等于架构里的某一字段时，
+  // 其内部单个段落可能换行方式不同而导致段级指纹不匹配；整块指纹兜住这种情况。
+  for (const value of values) {
+    const whole = deduplicationFingerprint(value)
+    if (whole) fingerprints.add(whole)
+  }
+  return fingerprints
+}
+
+/**
+ * 按规范化指纹剔除与作者配置重复的段落，并保留未重复段落的原文。
+ * 只有「规范化后完全相等」才剔除；其余一律原样保留。
+ */
+function withoutDuplicateParagraphs(content: string, duplicates: ReadonlySet<string>): string {
+  const kept = splitParagraphs(content).filter(paragraph => {
+    const fingerprint = deduplicationFingerprint(paragraph)
+    return !fingerprint || !duplicates.has(fingerprint)
+  })
+  // 若去重后只剩下「纯标题」这类结构残骸（其正文段落已被作者配置覆盖），
+  // 该块不再贡献任何事实，整块省略，避免留下 `# 世界观` 这种孤立标题。
+  if (kept.every(isHeadingOnlyParagraph)) return ''
+  return kept.join('\n\n')
+}
+
+/** 段落在去掉 Markdown 标题符号后没有实义字符时，视为纯结构标记。 */
+function isHeadingOnlyParagraph(paragraph: string): boolean {
+  const withoutHeadingMarkers = paragraph.replace(/^\s*(?:#{1,6}|[-*+>])\s*/gmu, '').trim()
+  return withoutHeadingMarkers.length === 0
+}
+
+/** 整块与作者配置相同（规范化后相等）时返回 true，用于整块级兜底。 */
+function isFullyDuplicatedBlock(content: string, duplicates: ReadonlySet<string>): boolean {
+  const fingerprint = deduplicationFingerprint(content)
+  return Boolean(fingerprint) && duplicates.has(fingerprint)
 }
 
 
@@ -328,20 +390,39 @@ function observeWorkflowCancellation(context: CommandExecuteParams['context']): 
   }
 }
 
+/**
+ * 生成尝试的预算日志。
+ *
+ * 语义澄清（避免误读）：一次物理请求涉及三个互不相同的量——
+ * 1. 本次实际请求输出 requestedOutputTokens：模型本次被要求生成的输出量。
+ * 2. 单次预留上限 reservedOutputTokens：为「模型能力未知」等预留的额度上限，
+ *    与本次实际请求无关，常见远大于第 1 项（旧文案把它写成「租约请求上限」，
+ *    导致用户误以为要生成 6 万多 token）。
+ * 3. 本次输入估算上界 estimatedInputTokens：真正会推高成本的是输入，不是预留。
+ * 累计行同样区分「实际请求累计」与「工作流总额度」。
+ */
 function logDraftAttempt(
   callbacks: CommandExecuteParams['callbacks'],
   context: CommandExecuteParams['context'],
   phase: { zhCN: string; enUS: string },
   receipt: GenerationAttemptReceipt,
 ): void {
+  const { budget } = receipt
+  const reservedOutputTokens = receipt.promptBudget?.reservedOutputTokens
+  const estimatedInputTokens = receipt.promptBudget?.estimatedInputTokens
+  const attemptLabel = `${budget.attempt}/${budget.maxAttempts}`
   callbacks.log(workflowUiText(
     context,
-    `  ${phase.zhCN}：租约请求上限 ${receipt.budget.requestedOutputTokens} Tokens` +
-      `（单次上限 ${receipt.budget.maxRequestedOutputTokensPerAttempt}，` +
-      `累计 ${receipt.budget.cumulativeRequestedOutputTokens}/${receipt.budget.maxRequestedOutputTokens}）`,
-    `  ${phase.enUS}: lease request limit ${receipt.budget.requestedOutputTokens} tokens ` +
-      `(per-attempt limit ${receipt.budget.maxRequestedOutputTokensPerAttempt}, ` +
-      `cumulative ${receipt.budget.cumulativeRequestedOutputTokens}/${receipt.budget.maxRequestedOutputTokens})`,
+    `  ${phase.zhCN}：本次请求输出 ${budget.requestedOutputTokens} Tokens`
+      + (typeof estimatedInputTokens === 'number' ? `；输入估算上界 ${estimatedInputTokens} Tokens` : '')
+      + `；尝试 ${attemptLabel}`
+      + `（单次预留上限 ${typeof reservedOutputTokens === 'number' ? reservedOutputTokens : budget.maxRequestedOutputTokensPerAttempt}`
+      + `；本工作流累计请求 ${budget.cumulativeRequestedOutputTokens}/${budget.maxRequestedOutputTokens}）`,
+    `  ${phase.enUS}: requested output ${budget.requestedOutputTokens} tokens`
+      + (typeof estimatedInputTokens === 'number' ? `; estimated input upper bound ${estimatedInputTokens} tokens` : '')
+      + `; attempt ${attemptLabel}`
+      + ` (per-attempt reservation ${typeof reservedOutputTokens === 'number' ? reservedOutputTokens : budget.maxRequestedOutputTokensPerAttempt}`
+      + `; workflow cumulative request ${budget.cumulativeRequestedOutputTokens}/${budget.maxRequestedOutputTokens})`,
   ))
 }
 
@@ -609,12 +690,24 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       projectPrompts,
     ].filter(Boolean).join('\n\n')
 
-    const characterProfiles = await this.readCharacterProfiles(
+    const characterProfilesResult = await this.readCharacterProfiles(
       expectedProjectPath,
       projectSession,
       writingLanguage,
       this.chapterInfo.characters,
     )
+    const characterProfiles = characterProfilesResult.text
+    if (characterProfilesResult.missingNames.length > 0) {
+      // 数据缺口软提示：蓝图点名了角色，但名册里没有对应卡片。不阻断生成，
+      // 只把缺口显式告知作者，避免「明明写了却没注入」的静默困惑。
+      const missing = characterProfilesResult.missingNames.join('、')
+      callbacks.log(uiText(
+        `  提示：本章出场角色「${missing}」在角色名册里没有卡片，将不注入其档案。`
+          + '如需其设定参与生成，请先为该角色创建角色卡。',
+        `  Notice: chapter character(s) "${missing}" have no card in the character roster, so no profile was injected. `
+          + 'Create a character card for them if their settings should inform this chapter.',
+      ))
+    }
     let futureBlueprintsStr = promptLanguageText(
       writingLanguage,
       '（无后续蓝图）',
@@ -646,9 +739,14 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // 以最大化 LLM 上下文缓存命中率
     // ==========================================
     const writingStyle = novelConfig.writingStyle?.trim() || ''
+    // 参考作品与文风同属「表达层」配置：它们只影响怎么写，不影响写什么。
+    // 单独成段注入（而非塞进 novel_config JSON），既让模型看清其「仅供借鉴」的边界，
+    // 也避免与【不可偏离的作者事实】混为一谈。
+    const referenceWorks = novelConfig.referenceWorks?.trim() || ''
     const promptOnlyConfigKeys = new Set([
       'globalGuidance',
       'writingStyle',
+      'referenceWorks',
       'coreOutline',
       'worldSetting',
       'goldenFinger',
@@ -701,6 +799,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       .withArchitecture(architecture)
       .withGlobalGuidance(mergedGuidance)
       .withWritingStyle(writingStyle)
+      .withReferenceWorks(referenceWorks)
       .withNovelConfig(novelConfigFactsJson)
       .withWordNumber(targetChars)
       // ---- 章节公共区（首章与后续章都必须完整注入）----
@@ -1708,16 +1807,18 @@ ${params.candidate.text}`,
     authoredConfigFacts: readonly string[],
   ): Promise<string> {
     const core = await ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectPath)
-    const duplicates = exactParagraphs(authoredConfigFacts)
+    const duplicates = authoredFactFingerprints(authoredConfigFacts)
     const parts: string[] = []
-    if (core?.premise) parts.push(withoutExactParagraphDuplicates(core.premise, duplicates))
-    if (core?.worldbuilding) parts.push(withoutExactParagraphDuplicates(core.worldbuilding, duplicates))
-    if (core?.synopsis) {
-      parts.push(withoutExactParagraphDuplicates(
-        synopsisForDraftChapter(core.synopsis, chapterNumber),
-        duplicates,
-      ))
+    const append = (content: string | undefined) => {
+      if (!content?.trim()) return
+      // 整块已被作者配置覆盖时整块省略；否则只剔除逐字重复的段落，保留其余原文。
+      if (isFullyDuplicatedBlock(content, duplicates)) return
+      const remaining = withoutDuplicateParagraphs(content, duplicates)
+      if (remaining) parts.push(remaining)
     }
+    append(core?.premise)
+    append(core?.worldbuilding)
+    if (core?.synopsis) append(synopsisForDraftChapter(core.synopsis, chapterNumber))
     return parts.filter(Boolean).join('\n\n---\n\n')
   }
 
@@ -1750,31 +1851,50 @@ ${params.candidate.text}`,
     } catch { return '' }
   }
 
+  /**
+   * 读取本章出场角色的作者档案。
+   *
+   * 返回注入文本，以及「蓝图点名但名册里没有卡片 / 无法唯一匹配」的角色名，
+   * 供调用方给出软提示 —— 章节蓝图可能提到尚无卡片的人物，这是数据缺口而非组装错误，
+   * 因此不阻断生成，只把缺口显式告知作者，避免静默跳过。
+   */
   private async readCharacterProfiles(
     projectPath: string,
     projectSession: ProjectSessionContext,
     writingLanguage: WritingLanguage,
     relevantCharacterNames: readonly string[],
-  ): Promise<string> {
+  ): Promise<{ text: string; missingNames: string[] }> {
     try {
       const roster = await ipc.invokeWithProjectSession(projectSession, 'db:character-roster-read', projectPath)
       if (roster.status !== 'ready' && roster.status !== 'empty') {
-        return promptLanguageText(
-          writingLanguage,
-          '（角色资料来源未知或待修复；未作为作者事实注入）',
-          '(character-profile provenance is unknown or needs repair; it was not injected as author fact)',
-        )
+        return {
+          text: promptLanguageText(
+            writingLanguage,
+            '（角色资料来源未知或待修复；未作为作者事实注入）',
+            '(character-profile provenance is unknown or needs repair; it was not injected as author fact)',
+          ),
+          missingNames: [],
+        }
       }
       const profiles: string[] = []
       const relevantNames = new Set(relevantCharacterNames.map(name => name.trim()).filter(Boolean))
       const selected = new Set<typeof roster.entries[number]>()
+      const matchedNames = new Set<string>()
+      const missingNames: string[] = []
       for (const name of relevantNames) {
         const named = roster.entries.filter(card => card.name === name)
         const renamed = roster.entries.filter(card => card.name !== name && card.characterId
           && roster.aliases?.some(alias => alias.name === name && alias.characterId === card.characterId))
         // 旧名被另一角色复用时无法判断蓝图指谁，宁可不注入也不注入错的档案或中断写稿。
-        if (renamed.length === 0) for (const card of named) selected.add(card)
-        else if (named.length === 0 && renamed.length === 1) selected.add(renamed[0])
+        if (renamed.length === 0) {
+          if (named.length === 0) missingNames.push(name)
+          for (const card of named) { selected.add(card); matchedNames.add(name) }
+        } else if (named.length === 0 && renamed.length === 1) {
+          selected.add(renamed[0]); matchedNames.add(name)
+        } else if (named.length === 0) {
+          // 旧名被多个角色复用，无法唯一匹配：不计入缺口（是歧义而非无卡）。
+          matchedNames.add(name)
+        }
       }
       for (const card of selected) {
         const facts = [
@@ -1810,13 +1930,19 @@ ${params.candidate.text}`,
         }
         profiles.push(`${card.name} (${card.role || 'unknown'})${facts.length ? ` | ${facts.join(' | ')}` : ''}`)
       }
-      return profiles.length > 0 ? profiles.join('\n') : ''
+      return {
+        text: profiles.length > 0 ? profiles.join('\n') : '',
+        missingNames: missingNames.sort((left, right) => left.localeCompare(right, 'zh-CN')),
+      }
     } catch {
-      return promptLanguageText(
-        writingLanguage,
-        '（角色资料读取失败；未把旧 currentState 或 characters_arch 当作作者事实）',
-        '(character profiles unavailable; legacy currentState and characters_arch were not treated as author facts)',
-      )
+      return {
+        text: promptLanguageText(
+          writingLanguage,
+          '（角色资料读取失败；未把旧 currentState 或 characters_arch 当作作者事实）',
+          '(character profiles unavailable; legacy currentState and characters_arch were not treated as author facts)',
+        ),
+        missingNames: [],
+      }
     }
   }
 

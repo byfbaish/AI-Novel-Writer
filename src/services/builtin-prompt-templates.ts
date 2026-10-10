@@ -737,6 +737,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       global_guidance: '全局写作要求',
       word_number: '目标字数',
       writing_style: '文风描述（可选）',
+      reference_works: '参考作品（可选）',
       user_guidance: '作者本章微操指导（可选）',
     },
     requiredContextVariables: ['architecture', 'novel_config', 'global_guidance', 'writing_style'],
@@ -761,7 +762,10 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 4. 落实全局写作要求，避开其中列出的写作问题。
 
 【文风要求（如有）】
-{{writing_style}}`,
+{{writing_style}}
+
+【参考作品（如有，仅供借鉴调性与节奏，不是必须兑现的作者事实）】
+{{reference_works}}`,
     systemSuffix: `【不可偏离的作者事实】
 - 小说配置：{{novel_config}}
 - 上述内容是不可改写的事实源。不得删除、弱化、反转或用类型惯例替换作者明确设定；本章暂不展开的事实也不得写出相反内容。
@@ -806,6 +810,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       global_guidance: '全局写作要求',
       word_number: '目标字数',
       writing_style: '文风描述（可选）',
+      reference_works: '参考作品（可选）',
     },
     requiredContextVariables: ['architecture', 'novel_config', 'global_guidance', 'writing_style'],
     content: `你正在连载写作最新章节。
@@ -834,7 +839,10 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 5. 全局写作要求：{{global_guidance}}。
 
 【文风要求（如有）】
-{{writing_style}}`,
+{{writing_style}}
+
+【参考作品（如有，仅供借鉴调性与节奏，不是必须兑现的作者事实）】
+{{reference_works}}`,
     systemSuffix: `【不可偏离的作者事实】
 - 故事架构：{{architecture}}
 - 小说配置：{{novel_config}}

@@ -160,6 +160,15 @@ export class ChapterPromptBuilder extends BasePromptBuilder {
     return this;
   }
 
+  /**
+   * 参考作品（注入写稿 Prompt）。
+   * 与架构阶段同名语义：只借鉴调性与节奏，不是必须兑现的作者事实。
+   */
+  withReferenceWorks(works: string) {
+    this.variables.reference_works = works;
+    return this;
+  }
+
   /** 用户指定的知识库检索关键词（追加到向量搜索 query） */
   withKnowledgeQueryHint(hint: string) {
     this.variables.knowledge_query_hint = hint;
