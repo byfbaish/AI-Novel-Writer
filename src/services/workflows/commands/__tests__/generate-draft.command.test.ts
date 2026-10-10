@@ -1043,7 +1043,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     await expect(f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })).resolves.toBe(expected)
     expect(executed.map(task => task.purpose)).toEqual([draftPending ? 'chapter-draft' : 'chapter-draft-continuation'])
     if (withoutBlock) expect(executed[0]!.messages.at(-1)!.content).not.toContain('【本章与定稿对账')
-    else expect(executed[0]!.messages.at(-1)!.content).toContain(`${block}\n\n- 必需事件: 开端`)
+    // P1 Phase 1：authorItems 兜底不再追加，故对账块之后直接接【本章蓝图/篇幅合同】，不再有「- 必需事件:」重列。
+    else expect(executed[0]!.messages.at(-1)!.content).toContain(block)
     expect(executed[0]!.messages.map(message => message.role)).toEqual(['system', 'user'])
     expect(executed[0]!.messages[0]!.content.split('【本章执行合同】')).toHaveLength(2)
     expect(executed[0]!.messages[1]!.content).not.toContain('【本章执行合同】')
@@ -1464,19 +1465,16 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     {
       writingLanguage: 'zh-CN' as const,
       heading: '【本章执行合同】',
-      labels: ['必需事件', '章节钩子', '作者本章指导'],
       semanticChecks: ['按作者原文含义遵循', '正文动作或结果落实', '叙述约束', '不要仅为证明遵守而新增或反复确认', '按原文揭示时点', '作者明确要求的回顾、回忆、动作、揭示或反复仍按原文执行'],
     },
     {
       writingLanguage: 'en-US' as const,
       heading: '[Current-chapter execution contract]',
-      labels: ['Required events', 'Chapter hook', 'Author guidance for this chapter'],
       semanticChecks: ['Follow the author text according to its meaning', 'manuscript action or outcome', 'narrative constraints', 'do not add or repeatedly confirm', 'reveal timing specified by the author', 'explicitly requested recollections, flashbacks, actions, reveals, or repetition'],
     },
   ].flatMap(language => [1, 2].map(chapterNumber => ({ ...language, chapterNumber }))))('places one $writingLanguage chapter $chapterNumber execution contract before the length contract', async ({
     writingLanguage,
     heading,
-    labels,
     semanticChecks,
     chapterNumber,
   }) => {
@@ -1504,7 +1502,9 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     const messages = observedTask!.messages
     const system = messages[0]!.content
     const user = messages[1]!.content
-    const executionCardIndex = user.indexOf(`- ${labels[0]}:`)
+    // P1 Phase 1：内置模板已渲染 {{chapter_info}}，故不再追加「作者原文重列」卡片；
+    // 作者三字段改由【本章信息】/【本章蓝图】的 JSON 唯一承载。
+    const blueprintIndex = user.indexOf('"keyEvents"')
     const lengthContractIndex = user.indexOf(
       writingLanguage === 'en-US' ? '[Chapter length contract]' : '【本章篇幅合同】',
     )
@@ -1512,16 +1512,26 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(system.includes(heading)).toBe(true)
     expect(system.split(heading)).toHaveLength(2)
     expect(user.includes(heading)).toBe(false)
-    expect(executionCardIndex).toBeGreaterThanOrEqual(0)
-    expect(lengthContractIndex).toBeGreaterThan(executionCardIndex)
-    expect(user.slice(executionCardIndex, lengthContractIndex)).toContain(`- ${labels[0]}: ${keyEvents}`)
-    expect(user.slice(executionCardIndex, lengthContractIndex)).toContain(`- ${labels[1]}: ${suspenseHook}`)
-    expect(user.slice(executionCardIndex, lengthContractIndex)).toContain(`- ${labels[2]}: ${userGuidance}`)
+    expect(blueprintIndex).toBeGreaterThanOrEqual(0)
+    expect(lengthContractIndex).toBeGreaterThan(blueprintIndex)
+    expect(user.slice(blueprintIndex, lengthContractIndex)).toContain(keyEvents)
+    expect(user.slice(blueprintIndex, lengthContractIndex)).toContain(suspenseHook)
+    expect(user.slice(blueprintIndex, lengthContractIndex)).toContain(userGuidance)
+    // 去重不变量（Phase 1 后）：
+    // - 必需事件 / 章节钩子 只在【本章信息】JSON 出现 1 次（authorItems 重列已消除）；
+    // - 作者本章指导 仍有 2 次：JSON 一次 + systemSuffix 的 ★额外指导★ 一次
+    //   —— 这是 D6，属于 Phase 2 范围，此处按现状固定，Phase 2 收敛后再改。
+    for (const authorText of [keyEvents, suspenseHook]) {
+      expect(user.split(authorText)).toHaveLength(2)
+    }
+    expect(user.split(userGuidance)).toHaveLength(3)
+    for (const authorText of [keyEvents, suspenseHook, userGuidance]) {
+      expect(system).not.toContain(authorText)
+    }
     for (const instruction of semanticChecks) {
       expect(system).toContain(instruction)
       expect(user).not.toContain(instruction)
     }
-    for (const authorText of [keyEvents, suspenseHook, userGuidance]) expect(system).not.toContain(authorText)
     expect(system).toContain(
       writingLanguage === 'en-US'
         ? 'Each later action must continue from the item ownership, character knowledge, and plan-completion state actually established in the prose.'
@@ -1569,6 +1579,33 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(user).toContain(`- 必需事件: ${keyEvents}`)
     expect(user).toContain(`- 章节钩子: ${suspenseHook}`)
     expect(user).toContain(`- 作者本章指导: ${userGuidance}`)
+  })
+
+  it('does not duplicate author fields when the builtin template already renders chapter_info', async () => {
+    // P1 Phase 1：内置模板含 【本章信息】{{chapter_info}}，其 JSON 已逐字承载作者三字段；
+    // 因此「作者原文重列」authorItems 不再追加，同一轮请求内每个字段只出现一次。
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask = task
+      return outcome('正'.repeat(900), 'stop')
+    })
+    const keyEvents = '顾弦把潮印交给陆霁。'
+    const suspenseHook = '来源留待下一章揭示。'
+    const userGuidance = '保持克制，潮印由陆霁保管。'
+    const { context, callbacks, command } = setup({ runtime, wordsTarget: 900, keyEvents, suspenseHook, userGuidance })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const user = observedTask?.messages.find(message => message.role === 'user')?.content ?? ''
+    // 蓝图 JSON 里各一次。
+    expect(user).toContain(`"keyEvents": "${keyEvents}"`)
+    // 必需事件 / 章节钩子 不再有独立的「- xxx:」重列行。
+    expect(user).not.toContain(`- 必需事件: ${keyEvents}`)
+    expect(user).not.toContain(`- 章节钩子: ${suspenseHook}`)
+    expect(user.split(keyEvents)).toHaveLength(2)
+    expect(user.split(suspenseHook)).toHaveLength(2)
+    // user_guidance 仍在 systemSuffix 的 ★额外指导★ 里各出现一次（D6，Phase 2 处理），故为 2 次。
+    expect(user.split(userGuidance)).toHaveLength(3)
   })
 
   it('omits the execution card when all three author fields are empty', async () => {
@@ -2778,7 +2815,7 @@ ${headingPrefix}第3章：潮门
     const requestTasks = (runtime: ReturnType<typeof fakeRuntime>): GenerationTask[] =>
       runtime.complete.mock.calls.map(([task]) => task)
 
-    it('D1: 同一份作者资料在**单次请求内**应只出现一次（2026-10-10 实测：初始与续写均为 2）', async () => {
+    it('D1: 同一份作者资料在**单次请求内**只出现一次（Phase 1 已收敛为 1/1）', async () => {
       // 构造：一章首轮被 length 截断 → 触发一次自动续写。
       // 作者资料哨兵同时出现在【本章蓝图/执行合同】与 chapterMaterials 里，
       // 若某次请求把这份资料整体再装一遍，它在同一轮里就会出现 2 次。
@@ -2799,10 +2836,11 @@ ${headingPrefix}第3章：潮门
       const initialCount = occurrencesInRequest(tasks[0]!, authorFactSentinel)
       const continuationCount = occurrencesInRequest(tasks[1]!, authorFactSentinel)
 
-      // ── 当前实测值（Phase 0 证据）：初始 2 / 续写 2 ──
-      // 「2」= 同一份作者原文在同一轮请求里被装了两遍（执行合同 authorItems + 本章信息/材料块）。
-      // Phase 1 的目标是把这两个 2 都收敛到 1；届时把下面的期望值改成 1 即完成该条验收。
-      expect({ initialCount, continuationCount }).toEqual({ initialCount: 2, continuationCount: 2 })
+      // ── Phase 0 实测 2/2 → Phase 1 修复后 1/1 ──
+      // 修复方式：内置模板已渲染 {{chapter_info}}（其 JSON 逐字含作者三字段）时，
+      // 不再追加「作者原文重列」authorItems 兜底（见 generate-draft.command.ts 的 templateRendersChapterInfo）。
+      // 自定义模板若删掉 {{chapter_info}}，兜底仍会注入（由 retains all three author fields 那条护栏保证）。
+      expect({ initialCount, continuationCount }).toEqual({ initialCount: 1, continuationCount: 1 })
     })
 
     it('D2/D3: 架构/作者配置的逐字重复段落在**初始请求内**只出现一次（护栏）', async () => {
@@ -3952,14 +3990,20 @@ ${headingPrefix}第3章：潮门
     const condensePrompt = condenseTask.messages.at(-1)!.content
     expect(condensePrompt).toContain('1400–2600')
     expect(condensePrompt).toContain('目标 2000 字（按汉字计，不含标点）；请写到约 1700–2000 字。2600 字是参考上限')
-    // 与自动续写相同的作者资料块，随后才是篇幅合同、执行卡与待压缩正文。
+    // 与自动续写相同的作者资料块，随后才是篇幅合同、待压缩正文。
     // 篇幅现状块：目标 2000、待压缩 2700 单位 → 约 1780、不超过 2100、删 920（34%）。
     expect(condensePrompt).toContain('【篇幅现状】待压缩正文当前约 2700 字，超出上限。请压缩到约 1780 字（参考上限 2100 字），即删去约 920 字，约占全文 34%。')
-    const order = ['【篇幅现状】', '【硬性要求】', '【本章蓝图】', '【全局写作要求】\n压缩全局要求哨兵', '【文风要求】\n压缩文风哨兵', '【文风适用边界】',
-      '【小说配置事实】', '【作者资料（保留原文', '- 必需事件: 压缩必需事件哨兵', '【本章篇幅合同】', '【待压缩正文】']
-      .map(marker => condensePrompt.indexOf(marker))
+    // P1 Phase 1：内置模板渲染了 {{chapter_info}}，故作者原文重列（authorItems）不再注入；
+    // 必需事件改由【本章蓝图】JSON 唯一承载（`"keyEvents"` 键）。
+    const markers = ['【篇幅现状】', '【硬性要求】', '【本章蓝图】', '【全局写作要求】', '【文风要求】', '【文风适用边界】', '【小说配置事实】', '【作者资料（保留原文', '【本章篇幅合同】', '【待压缩正文】']
+    const order = markers.map(marker => condensePrompt.indexOf(marker))
     expect(order.every(index => index >= 0)).toBe(true)
     expect(order).toEqual([...order].sort((left, right) => left - right))
+    // 必需事件哨兵落在【本章蓝图】JSON 内（不再是独立的「- 必需事件:」行）。
+    expect(condensePrompt.indexOf('压缩必需事件哨兵')).toBeGreaterThan(condensePrompt.indexOf('【本章蓝图】'))
+    expect(condensePrompt.indexOf('压缩必需事件哨兵')).toBeLessThan(condensePrompt.indexOf('【本章篇幅合同】'))
+    // 去重不变量：必需事件在压缩轮内恰好 1 次。
+    expect(condensePrompt.split('压缩必需事件哨兵')).toHaveLength(2)
     // 首章压缩复用合同，但不注入依赖前章的事实与时点规则。
     const zhPrecedence = FINALIZED_FACT_PRECEDENCE['zh-CN']
     const zhRule = condenseTask.messages[0]!.content
