@@ -160,6 +160,8 @@ src/components/characters/BlueprintCharacterSyncButton.tsx
 - **动作**：点击 → 调 `retryDirectoryCharacterSync(operationId)`（**注意语义**：它只 stage 提议，
   不写 roster，见 `directory-character-sync-recovery.ts:49-50` 注释）→ 拿到 `CharacterProposalBatch`
   → 打开既有的**预览/选择面板**（`CharacterProposalSelectionPanel`）。
+- **可编辑**（作者确认要自由度）：预览面板里作者**可逐字段编辑**候选，编辑走既有的
+  `ApproveCharacterProposalRequest.edits`（`character-proposal.ts:54-55`），**不新造编辑通道**。
 - **确认**：面板确认后走**既有的** `character-proposal:approve`（与 `AdoptGeneratedCharactersCommand` 同源）。
 
 > ⚠️ **命名澄清**：`retryDirectoryCharacterSync` 这个名字有歧义（"retry" 听起来像 recovery）。
@@ -182,15 +184,21 @@ src/components/characters/BlueprintCharacterSyncButton.tsx
 > 当前是否已经**只**筛 `newCharacterCandidates`。若是 → 本缺口无需改动（只补测试固化）；
 > 若否 → 需在主进程侧收敛（**优先在主进程改，而非 renderer**，以守住「renderer 不授权写入」边界）。
 
-### 4.4 缺口 G4 的设计（归属语义）
+### 4.4 缺口 G4 的设计（归属语义 + 溯源 notes）
 
-作者明确：**副本 / 主线的归属通过 notes / arc 文本承载，不加结构字段**。
+**归属**：作者明确 —— **副本 / 主线的归属通过 notes / arc 文本承载，不加结构字段**。
 
 - 生成候选时，`CharacterStaticFields` 的 `arc` / `notes` 字段**照常承载**这类文本
   （`character-proposal.ts:5-17` 已有这两个字段，无需扩展）。
 - **不做**任何「副本 ID / 区域 ID」结构字段。
 - 预览面板（`formatCharacterProposalPreview`）**已会展示** `arc`/`notes`（`character-proposal-preview.ts:28` 的 labels 含两者），
   作者在确认时可见可改。
+
+**溯源（作者确认要预填）**：候选生成时，`notes` **预填**「来源：第 N 章蓝图」。
+
+- 第 N 章来自 `newCharacterCandidates` 所属蓝图的 `chapterNumber`（数据已在冻结输入里）。
+- 若候选来自多个章节，按「来源：第 3、7 章蓝图」聚合。
+- **可编辑**：作者可在预览面板改掉该文本（符合「要自由度」的决策）。
 
 ---
 
@@ -234,21 +242,48 @@ src/components/characters/BlueprintCharacterSyncButton.tsx
 
 ---
 
-## 8. 待作者拍板的开放问题
+## 8. ✅ 作者已确认的决策（2026-10-10）
 
-1. **触发时机**：蓝图提交后是**自动弹出提示**，还是**只在角色卡界面显示角标**由作者主动点？
-   （建议：默认只显示角标，不打断写作流程；是否要「提交后 toast 提示」请作者定。）
-2. **是否区分主/副本**：作者已明确用 notes/arc 文本承载；
-   请确认**候选生成时**是否要给 `notes` 预填「来源：第 N 章蓝图」这类溯源文本？（建议：填，便于回溯。）
-3. **本设计是否需要先做「只读检测」**（先只报告「N 个新角色待建卡」，不做生成），
-   再上生成？—— 参考 P3/P4 的保守策略。
+| # | 问题 | 作者决定 |
+|---|---|---|
+| 1 | 触发时机 | **两者都要**：①蓝图提交后**自动提示**；②角色卡界面**永久显示角标**。<br>⚠️ 自动提示**必须在设置里可关闭**（作者原话：「否则批量生成的时候提示会干扰体验」）。<br>**角标不受该开关影响，始终存在。** |
+| 2 | 候选 notes 溯源 | **要预填**「来源：第 N 章蓝图」。 |
+| 3 | 是否先做只读检测 | **不需要**。作者原话：「只读检测就没必要了吧，**甚至可能还需要可以编辑**，以提供自由度。」<br>→ 候选**必须可编辑**（`CharacterProposalSelectionPanel` 已支持 `edits`，见 `character-proposal.ts:54-55`）。 |
+
+### 8.1 设置开关的具体设计（响应决策 1）
+
+新增一个设置项，控制「蓝图提交后的自动提示」：
+
+- **开关语义**：`autoPromptBlueprintCharacterSync`（暂名）——
+  **开**：蓝图提交后，若有待建卡候选，弹提示/toast；
+  **关**：不弹任何提示，但**角色卡界面的角标照常显示**。
+- **默认值**：建议**开**（首次使用者更容易发现该功能）。若作者倾向「默认安静」，可改默认关 —— **待确认**。
+- **放置位置**：`src/components/settings/` 下的设置面板（可放 `PromptSettings` 或新建一个「角色卡」分组）。
+- **持久化**：沿用本仓库既有设置持久化方式（实施期确认具体机制，本仓库偏好 store + 持久化，不新造一套）。
+
+### 8.2 角标的具体设计（响应决策 1）
+
+- **数据源**：`listPendingDirectoryCharacterSyncs()`（已有），返回数量即角标数字。
+- **生命周期**：**始终存在**（不随提示开关关闭）；`0` 时不显示。
+- **刷新时机**：进入角色卡界面 / 蓝图提交后 / 落卡完成后。
 
 ---
 
 ## 9. 实施顺序建议（获批后）
 
-1. **Step 0（零风险）**：先加**只读检测**测试 —— 固化「主进程 stage 的候选集 == `newCharacterCandidates`」
-   这一不变量（若发现不一致，即为 §4.3 要改的点）。
-2. **Step 1**：补 renderer 语义化包装 + `BlueprintCharacterSyncButton`（含角标/空态）。
-3. **Step 2**：接入 `CharactersView` 与蓝图提交后的提示点。
+1. **Step 0（零风险）**：加**只读检测测试**固化不变量 ——
+   「主进程 stage 的候选集 == `newCharacterCandidates`」。
+   ⚠️ 注意：**这是测试，不是产品功能**；作者已明确产品侧**不需要**只读检测环节。
+   若发现候选集与契约不一致，即触发 §4.3 的主进程收敛。
+2. **Step 1**：补 renderer 语义化包装 + 共享入口组件（含角标/空态）+ `notes` 预填溯源。
+3. **Step 2**：接入 `CharactersView` 角标；接入「蓝图提交后自动提示」+ 设置开关。
 4. **Step 3**：补「落卡后角色进入 Prompt」的逐字断言验收测试。
+
+---
+
+## 10. 仍需确认的小问题
+
+1. **自动提示的默认值**：默认**开**还是默认**关**？（建议开。）
+2. **提示形态**：是 toast（轻量、自动消失）还是对话框（需要点确认）？
+   —— 作者说「批量生成时会干扰体验」，**toast 更合适**（可自动消失、不阻塞）。
+3. **设置项归属**：放「提示/创作」设置组，还是新建「角色卡」设置组？
