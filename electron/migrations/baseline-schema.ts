@@ -5,7 +5,13 @@ import { countDraftUnits } from '../../src/shared/draft-units'
 import { migrateDraftUnitCounts } from '../services/draft-unit-migration'
 import { ensureCharacterRosterSchema } from '../repositories/character-roster-schema'
 
-/** Single source of baseline tables; no data backfill or session fencing. */
+/** Single source of baseline tables; no data backfill or session fencing.
+ *
+ * ★ M00 基线的 CREATE TABLE 文本已冻结：指纹就是这段文本的哈希。
+ *   任何新增列（哪怕只是加一行注释）都会改变 v0~v7 全部指纹，
+ *   导致旧项目 probeSchema 报 UNRECOGNIZED_SCHEMA 而打不开。
+ *   新增列必须走新的 lane 步骤（如 M07），不要动下面的 DDL。
+ */
 export function applyBaselineTables(db: BetterSqlite3.Database): void {
   db.exec(`
     -- ============================================================
@@ -37,8 +43,6 @@ export function applyBaselineTables(db: BetterSqlite3.Database): void {
       premise TEXT DEFAULT '',                    -- 故事前提
       worldbuilding TEXT DEFAULT '',              -- 世界观
       characters_arch TEXT DEFAULT '',            -- 人物群像网络
-      -- [架构·第五层：阶段结构 / 自由弧]（原 plot_structure_guide 硬编码层的显性化落点）
-      plot_structure_plan TEXT DEFAULT '',        -- 作者/架构阶段生成的阶段结构全文（空则回退枚举模板）
       synopsis TEXT DEFAULT '',                   -- 情节总大纲
       -- [系统缓存]
       character_states TEXT DEFAULT '',           -- 全书角色动态快照
@@ -967,9 +971,9 @@ export function initializeLegacyBaselineSchema(db: BetterSqlite3.Database, impor
   addProjectCoreTextColumn('world_setting', 'worldbuilding')
   addProjectCoreTextColumn('protagonist_profile')
   addProjectCoreTextColumn('plot_tree_snapshot')
-  // 第五层「阶段结构 / 自由弧」：空值表示尚未显性化，消费点会自动回退到枚举模板。
-  // 不从旧字段继承（旧项目没有该项内容），保持空串即可。
-  addProjectCoreTextColumn('plot_structure_plan')
+  // 第五层「阶段结构 / 自由弧」的列由 M07 独占补齐（见 m07-plot-structure-plan.ts）。
+  // 此处绝不能补：基线必须停在冻结态，v0~v7 的指纹才会与历史库完全一致，
+  // 旧项目才能被 probeSchema 识别并由 M07 升到 v8。
   if (!projectCoreColumns.has('writing_language')) {
     db.exec("ALTER TABLE project_core ADD COLUMN writing_language TEXT NOT NULL DEFAULT 'zh-CN'")
     projectCoreColumns.add('writing_language')
