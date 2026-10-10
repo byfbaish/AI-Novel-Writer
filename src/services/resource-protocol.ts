@@ -3,7 +3,7 @@ import { parseResourceUri, resourceWriteAllowed } from '../shared/project-paths'
 import { ipc } from './ipc-client'
 export { parseResourceUri, formatResourceUri, canonicalResourceUri, isResourceUri, resourceWriteAllowed } from '../shared/project-paths'
 
-export const CORE_FIELD_MAP: Record<string, string> = { premise: 'premise', worldbuilding: 'worldbuilding', characters: 'charactersArch', synopsis: 'synopsis' }
+export const CORE_FIELD_MAP: Record<string, string> = { premise: 'premise', worldbuilding: 'worldbuilding', characters: 'charactersArch', plotStructure: 'plotStructurePlan', synopsis: 'synopsis' }
 export function parseCoreField(value: string): string | null {
   const resource = parseResourceUri(value)
   return resource?.kind === 'core' ? CORE_FIELD_MAP[resource.key]! : null
@@ -17,7 +17,9 @@ export async function readCoreContent(value: string, session: ProjectSessionCont
   }
   const core = await ipc.invokeWithProjectSession(session, 'db:project-core-get', session.projectPath)
   if (!core) throw new Error('无法读取故事架构内容')
-  return core[resource.key] || ''
+  // 注意：资源键（如 plotStructure）与 DB 字段名（plotStructurePlan）不一定同名，
+  // 必须经 CORE_FIELD_MAP 转换，否则会读到 plotStructure 枚举而不是阶段结构正文。
+  return (core as unknown as Record<string, string>)[CORE_FIELD_MAP[resource.key]!] || ''
 }
 export async function writeCoreContent(value: string, content: string, session: ProjectSessionContext): Promise<boolean> {
   const resource = parseResourceUri(value)

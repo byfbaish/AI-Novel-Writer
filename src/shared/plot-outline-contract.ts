@@ -112,6 +112,9 @@ export function plotOutlineExpected(value: unknown): ProjectCoreSynopsisExpected
   if (!Number.isSafeInteger(core.total_chapters) || !Number.isSafeInteger(core.words_per_chapter)) throw new Error('GENERATION_PLOT_OUTLINE_SOURCE_INVALID')
   const source = core as PlotOutlineSource['core']
   return { synopsis: source.synopsis, premise: source.premise, charactersArch: source.characters_arch, worldbuilding: source.worldbuilding,
+    // 第五层字段是后加的：旧检查点里没有它 → 视为空串（回退枚举模板），
+    // 因此这里不能像其它字段那样强制要求 string，否则旧检查点会被误判为失效。
+    plotStructurePlan: typeof core.plot_structure_plan === 'string' ? core.plot_structure_plan : '',
     genre: source.genre, totalChapters: source.total_chapters, wordsPerChapter: source.words_per_chapter,
     writingLanguage: source.writing_language === 'en-US' ? 'en-US' : 'zh-CN', plotStructure: source.plot_structure,
     narrativePov: source.narrative_pov, globalGuidance: source.global_guidance }

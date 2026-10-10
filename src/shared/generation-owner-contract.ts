@@ -9,7 +9,7 @@ import type { ImportRunExecutionAuthority } from './import-run'
 export interface GenerationAuthorInput { id: string; text: string }
 export type ArchitecturePlanningIntent = Readonly<{
   version: 'architecture-action-v1'
-  priorSteps: readonly ('premise' | 'characters' | 'worldbuilding')[]
+  priorSteps: readonly ('premise' | 'characters' | 'worldbuilding' | 'plotStructure')[]
   synopsisRange: Readonly<{ from: number; to: number }> | null
 }>
 export type PlanningGenerationScope =

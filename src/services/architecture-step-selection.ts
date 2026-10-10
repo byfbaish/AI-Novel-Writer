@@ -1,6 +1,6 @@
-export type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'synopsis'
+export type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'plotStructure' | 'synopsis'
 
-const ARCH_STEP_ORDER: ArchStepKey[] = ['premise', 'characters', 'worldbuilding', 'synopsis']
+const ARCH_STEP_ORDER: ArchStepKey[] = ['premise', 'characters', 'worldbuilding', 'plotStructure', 'synopsis']
 
 export function createDefaultArchitectureSelection(
   archStatus: Record<string, boolean>,
@@ -22,6 +22,7 @@ export function createDefaultArchitectureSelection(
     premise: selected.has('premise'),
     characters: selected.has('characters'),
     worldbuilding: selected.has('worldbuilding'),
+    plotStructure: selected.has('plotStructure'),
     synopsis: selected.has('synopsis'),
   }
 }

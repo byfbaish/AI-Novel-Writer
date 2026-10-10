@@ -1,6 +1,6 @@
 import { createElement, type ComponentType, type CSSProperties, type ReactNode } from 'react'
 import {
-  Target, Users, Globe, Map, BookOpen, FolderTree, LayoutList,
+  Target, Users, Globe, Map, Compass, BookOpen, FolderTree, LayoutList,
   FilePen, PenTool, BrainCircuit, Sparkles, FolderOpen, Zap,
   FileText, MessageCircle, RefreshCw, GitCompare, GitBranch,
 } from 'lucide-react'
@@ -12,6 +12,7 @@ const ICON_MAP: Record<string, SidebarIcon> = {
   users: Users,
   globe: Globe,
   map: Map,
+  compass: Compass,
   'book-open': BookOpen,
   'folder-tree': FolderTree,
   'layout-list': LayoutList,

@@ -23,6 +23,7 @@ const expectedSynopsisSource = {
   premise: 'Premise v1',
   charactersArch: 'Characters v1',
   worldbuilding: 'World v1',
+  plotStructurePlan: '',
   genre: 'mystery',
   totalChapters: 80,
   wordsPerChapter: 2500,
@@ -44,6 +45,7 @@ describe('ProjectCoreRepository synopsis compare-and-set', () => {
         premise TEXT,
         characters_arch TEXT,
         worldbuilding TEXT,
+        plot_structure_plan TEXT,
         genre TEXT,
         total_chapters INTEGER,
         words_per_chapter INTEGER,
@@ -56,15 +58,16 @@ describe('ProjectCoreRepository synopsis compare-and-set', () => {
     `)
     db.prepare(`
       INSERT INTO project_core (
-        id, synopsis, premise, characters_arch, worldbuilding, genre,
+        id, synopsis, premise, characters_arch, worldbuilding, plot_structure_plan, genre,
         total_chapters, words_per_chapter, writing_language, plot_structure,
         narrative_pov, global_guidance, updated_at
-      ) VALUES ('main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'before')
+      ) VALUES ('main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'before')
     `).run(
       expectedSynopsisSource.synopsis,
       expectedSynopsisSource.premise,
       expectedSynopsisSource.charactersArch,
       expectedSynopsisSource.worldbuilding,
+      expectedSynopsisSource.plotStructurePlan,
       expectedSynopsisSource.genre,
       expectedSynopsisSource.totalChapters,
       expectedSynopsisSource.wordsPerChapter,
@@ -102,6 +105,7 @@ describe('ProjectCoreRepository synopsis compare-and-set', () => {
     ['premise', 'Premise v2'],
     ['characters_arch', 'Characters v2'],
     ['worldbuilding', 'World v2'],
+    ['plot_structure_plan', '## 大弧 1：新阶段结构'],
     ['genre', 'romance'],
     ['total_chapters', 81],
     ['words_per_chapter', 2600],

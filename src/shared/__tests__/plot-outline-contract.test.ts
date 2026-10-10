@@ -33,7 +33,7 @@ describe('chapter Markdown outline contract', () => {
     expect(validPlotOutlineEntry(text, 1)).toBe(true)
   })
   it('retains a confirmed prefix and the untouched tail when replacing an earlier chapter', () => {
-    const expected: ProjectCoreSynopsisExpected = { synopsis: '', premise: '前提', charactersArch: '角色', worldbuilding: '世界',
+    const expected: ProjectCoreSynopsisExpected = { synopsis: '', premise: '前提', charactersArch: '角色', worldbuilding: '世界', plotStructurePlan: '',
       genre: '悬疑', totalChapters: 3, wordsPerChapter: 2000, writingLanguage: 'zh-CN', plotStructure: 'three_act', narrativePov: 'third_limited', globalGuidance: '' }
     const prefix = '## 第1章：作者已确认\n原事实必须保留。'
     expected.synopsis = renderPlotOutlineSynopsis(prefix, 1, expected)
@@ -45,7 +45,7 @@ describe('chapter Markdown outline contract', () => {
     expect(replacement.slice(replacement.indexOf('## 第2章'))).toBe(expected.synopsis.slice(expected.synopsis.indexOf('## 第2章')))
   })
   it('accepts only a complete continuous author prefix within the original selection and keeps prior author chapters exact', () => {
-    const expected: ProjectCoreSynopsisExpected = { synopsis: '', premise: '前提', charactersArch: '角色', worldbuilding: '世界',
+    const expected: ProjectCoreSynopsisExpected = { synopsis: '', premise: '前提', charactersArch: '角色', worldbuilding: '世界', plotStructurePlan: '',
       genre: '悬疑', totalChapters: 4, wordsPerChapter: 2000, writingLanguage: 'zh-CN', plotStructure: 'three_act', narrativePov: 'third_limited', globalGuidance: '' }
     const confirmedPrefix = '## 第1章：已确认\n保留原章。'
     expected.synopsis = renderPlotOutlineSynopsis(confirmedPrefix, 1, expected)

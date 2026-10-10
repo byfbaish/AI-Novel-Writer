@@ -49,7 +49,7 @@ import {
 
 // --- 基础工具库 ---
 
-function stepAuthorInputs(context: WorkflowContext, key: 'premise' | 'characters' | 'worldbuilding' | 'synopsis',
+function stepAuthorInputs(context: WorkflowContext, key: 'premise' | 'characters' | 'worldbuilding' | 'plotStructure' | 'synopsis',
   snapshot: ArchitectureProjectSnapshot, synopsisRange?: PlotOutlineChapterRange | null, resuming = false): { id: string; text: string }[] {
   const value = (context.data.stepGuidance as Record<string, unknown> | undefined)?.[key]
   const intent: ArchitecturePlanningIntent | undefined = snapshot.planningIntent ?? (resuming || context.mainGenerationRootHandle ? undefined : {
@@ -422,6 +422,8 @@ function synopsisInputsFingerprint(
     wordsPerChapter: expected.wordsPerChapter,
     writingLanguage: expected.writingLanguage,
     plotStructure: expected.plotStructure,
+    // 第五层「阶段结构 / 自由弧」：与 plotStructure 同类，改动即令旧大纲检查点失效。
+    plotStructurePlan: expected.plotStructurePlan,
     narrativePov: expected.narrativePov,
     globalGuidance: expected.globalGuidance,
   }
@@ -787,7 +789,7 @@ export async function savePartialData(
 }
 
 async function writeArchToDb(
-  key: 'premise' | 'charactersArch' | 'worldbuilding' | 'synopsis',
+  key: 'premise' | 'charactersArch' | 'worldbuilding' | 'plotStructurePlan' | 'synopsis',
   content: string,
   expectedProjectPath: string,
   runId: string,
@@ -1719,6 +1721,113 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
   }
 }
 
+/**
+ * ★ 第五层「阶段结构 / 自由弧」生成命令。
+ *
+ * 设计取舍（刻意从简，对齐 `arc-granularity-and-enum.md §1`）：
+ * - **一步出整段**：单次 LLM 调用产出完整的阶段结构 Markdown，不拆成
+ *   "骨架 / 事件链 / 章级" 多个 DB 步骤。
+ * - **不做候选/断点续写**：与 worldbuilding 不同，这一步**不引入**未完成候选
+ *   （`partial` 里无对应字段）。理由是阶段结构的典型体量只有几千字，远低于
+ *   输出上限，截断风险低；引入候选机制会把新步骤的复杂度抬到与 worldbuilding
+ *   同等水平，违背"最小侵入"。
+ * - 若未来长项目确实出现截断，再按"弧列表水平分批"扩展（复用它已有的分批思路）。
+ *
+ * 产出写入 `project_core.plot_structure_plan`；为空时大纲消费点自动回退枚举模板。
+ */
+export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
+  constructor(
+    private snapshot: ArchitectureProjectSnapshot,
+    generationDependencies?: WorkflowGenerationRuntimeDependencies,
+  ) {
+    super(generationDependencies)
+  }
+
+  async execute(params: CommandExecuteParams): Promise<string> {
+    assertArchitectureProjectSessionCurrent(requireWorkflowProjectSession(params.context), params.context)
+    return this.executeWithGenerationRuntime('text', params, () => this.executeWithinGeneration(params), {
+      authorInputs: stepAuthorInputs(params.context, 'plotStructure', this.snapshot),
+      operation: 'generate-plot-structure', promptKeys: ['plot_structure'], skillStages: ['planning'], output: 'visible-text',
+    })
+  }
+
+  private async executeWithinGeneration({ context, callbacks }: CommandExecuteParams): Promise<string> {
+    const text = (zhCNText: string, enUSText: string) => workflowUiText(context, zhCNText, enUSText)
+    const projectSession = requireWorkflowProjectSession(context)
+    assertArchitectureProjectSessionCurrent(projectSession, context)
+    const writingLanguage = workflowWritingLanguage(context)
+    const { expectedProjectPath } = this.snapshot
+    const { novelConfig: config } = this.snapshot
+    const modelFacts = localizeNovelConfigFacts(config, writingLanguage)
+
+    const core = await ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', expectedProjectPath)
+    const premise = core?.premise || ''
+    const worldbuilding = core?.worldbuilding || ''
+    const charactersArch = core?.charactersArch || ''
+    if (!premise || premise.length < 50) throw new Error(text(
+      '故事前提尚未生成或内容不完整，请返回勾选生成',
+      'The story premise is missing or incomplete. Go back and include it for generation.',
+    ))
+    if (!worldbuilding || worldbuilding.length < 50) throw new Error(text(
+      '世界观尚未生成或内容不完整，请返回勾选生成',
+      'The worldbuilding is missing or incomplete. Go back and include it for generation.',
+    ))
+
+    callbacks.log(text('生成阶段结构（自由弧）...', 'Generating the stage structure...'))
+    const template = await resolvePromptTemplate('plot_structure', projectSession, writingLanguage)
+    if (!template) throw new Error(text(
+      '阶段结构模板丢失',
+      'The stage-structure template is missing.',
+    ))
+
+    const missingValue = promptLanguageText(writingLanguage, '（未填写）', '(not provided)')
+    const promptBuilder = new ArchitecturePromptBuilder(template, writingLanguage)
+      .withCoreSeed(premise)
+      .withCharacterDynamics(charactersArch || missingValue)
+      .withWorldBuilding(worldbuilding)
+      .withGenre(modelFacts.genre)
+      .withNumberOfChapters(config.totalChapters)
+      .withWordNumber(config.wordsPerChapter)
+      .withGlobalGuidance(config.globalGuidance || missingValue)
+      .withStepGuidance(((context.data.stepGuidance as Record<string, string>) || {}).plotStructure || '')
+
+    const result = await this.callLLMWithBuilder(
+      promptBuilder,
+      callbacks,
+      { purpose: 'generate-plot-structure', reasoningStage: 'planning', writingSkillStage: 'planning' },
+      context,
+    )
+    if (!result.trim()) throw new Error(text(
+      '阶段结构生成失败，AI 返回空内容',
+      'Stage-structure generation failed because the AI returned empty content.',
+    ))
+    if (context.cancelled) throw new Error(text('工作流已取消', 'Workflow was cancelled.'))
+
+    const heading = promptLanguageText(writingLanguage, '阶段结构', 'Stage Structure')
+    const body = stripThinkingTags(result)
+    // 若模型已自带一级标题则不重复；否则补一个统一标题，与其它架构块一致。
+    const content = /^\s*#\s/u.test(body) ? `${body}\n` : `# ${heading}\n\n${body}\n`
+
+    this.assertNotCancelled(context)
+    await writeArchToDb(
+      'plotStructurePlan',
+      content,
+      expectedProjectPath,
+      context.runId,
+      projectSession,
+      text('阶段结构写入数据库失败', 'Failed to write the stage structure to the database.'),
+      this.requireGenerationExecution().mainOwned ? context.mainGenerationRunHandle : undefined,
+    )
+    this.assertNotCancelled(context)
+
+    callbacks.log(text(
+      '阶段结构（自由弧）已生成并写入数据库',
+      'Stage structure generated and saved to the database.',
+    ))
+    return content
+  }
+}
+
 export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string> {
   constructor(
     private selectedSteps: string[],
@@ -1799,6 +1908,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       premise,
       charactersArch: char_dyn,
       worldbuilding: world_b,
+      plotStructurePlan: core?.plotStructurePlan || '',
       genre: config.genre || '',
       totalChapters,
       wordsPerChapter: Number(config.wordsPerChapter) || 0,
@@ -1825,12 +1935,10 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       'The plot-outline template is missing.',
     ))
 
-    const { getPlotStructureGuide, getNarrativePOVLabel } = await import('../architecture-workflow')
-    const guide = getPlotStructureGuide(
-      config.plotStructure || 'three_act',
-      totalChapters,
-      writingLanguage,
-    )
+    const { resolveStageStructureGuide, getNarrativePOVLabel } = await import('../architecture-workflow')
+    // 第五层「阶段结构 / 自由弧」：自由弧文本优先；未落地时回退到 plotStructure 枚举模板。
+    // 这是本层唯一的消费口径，:2013 与 :2283 两处共用，避免口径漂移。
+    const guide = resolveStageStructureGuide(core?.plotStructurePlan, config.plotStructure, totalChapters, writingLanguage)
     const pov = getNarrativePOVLabel(config.narrativePOV || 'third_limited', writingLanguage)
 
     // ===== 状态机：解析本次批次模式与检查点 =====
@@ -2273,12 +2381,12 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     const language = sourceExpected.writingLanguage
     const template = await resolvePromptTemplate('synopsis', session, language)
     if (!template) throw new Error(text('模板丢失', 'The plot-outline template is missing.'))
-    const { getPlotStructureGuide, getNarrativePOVLabel } = await import('../architecture-workflow')
+    const { resolveStageStructureGuide, getNarrativePOVLabel } = await import('../architecture-workflow')
     const promptBuilder = new ArchitecturePromptBuilder(template, language)
       .withCoreSeed(sourceExpected.premise).withCharacterDynamics(sourceExpected.charactersArch).withWorldBuilding(sourceExpected.worldbuilding)
       .withGenre(localizeNovelConfigFacts(config, language).genre).withNumberOfChapters(sourceExpected.totalChapters)
       .withWordNumber(sourceExpected.wordsPerChapter)
-      .withPlotStructureGuide(getPlotStructureGuide(config.plotStructure || 'three_act', sourceExpected.totalChapters, language))
+      .withPlotStructureGuide(resolveStageStructureGuide(sourceExpected.plotStructurePlan, config.plotStructure, sourceExpected.totalChapters, language))
       .withNarrativePov(getNarrativePOVLabel(config.narrativePOV || 'third_limited', language))
       .withGlobalGuidance(sourceExpected.globalGuidance).withStepGuidance(guidance)
     const representedConfig: Record<string, unknown> = { genre: config.genre, totalChapters: sourceExpected.totalChapters,

@@ -8,7 +8,7 @@
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import { ipc } from './ipc-client'
 
-export type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'synopsis'
+export type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'plotStructure' | 'synopsis'
 
 export const ARCH_FILES: Array<{
   key: ArchStepKey
@@ -19,6 +19,7 @@ export const ARCH_FILES: Array<{
     { key: 'premise', label: '故事前提', emoji: '🎯', desc: 'Logline · 核心冲突链 · 金手指定位 · 悬念骨架' },
     { key: 'characters', label: '角色图谱', emoji: '👥', desc: '角色弧光 · 关系网络 · 矛盾交织' },
     { key: 'worldbuilding', label: '世界观', emoji: '🌍', desc: '核心规则 · 阶层断层 · 深层危机' },
+    { key: 'plotStructure', label: '阶段结构', emoji: '🧭', desc: '阶段划分 · 因果/时序推进 · 篇幅约束' },
     { key: 'synopsis', label: '情节大纲', emoji: '🗺️', desc: '三幕结构 · 拐点节奏 · 伏笔闭环' },
   ]
 
@@ -33,6 +34,7 @@ export async function checkArchStatus(
     premise: false,
     characters: false,
     worldbuilding: false,
+    plotStructure: false,
     synopsis: false,
   }
 
@@ -54,6 +56,7 @@ export async function checkArchStatus(
   status.premise = (core.premise?.length ?? 0) > 50
   status.characters = roster.status === 'ready'
   status.worldbuilding = (core.worldbuilding?.length ?? 0) > 50
+  status.plotStructure = (core.plotStructurePlan?.length ?? 0) > 50
   status.synopsis = (core.synopsis?.length ?? 0) > 50
 
   return status
@@ -66,8 +69,8 @@ export async function checkArchStatusWithWordCount(projectSession: ProjectSessio
   status: Record<string, boolean>
   wordCounts: Record<string, number>
 }> {
-  const status: Record<string, boolean> = { premise: false, characters: false, worldbuilding: false, synopsis: false }
-  const wordCounts: Record<string, number> = { premise: 0, characters: 0, worldbuilding: 0, synopsis: 0 }
+  const status: Record<string, boolean> = { premise: false, characters: false, worldbuilding: false, plotStructure: false, synopsis: false }
+  const wordCounts: Record<string, number> = { premise: 0, characters: 0, worldbuilding: 0, plotStructure: 0, synopsis: 0 }
 
   const [core, roster] = await Promise.all([
     ipc.invokeWithProjectSession(
@@ -93,6 +96,7 @@ export async function checkArchStatusWithWordCount(projectSession: ProjectSessio
   check('premise', core.premise)
   check('characters', roster.status === 'ready' ? roster.renderedMarkdown : '')
   check('worldbuilding', core.worldbuilding)
+  check('plotStructure', core.plotStructurePlan)
   check('synopsis', core.synopsis)
 
   return { status, wordCounts }
@@ -146,6 +150,7 @@ export async function readArchFile(
     switch (key) {
       case 'premise': content = core.premise; break
       case 'worldbuilding': content = core.worldbuilding; break
+      case 'plotStructure': content = core.plotStructurePlan; break
       case 'synopsis': content = core.synopsis; break
     }
     return { success: true, content: content ?? '' }

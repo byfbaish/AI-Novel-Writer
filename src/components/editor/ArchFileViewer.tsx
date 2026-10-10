@@ -46,13 +46,14 @@ import {
   isProjectSessionPath,
 } from '../project-session-gate'
 
-type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'synopsis'
+type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'plotStructure' | 'synopsis'
 
 /** 与 Sidebar / WorldBuildingEditor 保持一致的架构文件元信息 */
 const ARCH_META: Record<ArchStepKey, { iconName: string; label: string; labelEn: string; desc: string; descEn: string }> = {
   premise: { iconName: 'target', label: '故事前提', labelEn: 'Premise', desc: 'Logline、核心冲突、金手指定位', descEn: 'Logline, central conflict, and story hook' },
   characters: { iconName: 'users', label: '角色图谱', labelEn: 'Character graph', desc: '角色弧光、关系网、矛盾交织', descEn: 'Character arcs, relationships, and conflicts' },
-  worldbuilding: { iconName: 'globe', label: '世界观', labelEn: 'Worldbuilding', desc: '核心规则、阶层断层、深层危机', descEn: 'Core rules, social divides, and deeper crises' },
+  worldbuilding: { iconName: 'globe', label: '世界观', labelEn: 'Worldbuilding', desc: '核心规则、阶层断层、深层危机、空间结构', descEn: 'Core rules, social divides, deeper crises, and spatial structure' },
+  plotStructure: { iconName: 'compass', label: '阶段结构', labelEn: 'Stage structure', desc: '阶段划分、因果时序推进、篇幅约束', descEn: 'Stage breakdown, causal progression, and length heuristics' },
   synopsis: { iconName: 'map', label: '情节大纲', labelEn: 'Synopsis', desc: '三幕式情节骨架', descEn: 'Three-act story structure' },
 }
 
@@ -64,6 +65,7 @@ function detectStepKey(filePath: string): ArchStepKey | null {
   if (filePath.endsWith('premise.md')) return 'premise'
   if (filePath.endsWith('characters.md')) return 'characters'
   if (filePath.endsWith('worldbuilding.md')) return 'worldbuilding'
+  if (filePath.endsWith('plot_structure.md')) return 'plotStructure'
   if (filePath.endsWith('synopsis.md')) return 'synopsis'
   return null
 }
@@ -105,6 +107,8 @@ function ArchFileViewerSession({
   const currentProject = useProjectStore(s => s.currentProject)
   const text = useLocaleStore(s => s.text)
   const recoveryTab = useEditorStore(s => s.tabs.find(tab => tab.id === tabId && tab.planningRecovery))
+  /** 阶段结构内容是否由枚举模板兜底（老模板用户）。作者保存一次后自动清除。 */
+  const archEnumFallback = useEditorStore(s => s.tabs.find(tab => tab.id === tabId)?.archEnumFallback ?? false)
   const [recovery, setRecovery] = useState(recoveryTab?.planningRecovery)
   const [authorEnd, setAuthorEnd] = useState(String(recoveryTab?.planningSaveEnd ?? ''))
   const [recoveryError, setRecoveryError] = useState('')
@@ -285,6 +289,10 @@ function ArchFileViewerSession({
           { [dbField]: md },
           projectSession.projectPath,
         ), '保存架构文件')
+        // 作者一旦保存阶段结构，内容即为本书专属自由弧，撤销「模板兜底」提示。
+        if (dbField === CORE_FIELD_MAP.plotStructure) {
+          useEditorStore.getState().setTabArchEnumFallback(tabId, false)
+        }
       } else {
         // DB 化后架构文件不应有物理路径；如果意外触发，尝试 FS 写入兜底
         console.warn('[ArchFileViewer] 非预期的物理路径保存:', filePath)
@@ -723,6 +731,24 @@ function ArchFileViewerSession({
               {text('放弃旧草稿并加载投影', 'Discard draft and load projection')}
             </Button>
           )}
+        </div>
+      )}
+
+      {stepKey === 'plotStructure' && archEnumFallback && (
+        <div
+          role="note"
+          className="flex items-start gap-2 px-3 py-2 text-xs"
+          style={{
+            color: 'var(--color-warning-text)',
+            backgroundColor: 'var(--color-editor-bg)',
+            borderBottom: '1px solid var(--color-border)',
+          }}
+        >
+          <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+          <span>{text(
+            '此内容由所选「故事结构」模板自动派生，并非本书记录的自由弧。不建议直接修改——一旦保存即转为本书专属的阶段结构（自由弧），此后不再随模板变化。若希望自定义本书的阶段推进，请直接编辑并保存；若只想沿用模板，可保持原样。',
+            'This content is auto-derived from the selected story-structure template, not a custom arc saved for this book. Editing is not recommended — saving it converts it into this book’s own stage structure (free arc) and it will no longer follow the template. To customize this book, edit and save; to keep using the template, leave it unchanged.',
+          )}</span>
         </div>
       )}
 
