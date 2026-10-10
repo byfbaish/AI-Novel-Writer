@@ -6,7 +6,7 @@ import { isDeepStrictEqual } from 'node:util'
 import * as lancedb from '@lancedb/lancedb'
 import { KNOWLEDGE_COPY_MARKER, readKnowledgeCopy, writeKnowledgeCopy } from '../vector-store'
 import { m05CharacterAssetMigrationAdapter } from '../migrations/m05-character-assets'
-import { CharacterRosterRepository } from '../repositories/character-roster-repository'
+import { CharacterRosterRepository, refreshCharacterIdentityProjection } from '../repositories/character-roster-repository'
 import { adoptLegacyCards, readLegacyRosterSource } from './legacy-roster-source'
 import { CURRENT_DESKTOP_SCHEMA_VERSION } from '../migrations/desktop-registry'
 import { CANONICAL_PROJECT_DATABASE, CANONICAL_PROJECT_DIRECTORY, createCanonicalProjectManifest, parseCanonicalProjectManifest } from '../../src/shared/project-format'
@@ -244,14 +244,21 @@ async function adoptCopiedLegacyCards(db: import('better-sqlite3').Database, old
         let edges: unknown
         try { edges = row.relationships === '' ? [] : JSON.parse(row.relationships as string) } catch { return reject() }
         if (!Array.isArray(edges)) return reject()
-        const targets = new Set<string>()
+        // 旧版允许同一对角色带多条不同 relation（例如既是"潜在盟友"又是"潜在竞争者"）。
+        // character_relationships 只有 relationship_id 主键，没有 (source,target) 唯一约束；
+        // 作者编辑路径 character-roster-author.ts 也只按 [target, relation] 判重。这里若按
+        // target 单值判重，这类旧项目会被整体判为无法映射（LEGACY_IMPORT_ROSTER_UNAVAILABLE），
+        // 结果是全部关系丢失且导入中止，与 ADR 0020「保留角色原始资料与关系」相悖。
+        const seen = new Set<string>()
         for (const [index, edge] of edges.entries()) {
           if (!edge || typeof edge !== 'object' || Array.isArray(edge)
             || Object.keys(edge).sort().join(',') !== 'relation,target'
             || typeof edge.target !== 'string' || !edge.target.trim() || !byName.has(edge.target)
-            || edge.target === row.name || targets.has(edge.target)
+            || edge.target === row.name
             || typeof edge.relation !== 'string' || !edge.relation.trim()) return reject()
-          targets.add(edge.target)
+          const duplicateKey = JSON.stringify([edge.target, edge.relation])
+          if (seen.has(duplicateKey)) return reject()
+          seen.add(duplicateKey)
           const binding = checkProposal(`${row.source_key}:relationships:${index}`, hash(row.relationships as string),
             JSON.stringify(edge), row.character_id, edge.target)!
           bindings.push({ ...binding, relation: edge.relation, sourceName: row.name })
@@ -282,6 +289,13 @@ async function adoptCopiedLegacyCards(db: import('better-sqlite3').Database, old
           binding.ownerId, binding.targetId, binding.relation, binding.sourceName, binding.targetName,
           JSON.stringify({ kind: 'legacy', sourceKey: binding.sourceKey, sourceHash: binding.sourceHash, migration: 'offline-project-copy' }), operationId)
       }
+      // 写入关系后角色事实已变，但 project_core.characters_arch 与 meta 里的
+      // projection_hash / fact_hash 仍是迁移时从旧库复制的旧投影。character_relationships
+      // 以随机 UUID 为主键，渲染顺序不可能与旧库 relationships 文本列的原始顺序一致
+      // （即使字符数相同），所以旧投影与新事实对不上，终检必然判 inconsistent。
+      // 投影是由事实派生的只读视图，按当前事实重建不丢失任何作者事实；
+      // adoptLegacyCards 在同位置也是这样刷新的。
+      refreshCharacterIdentityProjection(db)
       const source = readLegacyRosterSource(db)
       if (readySource) {
         if (source.snapshot.migrationState !== 'ready' || source.snapshot.status !== 'ready') reject()
