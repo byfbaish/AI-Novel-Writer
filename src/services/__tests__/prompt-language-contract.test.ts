@@ -23,6 +23,7 @@ const REQUIRED_CORE_KEYS = [
   'premise',
   'character_dynamics',
   'world_building',
+  'plot_structure',
   'synopsis',
   'chapter_blueprint',
   'chapter_blueprint_chunk',

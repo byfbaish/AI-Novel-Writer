@@ -120,7 +120,7 @@ describe('ProjectTree architecture status refresh', () => {
     await act(async () => {
       await vi.waitFor(() => expect(coreReadCount()).toBeGreaterThanOrEqual(2))
     })
-    expect(container.textContent).toContain('Story architecture3/4')
+    expect(container.textContent).toContain('Story architecture3/5')
     const readsBeforeCommit = coreReadCount()
 
     synopsis = 'S'.repeat(60)
@@ -134,7 +134,7 @@ describe('ProjectTree architecture status refresh', () => {
     await act(async () => {
       await vi.waitFor(() => expect(coreReadCount()).toBeGreaterThan(readsBeforeCommit))
     })
-    expect(container.textContent).toContain('Story architecture4/4')
+    expect(container.textContent).toContain('Story architecture4/5')
   })
 
   it('reflects committed blueprint count when the blueprint resource event arrives', async () => {

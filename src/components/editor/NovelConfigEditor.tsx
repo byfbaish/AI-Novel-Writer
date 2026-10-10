@@ -27,6 +27,8 @@ import {
   isProjectSessionCurrent,
   isProjectSessionPath,
 } from '../project-session-gate'
+import { ipc } from '../../services/ipc-client'
+import { createProjectArchTabId } from './arch-file-refresh-policy'
 import { AUDIENCE_EN, GENRE_EN } from './novel-config-labels'
 import { SaveFeedback, type SaveOutcome } from './save-feedback'
 import { randomUUID } from '../../utils/id'
@@ -68,6 +70,8 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
   const dirty = useEditorStore(state => state.tabs.some(
     tab => tab.type === 'config' && tab.projectKey === projectKey && tab.dirty,
   ))
+  // 第五层「阶段结构 / 自由弧」是否存在：决定上面那个枚举下拉框是"生效"还是"兜底"。
+  const [hasFreeArc, setHasFreeArc] = useState(false)
   const exitSaveRef = useRef<(propagateFailure?: boolean) => Promise<void>>(async () => undefined)
   useEffect(() => {
     registerEditorExitSaveHandler({
@@ -115,6 +119,67 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
   useEffect(() => {
     exitSaveRef.current = handleSave
   })
+
+  // 探测「阶段结构 / 自由弧」是否存在（存在则上面的枚举只作起手模板，不再是最终结果）。
+  useEffect(() => {
+    const projectSession = captureProjectSession(currentProject)
+    if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) {
+      setHasFreeArc(false)
+      return
+    }
+    let disposed = false
+    void ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectSession.projectPath)
+      .then(core => {
+        if (!disposed) setHasFreeArc(((core?.plotStructurePlan ?? '').length > 50))
+      })
+      .catch(() => { if (!disposed) setHasFreeArc(false) })
+    return () => { disposed = true }
+  }, [currentProject, projectMatches, projectKey])
+
+  /** 打开「阶段结构」架构文件（自由弧的真正编辑入口）。 */
+  const openPlotStructureFile = async () => {
+    const projectSession = captureProjectSession(currentProject)
+    if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    const filePath = 'ai-novel://core/plotStructure'
+    const tabId = createProjectArchTabId(projectKey, filePath)
+    let content = ''
+    let archEnumFallback = false
+    try {
+      const core = await ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectSession.projectPath)
+      content = core?.plotStructurePlan || ''
+      // 老模板用户：自由弧正文为空时，用枚举模板派生内容预填，让作者看得到现有的弧。
+      if (content.trim().length <= 50) {
+        const totalChapters = Number(core?.totalChapters ?? currentProject?.novelConfig?.totalChapters) || 0
+        const writingLanguage = (core?.writingLanguage ?? currentProject?.novelConfig?.writingLanguage) === 'en-US'
+          ? 'en-US' as const
+          : 'zh-CN' as const
+        const structure = (core?.plotStructure as string) || config?.plotStructure || 'three_act'
+        const { getPlotStructureGuide } = await import('../../services/workflows/architecture-workflow')
+        content = getPlotStructureGuide(structure, totalChapters, writingLanguage)
+        archEnumFallback = content.trim().length > 0
+      }
+    } catch { return }
+    if (!isProjectSessionCurrent(projectSession)) return
+    const store = useEditorStore.getState()
+    const existing = store.tabs.find(t => t.id === tabId)
+    if (existing) {
+      store.setActiveTab(tabId)
+      store.syncTabContent(tabId, content)
+      store.markTabSaved(tabId, content)
+      store.setTabArchEnumFallback(tabId, archEnumFallback)
+    } else {
+      store.openFile({
+        id: tabId,
+        name: text('阶段结构', 'Stage structure'),
+        type: 'arch-file',
+        filePath,
+        content,
+        savedContent: content,
+        projectKey,
+        archEnumFallback,
+      })
+    }
+  }
 
   if (!config) return (
     <div className="h-full flex items-center justify-center" style={{ color: 'var(--color-text-muted)' }}>
@@ -262,6 +327,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                 '起承转合：中国传统四段式结构，适合古言/武侠/仙侠',
                 '多线叙事：多条故事线并进交织，适合群像或复杂情节',
                 '自由结构：不限定特定框架，AI 根据内容自适应，适合日常/轻小说',
+                '阶段结构（自由弧）：在「故事架构」里编辑一套属于本书的阶段推进结构，它会覆盖上面的选择',
               ].map((item, index) => text(item, [
                 'Three-act structure: setup, confrontation, and climax; suitable for most genres',
                 'Hero’s journey: a transformation-focused adventure structure',
@@ -269,8 +335,13 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                 'Kishōtenketsu: a four-part East Asian structure',
                 'Multi-thread: interwoven story lines for ensembles and complex plots',
                 'Freeform: AI adapts the structure to the content',
+                'Stage structure (free arc): edit a book-specific staged structure in Story architecture; it overrides the choice above',
               ][index]))}>
-                <NativeSelect value={config.plotStructure || 'three_act'} onChange={(e) => update('plotStructure', e.target.value as NovelConfig['plotStructure'])}>
+                <NativeSelect
+                  className={hasFreeArc ? 'opacity-50' : undefined}
+                  value={config.plotStructure || 'three_act'}
+                  onChange={(e) => update('plotStructure', e.target.value as NovelConfig['plotStructure'])}
+                >
                   <option value="three_act">{text('三幕结构', 'Three-act')}</option>
                   <option value="heros_journey">{text('英雄之旅', 'Hero’s journey')}</option>
                   <option value="save_the_cat">{text('节拍表', 'Beat sheet')}</option>
@@ -278,6 +349,25 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                   <option value="multi_thread">{text('多线叙事', 'Multi-thread')}</option>
                   <option value="freeform">{text('自由结构', 'Freeform')}</option>
                 </NativeSelect>
+                {hasFreeArc ? (
+                  <button
+                    type="button"
+                    onClick={() => { void openPlotStructureFile() }}
+                    className="mt-1 text-left text-[0.7rem] leading-4 underline decoration-dotted"
+                    style={{ color: 'var(--color-warning-text)' }}
+                  >
+                    {text('已在「故事架构」中定制阶段结构，当前选择仅作起手模板（点击查看）', 'A custom stage structure exists; this choice is only a starting template (click to view)')}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => { void openPlotStructureFile() }}
+                    className="mt-1 text-left text-[0.7rem] leading-4 underline decoration-dotted"
+                    style={{ color: 'var(--color-text-muted)' }}
+                  >
+                    {text('想让本书用自己的阶段推进结构？前往「故事架构 · 阶段结构」编辑', 'Want a book-specific staged structure? Edit it under Story architecture · Stage structure')}
+                  </button>
+                )}
               </Field>
               <Field label={text('叙事视角', 'Point of view')} tipItems={[
                 '第一人称："我"视角叙事，代入感最强，信息受限',

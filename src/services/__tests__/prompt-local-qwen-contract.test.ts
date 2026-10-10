@@ -44,6 +44,16 @@ const expectedPromptVariables: Record<string, string[]> = {
     'global_guidance',
     'step_guidance',
   ],
+  plot_structure: [
+    'premise',
+    'character_dynamics',
+    'world_building',
+    'genre',
+    'number_of_chapters',
+    'word_number',
+    'global_guidance',
+    'step_guidance',
+  ],
   synopsis: [
     'premise',
     'character_dynamics',

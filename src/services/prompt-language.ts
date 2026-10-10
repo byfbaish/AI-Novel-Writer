@@ -31,6 +31,7 @@ export const CORE_LOCALIZED_BUILTIN_PROMPT_KEYS = Object.freeze([
   'premise',
   'character_dynamics',
   'world_building',
+  'plot_structure',
   'synopsis',
   'chapter_blueprint',
   'chapter_blueprint_chunk',
@@ -275,7 +276,7 @@ Return exactly one JSON object with "schemaVersion":1 and "entries":[...]. Every
 - Project-wide writing guidance: {{global_guidance}}
 
 [Deliverable]
-Build three connected dimensions, each with a concrete source of conflict:
+Build four connected dimensions. The first three each need a concrete source of conflict; the fourth is a spatial index that gives the plot and the stage structure stable place names.
 
 1. Core rules and exploitable asymmetry
 - Define the rules that govern power, technology, institutions, or the supernatural.
@@ -289,11 +290,78 @@ Build three connected dimensions, each with a concrete source of conflict:
 - Define the ultimate disaster or central mystery behind the world.
 - Connect a taboo, historical lie, or suppressed truth directly to the protagonist's fate.
 
+4. Spatial structure (map and regions)
+- List the main spaces, regions, or strongholds where the story takes place and how they relate (adjacent, nested, connected, gated).
+- Give each space its key rule or constraint (entry conditions, dangers, mechanics that differ from other spaces).
+- Use the format "Space name: one-line role + key rule"; names must be fixed and unique, because later plot and stage structure will reference them by the same name.
+- Mark which spaces are long-term stages and which are one-off scenes. Do not add decorative geography unrelated to the plot.
+
 [Requirements]
 1. Every setting must support the core appeal of {{genre}} and be usable in scenes.
 2. Make the advantage's interaction with the world rules specific and actionable.
 3. Preserve explicit author facts from the story premise and protagonist profile together with the project-wide guidance. Facts unrelated to world mechanics need not be repeated, but the world must not contradict them.
-4. Return the world-building text only, with no code, analysis, or explanation.`,
+4. The spatial names fixed in dimension 4 are the single key for later references; do not use multiple aliases for one place.
+5. Return the world-building text only, with no code, analysis, or explanation.`,
+    systemSuffix: `[Author guidance for this step — highest priority when present]
+{{step_guidance}}`,
+  },
+  plot_structure: {
+    systemRole: 'You are a long-form narrative structure planner. Every stage (arc) must be able to answer "why does this come after the previous one?" instead of listing parallel intervals.',
+    content: `Plan the book's stage structure: how the story advances in stages, and how each stage connects to the previous one. The plot outline will follow it.
+
+[Authoritative project settings]
+- Genre: {{genre}}
+- Story premise: {{premise}}
+- Character dynamics: {{character_dynamics}}
+- World system: {{world_building}}
+- Planned scale: about {{number_of_chapters}} chapters at roughly {{word_number}} words each
+- Project-wide writing guidance: {{global_guidance}}
+
+[Step 1 — classify each stage (do not skip; this is the core of the task)]
+- A Causal: events chain together, expressible as "because … therefore …".
+- B Goal-driven: the protagonist pursues a goal through repeated attempt–setback–retry.
+- C Exploratory: parallel encounters in a space or cast; events connect as "and then they met …" rather than "therefore …".
+
+[Step 2 — write the progression per type (the only reason this layer exists; every stage must state it)]
+▸ A Causal — write the causal chain:
+  Causality: because <previous stage/prior event> produced <specific outcome>, therefore <this stage's action>
+  Ordering: this stage starts from <the exact state> the previous stage ended in
+▸ B Goal-driven — write the goal and attempt sequence:
+  Goal: <one sentence, the full change from X to Y>
+  Attempt 1: <method> -> outcome <what> -> therefore attempt 2 (explain why a retry is required)
+  Attempt 2: … (each attempt must justify entering the next)
+▸ C Exploratory — write the motivation and path:
+  Motivation: <why explore> (this is what compensates for the absence of causality)
+  Path: <place A> -> discovery <X>; <place B> -> discovery <Y> (nodes connect as "then go to …")
+
+[Length heuristics — to judge how large a stage should be and when to split]
+- 5–8 chapters: too short
+- 10–15 chapters: tight, good for the first stage
+- 20–30 chapters: full, good for mid-book core arcs
+- 35–50 chapters: long, must be internally split
+- 50+ chapters: too long, avoid
+-> Give each stage an estimated size (e.g. "about 20–30 chapters").
+-> If a stage is expected to exceed 30 chapters, split out 1–3 inner stages of 5–15 chapters.
+
+[Output format — Markdown only, use headings and lists, no code fences]
+# Stage Structure
+## Stage 1: <name> (approx. X–Y chapters)
+- Type: A Causal / B Goal-driven / C Exploratory
+- Causality: (required for A) because … therefore …
+- Ordering: this stage starts from …
+- Goal: …
+- Turn: …
+  - Sub-arc: <inner stage> (approx. N chapters)
+  - Main arc: <inner stage> (approx. M chapters)
+## Stage 2: <name> (approx. X–Y chapters)
+…
+
+[Requirements]
+1. This is a staged progression skeleton, not a chapter-by-chapter outline. Do not write per-chapter content.
+2. Chapter numbers are estimates ("approx. X–Y chapters"), not contracts.
+3. Preserve explicit author facts from the premise, character dynamics, and world system; never contradict them.
+4. If a stage is type C, do not force a causal link — write motivation/path instead, or it becomes fake causality.
+5. Return only the Markdown above, with no explanation, greetings, or code fences.`,
     systemSuffix: `[Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
   },
@@ -315,6 +383,8 @@ Build three connected dimensions, each with a concrete source of conflict:
 
 [Required structure]
 {{plot_structure_guide}}
+(If the above is a "stage structure / free arc", its Causality/Ordering/Goal/Turn lines are hard constraints:
+ each stage must justify why it follows the previous one.)
 
 [Deliverable]
 Produce a complete outline made of structural turning points rather than chapter-level summaries. Adapt the pacing to the core appeal of {{genre}}.

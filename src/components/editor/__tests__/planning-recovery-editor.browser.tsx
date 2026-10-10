@@ -25,7 +25,7 @@ const project: ProjectData = {
     plotStructure: 'three_act', narrativePOV: 'third_limited', coreOutline: '', worldSetting: '', goldenFinger: '', protagonistProfile: '', globalGuidance: '' },
   characterStates: '', createdAt: '', updatedAt: '',
 }
-const sourceExpected = { synopsis: '', premise: '原前提', charactersArch: '', worldbuilding: '', genre: '', totalChapters: 3,
+const sourceExpected = { synopsis: '', premise: '原前提', charactersArch: '', worldbuilding: '', plotStructurePlan: '', genre: '', totalChapters: 3,
   wordsPerChapter: 2000, writingLanguage: 'zh-CN' as const, plotStructure: 'three_act', narrativePov: 'third_limited', globalGuidance: '' }
 function fixture(kind: 'outline' | 'blueprint'): GenerationRecoveryContext {
   const common: GenerationRecoveryContext = {

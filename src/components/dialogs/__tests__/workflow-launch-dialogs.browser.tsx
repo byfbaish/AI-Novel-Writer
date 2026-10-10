@@ -330,13 +330,13 @@ describe('workflow launch dialogs', () => {
       .find(label => label.textContent?.includes('角色图谱'))
     expect(charactersRow).toBeDefined()
     await act(async () => charactersRow?.click())
-    await expect.element(page.getByRole('button', { name: '确认生成（3/4）' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '确认生成（4/5）' })).toBeVisible()
 
     await act(async () => page.getByRole('button', { name: '取消' }).click())
     await renderDialog(false)
     await renderDialog(true)
 
-    await expect.element(page.getByRole('button', { name: '确认生成（4/4）' })).toBeVisible()
+    await expect.element(page.getByRole('button', { name: '确认生成（5/5）' })).toBeVisible()
     expect(onConfirm).not.toHaveBeenCalled()
   })
 

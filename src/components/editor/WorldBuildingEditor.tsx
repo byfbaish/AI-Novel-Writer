@@ -43,7 +43,7 @@ import {
   isUsableSynopsisCheckpoint,
 } from '../../services/workflows/commands/architecture.command'
 
-type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'synopsis'
+type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'plotStructure' | 'synopsis'
 
 const ARCH_FILES: Array<{
   key: ArchStepKey
@@ -56,12 +56,21 @@ const ARCH_FILES: Array<{
 }> = [
     { key: 'premise', fileName: 'premise.md', labelZh: '故事前提', labelEn: 'Story premise', iconName: 'target', descZh: '故事钩子 · 核心冲突链 · 主角优势 · 悬念骨架', descEn: 'Story hook · core conflict · protagonist edge · suspense structure' },
     { key: 'characters', fileName: 'characters.md', labelZh: '角色图谱', labelEn: 'Character map', iconName: 'users', descZh: '角色弧光 · 关系网络 · 矛盾交织', descEn: 'Character arcs · relationships · interlocking tensions' },
-    { key: 'worldbuilding', fileName: 'worldbuilding.md', labelZh: '世界观', labelEn: 'Worldbuilding', iconName: 'globe', descZh: '核心规则 · 社会结构 · 深层危机', descEn: 'Core rules · social structure · underlying crisis' },
+    { key: 'worldbuilding', fileName: 'worldbuilding.md', labelZh: '世界观', labelEn: 'Worldbuilding', iconName: 'globe', descZh: '核心规则 · 社会结构 · 深层危机 · 空间结构', descEn: 'Core rules · social structure · underlying crisis · spatial structure' },
+    { key: 'plotStructure', fileName: 'plot_structure.md', labelZh: '阶段结构', labelEn: 'Stage structure', iconName: 'compass', descZh: '阶段划分 · 因果/时序推进 · 篇幅约束', descEn: 'Stage breakdown · causal progression · length heuristics' },
     { key: 'synopsis', fileName: 'synopsis.md', labelZh: '情节大纲', labelEn: 'Plot outline', iconName: 'map', descZh: '结构推进 · 转折节奏 · 伏笔闭环', descEn: 'Story progression · turning points · setup and payoff' },
   ]
 
-/** 故事架构编辑器 — 显示四个架构文件状态，并提供 AI 生成入口 */
-export default function WorldBuildingEditor({ projectKey }: { projectKey: string }) {
+/** 架构步骤键 → project_core 字段名（plotStructure 的正文实际存于 plotStructurePlan）。 */
+const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
+  premise: 'premise',
+  characters: 'charactersArch',
+  worldbuilding: 'worldbuilding',
+  plotStructure: 'plotStructurePlan',
+  synopsis: 'synopsis',
+}
+
+/** 故事架构编辑器 — 显示五个架构文件状态，并提供 AI 生成入口 */export default function WorldBuildingEditor({ projectKey }: { projectKey: string }) {
   // ✅ 精确订阅，避免 novelConfig 等变化导致不必要的 loadStatus 重建
   const currentProject = useProjectStore(s => s.currentProject)
   const text = useLocaleStore(s => s.text)
@@ -197,16 +206,21 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
       coveredTo = 0
       recoveredWorldBuildingCandidate = ''
     }
+    const customStageStructure = (core?.plotStructurePlan?.length ?? 0) > 50
     const status: Record<string, boolean> = {
       premise: (core?.premise?.length ?? 0) > 50,
       characters: rosterSnapshot?.status === 'ready',
       worldbuilding: (core?.worldbuilding?.length ?? 0) > 50,
+      // 阶段结构：仅有自由弧正文才算「已生成」；为空时视为「待生成」，
+      // 但其内容可由枚举模板兜底展示（openArchFile 内处理）。
+      plotStructure: customStageStructure,
       synopsis: (core?.synopsis?.length ?? 0) > 50,
     }
     const counts: Record<string, number> = {
       premise: status.premise ? (core?.premise?.length ?? 0) : 0,
       characters: status.characters ? (rosterSnapshot?.renderedMarkdown.length ?? 0) : 0,
       worldbuilding: status.worldbuilding ? (core?.worldbuilding?.length ?? 0) : 0,
+      plotStructure: customStageStructure ? (core?.plotStructurePlan?.length ?? 0) : 0,
       synopsis: status.synopsis ? (core?.synopsis?.length ?? 0) : 0,
     }
     if (
@@ -277,6 +291,8 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
     const filePath = `ai-novel://core/${f.key}`
     const tabId = createProjectArchTabId(projectKey, filePath)
     let content = ''
+    /** 阶段结构内容是否来自枚举模板兜底（老模板用户）。 */
+    let archEnumFallback = false
     try {
       if (f.key === 'characters') {
         const roster = await loadCharacterRosterStatus()
@@ -290,7 +306,21 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
           'db:project-core-get',
           projectSession.projectPath,
         )) as Record<string, unknown> | null
-        content = (core?.[f.key] as string) || ''
+        // 架构步骤键与 DB 字段名不一定同名（plotStructure → plotStructurePlan）。
+        content = (core?.[DB_FIELD_BY_STEP[f.key]] as string) || ''
+        // ★ 老模板（枚举）用户：自由弧正文为空时，用枚举模板派生内容预填编辑器，
+        //   让作者「看得到现有的弧」。ArchFileViewer 会显示「不建议修改」提示，
+        //   但内容仍可编辑（不冻结）——作者改一次即落库为自由弧。
+        if (f.key === 'plotStructure' && content.trim().length <= 50) {
+          const totalChapters = Number(core?.totalChapters ?? currentProject?.novelConfig?.totalChapters) || 0
+          const writingLanguage = (core?.writingLanguage ?? currentProject?.novelConfig?.writingLanguage) === 'en-US'
+            ? 'en-US' as const
+            : 'zh-CN' as const
+          const structure = (core?.plotStructure as string) || currentProject?.novelConfig?.plotStructure || 'three_act'
+          const { getPlotStructureGuide } = await import('../../services/workflows/architecture-workflow')
+          content = getPlotStructureGuide(structure, totalChapters, writingLanguage)
+          archEnumFallback = content.trim().length > 0
+        }
       }
     } catch {
       return
@@ -307,6 +337,7 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
         store.syncTabContent(tabId, content)
         store.markTabSaved(tabId, content)
       }
+      store.setTabArchEnumFallback(tabId, archEnumFallback)
     } else {
       store.openFile({
         id: tabId,
@@ -316,6 +347,7 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
         content,
         savedContent: content,
         projectKey,
+        archEnumFallback,
       })
     }
   }

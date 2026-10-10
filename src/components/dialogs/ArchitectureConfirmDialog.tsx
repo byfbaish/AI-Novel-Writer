@@ -15,7 +15,7 @@ import { ipc } from '../../services/ipc-client'
 import { resolveWritingLanguage } from '../../shared/writing-language'
 import { assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS, DEFAULT_PLANNING_TARGET_UNITS, parsePlanningTargetUnits, PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../shared/plot-outline-contract'
 
-type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'synopsis'
+type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'plotStructure' | 'synopsis'
 
 const ARCH_FILES: Array<{
   key: ArchStepKey
@@ -28,9 +28,12 @@ const ARCH_FILES: Array<{
 }> = [
   { key: 'premise', fileName: 'premise.md', label: '故事前提', labelEn: 'Premise', iconName: 'target', desc: 'Logline、核心冲突、金手指定位', descEn: 'Logline, core conflict, and protagonist advantage' },
   { key: 'characters', fileName: 'characters.md', label: '角色图谱', labelEn: 'Characters', iconName: 'users', desc: '角色弧光、关系网、矛盾交织', descEn: 'Character arcs, relationships, and conflicts' },
-  { key: 'worldbuilding', fileName: 'worldbuilding.md', label: '世界观', labelEn: 'World building', iconName: 'globe', desc: '核心规则、阶层断层、深层危机', descEn: 'Core rules, social fault lines, and hidden crises' },
+  { key: 'worldbuilding', fileName: 'worldbuilding.md', label: '世界观', labelEn: 'World building', iconName: 'globe', desc: '核心规则、阶层断层、深层危机、空间结构', descEn: 'Core rules, social fault lines, hidden crises, and spatial structure' },
+  { key: 'plotStructure', fileName: 'plot_structure.md', label: '阶段结构', labelEn: 'Stage structure', iconName: 'compass', desc: '阶段划分、因果时序推进、篇幅约束', descEn: 'Stage breakdown, causal progression, and length heuristics' },
   { key: 'synopsis', fileName: 'synopsis.md', label: '情节大纲', labelEn: 'Synopsis', iconName: 'map', desc: '三幕式情节骨架', descEn: 'Three-act plot structure' },
 ]
+
+const ARCH_STEP_COUNT = ARCH_FILES.length
 
 interface Props {
   isOpen: boolean
@@ -243,7 +246,7 @@ export default function ArchitectureConfirmDialog({
                 {text('勾选要生成的步骤', 'Sections to generate')}
               </p>
               <button
-                onClick={() => setChecked({ premise: true, characters: true, worldbuilding: true, synopsis: true })}
+                onClick={() => setChecked({ premise: true, characters: true, worldbuilding: true, plotStructure: true, synopsis: true })}
                 className="text-xs underline"
                 style={{ color: 'var(--color-text-muted)' }}
               >
@@ -420,7 +423,7 @@ export default function ArchitectureConfirmDialog({
           <Button variant="outline" onClick={onClose} disabled={isConfirming}>{text('取消', 'Cancel')}</Button>
           <Button variant="default" onClick={handleConfirm} disabled={noneSelected || isConfirming || (checked.synopsis && preferenceLoading)}>
             <Wand2 size={13} />
-            {isConfirming ? text('校验中...', 'Validating...') : text(`确认生成（${selectedSteps.length}/4）`, `Generate (${selectedSteps.length}/4)`)}
+            {isConfirming ? text('校验中...', 'Validating...') : text(`确认生成（${selectedSteps.length}/${ARCH_STEP_COUNT}）`, `Generate (${selectedSteps.length}/${ARCH_STEP_COUNT})`)}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -37,6 +37,7 @@ export interface ProjectCoreRow {
     premise: string
     worldbuilding: string
     characters_arch: string
+    plot_structure_plan: string
     synopsis: string
     character_states: string
     created_at: string
@@ -66,6 +67,8 @@ export interface ProjectCoreData {
     premise: string
     worldbuilding: string
     charactersArch: string
+    /** 第五层「阶段结构 / 自由弧」全文；空则消费点回退到 plotStructure 枚举模板。 */
+    plotStructurePlan: string
     synopsis: string
     characterStates: string
 }
@@ -75,6 +78,7 @@ export type ProjectCoreSynopsisExpected = Pick<ProjectCoreData,
     | 'premise'
     | 'charactersArch'
     | 'worldbuilding'
+    | 'plotStructurePlan'
     | 'genre'
     | 'totalChapters'
     | 'wordsPerChapter'
@@ -121,6 +125,7 @@ function rowToData(row: ProjectCoreRow): ProjectCoreData {
         premise: row.premise,
         worldbuilding: row.worldbuilding,
         charactersArch: row.characters_arch,
+        plotStructurePlan: row.plot_structure_plan,
         synopsis: row.synopsis,
         characterStates: row.character_states,
     }
@@ -181,6 +186,7 @@ export class ProjectCoreRepository {
             protagonistProfile: 'protagonist_profile',
             premise: 'premise',
             worldbuilding: 'worldbuilding',
+            plotStructurePlan: 'plot_structure_plan',
             synopsis: 'synopsis',
             characterStates: 'character_states',
         }
@@ -220,6 +226,7 @@ export class ProjectCoreRepository {
             AND premise = ?
             AND characters_arch = ?
             AND worldbuilding = ?
+            AND plot_structure_plan = ?
             AND genre = ?
             AND total_chapters = ?
             AND words_per_chapter = ?
@@ -233,6 +240,7 @@ export class ProjectCoreRepository {
             expected.premise,
             expected.charactersArch,
             expected.worldbuilding,
+            expected.plotStructurePlan,
             expected.genre,
             expected.totalChapters,
             expected.wordsPerChapter,
@@ -256,6 +264,7 @@ export class ProjectCoreRepository {
             protagonistProfile: '',
             premise: '',
             worldbuilding: '',
+            plotStructurePlan: '',
             synopsis: '',
             characterStates: '',
         })

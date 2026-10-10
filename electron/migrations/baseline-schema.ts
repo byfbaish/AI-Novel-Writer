@@ -37,6 +37,8 @@ export function applyBaselineTables(db: BetterSqlite3.Database): void {
       premise TEXT DEFAULT '',                    -- 故事前提
       worldbuilding TEXT DEFAULT '',              -- 世界观
       characters_arch TEXT DEFAULT '',            -- 人物群像网络
+      -- [架构·第五层：阶段结构 / 自由弧]（原 plot_structure_guide 硬编码层的显性化落点）
+      plot_structure_plan TEXT DEFAULT '',        -- 作者/架构阶段生成的阶段结构全文（空则回退枚举模板）
       synopsis TEXT DEFAULT '',                   -- 情节总大纲
       -- [系统缓存]
       character_states TEXT DEFAULT '',           -- 全书角色动态快照
@@ -965,6 +967,9 @@ export function initializeLegacyBaselineSchema(db: BetterSqlite3.Database, impor
   addProjectCoreTextColumn('world_setting', 'worldbuilding')
   addProjectCoreTextColumn('protagonist_profile')
   addProjectCoreTextColumn('plot_tree_snapshot')
+  // 第五层「阶段结构 / 自由弧」：空值表示尚未显性化，消费点会自动回退到枚举模板。
+  // 不从旧字段继承（旧项目没有该项内容），保持空串即可。
+  addProjectCoreTextColumn('plot_structure_plan')
   if (!projectCoreColumns.has('writing_language')) {
     db.exec("ALTER TABLE project_core ADD COLUMN writing_language TEXT NOT NULL DEFAULT 'zh-CN'")
     projectCoreColumns.add('writing_language')

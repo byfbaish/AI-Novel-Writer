@@ -13,6 +13,7 @@ describe('createDefaultArchitectureSelection', () => {
       premise: true,
       characters: false,
       worldbuilding: true,
+      plotStructure: true,
       synopsis: true,
     })
   })
@@ -27,6 +28,7 @@ describe('createDefaultArchitectureSelection', () => {
       premise: true,
       characters: true,
       worldbuilding: true,
+      plotStructure: true,
       synopsis: true,
     })
   })
@@ -41,6 +43,7 @@ describe('createDefaultArchitectureSelection', () => {
       premise: false,
       characters: true,
       worldbuilding: false,
+      plotStructure: true,
       synopsis: true,
     })
   })
