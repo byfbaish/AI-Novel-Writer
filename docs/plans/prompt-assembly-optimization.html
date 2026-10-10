@@ -560,16 +560,16 @@ function normalizeForFingerprint(text: string): string {
   <tbody>
     <tr>
       <td><b>P1</b></td>
-      <td><b>第 6 项</b> · 拆解 <code>user_guidance</code>：把「通用写作规范」与「本章微操」分离，通用部分上浮到缓存命中区</td>
+      <td><b>第 6 项</b> · 消除 Prompt 组装中的<b>逐字重复</b>（确立「单次请求内每份内容只装一次」不变量）</td>
       <td><span class="tag t-purple">架构</span></td>
-      <td>占 prompt <b>约 36%</b>，是最大单一变量段；上浮后可跨章命中缓存，直接省钱省延迟</td>
+      <td>实测最坏情况同一份作者资料块被重复发送 <b>8 次</b>（初始 1 + 续写 7 + 压缩 1）；纯减法、零新依赖</td>
       <td><span class="tag t-amber">中高</span></td>
-      <td><span class="tag t-red">高</span></td>
+      <td><span class="tag t-amber">中</span></td>
       <td><b>★★★★☆</b></td>
     </tr>
     <tr>
       <td><b>P2</b></td>
-      <td><b>新增</b> · 蓝图场景 → AI 生成角色卡（第 N 章出现的「老猫」→ 依本章剧情 + 全书蓝图，判定其活跃于副本还是主线，产出候选卡交作者审阅）</td>
+      <td><b>新增</b> · 蓝图场景 → AI 生成角色卡（第 N 章出现的「老猫」→ 依本章剧情 + 全书蓝图，产出完整候选卡交作者审阅）</td>
       <td><span class="tag t-purple">新功能</span></td>
       <td>打通「有剧情无人卡」的核心断点；复用已有 70–80% 提案闭环，补齐审阅入口</td>
       <td><span class="tag t-blue">中</span></td>
@@ -597,30 +597,60 @@ function normalizeForFingerprint(text: string): string {
   </tbody>
 </table>
 
-<h3>P1 · 第 6 项为何排第一<span style="color:var(--amber)">（结论已更正，见设计稿）</span></h3>
+<h3>P1 · 第 6 项：消除 Prompt 组装中的逐字重复<span style="color:var(--amber)">（已重新定义，见 v2 设计稿）</span></h3>
 <div class="box box-amber">
-  <span class="bt">更正：本节原表述有误，P1 已重新定义</span>
-  经逐行核对代码，<code>user_guidance</code> <b>并非</b>「占 prompt 约 36% 的大字段」。
-  它是<b>章节蓝图里的单章字段</b>（<code>ChapterCardEditor</code> 一个 3 行 textarea，提示语写明
-  「写稿时作为最高优先级注入」），语义按设计就是<b>逐章变化的本章微操</b>，典型 1–2 句。
-  原先的「36%」是 <code>globalGuidance</code> + <code>user_guidance</code> + 执行合同静态长文
-  <b>合计</b>按「逐章可变」归类得到的比例，被我误写成单字段占比。
+  <span class="bt">两次更正记录（保留以便追溯）</span>
+  <b>第一次更正</b>：§13 初稿称 <code>user_guidance</code>「占 prompt 约 36%」，属误记——
+  那是 <code>globalGuidance</code> + <code>user_guidance</code> + 执行合同静态长文的<b>合计</b>比例；
+  <code>user_guidance</code> 实为<b>章节蓝图里的单章字段</b>（<code>ChapterCardEditor</code> 三行 textarea，语义即「本章微操」），
+  按设计逐章变化，没有可上浮到缓存前缀的稳定部分。原「通用规范上浮 / 本章微操留守」方案<b>不成立</b>。
   <br><br>
-  因此 <b>「把通用规范上浮、本章微操留守」不成立</b>——该字段里没有可上浮的稳定部分，
-  强行做内容级切分反而会污染跨章缓存前缀，让后续所有章节缓存失效。
-  <br><br>
-  <b>P1 重新定义为</b>：消除 <code>user_guidance</code> 的<b>三处重复注入</b>
-  （<code>system</code> 尾部 ★额外指导★ + <code>【本章信息】</code> JSON + <code>【本章执行合同】</code> 行），
-  确立「单次请求中恰好出现 1 次」的不变量。纯减法、零新依赖、收益确定。
-  详见 <a href="./p1-user-guidance-split.md">P1 设计稿</a>。
+  <b>第二次更正（本次）</b>：进一步实测单次请求的全部消息后发现，真正的重复<b>不在</b> <code>user_guidance</code>，
+  而是<b>结构性</b>的：<code>chapterMaterials.text</code>（含全书作者资料原文 + 定稿原文片段）
+  在<b>初始请求装一遍、每次续写再各装一遍、压缩修订再装一遍</b>。
+  最坏情况同一份资料被重复发送 <b>8 次</b>。
 </div>
+<h4>实测重复清单（仅计逐字/近乎逐字重复，不含语义级）</h4>
+<table>
+  <thead><tr><th style="width:46px">#</th><th>重复内容</th><th style="width:52%">出现位置</th><th style="width:74px">严重度</th></tr></thead>
+  <tbody>
+    <tr><td><b>D1</b></td><td><code>chapterMaterials.text</code> 整体</td>
+      <td>初始请求 <code>composeInitialPrompt</code>；每次续写 <code>draftAuthorMaterialBlock</code>；压缩修订</td>
+      <td><span class="tag t-red">极高</span></td></tr>
+    <tr><td><b>D2</b></td><td><code>architecture</code> + <code>【作者资料】</code></td>
+      <td><code>template.content</code> 的 <code>【全书设定池】</code> vs <code>chapterMaterials.text</code> 的 <code>【作者资料…】</code></td>
+      <td><span class="tag t-red">高</span></td></tr>
+    <tr><td><b>D3</b></td><td><code>globalGuidance</code></td>
+      <td><code>template.content</code> 的 <code>【全局写作要求】</code> vs <code>draftAuthorMaterialBlock</code> 同名段落</td>
+      <td><span class="tag t-red">高</span></td></tr>
+    <tr><td><b>D4</b></td><td><code>writingStyle</code> + 文风适用边界</td>
+      <td><code>template.content</code> + <code>systemSuffix</code> vs <code>draftAuthorMaterialBlock</code></td>
+      <td><span class="tag t-amber">中</span></td></tr>
+    <tr><td><b>D5</b></td><td><code>novel_config</code> JSON</td>
+      <td><code>draftAuthorMaterialBlock</code> 的 <code>【小说配置事实】</code> vs <code>systemSuffix</code> 的 <code>- 小说配置：</code></td>
+      <td><span class="tag t-amber">中</span></td></tr>
+    <tr><td><b>D6</b></td><td><code>user_guidance</code></td>
+      <td><code>system</code> 尾部 ★额外指导★ + <code>【本章信息】</code> JSON + <code>【本章执行合同】</code> 行</td>
+      <td><span class="tag t-blue">低</span></td></tr>
+    <tr><td><b>D7</b></td><td><code>chapterLengthContract</code></td>
+      <td>续写/压缩 prompt 内嵌一份，初始 prompt 末尾又追加一份</td>
+      <td><span class="tag t-blue">低</span></td></tr>
+  </tbody>
+</table>
+<h4>根因</h4>
+<p>两套组装路径并存且边界未定义：
+<b>路径 A</b>（<code>promptBuilder.build()</code>，仅用于初始请求）与
+<b>路径 B</b>（<code>draftAuthorMaterialBlock()</code>，用于续写与压缩）。
+路径 B 为「自包含」独立拼了一套作者资料块，内容与路径 A 高度重叠，且还把 <code>chapterMaterials.text</code> 整个再装一遍。
+初始请求自己也有内部重复：<code>composeInitialPrompt</code> 把 <code>chapterMaterials.text</code> 与 <code>promptBuilder.build()</code> 并排拼接。</p>
+<h4>方案与硬约束</h4>
 <ul>
-  <li><b>真实问题</b>：同一段作者文字在单次 prompt 里出现 <b>3 次</b>（含 JSON 序列化的 key 名与缩进开销）。</li>
-  <li><b>唯一实质风险</b>：移除【本章执行合同】里的「作者本章指导」行后，
-    <code>【作者本章任务】</code> 这段约束规则的覆盖范围会缩水。设计稿给出两种保全方案，建议「收紧措辞」。</li>
-  <li><b>明确不做</b>：语义级跨段去重（<code>coreOutline</code> ↔ <code>premise</code> 措辞不同但语义重叠）
-    属于改写作者原文，触碰 ADR 0020 红线，且需预请求 AI —— 与第 7/8 项是同一件事，应在那两项里统一设计。</li>
+  <li><b>不变量 I1</b>：任一作者原文 / 规则文本，在单次请求（system + user 合计）里逐字出现<b>恰好 1 次</b>。</li>
+  <li><b>不变量 I2</b>：续写 / 压缩只增补本轮新增内容（新正文 + 本轮篇幅指令），不重复已确立内容。</li>
+  <li><b>明确排除</b>：语义级跨段去重（<code>coreOutline</code> ↔ <code>premise</code>）—— 属改写作者原文、触碰 ADR 0020，
+    且是第 7/8 项（A 类固化 / B 类预请求去重）的职责，<b>不在本项做</b>。</li>
 </ul>
+<p>详见 <a href="./p1-literal-dedup.md">P1 v2 设计稿</a>（含分三步实施、验收断言、预计受影响的 15–25 条测试）。</p>
 
 <h3>P2 · 蓝图场景 → AI 角色卡（可行性评估已通过）</h3>
 <div class="box box-green">
@@ -640,10 +670,19 @@ function normalizeForFingerprint(text: string): string {
       <code>import</code> 与 <code>finalized-generation</code> 两种来源，<code>directory</code> / <code>generation</code>
       提案没有对应的 UI 列表 → 作者看不到、批不了。</li>
   <li><b>缺入口按钮</b>：<code>CharactersView.tsx</code> 角色卡管理界面没有「从蓝图 AI 生成」的入口。</li>
-  <li><b>缺「副本 / 主线」语义</b>：<code>CharacterRole</code> 枚举只有 protagonist / antagonist / supporting / minor，
+  <li><b>缺「副本 / 主线」归属语义</b>：<code>CharacterRole</code> 枚举只有 protagonist / antagonist / supporting / minor，
       没有「活跃于某个副本」还是「加入主线」的概念。方案：先写进 <code>notes</code> / <code>arc</code> 字段（零 schema 改动），
       确有必要再评估新增字段。</li>
 </ol>
+<div class="box box-blue">
+  <span class="bt">边界（已与作者确认）</span>
+  P2 <b>只解决「AI 生成角色卡」</b>，不与地图 / 区域架构挂钩。
+  归属语义先用 <code>notes</code> / <code>arc</code> 承载文本，不做结构化建模。
+  <br>
+  地图 / 区域一旦上线，会<b>同时影响蓝图与大纲的生成方式</b>，属整体架构议题，
+  需单独评估并重审它与 P2、与 prompt 组装的关系 —— 见下方 P5。届时再决定是否把
+  P2 的归属语义升级为结构化字段。
+</div>
 
 <h4>建议落地顺序</h4>
 <div class="flow">
@@ -660,11 +699,15 @@ function normalizeForFingerprint(text: string): string {
   <li><b>P4（A 类固化）</b>：收益最治本（源头消除重复），但要动「作者确认 → 替换原配置」这条<b>触碰权威数据</b>的路径，需要完整的 diff 预览、撤销与审计设计。在 P1 的拆解判据稳定之前不宜开工，故排末位。</li>
 </ul>
 
-<h3>P5 · 地图 / 区域架构约束<span class="tag t-hold" style="margin-left:8px">评估项</span></h3>
+<h3>P5 · 地图 / 区域架构约束<span class="tag t-hold" style="margin-left:8px">独立立项评估</span></h3>
 <div class="box box-amber">
   <span class="bt">待评估：工程目前缺乏地图与方位层面的架构约束</span>
   观察（来自 P2 讨论）：从通用视角看，<b>「副本」与「区域地图」本质是同一件事</b>——
-  都是「角色 / 事件所处的空间容器」。差别只在粒度与用途：
+  都是「角色 / 事件所处的空间容器」。差别只在粒度与用途。
+  <br><br>
+  <b>定位（已与作者确认）</b>：本项<b>不与 P2 挂钩</b>，属<b>整体架构</b>议题。
+  地图 / 区域一旦上线，会<b>同时影响蓝图与大纲的生成方式</b>，
+  因此必须独立评估，并在评估后<b>重审它与 P2、以及它与 prompt 组装的关系</b>。
 </div>
 <table>
   <thead><tr><th style="width:150px">类型</th><th>说明</th><th style="width:210px">与「副本」的关系</th></tr></thead>
@@ -677,11 +720,13 @@ function normalizeForFingerprint(text: string): string {
 </table>
 <h4>为什么值得单列</h4>
 <ul>
-  <li><b>与 P2 直接相关</b>：P2 要判定的「这个角色该活跃在副本里还是加入主线」，
-    本质是「角色归属哪个空间容器 + 该容器的空间关系」。没有地图架构，这个判定只能塞进 <code>notes</code> 文本，无法校验、无法复用、无法可视化。</li>
+  <li><b>影响面横跨生成链路</b>：空间约束会渗入蓝图生成、大纲生成、章节正文生成三层。
+    若只当作角色卡的附属字段处理，后面会需要返工。</li>
   <li><b>与 prompt 组装相关</b>：场景描写的连续性依赖空间事实（谁在哪、距离几何、方位是否矛盾）。
     目前这类事实散落在 <code>worldbuilding</code> / <code>premise</code> 自由文本里，既无法去重也无法做一致性检查。</li>
   <li><b>与一致性检查相关</b>：方位 / 空间矛盾是最容易发生的硬伤之一，但没有结构化数据就无从自动检出。</li>
+  <li><b>与 P2 的关系（待重审）</b>：P2 的归属语义现用 <code>notes</code> / <code>arc</code> 文本承载；
+    若地图架构落地，届时再决定是否升级为结构化归属关系。</li>
 </ul>
 <h4>评估要点（开工前需回答）</h4>
 <ol>
@@ -689,9 +734,10 @@ function normalizeForFingerprint(text: string): string {
   <li>「角色 ↔ 空间容器」的归属关系是否需要独立关系表（类似 <code>character_relationships</code>）？</li>
   <li>是否需要可视化（世界地图 → 区域 → 场景的下钻视图）？若是，成本量级会显著上升。</li>
   <li>是否会与现有 <code>blueprint</code> 的 <code>characters</code> / <code>keyEvents</code> 语义冲突？</li>
+  <li><b>对蓝图 / 大纲生成的具体影响</b>：空间约束是否要参与章节的事件编排与场景切分？</li>
 </ol>
-<p><b>排期建议</b>：作为<b>独立立项</b>评估，不并入本轮 prompt 优化。若只做「P2 的归属判定有地方落」，可先设计最小子集
-（世界地图 + 副本两层 + 角色归属关系），避免一次性做完 4 层地图体系。</p>
+<p><b>排期建议</b>：作为<b>独立立项</b>评估，不并入本轮 prompt 优化。
+评估时若确认只需最小子集（世界地图 + 副本两层 + 角色归属关系），再拆分实施；避免一次性做完 4 层地图体系。</p>
 
 </div>
 </body>
