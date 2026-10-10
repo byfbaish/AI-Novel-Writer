@@ -95,11 +95,27 @@
 
 `architecture-workflow.ts:279-355` 的 `getPlotStructureGuide()` **已经在做"约束大纲走向"** ——
 只不过用的是**公式化百分比切片**（三幕 20/55/25、起承转合各 25%、英雄之旅十二阶段）。
-它被注入 synopsis 步骤（`architecture.command.ts:2284` 的 `.withPlotStructureGuide(...)`）。
+它被注入 synopsis 步骤（`architecture.command.ts:2281` 的 `.withPlotStructureGuide(...)`）。
 
 → **弧 = 把"公式切片"换成"作者定义的阶段故事"。**
 → 落地形态因此从 v2 的"新表 + 新步骤 + 新界面"
   **降为"让一个已有的引导文本可由作者定义"** —— 零新契约、零校验器、零数据模型改动。
+
+**★★★ v4 最终定性（作者）：不是"二选一"，是"取消隐藏"**
+
+> 作者原话：「那就**不是二选一**的问题，因为现在的架构**其实就是五层架构**，
+> 只不过**有一层被隐藏起来了**，而且是**固定编码**。现在要做的就是**把这一层显现出来变成可被管理的状态**，
+> 在故事架构生成阶段，**动态的生成并可调整**，接下来就是**复用现在的管线**。」
+
+→ **`getPlotStructureGuide()` 不是"可选手段"，它本身就是那被硬编码的第五层**
+（无 UI 入口、无数据落点、由 6 个枚举值现算；唯一管理入口是 `NovelConfigEditor.tsx:273` 的下拉框）。
+
+→ **详细显现方案**：[`stage-structure-layer.md`](./stage-structure-layer.md)
+  - 数据落点：`project_core` 加一个可空文本字段（**零新表**）
+  - 生成：架构阶段新增一步（与 worldbuilding 同构，插在 synopsis 之前）
+  - 消费：`architecture.command.ts:2281` **一行三元**（自定义优先、枚举兜底）
+  - 复用：注入点 `{{plot_structure_guide}}`、指纹机制、下游全部不变
+  - **★ 最小可验证版本 < 20 行（6 处"加一项"）**
 
 **★ 二稿的三条结构性发现（保留，作用变为"论证为什么不能绑章号"）**：
 
@@ -111,7 +127,7 @@
    （**v3 备注：这个坐标由大纲自己提供即可，弧不必再给一个平行坐标**）。
 3. ~~弧必须是"结构化 JSON + 新表"~~ —— **v3 撤回**：字段精简后，结构化已从"技术必须"降为"体验问题"。
 - 四大件是**三处硬编码列表**（`ArchitectureConfirmDialog.tsx:29-32`、`ArchFileViewer.tsx:64-67`、
-  `WorldBuildingEditor.tsx:57-60`），新增环节需同步改这三处
+  `WorldBuildingEditor.tsx:57-60`），**显现后需同步改成五项**
 
 ---
 
