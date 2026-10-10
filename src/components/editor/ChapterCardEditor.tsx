@@ -1131,7 +1131,7 @@ function ChapterCardEditorSession({
                     </NativeSelect>
                   </div>
                   <div>
-                    <Label>{text('出场关键人（逗号分隔）', 'Key characters (comma-separated)')}</Label>
+                    <Label>{text('出场关键人（顿号或逗号分隔）', 'Key characters (separated by 、 or ,)')}</Label>
                     <Input
                       value={selected.characters.join('、')}
                       onChange={e => updateField('characters', e.target.value.split(/[,，、\s]+/).filter(Boolean))}
