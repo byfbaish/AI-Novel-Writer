@@ -233,38 +233,59 @@ P2 要「不用作者手填」，那 AI 生成角色卡的**输入上下文**从
 > 如果只给当前角色做了关系网描述，那**可能会搞得他像一个隐形人一样**。」
 >
 > 「哪怕这个角色和已有的角色都不能构成任何关系连接，但不代表**现有蓝图里还未建的角色**跟他不会建起人物关系。
-> 又或者这个角色**看起来很有诱惑力，也许可以作为角色储备卡**。」
+> 又或者这角色**看起来很有诱惑力，也许可以作为角色储备卡**。」
 
-**这条意见是对的，而且指出了我原方案的缺陷**：只做「新角色 → 已有卡」的单向边，
-会让新角色在已有角色的关系网里**不存在** —— 查已有角色时看不到他，正如作者说的「隐形人」。
+作者第五轮补充（贴了实际数据，**推翻了「一条边 + 反向边」的模型**）：
 
-#### 已核实：**存储层天然支持双向**，限制只在 service 层的请求构造（关键发现）
-
-```ts
-// character-roster-repository.ts:1247-1253 —— commitCharacterIdentities 的写入
-for (const relationship of request.relationships) {
-  const fromId = endpoint(relationship.sourceCharacterId, relationship.sourceSelectionKey)
-  const toId   = endpoint(relationship.targetCharacterId, relationship.targetSelectionKey)
-  const from = active(fromId), to = active(toId)
-  db.prepare('INSERT INTO character_relationships VALUES(?,?,?,?,?,?,?,?)')
-    .run(randomUUIDForIdentity(), fromId, toId, relationship.relation, from.name, to.name, source, request.approval.operationId)
-}
+```
+沈舟：
+  异邦幸存者：潜在竞争者
+  首席分析师：信息接收端/舆论压力源
+  首席分析师：信息接收端                       ← 同一目标，两条不同表述
+  主神意志：对抗对象/规则源头
+  副本规则化身：生存压力源/死亡威胁
+  沈晚：情感锚点/软肋
+  异邦幸存者：休整区潜在盟友/竞争者            ← 同一目标，第二条
+异邦幸存者：
+  沈舟：潜在竞争者
+  沈舟：休整区互动对象                         ← 与「沈舟→异邦」不对称、不互等
+  主神意志：筛选目标
 ```
 
-- **`character_relationships` 就是一张 `(from_id, to_id, relation)` 的有向边表**，写入时对端点**无任何批内约束**；
-- 每个端点还带 `source_display_snapshot / target_display_snapshot`（`from.name, to.name`），写入时快照，天然一致；
-- **没有「关系闭合」检查**（`assertRelationshipClosure` 只在**旧 roster 合并路径** :512/:640/:712 用，身份提交路径不用）。
+**读出的语义（关键）**：
+- 「沈舟→异邦：潜在竞争者」与「异邦→沈舟：潜在竞争者」**双向都有** —— 这是**互相独立声明的两条边**；
+- 「沈舟→异邦：休整区潜在盟友/竞争者」**只在沈舟侧有**；「异邦→沈舟：休整区互动对象」**只在异邦侧有**；
+- 「沈舟→首席分析师」有**两条**（信息接收端 / 信息接收端/舆论压力源）—— **同一目标多边、近义表述并存**；
+- 「沈舟→沈晚：情感锚点/软肋」**另一边（沈晚）完全没有对应条目**。
 
-**而 service 层的构造器**（`character-proposal-service.ts:261-269`）**把起点锁进了批次**：
+→ 因此作者上轮的判断成立，**而我「补一条反向边、默认同值」的方案是错的**：
+  它会凭空给沈晚加一条「情感锚点/软肋」的反向条目 —— 这是**制造作者没写的边**。
+
+#### 已核实的正确模型：**每个角色各自持有一组出边，互不镜像**（关键发现）
+
 ```ts
-const from = request.selections.find(i => i.selectionKey === relation.sourceSelectionKey)  // ← 起点必须在本批
-if (!from || from.action === 'keep-unresolved' || ...) throw new Error('CHARACTER_RELATIONSHIP_PROPOSAL_INVALID')
-identityRequest.relationships.push({ ...(from.action === 'create'
-  ? { sourceSelectionKey: from.selectionKey } : { sourceCharacterId: from.characterId }), ... })
+// character-roster-repository.ts:865-871 —— 投影读取
+const relationships = db.prepare(`SELECT r.source_character_id,r.target_character_id,c.name,r.relation
+  FROM character_relationships r JOIN characters c ON c.character_id=r.target_character_id
+  WHERE c.retired=0 ORDER BY r.relationship_id`).all()
+...
+relationships: relationships.filter(item => item.source_character_id === character.characterId)
+  .map(item => ({ target: item.name, relation: item.relation }))
 ```
 
-→ **所以要实现「双向同步」，必须改的是 service 层这一处构造器**（把「起点」也允许用 `sourceCharacterId` 直接指定已有角色），
-**不是**改存储、**不是**加新表。改动面很小、且与既有 `targetCharacterId` 完全对称。
+- 投影时**只按 `source_character_id === 本角色` 过滤** —— 每个角色看到的就是**自己的出边集合**；
+- **没有任何镜像/反向生成逻辑**；渲染（`renderCharacterRosterMarkdown:798-802`）**每条出边输出一行**；
+- 写入端（`commitCharacterIdentities:1247-1253`）接受任意 `(from_id,to_id,relation)`，
+  **同一 `(from,to)` 对允许多条不同 `relation`**（`relationKey = [fromId,toId,relation]` 才判重，:1249-1250）；
+- **限制只在 service 构造器**（`character-proposal-service.ts:261-269`）把「起点」锁进批次：
+  ```ts
+  const from = request.selections.find(i => i.selectionKey === relation.sourceSelectionKey)  // ← 起点必须在本批
+  if (!from || from.action === 'keep-unresolved' || ...) throw new Error('CHARACTER_RELATIONSHIP_PROPOSAL_INVALID')
+  ```
+
+**结论（修正后的模型）**：
+> 关系网 = **每个角色各自声明的一组有向出边**。所谓"双向"**不是自动补反向边**，
+> 而是**允许在同一个新建批次里，同时为「新角色」和「受影响的已有角色」各自声明出边**。
 
 #### 修正后的方案：四层，**只需改 1 处 service 构造器**
 
@@ -273,48 +294,52 @@ identityRequest.relationships.push({ ...(from.action === 'create'
 来源 D 的上下文里显式喂一份「可连接对象清单」，要求 `relationships.target` 只能从清单或本批取：
 ```
 【可建立关系的对象】（只能引用下列姓名，不得虚构新对象）
-A. 已有角色卡：{name}（{role}）—— {一句话现状}
+A. 已有角色卡：{name}（{role}）—— 现有关系：{其出边摘要}
 B. 蓝图提到但尚无卡：{name} —— 出现于第 N 章，{蓝图里的原文片段}
 ```
 - **零主进程改动**（只是在 prompt 的 `sources` 段多装文本）。
 
-**层 2 · 关系目标绑定（单向基础，UI 有改动）**
+**层 2 · 关系目标绑定（UI）**
 
 给每个关系目标加下拉：`[暂不采用] [绑定到已有角色卡 ▾] [标记为「蓝图待建角色」]`
-→ 填 `targetCharacterId`（路径已存在）。**默认「暂不采用」**（作者已认同我的推荐）。
+→ 填 `targetCharacterId`（路径已存在）。**默认「暂不采用」**（作者已认同）。
 
-**层 3 · ⭐ 双向补边（作者本轮核心诉求 · 需改 service 构造器）**
+**层 3 · ⭐ 让「已有角色侧」也能新增出边（作者本轮核心诉求 · 需改 service 构造器）**
 
-当作者确认「新角色 X ↔ 已有角色 Y，关系 = R」时，**写入两条边**：
-```
-X → Y : R      ← 新角色侧（层 2 已能做）
-Y → X : R'     ← 已有角色侧（需新增能力）
-```
-- **`R'` 的取值**：默认与 `R` 相同；但**允许作者单独编辑**（因为关系常有方向性差异，
-  如「师父/徒弟」「暗恋/被暗恋」）。UI 给一个「反向关系」输入框，默认填 `R`。
-- **反向边的起点是已有角色 Y**，因此需要 service 构造器支持
-  `relationships[].sourceCharacterId`（**已有字段**，只是当前被「起点必须在本批」挡住）。
-- **一条边都不自动写**：仍要作者勾选；「双向补边」是勾选后的**效果**，不是自动推断。
-- **`relation` 不能自指**：`fromId === toId` 已被 `commitCharacterIdentities:1250` 挡住。
+作者要的是「**已有的关系网内容也要同步变更**」，正确做法**不是**自动补反向边，而是：
+
+1. 新增的角色 X 与已有角色 Y 建立关系时，**先只写 X 的出边**（层 2 已能做）；
+2. 给作者一个**显式的「同时为 Y 添加一条出边」**选项：
+   ```
+   ☑ 同时为「Y」添加： [ Y → X ] 的关系：[ 输入框，默认留空 ]   ← 默认不勾、默认留空
+   ```
+   - **默认不勾选**（因为多数情况作者只写一侧，如「沈舟→沈晚：情感锚点/软肋」）；
+   - 勾选后**作者自己填 Y 侧关系的措辞**（可以是同义、可以不同、可以反向语义如「徒弟」）；
+   - 这样**完全贴合作者样本的语义**：允许两侧各自表述、允许不对称、允许留空。
+3. 需要 service 构造器支持 `relationships[].sourceCharacterId`（**起点用已有角色 Y**），
+   与既有 `targetCharacterId`（终点用已有角色）**完全对称**。
 
 **改动清单（精确到行）**：
 | 文件 | 改动 | 风险 |
 |---|---|---|
-| `character-proposal-service.ts:261-269` | 允许 `relation.sourceCharacterId` 作为起点（与 `targetCharacterId` 对称）；仍要求该角色在 `identitySnapshot` 里存在且未 retired | 低（新增分支，不动既有分支） |
+| `character-proposal-service.ts:261-269` | 允许 `relation.sourceCharacterId` 作为起点（要求该角色在 `identitySnapshot` 存在且未 retired） | 低（新增分支，不动既有分支） |
 | `src/shared/character-proposal.ts:53` | `ApproveCharacterProposalRequest.relationships[]` 加可选 `sourceCharacterId` | 低（可选字段，向后兼容） |
-| `CharacterProposalSelectionPanel.tsx` | 关系区增加「反向关系」输入 + 双向预览 | 中（仅 UI） |
-| `character-proposal-choices.ts` | choices 带上反向关系 | 低 |
+| `CharacterProposalSelectionPanel.tsx` | 关系区加「同时为已有角色添加出边」勾选 + 措辞输入 | 中（仅 UI） |
+| `character-proposal-choices.ts` | choices 带上「已有角色侧出边」 | 低 |
 
 > ⚠️ **幂等影响**：`approve` 的 `decision` 会被冻结并参与 `CHARACTER_APPROVAL_NONCE_CONFLICT` 比对
 > （`character-proposal-service.ts:220-223`）。新增字段是**可选**的，旧请求序列化结果不变，
-> 所以不影响既有幂等。**但**：同一次 approve 重放时必须序列化一致（既有机制已保证）。
+> 所以不影响既有幂等；同一次 approve 重放序列化一致由既有机制保证。
+
+> ⚠️ **不做的（明确排除）**：**不**自动补反向边、**不**要求两侧关系同值、**不**做语义对称推断 ——
+> 作者样本已证明关系**天然不对称、允许多条、允许同义异形**，任何自动镜像都会制造作者没写的边。
 
 **层 4 · 关系永不自动采纳（安全边界，保持）**
 
-- 关系**绝不**自动写入；一律要作者勾选/绑定（默认 `keep-unresolved`）。
+- 关系**绝不**自动写入；一律要作者勾选/填写（默认 `keep-unresolved`）。
 - 理由：关系写入 `character_relationships`（有 `approval_id` 外键，`m02:31`），属**不可逆的作者事实**；
   ADR 0020 要求保留作者事实，不能由 AI 替作者认定「谁是谁的盟友」。
-- 「双向补边」不违背此原则：它只是把作者已确认的一条关系**写全两侧**。
+- 「为已有角色添加出边」不违背此原则：它是**作者显式勾选并填写措辞**的，不是推断。
 
 #### 关于「储备卡」与「蓝图待建角色」（作者补充的两种情况）
 
@@ -334,12 +359,13 @@ Y → X : R'     ← 已有角色侧（需新增能力）
 |---|---|---|---|
 | **① 提示词注入锚点清单** | 来源 D 的 `sources` 加「可连接对象」段 + `target` 取值约束 | 低（纯文本） | **最高**（治本：生成时就连对人） |
 | **② UI 关系绑定下拉** | 目标未匹配时给 `targetCharacterId` 入口；默认「暂不采用」 | 中（仅 UI） | 高 |
-| **③ ⭐ 双向补边** | service 构造器放开「起点用 `sourceCharacterId`」+ UI 反向关系输入 | 中（1 处 service + UI） | **高**（解决「隐形人」，作者核心诉求） |
+| **③ ⭐ 已有角色侧出边** | service 构造器放开「起点用 `sourceCharacterId`」+ UI「同时为 Y 添加出边」勾选（默认不勾、措辞由作者填） | 中（1 处 service + UI） | **高**（解决「隐形人」，作者核心诉求） |
 | **④ 未建卡目标回填 P1 + 储备卡** | 名字送回 P1；储备卡预填 notes | 低（与 P1 共用） | 中（形成闭环） |
 | **⑤ 批内关系（现状）** | 已可用，无需改动 | 0 | —— |
 
-> **明确不做**：不给关系加自动推断；不做关系图谱可视化（那是 P5 的范围）；
-> 不新增关系表/不改存储层（存储层已天然支持双向）。
+> **明确不做**：**不自动补反向边**、**不要求两侧同值**、**不做语义对称推断**（作者样本证明关系天然不对称、
+> 允许多条、允许同义异形）；不给关系加自动推断；不做关系图谱可视化（那是 P5 的范围）；
+> 不新增关系表/不改存储层（存储层已天然支持任意出边）。
 
 ---
 
@@ -382,7 +408,9 @@ src/components/characters/AiCharacterCardButton.tsx   ← 与 P1 的入口合并
 7. **生成质量**（✅ 作者定调，第一优先级）：来源 D 的产出须满足三条硬要求（内在矛盾 / 挂主线 / 不同质化）。
 8. **关系连接**（✅ 新增，见 §4.2.2）：
    - 新角色可绑定到**已有角色卡**（`targetCharacterId`）；
-   - ⭐ **双向补边**：确认 `X↔Y` 时同时写 `X→Y` 与 `Y→X`，**已有角色的关系网同步变更**（否则新角色成「隐形人」）；
+   - ⭐ **已有角色侧也可新增出边**：作者可勾选「同时为 Y 添加出边」并**自行填写措辞**（默认不勾、不自动镜像），
+     使已有角色的关系网同步变更（否则新角色成「隐形人」）；
+   - 关系**允许多条、允许不对称、允许同义异形**（不强制两侧同值）；
    - 指向「蓝图提到但尚无卡」的角色时给出明确选项，不再静默降级；无关系但有价值者可作**储备卡**。
 9. **回归**：`tsc --noEmit` EXIT=0；定向测试全绿；全量失败集与基线一致。
 
@@ -398,7 +426,7 @@ src/components/characters/AiCharacterCardButton.tsx   ← 与 P1 的入口合并
 | **R4 ADR 0020** | 不得删改既有角色 | 只 `create` 新卡；对已有角色只允许 `map`，不覆盖字段 |
 | **R5 成本** | AI 调用产生费用 | 发送前披露模型/端点（已有先例）；不做自动重试 |
 | **R8 关系误连** | AI 把两个角色错判为有关系，或指向不存在的对象 | 关系**永不自动采纳**（一律作者勾选/绑定）；提示词注入「可连接对象清单」限制 target 取值（§4.2.2） |
-| **R9 双向关系写歪** ⚠️ | 反向边若与正向同值，可能产生语义错的边（如「徒弟」双向都是「徒弟」） | 反向关系**允许作者单独编辑**（默认同值仅为省事）；`fromId===toId` 已被 `commitCharacterIdentities:1250` 挡住 |
+| **R9 关系镜像写歪** ⚠️ | 若自动补反向边/强制两侧同值，会制造作者没写的边（作者样本证明关系天然不对称） | **不自动镜像**：为已有角色补出边须**作者显式勾选 + 自填措辞**；`fromId===toId` 已被 `commitCharacterIdentities:1250` 挡住 |
 | **R6 历史回退的状态机** | ✅ 已核实：多版本天然成立（新 run ⇒ 新批次）；唯一约束是 `cancelled` 批次不可再 approve | 回退走「旧批次内容 → 重新 stage 成新批次 → 采用」，不动 identity 状态机 |
 | **R7 DB 增长** | 每次生成都落一条持久批次 | §9 待确认是否设上限；不设时 UI 默认折叠 |
 
@@ -422,13 +450,13 @@ src/components/characters/AiCharacterCardButton.tsx   ← 与 P1 的入口合并
 | **Step 3** | 「落卡后进入 Prompt」的逐字验收测试 | Step 1/2 |
 | **Step 4** | **来源 D 提示词打磨**（独立一轮：起草 → 试跑 → 对比 → 定稿；含三条硬要求 + 关系锚点清单） | 可并行 |
 | **Step 5** | **关系绑定 UI**（目标未匹配时给 `targetCharacterId` 下拉，§4.2.2 层 2） | Step 1 |
-| **Step 6** | ⭐ **双向补边**（service 构造器放开起点 + UI 反向关系输入，§4.2.2 层 3） | Step 5 |
+| **Step 6** | ⭐ **已有角色侧出边**（service 构造器放开起点 + UI「同时为 Y 添加出边」勾选，§4.2.2 层 3） | Step 5 |
 
 > **新增通道汇总（P2 本次）**：
 > - `character-proposal:list-history`（只读）
 > - 「让旧版生效」走既有 `commitCharacterIdentities` 的 `adopt-generated` 路径（**无需新通道**，
 >   只需一个「把旧 items 重新 stage」的封装）。
-> - **关系连接**：`targetCharacterId` 路径**已存在**；**双向补边**需放开 `sourceCharacterId`
+> - **关系连接**：`targetCharacterId` 路径**已存在**；**已有角色侧出边**需放开 `sourceCharacterId`
 >   （service 构造器 1 处 + shared 类型加 1 个可选字段），**存储层零改动**。
 > - ⛔ **不做** `character-proposal:delete-history`（作者第三轮取消）。
 
@@ -566,9 +594,11 @@ export function findCharacterProposalEvidence(db, source, prove) {
 | 9 | **可编辑的投入程度** | ✅ **「酌情做就好」**。原话：「你要**明确目标是生成一个角色的模板，当然越精确越好，越具有张力越好**。但实际上角色卡在现有功能后续都是可以由作者自行查阅修改的。所以说，在可修改这一块，其实也不是那么重要，酌情做就好。」 |
 | 10 | **来源 D 提示词三要素** | ✅ **采纳我的建议**：「至少一个内在矛盾」「必须与卷纲主线挂钩」「不得与既有卡同质化」——同时覆盖张力、一致性、区别化。原话：「你这个建议就挺好的……如果还有别的需要修改的，让作者在角色卡里改吧。**这个不宜做的太复杂**。」 |
 | 11 | **来源 D 粒度 + 关系连接** | ✅ **一次一个**。并追问「与『还没卡的角色』和『已有卡的角色』的关系连接」→ 见 §4.2.2（已按第四轮意见修正为**双向**）。 |
-| 12 | **关系方向 / 双向同步** ⭐ | ✅ **必须双向**。原话：「关系是**多对多**的，并不只是当前角色要绑定到已有关系图谱里，是要**真正建立起一个关系网**。也就是说，**已有角色卡关系网的内容，是要同步做变更的**，如果只给当前角色做了关系网描述，那**可能会搞得他像一个隐形人一样**。」<br>→ §4.2.2 层 3「双向补边」：写 `X→Y` 的同时补 `Y→X`（反向关系默认同值，可单独编辑）。 |
+| 12 | **关系方向 / 双向同步** ⭐ | ✅ **必须双向**。原话：「关系是**多对多**的，并不只是当前角色要绑定到已有关系图谱里，是要**真正建立起一个关系网**。也就是说，**已有角色卡关系网的内容，是要同步做变更的**，如果只给当前角色做了关系网描述，那**可能会搞得他像一个隐形人一样**。」<br>→ §4.2.2 层 3：**不是**自动补反向边，而是允许**为受影响角色显式新增出边**（默认不勾、措辞由作者填）。 |
 | 13 | **关系绑定下拉默认值** | ✅ 认同我的推荐：默认「**暂不采用**」。 |
 | 14 | **无关系/储备角色** | ✅ 作者补充：「哪怕和已有角色都构不成关系，也不代表**蓝图里还未建**的角色不会跟他建关系；又或者这角色**很有诱惑力，可以作为角色储备卡**。」<br>→ §4.2.2 两条兜底：待建角色**回填 P1**；储备卡**正常建卡 + notes 预填**。 |
+| 15 | **待建角色立即回填 P1** | ✅ **要**。原话：「首先你说的第 2 点，**可以立即回填 P1 待建卡候选，形成闭环**。」 |
+| 16 | **关系模型：不自动镜像** ⭐ | ✅ 作者贴实际数据证明**关系天然不对称**（见 §4.2.2 样本）：<br>· 两侧可各自声明，**不互等**；<br>· 同一目标**允许多条**、允许同义异形；<br>· 一侧可**完全没有**对应条目。<br>→ **推翻**我「补一条反向边、默认同值」的方案：**不自动镜像**，改为「作者显式勾选 + 自填措辞」。 |
 
 > **⭐ 第 9 条对设计重心的影响**：作者把 P2 的目标定为「**生成一个有张力、尽量精确的模板**」，
 > 而「可编辑」降级为非重点（因为落地后作者反正能改）。
@@ -584,16 +614,17 @@ export function findCharacterProposalEvidence(db, source, prove) {
 > 3. **不得与既有卡同质化**（区别化来源）。
 > 其余细节「不宜做得太复杂」，交给作者在角色卡里改。
 
-> **⭐ 第 12 条 —— 双向关系的必要性（本轮最重要的一条）**：
-> 已核实**存储层天然支持**任意 `(from_id, to_id, relation)` 有向边
-> （`character-roster-repository.ts:1247-1253`，无批内约束、无闭合检查）；
-> 限制**只在 service 层构造器**（`character-proposal-service.ts:261-269` 把「起点」锁进批次）。
-> → 因此双向补边**只需放开 service 构造器的起点**（与既有 `targetCharacterId` 对称），
-> **不动存储、不加表**。反向关系的取值默认与正向相同，但允许作者单独编辑（关系常有方向性）。
+> **⭐ 第 12/16 条 —— 关系模型的最终结论（本轮最重要）**：
+> 已核实关系网 = **每个角色各自声明的一组有向出边**，投影时只按 `source_character_id` 过滤
+> （`character-roster-repository.ts:870`），**无镜像逻辑**；写入允许同一 `(from,to)` 多条不同 `relation`
+> （`:1249-1250` 只按 `[fromId,toId,relation]` 三元判重）。
+> 作者样本进一步证明**关系天然不对称** → **不做自动镜像**，改为「作者显式勾选 + 自填措辞」。
+> 限制只在 service 构造器把「起点」锁进批次（`character-proposal-service.ts:261-269`），
+> 放开 `sourceCharacterId` 即可，**存储层零改动**。
 
 ## 10. 仍需确认的小问题
 
-1. **反向关系的默认值**：补反向边时，默认**与正向关系同值**（推荐，简单）
-   还是**必须作者逐条填**（更精确但更啰嗦）？
-2. **「蓝图表里还未建的角色」联动**：选「标记为蓝图待建角色」时，
-   是否**立即回填 P1 待建卡候选**（形成闭环），还是只在关系里留个名字？
+1. **「同时为已有角色添加出边」的 UI 形态**：放在每个关系条目的折叠区（默认收起），
+   还是集中在预览面板底部一个「补充已有角色关系」区？**我倾向后者**（更少干扰、更贴近作者样本的写法）。
+2. **是否允许在角色卡界面之外**（例如已有角色的编辑页）事后补边？还是**只在 AI 生成流程里**提供？
+   （建议：先只在生成流程里做，避免扩大范围。）
