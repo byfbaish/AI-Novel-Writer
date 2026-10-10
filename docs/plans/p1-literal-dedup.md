@@ -41,7 +41,39 @@
 
 > **D1 是真正的大头，也是我在 v1 稿里完全没看到的。**
 
-### 1.1 D1 的机制（最关键的发现）
+### 1.0 Phase 0 实测结果（2026-10-10，已固化为断言）
+
+用 `generate-draft.command.test.ts` 的 `P1 Phase 0 · literal duplication counts` 逐字计数，**实测值**：
+
+| 断言 | 场景 | 实测 | 说明 |
+|---|---|---|---|
+| **D1** | 同一作者字段（`keyEvents`）在**初始请求**内出现次数 | **2** | 比设计预期更严重：初始请求也重复 |
+| **D1** | 同一作者字段在**续写请求**内出现次数 | **2** | 与设计稿一致 |
+| **D3** | `globalGuidance` 在**续写请求**内出现次数 | **1** | 实际没有重复（续写 system 不含它） |
+| **D7** | `【本章篇幅合同】` 在**续写请求**内出现次数 | **1** | 实际没有重复（system rules 里没有） |
+
+**结论修正**：D3 与 D7 经实测**并不重复**，可以从「待修清单」里移除（降为护栏断言）。
+真正的重复只有 **D1（两处请求各 2 次）**，以及初始请求内 `chapterMaterials.text` 与 `template` 的重叠（D2/D4/D5，由既有 `readArchitecture` 去重覆盖了一部分）。
+
+### 1.1 D1 的**真实身份**（经代码定位，与设计稿措辞不同）
+
+设计稿把 D1 描述为「`chapterMaterials.text` 整体被装两遍」。代码定位后，更精确的表述是：
+
+> **同一份作者字段，同时出现在「本章蓝图/本章信息 JSON」和「本章执行合同 authorItems」两个块里。**
+
+证据（`generate-draft.command.ts`）：
+- 初始请求：`composeInitialPrompt` = `[chapterMaterials.text, promptBuilder.build(), …, chapterExecutionContract.authorItems, …]`；
+  而 `promptBuilder.build()` 已含 `【本章信息】{{chapter_info}}`（= `JSON.stringify(writerChapterInfo)`，内含 `keyEvents`），
+  末尾**又追加** `authorItems`（`- 必需事件: ${keyEvents}`）→ 同一字段 2 次。
+- 续写请求：`draftAuthorMaterialBlock` 开头 `【本章蓝图】${JSON.stringify(chapterInfo)}`，
+  结尾**又拼** `chapterExecutionContractText(...).authorItems` → 同一字段 2 次。
+- 压缩请求：同续写（共用 `draftAuthorMaterialBlock`）。
+
+**这才是 Phase 1 要对准的靶子**：不是「删掉 chapterMaterials」，而是
+**让「蓝图 JSON」与「执行合同 authorItems」二选一承担作者字段的呈现**（或让 authorItems 只保留 JSON 里没有的语义包装）。
+
+
+### 1.2 D1 的机制（最关键的发现）
 
 初始请求的组装（`:927-930`）：
 
@@ -212,6 +244,8 @@ continuationPrompt = `${hardRequirements}\n\n${lengthContract}\n\n${authorMateri
 
 1. **逐字计数断言**（核心）：构造一个含作者资料、架构、文风的用例，跑完初始 + 1 次续写 + 1 次压缩，
    对每份作者原文做 `match(/片段/g)`，**每一次请求内均为 1**。
+   ✅ **Phase 0 已落地**：`generate-draft.command.test.ts` 的 `P1 Phase 0 · literal duplication counts` 四条断言，
+   当前把实测值（D1 = 2/2、D3 = 1、D7 = 1）钉成固定值。Phase 1 只需把 D1 的期望值改成 1 即完成该条验收。
    ⚠️ 注意口径是「**每次请求内**为 1」，**不是「整次生成内为 1」** —— 多轮之间重复发送是架构决定的，
    I1 不承诺消除它（见 §3.2.5）。
 2. `chapterMaterials.text` 在同一轮请求内不再重复出现（初始请求内不再与 `promptBuilder.build()` 并排重复）。
@@ -240,7 +274,7 @@ continuationPrompt = `${hardRequirements}\n\n${lengthContract}\n\n${authorMateri
 | 1 | 以「逐字重复消除」为 P1 唯一目标（语义级排除）？ | ✅ **作者已确认：是** |
 | 2 | 步骤顺序 | ✅ **按 1 → 2 → 3** |
 | 3 | 步骤 2 保守还是激进？ | ✅ **保守**；理由更正为「激进在无状态架构下不成立」，见 §3.2.5 |
-| 4 | 步骤 1 是否先做最小版？ | ⏳ **待定** —— 取决于 §3.2.5 的重新评估结论 |
+| 4 | 步骤 1 是否先做最小版？ | ✅ **改为 Phase 0（只加断言，不改业务）→ Phase 1（改 D1 构成）**，见 §6.1 |
 
 ### 6.1 关于第 4 问的重新评估（按作者要求）
 
@@ -260,8 +294,9 @@ continuationPrompt = `${hardRequirements}\n\n${lengthContract}\n\n${authorMateri
      因为它们都指向「`chapterMaterials.text` 与 `promptBuilder.build()` 的职责边界」。
 
 **修订后的实施顺序**：
-- **Phase 0**：加「逐字计数」断言（证明 D1/D2/D3 存在 + 作为护栏）。零业务改动。
-- **Phase 1**：合并原步骤 1 + 步骤 2 —— 定义 `chapterMaterials.text` 与 `template` 的职责边界并去重。**收益最大。**
-- **Phase 2**：步骤 3 收尾（D6 + D7）。
+- ✅ **Phase 0（已完成，2026-10-10）**：加「逐字计数」断言（证明 D1 存在 + 作为护栏）。零业务改动。
+  实测把 D1 从「设计稿的推测」变成「初始 2 / 续写 2」的确定事实，并**排除了 D3/D7**（实测均为 1）。
+- ⏭️ **Phase 1**：合并原步骤 1 + 步骤 2 —— 消除「蓝图 JSON ↔ 执行合同 authorItems」的作者字段重复。**收益最大。**
+- **Phase 2**：步骤 3 收尾（仅剩 D6 `user_guidance`；D7 经实测无需处理）。
 - **P1-B（并行，不阻塞）**：加轮数/体积埋点，为「多轮成本」积累数据。
 

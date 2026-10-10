@@ -2752,6 +2752,119 @@ ${headingPrefix}第3章：潮门
     expect(completePrompt).toContain(referenceWorks)
   })
 
+  // ---------------------------------------------------------------------------
+  // P1 · Phase 0 —— 逐字重复的「量化断言」（零业务改动）
+  //
+  // 目的有两个，且都不是改行为：
+  //   1) 作为**证据**：把「同一份作者原文在同一轮请求里被装了几遍」变成可执行事实，
+  //      而不是靠肉眼估读。P1 的收益判断以此为准。
+  //   2) 作为**护栏**：Phase 1 改构成时，这些断言负责发现「去重去过头」（把不该删的删了）。
+  //
+  // 口径严格按作者界定：只数**逐字/近乎逐字的重复**，不处理语义重复。
+  // 判据 = 某个作者原文串在**单次请求**（system + user 合计）里的出现次数。
+  //
+  // 重要：这里断言的是「单次请求内」的次数，**不是**「整次生成内」的次数。
+  // 多轮之间重复发送是架构决定的（无状态全量请求），I1 不承诺消除它，见 p1-literal-dedup.md §3.2.5。
+  // ---------------------------------------------------------------------------
+  describe('P1 Phase 0 · literal duplication counts (assertion only, no behavior change)', () => {
+    /** 数一段原文在单次请求（把该请求的 system + user 拼起来）里逐字出现的次数。 */
+    const occurrencesInRequest = (task: GenerationTask, needle: string): number => {
+      const joined = task.messages.map(message => message.content).join('\n')
+      if (!needle) throw new Error('occurrencesInRequest 需要一个非空 needle')
+      return joined.split(needle).length - 1
+    }
+
+    /** 取第 index 个物理请求（0 = 初始请求），供多轮场景逐请求核对。 */
+    const requestTasks = (runtime: ReturnType<typeof fakeRuntime>): GenerationTask[] =>
+      runtime.complete.mock.calls.map(([task]) => task)
+
+    it('D1: 同一份作者资料在**单次请求内**应只出现一次（2026-10-10 实测：初始与续写均为 2）', async () => {
+      // 构造：一章首轮被 length 截断 → 触发一次自动续写。
+      // 作者资料哨兵同时出现在【本章蓝图/执行合同】与 chapterMaterials 里，
+      // 若某次请求把这份资料整体再装一遍，它在同一轮里就会出现 2 次。
+      const authorFactSentinel = 'AUTHOR_FACT_SENTINEL_林舟必须在退潮前拿回潮汐钟'
+      const runtime = fakeOutcomes(
+        outcome('初'.repeat(100), 'length', 1),
+        outcome(`${'续'.repeat(400)}。`, 'stop', 2),
+      )
+      const { context, callbacks, command } = setup({
+        runtime, wordsTarget: 500, chapterNumber: 1,
+        keyEvents: authorFactSentinel,
+      })
+
+      await command.execute({ step: {}, context, callbacks })
+
+      const tasks = requestTasks(runtime)
+      expect(tasks.length).toBeGreaterThanOrEqual(2)
+      const initialCount = occurrencesInRequest(tasks[0]!, authorFactSentinel)
+      const continuationCount = occurrencesInRequest(tasks[1]!, authorFactSentinel)
+
+      // ── 当前实测值（Phase 0 证据）：初始 2 / 续写 2 ──
+      // 「2」= 同一份作者原文在同一轮请求里被装了两遍（执行合同 authorItems + 本章信息/材料块）。
+      // Phase 1 的目标是把这两个 2 都收敛到 1；届时把下面的期望值改成 1 即完成该条验收。
+      expect({ initialCount, continuationCount }).toEqual({ initialCount: 2, continuationCount: 2 })
+    })
+
+    it('D2/D3: 架构/作者配置的逐字重复段落在**初始请求内**只出现一次（护栏）', async () => {
+      // 【作者资料】段（来自 chapterMaterials）与【全书设定池】（来自 template.content）
+      // 内容重叠，若并排拼接，同一段设定会在同一轮里出现 2 次。
+      // 既有去重（readArchitecture 的规范化指纹）已把这条压到 1 —— 这条断言是**护栏**，
+      // 防止 Phase 1 顺手把它改回重复，或误删架构独有段落。
+      const sharedArchitectureFact = 'DUP_FACT_SENTINEL_潮门只在终章揭晓'
+      const architectureOnly = 'ARCH_ONLY_SENTINEL_顾舟的父亲在潮门事故中失踪'
+      let observedTask: GenerationTask | undefined
+      const runtime = fakeRuntime((_attempt, task) => {
+        observedTask = task
+        return outcome('新事件继续发生。'.repeat(70), 'stop')
+      })
+      const { context, callbacks, command } = setup({
+        runtime, wordsTarget: 500,
+        premise: `# 故事前提\n\n${sharedArchitectureFact}\n\n${architectureOnly}`,
+        coreOutline: sharedArchitectureFact,
+      })
+
+      await command.execute({ step: {}, context, callbacks })
+
+      const completePrompt = observedTask!.messages.map(message => message.content).join('\n')
+      expect(completePrompt.match(new RegExp(sharedArchitectureFact, 'gu'))).toHaveLength(1)
+      expect(completePrompt).toContain(architectureOnly)
+    })
+
+    it('D3: 全局写作要求（globalGuidance）在**单次续写请求内**只出现一次（护栏）', async () => {
+      const guidanceSentinel = 'GLOBAL_GUIDANCE_SENTINEL_全程克制的白描，避免抒情'
+      const runtime = fakeOutcomes(
+        outcome('初'.repeat(100), 'length', 1),
+        outcome(`${'续'.repeat(400)}。`, 'stop', 2),
+      )
+      const { context, callbacks, command } = setup({
+        runtime, wordsTarget: 500, chapterNumber: 1,
+        globalGuidance: guidanceSentinel,
+      })
+
+      await command.execute({ step: {}, context, callbacks })
+
+      const joined = requestTasks(runtime)[1]!.messages.map(message => message.content).join('\n')
+      // 2026-10-10 实测为 1：续写请求的 system 不含 globalGuidance，只在 user 的资料块里有一份。
+      expect(joined.match(new RegExp(guidanceSentinel, 'gu'))).toHaveLength(1)
+    })
+
+    it('D7: 篇幅合同在**单次续写请求内**只出现一次（护栏）', async () => {
+      const runtime = fakeOutcomes(
+        outcome('初'.repeat(100), 'length', 1),
+        outcome(`${'续'.repeat(400)}。`, 'stop', 2),
+      )
+      const { context, callbacks, command } = setup({
+        runtime, wordsTarget: 500, chapterNumber: 1,
+      })
+
+      await command.execute({ step: {}, context, callbacks })
+
+      const joined = requestTasks(runtime)[1]!.messages.map(message => message.content).join('\n')
+      // 2026-10-10 实测为 1：续写 prompt 内嵌一份，system 的 rules 里没有第二份。
+      expect(joined.match(/【本章篇幅合同】/gu) ?? []).toHaveLength(1)
+    })
+  })
+
   it.each([
     {
       writingLanguage: 'zh-CN' as const,
