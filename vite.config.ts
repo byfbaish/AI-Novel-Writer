@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { configDefaults } from 'vitest/config';
 import path from 'node:path';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import electron from 'vite-plugin-electron/simple';
 import electronRenderer from 'vite-plugin-electron-renderer';
@@ -14,8 +15,23 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // 从 package.json 读取版本号，构建时注入到前端
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'));
 
+// Local fork: two dev-only environment fixes. Both run before Electron is
+// spawned, so the child process inherits the corrected environment.
+//   1. ELECTRON_RUN_AS_NODE makes electron.exe boot as plain Node: no Chromium,
+//      no built-in modules, and `import { app } from 'electron'` dies on load.
+//   2. The installed release owns %APPDATA%/ai-novel-writer as its Electron
+//      userData. The global data root defaults to the same path, and the
+//      startup self-check rejects any intersection with GLOBAL_ROOT_INTERSECTION.
+// Neither touches build output; `serve` is the only affected command.
+function applyDevEnvironmentFixes(command: string): void {
+  if (command !== 'serve') return
+  delete process.env.ELECTRON_RUN_AS_NODE
+  process.env.AI_NOVEL_APP_DATA_HOME ??= path.join(os.homedir(), '.ai-novel-writer-dev')
+}
 // https://vitejs.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => {
+  applyDevEnvironmentFixes(command)
+  return {
   // BrowserWindow.loadFile() serves the renderer through file://.  Keep public
   // and bundled asset URLs relative to dist/ rather than the filesystem root.
   base: './',
@@ -84,4 +100,5 @@ export default defineConfig({
       }
     }
   }
+  };
 });
