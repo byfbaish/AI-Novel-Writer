@@ -1517,14 +1517,16 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(user.slice(blueprintIndex, lengthContractIndex)).toContain(keyEvents)
     expect(user.slice(blueprintIndex, lengthContractIndex)).toContain(suspenseHook)
     expect(user.slice(blueprintIndex, lengthContractIndex)).toContain(userGuidance)
-    // 去重不变量（Phase 1 后）：
+    // 去重不变量（Phase 1 + Phase 2 后）：
     // - 必需事件 / 章节钩子 只在【本章信息】JSON 出现 1 次（authorItems 重列已消除）；
-    // - 作者本章指导 仍有 2 次：JSON 一次 + systemSuffix 的 ★额外指导★ 一次
-    //   —— 这是 D6，属于 Phase 2 范围，此处按现状固定，Phase 2 收敛后再改。
-    for (const authorText of [keyEvents, suspenseHook]) {
+    // - 作者本章指导 也只出现 1 次：蓝色投影里已移除 userGuidance，改由 ★额外指导★ 块承担（Phase 2 / D6）。
+    for (const authorText of [keyEvents, suspenseHook, userGuidance]) {
       expect(user.split(authorText)).toHaveLength(2)
     }
-    expect(user.split(userGuidance)).toHaveLength(3)
+    // ★额外指导★ 块仍在（zh 用 ★、en 用 [...]），且是本请求里 user_guidance 的唯一承载者。
+    expect(user).toContain(writingLanguage === 'en-US'
+      ? '[Author guidance for this step'
+      : '★【作者对本步骤的额外指导')
     for (const authorText of [keyEvents, suspenseHook, userGuidance]) {
       expect(system).not.toContain(authorText)
     }
@@ -1604,8 +1606,11 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(user).not.toContain(`- 章节钩子: ${suspenseHook}`)
     expect(user.split(keyEvents)).toHaveLength(2)
     expect(user.split(suspenseHook)).toHaveLength(2)
-    // user_guidance 仍在 systemSuffix 的 ★额外指导★ 里各出现一次（D6，Phase 2 处理），故为 2 次。
-    expect(user.split(userGuidance)).toHaveLength(3)
+    // Phase 2 / D6：蓝图 JSON 投影里已移除 userGuidance（蓝色投影 dropUserGuidance），
+    // 作者本章指导改由 ★额外指导★ 块唯一承载，故同一轮内只出现 1 次。
+    expect(user.split(userGuidance)).toHaveLength(2)
+    expect(user).toContain('★')
+    expect(user).not.toContain('"userGuidance"')
   })
 
   it('omits the execution card when all three author fields are empty', async () => {
@@ -2900,6 +2905,37 @@ ${headingPrefix}第3章：潮门
       const joined = requestTasks(runtime)[1]!.messages.map(message => message.content).join('\n')
       // 2026-10-10 实测为 1：续写 prompt 内嵌一份，system 的 rules 里没有第二份。
       expect(joined.match(/【本章篇幅合同】/gu) ?? []).toHaveLength(1)
+    })
+
+    it('D6: 作者本章指导（user_guidance）在**单次请求内**只出现一次（Phase 2 已收敛）', async () => {
+      const guidance = 'USER_GUIDANCE_SENTINEL_四拍灯码只有陆霁知道；用克制语气叙述'
+      const runtime = fakeOutcomes(
+        outcome('初'.repeat(100), 'length', 1),
+        outcome(`${'续'.repeat(400)}。`, 'stop', 2),
+      )
+      const { context, callbacks, command } = setup({
+        runtime, wordsTarget: 500, chapterNumber: 1, userGuidance: guidance,
+      })
+
+      await command.execute({ step: {}, context, callbacks })
+
+      const tasks = requestTasks(runtime)
+      const sys = tasks[0]!.messages.find(m => m.role === 'system')!.content
+      const usr = tasks[0]!.messages.find(m => m.role === 'user')!.content
+      // Phase 0 实测：初始请求 user 内 2 处（★额外指导★ 块 + 蓝图 JSON 的 "userGuidance"）。
+      // Phase 2 修复：初始请求的蓝图渲染投影里移除 userGuidance，只留 ★ 块 → 收敛为 1 处。
+      // system 消息里**没有** user_guidance（getSystemRole 只取 systemRole + 通用合同）。
+      expect(sys.includes(guidance)).toBe(false)
+      expect(usr.split(guidance)).toHaveLength(2)
+      // ★ 块仍在（约束链不丢），蓝图 JSON 里不再重复。
+      expect(usr).toContain('★')
+      expect(usr.includes('"userGuidance"')).toBe(false)
+
+      // 续写请求没有 ★ 块，userGuidance 必须继续由蓝图 JSON 承载 → 整次生成内仍恰好 1 次/请求。
+      const continuation = tasks[1]!.messages.find(m => m.role === 'user')!.content
+      expect(continuation).not.toContain('★')
+      expect(continuation.split(guidance)).toHaveLength(2)
+      expect(continuation).toContain('"userGuidance"')
     })
   })
 
