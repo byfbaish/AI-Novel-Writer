@@ -333,6 +333,36 @@ function toWriterChapterInfo(chapterInfo: ChapterInfo): WriterChapterInfo {
   }
 }
 
+/**
+ * P1 Phase 2 · 渲染进 prompt 的章节蓝图投影。
+ *
+ * 背景：`user_guidance` 在**初始请求**里会被渲染两次 ——
+ * 一次是 `BasePromptBuilder.build()` 追加的内置模板 `systemSuffix`
+ * 里的 ★【作者对本步骤的额外指导（最高优先级）】★ 块；
+ * 一次是蓝图 JSON 的 `userGuidance` 字段（Phase 0 实测 D6 = 2）。
+ *
+ * 但**续写 / 压缩请求不走 `build()`**（它们由 `draftAuthorMaterialBlock` 手工拼装，
+ * 只带【本章蓝图】JSON），那里没有 ★ 块，`userGuidance` 只能靠蓝图 JSON 承载。
+ * 实测：初始请求 `usrStar=true`、续写 `usrStar=false usrGuide=false`。
+ *
+ * 因此按请求类型区分：
+ * - 初始请求：模板已渲染 ★ 块 → 从蓝图投影里移除 `userGuidance`，收敛为 1 次；
+ * - 续写 / 压缩：无 ★ 块 → 保留 `userGuidance`，否则作者指导会整段丢失。
+ *
+ * 注意：**不改 `toWriterChapterInfo` / `writerChapterInfo` 本身** ——
+ * 它还用于 `authorInputs` 的恢复指纹（`JSON.stringify(writerChapterInfo)`），
+ * 改动会让进行中的 resume handle 报 `GENERATION_DRAFT_RECOVERY_AUTHOR_INPUT_CHANGED`。
+ * 这里只做「渲染投影」，影响面严格限制在 prompt 文本。
+ */
+function toBlueprintProjection(
+  chapterInfo: WriterChapterInfo,
+  options: { dropUserGuidance?: boolean } = {},
+): Record<string, unknown> {
+  if (!options.dropUserGuidance) return { ...chapterInfo }
+  const { userGuidance: _userGuidance, ...rest } = chapterInfo
+  return rest
+}
+
 function hasSubstantialPreviousChapterReuse(
   previousEnding: string,
   draft: string,
@@ -549,10 +579,13 @@ function draftAuthorMaterialBlock(writingLanguage: WritingLanguage, material: {
   const authorItems = material.includeAuthorItemsFallback
     ? chapterExecutionContractText(writingLanguage, material.chapterInfo).authorItems
     : ''
+  // 续写 / 压缩请求没有 ★ 额外指导★ 块（那只在 promptBuilder.build() 中渲染），
+  // 故 blueprint JSON 必须继续承载 userGuidance，否则作者指导会整段丢失。
+  const blueprintJson = JSON.stringify(toBlueprintProjection(material.chapterInfo), null, 2)
   return promptLanguageText(
     writingLanguage,
     `【本章蓝图】
-${JSON.stringify(material.chapterInfo, null, 2)}
+${blueprintJson}
 
 【全局写作要求】
 ${material.globalGuidance}
@@ -571,7 +604,7 @@ ${material.chapterMaterials}
 
 ${reconciliation}${authorItems}`,
     `[Current chapter blueprint]
-${JSON.stringify(material.chapterInfo, null, 2)}
+${blueprintJson}
 
 [Project-wide writing guidance]
 ${material.globalGuidance}
@@ -833,7 +866,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       .withNovelConfig(novelConfigFactsJson)
       .withWordNumber(targetChars)
       // ---- 章节公共区（首章与后续章都必须完整注入）----
-      .withChapterInfo(writerChapterInfo)
+      // P1 Phase 2：初始请求的 ★额外指导★ 块（build() 追加的 systemSuffix）已承载 user_guidance，
+      // 故蓝图 JSON 投影里不再重复携带，避免同一轮内逐字出现 2 次（Phase 0 实测 D6）。
+      // 续写 / 压缩请求没有 ★ 块，走 draftAuthorMaterialBlock，那里保留 userGuidance。
+      .withChapterInfo(toBlueprintProjection(writerChapterInfo, { dropUserGuidance: true }))
       .withCharacterStates('')
       .withFutureBlueprints('')
       .withFilteredContext('')
