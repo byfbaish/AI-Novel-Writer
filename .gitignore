@@ -65,3 +65,7 @@ tailwind.config.js.bak
 /public/screenshot/
 /public/logos/
 *.tsbuildinfo
+
+# pnpm is the package manager of record (see packageManager in package.json).
+# A stray npm package-lock.json is never authoritative here.
+/package-lock.json
