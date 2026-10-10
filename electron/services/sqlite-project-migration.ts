@@ -250,7 +250,8 @@ export function upgradeProjectSqlite(options: { databasePath: string; registry?:
   const registry = options.registry ?? getDesktopMigrationRegistry()
   const before = probeProjectSqlite({ databasePath: options.databasePath, registry })
   if (before.schemaVersion === CURRENT_DESKTOP_SCHEMA_VERSION) return verifyProjectSqlite({ ...options, registry })
-  if (![1, 2, 3, 4, 5, 6].includes(before.schemaVersion)) throw new Error('CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED')
+  // 7 必须保留：现有旧项目停在 v7，需要由 M07 升到 v8。
+  if (![1, 2, 3, 4, 5, 6, 7].includes(before.schemaVersion)) throw new Error('CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED')
   sourceFile(options.databasePath)
   const database = new Database(options.databasePath, { fileMustExist: true })
   try {

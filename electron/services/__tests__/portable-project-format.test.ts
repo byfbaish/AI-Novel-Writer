@@ -69,7 +69,7 @@ afterEach(() => {
 describe('portable v7 field policy', () => {
   it('与实际当前registry双向精确匹配51表481字段，并包含两个lazy表', () => {
     const { database } = openCurrent()
-    expect(database.pragma('user_version', { simple: true })).toBe(7)
+    expect(database.pragma('user_version', { simple: true })).toBe(8)
     const tables = database.prepare("SELECT name FROM pragma_table_list WHERE schema='main' AND type='table' AND name NOT LIKE 'sqlite_%'")
       .all() as Array<{ name: string }>
     const fieldCount = tables.reduce((count, table) => count
