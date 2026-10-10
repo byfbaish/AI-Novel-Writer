@@ -342,28 +342,180 @@ const remaining = withoutDuplicateParagraphs(content, duplicates)  // 逐字段�
 **→ 这个问题必须问作者。** 若是第 3 种，**收益比 P3 大得多，而且实现简单。**
 
 
-### 关键：当前**只有逐字去重**，语义重复**完全没管**
+#### ★★ 补充（2026-10-11 二次核实）：第 7 问**代码里已有答案**，是第 1 种「展开」
 
-`:1886-1893` 的 `readArchitecture`：
+不需要等作者裁定 —— **推演时的输入就是作者字段本身**：
+
+`src/services/workflows/commands/architecture.command.ts:52-62` 的 `stepAuthorInputs`：
 
 ```ts
-const duplicates = authoredFactFingerprints(authoredConfigFacts)
-const append = (content) => {
-  if (isFullyDuplicatedBlock(content, duplicates)) return        // 整块逐字重复 → 省略
-  const remaining = withoutDuplicateParagraphs(content, duplicates)  // 逐字重复段 → 剔除
-  if (remaining) parts.push(remaining)
+function stepAuthorInputs(context, key: 'premise' | 'characters' | 'worldbuilding' | 'synopsis', snapshot, ...) {
+  const value = (context.data.stepGuidance as ...)?.[key]
+  ...
+  return [
+    { id: 'planning:target-units', text: String(parsePlanningTargetUnits(snapshot.targetUnits)) },
+    { id: 'architecture:author-config', text: JSON.stringify(snapshot.novelConfig) },  // ← :59 全量作者配置
+    ...(intent ? [{ id: 'architecture:planning-intent', text: JSON.stringify(intent) }] : []),
+    ...(typeof value === 'string' ? [{ id: `architecture:step-guidance:${key}`, text: value }] : []),
+  ]
 }
 ```
 
-→ **用的是 P1 的确定性指纹**（`p1-literal-dedup.md §0` 明确：**不做任何语义近似 ——
-长度或措辞不同的段落一律视为不重复**）。
+而 `NovelConfig`（`src/shared/ipc-channels.ts:657-663`）里：
 
-**所以**：`coreOutline` 说"主角在暴雨夜失去记忆"、`premise` 说"暴雨之中主角的记忆被抹去"——
-**逐字不同 → 两段都进 prompt → 语义重复，没人管。**
+```ts
+coreOutline: string
+worldSetting: string            // ← 作者的 493 字世界设定，就在这个对象里
+goldenFinger: string
+protagonistProfile: string
+globalGuidance: string
+writingStyle?: string
+referenceWorks?: string
+```
 
-**这才是 P4 原本想解决的问题的真正位置。** 而它**恰恰就是 P3 的靶子**：
+**→ `:59` 把整个 `novelConfig`（含 `worldSetting`）序列化后，作为 `architecture:author-config` 输入
+喂给推演。也就是说：AI 写 `worldbuilding` 时，它的输入里就有作者的 `world_setting`。**
 
-> P3 = 「同一件事换句话说了两遍」的消除。`coreOutline` ↔ `premise` 正是最典型的样本。
+**推论链闭合**：
+
+| 环节 | 证据 | 结论 |
+|---|---|---|
+| AI 推演时能否看到 `worldSetting`？ | `:59` 全量 `JSON.stringify(novelConfig)` | **能，而且是显式输入** |
+| 推演产物是否逐字照抄？ | 实测 Jaccard `0.019`，逐字重复 ≈ 0 | **不是照抄，是改写+扩写** |
+| 那 2413 字是什么？ | 概念重合 `10/11`，是 493 字的 4.9 倍 | **是"展开"：把骨架补成完整设定** |
+| 展开时做了什么多余的事？ | 逐字去重（`:1893-1894`）一个字都没剔掉 | **把作者的骨架又用别的措辞复述了一遍** |
+
+**→ 第 7 问定性为第 1 种「AI 推演是展开」**，**不是**第 2 种（独立视角）、**不是**第 3 种（遗留产物）。
+
+**这个定性的直接好处**：省掉一轮作者往返。而且它顺手回答了一个隐含问题——
+**为什么不能简单"停掉 AI 推演"**：因为 `worldbuilding` 不是垃圾，
+它是"作者 493 字骨架 → 可用的完整设定"的**扩写器**，停掉它作者就得自己写 2413 字。
+
+**所以 P3 的价值被精确定位了**：
+
+> 保留 `worldbuilding` 的**扩写内容**（新增的世界规则、细节、延展），
+> 剔除它对**作者已写骨架的复述**（那部分作者版本更权威、更短）。
+> **这正是"同一件事换句话说了两遍"，正是 P3 的靶心。**
+
+
+### 2.4.6 ★ 关键：当前**只有逐字去重**，语义重复**完全没管**
+
+⚠️ **这一条推翻了"AI 推演重复是设计冗余"的直觉**，是第 7 问的**直接答案**。
+
+`generate-draft.command.ts:1881-1901` 的 `readArchitecture`：
+
+```ts
+private async readArchitecture(
+  projectPath, projectSession, chapterNumber,
+  authoredConfigFacts: readonly string[],        // ← :1885 已经拿到作者字段了
+): Promise<string> {
+  const core = await ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectPath)
+  const duplicates = authoredFactFingerprints(authoredConfigFacts)   // :1888
+  const parts: string[] = []
+  const append = (content: string | undefined) => {
+    if (!content?.trim()) return
+    // 整块已被作者配置覆盖时整块省略；否则只剔除逐字重复的段落，保留其余原文。
+    if (isFullyDuplicatedBlock(content, duplicates)) return          // :1893 整块逐字重复 → 省略
+    const remaining = withoutDuplicateParagraphs(content, duplicates) // :1894 逐字重复段 → 剔除
+    if (remaining) parts.push(remaining)
+  }
+  append(core?.premise)        // :1897
+  append(core?.worldbuilding)  // :1898 ← 实测剩 2413 字的就是它
+  if (core?.synopsis) append(synopsisForDraftChapter(core.synopsis, chapterNumber))  // :1899
+  return parts.filter(Boolean).join('\n\n---\n\n')
+}
+```
+
+而 `authoredConfigFacts` 在 `:738` 组装：
+
+```ts
+const authoredConfigFacts = [coreOutline, worldSetting, goldenFinger, protagonistProfile]
+//                                                            ↑ 作者的 world_setting 在这里面
+```
+
+→ **`readArchitecture` 不是"没去重"，而是"只做了逐字去重"**，用的是 P1 的确定性指纹
+（`p1-literal-dedup.md §0` 明确：**不做任何语义近似 —— 长度或措辞不同的段落一律视为不重复**）。
+
+**这就把第 7 问从"设计意图之争"降级成了"措辞差异"**：
+
+- 如果 AI 推演的 `worldbuilding` 与作者的 `world_setting` **逐字相同** → 早已被 `:1893-1894` 剔除，
+  实测里 493 字的 `world_setting` 对应 2413 字的 `worldbuilding` 却**一个字都没被剔掉** →
+  说明**两者没有一段是逐字重复的**；
+- 而 3-gram Jaccard `0.019` + 概念重合 `10/11` 说明**讲的是同一件事，只是换了措辞**。
+
+**结论**：这里的重复**不是"设计冗余"，而是"逐字去重够不到"**。所以：
+
+> **第 7 问的答案偏向"第 1 种：AI 推演是展开"** —— 作者手写 493 字骨架，
+> AI 按 `PLOT_OUTLINE_PROTOCOL` / 架构推演协议展开成 2413 字的完整设定。
+> **展开是设计意图**（所以不该删 `worldbuilding`），
+> **但展开时把作者的骨架又复述了一遍**（所以该删的是"复述部分"）。
+
+**这正是 P3 的靶心，且靶心现在有了精确定义**：
+
+> P3 = 「同一件事换句话说了两遍」的消除。
+> `world_setting`（作者骨架）↔ `worldbuilding`（AI 展开）里的**复述段**，是最典型的样本。
+> **删除方向唯一**：只删**AI 侧**（`premise`/`worldbuilding`/`synopsis`）里复述作者的部分，
+> **作者侧（`coreOutline`/`worldSetting`/`goldenFinger`/`protagonistProfile`）零删除** —— 与 ADR 0020 一致。
+
+### 2.4.7 ★★ 段落级人工比对：重复的**精确形态**（2026-10-11 三次核实，直接读原文）
+
+Jaccard 只能给出"有重复"，**逐段读原文才能给出"哪一段是重复"** —— 而后者才是 P3 需要的输入。
+下面是作者真实项目的 `world_setting`（493 字）与 `worldbuilding`（2413 字 / 16 段）逐段比对结果。
+
+**作者的 `world_setting` 全文（7 条要点，压缩式笔记体）**：
+
+| # | 要点 | 关键词 |
+|---|---|---|
+| a | 时代锚点 2028 + 「大幕 The Veil」开启 | 大幕 |
+| b | 190 国 190 副本；每国抽 1 名玩家；弹幕三段式 | 190 / 弹幕 |
+| c | 位阶体系六阶 D/C/B/A/S/SS（min_ch 1/5/15/40/100/200） | 六阶 |
+| d | 配套机制：SAN（100起·每副本−5·归零淘汰）/ 扮演身份 / 国运兑换 / 双通道 / 平行副本 / 结算通道 | SAN / 扮演 |
+| e | 核心玩法：每副本独立规则清单，违反即死；规则会变会藏会被抹（**ch20 第六条**） | 第六条 |
+| f | 主题：规则之下人人平等 | — |
+
+**AI 的 `worldbuilding` 16 段，按"与作者文本的关系"分类**：
+
+| 段 | 标题/主题 | 字数 | 关系 | 判定 |
+|---|---|---|---|---|
+| 1 | `# 世界观` | 5 | 标题 | — |
+| 2 | `### 1.【核心规则与体系漏洞】` | 17 | 标题 | — |
+| 3 | 世界运转法则：违反即死 / **第六条 ch20 被刮平** | 290 | **复述** → 作者 e 条 | 🔴 **应删** |
+| 4 | 主角优势：`不响的铃` / 扮演身份 / 国运兑换 / SAN 消耗 | 338 | **复述(a) + 新增(b)** | 🟡 **部分应删** |
+| 5 | 冲突点：其他国家队献祭 | 130 | 新增 | 🟢 保留 |
+| 6 | `---` | 3 | 分隔 | — |
+| 7 | `### 2.【阶层断层与资源战场】` | 17 | 标题 | — |
+| 8 | 三流/二线/一线 势力阶层 + 幕后架构 | 395 | **纯新增** | 🟢 保留 |
+| 9 | 国运值：**每章−5、归零淘汰**、100 点兑换 | 275 | **复述** → 作者 d 条 | 🔴 **应删** |
+| 10 | 冲突点：透支国运的抉择 | 142 | 新增 | 🟢 保留 |
+| 11 | `---` | 3 | 分隔 | — |
+| 12 | `### 3.【隐喻与深层危机】` | 15 | 标题 | — |
+| 13 | 现实侵蚀 / 国运归零=存在性抹除 | 224 | **纯新增** | 🟢 保留 |
+| 14 | 禁忌与谎言 / 妹妹语音是钥匙 | 203 | **纯新增** | 🟢 保留 |
+| 15 | 与主角命运交汇：软肋即漏洞 | 223 | **纯新增** | 🟢 保留 |
+| 16 | 冲突点：情感 vs 理智值 | 103 | 新增 | 🟢 保留 |
+
+**★ 比对得出的三条硬结论**：
+
+1. **重复的形态是「复述」，不是「照抄」**。
+   最扎眼的两处 —— 段 [3] 的"**第六条**在 ch20 被刮平"、段 [9] 的"**每章扣 5 点**归零淘汰" ——
+   **在作者原文里逐字都有对应事实**（作者 e 条、d 条），但 AI 用**完全不同的措辞**重写了一遍。
+   → 所以 `readArchitecture` 的逐字去重（`:1893-1894`）**一个字都剔不掉**，全部进了 prompt。
+
+2. **"复述"只占少数，大头是"新增"**。
+   16 段里 **🔴 纯复述 2 段（565 字）、🟡 复述+新增 1 段（338 字）、🟢 保留 10 段（约 1 500 字）**。
+   → **P3 若做过头（删太多）会把真正有价值的扩写也删掉**；
+   → **但即便如此，可删的复述也有 ~565–900 字**，在一份 800 章小说的**每一章** prompt 里重复出现，
+     按 3000 字/章估算，**累计膨胀是可观的**。
+
+3. **"复述"的判定有客观锚点，不需要纯靠 AI 拍脑袋**。
+   复述段的特征是：**所述事实能在作者文本里找到对应条目**。
+   → 这给了 P3 一个**可校验的判定路径**：
+     先让 AI 只输出"这一段对应作者的哪一条"（**引用式判定**，可核对），
+     而不是直接输出"删/不删"（**黑箱判定**，无法核对）。
+   → 与 ADR 0020「必删即记」兼容：**每一条删除都能指向作者原文的某一句话**。
+
+**→ 这一条直接改写 P3 的方案骨架**：P3 的 AI 调用应当输出
+**「复述段 → 作者依据」的映射表**，而非二值的删除指令。详见 `p3-semantic-dedup.md` 待更新。
 
 ---
 
