@@ -388,6 +388,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     userGuidance?: string
     globalGuidance?: string
     writingStyle?: string
+    referenceWorks?: string
     coreOutline?: string
     worldSetting?: string
     goldenFinger?: string
@@ -579,6 +580,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
           wordsPerChapter: options.wordsPerChapter ?? 5000,
           globalGuidance: options.globalGuidance,
           writingStyle: options.writingStyle,
+          referenceWorks: options.referenceWorks,
           coreOutline: options.coreOutline,
           worldSetting: options.worldSetting,
           goldenFinger: options.goldenFinger,
@@ -656,6 +658,85 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     const prompt = runtime.complete.mock.calls[0]![0].messages.map(message => message.content).join('\n')
     expect(prompt).toContain('NORTH_GUARD')
     expect(prompt).toContain('SOUTH_HEALER')
+  })
+
+  it('warns softly when a blueprint names a character with no roster card', async () => {
+    const runtime = fakeOutcomes(outcome('本章正文。'.repeat(125), 'stop'))
+    const f = setup({
+      runtime, wordsTarget: 500, characters: ['沈舟', '老猫'],
+      characterCards: [
+        { name: '沈舟', characterId: 'stable-a', role: 'protagonist', personality: 'AUTHOR_PROFILE', currentState: {} },
+      ],
+    })
+    await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+
+    // 有卡的角色照常注入。
+    const prompt = runtime.complete.mock.calls[0]![0].messages.map(message => message.content).join('\n')
+    expect(prompt).toContain('AUTHOR_PROFILE')
+    // 无卡的角色给出软提示，且明确指出是哪个角色。
+    expect(f.callbacks.log).toHaveBeenCalledWith(expect.stringContaining('老猫'))
+    expect(f.callbacks.log).toHaveBeenCalledWith(expect.stringContaining('没有卡片'))
+  })
+
+  it('does not warn when every named character has a roster card', async () => {
+    const runtime = fakeOutcomes(outcome('本章正文。'.repeat(125), 'stop'))
+    const f = setup({
+      runtime, wordsTarget: 500, characters: ['沈舟'],
+      characterCards: [
+        { name: '沈舟', characterId: 'stable-a', role: 'protagonist', personality: 'AUTHOR_PROFILE', currentState: {} },
+      ],
+    })
+    await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+
+    const logged = vi.mocked(f.callbacks.log).mock.calls.flat().join('\n')
+    expect(logged).not.toContain('没有卡片')
+  })
+
+  it('logs requested output, estimated input, and reservation as distinct quantities', async () => {
+    const base = outcome('本章正文。'.repeat(125), 'stop')
+    // 给收据补上真实的 promptBudget：reservedOutputTokens 远大于本次请求时，
+    // 旧文案会把它写成「租约请求上限」，正是用户误以为要生成 6.5 万 token 的来源。
+    const withBudget: GenerationOutcome = {
+      ...base,
+      receipt: {
+        ...base.receipt,
+        budget: { ...base.receipt.budget, requestedOutputTokens: 1712 },
+        promptBudget: {
+          totalUtf8Bytes: 20_013,
+          limitUtf8Bytes: 200_000,
+          contextWindowTokens: null,
+          estimatedInputTokens: 51_432,
+          reservedOutputTokens: 65_536,
+          sections: [],
+          modelId: 'frozen-model',
+          errorCode: 'OK',
+        },
+      },
+    }
+    const runtime = fakeOutcomes(withBudget)
+    const f = setup({ runtime, wordsTarget: 500 })
+    await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+
+    const logged = vi.mocked(f.callbacks.log).mock.calls.flat().join('\n')
+    // 四个量必须各自独立可见，且数值不得混淆。
+    expect(logged).toContain('本次请求输出 1712 Tokens')
+    expect(logged).toContain('输入估算上界 51432 Tokens')
+    expect(logged).toContain('单次预留上限 65536')
+    expect(logged).toContain('本工作流累计请求')
+    // 旧的误导性措辞必须消失。
+    expect(logged).not.toContain('租约请求上限')
+  })
+
+  it('still logs a clarified budget line when the receipt carries no prompt budget', async () => {
+    const runtime = fakeOutcomes(outcome('本章正文。'.repeat(125), 'stop'))
+    const f = setup({ runtime, wordsTarget: 500 })
+    await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+
+    const logged = vi.mocked(f.callbacks.log).mock.calls.flat().join('\n')
+    expect(logged).toContain('本次请求输出')
+    expect(logged).toContain('单次预留上限')
+    expect(logged).toContain('本工作流累计请求')
+    expect(logged).not.toContain('租约请求上限')
   })
 
   it.each([{ target: 900, edit: false }, { target: 2000, edit: false }, { target: 3000, edit: false }, { target: 900, edit: true }])('真实默认 facade 字数 $target，作者改稿 $edit，仅main组合与原子保存', async ({ target, edit }) => {
@@ -2526,6 +2607,149 @@ ${headingPrefix}第3章：潮门
     expect(longPrompt).not.toContain('第三章非当前内容开始')
     expect(longPrompt.length).toBe(shortPrompt.length)
     expect(longPrompt.match(/世界观尾部关键事实：顾舟不会游泳/gu)).toHaveLength(1)
+  })
+
+  it('deduplicates architecture against author config when only Markdown formatting differs', async () => {
+    // 旧项目保留带 `#` 标题的 Markdown 架构，而作者配置（coreOutline/worldSetting）
+    // 存的是同一份内容被剥离 Markdown 后的纯文本。历史实现按逐字节相等判重 →
+    // 命中 0 段 → 设定同时以【全书设定池】和【作者资料】两份注入（实测约 26% 冗余）。
+    // 六个作者字段都在 promptOnlyConfigKeys 里，不进 novel_config，
+    // 所以正确的终态是：每段逐字重复内容在最终 prompt 里只出现一次。
+    const premiseParagraph = '前提关键事实：顾舟必须在退潮前拿回潮汐钟。'
+    const worldParagraph = '世界观关键事实：潮门只在终章揭晓。'
+    const architectureOnly = '架构独有事实：顾舟的父亲在潮门事故中失踪。'
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask = task
+      return outcome('新事件继续发生。'.repeat(70), 'stop')
+    })
+    const { context, callbacks, command } = setup({
+      runtime,
+      wordsTarget: 500,
+      // 架构侧是带 Markdown 标题的形态（含一段作者配置里没有的独有事实）：
+      premise: `# 故事前提\n\n## 核心\n\n${premiseParagraph}\n\n${architectureOnly}`,
+      worldbuilding: `# 世界观\n\n${worldParagraph}`,
+      // 作者配置侧是同一内容的纯文本形态：
+      coreOutline: `${premiseParagraph}\n\n${worldParagraph}`,
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
+    // 架构独有的段落必须原样保留。
+    expect(completePrompt).toContain(architectureOnly)
+    // 与作者配置逐字重复的段落（仅 Markdown 形态不同）在最终 prompt 里只出现一次。
+    expect(completePrompt.match(/前提关键事实：顾舟必须在退潮前拿回潮汐钟/gu)).toHaveLength(1)
+    expect(completePrompt.match(/世界观关键事实：潮门只在终章揭晓/gu)).toHaveLength(1)
+  })
+
+  it('keeps architecture paragraphs that are not duplicated in author config', async () => {
+    // 去重只处理逐字重复；架构里独有的段落必须原样保留（不得因规范化而误删）。
+    const distinctArchitecture = '架构独有事实：顾舟的父亲在潮门事故中失踪。'
+    const shared = '架构重复事实：顾舟必须在退潮前拿回潮汐钟。'
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask = task
+      return outcome('新事件继续发生。'.repeat(70), 'stop')
+    })
+    const { context, callbacks, command } = setup({
+      runtime,
+      wordsTarget: 500,
+      premise: `# 故事前提\n\n${shared}\n\n${distinctArchitecture}`,
+      coreOutline: shared,
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
+    expect(completePrompt).toContain(distinctArchitecture)
+    expect(completePrompt.match(/架构重复事实：顾舟必须在退潮前拿回潮汐钟/gu)).toHaveLength(1)
+  })
+
+  it('injects reference works as a dedicated block outside the authoritative novel config', async () => {
+    // 参考作品属于「表达层」配置：只借鉴调性与节奏，不是必须兑现的作者事实。
+    // 它必须进 dedicated 段落（与文风同级），且从 novel_config JSON 里移出，
+    // 避免模型把「参考作品」误读成硬性事实约束。
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask = task
+      return outcome('新事件继续发生。'.repeat(70), 'stop')
+    })
+    const referenceWorks = '《诡秘之主》：克苏鲁式悬疑，长线伏笔，冷调叙述。'
+    const { context, callbacks, command } = setup({
+      runtime,
+      wordsTarget: 500,
+      writingStyle: '冷峻克制的第三人称限知。',
+      referenceWorks,
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
+    // [1] 参考作品以独立段落注入，原文可见。
+    expect(completePrompt).toContain('【参考作品（如有，仅供借鉴调性与节奏，不是必须兑现的作者事实）】')
+    expect(completePrompt).toContain(referenceWorks)
+    // [2] 参考作品不得出现在【不可偏离的作者事实】的 novel_config JSON 里。
+    const configSection = completePrompt.split('小说配置：')[1] ?? ''
+    expect(configSection).not.toContain(referenceWorks)
+    // [3] 参考作品的语义边界说明必须同时存在于提示词中（防止被当作硬约束）。
+    expect(completePrompt).toContain('不是必须兑现的作者事实')
+  })
+
+  it('prunes the reference-works block when no reference works are configured', async () => {
+    // 未配置参考作品时，【参考作品（如有...）】整段（含标题）必须被清除，
+    // 不得给模型留下空标题或半截模板。
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask = task
+      return outcome('新事件继续发生。'.repeat(70), 'stop')
+    })
+    const { context, callbacks, command } = setup({ runtime, wordsTarget: 500 })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
+    expect(completePrompt).not.toContain('【参考作品（如有')
+    expect(completePrompt).not.toContain('{{reference_works}}')
+  })
+
+  it('keeps the reference-works block in the en-US first and next chapter templates', async () => {
+    // 中英模板必须对称：en-US 草稿模板也要有参考作品段，否则英文项目会丢失该配置。
+    const enFirst = EN_US_BUILTIN_PROMPTS.first_chapter_draft
+    const enNext = EN_US_BUILTIN_PROMPTS.next_chapter_draft
+    expect(enFirst.content).toContain('{{reference_works}}')
+    expect(enFirst.content).toContain('not author facts that must be honored')
+    expect(enNext.content).toContain('{{reference_works}}')
+    expect(enNext.content).toContain('not author facts that must be honored')
+    // 中文内置模板同样必须声明 reference_works 变量，供变量替换解析。
+    const zhFirst = BUILTIN_PROMPTS.find(template => template.key === 'first_chapter_draft')
+    const zhNext = BUILTIN_PROMPTS.find(template => template.key === 'next_chapter_draft')
+    expect(Object.keys(zhFirst?.variables ?? {})).toContain('reference_works')
+    expect(Object.keys(zhNext?.variables ?? {})).toContain('reference_works')
+  })
+
+  it.each([
+    { writingLanguage: 'zh-CN' as const, heading: '【参考作品（如有，仅供借鉴调性与节奏，不是必须兑现的作者事实）】' },
+    { writingLanguage: 'en-US' as const, heading: '[Reference works — tone and pacing reference only; not author facts that must be honored]' },
+  ])('injects reference works in the $writingLanguage draft prompt for chapter 2', async ({ writingLanguage, heading }) => {
+    const referenceWorks = writingLanguage === 'zh-CN'
+      ? '《长夜余火》：废土旅途，克制白描。'
+      : '"The Road": sparse post-apocalyptic prose, restrained tone.'
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask = task
+      return outcome(writingLanguage === 'zh-CN' ? '新事件继续发生。'.repeat(70) : 'A new event unfolds in the city. '.repeat(60), 'stop')
+    })
+    const { context, callbacks, command } = setup({
+      runtime, wordsTarget: 500, chapterNumber: 2, writingLanguage, referenceWorks,
+      previousFinalizedContent: '上一章已完成的结尾状态。',
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
+    expect(completePrompt).toContain(heading)
+    expect(completePrompt).toContain(referenceWorks)
   })
 
   it.each([

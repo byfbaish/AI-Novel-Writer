@@ -679,7 +679,10 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 4. Follow the project-wide guidance and avoid every listed failure mode.
 
 [Writing style]
-{{writing_style}}`,
+{{writing_style}}
+
+[Reference works — tone and pacing reference only; not author facts that must be honored]
+{{reference_works}}`,
     systemSuffix: `[Authoritative facts that must not drift]
 - Author-confirmed novel configuration: {{novel_config}}
 - Treat both as immutable facts. Never omit, weaken, reverse, or replace an explicit author setting with a genre convention; if a fact is not foregrounded in this chapter, do not contradict it.
@@ -725,7 +728,10 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 5. Follow the project-wide guidance: {{global_guidance}}
 
 [Writing style]
-{{writing_style}}`,
+{{writing_style}}
+
+[Reference works — tone and pacing reference only; not author facts that must be honored]
+{{reference_works}}`,
     systemSuffix: `[Authoritative facts that must not drift]
 - Story architecture: {{architecture}}
 - Author-confirmed novel configuration: {{novel_config}}

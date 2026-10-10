@@ -75,6 +75,7 @@ const expectedPromptVariables: Record<string, string[]> = {
     'global_guidance',
     'word_number',
     'writing_style',
+    'reference_works',
     'user_guidance',
   ],
   next_chapter_draft: [
@@ -91,6 +92,7 @@ const expectedPromptVariables: Record<string, string[]> = {
     'global_guidance',
     'word_number',
     'writing_style',
+    'reference_works',
   ],
   refine_chapter: [
     'draft_content',
