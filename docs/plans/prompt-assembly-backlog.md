@@ -43,8 +43,9 @@
 > **L3 叙事弧** → **L4 事件单元** → L5 章节 → L6 场景）。
 > 详见 `docs/plans/seven-layer-skeleton-assessment.md`（含对 L3/L4 现状的代码级核实）。
 > **该评估的核心结论**：本工具确实缺 L3/L4 的显式实体，但
-> `narrative_thread_plans`（叙事线索）已是半个 L3、`draftShortOutlinePrompt` 是 L4 的隐式替代
-> → **落地是"升级已有"而非"从零新建"**。
+> `narrative_thread_plans` 只是**伏笔台账**（埋/收两端点），`draftShortOutlinePrompt` 是 L4 的隐式替代
+> → **L3 弧需新建独立实体**（弧 ⊃ 伏笔，两者语义不同，不可靠扩展字段合并）。
+> ⚠️ 本行结论已经过作者反驳后二次核实修正，详见 `l3-arc-gap-verification.md`。
 
 ---
 
