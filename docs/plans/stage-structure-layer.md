@@ -163,6 +163,13 @@ const guide = core.plot_structure_plan?.trim()
 - ✅ 蓝图/草稿完全不受影响（它们本来就不消费这一层）
 - ✅ 指纹机制复用（把 `plot_structure_plan` 加进 `synopsisInputsFingerprint` 的 `sourceInputs`）
 
+**★ 枚举的最终定位（作者问 2 拍板）：不是"被替换"，而是"降级为起手模板"。**
+- 运行时**主来源 = 弧文本**（上面那行三元）；
+- `plotStructure` 枚举 + `<NativeSelect>`（`NovelConfigEditor.tsx:273`）**保留**，
+  变成 UI 里的"一键填充模板"按钮（点一下把三幕/起承转合文本填进可编辑弧框，作者再改）；
+- **★ 不删枚举**（短篇/新手/旧项目的兜底，删除收益为零）。
+- 详见 [`arc-granularity-and-enum.md §2`](./arc-granularity-and-enum.md)。
+
 ### 2.4 三层可见性（"可被管理的状态"）
 
 | 管理动作 | 现状 | 改后 |
@@ -221,15 +228,17 @@ architecture.command.ts
 
 ---
 
-## 5. 仍需作者确认（★ 已由作者回答，2026-10-11 更新）
+## 5. 作者五问（★ 已全部由作者回答，2026-10-11 更新）
+
+> **★ 详细推演见 [`arc-granularity-and-enum.md`](./arc-granularity-and-enum.md)**（含步骤粒度的实例对照、枚举降级方案）。
 
 | # | 问题 | 作者回答 / 状态 |
 |---|---|---|
 | **1** | 字段名与界面名 | ✅ **作者：「不需要什么字段不字段的」** —— 弧与大纲相似度极高，**本质是 Prompt 约束**。命名不重要 |
-| **2** | 新步骤能否跳过？ | 保持建议：可跳过（枚举兜底） |
-| **3** | 生成的粒度 | 保持待定 |
+| **2** | 新步骤能否跳过？ | 保持建议：可跳过（枚举兜底）→ ✅ **作者问 2 实质确认**（枚举降级为"起手模板按钮"） |
+| **3** | **生成的粒度** | ✅ **作者拍板：一步出整段 + Prompt 内分节**（不拆 DB 步骤）。见 `arc-granularity-and-enum.md §1` |
 | ~~**4**~~ | ~~"调整"的形态~~ | ✅ **作者：「编辑整段文本（同 worldbuilding）→ yes」** —— **不结构化** |
-| **5** | 与 `plotStructure` 枚举的关系 | 保持待定（作兜底） |
+| **5** | 与 `plotStructure` 枚举的关系 | ✅ **作者：「plotStructure 不就是静态的弧么…写一个替换原有枚举类效果的新表现形式」** → **不替换、不删除，只降级**（弧文本主来源 + 枚举作"起手模板按钮"）。见 `arc-granularity-and-enum.md §2` |
 
 ### ★★ 作者追加的**新概念：弧的嵌套**（详见 [`arc-nesting-design.md`](./arc-nesting-design.md)）
 
