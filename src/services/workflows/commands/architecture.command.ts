@@ -6,6 +6,7 @@ import { defaultCharacterProposalRelationships, defaultCharacterProposalSelectio
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
+import { withArcPositionGuide } from '../../../shared/arc-position'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
 import {
   BaseWorkflowCommand,
@@ -2129,7 +2130,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       .withGenre(modelFacts.genre)
       .withNumberOfChapters(totalChapters)
       .withWordNumber(config.wordsPerChapter)
-      .withPlotStructureGuide(guide)
+      // ★ 弧位圈定：把「本批落在哪个大弧/中弧」显式告诉模型。
+      //   实测（2026-10-11）：不注入时，中弧 2 的核心动作会在中弧 1 的第 9–10 章被提前执行完。
+      .withPlotStructureGuide(withArcPositionGuide(guide, core?.plotStructurePlan, totalChapters, from, to, writingLanguage))
       .withNarrativePov(pov)
       .withGlobalGuidance(config.globalGuidance || promptLanguageText(writingLanguage, '（未填写）', '(not provided)'))
       .withStepGuidance(effectiveStepGuidance)
@@ -2400,7 +2403,10 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       .withCoreSeed(sourceExpected.premise).withCharacterDynamics(sourceExpected.charactersArch).withWorldBuilding(sourceExpected.worldbuilding)
       .withGenre(localizeNovelConfigFacts(config, language).genre).withNumberOfChapters(sourceExpected.totalChapters)
       .withWordNumber(sourceExpected.wordsPerChapter)
-      .withPlotStructureGuide(resolveStageStructureGuide(sourceExpected.plotStructurePlan, config.plotStructure, sourceExpected.totalChapters, language))
+      // ★ 弧位圈定同 :2132（断点续写路径）：让模型知道本批落在哪个中弧，避免提前执行后续中弧。
+      .withPlotStructureGuide(withArcPositionGuide(
+        resolveStageStructureGuide(sourceExpected.plotStructurePlan, config.plotStructure, sourceExpected.totalChapters, language),
+        sourceExpected.plotStructurePlan, sourceExpected.totalChapters, initial.range.from, initial.range.to, language))
       .withNarrativePov(getNarrativePOVLabel(config.narrativePOV || 'third_limited', language))
       .withGlobalGuidance(sourceExpected.globalGuidance).withStepGuidance(guidance)
     const representedConfig: Record<string, unknown> = { genre: config.genre, totalChapters: sourceExpected.totalChapters,

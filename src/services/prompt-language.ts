@@ -342,12 +342,17 @@ This step is always **three-level nesting**: major arc ⊃ mid arc ⊃ minor arc
 Example shape (compute your own numbers; do not copy these):
 [Length budget] 800 chapters ⇒ about 8 major arcs; about 4 mid arcs each ⇒ about 32 mid arcs; about 3 minor arcs each ⇒ about 96 minor arcs.
 ★ The counts are **computed, not estimated**. If your numbers do not match the level sizes below, you computed wrong — recompute before writing.
-★ MANDATORY: state the level totals as an explicit **sum with its result**, never as a bare conclusion.
-  - Correct: Σmajor = 100 + 95 + 95 + 95 + … = 845 (the result must equal {{number_of_chapters}})
+★ MANDATORY (transparency): state the level totals as an explicit **sum with its actual result**, and note the
+  difference from the target total.
+  - Correct: Σmajor = 100 + 95 + 95 + … = 880 (35 more than {{number_of_chapters}}, about +4%, within tolerance)
   - Wrong (this actually happened): writing only “Σ(major arcs) = 845” without listing the terms —
-    the terms actually added up to 35 chapters more than the total, and the error was invisible
-    because only the conclusion was written. **Add the terms first, then check against the total;
-    adjust chapter counts until they are equal.**
+    the terms added up to 880, and because only the conclusion was written the gap was invisible.
+★ FLEXIBILITY: this is a **plan, not a contract**. A ±10% difference from the target total is allowed.
+  **Do not add or remove chapters just to make the sum equal the target.** If the story naturally closes at
+  870 chapters, write 870 and note the difference — a plan may finish early or run somewhat longer.
+  Only a gap beyond ±10% requires going back and adjusting.
+  The same tolerance applies within a level (Σmid = its major arc's chapters, Σminor = its mid arc's chapters),
+  but the **actual sum must always be written down**.
 ★ MANDATORY: derive the minor-arc count of **every mid arc individually, showing the arithmetic**, e.g.
   “this mid arc has 25 chapters ÷ 10 ≈ 2–3 ⇒ 3 minor arcs”. A 25-chapter mid arc may legitimately
   have 2 or 3 — decide by **how many independent events it actually contains** (do not split one event
@@ -417,12 +422,13 @@ Minor arcs: give **name + chapter count only** (one line of positioning). Their 
   a mid arc does **not** always need exactly 3 minor arcs — give 2–4 as that mid arc actually requires.
 
 [Self-check before output (mandatory; fix until every line holds)]
-1. Σ(major arc chapters) = {{number_of_chapters}} — **show the term-by-term addition** (A+B+C+…=total); a bare conclusion is not acceptable
-2. For every major arc: Σ(its mid arc chapters) = that major arc's chapter count
-3. For every mid arc: Σ(its minor arc chapters) = that mid arc's chapter count
+1. Σ(major arc chapters) is written as a **term-by-term addition** (A+B+C+…=actual total) with the difference from {{number_of_chapters}} noted; the difference is within ±10%
+2. For every major arc: Σ(its mid arc chapters) is within ±10% of that major arc's chapter count, and the actual sum is written
+3. For every mid arc: Σ(its minor arc chapters) is within ±10% of that mid arc's chapter count, and the actual sum is written
 4. Every major arc contains ≥2 mid arcs; every mid arc contains ≥2 minor arcs
 5. Every mid arc's field names match its type (A = Causality/Ordering, B = Goal/Attempt, C = Motivation/Path)
 6. The minor-arc counts of all mid arcs are **not all identical** (at least two distinct values)
+7. No chapters were added or removed merely to make a sum come out equal — a difference is allowed, padding is not
 
 [Requirements]
 1. This is a **three-level progression skeleton**, not a chapter-by-chapter outline — do not write per-chapter content.
