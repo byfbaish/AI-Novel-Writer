@@ -90,8 +90,13 @@ export interface StructuredBatchFailure {
    */
   errorName?: string
   /**
-   * 跨序列化边界丢了类身份、但 `code` 仍命中本项目自有枚举的错误码。
-   * 只有白名单内的枚举值会出现，因此不含任何外部自由文本。
+   * 跨序列化边界丢了类身份、但**协议码**仍可辨认的本项目自有错误码。
+   *
+   * 两个来源：`error.code` 属性仍在（同进程），或 message 本身是
+   * `GENERATION_*` / `MAIN_*` 形态的协议码（Electron IPC 会把它包成
+   * `Error invoking remote method '<channel>': Error: <协议码>`，类身份与
+   * `code` 属性都会丢，只剩 message）。只有白名单内的枚举值会出现，
+   * 因此不含任何外部自由文本。
    */
   errorCode?: string
 }
@@ -155,14 +160,28 @@ function describeUnexpectedError(error: unknown): Pick<StructuredBatchFailure, '
  * 但 provider/session 的 message 可能内嵌凭据，必须继续隐藏——因此这里只放行
  * 「整条消息 = 协议码 [+ `:` + 无空白诊断尾]」的情形。散文必然含空白，永远匹配不上；
  * `MAIN_RUN_NON_REPLAYABLE Bearer test-secret` 这类夹带因此仍被拦下（有反向用例锁定）。
+ *
+ * ★ 2026-10-11 实机踩到：主进程经 Electron IPC 回传的格式是
+ * `Error invoking remote method '<channel>': Error: <协议码>`，而此前的前缀只吃掉了
+ * `Error invoking remote method '…': ` 一层，**中间的 `Error: ` 让整条正则失配**——
+ * 于是一个有明确原因的发前拒绝（0 attempt）退化成无从定位的「结构化生成失败」，
+ * 还被兜底贴上了 `reason=server_error` 的错误标签。前缀因此按 Electron 的实际形态放宽
+ * （含无引号通道名变体），**但只放宽前缀**：前缀之后仍必须是纯协议码，安全边界不变。
  */
-const PROTOCOL_CODE_MESSAGE = /^(?:Error invoking remote method '[^']{0,256}': )?[A-Z][A-Z0-9_]{4,63}(?::\S{0,400})?$/u
+const PROTOCOL_CODE_MESSAGE = /^(?:Error invoking remote method(?: '[^']{0,256}')?: (?:Error: )?)?([A-Z][A-Z0-9_]{4,63})(?::(\S{0,400}))?$/u
 
-function safeProtocolCode(error: unknown): string | undefined {
+/**
+ * 取出可回显的协议码文本与**码本身**。
+ * `code` 不含诊断尾，用于对齐 `KNOWN_HARNESS_FAILURES` 做精确分类。
+ */
+function safeProtocolCode(error: unknown): { text: string; code: string } | undefined {
   const message = error instanceof Error ? error.message : undefined
   if (typeof message !== 'string') return undefined
-  const trimmed = message.trim()
-  return PROTOCOL_CODE_MESSAGE.test(trimmed) ? trimmed : undefined
+  const match = PROTOCOL_CODE_MESSAGE.exec(message.trim())
+  if (!match) return undefined
+  const code = match[1]!
+  const diagnostic = match[2]
+  return { text: diagnostic === undefined ? code : `${code}:${diagnostic}`, code }
 }
 
 export type StructuredBatchResult<TOutput> =
@@ -641,21 +660,52 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
             failure = { code: 'generation_failed', reason: 'unknown', message: error.message, errorName: error.name }
           }
         } else {
-          // 到这里说明错误的类身份不可用（跨序列化边界丢失、或抛出的根本不是
-          // Error）。先按本项目自有 code 白名单兜底归类；仍无法归类时，
-          // 只回显类名与守卫说明，绝不回显外部 message。
-          const known = classifyByKnownCode(error)
-          if (known) {
-            failure = known
-          } else {
-            const safeMessage = dependencies.describeError?.(error) ?? safeProtocolCode(error)
-            failure = {
-              code: 'generation_failed',
-              reason: 'server_error',
-              message: safeMessage ?? '结构化生成失败',
-              ...describeUnexpectedError(error),
-            }
+        // 到这里说明错误的类身份不可用（跨序列化边界丢失、或抛出的根本不是
+        // Error）。按三层证据降级归类，绝不回显外部 message：
+        //   ① `error.code` 还在（同进程）→ 直接查白名单；
+        //   ② 工作流自己写的守卫说明（describeError）→ 比机器码更贴近上下文；
+        //   ③ message 是协议码 → 查白名单得精确分类；表外的自有码
+        //      （GENERATION_* / MAIN_* 守卫）只作 errorCode 回显。
+        // 三层都不中才是真正的「未知」，此时 reason 必须是 `unknown`：
+        // 此前一律贴 `server_error`，把「一发未发的发前拒绝」伪装成模型服务故障，
+        // 实机排查因此走错方向（2026-10-11）。
+        const known = classifyByKnownCode(error)
+        const described = known ? undefined : dependencies.describeError?.(error)
+        const protocol = known || described ? undefined : safeProtocolCode(error)
+        const mapped = protocol ? KNOWN_HARNESS_FAILURES[protocol.code] : undefined
+        if (known) {
+          failure = known
+        } else if (described) {
+          failure = {
+            code: 'generation_failed',
+            reason: 'unknown',
+            message: described,
+            ...describeUnexpectedError(error),
           }
+        } else if (protocol && mapped) {
+          failure = {
+            code: mapped.code,
+            reason: mapped.reason,
+            message: mapped.message,
+            errorCode: protocol.code,
+            ...describeUnexpectedError(error),
+          }
+        } else if (protocol) {
+          failure = {
+            code: 'generation_failed',
+            reason: 'unknown',
+            message: protocol.text,
+            errorCode: protocol.code,
+            ...describeUnexpectedError(error),
+          }
+        } else {
+          failure = {
+            code: 'generation_failed',
+            reason: 'unknown',
+            message: '结构化生成失败',
+            ...describeUnexpectedError(error),
+          }
+        }
         }
         return { ok: false, failure, receipt, validatedItems: [...validated] }
       }

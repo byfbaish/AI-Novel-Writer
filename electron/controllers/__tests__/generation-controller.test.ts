@@ -558,7 +558,8 @@ describe('generation public IPC with actual project authority and SQLite', () =>
     const fetch = stream()
     await expect(mocks.handlers.get('generation:begin')!({ sender }, request)).rejects.toThrow('GENERATION_PROJECT_SESSION_REQUIRED')
     for (const invalid of [{ ...session, leaseId: 'forged' }, { ...session, projectPath: mocks.globalRoot }, { ...session, projectId: 'foreign' }]) {
-      await expect(mocks.handlers.get('generation:begin')!({ sender }, request, invalid)).rejects.toThrow('GENERATION_REQUEST_FAILED')
+      // 兜底码必须自带类名，否则白名单之外的真因会被永久压平（2026-10-11 实机踩到）。
+      await expect(mocks.handlers.get('generation:begin')!({ sender }, request, invalid)).rejects.toThrow(/GENERATION_REQUEST_FAILED:.+/u)
     }
     const run = await invoke('generation:begin', request)
     await expect(invoke('generation:read', { ...run.handle, rootActionId: 'foreign' })).rejects.toThrow('GENERATION_RUN_IDENTITY_MISMATCH')

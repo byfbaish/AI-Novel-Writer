@@ -1442,7 +1442,7 @@ describe('StructuredBatchExecutor seam', () => {
       ok: false,
       failure: {
         code: 'generation_failed',
-        reason: 'server_error',
+        reason: 'unknown',
         message: '结构化生成失败',
       },
     })
@@ -1474,7 +1474,7 @@ describe('StructuredBatchExecutor seam', () => {
       ok: false,
       failure: {
         code: 'generation_failed',
-        reason: 'server_error',
+        reason: 'unknown',
         message: '结构化生成失败',
         errorName: 'TypeError',
       },
@@ -1504,7 +1504,7 @@ describe('StructuredBatchExecutor seam', () => {
       ok: false,
       failure: {
         code: 'generation_failed',
-        reason: 'server_error',
+        reason: 'unknown',
         message: '当前项目已切换，架构生成已停止以避免写入错误项目',
         errorName: 'Error',
       },
@@ -1556,8 +1556,9 @@ describe('StructuredBatchExecutor seam', () => {
       ok: false,
       failure: {
         code: 'generation_failed',
-        reason: 'server_error',
+        reason: 'unknown',
         message: 'MAIN_RUN_NON_REPLAYABLE',
+        errorCode: 'MAIN_RUN_NON_REPLAYABLE',
         errorName: 'Error',
       },
     })
@@ -1582,8 +1583,9 @@ describe('StructuredBatchExecutor seam', () => {
       ok: false,
       failure: {
         code: 'generation_failed',
-        reason: 'server_error',
+        reason: 'unknown',
         message: expect.stringContaining('MAIN_SNAPSHOT_REGRESSION:src=read'),
+        errorCode: 'MAIN_SNAPSHOT_REGRESSION',
         errorName: 'Error',
       },
     })
@@ -1610,6 +1612,81 @@ describe('StructuredBatchExecutor seam', () => {
     })
     expect(JSON.stringify(result)).not.toContain('test-secret')
     expect(JSON.stringify(result)).not.toContain('MAIN_RUN_NON_REPLAYABLE')
+  })
+
+  it('unwraps the Electron IPC prefix so a main-process guard code stays readable', async () => {
+    const executor = createStructuredBatchExecutor({
+      contract: blueprintContract,
+      session: {
+        complete: vi.fn<GenerationSession['complete']>(async () => {
+          // Electron 的真实形态：通道名之后还有一层 `Error: `。
+          throw new Error("Error invoking remote method 'generation:execute': Error: GENERATION_SOURCE_CHANGED")
+        }),
+      },
+    })
+
+    const result = await executor.execute({
+      items: [1],
+      limits: { maxBatchItems: 5 },
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: {
+        code: 'generation_failed',
+        reason: 'unknown',
+        message: 'GENERATION_SOURCE_CHANGED',
+        errorCode: 'GENERATION_SOURCE_CHANGED',
+      },
+    })
+  })
+
+  it('keeps a wrapped provider failure classified as a server error', async () => {
+    const executor = createStructuredBatchExecutor({
+      contract: blueprintContract,
+      session: {
+        complete: vi.fn<GenerationSession['complete']>(async () => {
+          throw new Error("Error invoking remote method 'generation:execute': Error: PROVIDER_REQUEST_FAILED")
+        }),
+      },
+    })
+
+    const result = await executor.execute({
+      items: [1],
+      limits: { maxBatchItems: 5 },
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: {
+        code: 'generation_failed',
+        reason: 'server_error',
+        message: '模型请求失败。',
+        errorCode: 'PROVIDER_REQUEST_FAILED',
+      },
+    })
+  })
+
+  it('still hides an IPC-wrapped message whose body is prose, not a protocol code', async () => {
+    const executor = createStructuredBatchExecutor({
+      contract: blueprintContract,
+      session: {
+        complete: vi.fn<GenerationSession['complete']>(async () => {
+          throw new Error("Error invoking remote method 'generation:execute': Error: Bearer test-secret")
+        }),
+      },
+    })
+
+    const result = await executor.execute({
+      items: [1],
+      limits: { maxBatchItems: 5 },
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: { code: 'generation_failed', reason: 'unknown', message: '结构化生成失败', errorName: 'Error' },
+    })
+    expect(JSON.stringify(result)).not.toContain('test-secret')
   })
 
   it('fails after one compact fallback for the same item when it is also length-truncated', async () => {

@@ -36,6 +36,14 @@ type Owner = ReturnType<typeof createMainGenerationOwner>
 type OwnerChannels = LegacyRosterGenerationChannels & GraphGenerationChannels & GenerationOwnerChannels & CharacterProposalChannels & FinalizedCharacterGenerationChannels & ReviewRevisionGenerationInvokeChannels & AgentGenerationChannels & ImportGenerationChannels & EditorInlineGenerationChannels & FinalizationGenerationChannels
 const owners = new Map<Database.Database, { owner: Owner; session: ProjectSessionContext; subscribers: Set<WebContents> }>()
 const ownerSessions = new WeakMap<Owner, ProjectSessionContext>()
+
+/**
+ * 兜底压缩会永久丢弃真因，只回显**类名**是最小可用的补偿。
+ * 类名可能被人为构造，因此严格按标识符字符集裁剪，绝不透传任意文本。
+ */
+function safeErrorClassName(value: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/u.test(value) ? value : 'Error'
+}
 /** Called synchronously inside the same SQLite transaction as the formal effect. */
 export function assertGenerationSourcesCurrent(handle: MainGenerationRunHandle, blueprintRange?: { startChapter: number; endChapter: number }): void {
   const database = getProjectDb()
@@ -158,7 +166,10 @@ export function registerGenerationController(options: {
         if (error instanceof TaskBudgetPreflightError) throw new Error(error.message)
         if (error instanceof KnowledgeBaseUnavailableError || error instanceof LegacyVectorMigrationBlockedError) throw new Error(error.code)
         const code = error instanceof Error && (error.message === 'SOURCE_DRAFT_CHANGED' || /^(?:GENERATION|ROOT_BUDGET|ARTIFACT|MAIN|CHARACTER|FINALIZED_CHARACTER|LEGACY_ROSTER)_[A-Z_]+$/u.test(error.message))
-          ? error.message : 'GENERATION_REQUEST_FAILED'
+          ? error.message
+          // 白名单之外的错误一律压成同一个码，真因会永久消失；带上类名至少能区分
+          // 「第三方/Node 错误」与「本项目守卫写错文案」。只带类名，不带 message。
+          : `GENERATION_REQUEST_FAILED:${error instanceof Error ? safeErrorClassName(error.name) : 'NonError'}`
         throw new Error(code)
       }
     })
