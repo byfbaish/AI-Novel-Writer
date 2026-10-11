@@ -1281,11 +1281,16 @@ function EditorSection() {
   const [autoPromptBlueprintCharacterSync, setAutoPromptBlueprintCharacterSyncState] = useState(true)
   const [autoPromptBlueprintSaving, setAutoPromptBlueprintSaving] = useState(false)
   const [autoPromptBlueprintError, setAutoPromptBlueprintError] = useState<string | null>(null)
+  // 同样默认开启：作者要求大纲生成后强烈建议补一次角色卡，但保留关闭能力（批量生成时降噪）。
+  const [autoPromptOutlineCharacterSupplement, setAutoPromptOutlineCharacterSupplementState] = useState(true)
+  const [autoPromptOutlineSaving, setAutoPromptOutlineSaving] = useState(false)
+  const [autoPromptOutlineError, setAutoPromptOutlineError] = useState<string | null>(null)
 
   useEffect(() => {
     ipc.invoke('config:get').then((config) => {
       setAutoOpenNextChapterAfterFinalize(config.autoOpenNextChapterAfterFinalize === true)
       setAutoPromptBlueprintCharacterSyncState(config.autoPromptBlueprintCharacterSync !== false)
+      setAutoPromptOutlineCharacterSupplementState(config.autoPromptOutlineCharacterSupplement !== false)
     }).catch(() => {})
   }, [])
 
@@ -1305,6 +1310,25 @@ function EditorSection() {
       ))
     } finally {
       setAutoPromptBlueprintSaving(false)
+    }
+  }
+
+  const setAutoPromptOutlineSupplement = async (checked: boolean) => {
+    const previous = autoPromptOutlineCharacterSupplement
+    setAutoPromptOutlineCharacterSupplementState(checked)
+    setAutoPromptOutlineSaving(true)
+    setAutoPromptOutlineError(null)
+    try {
+      const result = await ipc.invoke('config:set', { autoPromptOutlineCharacterSupplement: checked })
+      if (!result.success) throw new Error(result.error || text('未知错误', 'Unknown error'))
+    } catch (error) {
+      setAutoPromptOutlineCharacterSupplementState(previous)
+      setAutoPromptOutlineError(text(
+        `大纲角色提示设置保存失败：${error instanceof Error ? error.message : String(error)}`,
+        `Could not save the outline character-prompt setting: ${error instanceof Error ? error.message : String(error)}`,
+      ))
+    } finally {
+      setAutoPromptOutlineSaving(false)
     }
   }
 
@@ -1392,6 +1416,17 @@ function EditorSection() {
         <Switch checked={autoPromptBlueprintCharacterSync} onCheckedChange={(checked) => void setAutoPromptBlueprintSync(checked)} disabled={autoPromptBlueprintSaving} aria-label={text('蓝图提交后提示角色卡', 'Prompt for character cards after blueprint commit')} />
       </div>
       {autoPromptBlueprintError && <p role="alert" className="text-xs" style={{ color: 'var(--color-error-text)' }}>{autoPromptBlueprintError}</p>}
+
+      <div className="flex items-center justify-between gap-4 rounded-xl p-4" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-panel)' }}>
+        <div>
+          <p className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>{text('情节大纲后提示补角色卡', 'Prompt for character cards after the plot outline')}</p>
+          <p className="text-[0.68rem] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+            {text('情节大纲生成完成后，提示核对并补一次角色卡（大纲里出现的角色不会自动建卡）。只提示、不自动执行 —— 大纲可能还要改，时机由你决定。', 'After the plot outline is generated, prompts you to review and add character cards (characters in the outline are never turned into cards automatically). It only prompts — nothing runs automatically, since the outline may still change.')}
+          </p>
+        </div>
+        <Switch checked={autoPromptOutlineCharacterSupplement} onCheckedChange={(checked) => void setAutoPromptOutlineSupplement(checked)} disabled={autoPromptOutlineSaving} aria-label={text('情节大纲后提示补角色卡', 'Prompt for character cards after the plot outline')} />
+      </div>
+      {autoPromptOutlineError && <p role="alert" className="text-xs" style={{ color: 'var(--color-error-text)' }}>{autoPromptOutlineError}</p>}
 
       {/* 说明 */}
       <div

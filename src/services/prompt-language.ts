@@ -364,31 +364,51 @@ Between mid arcs (within one major arc): classify each mid arc, then write its p
 Minor arcs: give **name + chapter count only** (one line of positioning). Their detailed expansion belongs to the plot outline — do not develop plot here.
 
 [Output format — Markdown only, use headings for levels, no code fences]
+★ **Do not output a level-1 heading** — “# Arc Structure” is prepended automatically. Your output starts with the “[Length budget]” line.
+
 [Length budget] … (the arithmetic and result from Step 0)
 
-# Arc Structure
 ## Major arc 1: <name> (approx. X–Y chapters)
 - Type: A Causal / B Goal-driven / C Exploratory
 - Continuation reason: (the first arc says "opening"; every other must say why it follows the previous major arc)
 - Central conflict: …
 - End state: …
 ### Mid arc 1: <name> (approx. N chapters)
-- Type: A / B / C
-- Causality / Goal / Motivation: (by type)
-- Ordering / Path: (by type)
+- Type: A Causal
+- Causality: because <previous mid arc / prior event> produced <specific outcome>, therefore <this mid arc's action>
+- Ordering: this mid arc starts from <the exact state> the previous mid arc ended in
 - Turn: …
 - Minor arcs: <name> (approx. M chapters); <name> (approx. M2 chapters); …
 ### Mid arc 2: <name> (approx. N chapters)
-…
+- Type: B Goal-driven
+- Goal: <one sentence, the full change from X to Y>
+- Attempt 1: <method> -> outcome <what> -> therefore attempt 2
+- Attempt 2: <method> -> outcome <what>
+- Turn: …
+- Minor arcs: <name> (approx. M chapters); <name> (approx. M2 chapters); …
+### Mid arc 3: <name> (approx. N chapters)
+- Type: C Exploratory
+- Motivation: <why explore>
+- Path: <place A> -> discovery <X>; <place B> -> discovery <Y>
+- Turn: …
+- Minor arcs: <name> (approx. M chapters); <name> (approx. M2 chapters); …
 ## Major arc 2: <name> (approx. X–Y chapters)
 …
-★ The above only demonstrates the **writing format**. The number of major / mid / minor arcs is set by Step 0's arithmetic — **not 2, and not 4.**
+★ The above demonstrates the **writing format**, and uses three mid arcs to show the field names for each of A / B / C.
+★ **Field names must match the type; never mix them:**
+  - A Causal → "Causality / Ordering"
+  - B Goal-driven → "Goal / Attempt 1 / Attempt 2 …" (the most common failure is writing a B arc with
+    "Causality / Ordering" and stuffing the attempt–setback–retry sequence into "Ordering")
+  - C Exploratory → "Motivation / Path"
+★ The **counts** of major / mid / minor arcs come from Step 0's arithmetic — **not 2, and not 4**;
+  a mid arc does **not** always need exactly 3 minor arcs — give 2–4 as that mid arc actually requires.
 
 [Self-check before output (mandatory; fix until every line holds)]
 1. Σ(major arc chapters) = {{number_of_chapters}}
 2. For every major arc: Σ(its mid arc chapters) = that major arc's chapter count
 3. For every mid arc: Σ(its minor arc chapters) = that mid arc's chapter count
 4. Every major arc contains ≥2 mid arcs; every mid arc contains ≥2 minor arcs
+5. Every mid arc's field names match its type (A = Causality/Ordering, B = Goal/Attempt, C = Motivation/Path)
 
 [Requirements]
 1. This is a **three-level progression skeleton**, not a chapter-by-chapter outline — do not write per-chapter content.

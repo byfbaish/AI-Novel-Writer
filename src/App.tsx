@@ -34,6 +34,13 @@ import {
 } from './shared/project-session-context'
 import { getAutoNextChapterPrefill, type NextChapterBlueprint } from './services/auto-next-chapter'
 import { pendingBlueprintCandidates } from './services/character-card-generation-sources'
+import {
+  OUTLINE_CHARACTER_NUDGE_COPY,
+  dismissOutlineCharacterNudge,
+  rearmOutlineCharacterNudge,
+  readOutlineCharacterNudgeDismissed,
+  shouldNudgeOutlineCharacterSupplement,
+} from './services/architecture-character-nudge'
 import type { BlueprintCharacterSyncOperation } from '../electron/repositories/blueprint-repository'
 import type { SkinId } from './shared/skin-types'
 
@@ -244,6 +251,60 @@ export default function App() {
       })()
     })
 
+    // 情节大纲生成后：**强烈建议**补一次角色卡，但绝不自动执行（大纲可能还要改）。
+    // 与蓝图那条提示同构；差别是不可自动消失（duration 0），直到作者行动或明确推迟。
+    const unsubOutlineCharacterNudge = globalEventBus.on('WORKFLOW_COMPLETE', ({ projectSession, runId }) => {
+      void (async () => {
+        try {
+          const isCurrentProjectSession = () => sameProjectSessionContext(
+            projectSession,
+            projectSessionContextFromProject(useProjectStore.getState().currentProject),
+          )
+          if (!isCurrentProjectSession()) return
+          const { activeRuns, history } = useWorkflowStore.getState()
+          const run = activeRuns.find(r => r.id === runId) ?? history.find(r => r.id === runId)
+          if (!run || run.type !== 'architecture_generation') return
+          const config = await ipc.invoke('config:get')
+          if (!isCurrentProjectSession()) return
+          if (config.autoPromptOutlineCharacterSupplement === false) return
+          const core = await ipc.invokeWithProjectSession(
+            projectSession,
+            'db:project-core-get',
+            projectSession.projectPath,
+          ) as { synopsis?: string } | null
+          if (!isCurrentProjectSession()) return
+          if (!shouldNudgeOutlineCharacterSupplement({
+            synopsis: core?.synopsis,
+            dismissed: readOutlineCharacterNudgeDismissed(projectSession.projectPath),
+          })) return
+          // 新的大纲 → 重新武装：这次不应沿用上一次「已推迟」的记录。
+          rearmOutlineCharacterNudge(projectSession.projectPath)
+          const text = useLocaleStore.getState().text
+          actionToast.show({
+            type: 'warning',
+            duration: 0,
+            message: text(OUTLINE_CHARACTER_NUDGE_COPY.toast.zh, OUTLINE_CHARACTER_NUDGE_COPY.toast.en),
+            actions: [
+              {
+                label: text(OUTLINE_CHARACTER_NUDGE_COPY.action.zh, OUTLINE_CHARACTER_NUDGE_COPY.action.en),
+                onClick: () => {
+                  dismissOutlineCharacterNudge(projectSession.projectPath)
+                  useLayoutStore.getState().setSidebarView('characters')
+                },
+              },
+              {
+                label: text(OUTLINE_CHARACTER_NUDGE_COPY.later.zh, OUTLINE_CHARACTER_NUDGE_COPY.later.en),
+                variant: 'ghost',
+                onClick: () => dismissOutlineCharacterNudge(projectSession.projectPath),
+              },
+            ],
+          })
+        } catch (error) {
+          console.warn('[OutlineCharacterNudge] 无法检查角色补充提醒:', error)
+        }
+      })()
+    })
+
     return () => {
       // App 卸载时销毁 ProjectService（开发环境 HMR 时会触发）
       import('./services/project-service').then(({ disposeProjectService }) => {
@@ -252,6 +313,7 @@ export default function App() {
       unsubActionToast()
       unsubAutoOpenNextChapter()
       unsubBlueprintCharacterPrompt()
+      unsubOutlineCharacterNudge()
     }
   }, [initLocale, initTheme, initLLM, loadRecentProjects])
 
