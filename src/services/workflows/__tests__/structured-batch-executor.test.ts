@@ -1563,6 +1563,32 @@ describe('StructuredBatchExecutor seam', () => {
     })
   })
 
+  it('surfaces a protocol code followed by a whitespace-free diagnostic tail', async () => {
+    const executor = createStructuredBatchExecutor({
+      contract: blueprintContract,
+      session: {
+        complete: vi.fn<GenerationSession['complete']>(async () => {
+          throw new Error('MAIN_SNAPSHOT_REGRESSION:src=read,artifact=a1,prev=[rev=0,dur=0,completed,len=3443,sha=a1b2c3d4],next=[rev=0,dur=0,completed,len=3200,sha=e5f6a7b8]')
+        }),
+      },
+    })
+
+    const result = await executor.execute({
+      items: [1],
+      limits: { maxBatchItems: 5 },
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: {
+        code: 'generation_failed',
+        reason: 'server_error',
+        message: expect.stringContaining('MAIN_SNAPSHOT_REGRESSION:src=read'),
+        errorName: 'Error',
+      },
+    })
+  })
+
   it('still hides a prose message that merely contains a protocol-like token', async () => {
     const executor = createStructuredBatchExecutor({
       contract: blueprintContract,
