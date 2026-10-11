@@ -284,6 +284,12 @@ Return exactly one JSON object whose fields are strictly equal to the field cont
 [Deliverable]
 Build four connected dimensions. The first three each need a concrete source of conflict; the fourth is a spatial index that gives the plot and the arc structure stable place names.
 
+★ **Your output must contain these four headings in order** (copy the heading text; do not merge, omit, or reorder them):
+### 1. Core rules and exploitable asymmetry
+### 2. Factions, hierarchy, and scarce resources
+### 3. Hidden history and deep crisis
+### 4. Spatial structure (map and regions)
+
 1. Core rules and exploitable asymmetry
 - Define the rules that govern power, technology, institutions, or the supernatural.
 - Explain precisely how {{golden_finger}} creates an asymmetric advantage inside those rules and what limits it.
@@ -306,8 +312,8 @@ Build four connected dimensions. The first three each need a concrete source of 
 1. Every setting must support the core appeal of {{genre}} and be usable in scenes.
 2. Make the advantage's interaction with the world rules specific and actionable.
 3. Preserve explicit author facts from the story premise and protagonist profile together with the project-wide guidance. Facts unrelated to world mechanics need not be repeated, but the world must not contradict them.
-4. The World foundation supplied by the author is authoritative and is injected verbatim into every chapter. Fill in only the dimensions it does not already cover (rule holes, class/resource conflict, the ultimate crisis, **spatial structure**); do not restate or rewrite entries already present in it — output only what is new.
-5. You must output **all four dimensions**, including dimension 4 (spatial structure / map and regions). Returning only the first three is a failure.
+4. The World foundation supplied by the author is authoritative and is injected verbatim into every chapter. Do not restate or rewrite entries already present in it — supply only what it does not cover.
+5. The **four-dimension structure must still be complete**: even when part of a dimension already appears in the World foundation, fill in the parts that dimension does not cover — in particular dimension 4 (spatial structure / map and regions) must at least list the main spaces and their entry or restriction rules. **Returning only the first three dimensions is a failure.**
 6. The spatial names fixed in dimension 4 are the single key for later references; do not use multiple aliases for one place.
 7. Return the world-building text only, with no code, analysis, or explanation.`,
     systemSuffix: `[Author guidance for this step — highest priority when present]
