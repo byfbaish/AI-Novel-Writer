@@ -20,6 +20,7 @@ export default defineConfig({
       'src/components/settings/__tests__/embedding-registration-entry.browser.tsx',
       'src/components/settings/__tests__/prompt-global-persistence.browser.tsx',
       'src/components/settings/__tests__/prompt-load-errors.browser.tsx',
+      'src/components/settings/__tests__/prompt-variable-duplication.browser.tsx',
     ],
     browser: {
       enabled: true,

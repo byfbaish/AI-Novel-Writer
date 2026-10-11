@@ -25,6 +25,7 @@ import { captureProjectSession, isProjectSessionCurrent } from '../project-sessi
 import { Button } from '../ui/Button'
 import { cn } from '../../lib/utils'
 import { useLocaleStore } from '../../stores/locale-store'
+import { extractTemplateVariables, findDuplicatedBodyVariables } from '../../services/prompt-variable-usage'
 
 // ==================== 来源标签配置 ====================
 
@@ -268,6 +269,11 @@ function TemplateItem({
   // 这里只做提示：不动数据、不自动合并（无法区分「作者有意定制」与「旧版原样副本」）。
   const builtinRevisionValue = promptBuiltinRevision(builtinTemplate)
   const builtinOutdated = source !== 'builtin' && isBuiltinOverrideStale(currentTemplate, builtinTemplate)
+  // 模板正文（content）本身就会渲染的变量。正文不在这个面板里显示，但每次请求都会先渲染一遍；
+  // 把同一个变量再插进「补充创作指导」，等于把同一段内容注入两遍（白占上下文、还稀释指令）。
+  // 这里给这类变量打标记，并对已经插进去的实时给提示 —— 只提示，不自动改写作者的文本。
+  const bodyVariables = new Set(extractTemplateVariables(currentTemplate.content ?? ''))
+  const duplicatedVariables = findDuplicatedBodyVariables(currentTemplate.content ?? '', editGuidance)
 
   // 插入变量到光标位置
   const insertVariable = (varName: string) => {
@@ -478,24 +484,44 @@ function TemplateItem({
             <div className="flex flex-wrap gap-1.5">
               {Object.entries(builtinTemplate.variables).map(([varName, desc]) => {
                 const englishDescription = getPromptVariableDescription(builtinTemplate, varName, 'en-US')
+                const inBody = bodyVariables.has(varName)
                 return (
                   <button
                     key={varName}
                     onClick={() => insertVariable(varName)}
-                    title={text(desc, englishDescription)}
+                    title={inBody
+                      ? text(`${desc} —— 模板正文已渲染该变量，再插入会重复注入`, `${englishDescription} — the template body already renders this variable; inserting it again duplicates the content`)
+                      : text(desc, englishDescription)}
                     className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[0.68rem] transition-colors hover:bg-[var(--color-accent)] hover:text-white outline-none focus:outline-none"
                     style={{
-                      backgroundColor: 'var(--color-hover)',
-                      color: 'var(--color-text-secondary)',
-                      border: '1px solid var(--color-border)',
+                      backgroundColor: inBody ? 'color-mix(in srgb, var(--color-warning) 10%, transparent)' : 'var(--color-hover)',
+                      color: inBody ? 'var(--color-warning)' : 'var(--color-text-secondary)',
+                      border: `1px solid ${inBody ? 'color-mix(in srgb, var(--color-warning) 30%, transparent)' : 'var(--color-border)'}`,
                     }}
                   >
                     <code className="font-mono">{`{{${varName}}}`}</code>
                     <span className="opacity-60 max-w-[120px] truncate">{text(desc, englishDescription)}</span>
+                    {inBody && <span className="opacity-80">{text('·正文已用', '·in body')}</span>}
                   </button>
                 )
               })}
             </div>
+            {duplicatedVariables.length > 0 && (
+              <div
+                className="mt-2.5 rounded-lg px-3 py-2.5 text-[0.68rem] leading-relaxed"
+                style={{
+                  color: 'var(--color-warning)',
+                  backgroundColor: 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--color-warning) 25%, transparent)',
+                }}
+              >
+                <AlertTriangle size={12} className="inline mr-1" />
+                {text(
+                  `「补充创作指导」里有 ${duplicatedVariables.length} 个变量（${duplicatedVariables.map((name) => `{{${name}}}`).join('、')}）是模板正文本身就会渲染的 —— 同一段内容会被注入两遍，既白占上下文、又会稀释指令。建议把这几处 {{变量}} 删掉，只保留你真正想额外补充的要求。`,
+                  `${duplicatedVariables.length} variable(s) in “Additional creative guidance” (${duplicatedVariables.map((name) => `{{${name}}}`).join(', ')}) are already rendered by the template body. They inject the same content twice, wasting context and diluting instructions. Remove them and keep only what you want to add.`,
+                )}
+              </div>
+            )}
           </div>
 
           <label className="block">
