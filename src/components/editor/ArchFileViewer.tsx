@@ -541,7 +541,7 @@ function ArchFileViewerSession({
       if (!isProjectSessionCurrent(projectSession)) return
       const status: Record<string, boolean> = {
         premise: !!core?.premise && core.premise.length > 50 && !core.premise.includes('待生成'),
-        characters: rosterSnapshot?.status === 'ready',
+        characters: rosterSnapshot?.status === 'ready' || (core?.charactersArch?.length ?? 0) > 50,
         worldbuilding: !!core?.worldbuilding && core.worldbuilding.length > 50 && !core.worldbuilding.includes('待生成'),
         synopsis: !!core?.synopsis && core.synopsis.length > 50 && !core.synopsis.includes('待生成'),
       }

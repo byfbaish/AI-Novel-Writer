@@ -54,7 +54,11 @@ export async function checkArchStatus(
 
   // 长度 > 50 才算真正已生成，前端可以直接用长度判断
   status.premise = (core.premise?.length ?? 0) > 50
-  status.characters = roster.status === 'ready'
+  // ★ 角色图谱不能只看名册投影是否 ready：其它四步的判据都是「DB 里有内容」，
+  //   而名册 ready 是更严的条件（需要投影完成/审批落地）。实测：生成完角色图谱后，
+  //   非角色界面拿到的是未就绪的本地快照 → 误判「待生成」，与角色界面自相矛盾。
+  //   故补上「DB 正文存在」这一条，与其它步骤语义对齐。
+  status.characters = roster.status === 'ready' || (core.charactersArch?.length ?? 0) > 50
   status.worldbuilding = (core.worldbuilding?.length ?? 0) > 50
   status.plotStructure = (core.plotStructurePlan?.length ?? 0) > 50
   status.synopsis = (core.synopsis?.length ?? 0) > 50
@@ -94,7 +98,8 @@ export async function checkArchStatusWithWordCount(projectSession: ProjectSessio
   }
 
   check('premise', core.premise)
-  check('characters', roster.status === 'ready' ? roster.renderedMarkdown : '')
+  // 角色图谱：即使名册投影尚未 ready，只要 DB 里有正文就算已生成（与其它步骤同语义）。
+  check('characters', roster.status === 'ready' ? roster.renderedMarkdown : core.charactersArch)
   check('worldbuilding', core.worldbuilding)
   check('plotStructure', core.plotStructurePlan)
   check('synopsis', core.synopsis)

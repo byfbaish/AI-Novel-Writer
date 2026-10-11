@@ -306,8 +306,10 @@ Build four connected dimensions. The first three each need a concrete source of 
 1. Every setting must support the core appeal of {{genre}} and be usable in scenes.
 2. Make the advantage's interaction with the world rules specific and actionable.
 3. Preserve explicit author facts from the story premise and protagonist profile together with the project-wide guidance. Facts unrelated to world mechanics need not be repeated, but the world must not contradict them.
-4. The spatial names fixed in dimension 4 are the single key for later references; do not use multiple aliases for one place.
-5. Return the world-building text only, with no code, analysis, or explanation.`,
+4. The World foundation supplied by the author is authoritative and is injected verbatim into every chapter. Fill in only the dimensions it does not already cover (rule holes, class/resource conflict, the ultimate crisis, **spatial structure**); do not restate or rewrite entries already present in it — output only what is new.
+5. You must output **all four dimensions**, including dimension 4 (spatial structure / map and regions). Returning only the first three is a failure.
+6. The spatial names fixed in dimension 4 are the single key for later references; do not use multiple aliases for one place.
+7. Return the world-building text only, with no code, analysis, or explanation.`,
     systemSuffix: `[Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
   },
