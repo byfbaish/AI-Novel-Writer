@@ -35,6 +35,44 @@ const ARCH_FILES: Array<{
 
 const ARCH_STEP_COUNT = ARCH_FILES.length
 
+/**
+ * 章号步进器。
+ *
+ * 设计意图（作者 2026-10-11）：原生 number 输入自带的上下箭头只能 ±1，且要悬停才出现；
+ * 分批生成时最常用的动作却是"再挪一点"——所以做成**常显的 ±1 / ±5 四键**。
+ * 语义：起点上的步进 = 平移整批；终点上的步进 = 增删本批章数（上限由 PLANNING_ACTION_CHAPTER_LIMIT 约束）。
+ */
+function ChapterStepper({
+  onStep, disabled, label,
+}: {
+  onStep: (delta: number) => void
+  disabled: boolean
+  label: string
+}) {
+  return (
+    <span className="inline-flex items-center gap-0.5" role="group" aria-label={label}>
+      {[-5, -1, 1, 5].map(delta => (
+        <button
+          key={delta}
+          type="button"
+          disabled={disabled}
+          onClick={() => onStep(delta)}
+          aria-label={label + (delta > 0 ? ' +' : ' ') + delta}
+          title={delta > 0 ? `加 ${delta} 章` : `减 ${-delta} 章`}
+          className="h-6 min-w-[1.5rem] rounded border text-[0.68rem] tabular-nums outline-none transition-colors disabled:opacity-40 hover:bg-[var(--color-hover)]"
+          style={{
+            borderColor: 'var(--color-border)',
+            color: 'var(--color-text-secondary)',
+            backgroundColor: 'var(--color-bg)',
+          }}
+        >
+          {delta > 0 ? `+${delta}` : delta}
+        </button>
+      ))}
+    </span>
+  )
+}
+
 interface Props {
   isOpen: boolean
   onClose: () => void
@@ -138,6 +176,27 @@ export default function ArchitectureConfirmDialog({
   const continuing = synopsisContinue && canContinue
   const effectiveSynopsisFrom = continuing ? String(continueStart) : synopsisFrom
   const effectiveSynopsisTo = continuing ? String(continueTo) : synopsisTo
+  const synopsisLength = (() => {
+    const start = Number(effectiveSynopsisFrom)
+    const end = Number(effectiveSynopsisTo)
+    return Number.isSafeInteger(start) && Number.isSafeInteger(end) && end >= start ? end - start + 1 : 0
+  })()
+  /** 起点步进 = 平移整批；起点越过终点时把终点一起推走（始终至少一章）。 */
+  const stepSynopsisFrom = (delta: number) => {
+    const current = Number(effectiveSynopsisFrom) || 1
+    const upper = Math.max(1, totalChapters)
+    const nextFrom = Math.min(Math.max(current + delta, 1), upper)
+    const currentTo = Number(effectiveSynopsisTo) || nextFrom
+    setSynopsisFrom(String(nextFrom))
+    if (nextFrom > currentTo) setSynopsisTo(String(Math.min(nextFrom, upper)))
+  }
+  /** 终点步进 = 增删本批章数；上限受 PLANNING_ACTION_CHAPTER_LIMIT 约束，步进不会越界。 */
+  const stepSynopsisTo = (delta: number) => {
+    const start = Number(effectiveSynopsisFrom) || 1
+    const current = Number(effectiveSynopsisTo) || start
+    const maxTo = Math.min(totalChapters, start + PLANNING_ACTION_CHAPTER_LIMIT - 1)
+    setSynopsisTo(String(Math.min(Math.max(current + delta, start), maxTo)))
+  }
   const resolveSynopsisRange = (): { ok: true; range?: { from: number; to: number } } | { ok: false } => {
     if (!checked.synopsis) return { ok: true }
     const range = { from: Number(effectiveSynopsisFrom), to: Number(effectiveSynopsisTo) }
@@ -366,7 +425,7 @@ export default function ArchitectureConfirmDialog({
                       : text(`已覆盖至第 ${coveredTo} 章，全书章节均已覆盖。`, `Covered through chapter ${coveredTo}; every chapter is covered.`)}
                   </p>
                 )}
-                <div className="flex items-center gap-1.5 text-xs">
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
                   <span style={{ color: 'var(--color-text-muted)' }}>{text('第', 'From ch.')}</span>
                   <input
                     type="number"
@@ -384,6 +443,7 @@ export default function ArchitectureConfirmDialog({
                       border: '1px solid var(--color-border)',
                     }}
                   />
+                  <ChapterStepper onStep={stepSynopsisFrom} disabled={continuing} label={text('起始章微调', 'Adjust first chapter')} />
                   <span style={{ color: 'var(--color-text-muted)' }}>{text('章 到第', 'to ch.')}</span>
                   <input
                     type="number"
@@ -401,8 +461,11 @@ export default function ArchitectureConfirmDialog({
                       border: '1px solid var(--color-border)',
                     }}
                   />
-                  <span className="text-xs flex-1" style={{ color: 'var(--color-text-muted)' }}>
-                    {text('章', 'chapter')}
+                  <ChapterStepper onStep={stepSynopsisTo} disabled={continuing} label={text('结束章微调', 'Adjust last chapter')} />
+                  <span className="text-xs" style={{ color: synopsisLength > PLANNING_ACTION_CHAPTER_LIMIT ? 'var(--color-error-text)' : 'var(--color-text-muted)' }}>
+                    {synopsisLength > 0
+                      ? text(`章（本批 ${synopsisLength} 章）`, `chapter(s) · ${synopsisLength} in this batch`)
+                      : text('章', 'chapter')}
                   </span>
                 </div>
                 <label className="block text-xs">
