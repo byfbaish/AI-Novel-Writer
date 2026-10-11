@@ -301,3 +301,60 @@ generationAttempts=none code=generation_failed reason=server_error errorName=Err
 读新收据里的 `errorCode=`。按证据推断，真因大概率是 `begin` 与 `execute` 之间
 某个 `GENERATION_*` 守卫（最可疑的是 `GENERATION_SOURCE_CHANGED`：源绑定重算与
 冻结时不一致），而非预算或容量问题。
+
+### 6.6 第三次实机：`errorCode` 一次命中，真因是「清空蓝图留下悬空进度标记」（2026-10-11 22:29）
+
+重跑后收据变成（只有 `21061bc` 的诊断改动生效才看得到这一行）：
+
+```
+[失败] [生成章节蓝图（全量）] 步骤: 生成蓝图 — GENERATION_DIRECTORY_PROGRESS_INVALID；
+generationAttempts=none code=generation_failed reason=unknown
+errorCode=GENERATION_DIRECTORY_PROGRESS_INVALID errorName=Error
+```
+
+先前的推断（`GENERATION_SOURCE_CHANGED` / 预算）**不成立**——真因在
+`electron/repositories/generation-run-repository.ts` 的 `listDirectoryProgress()`：
+
+```ts
+const committed = SELECT payload_hash,start_chapter,end_chapter
+                   FROM blueprint_commit_operations WHERE operation_id=?
+if (!committed || committed.payload_hash !== stored.payloadHash || …)
+  fail('GENERATION_DIRECTORY_PROGRESS_INVALID')
+```
+
+进度标记（`generation_attempts.usage_receipt_json.directoryProgress`）以
+**`blueprint_commit_operations` 为权威**，读取时会回查那一行做指纹校验。而作者
+「清空全部蓝图」走 `clearBlueprintFactsWithinTransaction()`，**只删蓝图三表**：
+
+| 表 | 清空后（实测） | 后果 |
+|---|---|---|
+| `blueprints` | 0 行 | 符合预期 |
+| `blueprint_commit_operations` | **0 行** | 权威没了 |
+| `generation_attempts.usage_receipt_json.directoryProgress` | **仍留 1 条**（旧 run `ce25481a` 的 `directory-…-1-1`） | 悬空引用 |
+
+于是 `listDirectoryProgress()` 把整个项目判成「账本损坏」，而它挂在
+`generation:execute → readActionContext → owner.readContext → planningContinuation`
+上（`main-generation-owner.ts:710`）——**任何一次 directory 运行的首个物理请求
+都会在派发前被这条悬空引用拦死**，与模型、预算、源绑定全无关。这也解释了为什么
+`DirectoryConfigDialog` 打开时的 `generation:list-directory-progress` 同样在炸。
+
+改动（两条互补）：
+
+1. **清空路径补齐派生引用**（`blueprint-repository.ts`）：权威行被删时，同事务
+   清掉以它为权威的派生引用 —— attempt 的 `directoryProgress` 与 run 的
+   `$runEffects.blueprintAuthorEdit`（后者在 `readBlueprintAuthorEdit` 里有同款
+   回查校验，是同一颗雷）。「清空全部蓝图」按钮与「清除项目生成内容」共用这一条
+   路径，不会各清一半。
+2. **读取侧区分「失效」与「损坏」**（`generation-run-repository.ts`）：
+   **权威提交行缺失 = 该标记已失效**（按「没有可续写的进度」处理，`return []`），
+   不再牵连整张表；行还在而 `payload_hash` / 范围 / 来源不符仍按损坏硬失败。
+   这一条让**已被旧版本留下悬空标记的库**（作者的 `project.db` 就是）无需任何
+   手工修复即可继续生成。
+
+验证：`tsc` 通过；`project-clear-repositories` + `main-generation-owner` 192/192
+（新增 2 个用例）；反向验证（暂存源码改动后单跑）确认用例以
+`Error: GENERATION_DIRECTORY_PROGRESS_INVALID` 失败 —— 与实机同码，回归测试有效。
+
+> 复盘价值：`21061bc` 那一轮只加诊断、不改逻辑，恰恰是它把 `errorCode` 带出来，
+> 才让真因在下一轮一次命中。诊断先行的投入在这里直接兑现了。
+
