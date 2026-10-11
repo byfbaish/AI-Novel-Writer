@@ -35,7 +35,7 @@ import { commitCharacterIdentities, refreshCharacterIdentityProjection } from '.
 import { proveCharacterProposal } from '../generation-character-proposal-proof'
 import { CHARACTER_DETAIL_DESCRIPTION_FIELDS, CHARACTER_STATE_TEXT_FIELDS } from '../../../src/shared/character-proposal-parser'
 import { PLOT_OUTLINE_CONTENT, PLOT_OUTLINE_PROTOCOL, joinPlotOutlineEntries, plotOutlinePurpose, plotOutlineRequestContract, planningTargetInstruction, renderPlotOutlineSynopsis, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../src/shared/plot-outline-contract'
-import { synopsisForDraftChapter } from '../../../src/services/workflows/commands/generate-draft.command'
+import { synopsisSettingSectionsForDraft } from '../../../src/services/workflows/commands/generate-draft.command'
 import { parseTextBlueprintsStrict } from '../../../src/services/workflows/directory-workflow'
 import { ProjectCoreRepository, type ProjectCoreSynopsisCommitRequest } from '../../repositories/project-core-repository'
 vi.mock('../../database', () => ({ getProjectDb: vi.fn(), getCurrentProjectPath: vi.fn(() => null) }))
@@ -248,7 +248,11 @@ describe('chapter outline main authority', () => {
     expect(f.owner.read(run.handle).plotOutline!.cursor).toMatchObject({ kind: 'accept', text })
     acceptOutline(f.owner, run.handle)
     expect(f.owner.readVisibleComposition(run.handle)!.text).toBe(text)
-    expect(synopsisForDraftChapter(renderPlotOutlineSynopsis(text, 1, f.owner.read(run.handle).plotOutline!.sourceExpected), 1)).toContain('尾部硬事实：归还钥匙。')
+    // 正文不再消费大纲章级条目（分层原则），这里直接校验大纲本身没有截断尾部落点。
+    const synopsis = renderPlotOutlineSynopsis(text, 1, f.owner.read(run.handle).plotOutline!.sourceExpected)
+    expect(synopsis).toContain('尾部硬事实：归还钥匙。')
+    // 机器生成的大纲没有非章级段落 → 设定层投影为空（不会把章级内容带进正文）。
+    expect(synopsisSettingSectionsForDraft(synopsis)).toBe('')
     expect(dispatch).toHaveBeenCalledTimes(accepted === 'normal' ? 1 : 2)
   })
 
@@ -334,10 +338,11 @@ describe('chapter outline main authority', () => {
     expect(progress.composition!.artifactIds).toHaveLength(chapters)
     expect(progress.composition!.text).toBe(Array.from({ length: chapters }, (_, index) => outlineEntry(index + 1)).join('\n\n'))
     const formal = renderPlotOutlineSynopsis(progress.composition!.text, chapters, progress.sourceExpected)
+    // 正文不再消费大纲的章级条目（分层原则），改为直接校验大纲本身：
+    // 每条章级条目完整、且没有把多章合并成一个标题。
+    expect(formal.match(/^## 第\d+章/gmu)).toHaveLength(chapters)
     for (let chapter = 1; chapter <= chapters; chapter++) {
-      const selected = synopsisForDraftChapter(formal, chapter)
-      expect(selected).toContain(outlineEntry(chapter))
-      expect(selected.match(/^## 第\d+章/gmu)).toHaveLength(1)
+      expect(formal.split(outlineEntry(chapter))).toHaveLength(2)
     }
     expect(run.handle.rootActionId).toBe(rootId)
     expect(dispatch).toHaveBeenCalledTimes(chapters)

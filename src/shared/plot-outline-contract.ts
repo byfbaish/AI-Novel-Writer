@@ -186,7 +186,7 @@ export function joinPlotOutlineEntries(prefix: string, next: string): string {
  *
  * 从**章级标题**推得，而不是解析末尾那句「已覆盖至第 N 章」提示行：
  * 该提示行只在中途存在（写满全书后 renderPlotOutlineSynopsis 不再追加），
- * 而且作者可以手改大纲、手改提示行。标题是真正被下游 `synopsisForDraftChapter`
+ * 而且作者可以手改大纲、手改提示行。标题是真正被下游（续写起点、已覆盖水位线）
  * 用来切片的依据，所以以它为准。
  *
  * 返回 0 表示没有任何章级条目。
