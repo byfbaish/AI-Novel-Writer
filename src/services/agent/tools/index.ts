@@ -15,6 +15,7 @@ import { readProjectStateTool } from './read-project-state.tool'
 import { readDraftsTool } from './read-drafts.tool'
 import { listChaptersTool } from './list-chapters.tool'
 import { writeFileTool } from './write-file.tool'
+import { reviseDraftContentTool } from './revise-draft-content.tool'
 import { openEditorTool } from './open-editor.tool'
 import { startWorkflowTool } from './start-workflow.tool'
 import { proposeNovelConfigTool } from './propose-novel-config.tool'
@@ -37,6 +38,7 @@ export const builtinTools = [
   inspectWritingSkillTool,
   // 行动 Tool（需确认）
   writeFileTool,
+  reviseDraftContentTool,
   openEditorTool,
   startWorkflowTool,
   proposeNovelConfigTool,
