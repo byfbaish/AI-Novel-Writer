@@ -20,6 +20,7 @@ import {
   ModelExecutionLeaseRegistry,
 } from '../services/model-execution-lease'
 import { ModelDiscoveryService } from '../services/model-discovery-service'
+import { probeLlmRequest, probeLlmResponse } from '../services/llm-probe'
 
 interface ActiveStream {
   controller: AbortController
@@ -158,13 +159,17 @@ export function registerLLMController() {
 
   ipcMain.handle('llm:generate', async (_event, request: LLMRequest) => {
     const startedAt = Date.now()
+    const probe = probeLlmRequest(request, 'invoke')
     let model: ModelProfile | null = null
     try {
       applyProxyConfig()
       model = request.modelExecutionLeaseId
         ? modelExecutionLeases.resolve(request.modelExecutionLeaseId)
         : getModelConfig(request.modelId)
-      if (!model) return { success: false, content: '', finishReason: 'error', error: '未找到模型配置' }
+      if (!model) {
+        probeLlmResponse(probe, { error: '未找到模型配置' })
+        return { success: false, content: '', finishReason: 'error', error: '未找到模型配置' }
+      }
 
       const provider = LLMFactory.getProvider(model)
       const result = await provider.generate(
@@ -178,24 +183,36 @@ export function registerLLMController() {
         },
       )
       recordProviderOutcome(request, model, startedAt, result)
+      probeLlmResponse(probe, {
+        content: result.content,
+        finishReason: result.finishReason,
+        usage: result.usage,
+        error: result.error,
+      })
       return result
     } catch (error) {
       if (model) recordProviderOutcome(request, model, startedAt, { success: false, error: String(error) })
+      probeLlmResponse(probe, { error: String(error) })
       return { success: false, content: '', finishReason: 'error', error: String(error) }
     }
   })
 
   ipcMain.handle('llm:generate-stream', async (event, requestId: string, request: LLMRequest) => {
     applyProxyConfig()
+    const probe = probeLlmRequest(request, 'stream')
     let model: ModelProfile | null
     try {
       model = request.modelExecutionLeaseId
         ? modelExecutionLeases.resolve(request.modelExecutionLeaseId)
         : getModelConfig(request.modelId)
     } catch (error) {
+      probeLlmResponse(probe, { error: String(error) })
       return { requestId, started: false, error: String(error) }
     }
-    if (!model) return { requestId, started: false }
+    if (!model) {
+      probeLlmResponse(probe, { error: '未找到模型配置' })
+      return { requestId, started: false }
+    }
     const generationParameters = {
       ...resolveGenerationParameters(model, request),
       // Same scope as llm:generate: the execution lease, when present, marks
@@ -206,10 +223,22 @@ export function registerLLMController() {
     const abortController = new AbortController()
     const startedAt = Date.now()
     let recorded = false
-    const recordOnce = (outcome: { success: boolean; usage?: TokenUsage; error?: string }) => {
+    const recordOnce = (outcome: {
+      success: boolean
+      usage?: TokenUsage
+      error?: string
+      content?: string
+      finishReason?: LLMFinishReason
+    }) => {
       if (recorded) return
       recorded = true
-      recordProviderOutcome(request, model, startedAt, outcome)
+      // 只把统计仓库认识的字段交给它：`content` 属于探针，`finishReason` 只在
+      // 正常终止（onDone）时出现 —— 传进 onError 会把真实错误文本覆盖成
+      // `finish:error`，那是语义退化。
+      recordProviderOutcome(request, model, startedAt, outcome.finishReason === undefined
+        ? { success: outcome.success, usage: outcome.usage, error: outcome.error }
+        : { success: outcome.success, usage: outcome.usage, error: outcome.error, finishReason: outcome.finishReason })
+      probeLlmResponse(probe, outcome)
     }
     activeStreams.set(requestId, {
       controller: abortController,
@@ -227,7 +256,13 @@ export function registerLLMController() {
       onDone: (fullText: string, usage?: TokenUsage, finishReason?: LLMFinishReason) => {
         const terminalReason: LLMFinishReason = finishReason ?? 'unknown'
         const success = terminalReason === 'stop'
-        recordOnce({ success, usage, error: success ? undefined : `finish:${terminalReason}` })
+        recordOnce({
+          success,
+          usage,
+          content: fullText,
+          finishReason: terminalReason,
+          error: success ? undefined : `finish:${terminalReason}`,
+        })
         win?.webContents.send('llm:stream-done', {
           requestId,
           fullText,
@@ -237,7 +272,7 @@ export function registerLLMController() {
         activeStreams.delete(requestId)
       },
       onError: (error: string, content?: string, usage?: TokenUsage) => {
-        recordOnce({ success: false, usage, error })
+        recordOnce({ success: false, usage, error, content })
         if (content !== undefined) {
           win?.webContents.send('llm:stream-done', {
             requestId,
