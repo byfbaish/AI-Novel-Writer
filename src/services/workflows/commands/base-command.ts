@@ -27,6 +27,7 @@ import { ipc } from '../../ipc-client'
 import type { VisibleCompositionReceipt } from '../../../shared/generation-owner-contract'
 import { composeVisibleContinuation } from '../../../shared/visible-continuation'
 import { createWorkflowMainGenerationRuntime, type WorkflowMainGenerationSelection, type WorkflowMainGenerationRequest, type WorkflowMainGenerationRuntime } from '../workflow-main-generation'
+import { WorkflowGuardError } from '../workflow-guard-error'
 export type { WorkflowMainGenerationSelection } from '../workflow-main-generation'
 
 export interface CommandExecuteParams {
@@ -533,7 +534,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
   /** 在所有异步边界与落盘前复查取消，避免已取消请求继续污染项目。 */
   protected assertNotCancelled(context?: WorkflowContext): void {
     if (context?.cancelled) {
-      throw new Error(workflowUiText(context, '工作流已取消', 'Workflow was cancelled.'))
+      throw new WorkflowGuardError(workflowUiText(context, '工作流已取消', 'Workflow was cancelled.'))
     }
   }
 
