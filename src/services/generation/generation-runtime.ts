@@ -167,7 +167,7 @@ export async function createMainOwnedGenerationRuntime(options: MainOwnedGenerat
     if (!sameHandle(handle, view.handle)) throw new Error('MAIN_RUN_IDENTITY_MISMATCH')
     return view
   }
-  const accept = (snapshot: MainGenerationSnapshot) => {
+  const accept = (snapshot: MainGenerationSnapshot, source: 'initial' | 'subscribe' | 'read' | 'receipt') => {
     const captured = { ...snapshot }
     queue = queue.then(async () => {
       if (closed) return
@@ -187,7 +187,13 @@ export async function createMainOwnedGenerationRuntime(options: MainOwnedGenerat
           && captured.text === previous.text && captured.textHash === previous.textHash
         if (previous.status !== 'running' && !cancelledSettledArtifact && (captured.status !== previous.status || captured.textHash !== previous.textHash || captured.revision !== previous.revision)
           || captured.durableRevision < previous.durableRevision || !captured.text.startsWith(previous.text)
-          || captured.revision === previous.revision && captured.textHash !== previous.textHash) throw new Error('MAIN_SNAPSHOT_REGRESSION')
+          || captured.revision === previous.revision && captured.textHash !== previous.textHash) {
+          // 自证：协议码 + **无空白**的诊断尾（不含任何自由文本，故可安全回显）。
+          // 没有这串值，MAIN_SNAPSHOT_REGRESSION 只说明"某条快照回退了"，无从定位。
+          throw new Error(`MAIN_SNAPSHOT_REGRESSION:src=${source},artifact=${captured.artifactId},`
+            + `prev=[rev=${previous.revision},dur=${previous.durableRevision},${previous.status},len=${previous.text.length},sha=${previous.textHash.slice(0, 8)}],`
+            + `next=[rev=${captured.revision},dur=${captured.durableRevision},${captured.status},len=${captured.text.length},sha=${captured.textHash.slice(0, 8)}]`)
+        }
         if (!captured.diagnostics || previous.diagnostics && captured.diagnostics.elapsedMs < previous.diagnostics.elapsedMs) captured.diagnostics = previous.diagnostics
         if (captured.revision === previous.revision && captured.durableRevision === previous.durableRevision && captured.status === previous.status
           && JSON.stringify(captured.diagnostics) === JSON.stringify(previous.diagnostics)) return
@@ -196,11 +202,11 @@ export async function createMainOwnedGenerationRuntime(options: MainOwnedGenerat
       options.onSnapshot?.(captured)
     }).catch(error => { projectionError = error })
   }
-  const unsubscribe = transport.subscribe(handle, accept)
+  const unsubscribe = transport.subscribe(handle, snapshot => accept(snapshot, 'subscribe'))
   let initial: MainGenerationRunView
   try {
     initial = assertView(await transport.read(handle))
-    for (const snapshot of initial.artifacts) accept(snapshot)
+    for (const snapshot of initial.artifacts) accept(snapshot, 'initial')
     await queue
     if (projectionError) throw projectionError
   } catch (error) { closed = true; unsubscribe(); throw error }
@@ -211,7 +217,7 @@ export async function createMainOwnedGenerationRuntime(options: MainOwnedGenerat
   const read = async () => {
     assertOpen()
     const view = assertView(await transport.read(handle))
-    for (const snapshot of view.artifacts) accept(snapshot)
+    for (const snapshot of view.artifacts) accept(snapshot, 'read')
     await queue
     assertOpen()
     return view
@@ -230,7 +236,7 @@ export async function createMainOwnedGenerationRuntime(options: MainOwnedGenerat
       if (execution?.onChunk) throw new Error('MAIN_SNAPSHOT_CALLBACK_REQUIRED')
       const receipt = await transport.execute({ handle, invocationNonce, task: structuredClone(task) })
       assertView(receipt.run)
-      for (const snapshot of receipt.run.artifacts) accept(snapshot)
+      for (const snapshot of receipt.run.artifacts) accept(snapshot, 'receipt')
       await queue
       if (projectionError) throw projectionError
       if (receipt.outcome.status === 'completed' && receipt.outcome.finishReason !== 'stop'
@@ -242,7 +248,7 @@ export async function createMainOwnedGenerationRuntime(options: MainOwnedGenerat
     execute: async operation => { assertOpen(); return operation({ session }) },
     close: async () => { if (!closed) { closed = true; unsubscribe() } },
     read,
-    cancel: async () => { assertOpen(); const view = assertView(await transport.cancel(handle)); for (const snapshot of view.artifacts) accept(snapshot); await queue; if (projectionError) throw projectionError; return view },
+    cancel: async () => { assertOpen(); const view = assertView(await transport.cancel(handle)); for (const snapshot of view.artifacts) accept(snapshot, 'receipt'); await queue; if (projectionError) throw projectionError; return view },
   }
 }
 

@@ -147,13 +147,16 @@ function describeUnexpectedError(error: unknown): Pick<StructuredBatchFailure, '
 /**
  * 本项目自有**协议码**可以安全回显。
  *
- * 生成运行时的「发前拒绝」（同一 run 不可重放、会话忙/已关闭、缺少 invocation
- * nonce 等）抛的都是裸 `Error('MAIN_RUN_NON_REPLAYABLE')` 这类**纯枚举码**，
+ * 生成运行时的「发前拒绝」抛的都是裸 `Error('MAIN_RUN_NON_REPLAYABLE')`、
+ * `Error('MAIN_SNAPSHOT_REGRESSION:src=read,artifact=…')` 这类消息：以**枚举码开头**，
+ * 后面只允许跟一段**完全不含空白字符**的诊断值（本项目自己用 id / 枚举 / 长度 / 哈希前缀拼装）。
  * 它们不含任何外部自由文本，正是定位「一次请求都没发出就失败」的关键证据。
+ *
  * 但 provider/session 的 message 可能内嵌凭据，必须继续隐藏——因此这里只放行
- * 「整条消息就是一个协议码」（允许 Electron IPC 前缀与 `:序号` 后缀）的情形。
+ * 「整条消息 = 协议码 [+ `:` + 无空白诊断尾]」的情形。散文必然含空白，永远匹配不上；
+ * `MAIN_RUN_NON_REPLAYABLE Bearer test-secret` 这类夹带因此仍被拦下（有反向用例锁定）。
  */
-const PROTOCOL_CODE_MESSAGE = /^(?:Error invoking remote method '[^']{0,256}': )?[A-Z][A-Z0-9_]{4,63}(?::\d+)?$/u
+const PROTOCOL_CODE_MESSAGE = /^(?:Error invoking remote method '[^']{0,256}': )?[A-Z][A-Z0-9_]{4,63}(?::\S{0,400})?$/u
 
 function safeProtocolCode(error: unknown): string | undefined {
   const message = error instanceof Error ? error.message : undefined
