@@ -224,12 +224,24 @@ for rowid, raw in con.execute(
 `content` 或内置 `systemSuffix` 中有出口，删掉不减少任何信息；作者自写的
 去精确堆砌 / 去AI机械化 / 强制排版三段指导完整保留。备份见 `prompts.bak-20261011-2145/`。
 
-**全量发现（未处理）**：扫描 20 个覆盖模板，全部存在同类 `taskGuidance` 重复渲染。
-其中 `refine_chapter`（guidance 1355 字，重复 `draft_content` 整份草稿）与
-`refine_from_review`（745 字，重复 `draft_content` + `review_report`）属正文/修订链路、
-浪费最大，处理方式与本次相同（删首句清单、留作者指导）。其余 16 个模板的变量嵌在任务句中
-（如「生成第 {{n}} 章至第 {{m}} 章」），**不能直接删**，否则句子残缺 —— 要清的话应把
-长文本变量替换成 `variables[key]` 的说明文字。
+**全量发现**：扫描 20 个覆盖模板，全部存在同类 `taskGuidance` 重复渲染。
+
+| 类别 | 模板 | 状态 |
+|---|---|---|
+| 纯冗余清单（变量全部另有出口） | `first_chapter_draft`、`next_chapter_draft` | 已清 |
+| 作者长指导 + 冗余清单 | `refine_chapter`（重复 `draft_content` 整份草稿）、`refine_from_review`（重复 `draft_content` + `review_report`） | 已清（同法） |
+| 变量嵌在任务句 | 其余 16 个（`chapter_blueprint_chunk` / `premise` / `synopsis` / `world_building`…） | 未处理 |
+
+`refine_chapter` / `refine_from_review` 是**审稿与精修**链路（章节精修 / 审稿驱动修稿），
+重复的正是**整份草稿正文**（约 3 000 字/章），浪费仅次于已改的两个正文模板。
+覆盖面核对：两模板 `taskGuidance` 引用的变量全部另有出口 ——
+`content` 覆盖 `draft_content` / `chapter_info` / `global_*` / `word_number` / `writing_style` /
+`review_report`，`user_refine_prompt` 由**内置** `systemSuffix`
+（`★【作者对本步骤的额外指导】★：{{user_refine_prompt}}`）覆盖；
+作者自写的去精确堆砌 / 去AI机械化 / 强制排版 / 锐度自检全部保留。
+
+其余 16 个模板的变量嵌在任务句中（如「生成第 {{n}} 章至第 {{m}} 章」），**不能直接删**，
+否则句子残缺 —— 要清的话应把长文本变量替换成 `variables[key]` 的说明文字。
 
 ### 6.4 原判读预案（保留备查）
 

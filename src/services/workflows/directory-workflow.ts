@@ -424,6 +424,11 @@ export function createDirectoryWorkflow(
             if (context.cancelled) {
               throw new Error(text('工作流已取消', 'Workflow was cancelled.'))
             }
+            // 预检拒绝的失败只由本项目枚举与白名单文案构成，直接透出原因；
+            // 否则统一替换会把唯一能定位的 errorCode 丢掉（2026-10-11 实机踩到）。
+            if (error instanceof directoryCommand.DirectoryBlueprintFailureError) {
+              throw new Error(error.message)
+            }
             throw new Error(text(
               '章节蓝图生成失败，请重试。',
               'Chapter-blueprint generation failed. Please try again.',

@@ -123,14 +123,61 @@ export class DirectoryBlueprintContractError extends Error {
   }
 }
 
+/**
+ * 「预检拒绝」类失败：一次请求都没发出，因此没有任何 attempt 收据。
+ *
+ * 上层工作流此前把所有非具名错误统一替换成「章节蓝图生成失败，请重试。」，
+ * 于是 `StructuredBatchFailure` 里唯一能定位原因的 `code` / `reason` /
+ * `errorCode` 被丢掉，作者只能看到一句无从下手的通用文案（2026-10-11 实机踩到）。
+ *
+ * 这里只承载本项目自有枚举与白名单文案，因此可以安全显示到界面与日志；
+ * 外部错误文本（可能内嵌凭据）永远不会进入这个类。
+ * en-US 分支保持整条 ASCII（既有契约，由 directory.command 用例锁定）。
+ */
+export class DirectoryBlueprintFailureError extends Error {
+  readonly code = 'DIRECTORY_BLUEPRINT_FAILURE' as const
+
+  constructor(
+    readonly generationFailure: StructuredBatchFailure,
+    readonly generationSummary: string,
+    uiLocale: CommandExecuteParams['context']['uiLocale'] = 'zh-CN',
+  ) {
+    super(uiLocale === 'en-US'
+      ? `Blueprint generation failed: code=${generationFailure.code} reason=${generationFailure.reason ?? 'unknown'}; ${generationSummary}`
+      : `${generationFailure.message}；${generationSummary}`)
+    this.name = 'DirectoryBlueprintFailureError'
+  }
+}
+
+/**
+ * 失败收据必须回答「为什么一发没发」。
+ *
+ * `attempts` 为空只说明**派发前就被拦下**，不说明被什么拦下 —— 2026-10-11 实机
+ * 只拿到一句 `generationAttempts=none`，无从下手。这里把 `StructuredBatchFailure`
+ * 的枚举字段一并带上：它们全部由本项目自有白名单、协议码与类名构成，
+ * 外部自由文本（可能内嵌凭据）永不经过这条路径。
+ */
 function directoryGenerationFailureSummary(
   attempts: readonly { purpose?: string; finishReason: string; budget: { requestedOutputTokens: number } }[],
+  failure?: StructuredBatchFailure,
 ): string {
-  if (attempts.length === 0) return 'generationAttempts=none'
-  return attempts.map((attempt, index) => (
+  const detail = failure
+    ? [
+      `code=${failure.code}`,
+      `reason=${failure.reason ?? 'unknown'}`,
+      ...(failure.errorCode ? [`errorCode=${failure.errorCode}`] : []),
+      ...(failure.errorName ? [`errorName=${failure.errorName}`] : []),
+      ...(failure.diagnostic
+        ? [`field=${failure.diagnostic.field}`, `path=${failure.diagnostic.path}`]
+        : []),
+    ].join(' ')
+    : ''
+  if (attempts.length === 0) return detail ? `generationAttempts=none ${detail}` : 'generationAttempts=none'
+  const perAttempt = attempts.map((attempt, index) => (
     `attempt=${index + 1} purpose=${attempt.purpose ?? 'unknown'} `
     + `finishReason=${attempt.finishReason} requestedTokens=${attempt.budget.requestedOutputTokens}`
   )).join('; ')
+  return detail ? `${perAttempt}; ${detail}` : perAttempt
 }
 
 // Match the existing protected structured-planning input envelope. Main still
@@ -437,7 +484,7 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
             `Saved complete blueprints for chapters ${startChapter}–${prefixEnd}; chapters ${prefixEnd + 1}–${endChapter} remain incomplete. The original run retains its candidates and failure reason.`,
           ))
         }
-        const generationSummary = directoryGenerationFailureSummary(batchResult.receipt.attempts)
+        const generationSummary = directoryGenerationFailureSummary(batchResult.receipt.attempts, batchResult.failure)
         callbacks.log(workflowUiText(
           context,
           `蓝图生成失败收据：${generationSummary}`,
@@ -450,9 +497,8 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
             context.uiLocale,
           )
         }
-        throw new Error(context.uiLocale === 'en-US'
-          ? `Blueprint generation failed: code=${batchResult.failure.code} reason=${batchResult.failure.reason ?? 'unknown'}; ${generationSummary}`
-          : `${batchResult.failure.message}；${generationSummary}`)
+        // 预检拒绝（一次未发）必须把原因带出去，否则只剩通用的「请重试」。
+        throw new DirectoryBlueprintFailureError(batchResult.failure, generationSummary, context.uiLocale)
       }
 
       this.assertNotCancelled(context)
