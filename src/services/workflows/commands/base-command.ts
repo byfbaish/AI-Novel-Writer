@@ -48,6 +48,18 @@ type WorkflowLLMOptions = {
   promptBudget?: PromptBudgetPolicy
   /** Explicit workflow-writing stage. Reasoning strategy never selects a writing skill. */
   writingSkillStage?: WritingSkillStage
+  /**
+   * 输出有**严格格式契约**的步骤应设为 `true`，跳过写作 Skill 注入。
+   *
+   * 原因（2026-10-11 实测）：写作 Skill 的 content 里常常自带一套**输出格式契约**。
+   * 当它与本步骤模板要求的格式**互相竞争**时，模型不会二选一，而是**两套都写**——
+   * 弧光结构那次，模型先按 planning 阶段的 `brainstorm` Skill 写出 5 条创意脑暴，
+   * 再写弧光结构，整份被原样落库进 `project_core.plot_structure_plan`（2544 字符）。
+   *
+   * Skill 只应补充**创作方法**（散文类步骤无所谓），一旦步骤要求的是**结构化契约产出**，
+   * 注入就是净负收益：既浪费输出预算，又污染正式产物，还会沿依赖链传给下游。
+   */
+  omitWritingSkill?: boolean
 }
 
 export function injectWritingSkillIntoTask(
@@ -442,7 +454,7 @@ export abstract class BaseWorkflowCommand<TResult = string> {
         ],
         ...(options?.promptBudget ? { promptBudget: options.promptBudget } : {}),
       }
-      const injection = writingSkillStage && context
+      const injection = writingSkillStage && context && !options?.omitWritingSkill
         ? injectWritingSkillIntoTask(baseTask, context, writingSkillStage)
         : { task: baseTask }
       if (injection.skillName && writingSkillStage && !execution.loggedWritingSkillStages.has(writingSkillStage)) {

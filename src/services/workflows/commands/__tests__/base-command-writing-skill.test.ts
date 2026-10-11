@@ -127,4 +127,62 @@ describe('BaseWorkflowCommand writing skill injection', () => {
     })
     expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('Scene craft'))
   })
+
+  it('omits the stage skill for steps whose output must follow a strict contract', async () => {
+    // 回归护栏（2026-10-11）：弧光结构那次，planning 阶段的 brainstorm Skill 自带一套
+    // 输出格式契约，模型两套都写，把「创意脑暴」混进了 plot_structure_plan。
+    const complete = vi.fn(async (_task: GenerationTask) => ({
+      content: 'arc text',
+      finishReason: 'stop' as const,
+      budget: {} as never,
+      receipt: {
+        model: {} as never,
+        capabilities: {} as never,
+        budget: {} as never,
+        finishReason: 'stop' as const,
+      },
+    }))
+    const session = { budget: {}, complete } as unknown as GenerationSession
+    const dependencies: WorkflowGenerationRuntimeDependencies = {
+      createRuntime: async () => ({
+        execute: operation => operation({ session }),
+        close: async () => {},
+      }),
+    }
+    const { BaseWorkflowCommand } = await import('../base-command')
+    class Probe extends BaseWorkflowCommand<string> {
+      async execute(params: CommandExecuteParams) {
+        return this.executeWithGenerationRuntime('text', params, () => this.callLLM(
+          'ARC CONTRACT',
+          'SYSTEM',
+          params.callbacks,
+          { reasoningStage: 'planning', writingSkillStage: 'planning', omitWritingSkill: true },
+          params.context,
+        ))
+      }
+    }
+    const callbacks = {
+      log: vi.fn(), setProgress: vi.fn(), appendText: vi.fn(), setPromptBudgetReport: vi.fn(),
+    }
+    await new Probe(dependencies).execute({
+      step: {},
+      context: {
+        runId: 'arc-run', projectPath: 'C:/novels/project',
+        projectSession: { projectId: 'project', projectPath: 'C:/novels/project', leaseId: 'lease' },
+        writingLanguage: 'en-US', uiLocale: 'en-US', data: {}, cancelled: false,
+        writingSkills: Object.freeze({
+          planning: Object.freeze({
+            skillId: 'builtin:brainstorm', name: 'Brainstorm', stage: 'planning', source: 'builtin',
+            writingLanguage: 'en-US', content: '# 创意脑暴\nProvide 5 ideas.', utf8Bytes: 30,
+          }),
+        }),
+      },
+      callbacks,
+    })
+
+    const task = complete.mock.calls[0]?.[0]
+    expect(task.messages[1].content).toBe('ARC CONTRACT')
+    expect(task.promptBudget).toBeUndefined()
+    expect(callbacks.log).not.toHaveBeenCalledWith(expect.stringContaining('Brainstorm'))
+  })
 })

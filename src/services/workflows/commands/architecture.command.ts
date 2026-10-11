@@ -1794,7 +1794,10 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
     const result = await this.callLLMWithBuilder(
       promptBuilder,
       callbacks,
-      { purpose: 'generate-plot-structure', reasoningStage: 'planning', writingSkillStage: 'planning' },
+      // ★ 本步骤要求严格的格式契约（逐阶段「类型/因果/时序/目标/转折」），
+      //   而 planning 阶段的写作 Skill 常自带另一套输出格式契约；两者竞争时模型会
+      //   **两套都写**，把 Skill 的内容混进 plotStructurePlan（2026-10-11 实测污染）。
+      { purpose: 'generate-plot-structure', reasoningStage: 'planning', writingSkillStage: 'planning', omitWritingSkill: true },
       context,
     )
     if (!result.trim()) throw new Error(text(

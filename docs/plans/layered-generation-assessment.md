@@ -438,10 +438,30 @@
 `resolveStageStructureGuide()` 会把这段整份注入大纲提示词 → **污染会传下去**。
 → **把弧光文字清掉重生成一次**（或在编辑器里手工删掉脑暴那段）。
 
-**③（可选·建议）系统层兜底**
+**③ ✅ 系统层修复（已实施，2026-10-11）**
 
-落库前做一次**形状校验**：弧光输出应以 `# 弧光结构` 开头，若检出 Skill 特征句式（如"可行性评估"）
-则提示作者、不静默落库。**这条是"防止看漏"，不是修复**——是否要做由作者定。
+判定为**严重**并已修复 —— 依据：
+
+- 该注入在 `base-command.ts` 里是**无条件**的（只要设了 `writingSkillStage` 且有 context 就注入），
+  **对架构步骤没有任何排除**；
+- 本次只有弧光中招**纯属时序巧合**：绑定文件写于 `10-10 06:06`，
+  而 premise / characters_arch / worldbuilding 都生成在那之前
+  （artifacts 时间戳 10-10 05:55–06:16）。**弧光是第一个在"有 Skill"的条件下生成的字段。**
+- → **作者下次重生成世界观/角色图谱/前提，会同样中招。** 这不是偶发，是必然。
+
+**实施内容**：
+
+| 改动 | 说明 |
+|---|---|
+| `base-command.ts` `WorkflowLLMOptions` 新增 `omitWritingSkill?: boolean` | 带完整注释说明成因（自带输出格式契约的 Skill 与步骤契约竞争 → 模型两套都写） |
+| 注入处加守卫 `&& !options?.omitWritingSkill` | 跳过注入时同时不写预算段、不打"使用已冻结写作 Skill"日志（如实反映） |
+| `architecture.command.ts` 弧光步骤置 `omitWritingSkill: true` | 本步骤要求逐阶段「类型/因果/时序/目标/转折」严格契约 |
+| 新增回归测试 `base-command-writing-skill.test.ts` | 断言该步骤拿不到 Skill 注入、无预算段、无日志 |
+
+**尚未应用（同类暴露，待作者定）**：`synopsis`（情节大纲）同属
+`visible-text` + 模板规定严格章级格式（`## 第N章`），**具备同样的竞争条件**。
+本步未一并改动，因其未被实测命中；**一句话即可加上**。`premise` / `worldbuilding` 是散文，
+Skill 只当"创作方法"被吸收，风险低；`characters_arch` 走 `structured-data`（JSON 受 schema 约束），风险低。
 
 ---
 
