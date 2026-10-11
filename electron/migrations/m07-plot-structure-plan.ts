@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
 import type { MigrationImplementation, SchemaReader } from './registry'
 
-/** M07 把第五层「阶段结构 / 自由弧」显性化为 project_core.plot_structure_plan。
+/** M07 把第五层「弧光结构 / 自由弧」显性化为 project_core.plot_structure_plan。
  * M00 基线已冻结（指纹即其 CREATE TABLE 文本哈希），因此新增列必须走新的 lane 步骤，
  * 不能改 baseline-schema.ts 里的 CREATE TABLE —— 否则所有旧项目的指纹会全部失配。
  */

@@ -18,7 +18,7 @@ export async function readCoreContent(value: string, session: ProjectSessionCont
   const core = await ipc.invokeWithProjectSession(session, 'db:project-core-get', session.projectPath)
   if (!core) throw new Error('无法读取故事架构内容')
   // 注意：资源键（如 plotStructure）与 DB 字段名（plotStructurePlan）不一定同名，
-  // 必须经 CORE_FIELD_MAP 转换，否则会读到 plotStructure 枚举而不是阶段结构正文。
+  // 必须经 CORE_FIELD_MAP 转换，否则会读到 plotStructure 枚举而不是弧光结构正文。
   return (core as unknown as Record<string, string>)[CORE_FIELD_MAP[resource.key]!] || ''
 }
 export async function writeCoreContent(value: string, content: string, session: ProjectSessionContext): Promise<boolean> {

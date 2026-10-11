@@ -307,7 +307,7 @@ Build four connected dimensions. The first three each need a concrete source of 
   },
   plot_structure: {
     systemRole: 'You are a long-form narrative structure planner. Every stage (arc) must be able to answer "why does this come after the previous one?" instead of listing parallel intervals.',
-    content: `Plan the book's stage structure: how the story advances in stages, and how each stage connects to the previous one. The plot outline will follow it.
+    content: `Plan the book's arc structure: how the story advances in arcs, and how each arc connects to the previous one. The plot outline will follow it.
 
 [Authoritative project settings]
 - Genre: {{genre}}
@@ -344,7 +344,7 @@ Build four connected dimensions. The first three each need a concrete source of 
 -> If a stage is expected to exceed 30 chapters, split out 1–3 inner stages of 5–15 chapters.
 
 [Output format — Markdown only, use headings and lists, no code fences]
-# Stage Structure
+# Arc Structure
 ## Stage 1: <name> (approx. X–Y chapters)
 - Type: A Causal / B Goal-driven / C Exploratory
 - Causality: (required for A) because … therefore …

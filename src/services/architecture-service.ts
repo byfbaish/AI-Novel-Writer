@@ -19,7 +19,7 @@ export const ARCH_FILES: Array<{
     { key: 'premise', label: '故事前提', emoji: '🎯', desc: 'Logline · 核心冲突链 · 金手指定位 · 悬念骨架' },
     { key: 'characters', label: '角色图谱', emoji: '👥', desc: '角色弧光 · 关系网络 · 矛盾交织' },
     { key: 'worldbuilding', label: '世界观', emoji: '🌍', desc: '核心规则 · 阶层断层 · 深层危机' },
-    { key: 'plotStructure', label: '阶段结构', emoji: '🧭', desc: '阶段划分 · 因果/时序推进 · 篇幅约束' },
+    { key: 'plotStructure', label: '弧光结构', emoji: '🧭', desc: '弧光分层 · 因果/时序推进 · 篇幅约束' },
     { key: 'synopsis', label: '情节大纲', emoji: '🗺️', desc: '三幕结构 · 拐点节奏 · 伏笔闭环' },
   ]
 

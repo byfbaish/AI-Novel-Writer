@@ -971,7 +971,7 @@ export function initializeLegacyBaselineSchema(db: BetterSqlite3.Database, impor
   addProjectCoreTextColumn('world_setting', 'worldbuilding')
   addProjectCoreTextColumn('protagonist_profile')
   addProjectCoreTextColumn('plot_tree_snapshot')
-  // 第五层「阶段结构 / 自由弧」的列由 M07 独占补齐（见 m07-plot-structure-plan.ts）。
+  // 第五层「弧光结构 / 自由弧」的列由 M07 独占补齐（见 m07-plot-structure-plan.ts）。
   // 此处绝不能补：基线必须停在冻结态，v0~v7 的指纹才会与历史库完全一致，
   // 旧项目才能被 probeSchema 识别并由 M07 升到 v8。
   if (!projectCoreColumns.has('writing_language')) {

@@ -541,8 +541,8 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 
   {
     key: 'plot_structure',
-    name: '阶段结构（自由弧）',
-    description: '故事架构第四步：把世界观与角色推演成一条有因果/时序推进的阶段结构（自由弧），供情节大纲遵循',
+    name: '弧光结构（自由弧）',
+    description: '故事架构第四步：把世界观与角色推演成一条有因果/时序推进的弧光结构（自由弧），供情节大纲遵循',
     systemRole: '你是一位擅长长篇叙事结构的策划。你让每个阶段（弧）都能回答"我为什么接在前一个之后"，而不是罗列平行区间。',
     variables: {
       premise: '故事前提',
@@ -562,7 +562,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       'number_of_chapters',
       'global_guidance',
     ],
-    content: `请为本书规划一条【阶段结构】——它描述"故事按什么阶段推进、每个阶段怎么接上一个阶段"，供后续情节大纲遵循。
+    content: `请为本书规划一条【弧光结构】——它描述"故事按什么弧光推进、每个弧光怎么接上一个弧光"，供后续情节大纲遵循。
 
 【参考参数】
 - 小说类型：{{genre}}
@@ -599,7 +599,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 → 若某阶段预估超过 30 章，应在内部拆出 1–3 个 5–15 章的小阶段。
 
 【输出格式（必须是 Markdown，层级用标题与列表表达，不要用代码围栏）】
-# 阶段结构
+# 弧光结构
 ## 阶段一：<名称>（约 X–Y 章）
 - 类型：A 因果驱动型 / B 目标驱动型 / C 探索型
 - 因果：（A 型必写）因为…所以…
