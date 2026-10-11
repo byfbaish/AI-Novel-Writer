@@ -61,6 +61,26 @@ export const EDITABLE_PROMPT_KEYS: string[] = [
 ]
 
 /**
+ * 故事架构链：前提 → 角色图谱 → 世界观 → 弧光结构 → 情节大纲 → 章节蓝图。
+ *
+ * 与「输出层」模板（草稿 / 精修 / 审稿）不同，这条链是一套互相咬合的产物：
+ * 每一步的输出都是下一步的输入，并且会被后续**所有**章节的蓝图与正文引用。
+ * 上游改一句话，下游整本书跟着变——所以设置页把这一组标为「架构链」并提示
+ * 「不建议修改」，而不是当成可随意定制的写作指导。
+ *
+ * 这里只做标注，不改变可编辑性：作者仍可覆盖（例如整体换风格），
+ * 只是要在知情的前提下改。
+ */
+export const ARCHITECTURE_PROMPT_KEYS: readonly string[] = Object.freeze([
+  'premise',
+  'character_dynamics',
+  'world_building',
+  'plot_structure',
+  'synopsis',
+  'chapter_blueprint_chunk',
+])
+
+/**
  * Prompt 正文保持原始创作语言；这里只维护设置页会显示的变量说明。
  * 以变量名集中索引，便于自动检查所有可编辑模板是否都有英文 UI 文案。
  */

@@ -1333,6 +1333,9 @@ function ReviewReportSession({
                 <Sparkles size={13} />
                 {text('按确认意见修稿', 'Revise from confirmed checklist')}
               </Button>
+              <span className="text-[0.68rem]" style={{ color: 'var(--color-text-muted)' }}>
+                {text('这一步只修报告里确认的问题，不做风格润色。想打磨文字请在审稿之前先跑 AI 修稿，否则精修会覆盖掉这次修好的细节。', 'This step only fixes the confirmed findings; it does not polish style. Polish with AI revise before reviewing, or the polish will overwrite what this step just fixed.')}
+              </span>
             </div>
           )}
 
