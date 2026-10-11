@@ -201,6 +201,11 @@ export interface GlobalConfig {
    * 角色卡界面的常驻角标不受影响。
    */
   autoPromptBlueprintCharacterSync?: boolean
+  /**
+   * 情节大纲生成后提示补一次角色卡（默认开启）。
+   * 只提示、不自动建卡：大纲可能还要修改，何时补角色由作者决定。
+   */
+  autoPromptOutlineCharacterSupplement?: boolean
   editorFontSize: number
   editorFontFamily: string
   autoSaveInterval: number

@@ -23,7 +23,14 @@ import { launchCreativeWorkflow } from '../../services/workflows/creative-workfl
 import { createArchitectureWorkflow } from '../../services/workflows/architecture-workflow'
 import { renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix } from '../../shared/plot-outline-contract'
 import { useWorkflowStore } from '../../stores/workflow-store'
+import { useLayoutStore } from '../../stores/layout-store'
 import { globalEventBus } from '../../shared/event-bus'
+import {
+  OUTLINE_CHARACTER_NUDGE_COPY,
+  dismissOutlineCharacterNudge,
+  readOutlineCharacterNudgeDismissed,
+  shouldNudgeOutlineCharacterSupplement,
+} from '../../services/architecture-character-nudge'
 import {
   ARCH_REFRESH_BLOCKED_MESSAGE,
   ARCH_PROJECT_MISMATCH_MESSAGE,
@@ -195,6 +202,24 @@ function ArchFileViewerSession({
 
   // 中文字数（由 CodeMirrorEditor 回调更新）
   const [charCount, setCharCount] = useState(0)
+
+  /**
+   * 作者定调（2026-10-11）：大纲先出、角色随后补。大纲已完成、而作者还没处理过
+   * 这条提醒时，在「情节大纲」页常驻一条醒目提示 —— **只提示，绝不自动建卡**
+   * （大纲可能还要修改，时机由作者决定）。
+   */
+  const [outlineCharacterNudge, setOutlineCharacterNudge] = useState(false)
+  useEffect(() => {
+    if (stepKey !== 'synopsis' || !projectMatches) { setOutlineCharacterNudge(false); return }
+    setOutlineCharacterNudge(shouldNudgeOutlineCharacterSupplement({
+      synopsis: editorContent,
+      dismissed: readOutlineCharacterNudgeDismissed(projectKey),
+    }))
+  }, [stepKey, projectMatches, editorContent, projectKey])
+  const settleOutlineNudge = () => {
+    dismissOutlineCharacterNudge(projectKey)
+    setOutlineCharacterNudge(false)
+  }
 
   // 脚状态（独立 state，不跟着 content 走）
   const [isDirty, setIsDirty] = useState(initialContent !== initialSavedContent)
@@ -730,6 +755,40 @@ function ArchFileViewerSession({
         <details><summary>{text('原始候选', 'Original candidate')}</summary><pre className="whitespace-pre-wrap max-h-40 overflow-auto">{recoveryTab?.originalContent}</pre></details>
         {recoveryError && <p role="alert">{recoveryError}</p>}
       </div>}
+
+      {/* 大纲已完成但尚未系统补过角色 → 常驻醒目提示（可关闭；绝不自动执行）。 */}
+      {projectMatches && stepKey === 'synopsis' && !recovery && outlineCharacterNudge && (
+        <div
+          role="status"
+          className="flex items-start gap-2 px-3 py-2 text-xs flex-shrink-0"
+          style={{
+            color: 'var(--color-warning)',
+            backgroundColor: 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
+            borderBottom: '1px solid color-mix(in srgb, var(--color-warning) 25%, transparent)',
+          }}
+        >
+          <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
+          <span className="flex-1">
+            {text(OUTLINE_CHARACTER_NUDGE_COPY.banner.zh, OUTLINE_CHARACTER_NUDGE_COPY.banner.en)}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 text-[0.68rem] flex-shrink-0"
+            onClick={() => { settleOutlineNudge(); useLayoutStore.getState().setSidebarView('characters') }}
+          >
+            {text(OUTLINE_CHARACTER_NUDGE_COPY.action.zh, OUTLINE_CHARACTER_NUDGE_COPY.action.en)}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[0.68rem] flex-shrink-0"
+            onClick={settleOutlineNudge}
+          >
+            {text(OUTLINE_CHARACTER_NUDGE_COPY.dismiss.zh, OUTLINE_CHARACTER_NUDGE_COPY.dismiss.en)}
+          </Button>
+        </div>
+      )}
 
       {projectMatches && stepKey === 'characters' && <LegacyRosterRecoveryPanel onRecover={handleRepairCharacterRoster} busy={extracting} />}
       {stepKey === 'characters' && rosterPresentation && (

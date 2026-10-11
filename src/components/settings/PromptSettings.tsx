@@ -17,6 +17,7 @@ import {
   type PromptTemplate,
 } from '../../services/prompt-templates'
 import { resolveWritingLanguage, type WritingLanguage } from '../../shared/writing-language'
+import { isBuiltinOverrideStale, promptBuiltinRevision } from '../../services/prompt-builtin-revision'
 import { useProjectStore } from '../../stores/project-store'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
@@ -258,6 +259,10 @@ function TemplateItem({
   }
 
   const sourceConf = SOURCE_CONFIG[source]
+  // 覆盖文件里冻结的是**保存当时**的内置正文，因此内置模板升级后它不会自动跟进。
+  // 这里只做提示：不动数据、不自动合并（无法区分「作者有意定制」与「旧版原样副本」）。
+  const builtinRevisionValue = promptBuiltinRevision(builtinTemplate)
+  const builtinOutdated = source !== 'builtin' && isBuiltinOverrideStale(currentTemplate, builtinTemplate)
 
   // 插入变量到光标位置
   const insertVariable = (varName: string) => {
@@ -282,6 +287,8 @@ function TemplateItem({
     const template: PromptTemplate = {
       ...builtinTemplate,
       writingLanguage,
+      // ★ 记录保存当时的内置版本；内置升级后据此提示「这份覆盖仍沿用旧版内容」。
+      builtinRevision: builtinRevisionValue,
       systemRole: editRole,
       taskGuidance: editGuidance,
     }
@@ -302,6 +309,8 @@ function TemplateItem({
     const template: PromptTemplate = {
       ...builtinTemplate,
       writingLanguage,
+      // ★ 记录保存当时的内置版本；内置升级后据此提示「这份覆盖仍沿用旧版内容」。
+      builtinRevision: builtinRevisionValue,
       systemRole: editRole,
       taskGuidance: editGuidance,
     }
@@ -380,6 +389,22 @@ function TemplateItem({
             >
               {text(sourceConf.label, sourceConf.labelEn)}
             </span>
+            {builtinOutdated && (
+              <span
+                className="text-[0.65rem] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 inline-flex items-center gap-1"
+                style={{
+                  color: 'var(--color-warning)',
+                  backgroundColor: 'color-mix(in srgb, var(--color-warning) 12%, transparent)',
+                }}
+                title={text(
+                  '内置模板已更新，但当前生效的是覆盖文件（沿用保存当时的旧版内置内容）',
+                  'The built-in template was updated, but an override is in effect and still uses the older built-in content',
+                )}
+              >
+                <AlertTriangle size={10} />
+                {text('内置已更新', 'Built-in updated')}
+              </span>
+            )}
           </div>
           <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--color-text-muted)' }}>
             {text(builtinTemplate.description, PROMPT_META_EN[builtinTemplate.key]?.description ?? builtinTemplate.description)}
@@ -390,6 +415,23 @@ function TemplateItem({
       {/* 展开编辑区 */}
       {isExpanded && (
         <div className="px-4 pb-4 space-y-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+          {/* W1：覆盖文件会冻结保存当时的内置正文，内置升级后不会自动跟进 —— 只提示，不自动改。 */}
+          {builtinOutdated && (
+            <div
+              className="mt-3 rounded-lg px-3 py-2.5 text-[0.68rem] leading-relaxed"
+              style={{
+                color: 'var(--color-warning)',
+                backgroundColor: 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-warning) 25%, transparent)',
+              }}
+            >
+              <AlertTriangle size={12} className="inline mr-1" />
+              {text(
+                '内置模板已更新，但当前生效的是「全局 / 项目」覆盖 —— 它冻结了保存当时的旧版内置正文与说明，新版的改进不会自动生效。若想采用新版，点「恢复默认」后再按需重新定制（注意：该操作会清除你对该模板的全部自定义）。本提示不会自动修改任何内容。',
+                'The built-in template has been updated, but a global/project override is in effect. It froze the older built-in body and description, so improvements in the new version do not apply. To adopt them, use “Restore default” and re-customize as needed (this clears all your customizations for this template). Nothing is changed automatically.',
+              )}
+            </div>
+          )}
           {/* 变量标签栏 */}
           <div className="pt-3">
             <p className="text-[0.68rem] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
