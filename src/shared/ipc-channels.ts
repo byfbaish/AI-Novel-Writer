@@ -1064,6 +1064,11 @@ export interface DatabaseChannels {
     args: [id: number, expectedProjectPath: string]
     return: { success: boolean; error?: string }
   }
+  /** 一条语句删多条（原子 + 外键级联）；返回实际删除行数。 */
+  'db:narrative-thread-plan-delete-many': {
+    args: [ids: number[], expectedProjectPath: string]
+    return: { success: boolean; deleted?: number; error?: string }
+  }
   'db:narrative-thread-event-confirm': {
     args: [input: NarrativeThreadEventInput, expectedProjectPath: string]
     return: { success: boolean; event?: NarrativeThreadEvent; error?: string }

@@ -147,7 +147,12 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
       characterStates: stateLines.join('\n') || (core.writingLanguage === 'en-US' ? '(none)' : '（暂无）'),
       worldbuilding: core.worldbuilding, history, blueprints, ...(predecessor ? { predecessor } : {}),
       frozenGoals: freezeChapterGoals(source.chapterNumber, currentBlueprint?.keyEvents,
-        [core.worldSetting, ...authorCards.map(card => card.notes)]),
+        // 作者可在大纲 / 世界观设定 / 角色备注里，用独占一行的
+        // 「【第N章必现】具体要求」声明该章的必现项（见 shared/chapter-goal-review.ts）。
+        // 大纲此前不是扫描面 —— 于是作者"想让某一章必须出现某件事"只能写进设定或角色备注。
+        // 接上大纲后：普通正文行完全不受影响（正则要求整行只有该标记），
+        // 而写在章标题下的一行标记会直接成为该章审稿的必现项。
+        [core.worldSetting, core.synopsis, ...authorCards.map(card => card.notes)]),
       preflightFindings: currentBlueprint ? findBlueprintContinuityRisks(history.flatMap(item => item.projection ? [item.projection] : []), currentBlueprint, ConsistencyExemptionRepository.list(db)) : [],
       ...(confirmation ? { confirmation } : {}), ...(recheck ? { recheck } : {}) }
   })()

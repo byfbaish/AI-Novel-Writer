@@ -44,6 +44,8 @@ interface Props {
   initialSelectedSteps?: ArchStepKey[]
   /** 打开时预填的情节大纲续批范围（从已确认的下一章开始；to 可在弹窗内调整）。 */
   initialSynopsisRange?: { from: number; to: number } | null
+  /** 当前大纲已覆盖到第几章（0 表示还没有章级条目）。用于「续写」勾选项。 */
+  synopsisCoveredTo?: number
   onConfirm: (
     selectedSteps: ArchStepKey[],
     stepGuidance: Record<string, string>,
@@ -54,7 +56,7 @@ interface Props {
 
 /** 生成架构确认弹框（含步骤勾选） */
 export default function ArchitectureConfirmDialog({
-  isOpen, onClose, archStatus, initialSelectedSteps, initialSynopsisRange = null, onConfirm,
+  isOpen, onClose, archStatus, initialSelectedSteps, initialSynopsisRange = null, synopsisCoveredTo = 0, onConfirm,
 }: Props) {
   const currentProject = useProjectStore(s => s.currentProject)
   const text = useLocaleStore(s => s.text)
@@ -72,6 +74,8 @@ export default function ArchitectureConfirmDialog({
   const [showGuidance, setShowGuidance] = useState(false)
   const [synopsisFrom, setSynopsisFrom] = useState('')
   const [synopsisTo, setSynopsisTo] = useState('')
+  /** 「续写」：从已覆盖章节的下一章开始，默认推进 PLANNING_ACTION_CHAPTER_LIMIT 章。 */
+  const [synopsisContinue, setSynopsisContinue] = useState(false)
   const [targetUnits, setTargetUnits] = useState(String(DEFAULT_PLANNING_TARGET_UNITS))
   const [preferenceLoading, setPreferenceLoading] = useState(true)
   const [isConfirming, setIsConfirming] = useState(false)
@@ -91,6 +95,7 @@ export default function ArchitectureConfirmDialog({
   // 每次弹窗打开时重置选中状态；续批入口会预填起止章并勾选情节大纲
   const resetChecked = useCallback(() => {
     const defaults = createDefaultArchitectureSelection(archStatus, initialSelectedSteps)
+    setSynopsisContinue(false)
     if (initialSynopsisRange) {
       defaults.synopsis = true
       setSynopsisFrom(String(initialSynopsisRange.from))
@@ -124,9 +129,18 @@ export default function ArchitectureConfirmDialog({
   const noneSelected = selectedSteps.length === 0
 
   const totalChapters = Number(config.totalChapters) > 0 ? Number(config.totalChapters) : 0
+  // 「续写」：起点 = 已覆盖章 + 1，默认推进 PLANNING_ACTION_CHAPTER_LIMIT 章。
+  // 只读不写：这里不改 synopsisFrom/To，取消勾选即回到手填值，行为可预期。
+  const coveredTo = Number.isSafeInteger(synopsisCoveredTo) && synopsisCoveredTo > 0 ? synopsisCoveredTo : 0
+  const continueStart = coveredTo + 1
+  const canContinue = coveredTo > 0 && totalChapters > 0 && continueStart <= totalChapters
+  const continueTo = canContinue ? Math.min(continueStart + PLANNING_ACTION_CHAPTER_LIMIT - 1, totalChapters) : 0
+  const continuing = synopsisContinue && canContinue
+  const effectiveSynopsisFrom = continuing ? String(continueStart) : synopsisFrom
+  const effectiveSynopsisTo = continuing ? String(continueTo) : synopsisTo
   const resolveSynopsisRange = (): { ok: true; range?: { from: number; to: number } } | { ok: false } => {
     if (!checked.synopsis) return { ok: true }
-    const range = { from: Number(synopsisFrom), to: Number(synopsisTo) }
+    const range = { from: Number(effectiveSynopsisFrom), to: Number(effectiveSynopsisTo) }
     try { assertPlanningActionRange(range) } catch { return { ok: false } }
     return range.to <= totalChapters ? { ok: true, range } : { ok: false }
   }
@@ -306,9 +320,29 @@ export default function ArchitectureConfirmDialog({
               className="rounded-lg p-3 space-y-2"
               style={{ backgroundColor: 'var(--color-panel)', border: '1px solid var(--color-border)' }}
             >
-              <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--color-warning-text)' }}>
-                <AlertTriangle size={13} />
-                {text('情节大纲 · 本次生成范围', 'Plot outline · batch scope')}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-medium" style={{ color: 'var(--color-warning-text)' }}>
+                  <AlertTriangle size={13} />
+                  {text('情节大纲 · 本次生成范围', 'Plot outline · batch scope')}
+                </div>
+                {coveredTo > 0 && (
+                  <label
+                    className="flex items-center gap-1.5 text-xs cursor-pointer select-none"
+                    title={canContinue
+                      ? text(`从已覆盖的下一章（第 ${continueStart} 章）开始，默认推进 ${PLANNING_ACTION_CHAPTER_LIMIT} 章`, `Start from the next uncovered chapter (chapter ${continueStart}), advancing ${PLANNING_ACTION_CHAPTER_LIMIT} chapters by default`)
+                      : text('全书章节已全部覆盖', 'Every chapter is already covered')}
+                    style={{ color: 'var(--color-text-secondary)' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={synopsisContinue}
+                      disabled={!canContinue}
+                      onChange={event => setSynopsisContinue(event.target.checked)}
+                      aria-label={text('续写：从已覆盖章节之后开始', 'Continue: start after the covered chapters')}
+                    />
+                    {text('续写', 'Continue')}
+                  </label>
+                )}
               </div>
               <p
                 role="note"
@@ -317,17 +351,33 @@ export default function ArchitectureConfirmDialog({
               >
                   {text(`全书共 ${totalChapters} 章，每次最多生成 ${PLANNING_ACTION_CHAPTER_LIMIT} 章。完成后可继续下一批。`, `The book has ${totalChapters} chapters. Generate up to ${PLANNING_ACTION_CHAPTER_LIMIT} chapters per action, then continue with the next batch.`)}
                 </p>
+                {coveredTo > 0 && (
+                  <p role="status" className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>
+                    {canContinue
+                      ? continuing
+                        ? text(
+                            `续写：第 ${continueStart}–${continueTo} 章（已覆盖至第 ${coveredTo} 章）。要改用其它范围，请取消勾选后手填。`,
+                            `Continuing: chapters ${continueStart}–${continueTo} (covered through ${coveredTo}). Uncheck to enter another range manually.`,
+                          )
+                        : text(
+                            `已覆盖至第 ${coveredTo} 章。勾选「续写」将从第 ${continueStart} 章开始，默认推进 ${PLANNING_ACTION_CHAPTER_LIMIT} 章。`,
+                            `Covered through chapter ${coveredTo}. Checking “Continue” starts at chapter ${continueStart} and advances ${PLANNING_ACTION_CHAPTER_LIMIT} chapters by default.`,
+                          )
+                      : text(`已覆盖至第 ${coveredTo} 章，全书章节均已覆盖。`, `Covered through chapter ${coveredTo}; every chapter is covered.`)}
+                  </p>
+                )}
                 <div className="flex items-center gap-1.5 text-xs">
                   <span style={{ color: 'var(--color-text-muted)' }}>{text('第', 'From ch.')}</span>
                   <input
                     type="number"
                     min={1}
                     max={totalChapters}
-                    value={synopsisFrom}
+                    value={effectiveSynopsisFrom}
+                    disabled={continuing}
                     onChange={e => setSynopsisFrom(e.target.value)}
                     placeholder="1"
                     aria-label={text('本次生成范围的起始章', 'First chapter of this batch')}
-                    className="w-16 rounded-md px-2 py-1.5 text-xs outline-none transition-colors"
+                    className="w-16 rounded-md px-2 py-1.5 text-xs outline-none transition-colors disabled:opacity-60"
                     style={{
                       color: 'var(--color-text)',
                       backgroundColor: 'var(--color-bg)',
@@ -339,11 +389,12 @@ export default function ArchitectureConfirmDialog({
                     type="number"
                     min={1}
                     max={totalChapters}
-                    value={synopsisTo}
+                    value={effectiveSynopsisTo}
+                    disabled={continuing}
                     onChange={e => setSynopsisTo(e.target.value)}
                     placeholder={String(totalChapters)}
                     aria-label={text('本次生成范围的结束章', 'Last chapter of this batch')}
-                    className="w-16 rounded-md px-2 py-1.5 text-xs outline-none transition-colors"
+                    className="w-16 rounded-md px-2 py-1.5 text-xs outline-none transition-colors disabled:opacity-60"
                     style={{
                       color: 'var(--color-text)',
                       backgroundColor: 'var(--color-bg)',

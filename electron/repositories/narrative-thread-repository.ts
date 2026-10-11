@@ -71,6 +71,21 @@ export class NarrativeThreadRepository {
     if (result.changes !== 1) throw new Error('叙事线索计划不存在')
   }
 
+  /**
+   * 一次删除多条计划。
+   *
+   * 与逐条调用 `deletePlan` 的差别不只是循环次数：单条 DELETE 各自是一个隐式事务，
+   * 删 N 条会写 N 次 WAL、N 次 fsync。这里用**一条带 IN 的 DELETE**，
+   * SQLite 对单条语句保证原子性，且 `narrative_thread_confirmations` 由外键级联清理。
+   * 返回实际删除的行数；传入去重后为空时视为参数错误（不静默成功）。
+   */
+  static deletePlans(ids: readonly number[], db = requireDb()): number {
+    const unique = [...new Set(ids.filter(id => Number.isSafeInteger(id) && id > 0))]
+    if (!unique.length) throw new Error('叙事线索计划参数无效')
+    const placeholders = unique.map(() => '?').join(', ')
+    return db.prepare(`DELETE FROM narrative_thread_plans WHERE id IN (${placeholders})`).run(...unique).changes
+  }
+
   static getPlan(id: number, db = requireDb()): NarrativeThreadPlanRecord | null {
     const row = db.prepare('SELECT * FROM narrative_thread_plans WHERE id = ?')
       .get(id) as Record<string, unknown> | undefined

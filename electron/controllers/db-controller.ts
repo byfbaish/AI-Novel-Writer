@@ -120,6 +120,7 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:narrative-thread-plan-create',
   'db:narrative-thread-plan-update',
   'db:narrative-thread-plan-delete',
+  'db:narrative-thread-plan-delete-many',
   'db:narrative-thread-event-confirm',
   'db:plot-tree-save',
   'db:plot-tree-clear',
@@ -848,6 +849,12 @@ export function registerDatabaseController() {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     NarrativeThreadRepository.deletePlan(id)
     return { success: true }
+  })
+
+  ipcMain.handle('db:narrative-thread-plan-delete-many', async (_event, ids: number[], expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    // 一条语句删多条：原子 + 外键级联清理 confirmations，避免 N 次事务。
+    return { success: true, deleted: NarrativeThreadRepository.deletePlans(ids) }
   })
 
   ipcMain.handle('db:narrative-thread-event-confirm', async (_event, input, expectedProjectPath: string) => {

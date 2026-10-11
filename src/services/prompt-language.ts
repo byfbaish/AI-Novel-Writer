@@ -342,6 +342,19 @@ This step is always **three-level nesting**: major arc ⊃ mid arc ⊃ minor arc
 Example shape (compute your own numbers; do not copy these):
 [Length budget] 800 chapters ⇒ about 8 major arcs; about 4 mid arcs each ⇒ about 32 mid arcs; about 3 minor arcs each ⇒ about 96 minor arcs.
 ★ The counts are **computed, not estimated**. If your numbers do not match the level sizes below, you computed wrong — recompute before writing.
+★ MANDATORY: state the level totals as an explicit **sum with its result**, never as a bare conclusion.
+  - Correct: Σmajor = 100 + 95 + 95 + 95 + … = 845 (the result must equal {{number_of_chapters}})
+  - Wrong (this actually happened): writing only “Σ(major arcs) = 845” without listing the terms —
+    the terms actually added up to 35 chapters more than the total, and the error was invisible
+    because only the conclusion was written. **Add the terms first, then check against the total;
+    adjust chapter counts until they are equal.**
+★ MANDATORY: derive the minor-arc count of **every mid arc individually, showing the arithmetic**, e.g.
+  “this mid arc has 25 chapters ÷ 10 ≈ 2–3 ⇒ 3 minor arcs”. A 25-chapter mid arc may legitimately
+  have 2 or 3 — decide by **how many independent events it actually contains** (do not split one event
+  into two just to raise the count).
+★ FORBIDDEN: giving every mid arc the same number of minor arcs (e.g. all 30 mid arcs get exactly 3).
+  That proves no per-mid-arc computation happened — a fixed number was reused. Treat it as a failed
+  output and recompute from each mid arc's actual events.
 
 [Step 1 — the size band for each level (do not mix them up)]
 - Major arc (level 1): 80–150 chapters. Fewer than 80 means over-splitting; more than 150 means it was never split.
@@ -404,11 +417,12 @@ Minor arcs: give **name + chapter count only** (one line of positioning). Their 
   a mid arc does **not** always need exactly 3 minor arcs — give 2–4 as that mid arc actually requires.
 
 [Self-check before output (mandatory; fix until every line holds)]
-1. Σ(major arc chapters) = {{number_of_chapters}}
+1. Σ(major arc chapters) = {{number_of_chapters}} — **show the term-by-term addition** (A+B+C+…=total); a bare conclusion is not acceptable
 2. For every major arc: Σ(its mid arc chapters) = that major arc's chapter count
 3. For every mid arc: Σ(its minor arc chapters) = that mid arc's chapter count
 4. Every major arc contains ≥2 mid arcs; every mid arc contains ≥2 minor arcs
 5. Every mid arc's field names match its type (A = Causality/Ordering, B = Goal/Attempt, C = Motivation/Path)
+6. The minor-arc counts of all mid arcs are **not all identical** (at least two distinct values)
 
 [Requirements]
 1. This is a **three-level progression skeleton**, not a chapter-by-chapter outline — do not write per-chapter content.

@@ -124,6 +124,32 @@ describe('NarrativeThreadRepository', () => {
     }))
   })
 
+  it('deletes several plans in one statement and cascades their events', () => {
+    const keep = NarrativeThreadRepository.createPlan({
+      title: '保留的伏笔', type: '伏笔', targetStartChapter: 1, targetEndChapter: 2, authorIntent: '保留。',
+    })
+    const dropA = NarrativeThreadRepository.createPlan({
+      title: '待删 A', type: '伏笔', targetStartChapter: 3, targetEndChapter: 4, authorIntent: '删。',
+    })
+    const dropB = NarrativeThreadRepository.createPlan({
+      title: '待删 B', type: '长期承诺', targetStartChapter: 5, targetEndChapter: 6, authorIntent: '删。',
+    })
+
+    const content = '第十二章定稿。'
+    FinalizedDraftImportRepository.commit(projectRoot, {
+      operationId: 'thread-batch-delete',
+      chapters: [{ chapterNumber: 12, title: '第十二章', content, wordCount: countDraftUnits(content) }],
+    })
+    const draft = DraftRepository.listAll()[0]!
+    NarrativeThreadRepository.confirmEvent({ planId: dropA.id, draftId: draft.id, type: 'planted', evidence: content, reason: '埋设。' })
+
+    // 去重 + 忽略非法值；一条语句删多条（外键级联清理 confirmations）。
+    expect(NarrativeThreadRepository.deletePlans([dropA.id, dropB.id, dropA.id, Number.NaN])).toBe(2)
+    expect(NarrativeThreadRepository.list().map(plan => plan.id)).toEqual([keep.id])
+    expect(() => NarrativeThreadRepository.deletePlans([])).toThrow('叙事线索计划参数无效')
+    expect(() => NarrativeThreadRepository.deletePlans([999999])).not.toThrow()
+  })
+
   it('computes inactivity and overdue state at query time', () => {
     const plan = NarrativeThreadRepository.createPlan({
       title: '迟到的回信',

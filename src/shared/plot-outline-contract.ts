@@ -181,6 +181,34 @@ export function joinPlotOutlineEntries(prefix: string, next: string): string {
   return [prefix.trim(), next.trim()].filter(Boolean).join('\n\n')
 }
 
+/**
+ * 大纲已覆盖到第几章。
+ *
+ * 从**章级标题**推得，而不是解析末尾那句「已覆盖至第 N 章」提示行：
+ * 该提示行只在中途存在（写满全书后 renderPlotOutlineSynopsis 不再追加），
+ * 而且作者可以手改大纲、手改提示行。标题是真正被下游 `synopsisForDraftChapter`
+ * 用来切片的依据，所以以它为准。
+ *
+ * 返回 0 表示没有任何章级条目。
+ */
+export function plotOutlineCoveredTo(synopsis: string | null | undefined): number {
+  if (!synopsis?.trim()) return 0
+  let covered = 0
+  for (const entry of headings(synopsis)) covered = Math.max(covered, entry.to)
+  return covered
+}
+
+/** 续写的起点 = 已覆盖章 + 1；已写满全书时返回 null。 */
+export function plotOutlineContinuationStart(
+  synopsis: string | null | undefined,
+  totalChapters: number,
+): number | null {
+  const covered = plotOutlineCoveredTo(synopsis)
+  const next = covered + 1
+  if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return covered > 0 ? next : null
+  return next > totalChapters ? null : next
+}
+
 export function renderPlotOutlineSynopsis(body: string, coveredTo: number, expected: ProjectCoreSynopsisExpected): string {
   const english = expected.writingLanguage === 'en-US'
   const tail = coveredTo < expected.totalChapters ? english
