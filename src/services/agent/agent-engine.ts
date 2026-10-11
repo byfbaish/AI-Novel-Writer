@@ -158,11 +158,12 @@ export async function runAgentLoop(
       const generated = await generateFn(messages, modelId ?? '')
       if (typeof generated !== 'string') throw new Error('GENERATION_AGENT_HOST_REQUIRED')
       llmResponse = generated
-    } catch {
+    } catch (error) {
       if (abortSignal?.aborted) {
         callbacks.onDone(fullAssistantText + uiText('\n\n_（已停止生成）_', '\n\n_(Generation stopped)_'), allToolCalls, allArtifacts)
         return
       }
+      console.error('[agent-loop] model turn failed', error instanceof Error ? `${error.name}: ${error.message}` : String(error), error)
       callbacks.onError(uiText('AI 请求失败，请重试。', 'The AI request failed. Please try again.'))
       return
     }
@@ -485,7 +486,10 @@ async function runHostedAgentLoop(generate: LLMGenerateFn, callbacks: AgentEngin
     }
     visible += ui('\n\n已达到最大工具调用次数限制，自动停止。', '\n\nThe maximum number of tool calls was reached, so generation stopped.')
     done()
-  } catch {
+  } catch (error) {
+    // ★ 生产走的就是这条托管循环。此前裸 `catch {}` 把异常整个丢掉，
+    //   「为什么失败」在这一层就断了线索。
+    console.error('[agent-loop] hosted turn failed', error instanceof Error ? `${error.name}: ${error.message}` : String(error), error)
     if (signal?.aborted) done()
     else if (visible) callbacks.onDone(visible + ui('\n\n生成未完成，原候选已保留。', '\n\nGeneration did not finish; the original candidate was retained.'), calls, artifacts)
     else callbacks.onError(ui('AI 请求失败，请重试。', 'The AI request failed. Please try again.'))

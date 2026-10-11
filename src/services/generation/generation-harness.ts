@@ -695,7 +695,10 @@ export function createGenerationHarness(dependencies: {
               }),
               terminationPromise,
             ])
-          } catch {
+          } catch (error) {
+            // 这一个 catch 会把 provider 侧的所有失败压成一个通用 code。不落日志
+            // 就等于把「哪一层、因为什么」永久抹掉。
+            console.error('[generation] attempt failed', error instanceof Error ? `${error.name}: ${error.message}` : String(error))
             const cancellationCode = termination === 'cancelled'
               ? 'CANCELLED'
               : termination === 'deadline'

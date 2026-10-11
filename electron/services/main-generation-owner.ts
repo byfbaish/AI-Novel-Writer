@@ -92,7 +92,11 @@ async function dispatchProvider(value: unknown, options: Parameters<GenerationRu
     onDiagnostics: options.onDiagnostics,
     onUsageEvidence: value => { evidence = value },
     onDone: (text, _usage, reason) => { options.onVisible({ kind: 'cumulative', text }); finishReason = reason },
-    onError: error => {
+    onError: (error, content) => {
+      // ★ provider 的原始文案与「已生成但是否可用未知」的可见内容此前被一起丢弃，
+      //   只留下一个枚举标签，导致失败原因无法回溯。原文案与内容长度必须落日志。
+      console.error('[generation] provider reported failure', error,
+        content ? `(partial visible content: ${content.length} chars)` : '(no visible content)')
       failureCode = /fetch failed|failed to fetch|network|ECONNRESET|ETIMEDOUT|无法读取响应流|完成标记前结束/iu.test(error)
         ? 'NETWORK_ERROR' : 'GENERATION_PROVIDER_FAILED'
     },

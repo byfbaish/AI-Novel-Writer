@@ -567,10 +567,13 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
               ),
             }))
           },
-          onError: () => {
+          onError: (error) => {
             if (get().activeRequestId !== assistantMsg.id) return
             activeAbortController = null
             activeRequestUiLocale = null
+            // ★ 这里此前把回调参数整个丢掉（`onError: () => {}`），引擎给出的失败
+            //   原因连日志都没机会留下。UI 文案保持不变，但先落一条可检索的现场。
+            console.error('[agent] generation failed', error)
             updateAssistantMsg(m => ({
               ...m,
               content: m.content ? m.content + text('\n\n生成未完成，原候选已保留。', '\n\nGeneration did not finish; the original candidate was retained.')
@@ -588,6 +591,8 @@ export const useAgentStore = create<AgentState>()((set, get) => ({
       if (get().activeRequestId !== assistantMsg.id) return
       activeAbortController = null
       activeRequestUiLocale = null
+      // 与 onError 同理：真实异常必须留下现场，否则只剩通用文案。
+      console.error('[agent] generation threw', error instanceof Error ? `${error.name}: ${error.message}` : String(error), error)
       updateAssistantMsg(m => ({
         ...m,
         content: (m.content ? m.content + '\n\n' : '') + (error instanceof Error && error.message === 'GENERATION_AGENT_PROJECT_REQUIRED'

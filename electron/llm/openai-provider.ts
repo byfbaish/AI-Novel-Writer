@@ -197,9 +197,13 @@ export class OpenAIProvider implements ILLMProvider {
       opts.onError(error, visibleCandidate || undefined, usage)
     }
 
+    // Declared outside the try so the failure summary below can still report where
+    // the request went and what the stream had reached.
+    const url = resolveOpenAIChatCompletionsUrl(model.baseUrl, model.provider)
+    let finishReason: LLMFinishReason = 'unknown'
+
     notify()
     try {
-      const url = resolveOpenAIChatCompletionsUrl(model.baseUrl, model.provider)
       const body = this.buildRequestBody(model, messages, opts, true)
 
       const res = await fetch(url, {
@@ -216,8 +220,15 @@ export class OpenAIProvider implements ILLMProvider {
         diagnostics.endReason = 'failed'
         diagnostics.errorCode = 'HTTP_ERROR'
         notify()
-        void res.body?.cancel().catch(() => {})
-        fail(`API 调用失败 (${res.status})`)
+        // ★ 供应商的真实原因常常只存在于响应体里（Ollama 会把「模型不存在」
+        //   「上下文超限」等写在 body.error）。此前直接 cancel 掉响应体，
+        //   等于把唯一线索扔掉，上层只能看到一句无从定位的通用文案。
+        const detail = await res.text().catch(() => '')
+        console.error('[provider] HTTP error', {
+          status: res.status, url, model: model.modelName,
+          detail: detail.slice(0, 2000) || '(empty body)',
+        })
+        fail(detail ? `API 调用失败 (${res.status})：${detail.slice(0, 500)}` : `API 调用失败 (${res.status})`)
         return
       }
 
@@ -236,7 +247,6 @@ export class OpenAIProvider implements ILLMProvider {
       let lineBuffer = ''
       let dataLines: string[] = []
       let sawDone = false
-      let finishReason: LLMFinishReason = 'unknown'
       let fatalError: string | null = null
 
       const processEvent = (data: string) => {
@@ -427,8 +437,16 @@ export class OpenAIProvider implements ILLMProvider {
 
       if (!sawDone) {
         diagnostics.errorCode = 'STREAM_INCOMPLETE'
-        protocolError = '响应流在完成标记前结束，生成结果不完整'
-        throw new Error('响应流在完成标记前结束，生成结果不完整')
+        // 流被上游提前掐断时，原始日志里唯一的线索就是「收到了多少内容」。
+        // 本地推理服务（Ollama 的 qwen 系列）在 tool-call 解析失败时会中断流，
+        // 必须把现场落下来，否则只能看到一句无信息量的「结果不完整」。
+        console.error('[provider] stream ended before completion marker', {
+          url, model: model.modelName, baseUrl: model.baseUrl,
+          httpStatus: diagnostics.httpStatus, receivedChars: fullText.length,
+          receivedVisibleChars: visible.text.length, lastFinishReason: finishReason,
+        })
+        protocolError = `响应流在完成标记前结束，生成结果不完整（已收到 ${fullText.length} 字符，未收到 [DONE]）`
+        throw new Error(protocolError)
       }
 
       if (isThinking) {
@@ -448,6 +466,15 @@ export class OpenAIProvider implements ILLMProvider {
       if (diagnostics.endReason === 'cancelled') {
         fail('已取消生成')
       } else {
+        // ★ 这里是传输层唯一的异常汇总点：把原始异常连同传输诊断一起落到主进程
+        //   终端。否则错误在 owner → harness → engine → store 的逐层 catch 中被
+        //   降级成通用文案，运维侧完全看不到发生过什么。
+        console.error('[provider] stream failed', {
+          url, model: model.modelName, baseUrl: model.baseUrl,
+          cause: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+          httpStatus: diagnostics.httpStatus, errorCode: diagnostics.errorCode,
+          receivedChars: fullText.length, lastFinishReason: finishReason,
+        })
         fail(protocolError ?? '响应流未正常完成')
       }
     } finally {
