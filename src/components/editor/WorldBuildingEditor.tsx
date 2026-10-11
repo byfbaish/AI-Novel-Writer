@@ -57,7 +57,7 @@ const ARCH_FILES: Array<{
     { key: 'premise', fileName: 'premise.md', labelZh: '故事前提', labelEn: 'Story premise', iconName: 'target', descZh: '故事钩子 · 核心冲突链 · 主角优势 · 悬念骨架', descEn: 'Story hook · core conflict · protagonist edge · suspense structure' },
     { key: 'characters', fileName: 'characters.md', labelZh: '角色图谱', labelEn: 'Character map', iconName: 'users', descZh: '角色弧光 · 关系网络 · 矛盾交织', descEn: 'Character arcs · relationships · interlocking tensions' },
     { key: 'worldbuilding', fileName: 'worldbuilding.md', labelZh: '世界观', labelEn: 'Worldbuilding', iconName: 'globe', descZh: '核心规则 · 社会结构 · 深层危机 · 空间结构', descEn: 'Core rules · social structure · underlying crisis · spatial structure' },
-    { key: 'plotStructure', fileName: 'plot_structure.md', labelZh: '阶段结构', labelEn: 'Stage structure', iconName: 'compass', descZh: '阶段划分 · 因果/时序推进 · 篇幅约束', descEn: 'Stage breakdown · causal progression · length heuristics' },
+    { key: 'plotStructure', fileName: 'plot_structure.md', labelZh: '弧光结构', labelEn: 'Arc structure', iconName: 'compass', descZh: '弧光分层 · 因果/时序推进 · 篇幅约束', descEn: 'Arc breakdown · causal progression · length heuristics' },
     { key: 'synopsis', fileName: 'synopsis.md', labelZh: '情节大纲', labelEn: 'Plot outline', iconName: 'map', descZh: '结构推进 · 转折节奏 · 伏笔闭环', descEn: 'Story progression · turning points · setup and payoff' },
   ]
 
@@ -211,7 +211,7 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
       premise: (core?.premise?.length ?? 0) > 50,
       characters: rosterSnapshot?.status === 'ready',
       worldbuilding: (core?.worldbuilding?.length ?? 0) > 50,
-      // 阶段结构：仅有自由弧正文才算「已生成」；为空时视为「待生成」，
+      // 弧光结构：仅有自由弧正文才算「已生成」；为空时视为「待生成」，
       // 但其内容可由枚举模板兜底展示（openArchFile 内处理）。
       plotStructure: customStageStructure,
       synopsis: (core?.synopsis?.length ?? 0) > 50,
@@ -291,7 +291,7 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
     const filePath = `ai-novel://core/${f.key}`
     const tabId = createProjectArchTabId(projectKey, filePath)
     let content = ''
-    /** 阶段结构内容是否来自枚举模板兜底（老模板用户）。 */
+    /** 弧光结构内容是否来自枚举模板兜底（老模板用户）。 */
     let archEnumFallback = false
     try {
       if (f.key === 'characters') {

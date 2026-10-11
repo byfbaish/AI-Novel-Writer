@@ -10,6 +10,7 @@ import { Button } from '../ui/Button'
 import { ipc } from '../../services/ipc-client'
 import { requireIpcSuccess } from '../../services/ipc-result'
 import { CORE_FIELD_MAP, parseCoreField } from '../../services/resource-protocol'
+import { localizeNovelConfigFacts } from '../../shared/novel-config-localization'
 import { appErrorMessage } from '../../i18n/app-errors'
 import { toast } from '../ui/Toast'
 import { CharacterCardImportButton } from '../characters/CharacterCardImportButton'
@@ -53,8 +54,8 @@ const ARCH_META: Record<ArchStepKey, { iconName: string; label: string; labelEn:
   premise: { iconName: 'target', label: '故事前提', labelEn: 'Premise', desc: 'Logline、核心冲突、金手指定位', descEn: 'Logline, central conflict, and story hook' },
   characters: { iconName: 'users', label: '角色图谱', labelEn: 'Character graph', desc: '角色弧光、关系网、矛盾交织', descEn: 'Character arcs, relationships, and conflicts' },
   worldbuilding: { iconName: 'globe', label: '世界观', labelEn: 'Worldbuilding', desc: '核心规则、阶层断层、深层危机、空间结构', descEn: 'Core rules, social divides, deeper crises, and spatial structure' },
-  plotStructure: { iconName: 'compass', label: '阶段结构', labelEn: 'Stage structure', desc: '阶段划分、因果时序推进、篇幅约束', descEn: 'Stage breakdown, causal progression, and length heuristics' },
-  synopsis: { iconName: 'map', label: '情节大纲', labelEn: 'Synopsis', desc: '三幕式情节骨架', descEn: 'Three-act story structure' },
+  plotStructure: { iconName: 'compass', label: '弧光结构', labelEn: 'Arc structure', desc: '弧光分层、因果时序推进、篇幅约束', descEn: 'Arc breakdown, causal progression, and length heuristics' },
+  synopsis: { iconName: 'map', label: '情节大纲', labelEn: 'Synopsis', desc: '按所选故事结构展开的章节级大纲', descEn: 'Chapter-level outline following the selected structure' },
 }
 
 /** 从文件路径推断出 ArchStepKey */
@@ -107,8 +108,39 @@ function ArchFileViewerSession({
   const currentProject = useProjectStore(s => s.currentProject)
   const text = useLocaleStore(s => s.text)
   const recoveryTab = useEditorStore(s => s.tabs.find(tab => tab.id === tabId && tab.planningRecovery))
-  /** 阶段结构内容是否由枚举模板兜底（老模板用户）。作者保存一次后自动清除。 */
+  /** 弧光结构内容是否由枚举模板兜底（老模板用户）。作者保存一次后自动清除。 */
   const archEnumFallback = useEditorStore(s => s.tabs.find(tab => tab.id === tabId)?.archEnumFallback ?? false)
+
+  /**
+   * 「情节大纲」的副标题必须反映**本书当前实际生效**的结构来源，不能写死：
+   * - 自定义弧光结构（`plotStructurePlan` 非空）→ 大纲按它展开；
+   * - 否则回退到「小说设定 · 故事结构」所选模板。
+   * 不这么做的话，作者在小说设定里改了故事结构，这里仍显示旧文案。
+   */
+  const [synopsisStructureDesc, setSynopsisStructureDesc] = useState<{ zh: string; en: string } | null>(null)
+  useEffect(() => {
+    if (stepKey !== 'synopsis') { setSynopsisStructureDesc(null); return }
+    const session = captureProjectSession(currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) { setSynopsisStructureDesc(null); return }
+    let disposed = false
+    void ipc.invokeWithProjectSession(session, 'db:project-core-get', session.projectPath)
+      .then(core => {
+        if (disposed || !isProjectSessionCurrent(session)) return
+        if (String(core?.plotStructurePlan ?? '').trim().length > 50) {
+          setSynopsisStructureDesc({
+            zh: '按本书自定义「弧光结构」展开',
+            en: 'Expanded from this book’s custom arc structure',
+          })
+          return
+        }
+        const structure = String(core?.plotStructure ?? '') || currentProject?.novelConfig?.plotStructure || ''
+        const zh = localizeNovelConfigFacts({ plotStructure: structure }, 'zh-CN').plotStructure
+        const en = localizeNovelConfigFacts({ plotStructure: structure }, 'en-US').plotStructure
+        setSynopsisStructureDesc(zh && en ? { zh: `按「${zh}」展开`, en: `Expanded from “${en}”` } : null)
+      })
+      .catch(() => { if (!disposed) setSynopsisStructureDesc(null) })
+    return () => { disposed = true }
+  }, [stepKey, currentProject, projectKey])
   const [recovery, setRecovery] = useState(recoveryTab?.planningRecovery)
   const [authorEnd, setAuthorEnd] = useState(String(recoveryTab?.planningSaveEnd ?? ''))
   const [recoveryError, setRecoveryError] = useState('')
@@ -289,7 +321,7 @@ function ArchFileViewerSession({
           { [dbField]: md },
           projectSession.projectPath,
         ), '保存架构文件')
-        // 作者一旦保存阶段结构，内容即为本书专属自由弧，撤销「模板兜底」提示。
+        // 作者一旦保存弧光结构，内容即为本书专属自由弧，撤销「模板兜底」提示。
         if (dbField === CORE_FIELD_MAP.plotStructure) {
           useEditorStore.getState().setTabArchEnumFallback(tabId, false)
         }
@@ -583,7 +615,9 @@ function ArchFileViewerSession({
           </span>
           {meta && (
             <span className="text-xs truncate hidden sm:inline" style={{ color: 'var(--color-text-muted)' }}>
-              — {text(meta.desc, meta.descEn)}
+              — {stepKey === 'synopsis' && synopsisStructureDesc
+                ? text(synopsisStructureDesc.zh, synopsisStructureDesc.en)
+                : text(meta.desc, meta.descEn)}
             </span>
           )}
         </div>
@@ -746,8 +780,8 @@ function ArchFileViewerSession({
         >
           <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
           <span>{text(
-            '此内容由所选「故事结构」模板自动派生，并非本书记录的自由弧。不建议直接修改——一旦保存即转为本书专属的阶段结构（自由弧），此后不再随模板变化。若希望自定义本书的阶段推进，请直接编辑并保存；若只想沿用模板，可保持原样。',
-            'This content is auto-derived from the selected story-structure template, not a custom arc saved for this book. Editing is not recommended — saving it converts it into this book’s own stage structure (free arc) and it will no longer follow the template. To customize this book, edit and save; to keep using the template, leave it unchanged.',
+            '此内容由所选「故事结构」模板自动派生，并非本书记录的自由弧。不建议直接修改——一旦保存即转为本书专属的弧光结构（自由弧），此后不再随模板变化。若希望自定义本书的阶段推进，请直接编辑并保存；若只想沿用模板，可保持原样。',
+            'This content is auto-derived from the selected story-structure template, not a custom arc saved for this book. Editing is not recommended — saving it converts it into this book’s own arc structure (free arc) and it will no longer follow the template. To customize this book, edit and save; to keep using the template, leave it unchanged.',
           )}</span>
         </div>
       )}

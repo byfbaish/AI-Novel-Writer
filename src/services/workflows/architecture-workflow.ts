@@ -181,9 +181,9 @@ export function createArchitectureWorkflow(
       },
     },
     {
-      name: text('阶段结构', 'Stage structure'),
+      name: text('弧光结构', 'Arc structure'),
       key: 'plotStructure',
-      description: stepDesc('plotStructure', '把世界观与角色推演成有因果/时序推进的阶段结构（自由弧）', 'Turn worldbuilding and characters into a stage structure with causal and temporal progression'),
+      description: stepDesc('plotStructure', '把世界观与角色推演成有因果/时序推进的弧光结构（自由弧）', 'Turn worldbuilding and characters into a arc structure with causal and temporal progression'),
       executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
         context.data.stepGuidance = guidance
         const { GeneratePlotStructureCommand } = await import('./commands/architecture.command')
@@ -347,14 +347,14 @@ Act III — climax and resolution: chapters ${ch75 + 1}–${totalChapters}.`)
 }
 
 /**
- * ★ 第五层「阶段结构 / 自由弧」的唯一消费口径。
+ * ★ 第五层「弧光结构 / 自由弧」的唯一消费口径。
  *
- * - 自由弧文本（`plot_structure_plan`）非空 → 直接采用（作者/AI 生成的阶段结构）。
+ * - 自由弧文本（`plot_structure_plan`）非空 → 直接采用（作者/AI 生成的弧光结构）。
  * - 为空 → 回退到 `getPlotStructureGuide()` 枚举模板（三幕/起承转合等），
  *   保证老项目与"不想用自由弧"的作者行为完全不变。
  *
  * 之所以集中成一个函数：`:2013`（本批/续批 prompt）与 `:2283`（断点续写的
- * prompt）两处都必须同口径，否则同一份大纲在正常生成与续写时看到的阶段结构
+ * prompt）两处都必须同口径，否则同一份大纲在正常生成与续写时看到的弧光结构
  * 会不一致。
  */
 export function resolveStageStructureGuide(

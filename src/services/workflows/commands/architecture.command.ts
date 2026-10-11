@@ -422,7 +422,7 @@ function synopsisInputsFingerprint(
     wordsPerChapter: expected.wordsPerChapter,
     writingLanguage: expected.writingLanguage,
     plotStructure: expected.plotStructure,
-    // 第五层「阶段结构 / 自由弧」：与 plotStructure 同类，改动即令旧大纲检查点失效。
+    // 第五层「弧光结构 / 自由弧」：与 plotStructure 同类，改动即令旧大纲检查点失效。
     plotStructurePlan: expected.plotStructurePlan,
     narrativePov: expected.narrativePov,
     globalGuidance: expected.globalGuidance,
@@ -1722,13 +1722,13 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
 }
 
 /**
- * ★ 第五层「阶段结构 / 自由弧」生成命令。
+ * ★ 第五层「弧光结构 / 自由弧」生成命令。
  *
  * 设计取舍（刻意从简，对齐 `arc-granularity-and-enum.md §1`）：
- * - **一步出整段**：单次 LLM 调用产出完整的阶段结构 Markdown，不拆成
+ * - **一步出整段**：单次 LLM 调用产出完整的弧光结构 Markdown，不拆成
  *   "骨架 / 事件链 / 章级" 多个 DB 步骤。
  * - **不做候选/断点续写**：与 worldbuilding 不同，这一步**不引入**未完成候选
- *   （`partial` 里无对应字段）。理由是阶段结构的典型体量只有几千字，远低于
+ *   （`partial` 里无对应字段）。理由是弧光结构的典型体量只有几千字，远低于
  *   输出上限，截断风险低；引入候选机制会把新步骤的复杂度抬到与 worldbuilding
  *   同等水平，违背"最小侵入"。
  * - 若未来长项目确实出现截断，再按"弧列表水平分批"扩展（复用它已有的分批思路）。
@@ -1773,11 +1773,11 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
       'The worldbuilding is missing or incomplete. Go back and include it for generation.',
     ))
 
-    callbacks.log(text('生成阶段结构（自由弧）...', 'Generating the stage structure...'))
+    callbacks.log(text('生成弧光结构（自由弧）...', 'Generating the arc structure...'))
     const template = await resolvePromptTemplate('plot_structure', projectSession, writingLanguage)
     if (!template) throw new Error(text(
-      '阶段结构模板丢失',
-      'The stage-structure template is missing.',
+      '弧光结构模板丢失',
+      'The arc-structure template is missing.',
     ))
 
     const missingValue = promptLanguageText(writingLanguage, '（未填写）', '(not provided)')
@@ -1798,12 +1798,12 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
       context,
     )
     if (!result.trim()) throw new Error(text(
-      '阶段结构生成失败，AI 返回空内容',
+      '弧光结构生成失败，AI 返回空内容',
       'Stage-structure generation failed because the AI returned empty content.',
     ))
     if (context.cancelled) throw new Error(text('工作流已取消', 'Workflow was cancelled.'))
 
-    const heading = promptLanguageText(writingLanguage, '阶段结构', 'Stage Structure')
+    const heading = promptLanguageText(writingLanguage, '弧光结构', 'Arc Structure')
     const body = stripThinkingTags(result)
     // 若模型已自带一级标题则不重复；否则补一个统一标题，与其它架构块一致。
     const content = /^\s*#\s/u.test(body) ? `${body}\n` : `# ${heading}\n\n${body}\n`
@@ -1815,14 +1815,14 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
       expectedProjectPath,
       context.runId,
       projectSession,
-      text('阶段结构写入数据库失败', 'Failed to write the stage structure to the database.'),
+      text('弧光结构写入数据库失败', 'Failed to write the arc structure to the database.'),
       this.requireGenerationExecution().mainOwned ? context.mainGenerationRunHandle : undefined,
     )
     this.assertNotCancelled(context)
 
     callbacks.log(text(
-      '阶段结构（自由弧）已生成并写入数据库',
-      'Stage structure generated and saved to the database.',
+      '弧光结构（自由弧）已生成并写入数据库',
+      'Arc structure generated and saved to the database.',
     ))
     return content
   }
@@ -1936,7 +1936,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     ))
 
     const { resolveStageStructureGuide, getNarrativePOVLabel } = await import('../architecture-workflow')
-    // 第五层「阶段结构 / 自由弧」：自由弧文本优先；未落地时回退到 plotStructure 枚举模板。
+    // 第五层「弧光结构 / 自由弧」：自由弧文本优先；未落地时回退到 plotStructure 枚举模板。
     // 这是本层唯一的消费口径，:2013 与 :2283 两处共用，避免口径漂移。
     const guide = resolveStageStructureGuide(core?.plotStructurePlan, config.plotStructure, totalChapters, writingLanguage)
     const pov = getNarrativePOVLabel(config.narrativePOV || 'third_limited', writingLanguage)

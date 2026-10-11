@@ -67,7 +67,7 @@ export interface ProjectCoreData {
     premise: string
     worldbuilding: string
     charactersArch: string
-    /** 第五层「阶段结构 / 自由弧」全文；空则消费点回退到 plotStructure 枚举模板。 */
+    /** 第五层「弧光结构 / 自由弧」全文；空则消费点回退到 plotStructure 枚举模板。 */
     plotStructurePlan: string
     synopsis: string
     characterStates: string

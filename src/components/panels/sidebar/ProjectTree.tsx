@@ -47,6 +47,7 @@ const ARCH_FILE_EN: Record<string, { label: string; desc: string }> = {
   premise: { label: 'Premise', desc: 'Core premise and conflict' },
   characters: { label: 'Character map', desc: 'Character arcs and relationships' },
   worldbuilding: { label: 'World building', desc: 'World rules and systems' },
+  plotStructure: { label: 'Arc structure', desc: 'Arc breakdown, causal progression, and length heuristics' },
   synopsis: { label: 'Plot synopsis', desc: 'Overall plot structure' },
 }
 

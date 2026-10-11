@@ -70,7 +70,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
   const dirty = useEditorStore(state => state.tabs.some(
     tab => tab.type === 'config' && tab.projectKey === projectKey && tab.dirty,
   ))
-  // 第五层「阶段结构 / 自由弧」是否存在：决定上面那个枚举下拉框是"生效"还是"兜底"。
+  // 第五层「弧光结构 / 自由弧」是否存在：决定上面那个枚举下拉框是"生效"还是"兜底"。
   const [hasFreeArc, setHasFreeArc] = useState(false)
   const exitSaveRef = useRef<(propagateFailure?: boolean) => Promise<void>>(async () => undefined)
   useEffect(() => {
@@ -120,7 +120,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
     exitSaveRef.current = handleSave
   })
 
-  // 探测「阶段结构 / 自由弧」是否存在（存在则上面的枚举只作起手模板，不再是最终结果）。
+  // 探测「弧光结构 / 自由弧」是否存在（存在则上面的枚举只作起手模板，不再是最终结果）。
   useEffect(() => {
     const projectSession = captureProjectSession(currentProject)
     if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) {
@@ -136,7 +136,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
     return () => { disposed = true }
   }, [currentProject, projectMatches, projectKey])
 
-  /** 打开「阶段结构」架构文件（自由弧的真正编辑入口）。 */
+  /** 打开「弧光结构」架构文件（自由弧的真正编辑入口）。 */
   const openPlotStructureFile = async () => {
     const projectSession = captureProjectSession(currentProject)
     if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) return
@@ -170,7 +170,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
     } else {
       store.openFile({
         id: tabId,
-        name: text('阶段结构', 'Stage structure'),
+        name: text('弧光结构', 'Arc structure'),
         type: 'arch-file',
         filePath,
         content,
@@ -327,7 +327,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                 '起承转合：中国传统四段式结构，适合古言/武侠/仙侠',
                 '多线叙事：多条故事线并进交织，适合群像或复杂情节',
                 '自由结构：不限定特定框架，AI 根据内容自适应，适合日常/轻小说',
-                '阶段结构（自由弧）：在「故事架构」里编辑一套属于本书的阶段推进结构，它会覆盖上面的选择',
+                '弧光结构（自由弧）：在「故事架构」里编辑一套属于本书的阶段推进结构，它会覆盖上面的选择',
               ].map((item, index) => text(item, [
                 'Three-act structure: setup, confrontation, and climax; suitable for most genres',
                 'Hero’s journey: a transformation-focused adventure structure',
@@ -335,7 +335,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                 'Kishōtenketsu: a four-part East Asian structure',
                 'Multi-thread: interwoven story lines for ensembles and complex plots',
                 'Freeform: AI adapts the structure to the content',
-                'Stage structure (free arc): edit a book-specific staged structure in Story architecture; it overrides the choice above',
+                'Arc structure (free arc): edit a book-specific staged structure in Story architecture; it overrides the choice above',
               ][index]))}>
                 <NativeSelect
                   className={hasFreeArc ? 'opacity-50' : undefined}
@@ -356,7 +356,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                     className="mt-1 text-left text-[0.7rem] leading-4 underline decoration-dotted"
                     style={{ color: 'var(--color-warning-text)' }}
                   >
-                    {text('已在「故事架构」中定制阶段结构，当前选择仅作起手模板（点击查看）', 'A custom stage structure exists; this choice is only a starting template (click to view)')}
+                    {text('已在「故事架构」中定制弧光结构，当前选择仅作起手模板（点击查看）', 'A custom arc structure exists; this choice is only a starting template (click to view)')}
                   </button>
                 ) : (
                   <button
@@ -365,7 +365,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                     className="mt-1 text-left text-[0.7rem] leading-4 underline decoration-dotted"
                     style={{ color: 'var(--color-text-muted)' }}
                   >
-                    {text('想让本书用自己的阶段推进结构？前往「故事架构 · 阶段结构」编辑', 'Want a book-specific staged structure? Edit it under Story architecture · Stage structure')}
+                    {text('想让本书用自己的阶段推进结构？前往「故事架构 · 弧光结构」编辑', 'Want a book-specific staged structure? Edit it under Story architecture · Arc structure')}
                   </button>
                 )}
               </Field>

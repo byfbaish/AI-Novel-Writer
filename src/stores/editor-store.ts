@@ -79,7 +79,7 @@ export interface EditorTab {
   planningSaveEnd?: string
   planningSaveSnapshot?: PlanningRecoverySaveSnapshot
   /**
-   * 阶段结构（plot_structure）Tab 的内容是否由枚举模板（老模板）派生。
+   * 弧光结构（plot_structure）Tab 的内容是否由枚举模板（老模板）派生。
    *
    * 老模板用户的自由弧正文为空，打开时用 `getPlotStructureGuide()` 预填展示。
    * 此时内容仍可编辑，但需显著提示「不建议直接修改」，改一次即落库为自由弧。
@@ -150,7 +150,7 @@ interface EditorState {
    * 在保存成功后调用，使警示灯、Tab 圆点消失。
    */
   markTabSaved: (tabId: string, savedContent?: string) => void
-  /** 标记/清除架构 Tab 的「枚举模板兜底」提示（阶段结构老模板可见性）。 */
+  /** 标记/清除架构 Tab 的「枚举模板兜底」提示（弧光结构老模板可见性）。 */
   setTabArchEnumFallback: (tabId: string, value: boolean) => void
   /** 按保存开始时的快照结算；期间有新输入时只更新已保存基准。 */
   settleTabSave: (tabId: string, snapshot: EditorTabSaveSnapshot) => void
