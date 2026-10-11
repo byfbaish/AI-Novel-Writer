@@ -156,9 +156,70 @@ for rowid, raw in con.execute(
 **注意**：`chapter-blueprint-directory` 那条的 receipt 里 `replayTask` 可能不含 `messages`
 （实测为空）—— 要核蓝图 prompt，仍需探针。
 
-## 六、判读后的处置预案
+## 六、实机判读结论与处置（2026-10-11 第 1 章蓝图 + 正文）
 
-先拿数据，处置另开一轮。
+### 6.1 结论：正文确实跨级注入了情节大纲，而且是**两份**
+
+现场取自项目库 `generation_attempts.usage_receipt_json → replayTask.messages`
+（`国运怪谈直播-新版副本`，`purpose=chapter-draft`，rowid=106，22514 字符）：
+
+| 偏移 | 内容 |
+|---|---|
+| 3958–8997 | `# 故事前提` + `# 世界观`（设定层） |
+| **8997–9267** | **`# 情节大纲` + `## 第1章：零点，多个铃`** ← 第 1 处 |
+| 9267 | `【本章信息】`（= 本章蓝图，`keyEvents` 与上一行几乎逐字同义） |
+| 11023–16080 | `【用户自定义创作指导】` 里再来一遍 `# 故事前提` + `# 世界观` + **`# 情节大纲` + `## 第1章`** ← 第 2 处 |
+
+两处都来自同一个变量 `{{architecture}}`：
+
+- 模板正文：`【全书设定池】\n{{architecture}}`；
+- 作者模板的 `taskGuidance` 首句：`参考故事架构{{architecture}}、确认后的小说配置{{novel_config}}、…`。
+
+而 `architecture` 的定义本身含大纲（`builtin-prompt-templates.ts:935`
+「故事架构（故事前提+角色图谱+世界观+**情节大纲**）」）。所以正文同时拿到了
+**大纲的章级条目**和**蓝图的 `keyEvents`** —— 同一件事的两份表述，且提示词里
+没有任何「以谁为准」的声明（全文只有文风/排版类的「最高优先级」标记）。
+
+### 6.2 处置：正文不再拿到大纲的章级条目（已实施）
+
+`generate-draft.command.ts`：
+
+- `synopsisForDraftChapter(synopsis, chapterNumber)` → 改造为
+  **`synopsisSettingSectionsForDraft(synopsis)`**：只保留**非章级**段落（作者写的全书总纲、
+  全局禁则等），所有 `## 第N章` 条目一律不进正文。
+  结构无法可靠解析（代码围栏引用示例 / 混级标题 / 章号非升序 / 整份没有章标题）时整体原样保留
+  —— 宁可多留，也不猜着丢作者事实。
+- 投影后只剩悬空标题（机器生成大纲开头的「# 情节大纲」）→ 视为空，不注入。
+- `readArchitecture()` 改用新函数；`chapterNumber` 形参随之删除（`noUnusedParameters` 会拦）。
+
+分层回到 **弧光 → 情节大纲 → 章节蓝图 → 正文**；正文的章级内容只由
+`chapter_info`（本章蓝图）与 `future_blueprints`（后续蓝图）承载。
+设定层不受影响：`premise` / `worldbuilding` 仍照常注入并做作者事实去重。
+
+**受影响的既有契约（3 个测试文件已按新契约改写）**：
+
+| 文件 | 改动 |
+|---|---|
+| `generate-draft.command.test.ts` | 正文 prompt 不再含「当前章关键事实」；新增「机器大纲 → 空投影」用例 |
+| `plot-outline-contract.test.ts` | 函数改名（语义断言不变） |
+| `main-generation-owner.test.ts` | 改为**直接校验大纲本身**，不再经正文投影当探针 |
+
+**残留的保守回退**（这两类大纲仍会把章级内容带进正文，但机器生成的大纲不会触发）：
+含代码围栏的大纲、无法解析的标题风格（中文数字章号 / 混级标题 / 列表式章号）。
+
+### 6.3 遗留（未处理，需作者拍板）
+
+`{{architecture}}` **仍然渲染两遍**（模板正文 1 次 + 作者 `taskGuidance` 1 次），
+实测约 10 000 字符、占本次 prompt 约 44%。大纲移除后两遍都是同一份设定层文本，
+属纯冗余而非语义冲突。原因是作者工程的
+`<全局数据根>/generations/<session>/prompts/first_chapter_draft.zh-CN.json`
+的 `taskGuidance` 重列了整套变量（形似旧版自动生成物）。
+
+候选处置：① 作者侧精简 `taskGuidance`，删掉与正文重复的变量引用（最直接）；
+② 装配层检测「同一变量在 content 与 taskGuidance 各用一次」并告警；
+③ 不动。
+
+### 6.4 原判读预案（保留备查）
 
 | 观察结果 | 计划处置 |
 |---|---|

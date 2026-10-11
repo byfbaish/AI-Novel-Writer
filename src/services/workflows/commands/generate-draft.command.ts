@@ -95,18 +95,34 @@ function parseChapterHeading(line: string, lineIndex: number): ChapterHeading | 
 }
 
 /**
- * Project an explicitly chapter-structured synopsis onto one chapter without
- * cutting any selected section. Ambiguous or unlocatable structures stay
- * verbatim so author facts are never discarded on a guess.
+ * 情节大纲 → 正文的**设定层投影**：只保留非章级的段落（全书总纲、全局禁则等），
+ * 章级条目一律不进正文。
+ *
+ * 分层是 弧光 → 情节大纲 → 章节蓝图 → 正文：大纲的章级条目与本章蓝图（chapter_info）
+ * 说的是同一件事；两者并排进入正文 prompt 且没有任何优先级声明时，模型会在两份表述
+ * 之间自由取舍（2026-10-11 第 1 章实机核对，见 docs/plans/llm-probe-observation-plan.md）。
+ * 正文的章级内容只由本章蓝图与后续蓝图承载。
+ *
+ * 但作者写在大纲里的**全局**设定/禁则在大纲之外没有第二个存放位置，所以一律原样保留。
+ * 结构无法可靠解析时整体保持原样：宁可多留，也不猜着丢作者事实。
  */
-export function synopsisForDraftChapter(synopsis: string, chapterNumber: number): string {
+export function synopsisSettingSectionsForDraft(synopsis: string): string {
+  const sections = projectSettingSections(synopsis)
+  // 只剩悬空标题 = 没有设定层内容（机器生成大纲开头的「# 情节大纲」就是这样）→ 不注入。
+  const hasSubstance = sections.split(/\r?\n/u)
+    .some(line => line.trim() && !/^\s*#{1,6}[\t ]+\S/u.test(line))
+  return hasSubstance ? sections : ''
+}
+
+function projectSettingSections(synopsis: string): string {
   // Quoted examples can contain chapter-like headings; do not interpret them.
   if (/^\s*(?:`{3,}|~{3,})/mu.test(synopsis)) return synopsis.trim()
   const lines = synopsis.trim().split(/\r?\n/u)
   const headings = lines
     .map((line, lineIndex) => parseChapterHeading(line, lineIndex))
     .filter((heading): heading is ChapterHeading => heading !== null)
-  if (headings.length < 2) return synopsis.trim()
+  // 一条章标题都没有 = 整份都是设定层文本（老项目的手写大纲就是这种形态）→ 原样保留。
+  if (!headings.length) return synopsis.trim()
 
   const firstLevel = headings[0]!.markdownLevel
   const hasConsistentHeadingStyle = headings.every(heading => heading.markdownLevel === firstLevel)
@@ -114,29 +130,23 @@ export function synopsisForDraftChapter(synopsis: string, chapterNumber: number)
     heading.from <= heading.to
     && (index === 0 || heading.from > headings[index - 1]!.to)
   ))
-  const currentHeadings = headings.filter(heading => heading.from <= chapterNumber && chapterNumber <= heading.to)
-  if (!hasConsistentHeadingStyle || !hasStrictChapterOrder || currentHeadings.length !== 1) {
-    return synopsis.trim()
-  }
+  if (!hasConsistentHeadingStyle || !hasStrictChapterOrder) return synopsis.trim()
 
   const headingsByLine = new Map(headings.map(heading => [heading.lineIndex, heading]))
-  let activeRange: Pick<ChapterHeading, 'from' | 'to'> | null = null
+  let insideChapterRange = false
   const projected: string[] = []
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
     const line = lines[lineIndex]!
     const chapterHeading = headingsByLine.get(lineIndex)
     if (chapterHeading) {
-      activeRange = chapterHeading
+      insideChapterRange = true
     } else {
       const markdownHeading = /^\s*(#{1,6})\s+/u.exec(line)
       if (markdownHeading && (firstLevel === 0 || markdownHeading[1]!.length <= firstLevel)) {
-        activeRange = null
+        insideChapterRange = false
       }
     }
-    if (
-      activeRange === null
-      || (activeRange.from <= chapterNumber && chapterNumber <= activeRange.to)
-    ) projected.push(line)
+    if (!insideChapterRange) projected.push(line)
   }
   return projected.join('\n').trim()
 }
@@ -740,7 +750,6 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const architecture = await this.readArchitecture(
       expectedProjectPath,
       projectSession,
-      this.chapterInfo.chapterNumber,
       authoredConfigFacts,
     )
     const projectPrompts = await this.readProjectPrompts(
@@ -1881,7 +1890,6 @@ ${params.candidate.text}`,
   private async readArchitecture(
     projectPath: string,
     projectSession: ProjectSessionContext,
-    chapterNumber: number,
     authoredConfigFacts: readonly string[],
   ): Promise<string> {
     const core = await ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectPath)
@@ -1896,7 +1904,11 @@ ${params.candidate.text}`,
     }
     append(core?.premise)
     append(core?.worldbuilding)
-    if (core?.synopsis) append(synopsisForDraftChapter(core.synopsis, chapterNumber))
+    // 情节大纲只投影「非章级设定段」。分层为 弧光 → 情节大纲 → 章节蓝图 → 正文：
+    // 大纲的章级条目与本章蓝图（chapter_info）说的是同一件事，此前两者并排进入正文
+    // prompt 且没有任何优先级声明，模型会在两份表述之间自由取舍。实机核对见
+    // docs/plans/llm-probe-observation-plan.md。章级内容一律由蓝图承载。
+    if (core?.synopsis) append(synopsisSettingSectionsForDraft(core.synopsis))
     return parts.filter(Boolean).join('\n\n---\n\n')
   }
 

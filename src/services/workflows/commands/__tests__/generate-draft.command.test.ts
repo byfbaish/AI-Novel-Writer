@@ -35,7 +35,7 @@ import {
   countDraftUnits,
   previousChapterEnding,
   sanitizeDraftText,
-  synopsisForDraftChapter,
+  synopsisSettingSectionsForDraft,
   type GenerateDraftCommandDependencies,
 } from '../generate-draft.command'
 import { assembleChapterMaterials } from '../../chapter-materials'
@@ -62,10 +62,10 @@ describe('generate draft command text cleanup', () => {
   })
   it.each(['```', '~~~'])('keeps quoted chapter examples inside %s fences verbatim', (fence) => {
     const synopsis = `全局说明\n${fence}text\n## 第1章：示例\n作者不可丢事实甲\n## 第2章：示例\n作者不可丢事实乙\n${fence}\n全局尾部`
-    expect(synopsisForDraftChapter(synopsis, 2)).toBe(synopsis)
+    expect(synopsisSettingSectionsForDraft(synopsis)).toBe(synopsis)
   })
 
-  it('keeps global sections and the exact current chapter from an explicit Chinese chapter outline', () => {
+  it('drops every chapter entry from an explicit Chinese chapter outline and keeps only the global sections', () => {
     const synopsis = `# 全书总纲
 潮门只能由守钟人开启。
 
@@ -81,13 +81,19 @@ describe('generate draft command text cleanup', () => {
 ## 全局禁则
 潮门真相只能在终章揭晓。`
 
-    const projected = synopsisForDraftChapter(synopsis, 2)
+    const projected = synopsisSettingSectionsForDraft(synopsis)
 
     expect(projected).toContain('潮门只能由守钟人开启')
-    expect(projected).toContain('## 第2章：回港')
     expect(projected).toContain('潮门真相只能在终章揭晓')
+    expect(projected).not.toContain('## 第2章：回港')
+    expect(projected).not.toContain('顾舟在退潮前回到月桂港')
     expect(projected).not.toContain('顾舟遗失潮汐钟')
     expect(projected).not.toContain('顾舟找到潮门')
+  })
+
+  it('drops an outline that has no setting-level sections at all instead of leaking a dangling title', () => {
+    // 机器生成的大纲就是这种形态：# 情节大纲 + 逐章条目，没有非章级段落。
+    expect(synopsisSettingSectionsForDraft('# 情节大纲\n\n## 第1章：零点\n爆发。\n\n## 第2章：回港\n回港。')).toBe('')
   })
 
   it('keeps an ambiguous chapter outline verbatim instead of guessing which facts to drop', () => {
@@ -97,7 +103,7 @@ describe('generate draft command text cleanup', () => {
 ### 第2章：乙
 事实乙。`
 
-    expect(synopsisForDraftChapter(synopsis, 2)).toBe(synopsis)
+    expect(synopsisSettingSectionsForDraft(synopsis)).toBe(synopsis)
   })
 
   it('does not treat ordinary prose mentioning a later chapter as a chapter heading', () => {
@@ -105,7 +111,7 @@ describe('generate draft command text cleanup', () => {
 
 普通正文仍属于全局大纲，不含 Markdown 章节标题。`
 
-    expect(synopsisForDraftChapter(synopsis, 2)).toBe(synopsis)
+    expect(synopsisSettingSectionsForDraft(synopsis)).toBe(synopsis)
   })
 
   it('removes thinking residue and continue UI prompts from draft text', () => {
@@ -2597,7 +2603,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(completePrompt).toContain(coreOutline)
   })
 
-  it.each(['## ', ''])('bounds an explicit long chapter outline with heading prefix %j while retaining author facts', async (headingPrefix) => {
+  it.each(['## ', ''])('bounds an explicit long chapter outline with heading prefix %j while keeping only setting-level author facts', async (headingPrefix) => {
     const worldbuilding = [
       '世界规则开始：月桂港每天只有一次退潮。',
       // 必需材料现在也受预算（决定 1B），这份世界设定会同时进入架构与作者资料，
@@ -2641,7 +2647,9 @@ ${headingPrefix}第3章：潮门
     const longPrompt = await run(synopsis(4_000))
 
     expect(longPrompt).toContain('全局关键事实：潮门真相只能在终章揭晓')
-    expect(longPrompt).toContain('当前章关键事实：顾舟必须在退潮前拿回潮汐钟')
+    // 章级条目（含当前章）不再进正文：那一段与本章蓝图说的是同一件事，
+    // 由 chapter_info 承载（见 docs/plans/llm-probe-observation-plan.md）。
+    expect(longPrompt).not.toContain('当前章关键事实：顾舟必须在退潮前拿回潮汐钟')
     expect(longPrompt).toContain('全局尾部关键事实：任何人不得提前知道潮门来源')
     expect(longPrompt).toContain('世界观尾部关键事实：顾舟不会游泳')
     expect(longPrompt).toContain('作者核心事实：顾舟必须查清潮门来源')

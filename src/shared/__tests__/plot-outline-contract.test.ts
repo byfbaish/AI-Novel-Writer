@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { validPlotOutlineEntry, plotOutlineConfirmedPrefix, renderPlotOutlineRange, renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix, plotOutlineCoveredTo, plotOutlineContinuationStart } from '../plot-outline-contract'
 import type { ProjectCoreSynopsisExpected } from '../../../electron/repositories/project-core-repository'
-import { synopsisForDraftChapter } from '../../services/workflows/commands/generate-draft.command'
+import { synopsisSettingSectionsForDraft } from '../../services/workflows/commands/generate-draft.command'
 
 describe('chapter Markdown outline contract', () => {
   it.each([
     ['## 第一章：起点\n当前章事实。', '## 第二章：后续\n后续章事实。'],
     ['- 第1章：起点\n当前章事实。', '- 第2章：后续\n后续章事实。'],
     ['# 第1章：起点\n当前章事实。', '## 第2章：后续\n后续章事实。'],
-  ])('rejects chapter styles whose real draft consumer would retain the whole outline', (first, second) => {
+  ])('keeps unparseable chapter styles verbatim — the projection cannot split author text from chapter entries', (first, second) => {
     const synopsis = `${first}\n\n${second}`
-    expect(synopsisForDraftChapter(synopsis, 1)).toBe(synopsis)
+    expect(synopsisSettingSectionsForDraft(synopsis)).toBe(synopsis)
     expect([first, second].every((entry, index) => validPlotOutlineEntry(entry, index + 1))).toBe(false)
   })
   it('counts the full entry in Unicode code points without truncating a 1201 point entry', () => {
