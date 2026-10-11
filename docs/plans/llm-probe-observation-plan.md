@@ -358,3 +358,68 @@ if (!committed || committed.payload_hash !== stored.payloadHash || …)
 > 复盘价值：`21061bc` 那一轮只加诊断、不改逻辑，恰恰是它把 `errorCode` 带出来，
 > 才让真因在下一轮一次命中。诊断先行的投入在这里直接兑现了。
 
+
+---
+
+## 6.7 第一章审稿 → 修复 → 精修：提示词覆盖的实测覆盖面
+
+实机三个 run（`c0152600` 审稿 → `92c273dc` 修复 → `667fe40e` 精修）已归档；
+本节只记**提示词覆盖**这条线，文风质量问题另见当日工作日志。
+
+### 6.7.1 作者「补充创作指导」的实测覆盖面
+
+用 `generation_attempts.usage_receipt_json.replayTask.messages` 直接复盘第一章
+草稿（run `de105ff8`）：
+
+| 请求 | purpose | user 长度 | 带【用户自定义创作指导】 |
+|---|---|---|---|
+| `48a37281` | chapter-draft（首段） | 15200 | **是**（offset 10336，逐字一致） |
+| `14c3671d` | chapter-draft-continuation（续写） | 10494 | **否** |
+
+产物长度：首段 2257 字 + 续写 1688 字 = 3945 字 —— **续写占全章 43%，而它不携带
+任何模板级作者指导**。
+
+根因：**续写 / 压缩请求不走 `BasePromptBuilder.build()`**，而是由
+`draftAuthorMaterialBlock()` 手工拼装（`generate-draft.command.ts:1620` / `:1808`），
+该块只拼【本章蓝图】【全局写作要求】【文风要求】【小说配置事实】+ 章节材料。
+代码注释只讨论了「蓝图 `userGuidance` 在续写里必须保留」（★ 块只存在于 `build()`），
+**没有覆盖模板自身的 `taskGuidance`** —— 后者在续写里被静默丢弃。
+
+这是全书级缺陷：任一章节只要分 2 段生成，后段就脱离作者的风格硬约束
+（如「强制排版硬规则」「去精确堆砌」）。
+
+### 6.7.2 覆盖模板的重复渲染面（16/16）
+
+`~/.ai-novel-writer-dev/generations/<session>/prompts/` 下 20 个覆盖中，**16 个带
+`taskGuidance`，且 16/16 都存在「同一变量在 `content` 与 `taskGuidance` 各渲染
+一遍」**。最大的几个：
+
+| 模板 | taskGuidance 变量数 | 与 content 重复 |
+|---|---|---|
+| `premise` | 12 | 11 |
+| `synopsis` | 10 | 9 |
+| `chapter_blueprint_chunk` | 8 | 8 |
+| `character_dynamics` | 9 | 8 |
+| `world_building` | 7 | 6 |
+| `consistency_check` | 5 | 4（含整章 `chapter_content`） |
+
+实机印证：同一轮三步的输入 token 是 **审稿 21226 ＞ 修复 12925 ＞ 精修 12808**，
+而审稿是三者里唯一不含审稿报告的，却最大 —— 差额就是这份重复。
+
+本轮只按作者确认清理了 `consistency_check`（保留 `review_focus` 唯一出口）
+与 `refine_from_review`（移除错位的【锐度自检指标·审稿模块】），其余 14 个待定。
+
+> ⚠️ 更正：上一轮称「`refine_from_review` 里塞着与精修一字不差的去精确堆砌 /
+> 去AI机械化约束」**有误**。逐字比对后：那两块只存在于 `first_chapter_draft` /
+> `next_chapter_draft` / `refine_chapter`（正是它们该在的位置）；`refine_from_review`
+> 里实际存在的是【锐度自检指标·审稿模块】。
+
+### 6.7.3 `refine_from_review` 的锐度自检块为何要移除
+
+该块要求「检测 4 个维度，输出绿/黄/红三档…最后给综合指数与处置结论」，
+而同一模板的上一段写着「直接输出修好后的完整章节正文，**不附带修改批注、修改
+说明、元评论**」——**两条指令直接冲突**。它本质是审稿侧的评分卡，放在修复步既
+越权（引导修复步判文风）又违反输出合同。
+
+处置：移除（`prompts.bak-20261012-0015/` 有原文备份，可随时还原）。
+若作者仍想要这张评分卡，正确位置是 `consistency_check`（审稿）而不是修复步。
