@@ -29,6 +29,7 @@ import {
   workflowWritingLanguage,
 } from '../workflow-project-session'
 import { characterArchitecturePrompts, promptLanguageText } from '../../prompt-language'
+import { WorkflowGuardError, isWorkflowGuardError } from '../workflow-guard-error'
 import { stripThinkingTags } from '../workflow-utils'
 import { composeVisibleContinuation } from '../../../shared/visible-continuation'
 import { hashAuthorText } from '../../../shared/source-ref'
@@ -749,7 +750,7 @@ function assertArchitectureProjectSessionCurrent(
     projectSession,
     projectSessionContextFromProject(useProjectStore.getState().currentProject),
   )) {
-    throw new Error(workflowUiText(
+    throw new WorkflowGuardError(workflowUiText(
       context,
       '当前项目已切换，架构生成已停止以避免写入错误项目',
       'The current project changed, so architecture generation stopped to avoid writing to the wrong project.',
@@ -1333,6 +1334,10 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
       session: injectWritingSkillIntoSession(generationExecution.session, context, 'planning'),
       writingLanguage,
       onAttempt: receipt => this.reportGenerationPromptBudget(callbacks, receipt),
+      // 守卫类错误的 message 由本项目撰写，可安全回显：
+      // 角色详情是「一次请求都没发出就可能失败」的批次（项目切换/取消/会话失配），
+      // 没有这句说明，失败只剩无从定位的通用兜底文案。
+      describeError: error => (isWorkflowGuardError(error) ? error.message : undefined),
     }).execute({
       items: manifest,
       limits: { maxBatchItems: CHARACTER_DETAIL_BATCH_SIZE },
@@ -1353,6 +1358,10 @@ export class GenerateCharactersCommand extends BaseWorkflowCommand<string> {
         ...(diagnostic
           ? [`diagnosticCode=${diagnostic.code} diagnosticPath=${diagnostic.path} diagnosticField=${diagnostic.field}`]
           : []),
+        // 诊断标识：类名与自有错误码足以区分「本地代码缺陷」与「运行时/请求失败」，
+        // 且都不含外部 message 文本（可能有凭据）。
+        ...(detailExecution.failure.errorName ? [`errorName=${detailExecution.failure.errorName}`] : []),
+        ...(detailExecution.failure.errorCode ? [`errorCode=${detailExecution.failure.errorCode}`] : []),
         `attempts=${attempts}`,
       ].join(' ')
       throw new Error(text(

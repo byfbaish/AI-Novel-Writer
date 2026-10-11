@@ -84,6 +84,64 @@ export interface StructuredBatchFailure {
     actualCharacters?: number
     maxCharacters?: number
   }
+  /**
+   * 意外错误的**类名**（如 `TypeError`）。只用于诊断，绝不含 message——
+   * 外部错误文本可能内嵌凭据（见「不泄漏意外会话错误消息」用例）。
+   */
+  errorName?: string
+  /**
+   * 跨序列化边界丢了类身份、但 `code` 仍命中本项目自有枚举的错误码。
+   * 只有白名单内的枚举值会出现，因此不含任何外部自由文本。
+   */
+  errorCode?: string
+}
+
+/**
+ * 本项目自有错误码 → 安全分类与文案。
+ *
+ * 存在的理由：错误的**类身份可能在序列化边界丢失**（Electron IPC、打包器双实例，
+ * 或对方抛出的根本不是 `Error` 实例），此时 `instanceof` 全部失效，
+ * 一个有明确原因的错误会退化成无从定位的「结构化生成失败」。
+ * 这里按 `code` 白名单兜底归类；文案全部取自本表，绝不回显外部文本。
+ */
+const KNOWN_HARNESS_FAILURES: Readonly<Record<string, {
+  code: StructuredBatchFailure['code']
+  reason: NonNullable<StructuredBatchFailure['reason']>
+  message: string
+}>> = Object.freeze({
+  ATTEMPT_BUDGET_EXHAUSTED: { code: 'limit_exceeded', reason: 'max_calls', message: '生成会话已用尽请求次数。' },
+  REQUESTED_TOKEN_BUDGET_EXHAUSTED: { code: 'limit_exceeded', reason: 'max_requested_tokens', message: '生成会话已用尽请求 Token 预算。' },
+  CONTEXT_BUDGET_EXHAUSTED: { code: 'limit_exceeded', reason: 'output_limit', message: '上下文窗口不足，无法为本次请求预留输出预算。' },
+  PROMPT_BUDGET_EXHAUSTED: { code: 'limit_exceeded', reason: 'output_limit', message: '提示词预算不足，请缩短主要占用区段后重试。' },
+  INVALID_POLICY: { code: 'generation_failed', reason: 'unknown', message: '生成策略或提示词预算区段无效（内部错误）。' },
+  NO_DEFAULT_MODEL: { code: 'generation_failed', reason: 'unknown', message: '未配置默认生成模型。' },
+  INVALID_MODEL_REVISION: { code: 'generation_failed', reason: 'unknown', message: '默认模型配置缺少 revision。' },
+  UNTRUSTED_CAPABILITY_EVIDENCE: { code: 'generation_failed', reason: 'unknown', message: '模型能力证据不可信。' },
+  PROVIDER_REQUEST_FAILED: { code: 'generation_failed', reason: 'server_error', message: '模型请求失败。' },
+  CANCELLED: { code: 'cancelled', reason: 'cancelled', message: '生成已取消。' },
+  DEADLINE_EXHAUSTED: { code: 'deadline', reason: 'deadline', message: '生成会话已超过截止时间。' },
+})
+
+/**
+ * 用 `code` 白名单识别「丢了类身份」的本项目错误。
+ * 返回 `undefined` 表示无法归类，调用方应走通用兜底。
+ */
+function classifyByKnownCode(error: unknown): StructuredBatchFailure | undefined {
+  const code = (error as { code?: unknown } | null | undefined)?.code
+  if (typeof code !== 'string') return undefined
+  const known = KNOWN_HARNESS_FAILURES[code]
+  if (!known) return undefined
+  return { code: known.code, reason: known.reason, message: known.message, errorCode: code }
+}
+
+/** 意外错误的诊断标识：只取类名，绝不取 message。 */
+function describeUnexpectedError(error: unknown): Pick<StructuredBatchFailure, 'errorName'> {
+  const errorName = error instanceof Error
+    ? (error.name || 'Error')
+    : error === null
+      ? 'null'
+      : typeof error
+  return { errorName }
 }
 
 export type StructuredBatchResult<TOutput> =
@@ -112,6 +170,11 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
   session: Pick<GenerationSession, 'complete'>
   writingLanguage: WritingLanguage
   onAttempt?: (receipt: GenerationAttemptReceipt) => void
+  /**
+   * 为**本项目自己撰写**的错误（工作流守卫类）提供可安全回显的说明。
+   * 返回 `undefined` 时保持通用兜底文案——外部错误文本一律不外泄。
+   */
+  describeError?: (error: unknown) => string | undefined
 }): StructuredBatchExecutor<TInput, TOutput> {
   const { contract, session, writingLanguage } = dependencies
 
@@ -554,10 +617,24 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
           } else if (error.code === 'CANCELLED') {
             failure = { code: 'cancelled', reason: 'cancelled', message: error.message }
           } else {
-            failure = { code: 'generation_failed', reason: 'unknown', message: error.message }
+            failure = { code: 'generation_failed', reason: 'unknown', message: error.message, errorName: error.name }
           }
         } else {
-          failure = { code: 'generation_failed', reason: 'server_error', message: '结构化生成失败' }
+          // 到这里说明错误的类身份不可用（跨序列化边界丢失、或抛出的根本不是
+          // Error）。先按本项目自有 code 白名单兜底归类；仍无法归类时，
+          // 只回显类名与守卫说明，绝不回显外部 message。
+          const known = classifyByKnownCode(error)
+          if (known) {
+            failure = known
+          } else {
+            const safeMessage = dependencies.describeError?.(error)
+            failure = {
+              code: 'generation_failed',
+              reason: 'server_error',
+              message: safeMessage ?? '结构化生成失败',
+              ...describeUnexpectedError(error),
+            }
+          }
         }
         return { ok: false, failure, receipt, validatedItems: [...validated] }
       }

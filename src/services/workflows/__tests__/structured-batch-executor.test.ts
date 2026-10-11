@@ -25,6 +25,7 @@ function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
   contract: StructuredBatchContract<TInput, TOutput>
   session: Pick<GenerationSession, 'complete'>
   writingLanguage?: 'zh-CN' | 'en-US'
+  describeError?: (error: unknown) => string | undefined
 }) {
   return createRuntimeStructuredBatchExecutor({
     ...dependencies,
@@ -1443,6 +1444,95 @@ describe('StructuredBatchExecutor seam', () => {
         code: 'generation_failed',
         reason: 'server_error',
         message: '结构化生成失败',
+      },
+    })
+    expect(JSON.stringify(result)).not.toContain('test-secret')
+  })
+
+  it('reports the error class name for an unexpected failure without leaking its message', async () => {
+    class TypeError2 extends Error {
+      constructor(message: string) {
+        super(message)
+        this.name = 'TypeError'
+      }
+    }
+    const executor = createStructuredBatchExecutor({
+      contract: blueprintContract,
+      session: {
+        complete: vi.fn<GenerationSession['complete']>(async () => {
+          throw new TypeError2('customPromptBudget is not a function Bearer test-secret')
+        }),
+      },
+    })
+
+    const result = await executor.execute({
+      items: [1],
+      limits: { maxBatchItems: 5 },
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: {
+        code: 'generation_failed',
+        reason: 'server_error',
+        message: '结构化生成失败',
+        errorName: 'TypeError',
+      },
+    })
+    expect(JSON.stringify(result)).not.toContain('test-secret')
+  })
+
+  it('surfaces a workflow-authored explanation when describeError recognises the error', async () => {
+    const executor = createStructuredBatchExecutor({
+      contract: blueprintContract,
+      session: {
+        complete: vi.fn<GenerationSession['complete']>(async () => {
+          throw new Error('当前项目已切换，架构生成已停止以避免写入错误项目')
+        }),
+      },
+      describeError: error => (error instanceof Error && error.message.includes('当前项目已切换')
+        ? error.message
+        : undefined),
+    })
+
+    const result = await executor.execute({
+      items: [1],
+      limits: { maxBatchItems: 5 },
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: {
+        code: 'generation_failed',
+        reason: 'server_error',
+        message: '当前项目已切换，架构生成已停止以避免写入错误项目',
+        errorName: 'Error',
+      },
+    })
+  })
+
+  it('classifies an error that lost its class identity by its known code', async () => {
+    // 跨序列化边界后 instanceof 失效：只剩一个带 code 的普通对象。
+    const executor = createStructuredBatchExecutor({
+      contract: blueprintContract,
+      session: {
+        complete: vi.fn<GenerationSession['complete']>(async () => {
+          throw { code: 'CONTEXT_BUDGET_EXHAUSTED', message: 'Bearer test-secret must not escape' }
+        }),
+      },
+    })
+
+    const result = await executor.execute({
+      items: [1],
+      limits: { maxBatchItems: 5 },
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: {
+        code: 'limit_exceeded',
+        reason: 'output_limit',
+        errorCode: 'CONTEXT_BUDGET_EXHAUSTED',
       },
     })
     expect(JSON.stringify(result)).not.toContain('test-secret')
