@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CHARACTER_DETAIL_DESCRIPTION_FIELDS, CHARACTER_STATE_TEXT_FIELDS, characterProposalMaterialChunks, decodeCharacterDetails, extractSingleCompleteJsonObject, parseArchitectureCharacterProposal, parsePlanningMaterialCharacterProposal, validateCharacterDetail } from '../character-proposal-parser'
+import { CHARACTER_DETAIL_DESCRIPTION_FIELDS, CHARACTER_STATE_TEXT_FIELDS, characterProposalMaterialChunks, decodeCharacterDetails, decodeCharacterIdentityManifest, extractSingleCompleteJsonObject, parseArchitectureCharacterProposal, parsePlanningMaterialCharacterProposal, validateCharacterDetail } from '../character-proposal-parser'
 
 function architecture() {
   const slots = ['同名', '同名', '反派'].map((name, index) => ({ slotId: `slot-${index}`, name,
@@ -13,6 +13,44 @@ function architecture() {
     details: [{ artifactId: 'details', text: JSON.stringify({ entries }) }] }
 }
 describe('main-safe source-local character proposal parsing', () => {
+  it('drops redundant design fields on manifest items but keeps the identity contract strict', () => {
+    const roles = ['protagonist', 'supporting', 'antagonist'] as const
+    const slots = ['沈舟', '老猫', '校对员'].map((name, index) => ({
+      slotId: `slot-${index}`, name, role: roles[index], narrativeDuty: '推动冲突',
+      // 模型偶发把「设计判断维度」当成输出字段（实测字段名如下）。
+      desire: '内部判断，不该成为字段', keyChoice: '内部判断，不该成为字段',
+      arc: '内部判断，不该成为字段', conflictSource: '内部判断，不该成为字段',
+      relations: [{ targetSlotId: `slot-${(index + 1) % 3}`, relation: '原始关系', relationType: '多余' }],
+    }))
+
+    const decoded = decodeCharacterIdentityManifest(JSON.stringify({ slots }))
+    expect(decoded).toHaveLength(3)
+    for (const slot of decoded) {
+      expect(Object.keys(slot).sort()).toEqual(['name', 'narrativeDuty', 'relations', 'role', 'slotId'])
+    }
+    expect(decoded[0].relations[0]).toEqual({ targetSlotId: 'slot-1', relation: '原始关系' })
+  })
+
+  it('still fails closed on a missing required field, an unknown top-level key, and a broken relation', () => {
+    const base = (index: number) => ({
+      slotId: `slot-${index}`, name: `角色${index}`, role: 'protagonist', narrativeDuty: '推动冲突',
+      relations: [{ targetSlotId: 'slot-1', relation: '原始关系' }],
+    })
+    const complete = [base(0), base(1), base(2)]
+
+    const missingDuty = complete.map((slot, index) => index === 0 ? { ...slot, narrativeDuty: '' } : slot)
+    expect(() => decodeCharacterIdentityManifest(JSON.stringify({ slots: missingDuty })))
+      .toThrow('角色身份清单第 1 项字段不完整')
+
+    expect(() => decodeCharacterIdentityManifest(JSON.stringify({ slots: complete, schemaVersion: 1 })))
+      .toThrow('角色身份清单包含未知字段')
+
+    const brokenRelation = complete.map((slot, index) => index === 0
+      ? { ...slot, relations: [{ targetSlotId: 'slot-1', relation: '' }] }
+      : slot)
+    expect(() => decodeCharacterIdentityManifest(JSON.stringify({ slots: brokenRelation })))
+      .toThrow('角色身份清单第 1 项关系 1 无效')
+  })
   it('preserves complete architecture descriptions and states including a late denial', () => {
     const fixture = architecture()
     const description = `${'众人声称他背叛了同伴，'.repeat(15)}但这些传闻并不属实，他从未背叛同伴。`

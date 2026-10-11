@@ -75,7 +75,7 @@ keyItems 可为非空字符串或非空字符串数组；recentEvents 可为非�
 ${context}
 
 【身份清单合同】
-只输出 {"slots":[...]}，角色数量必须为 ${minimum}–${maximum}。每项必须含 slotId、name、role、narrativeDuty、relations；relations 每项含 targetSlotId、relation。slotId 与 targetSlotId 必须是 JSON 字符串；slotId/name 必须唯一，role 仅 protagonist/antagonist/supporting/minor，且至少一个 protagonist；关系只能引用本清单其他 slotId。`,
+只输出 {"slots":[...]}，角色数量必须为 ${minimum}–${maximum}。每项**只能**含 slotId、name、role、narrativeDuty、relations **这五个字段**——多一个字段（如 desire、keyChoice、arc、conflictSource）整份输出作废；relations 每项只能含 targetSlotId、relation。slotId 与 targetSlotId 必须是 JSON 字符串；slotId/name 必须唯一，role 仅 protagonist/antagonist/supporting/minor，且至少一个 protagonist；关系只能引用本清单其他 slotId。`,
     detailTask: input => `【角色详情上下文】
 ${input.context}
 
@@ -108,7 +108,7 @@ Do not output relationships, schemaVersion, a rendered character map, explanatio
 ${context}
 
 [Identity manifest contract]
-Output {"slots":[...]} only, with ${minimum}–${maximum} characters. Every item must contain slotId, name, role, narrativeDuty, and relations; every relation must contain targetSlotId and relation. slotId and targetSlotId must be JSON strings; slotId and name must be unique. role must be protagonist, antagonist, supporting, or minor, with at least one protagonist. Relationships may reference only another slotId in this manifest.`,
+Output {"slots":[...]} only, with ${minimum}–${maximum} characters. Every item may contain **only** slotId, name, role, narrativeDuty, and relations — a single extra field (such as desire, keyChoice, arc, or conflictSource) invalidates the entire response; every relation may contain only targetSlotId and relation. slotId and targetSlotId must be JSON strings; slotId and name must be unique. role must be protagonist, antagonist, supporting, or minor, with at least one protagonist. Relationships may reference only another slotId in this manifest.`,
     detailTask: input => `[Character-detail context]
 ${input.context}
 
@@ -256,12 +256,13 @@ State the immediate visible threat and the deeper hidden truth or long-term myst
    - Include only people: named individuals (or fixed code names) with an independent motive and the capacity to speak or oppose, whose presence spans the whole book (protagonist, core allies, core opponents, key supporting cast).
    - Exclude rules, mechanics, environment avatars, abstract wills, the system itself, spaces/regions, and organisations. A mechanic like a "rule avatar" or a "system will" belongs to world-building, not to the cast: it has no motive, cannot grow, and cannot be turned into a character card.
    - Exclude characters who appear only inside a single arc or event; those are created on demand from chapter blueprints later.
+   - These judgement dimensions (motive, choices, scope) are internal reasoning only — they are NOT output fields. Never emit fields such as "desire", "keyChoice", "arc", or "conflictSource"; an extra field invalidates the entire response (see the output contract below).
 5. Include at least one ally with an independent motive and at least one rival whose opposition has a defensible cause. Add mentors, schemers, or uncertain allies only when the story needs them.
 6. Connect every character through unavoidable pressure from scarce resources, survival, institutions, or conflicting beliefs.
 7. Avoid flat saints, irrational antagonists, and characters who exist only as tools unless the author explicitly requests them.
 
 [Output contract]
-Return exactly one JSON object with "schemaVersion":1 and "entries":[...]. Every relationship must target another character in the same entries array. Do not output Markdown, a preface, a code fence, or reasoning; the runtime supplies the complete immutable field contract.
+Return exactly one JSON object whose fields are strictly equal to the field contract supplied by the runtime — never add a field beyond that contract (a single extra field invalidates the entire response), and never add headings, prefaces, or comments. The design dimensions listed in items 1–3 are for internal reasoning only and are not output fields. Do not output Markdown, a preface, a code fence, or reasoning.
 
 [Reference works]
 {{reference_works}}`,
