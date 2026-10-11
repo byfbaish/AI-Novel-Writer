@@ -780,7 +780,7 @@ function ArchFileViewerSession({
         >
           <AlertTriangle size={13} className="flex-shrink-0 mt-0.5" />
           <span>{text(
-            '此内容由所选「故事结构」模板自动派生，并非本书记录的自由弧。不建议直接修改——一旦保存即转为本书专属的弧光结构（自由弧），此后不再随模板变化。若希望自定义本书的阶段推进，请直接编辑并保存；若只想沿用模板，可保持原样。',
+            '此内容由所选「故事结构」模板自动派生，并非本书记录的自由弧。不建议直接修改——一旦保存即转为本书专属的弧光结构（自由弧），此后不再随模板变化。若希望自定义本书的弧光推进，请直接编辑并保存；若只想沿用模板，可保持原样。',
             'This content is auto-derived from the selected story-structure template, not a custom arc saved for this book. Editing is not recommended — saving it converts it into this book’s own arc structure (free arc) and it will no longer follow the template. To customize this book, edit and save; to keep using the template, leave it unchanged.',
           )}</span>
         </div>

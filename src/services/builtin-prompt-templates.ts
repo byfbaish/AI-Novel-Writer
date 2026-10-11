@@ -314,7 +314,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     "genre": "主类型（玄幻/仙侠/都市/科幻/历史/悬疑/游戏/军事/奇幻/武侠/现实/其他）",
     "targetAudience": "受众目标（男频/女频/通用/短篇）",
     "subGenre": "细分子类型及核心标签（如：末日废土、苟道流、权谋、大女主逆袭）",
-    "plotStructure": "故事结构（three_act=三幕结构 / heros_journey=英雄之旅 / save_the_cat=节拍表 / kishotenketsu=起承转合 / multi_thread=多线叙事 / freeform=自由结构，根据类型推荐最合适的）",
+    "plotStructure": "故事结构（three_act=三幕结构 / heros_journey=英雄之旅 / save_the_cat=节拍表 / kishotenketsu=起承转合 / multi_thread=多线叙事 / freeform=弧光结构，根据类型推荐最合适的）",
     "narrativePOV": "叙事视角（third_limited=第三人称有限视角 / first_person=第一人称 / third_omniscient=第三人称全知视角 / multi_pov=多视角轮换，根据类型推荐最合适的）",
     "coreOutline": "核心大纲（不少于150字，含：主角的致命危机/开局困境、必须完成的核心目标、终极大危机、主要爽点起伏）",
     "worldSetting": "独特的背景设定（物理维度、权力断层、核心资源争夺机制）",
