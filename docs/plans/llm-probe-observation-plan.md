@@ -423,3 +423,66 @@ if (!committed || committed.payload_hash !== stored.payloadHash || …)
 
 处置：移除（`prompts.bak-20261012-0015/` 有原文备份，可随时还原）。
 若作者仍想要这张评分卡，正确位置是 `consistency_check`（审稿）而不是修复步。
+
+---
+
+## 6.8 变量面板的「重复注入」陷阱：根因、清理与守卫
+
+### 6.8.1 作者为什么会插重复
+
+设置面板只暴露两个可编辑字段：**创作角色定位**（`systemRole`）与
+**补充创作指导**（`taskGuidance`）。模板正文 `content` **不在面板里显示**，
+但它是每次请求都会先渲染一遍的那一段。
+
+而面板上方那排「可用变量」来自 `builtinTemplate.variables` —— 它是**全量清单**，
+既包含正文已用的（`genre` / `topic` / `number_of_chapters`…），也包含只属于补充指导的
+（`step_guidance`），**两者外观完全一样**。作者照着插一遍，`content` 里那些变量就被
+第二次渲染，同一段内容注入两遍。
+
+对照数据：25 个内置模板中**只有 1 个**（`assistant_writing_identity`）带
+`taskGuidance`，其余 24 个都留空 —— 也就是说「补充创作指导」从一开始就是给作者
+自由书写的空白区，面板却递上一整排已经用过的变量。这不是作者粗心。
+
+### 6.8.2 清理结果（作者全局覆盖，20 个文件）
+
+改动集中在 `taskGuidance`，把与 `content` 重复的 `{{变量}}` 换成对正文小节的
+自然语言引用，例如：
+
+| 模板 | 改前 | 改后 |
+|---|---|---|
+| `premise` | `依据类型{{genre}}、细分类{{sub_genre}}、…、参考作品{{reference_works}}撰写故事前提。` | `依据上方【核心设定参数】与【参考作品风格】两节撰写故事前提；本步骤补充指令：{{step_guidance}}。` |
+| `synopsis` | 罗列 9 个变量 | `整合上方【核心资产】【篇幅参数】【弧光结构 / 故事结构模式】三节…` |
+| `chapter_blueprint_chunk` | 罗列 8 个变量（含 `novel_architecture` 全量架构、`chapter_list`） | `依据上方【全书架构数据池】与【前置剧情进度与连贯性检查】…` |
+
+两处**同一模板内**的重复也一并去掉：`edit_selected_text` 的 `taskGuidance` 末尾又写了一遍
+`{{edit_instruction}}`；`assistant_writing_identity` 的首行重复了正文全文 `{{mode_instruction}}`。
+
+**只清 taskGuidance，`content` 一个字节未动**；`step_guidance` 这类 taskGuidance 独有出口
+全部保留。校验方式：逐个模板比对「改前 vs 改后的变量出口集合」，20/20 完全一致 ——
+没有任何变量被孤立。改动 15 个模板，重复变量 15 → 0。
+备份：`prompts.bak-20261012-0110/`。
+
+### 6.8.3 守卫（commit `827c457`）
+
+- 新增 `src/services/prompt-variable-usage.ts`：`extractTemplateVariables` /
+  `findDuplicatedBodyVariables`，**只识别、不改写**。
+- `PromptSettings`：已由正文渲染的变量 chip 改为警示色 + 标注「·正文已用」，
+  tooltip 说明「再插入会重复注入」；一旦在「补充创作指导」里检测到这类变量，
+  实时给出提示条。**不自动替作者删字**（是作者有意定制还是照单插入，程序分不清）。
+- 测试：`prompt-variable-usage` 7/7；设置面板浏览器用例 8/8。
+
+### 6.8.4 顺带查明的另一类重复：跨模板
+
+`first_chapter_draft` / `next_chapter_draft` / `refine_chapter` 的 `taskGuidance` 里，
+【去精确堆砌·写作约束】【去AI机械化·真人叙事强制约束】【强制排版硬规则】三块
+（约 1000 字）**逐字节相同**，只有开头的任务句不同。
+
+**这不是缺陷**：三个模板分属三个不同步骤，永远不会出现在同一条请求里，重复渲染无从发生。
+代价只在维护 —— 改一处要记得改另外两处。数据层也无法「抽取公共块」：覆盖文件是
+per-key 的独立 JSON。所以本轮不做合并，只在此登记。
+
+### 6.8.5 面板设计的教训
+
+「可用变量」这个措辞本身有误导性：它读起来像「这些变量需要你插入」，实际语义是
+「这些变量你可以引用」。真正的分界是**变量是否已被正文渲染**，而这条信息此前完全没有
+暴露给作者。已按 6.8.3 补上。
