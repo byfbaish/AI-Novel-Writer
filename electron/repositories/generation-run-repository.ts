@@ -499,7 +499,14 @@ export class GenerationRunRepository {
             if (!selected || Array.from({ length: stored.requestedRange.endChapter - stored.requestedRange.startChapter + 1 }, (_, index) => stored.requestedRange.startChapter + index).some(chapter => !selected.includes(chapter)))
                 fail('GENERATION_DIRECTORY_PROGRESS_INVALID');
             const committed = this.db().prepare('SELECT payload_hash,start_chapter,end_chapter FROM blueprint_commit_operations WHERE operation_id=?').get(stored.operationId) as { payload_hash: string; start_chapter: number; end_chapter: number } | undefined;
-            if (!committed || committed.payload_hash !== stored.payloadHash || run.rootActionId !== stored.sourceHandle.rootActionId
+            // 权威提交行不存在 = 该进度标记已经失效，而不是账本损坏：作者「清空全部蓝图」/
+            // 「清除项目生成内容」会把 blueprint_commit_operations 整表删掉，进度标记若继续
+            // 存在就只是悬空引用。此时必须按「没有可续写的进度」处理，否则后续每一次蓝图生成
+            // 都会在派发前被判为 GENERATION_DIRECTORY_PROGRESS_INVALID 而永久卡死
+            // （2026-10-11 实机踩到：清空蓝图 → 全量重生成 → generationAttempts=none）。
+            // 只豁免「权威行缺失」这一种；行还在而 payload/范围/来源不符仍按损坏处理。
+            if (!committed) return [];
+            if (committed.payload_hash !== stored.payloadHash || run.rootActionId !== stored.sourceHandle.rootActionId
                 || run.binding.projectId !== stored.sourceHandle.projectId || committed.start_chapter !== stored.committedRange.startChapter
                 || committed.end_chapter !== stored.committedRange.endChapter || stored.requestedRange.startChapter !== committed.start_chapter
                 || stored.requestedRange.endChapter < committed.end_chapter
