@@ -276,7 +276,7 @@ Return exactly one JSON object with "schemaVersion":1 and "entries":[...]. Every
 - Project-wide writing guidance: {{global_guidance}}
 
 [Deliverable]
-Build four connected dimensions. The first three each need a concrete source of conflict; the fourth is a spatial index that gives the plot and the stage structure stable place names.
+Build four connected dimensions. The first three each need a concrete source of conflict; the fourth is a spatial index that gives the plot and the arc structure stable place names.
 
 1. Core rules and exploitable asymmetry
 - Define the rules that govern power, technology, institutions, or the supernatural.
@@ -293,7 +293,7 @@ Build four connected dimensions. The first three each need a concrete source of 
 4. Spatial structure (map and regions)
 - List the main spaces, regions, or strongholds where the story takes place and how they relate (adjacent, nested, connected, gated).
 - Give each space its key rule or constraint (entry conditions, dangers, mechanics that differ from other spaces).
-- Use the format "Space name: one-line role + key rule"; names must be fixed and unique, because later plot and stage structure will reference them by the same name.
+- Use the format "Space name: one-line role + key rule"; names must be fixed and unique, because later plot and arc structure will reference them by the same name.
 - Mark which spaces are long-term stages and which are one-off scenes. Do not add decorative geography unrelated to the plot.
 
 [Requirements]
@@ -383,7 +383,7 @@ Build four connected dimensions. The first three each need a concrete source of 
 
 [Required structure]
 {{plot_structure_guide}}
-(If the above is a "stage structure / free arc", its Causality/Ordering/Goal/Turn lines are hard constraints:
+(If the above is an "arc structure / free arc", its Causality/Ordering/Goal/Turn lines are hard constraints:
  each stage must justify why it follows the previous one.)
 
 [Deliverable]
