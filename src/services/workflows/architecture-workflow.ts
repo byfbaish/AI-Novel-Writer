@@ -324,14 +324,14 @@ Ketsu, chapters ${ch75 + 1}–${totalChapters}: connect the threads, reveal the 
 Plan 2–4 distinct but intersecting lines across ${totalChapters} chapters.
 Create collisions near chapters ${ch25}, ${ch50}, and ${ch75}; rotate viewpoints without abandoning a line; begin the final convergence near chapter ${ch75}.`)
     case 'freeform':
-      return promptLanguageText(language, `【自由结构】（不限定特定叙事框架，根据故事内容自然编排）
+      return promptLanguageText(language, `【弧光结构】（不限定固定叙事框架，根据故事内容自然编排）
 全书共 ${totalChapters} 章。
 请根据故事类型和内容特点自行设计最合适的叙事节奏。
 核心原则：
 1. 保证每10-20章有一个小高潮或悬念释放点
 2. 全书应有清晰的开篇建置（前10-15%）和收尾段落（后10-15%）
 3. 中段避免节奏单一，适时安排转折点
-4. 允许插叙、倒叙、片段式叙事等灵活手法`, `[Freeform structure]
+4. 允许插叙、倒叙、片段式叙事等灵活手法`, `[Arc structure]
 Design the most suitable rhythm across ${totalChapters} chapters. Establish a clear opening and ending, vary the middle, release suspense regularly, and use nonlinear techniques only when they serve the story.`)
     case 'three_act':
     default:

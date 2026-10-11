@@ -326,16 +326,14 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                 '节拍表：好莱坞十五拍结构，节奏最精细，适合情感张力强的故事',
                 '起承转合：中国传统四段式结构，适合古言/武侠/仙侠',
                 '多线叙事：多条故事线并进交织，适合群像或复杂情节',
-                '自由结构：不限定特定框架，AI 根据内容自适应，适合日常/轻小说',
-                '弧光结构（自由弧）：在「故事架构」里编辑一套属于本书的阶段推进结构，它会覆盖上面的选择',
+                '弧光结构：不套固定叙事框架，由 AI 按内容自适应；也可在「故事架构 · 弧光结构」里写成本书专属的推进，写了就以它为准',
               ].map((item, index) => text(item, [
                 'Three-act structure: setup, confrontation, and climax; suitable for most genres',
                 'Hero’s journey: a transformation-focused adventure structure',
                 'Beat sheet: detailed pacing for emotionally intense stories',
                 'Kishōtenketsu: a four-part East Asian structure',
                 'Multi-thread: interwoven story lines for ensembles and complex plots',
-                'Freeform: AI adapts the structure to the content',
-                'Arc structure (free arc): edit a book-specific staged structure in Story architecture; it overrides the choice above',
+                'Arc structure: no fixed framework — AI adapts to the content; you can also write a book-specific progression under Story architecture · Arc structure, which overrides the choice above',
               ][index]))}>
                 <NativeSelect
                   className={hasFreeArc ? 'opacity-50' : undefined}
@@ -347,7 +345,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                   <option value="save_the_cat">{text('节拍表', 'Beat sheet')}</option>
                   <option value="kishotenketsu">{text('起承转合', 'Kishōtenketsu')}</option>
                   <option value="multi_thread">{text('多线叙事', 'Multi-thread')}</option>
-                  <option value="freeform">{text('自由结构', 'Freeform')}</option>
+                  <option value="freeform">{text('弧光结构', 'Arc structure')}</option>
                 </NativeSelect>
                 {hasFreeArc ? (
                   <button
@@ -365,7 +363,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                     className="mt-1 text-left text-[0.7rem] leading-4 underline decoration-dotted"
                     style={{ color: 'var(--color-text-muted)' }}
                   >
-                    {text('想让本书用自己的阶段推进结构？前往「故事架构 · 弧光结构」编辑', 'Want a book-specific staged structure? Edit it under Story architecture · Arc structure')}
+                    {text('想让本书用自己的弧光推进结构？前往「故事架构 · 弧光结构」编辑', 'Want a book-specific arc progression? Edit it under Story architecture · Arc structure')}
                   </button>
                 )}
               </Field>

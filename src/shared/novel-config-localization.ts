@@ -37,7 +37,7 @@ const PLOT_STRUCTURE_LABELS: Readonly<Record<string, LocalizedLabel>> = {
   save_the_cat: { zhCN: '节拍表', enUS: 'Beat sheet' },
   kishotenketsu: { zhCN: '起承转合', enUS: 'Kishōtenketsu' },
   multi_thread: { zhCN: '多线叙事', enUS: 'Multi-thread' },
-  freeform: { zhCN: '自由结构', enUS: 'Freeform' },
+  freeform: { zhCN: '弧光结构', enUS: 'Arc structure' },
 }
 
 const NARRATIVE_POV_LABELS: Readonly<Record<string, LocalizedLabel>> = {
