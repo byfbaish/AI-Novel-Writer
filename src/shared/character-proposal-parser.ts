@@ -163,9 +163,11 @@ export function decodeCharacterIdentityManifest(content: string): CharacterIdent
   }
   const slots = parsed.slots.map((candidate, index) => {
     if (!isRecord(candidate)) throw new Error(`角色身份清单第 ${index + 1} 项无效`)
-    if (Object.keys(candidate).some(key => !['slotId', 'name', 'role', 'narrativeDuty', 'relations'].includes(key))) {
-      throw new Error(`角色身份清单第 ${index + 1} 项包含未知字段`)
-    }
+    // 名单项的**字段集合**不再 fail-closed：模型偶尔会把「设计判断维度」
+    // （欲望 / 关键抉择 / 成长弧光 / 冲突来源）当成输出字段一并吐出。这些维度在
+    // 详情阶段会被详情合同重新生成，丢弃不丢信息；但为此报废整份名单要白烧一次
+    // 完整生成。契约纪律由下方逐字段校验维持（必需字段齐全 + 取值合法 + 关系合法），
+    // 顶层结构仍然严格（只允许 slots，见上）。提示词也已明确禁止额外字段。
     const relations = candidate.relations
     if (!Array.isArray(relations)) throw new Error(`角色身份清单第 ${index + 1} 项缺少关系列表`)
     const slotId = normalizeCharacterSlotId(candidate.slotId)
@@ -184,8 +186,8 @@ export function decodeCharacterIdentityManifest(content: string): CharacterIdent
         const targetSlotId = isRecord(relation)
           ? normalizeCharacterSlotId(relation.targetSlotId)
           : undefined
+        // 关系项同理：冗余键被丢弃，但端点与关系文本仍然必须合法。
         if (!isRecord(relation)
-          || Object.keys(relation).some(key => key !== 'targetSlotId' && key !== 'relation')
           || targetSlotId === undefined
           || typeof relation.relation !== 'string' || !relation.relation.trim()) {
           throw new Error(`角色身份清单第 ${index + 1} 项关系 ${relationIndex + 1} 无效`)
