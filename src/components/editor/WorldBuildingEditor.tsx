@@ -209,7 +209,7 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
     const customStageStructure = (core?.plotStructurePlan?.length ?? 0) > 50
     const status: Record<string, boolean> = {
       premise: (core?.premise?.length ?? 0) > 50,
-      characters: rosterSnapshot?.status === 'ready',
+      characters: rosterSnapshot?.status === 'ready' || (core?.charactersArch?.length ?? 0) > 50,
       worldbuilding: (core?.worldbuilding?.length ?? 0) > 50,
       // 弧光结构：仅有自由弧正文才算「已生成」；为空时视为「待生成」，
       // 但其内容可由枚举模板兜底展示（openArchFile 内处理）。
@@ -218,7 +218,11 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
     }
     const counts: Record<string, number> = {
       premise: status.premise ? (core?.premise?.length ?? 0) : 0,
-      characters: status.characters ? (rosterSnapshot?.renderedMarkdown.length ?? 0) : 0,
+      characters: status.characters
+        ? (rosterSnapshot?.status === 'ready'
+            ? rosterSnapshot.renderedMarkdown.length
+            : (core?.charactersArch?.length ?? 0))
+        : 0,
       worldbuilding: status.worldbuilding ? (core?.worldbuilding?.length ?? 0) : 0,
       plotStructure: customStageStructure ? (core?.plotStructurePlan?.length ?? 0) : 0,
       synopsis: status.synopsis ? (core?.synopsis?.length ?? 0) : 0,

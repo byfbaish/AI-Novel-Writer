@@ -1066,7 +1066,7 @@ export class GenerateCoreSeedCommand extends BaseWorkflowCommand<string> {
     const result = await this.callLLMWithBuilder(
       promptBuilder,
       callbacks,
-      { purpose: 'generate-core-seed', reasoningStage: 'planning', writingSkillStage: 'planning' },
+      { purpose: 'generate-core-seed', reasoningStage: 'planning', writingSkillStage: 'planning', omitWritingSkill: true },
       context,
     )
     if (!result.trim()) throw new Error(text(
@@ -1540,6 +1540,7 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
       purpose: 'generate-world-building',
       reasoningStage: 'planning' as const,
       writingSkillStage: 'planning' as const,
+      omitWritingSkill: true,
     }
     let result: string
     let persistedCandidate = seedText
@@ -2189,6 +2190,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
               : 'generate-plot-architecture',
           reasoningStage: 'planning',
           writingSkillStage: 'planning',
+          omitWritingSkill: true,
         },
         seedText: generationSeedText,
         maxContinuations: 3,
@@ -2444,7 +2446,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         callbacks.log(text(`正在生成第 ${cursor.chapterNumber} 章大纲${cursor.attempt === 'compact' ? '，进行唯一一次原事实重建' : ''}。`,
           `Generating the outline for chapter ${cursor.chapterNumber}${cursor.attempt === 'compact' ? ' with its single rebuild from original facts' : ''}.`))
         await this.callLLMResult(`${originalPrompt}\n\n${plotOutlineRequestContract(outline, cursor.chapterNumber, cursor.attempt)}`,
-          `${promptBuilder.getSystemRole()}\n\n${planningTargetInstruction('outline', outline.targetUnits, language)}`, callbacks, { purpose: plotOutlinePurpose(cursor.chapterNumber, cursor.attempt), reasoningStage: 'planning', writingSkillStage: 'planning' }, context)
+          `${promptBuilder.getSystemRole()}\n\n${planningTargetInstruction('outline', outline.targetUnits, language)}`, callbacks, { purpose: plotOutlinePurpose(cursor.chapterNumber, cursor.attempt), reasoningStage: 'planning', writingSkillStage: 'planning', omitWritingSkill: true }, context)
       }
       const current = await ipc.invokeWithProjectSession(session, 'generation:read', handle)
       if (!current.plotOutline) throw new Error('GENERATION_PLOT_OUTLINE_SOURCE_INVALID')
