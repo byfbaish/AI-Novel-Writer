@@ -250,10 +250,14 @@ State the immediate visible threat and the deeper hidden truth or long-term myst
 [Design requirements]
 1. Treat every explicit author fact in the story premise and protagonist profile as authoritative. Preserve each one; never weaken, reverse, or replace it with a genre convention.
 2. Keep the protagonist consistent with the supplied profile. Define their visible goal, deeper desire, distinctive appearance, characteristic use of the central advantage, vulnerability, and expected arc.
-3. Design a cast appropriate to the planned scale: normally three to four core characters for a short work and four to six for a longer work.
-4. Include at least one ally with an independent motive and at least one rival whose opposition has a defensible cause. Add mentors, schemers, or uncertain allies only when the story needs them.
-5. Connect every character through unavoidable pressure from scarce resources, survival, institutions, or conflicting beliefs.
-6. Avoid flat saints, irrational antagonists, and characters who exist only as tools unless the author explicitly requests them.
+3. Compute the cast size first, then design: core cast size = total chapters ÷ 100 (minimum 3, maximum 12). For {{number_of_chapters}} chapters, write the arithmetic (e.g. "800 ÷ 100 = 8") before designing. The count is computed, not estimated — never return only four or five characters for a very long work.
+4. Cast scope is strict — this is the step's most common failure:
+   - Include only people: named individuals (or fixed code names) with an independent motive and the capacity to speak or oppose, whose presence spans the whole book (protagonist, core allies, core opponents, key supporting cast).
+   - Exclude rules, mechanics, environment avatars, abstract wills, the system itself, spaces/regions, and organisations. A mechanic like a "rule avatar" or a "system will" belongs to world-building, not to the cast: it has no motive, cannot grow, and cannot be turned into a character card.
+   - Exclude characters who appear only inside a single arc or event; those are created on demand from chapter blueprints later.
+5. Include at least one ally with an independent motive and at least one rival whose opposition has a defensible cause. Add mentors, schemers, or uncertain allies only when the story needs them.
+6. Connect every character through unavoidable pressure from scarce resources, survival, institutions, or conflicting beliefs.
+7. Avoid flat saints, irrational antagonists, and characters who exist only as tools unless the author explicitly requests them.
 
 [Output contract]
 Return exactly one JSON object with "schemaVersion":1 and "entries":[...]. Every relationship must target another character in the same entries array. Do not output Markdown, a preface, a code fence, or reasoning; the runtime supplies the complete immutable field contract.
@@ -306,62 +310,82 @@ Build four connected dimensions. The first three each need a concrete source of 
 {{step_guidance}}`,
   },
   plot_structure: {
-    systemRole: 'You are a long-form narrative structure planner. Every stage (arc) must be able to answer "why does this come after the previous one?" instead of listing parallel intervals.',
-    content: `Plan the book's arc structure: how the story advances in arcs, and how each arc connects to the previous one. The plot outline will follow it.
+    systemRole: 'You are a long-form narrative structure planner. You output a **three-level nested** arc structure (major arc ⊃ mid arc ⊃ minor arc), and within each level every arc must answer "why does this come after the previous one?" instead of listing parallel intervals.',
+    content: `Plan the book's arc structure: how the story advances in three nested levels, and how each level connects to the next. The plot outline will follow it.
 
 [Authoritative project settings]
 - Genre: {{genre}}
 - Story premise: {{premise}}
 - Character dynamics: {{character_dynamics}}
 - World system: {{world_building}}
-- Planned scale: about {{number_of_chapters}} chapters at roughly {{word_number}} words each
+- Planned scale: {{number_of_chapters}} chapters at roughly {{word_number}} words each
 - Project-wide writing guidance: {{global_guidance}}
 
-[Step 1 — classify each stage (do not skip; this is the core of the task)]
-- A Causal: events chain together, expressible as "because … therefore …".
-- B Goal-driven: the protagonist pursues a goal through repeated attempt–setback–retry.
-- C Exploratory: parallel encounters in a space or cast; events connect as "and then they met …" rather than "therefore …".
+[Step 0 — compute the length budget first (it must open your output; compute before writing)]
+This step is always **three-level nesting**: major arc ⊃ mid arc ⊃ minor arc. From {{number_of_chapters}} chapters:
+- major arcs = total chapters ÷ 100 (minimum 3, maximum 12)
+- mid arcs per major arc = that major arc's chapters ÷ 25 (2–6)
+- minor arcs per mid arc = that mid arc's chapters ÷ 10 (2–4)
 
-[Step 2 — write the progression per type (the only reason this layer exists; every stage must state it)]
-▸ A Causal — write the causal chain:
-  Causality: because <previous stage/prior event> produced <specific outcome>, therefore <this stage's action>
-  Ordering: this stage starts from <the exact state> the previous stage ended in
-▸ B Goal-driven — write the goal and attempt sequence:
+Example shape (compute your own numbers; do not copy these):
+[Length budget] 800 chapters ⇒ about 8 major arcs; about 4 mid arcs each ⇒ about 32 mid arcs; about 3 minor arcs each ⇒ about 96 minor arcs.
+★ The counts are **computed, not estimated**. If your numbers do not match the level sizes below, you computed wrong — recompute before writing.
+
+[Step 1 — the size band for each level (do not mix them up)]
+- Major arc (level 1): 80–150 chapters. Fewer than 80 means over-splitting; more than 150 means it was never split.
+- Mid arc (level 2): 20–40 chapters. **Every major arc must contain ≥2 mid arcs.**
+- Minor arc (level 3): 5–15 chapters. **Every mid arc must contain ≥2 minor arcs.**
+★ The most common failure of this step is returning **only 3–5 major arcs with no mid or minor arcs at all** — that mistakes narrative phases for hierarchy. The counts from Step 0 are the target.
+
+[Step 2 — write the progression within each level (the only reason this layer exists)]
+Between major arcs: every major arc must state a **continuation reason** — why it follows the previous major arc.
+Between mid arcs (within one major arc): classify each mid arc, then write its progression by type:
+- A Causal: events chain together, expressible as "because … therefore …".
+  Causality: because <previous mid arc / prior event> produced <specific outcome>, therefore <this mid arc's action>
+  Ordering: this mid arc starts from <the exact state> the previous mid arc ended in
+- B Goal-driven: the protagonist pursues a goal through repeated attempt–setback–retry.
   Goal: <one sentence, the full change from X to Y>
   Attempt 1: <method> -> outcome <what> -> therefore attempt 2 (explain why a retry is required)
-  Attempt 2: … (each attempt must justify entering the next)
-▸ C Exploratory — write the motivation and path:
-  Motivation: <why explore> (this is what compensates for the absence of causality)
-  Path: <place A> -> discovery <X>; <place B> -> discovery <Y> (nodes connect as "then go to …")
+- C Exploratory: parallel encounters in a space or cast; events connect as "and then they met …" rather than "therefore …".
+  Motivation: <why explore> (this compensates for the absence of causality)
+  Path: <place A> -> discovery <X>; <place B> -> discovery <Y>
+Minor arcs: give **name + chapter count only** (one line of positioning). Their detailed expansion belongs to the plot outline — do not develop plot here.
 
-[Length heuristics — to judge how large a stage should be and when to split]
-- 5–8 chapters: too short
-- 10–15 chapters: tight, good for the first stage
-- 20–30 chapters: full, good for mid-book core arcs
-- 35–50 chapters: long, must be internally split
-- 50+ chapters: too long, avoid
--> Give each stage an estimated size (e.g. "about 20–30 chapters").
--> If a stage is expected to exceed 30 chapters, split out 1–3 inner stages of 5–15 chapters.
+[Output format — Markdown only, use headings for levels, no code fences]
+[Length budget] … (the arithmetic and result from Step 0)
 
-[Output format — Markdown only, use headings and lists, no code fences]
 # Arc Structure
-## Stage 1: <name> (approx. X–Y chapters)
+## Major arc 1: <name> (approx. X–Y chapters)
 - Type: A Causal / B Goal-driven / C Exploratory
-- Causality: (required for A) because … therefore …
-- Ordering: this stage starts from …
-- Goal: …
+- Continuation reason: (the first arc says "opening"; every other must say why it follows the previous major arc)
+- Central conflict: …
+- End state: …
+### Mid arc 1: <name> (approx. N chapters)
+- Type: A / B / C
+- Causality / Goal / Motivation: (by type)
+- Ordering / Path: (by type)
 - Turn: …
-  - Sub-arc: <inner stage> (approx. N chapters)
-  - Main arc: <inner stage> (approx. M chapters)
-## Stage 2: <name> (approx. X–Y chapters)
+- Minor arcs: <name> (approx. M chapters); <name> (approx. M2 chapters); …
+### Mid arc 2: <name> (approx. N chapters)
 …
+## Major arc 2: <name> (approx. X–Y chapters)
+…
+★ The above only demonstrates the **writing format**. The number of major / mid / minor arcs is set by Step 0's arithmetic — **not 2, and not 4.**
+
+[Self-check before output (mandatory; fix until every line holds)]
+1. Σ(major arc chapters) = {{number_of_chapters}}
+2. For every major arc: Σ(its mid arc chapters) = that major arc's chapter count
+3. For every mid arc: Σ(its minor arc chapters) = that mid arc's chapter count
+4. Every major arc contains ≥2 mid arcs; every mid arc contains ≥2 minor arcs
 
 [Requirements]
-1. This is a staged progression skeleton, not a chapter-by-chapter outline. Do not write per-chapter content.
-2. Chapter numbers are estimates ("approx. X–Y chapters"), not contracts.
+1. This is a **three-level progression skeleton**, not a chapter-by-chapter outline — do not write per-chapter content.
+2. Chapter numbers are estimates ("approx. X–Y chapters"), not contracts; arcs may overlap and shift.
 3. Preserve explicit author facts from the premise, character dynamics, and world system; never contradict them.
-4. If a stage is type C, do not force a causal link — write motivation/path instead, or it becomes fake causality.
-5. Return only the Markdown above, with no explanation, greetings, or code fences.`,
+4. If a mid arc is type C, do not force a causal link — write motivation/path instead, or it becomes fake causality.
+5. Minor arcs get a name and a chapter count only; do not develop their plot.
+6. Return only the content above, with no explanation, greetings, or code fences.
+`,
     systemSuffix: `[Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
   },
