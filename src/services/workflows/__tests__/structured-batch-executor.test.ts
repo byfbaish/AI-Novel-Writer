@@ -1512,7 +1512,6 @@ describe('StructuredBatchExecutor seam', () => {
   })
 
   it('classifies an error that lost its class identity by its known code', async () => {
-    // 跨序列化边界后 instanceof 失效：只剩一个带 code 的普通对象。
     const executor = createStructuredBatchExecutor({
       contract: blueprintContract,
       session: {
@@ -1536,6 +1535,55 @@ describe('StructuredBatchExecutor seam', () => {
       },
     })
     expect(JSON.stringify(result)).not.toContain('test-secret')
+  })
+
+  it('surfaces a bare protocol-code message because it carries no free text', async () => {
+    const executor = createStructuredBatchExecutor({
+      contract: blueprintContract,
+      session: {
+        complete: vi.fn<GenerationSession['complete']>(async () => {
+          throw new Error('MAIN_RUN_NON_REPLAYABLE')
+        }),
+      },
+    })
+
+    const result = await executor.execute({
+      items: [1],
+      limits: { maxBatchItems: 5 },
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: {
+        code: 'generation_failed',
+        reason: 'server_error',
+        message: 'MAIN_RUN_NON_REPLAYABLE',
+        errorName: 'Error',
+      },
+    })
+  })
+
+  it('still hides a prose message that merely contains a protocol-like token', async () => {
+    const executor = createStructuredBatchExecutor({
+      contract: blueprintContract,
+      session: {
+        complete: vi.fn<GenerationSession['complete']>(async () => {
+          throw new Error('MAIN_RUN_NON_REPLAYABLE Bearer test-secret')
+        }),
+      },
+    })
+
+    const result = await executor.execute({
+      items: [1],
+      limits: { maxBatchItems: 5 },
+    })
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: { code: 'generation_failed', message: '结构化生成失败', errorName: 'Error' },
+    })
+    expect(JSON.stringify(result)).not.toContain('test-secret')
+    expect(JSON.stringify(result)).not.toContain('MAIN_RUN_NON_REPLAYABLE')
   })
 
   it('fails after one compact fallback for the same item when it is also length-truncated', async () => {

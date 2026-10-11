@@ -144,6 +144,24 @@ function describeUnexpectedError(error: unknown): Pick<StructuredBatchFailure, '
   return { errorName }
 }
 
+/**
+ * 本项目自有**协议码**可以安全回显。
+ *
+ * 生成运行时的「发前拒绝」（同一 run 不可重放、会话忙/已关闭、缺少 invocation
+ * nonce 等）抛的都是裸 `Error('MAIN_RUN_NON_REPLAYABLE')` 这类**纯枚举码**，
+ * 它们不含任何外部自由文本，正是定位「一次请求都没发出就失败」的关键证据。
+ * 但 provider/session 的 message 可能内嵌凭据，必须继续隐藏——因此这里只放行
+ * 「整条消息就是一个协议码」（允许 Electron IPC 前缀与 `:序号` 后缀）的情形。
+ */
+const PROTOCOL_CODE_MESSAGE = /^(?:Error invoking remote method '[^']{0,256}': )?[A-Z][A-Z0-9_]{4,63}(?::\d+)?$/u
+
+function safeProtocolCode(error: unknown): string | undefined {
+  const message = error instanceof Error ? error.message : undefined
+  if (typeof message !== 'string') return undefined
+  const trimmed = message.trim()
+  return PROTOCOL_CODE_MESSAGE.test(trimmed) ? trimmed : undefined
+}
+
 export type StructuredBatchResult<TOutput> =
   | {
       ok: true
@@ -627,7 +645,7 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
           if (known) {
             failure = known
           } else {
-            const safeMessage = dependencies.describeError?.(error)
+            const safeMessage = dependencies.describeError?.(error) ?? safeProtocolCode(error)
             failure = {
               code: 'generation_failed',
               reason: 'server_error',
