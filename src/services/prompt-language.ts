@@ -67,6 +67,7 @@ const CHARACTER_ARCHITECTURE_PROMPTS: Readonly<Record<WritingLanguage, Character
 只输出一个可由 JSON.parse 读取的 {"entries":[...]} 对象，不得输出 schemaVersion、relationships、Markdown、解释、代码围栏或思考过程。`,
     detailContract: `【不可变角色详情 JSON 合同】
 只输出 {"entries":[...]}。每项必须包含 slotId、name、role、gender、age、appearance、personality、background、abilities、motivation、arc、notes、currentState。
+★ 上述每一个字段都必须是**非空文本**：不得为空字符串、纯空白、null 或省略。「必填」的判定标准是**非空**，不是"键存在"。确实未知时填写「未知」「待补充」之类的占位文本，不得留空——空值会让整批详情作废。最常被留空的是 gender 与 age，这两项同样必须填写。
 currentState 必填，必须包含 location、powerLevel、physicalState、mentalState、keyItems、recentEvents、updatedAtChapter；updatedAtChapter 必须是非负整数。
 appearance、personality、background、abilities、motivation、arc、notes 每项不超过 120 字符；currentState 的文本字段每项不超过 80 字符。
 keyItems 可为非空字符串或非空字符串数组；recentEvents 可为非空字符串或非空字符串数组。数组每项必须是非空字符串，不得混入数字、对象或 null；没有内容时使用字符串“无”，不得输出空数组。
@@ -100,6 +101,7 @@ ${input.validatedPrefix}
     detailSystem: 'You complete compact character records for explicitly frozen identities. Do not plan or alter identities or relationships. Explicit author facts in the story premise and protagonist profile are authoritative: preserve every relevant fact in the character details without omission, weakening, reversal, or replacement by genre convention. Output exactly one JSON.parse-compatible {"entries":[...]} object with no schemaVersion, relationships, Markdown, explanation, code fence, or reasoning.',
     detailContract: `[Immutable character-detail JSON contract]
 Output {"entries":[...]} only. Every entry must contain slotId, name, role, gender, age, appearance, personality, background, abilities, motivation, arc, notes, and currentState.
+★ Every field above must be **non-empty text**: never an empty string, whitespace only, null, or omitted. "Required" means non-empty, not merely present as a key. When a fact is genuinely unknown, write a placeholder such as "unknown" instead of leaving it blank — a blank field invalidates the whole batch. gender and age are the fields most often left blank; both are still mandatory.
 currentState is required and must contain location, powerLevel, physicalState, mentalState, keyItems, recentEvents, and a non-negative integer updatedAtChapter.
 Keep appearance, personality, background, abilities, motivation, arc, and notes within 120 characters each, and each currentState text field within 80 characters.
 keyItems and recentEvents may each be a non-empty string or an array of non-empty strings. Use the string "none" when empty; never output an empty array.

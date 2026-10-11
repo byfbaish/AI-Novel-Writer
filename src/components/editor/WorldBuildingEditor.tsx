@@ -36,6 +36,7 @@ import { sameProjectSessionContext } from '../../shared/project-session-context'
 import type { MainGenerationRunHandle } from '../../services/generation/generation-runtime'
 import { architectureRecoveryHandle } from '../../shared/architecture-recovery-navigation'
 import { DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../shared/plot-outline-contract'
+import { hasArchContent } from '../../services/architecture-service'
 import type { GenerationRecoveryContext } from '../../shared/generation-owner-contract'
 import { openPlanningRecoveryDraft } from '../../stores/editor-store'
 import {
@@ -206,15 +207,16 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
       coveredTo = 0
       recoveredWorldBuildingCandidate = ''
     }
-    const customStageStructure = (core?.plotStructurePlan?.length ?? 0) > 50
+    const customStageStructure = hasArchContent(core?.plotStructurePlan)
     const status: Record<string, boolean> = {
-      premise: (core?.premise?.length ?? 0) > 50,
-      characters: rosterSnapshot?.status === 'ready' || (core?.charactersArch?.length ?? 0) > 50,
-      worldbuilding: (core?.worldbuilding?.length ?? 0) > 50,
+      premise: hasArchContent(core?.premise),
+      // 角色图谱：名册 ready 或有正文（判据见 architecture-service.hasArchContent）
+      characters: rosterSnapshot?.status === 'ready' || hasArchContent(core?.charactersArch),
+      worldbuilding: hasArchContent(core?.worldbuilding),
       // 弧光结构：仅有自由弧正文才算「已生成」；为空时视为「待生成」，
       // 但其内容可由枚举模板兜底展示（openArchFile 内处理）。
       plotStructure: customStageStructure,
-      synopsis: (core?.synopsis?.length ?? 0) > 50,
+      synopsis: hasArchContent(core?.synopsis),
     }
     const counts: Record<string, number> = {
       premise: status.premise ? (core?.premise?.length ?? 0) : 0,

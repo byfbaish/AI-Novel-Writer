@@ -239,6 +239,37 @@ describe('character store project context', () => {
     })
   })
 
+  it('deletes several characters in one roster commit and prunes their relationship references', async () => {
+    // 批量删除存在的理由是**提交次数**：逐个删会各走一次 roster 原子提交。
+    const keeper = {
+      ...character('保留角色'),
+      relationships: JSON.stringify([
+        { target: '待删甲', targetCharacterId: 'id:待删甲', relation: '盟友' },
+        { target: '待删乙', targetCharacterId: 'id:待删乙', relation: '对手' },
+      ]),
+    }
+    invoke
+      .mockResolvedValueOnce([keeper, character('待删甲'), character('待删乙')])
+      .mockResolvedValueOnce({ success: true })
+
+    await useCharacterStore.getState().load(PROJECT_A)
+    await expect(useCharacterStore.getState().deleteCharacters(['id:待删甲', 'id:待删乙'], PROJECT_A))
+      .resolves.toBe(true)
+
+    // 只提交一次，且提交的是"扣除两个之后的名单"。
+    expect(invoke).toHaveBeenCalledTimes(2)
+    const commit = invoke.mock.calls[1]
+    expect(commit[0]).toBe('db:character-roster-commit')
+    const entries = (commit[1] as { entries: Array<{ name: string; relationships?: string }>; expectedRevision: number }).entries
+    expect(entries.map(entry => entry.name)).toEqual(['保留角色'])
+    // 指向被删角色的关系引用必须同时清理，否则会留下悬空关系。
+    // 空关系在提交体与 store 里都会归一成 ''，所以只断言"不再提到被删者"。
+    expect(entries[0].relationships ?? '').not.toContain('待删')
+    expect(useCharacterStore.getState().characters[0].relationships ?? '').not.toContain('待删')
+    expect(useCharacterStore.getState()).toMatchObject({ rosterRevision: 2 })
+    expect(useCharacterStore.getState().characters.map(card => card.name)).toEqual(['保留角色'])
+  })
+
   it('keeps A and B ledgers separate and blocks mutations while B data is not loaded', async () => {
     invoke
       .mockResolvedValueOnce([character('A 角色')])

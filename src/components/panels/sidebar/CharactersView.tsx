@@ -3,7 +3,7 @@
  */
 
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Users, RefreshCw, Plus, Search } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Users, RefreshCw, Plus, Search, Trash2, CheckSquare, X } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
 import { characterSelectionKey, useCharacterStore } from '../../../stores/character-store'
 import { Button } from '../../ui/Button'
@@ -17,12 +17,22 @@ import { CharacterCardGenerateButton } from '../../characters/CharacterCardGener
 import { FinalizedCharacterProposalPanel } from '../../characters/FinalizedCharacterProposalPanel'
 import { FinalizedCharacterStateCandidatePanel } from '../../characters/FinalizedCharacterStateCandidatePanel'
 import { useCharacterAvatars } from '../../editor/use-character-avatars'
+import { confirm } from '../../ui/Confirm'
+import { toast } from '../../ui/Toast'
+import { appErrorMessage } from '../../../i18n/app-errors'
 
 const CHARACTER_PAGE_SIZE = 50
 
 export default function CharactersView() {
   const [searchQuery, setSearchQuery] = useState('')
   const [page, setPage] = useState(0)
+  /**
+   * 批量删除模式。存在的理由：角色图谱重生成后，旧角色会与新角色共存，
+   * 而"同名覆盖、异名保留"意味着作者常常要一次清掉十几个角色卡，
+   * 逐个进编辑器点删除既慢、又会让每次删除各走一次 roster 原子提交。
+   */
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [picked, setPicked] = useState<string[]>([])
   const currentProject = useProjectStore(s => s.currentProject)
   const characters = useCharacterStore(s => s.characters)
   const dataProjectKey = useCharacterStore(s => s.dataProjectKey)
@@ -31,9 +41,11 @@ export default function CharactersView() {
   const load = useCharacterStore(s => s.load)
   const setSelectedId = useCharacterStore(s => s.setSelectedId)
   const addCharacter = useCharacterStore(s => s.addCharacter)
+  const deleteCharacters = useCharacterStore(s => s.deleteCharacters)
   const identityBusy = useCharacterStore(s => s.identityBusy)
   const lastError = useCharacterStore(s => s.lastError)
   const text = useLocaleStore(s => s.text)
+  const locale = useLocaleStore(s => s.locale)
   const roleLabel = (role: unknown) => {
     const { zhCN, enUS } = getCharacterRoleLabels(role)
     return text(zhCN, enUS)
@@ -59,6 +71,38 @@ export default function CharactersView() {
     character.characterId ? [character.characterId] : []
   )), [pageCharacters])
   const { avatarUrls } = useCharacterAvatars(pageIds, dataReady)
+
+  const keyOf = (card: (typeof characters)[number]) => characterSelectionKey(card, characters.indexOf(card))
+  /** 全选/反选针对**当前筛选结果**（含未显示的页），否则"全选"的语义会随分页漂移。 */
+  const visibleKeys = filteredCharacters.map(keyOf)
+  const allFilteredPicked = visibleKeys.length > 0 && visibleKeys.every(key => picked.includes(key))
+  const togglePicked = (key: string) => setPicked(previous => (
+    previous.includes(key) ? previous.filter(item => item !== key) : [...previous, key]
+  ))
+  const exitSelection = () => { setSelectionMode(false); setPicked([]) }
+
+  const handleDeletePicked = async () => {
+    if (!picked.length || !currentProject || !dataReady) return
+    const ok = await confirm(
+      text(
+        `确定要删除选中的 ${picked.length} 个角色吗？此操作不可撤销。\n\n同时会清理它们之间的关系引用。`,
+        `Delete the ${picked.length} selected characters? This cannot be undone.\n\nTheir relationship references are removed as well.`,
+      ),
+      { title: text('批量删除角色', 'Delete characters'), confirmText: text('删除', 'Delete'), danger: true },
+    )
+    if (!ok) return
+    try {
+      const deleted = await deleteCharacters(picked, currentProject.path)
+      if (!deleted) {
+        toast.error(text('批量删除失败：项目可能已切换，请刷新后重试', 'Could not delete the selected characters. The project may have changed; refresh and try again.'))
+        return
+      }
+      toast.success(text(`已删除 ${picked.length} 个角色`, `Deleted ${picked.length} character(s)`))
+      exitSelection()
+    } catch (error) {
+      toast.error(appErrorMessage(locale, error))
+    }
+  }
 
   // 角色数据由 ProjectService 统一加载，组件只消费 store 数据
 
@@ -90,8 +134,41 @@ export default function CharactersView() {
           <Button variant="ghost" size="icon" className="h-6 w-6" onClick={addCharacter} disabled={identityBusy || !dataReady} title={text('新建角色', 'New character')}>
             <Plus size={14} strokeWidth={2} />
           </Button>
+          <Button
+            variant="ghost" size="icon" className="h-6 w-6"
+            aria-pressed={selectionMode}
+            onClick={() => (selectionMode ? exitSelection() : setSelectionMode(true))}
+            disabled={identityBusy || !dataReady || visibleCharacters.length === 0}
+            title={text('批量删除', 'Delete several')}
+          >
+            <CheckSquare size={14} strokeWidth={2} />
+          </Button>
         </div>
       </div>
+      {selectionMode && (
+        <div className="flex items-center justify-between gap-1 px-2 py-1 text-[0.7rem]" style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'var(--color-hover)' }}>
+          <span className="text-[var(--color-text-secondary)]">{text(`已选 ${picked.length}`, `${picked.length} selected`)}</span>
+          <div className="flex items-center gap-0.5">
+            <Button variant="ghost" size="sm" className="h-6 text-[0.7rem]"
+              onClick={() => setPicked(previous => (allFilteredPicked
+                ? previous.filter(key => !visibleKeys.includes(key))
+                : [...new Set([...previous, ...visibleKeys])]))}
+              disabled={visibleKeys.length === 0}>
+              {allFilteredPicked ? text('取消全选', 'Clear all') : text('全选', 'Select all')}
+            </Button>
+            <Button variant="ghost" size="sm" className="h-6 text-[0.7rem]" onClick={() => setPicked([])} disabled={!picked.length}>
+              {text('清空', 'Clear')}
+            </Button>
+            <Button variant="ghost" size="sm" className="h-6 text-[0.7rem]" style={{ color: 'var(--color-error-text)' }}
+              onClick={() => void handleDeletePicked()} disabled={!picked.length || identityBusy}>
+              <Trash2 size={12} />{text(`删除选中（${picked.length}）`, `Delete (${picked.length})`)}
+            </Button>
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={exitSelection} title={text('退出批量删除', 'Exit selection')}>
+              <X size={13} />
+            </Button>
+          </div>
+        </div>
+      )}
       <FinalizedCharacterProposalPanel />
       <FinalizedCharacterStateCandidatePanel />
       <div className="relative px-2 py-1.5 border-b border-[var(--color-border)]">
@@ -106,34 +183,44 @@ export default function CharactersView() {
       </div>
       {/* 角色列表 */}
       <div className="flex-1 overflow-y-auto p-1">
-        {pageCharacters.map((c) => (
-          <div
-            key={characterSelectionKey(c, characters.indexOf(c))}
-            data-character-id={c.characterId}
-            role="button" tabIndex={0} aria-pressed={selectedId === characterSelectionKey(c, characters.indexOf(c))}
-            onKeyDown={event => { if (event.key === 'Enter') setSelectedId(characterSelectionKey(c, characters.indexOf(c))) }}
-            className={cn(
-              'px-2.5 py-1.5 rounded-md text-xs cursor-pointer mb-0.5',
-              selectedId === characterSelectionKey(c, characters.indexOf(c))
-                ? 'bg-[var(--color-active)] text-[var(--color-text)]'
-                : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)]'
-            )}
-            onClick={() => setSelectedId(characterSelectionKey(c, characters.indexOf(c)))}
-          >
-            <div className="flex items-center gap-2">
-              {c.characterId && avatarUrls[c.characterId] ? (
-                <img src={avatarUrls[c.characterId]} alt={text(`${c.name}头像`, `${c.name} avatar`)} className="h-8 w-8 flex-shrink-0 rounded-full object-cover" />
-              ) : (
-                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-hover)] text-[0.7rem]">{Array.from(c.name || '?')[0]}</div>
+        {pageCharacters.map((c) => {
+          const selectionKey = keyOf(c)
+          const isPicked = picked.includes(selectionKey)
+          return (
+            <div
+              key={selectionKey}
+              data-character-id={c.characterId}
+              role="button" tabIndex={0}
+              aria-pressed={selectionMode ? isPicked : selectedId === selectionKey}
+              onKeyDown={event => {
+                if (event.key !== 'Enter') return
+                if (selectionMode) togglePicked(selectionKey)
+                else setSelectedId(selectionKey)
+              }}
+              className={cn(
+                'px-2.5 py-1.5 rounded-md text-xs cursor-pointer mb-0.5',
+                (selectionMode ? isPicked : selectedId === selectionKey)
+                  ? 'bg-[var(--color-active)] text-[var(--color-text)]'
+                  : 'text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)]'
               )}
-              <div className="min-w-0">
-                <div className="truncate font-medium">{c.name || text('未命名', 'Untitled')}</div>
-                <div className="mt-0.5 truncate text-[0.7rem] opacity-60">{roleLabel(c.role)}{visibleCharacters.filter(item => item.name === c.name).length > 1 ? ` · ${c.background || c.characterId?.slice(-8)}` : ''}</div>
-                {c.currentState && <div className="mt-0.5 text-[0.65rem] opacity-50">{text(`第${c.currentState.updatedAtChapter}章更新`, `Updated in chapter ${c.currentState.updatedAtChapter}`)}</div>}
+              onClick={() => (selectionMode ? togglePicked(selectionKey) : setSelectedId(selectionKey))}
+            >
+              <div className="flex items-center gap-2">
+                {selectionMode && <input type="checkbox" checked={isPicked} readOnly tabIndex={-1} aria-label={text(`选择 ${c.name}`, `Select ${c.name}`)} className="flex-shrink-0" />}
+                {c.characterId && avatarUrls[c.characterId] ? (
+                  <img src={avatarUrls[c.characterId]} alt={text(`${c.name}头像`, `${c.name} avatar`)} className="h-8 w-8 flex-shrink-0 rounded-full object-cover" />
+                ) : (
+                  <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-[var(--color-hover)] text-[0.7rem]">{Array.from(c.name || '?')[0]}</div>
+                )}
+                <div className="min-w-0">
+                  <div className="truncate font-medium">{c.name || text('未命名', 'Untitled')}</div>
+                  <div className="mt-0.5 truncate text-[0.7rem] opacity-60">{roleLabel(c.role)}{visibleCharacters.filter(item => item.name === c.name).length > 1 ? ` · ${c.background || c.characterId?.slice(-8)}` : ''}</div>
+                  {c.currentState && <div className="mt-0.5 text-[0.65rem] opacity-50">{text(`第${c.currentState.updatedAtChapter}章更新`, `Updated in chapter ${c.currentState.updatedAtChapter}`)}</div>}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
         {visibleCharacters.length === 0 && (
           <div className="text-center py-6 opacity-50 text-xs">
             {lastError
