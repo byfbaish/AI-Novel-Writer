@@ -197,6 +197,19 @@ export function clearBlueprintFactsWithinTransaction(
     db.prepare('DELETE FROM blueprint_character_sync_operations').run()
     db.prepare('DELETE FROM blueprint_commit_operations').run()
     db.prepare('DELETE FROM blueprints').run()
+    // 蓝图进度标记（generation_attempts.usage_receipt_json.directoryProgress）与作者保存收据
+    // （generation_runs.binding_json.$runEffects.blueprintAuthorEdit）都以
+    // blueprint_commit_operations 为权威，并且会在读取时回查那一行做指纹校验。
+    // 权威行已被本函数删除，派生引用必须同事务一并删除：否则它们变成悬空引用，
+    // 会把项目永久判成「进度账本损坏」，后续每一次蓝图生成都在派发前被拦死
+    // （2026-10-11 实机踩到：清空蓝图 → 全量重生成 → generationAttempts=none）。
+    // 清理项目生成内容时同样走这条路径，因此两种清空入口不会各留一半。
+    if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='generation_attempts'").get()) {
+        db.prepare(`UPDATE generation_attempts SET usage_receipt_json=json_remove(usage_receipt_json,'$.directoryProgress')
+            WHERE json_extract(usage_receipt_json,'$.directoryProgress') IS NOT NULL`).run()
+        db.prepare(`UPDATE generation_runs SET binding_json=json_remove(binding_json,'$."$runEffects".blueprintAuthorEdit')
+            WHERE json_extract(binding_json,'$."$runEffects".blueprintAuthorEdit') IS NOT NULL`).run()
+    }
 }
 
 function characterSyncOperationId(blueprintCommitOperationId: string): string {

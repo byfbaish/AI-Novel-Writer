@@ -1157,6 +1157,31 @@ describe('durable directory commit and remaining stage', () => {
     f.fixture.db.prepare('UPDATE generation_attempts SET usage_receipt_json=json_remove(usage_receipt_json,?)').run(`$.directoryProgress.${field}`)
     expect(() => f.owner.listDirectoryProgress()).toThrow('GENERATION_DIRECTORY_PROGRESS_INVALID')
   })
+  // 实机 2026-10-11：清空全部蓝图后重跑全量，在派发前被 GENERATION_DIRECTORY_PROGRESS_INVALID 拦死
+  // （收据 generationAttempts=none）。权威提交行随蓝图一起被删，标记却留在尝试收据里，
+  // 于是任何一次 directory 运行读取恢复上下文时都炸。
+  it('clears the derived progress marker together with the committed blueprints it depends on', async () => {
+    const f = directoryFixture('chapter-blueprint-directory')
+    await f.owner.execute({ handle: f.run.handle, invocationNonce: 'first', task: directoryTask })
+    f.commit(f.owner, f.run.handle, f.request('clear-me', 1, 2), { startChapter: 1, endChapter: 3 })
+    expect(f.owner.listDirectoryProgress()).toHaveLength(1)
+    BlueprintRepository.clearAll()
+    expect(f.fixture.db.prepare('SELECT COUNT(*) FROM blueprint_commit_operations').pluck().get()).toBe(0)
+    expect(f.fixture.db.prepare("SELECT COUNT(*) FROM generation_attempts WHERE json_extract(usage_receipt_json,'$.directoryProgress') IS NOT NULL").pluck().get()).toBe(0)
+    const reopened = f.reopen()
+    expect(reopened.listDirectoryProgress()).toEqual([])
+    expect(() => reopened.readContext(f.run.handle)).not.toThrow()
+  })
+  it('treats a progress marker orphaned by an older clear as obsolete instead of blocking generation', async () => {
+    const f = directoryFixture('chapter-blueprint-directory')
+    await f.owner.execute({ handle: f.run.handle, invocationNonce: 'first', task: directoryTask })
+    f.commit(f.owner, f.run.handle, f.request('orphan', 1, 2), { startChapter: 1, endChapter: 3 })
+    // 旧版本只删蓝图与提交行，标记留在尝试收据里：按「没有可续写的进度」处理，不再判为账本损坏。
+    f.fixture.db.exec('DELETE FROM blueprints; DELETE FROM blueprint_commit_operations')
+    const reopened = f.reopen()
+    expect(reopened.listDirectoryProgress()).toEqual([])
+    expect(() => reopened.readContext(f.run.handle)).not.toThrow()
+  })
 })
 
 it.each(['', ' ', null, 7])('rejects malformed parent root %j before creating a fresh budget', parent => {

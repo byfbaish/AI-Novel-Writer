@@ -85,7 +85,10 @@ describe('project clear repositories', () => {
     expect(db.prepare).toHaveBeenCalledWith('DELETE FROM blueprint_character_sync_operations')
     expect(db.prepare).toHaveBeenCalledWith('DELETE FROM blueprint_commit_operations')
     expect(db.prepare).toHaveBeenCalledWith('DELETE FROM blueprints')
-    expect(db.run).toHaveBeenCalledTimes(3)
+    // 权威提交行被删掉后，派生进度与作者保存收据必须同事务失效，否则会留下悬空引用。
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("json_remove(usage_receipt_json,'$.directoryProgress')"))
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining('json_remove(binding_json,\'$."$runEffects".blueprintAuthorEdit\')'))
+    expect(db.run).toHaveBeenCalledTimes(5)
   })
 
   it('clears generated drafts, review artifacts, summaries, and content in dependency order', () => {
@@ -143,6 +146,8 @@ describe('project clear repositories', () => {
       'DELETE FROM blueprint_character_sync_operations',
       'DELETE FROM blueprint_commit_operations',
       'DELETE FROM blueprints',
+      expect.stringContaining("json_remove(usage_receipt_json,'$.directoryProgress')") as unknown as string,
+      expect.stringContaining('json_remove(binding_json,\'$."$runEffects".blueprintAuthorEdit\')') as unknown as string,
       expect.stringContaining('UPDATE project_core') as unknown as string,
     ]))
     expect(statements).not.toContain("UPDATE project_core SET plot_tree_snapshot = '' WHERE id = 'main'")
