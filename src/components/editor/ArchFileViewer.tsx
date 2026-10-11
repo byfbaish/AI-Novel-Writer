@@ -10,6 +10,7 @@ import { Button } from '../ui/Button'
 import { ipc } from '../../services/ipc-client'
 import { requireIpcSuccess } from '../../services/ipc-result'
 import { CORE_FIELD_MAP, parseCoreField } from '../../services/resource-protocol'
+import { hasArchContent } from '../../services/architecture-service'
 import { localizeNovelConfigFacts } from '../../shared/novel-config-localization'
 import { appErrorMessage } from '../../i18n/app-errors'
 import { toast } from '../ui/Toast'
@@ -539,11 +540,20 @@ function ArchFileViewerSession({
         projectSession.projectPath,
       )
       if (!isProjectSessionCurrent(projectSession)) return
+      const roster = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:character-roster-read',
+        projectSession.projectPath,
+      )
+      if (!isProjectSessionCurrent(projectSession)) return
+      // ★ 不再本地重写一份判据：同一状态写多份必然漏步骤。
+      //   实测：本处曾漏掉 plotStructure → 弧光已生成却显示「待生成」。
       const status: Record<string, boolean> = {
-        premise: !!core?.premise && core.premise.length > 50 && !core.premise.includes('待生成'),
-        characters: rosterSnapshot?.status === 'ready' || (core?.charactersArch?.length ?? 0) > 50,
-        worldbuilding: !!core?.worldbuilding && core.worldbuilding.length > 50 && !core.worldbuilding.includes('待生成'),
-        synopsis: !!core?.synopsis && core.synopsis.length > 50 && !core.synopsis.includes('待生成'),
+        premise: hasArchContent(core?.premise),
+        characters: roster?.status === 'ready' || hasArchContent(core?.charactersArch),
+        worldbuilding: hasArchContent(core?.worldbuilding),
+        plotStructure: hasArchContent(core?.plotStructurePlan),
+        synopsis: hasArchContent(core?.synopsis),
       }
 
       // 对于当前文件，如果编辑器内已修改但未保存，也暂时以前面的基准为准即可

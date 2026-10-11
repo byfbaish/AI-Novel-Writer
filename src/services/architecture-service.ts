@@ -24,6 +24,18 @@ export const ARCH_FILES: Array<{
   ]
 
 /**
+ * 单条架构内容的「已生成」判据。**所有入口必须共用它。**
+ *
+ * ★ 2026-10-11 实测教训：同一状态在三个入口（本服务 / WorldBuildingEditor /
+ *   ArchFileViewer）各自实现了一遍，于是 ArchFileViewer 那份漏掉了 `plotStructure`，
+ *   导致弧光结构已生成 5708 字、对话框仍显示「待生成」。状态判据一旦复制，
+ *   必然出现「同一数据、不同结论」。新增步骤时只允许改这里。
+ */
+export function hasArchContent(content: string | null | undefined): boolean {
+  return (content?.length ?? 0) > 50 && !content!.includes('待生成')
+}
+
+/**
  * 检查所有架构块的生成状态
  * @returns key → boolean 映射，true 表示该块已有有效内容
  */
@@ -52,16 +64,16 @@ export async function checkArchStatus(
   ])
   if (!core) return status
 
-  // 长度 > 50 才算真正已生成，前端可以直接用长度判断
-  status.premise = (core.premise?.length ?? 0) > 50
+  // 长度 > 50 才算真正已生成，前端可以直接用长度判断（判据见 hasArchContent）
+  status.premise = hasArchContent(core.premise)
   // ★ 角色图谱不能只看名册投影是否 ready：其它四步的判据都是「DB 里有内容」，
   //   而名册 ready 是更严的条件（需要投影完成/审批落地）。实测：生成完角色图谱后，
   //   非角色界面拿到的是未就绪的本地快照 → 误判「待生成」，与角色界面自相矛盾。
   //   故补上「DB 正文存在」这一条，与其它步骤语义对齐。
-  status.characters = roster.status === 'ready' || (core.charactersArch?.length ?? 0) > 50
-  status.worldbuilding = (core.worldbuilding?.length ?? 0) > 50
-  status.plotStructure = (core.plotStructurePlan?.length ?? 0) > 50
-  status.synopsis = (core.synopsis?.length ?? 0) > 50
+  status.characters = roster.status === 'ready' || hasArchContent(core.charactersArch)
+  status.worldbuilding = hasArchContent(core.worldbuilding)
+  status.plotStructure = hasArchContent(core.plotStructurePlan)
+  status.synopsis = hasArchContent(core.synopsis)
 
   return status
 }
@@ -91,10 +103,9 @@ export async function checkArchStatusWithWordCount(projectSession: ProjectSessio
   if (!core) return { status, wordCounts }
 
   const check = (key: ArchStepKey, content: string | undefined | null) => {
-    const len = content?.length ?? 0
-    const hasContent = len > 50
+    const hasContent = hasArchContent(content)
     status[key] = hasContent
-    wordCounts[key] = hasContent ? len : 0
+    wordCounts[key] = hasContent ? (content?.length ?? 0) : 0
   }
 
   check('premise', core.premise)

@@ -183,6 +183,31 @@ function removeCharacterById(
       })
 }
 
+/**
+ * 批量删除：与 removeCharacterById 完全同语义，只是把目标从单个换成集合。
+ *
+ * ★ 存在的理由是**提交次数**，不是"少点几下"：逐个调用 deleteCharacter 会为每个
+ *   角色各走一次 roster 原子提交（各涨一次 revision、各写一份 receipt）。
+ *   一次删 20 个就是 20 次提交。批量版本只在最后提交一次。
+ */
+function removeCharactersByIds(
+  characters: readonly CharacterCard[],
+  names: ReadonlySet<string>,
+): CharacterCard[] {
+  if (names.size === 0) return [...characters]
+  return characters
+    .filter((character, index) => !names.has(characterSelectionKey(character, index)))
+    .map(character => {
+      try {
+        const relationships: unknown = JSON.parse(character.relationships)
+        if (Array.isArray(relationships)) {
+          return { ...character, relationships: JSON.stringify(relationships.filter(relation => !names.has(relation?.targetCharacterId))) }
+        }
+      } catch { return character }
+      return character
+    })
+}
+
 interface SessionOperation<T> {
   projectSession: ProjectSessionContext
   promise: Promise<T>
@@ -225,6 +250,12 @@ interface CharacterState {
   addCharacter: () => void
   deleteCharacter: (
     name: string,
+    projectPath?: string,
+    expectedProjectSession?: ProjectSessionContext,
+  ) => Promise<boolean>
+  /** 批量删除：一次 roster 提交删掉多个角色（逐个调用会各提交一次）。 */
+  deleteCharacters: (
+    names: readonly string[],
     projectPath?: string,
     expectedProjectSession?: ProjectSessionContext,
   ) => Promise<boolean>
@@ -530,6 +561,51 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
 
     // 删除同样是完整手工名单保存：由 roster seam 在一次事务中清理关系、
     // 蓝图引用、投影、revision 与 receipt。失败时草稿仍在本地可重试。
+    return get().saveAll(projectKey, projectSession, 'delete')
+      .then(() => isCharacterProjectSessionCurrent(projectSession))
+      .catch(() => false)
+  },
+
+  deleteCharacters: (names, projectPath, expectedProjectSession) => {
+    const projectSession = currentCharacterProjectSession(projectPath, expectedProjectSession)
+    if (!projectSession) return Promise.resolve(false)
+    if (
+      characterIdentityMutationInFlight
+      && sameProjectSessionContext(characterIdentityMutationInFlight.projectSession, projectSession)
+    ) return Promise.resolve(false)
+    const projectKey = projectSession.projectPath
+    if (
+      !sameProjectSessionContext(get().dataProjectSession, projectSession)
+      || get().loadingProjectSession !== null
+      || get().lastError !== null
+    ) return Promise.resolve(false)
+    const { characters } = get()
+    const targets = new Set(names)
+    if (targets.size === 0) return Promise.resolve(true)
+    if (!characters.some((card, index) => targets.has(characterSelectionKey(card, index)))) {
+      return Promise.resolve(false)
+    }
+    const ledger = readCharacterDraftLedger(projectKey)
+    const renames = getCharacterDraftRenames(ledger, projectKey)
+    const remaining = removeCharactersByIds(characters, targets)
+    // 被删掉的那个若正是当前选中项，就回落到剩余名单的第一个。
+    const selectedKey = get().selectedId
+    const survivor = selectedKey && !targets.has(selectedKey)
+      ? remaining.find((card, index) => characterSelectionKey(card, index) === selectedKey)
+      : undefined
+    const selected = survivor ?? remaining[0]
+    const nextRenames = renames // Historical metadata is preserved, never used as identity.
+    set({
+      characters: remaining,
+      avatarDrafts: Object.fromEntries(Object.entries(get().avatarDrafts).filter(([id]) => !targets.has(id))),
+      selectedId: selected ? characterSelectionKey(selected, remaining.indexOf(selected)) : null,
+      selectedName: selected?.name ?? null,
+    })
+    let nextLedger = recordProjectEditorEdit(ledger, projectKey, characters, remaining)
+    nextLedger = setCharacterDraftRenames(nextLedger, projectKey, nextRenames)
+    persistCharacterDraftLedger(nextLedger)
+
+    // 与单删走同一个 roster seam，但**只提交一次**（这是批量版本存在的理由）。
     return get().saveAll(projectKey, projectSession, 'delete')
       .then(() => isCharacterProjectSessionCurrent(projectSession))
       .catch(() => false)
