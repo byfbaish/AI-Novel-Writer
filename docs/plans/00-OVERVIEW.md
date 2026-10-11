@@ -44,7 +44,8 @@
 
 | 文档 | 角色 | 状态 |
 |---|---|---|
-| [`architecture-consistency-design.md`](./architecture-consistency-design.md) | 五层一致性校验评估 → **AC1/AC2/AC3 分三段** | ✅ 已进 backlog 优先级表 |
+| [`architecture-consistency-design.md`](./architecture-consistency-design.md) | 五层一致性校验评估 → **AC1/AC2/AC3 分三段** | ✅ 已进 backlog 优先级表；**§6 已补实机核对**（前 30 章 vs 弧光：Σ大弧 880≠845、中弧 2 的动作被提前到第 9–10 章执行、副本未命名等） |
+| [`outline-structure-marker-assessment.md`](./outline-structure-marker-assessment.md) | 对外部《大纲加标记行》报告的评估 | **诊断对、处方错层**：本项目大纲与正文之间**已有章节蓝图 JSON**；5 个缺口里 4 个已覆盖/已立项。替代方案（`【第N章必现】` 接入大纲）**已实施** |
 
 ### D. 【坐标系/骨架】
 

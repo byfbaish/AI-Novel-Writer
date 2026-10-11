@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validPlotOutlineEntry, plotOutlineConfirmedPrefix, renderPlotOutlineRange, renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix } from '../plot-outline-contract'
+import { validPlotOutlineEntry, plotOutlineConfirmedPrefix, renderPlotOutlineRange, renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix, plotOutlineCoveredTo, plotOutlineContinuationStart } from '../plot-outline-contract'
 import type { ProjectCoreSynopsisExpected } from '../../../electron/repositories/project-core-repository'
 import { synopsisForDraftChapter } from '../../services/workflows/commands/generate-draft.command'
 
@@ -56,5 +56,35 @@ describe('chapter Markdown outline contract', () => {
       `${confirmedPrefix.replace('保留原章', '替换原章')}\n\n${authored}`, `${confirmedPrefix}\n\n${authored}\n\n## 第4章：越界\n未来。`]) {
       expect(validPlotOutlineAuthorPrefix(renderPlotOutlineSynopsis(body, 2, expected), progress, { from: 2, to: 2 })).toBe(false)
     }
+  })
+})
+
+describe('plot outline coverage (续写起点)', () => {
+  const expected = {
+    synopsis: '', premise: '', charactersArch: '', worldbuilding: '', plotStructurePlan: '', genre: '',
+    totalChapters: 845, wordsPerChapter: 2000, writingLanguage: 'zh-CN' as const,
+    plotStructure: '', narrativePov: '', globalGuidance: '',
+  }
+  const body = ['## 第1章：零点抽取', '正文。', '', '## 第2章：别答应', '正文。', '', '## 第3章：第六下', '正文。'].join('\n')
+
+  it('derives coverage from chapter headings, not from the trailing progress line', () => {
+    expect(plotOutlineCoveredTo('')).toBe(0)
+    expect(plotOutlineCoveredTo(null)).toBe(0)
+    expect(plotOutlineCoveredTo('# 情节大纲')).toBe(0)
+    // 有末尾提示行时以标题为准
+    expect(plotOutlineCoveredTo(renderPlotOutlineSynopsis(body, 3, expected))).toBe(3)
+    // 提示行被手改/删除也不影响（标题才是下游切片的依据）
+    expect(plotOutlineCoveredTo(`${body}\n\n> 本大纲已覆盖至第 99 章（全书 845 章），其余章节将在后续批次继续生成。`)).toBe(3)
+    // 英文标题同样识别
+    expect(plotOutlineCoveredTo('## Chapter 7: 标题\n正文。')).toBe(7)
+  })
+
+  it('starts the next batch right after the covered chapter', () => {
+    // 还没有任何章级条目时从头开始（对话框只在已覆盖 > 0 时才提供勾选项）。
+    expect(plotOutlineContinuationStart('', 845)).toBe(1)
+    expect(plotOutlineContinuationStart(body, 845)).toBe(4)
+    // 已写满全书 → 无可续写
+    expect(plotOutlineContinuationStart(body, 3)).toBeNull()
+    expect(plotOutlineContinuationStart(body, 2)).toBeNull()
   })
 })

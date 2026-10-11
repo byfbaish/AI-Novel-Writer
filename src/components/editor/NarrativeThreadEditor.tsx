@@ -50,6 +50,7 @@ import { Label } from '../ui/Label'
 import { NativeSelect } from '../ui/NativeSelect'
 import { Textarea } from '../ui/Textarea'
 import { toast } from '../ui/Toast'
+import { confirm } from '../ui/Confirm'
 import { openBuiltinEditor, openChapterFile } from '../panels/sidebar/sidebar-file-openers'
 import PlotTreeView from './PlotTreeView'
 
@@ -207,6 +208,9 @@ export default function NarrativeThreadEditor({
   const [blueprints, setBlueprints] = useState<DatabaseChannels['db:blueprint-get-all']['return']>([])
   const [plan, setPlan] = useState<NarrativeThreadPlanInput>(EMPTY_PLAN)
   const [editingId, setEditingId] = useState<number | null>(null)
+  /** 批量删除：多选模式与已选计划 id（见 `deleteSelectedPlans`）。 */
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [picked, setPicked] = useState<number[]>([])
   const [eventPlanId, setEventPlanId] = useState<number | null>(null)
   const [eventDraftId, setEventDraftId] = useState(0)
   const [eventType, setEventType] = useState<NarrativeThreadEventType>('planted')
@@ -738,6 +742,35 @@ export default function NarrativeThreadEditor({
     }
   }
 
+  /** 批量删除：一条 IPC 删多条（主进程用单条带 IN 的 DELETE，原子 + 级联清理事件）。 */
+  const deleteSelectedPlans = async () => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey) || busy || !picked.length) return
+    const confirmed = await confirm(
+      text(
+        `确定要删除选中的 ${picked.length} 条伏笔/叙事线索吗？此操作不可撤销。\n\n它们已确认的章节事件记录会一并删除。`,
+        `Delete the ${picked.length} selected foreshadowing threads? This cannot be undone.\n\nTheir confirmed chapter events are removed as well.`,
+      ),
+      { title: text('批量删除伏笔', 'Delete threads'), confirmText: text('删除', 'Delete'), danger: true },
+    )
+    if (!confirmed) return
+    setBusy(true)
+    try {
+      const result = await ipc.invokeWithProjectSession(session, 'db:narrative-thread-plan-delete-many', picked, projectKey)
+      if (!result.success) throw new Error(result.error)
+      if (!isProjectSessionCurrent(session)) return
+      const deleted = result.deleted ?? picked.length
+      toast.success(text(`已删除 ${deleted} 条伏笔/叙事线索`, `Deleted ${deleted} thread(s)`))
+      setPicked([])
+      setSelectionMode(false)
+      await reload()
+    } catch {
+      if (isProjectSessionCurrent(session)) toast.error(text('批量删除失败', 'Could not delete the selected threads'))
+    } finally {
+      if (isProjectSessionCurrent(session)) setBusy(false)
+    }
+  }
+
   const saveEvent = async () => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
     if (!session || !isProjectSessionPath(session, projectKey) || eventPlanId === null || busy) return
@@ -851,6 +884,39 @@ export default function NarrativeThreadEditor({
           <Button onClick={() => void savePlan()} disabled={busy || !plan.title.trim() || !plan.type.trim() || !plan.authorIntent.trim() || plan.targetEndChapter < plan.targetStartChapter}>{text('保存计划', 'Save plan')}</Button>
         </section>
 
+        {threads.length > 0 && (
+          <section className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--color-border)', background: 'var(--color-panel)' }}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-xs font-medium">{text(`伏笔与叙事线索（${threads.length}）`, `Foreshadowing & threads (${threads.length})`)}</span>
+              {selectionMode ? (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span style={{ color: 'var(--color-text-secondary)' }}>{text(`已选 ${picked.length}`, `${picked.length} selected`)}</span>
+                  <Button
+                    variant="ghost" size="sm"
+                    onClick={() => setPicked(previous => {
+                      const all = threads.map(thread => thread.id)
+                      return all.every(id => previous.includes(id)) ? [] : all
+                    })}
+                  >
+                    {threads.every(thread => picked.includes(thread.id)) ? text('取消全选', 'Clear all') : text('全选', 'Select all')}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setPicked([])} disabled={!picked.length}>{text('清空', 'Clear')}</Button>
+                  <Button
+                    variant="ghost" size="sm" style={{ color: 'var(--color-error-text)' }}
+                    onClick={() => void deleteSelectedPlans()} disabled={!picked.length || busy}
+                  >
+                    <Trash2 size={12} />{text(`删除选中（${picked.length}）`, `Delete (${picked.length})`)}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setSelectionMode(false); setPicked([]) }}>{text('退出', 'Exit')}</Button>
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" onClick={() => setSelectionMode(true)} disabled={busy}>
+                  <Trash2 size={12} />{text('批量删除', 'Batch delete')}
+                </Button>
+              )}
+            </div>
+          </section>
+        )}
         {threads.length === 0 && <p className="text-sm text-center py-8" style={{ color: 'var(--color-text-muted)' }}>{text('暂无伏笔或叙事线索', 'No foreshadowing or narrative threads yet')}</p>}
         {threads.map(thread => (
           <section
@@ -863,9 +929,22 @@ export default function NarrativeThreadEditor({
             }}
           >
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-semibold">{thread.title}</h3>
-                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{thread.type} · {text(`埋设/开始 ${thread.targetStartChapter} · 预计回收/结束 ${thread.targetEndChapter}`, `Setup/start ${thread.targetStartChapter} · expected payoff/end ${thread.targetEndChapter}`)}</p>
+              <div className="flex items-start gap-2 min-w-0">
+                {selectionMode && (
+                  <input
+                    type="checkbox"
+                    className="mt-1 flex-shrink-0"
+                    checked={picked.includes(thread.id)}
+                    onChange={() => setPicked(previous => previous.includes(thread.id)
+                      ? previous.filter(id => id !== thread.id)
+                      : [...previous, thread.id])}
+                    aria-label={text(`选择「${thread.title}」`, `Select “${thread.title}”`)}
+                  />
+                )}
+                <div className="min-w-0">
+                  <h3 className="font-semibold">{thread.title}</h3>
+                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{thread.type} · {text(`埋设/开始 ${thread.targetStartChapter} · 预计回收/结束 ${thread.targetEndChapter}`, `Setup/start ${thread.targetStartChapter} · expected payoff/end ${thread.targetEndChapter}`)}</p>
+                </div>
               </div>
               <span className="text-xs rounded px-2 py-1" style={{ background: 'var(--color-bg)' }}>{text(...STATUS_LABELS[thread.status])}</span>
             </div>
@@ -882,11 +961,13 @@ export default function NarrativeThreadEditor({
             <div className="space-y-1">
               {thread.events.map(event => <div key={event.id} className="text-xs flex gap-2"><CheckCircle2 size={13} /><span>{text(`第${event.chapterNumber}章`, `Chapter ${event.chapterNumber}`)} · {text(...STATUS_LABELS[event.type])} · {event.evidence}</span></div>)}
             </div>
+            {!selectionMode && (
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => { setEditingId(thread.id); setPlan({ title: thread.title, type: thread.type, targetStartChapter: thread.targetStartChapter, targetEndChapter: thread.targetEndChapter, authorIntent: thread.authorIntent }) }}><Pencil size={13} />{text('编辑', 'Edit')}</Button>
               <Button variant="outline" size="sm" onClick={() => { setEventPlanId(thread.id); setEventError('') }} disabled={finalizedDrafts.length === 0}>{text('确认定稿事件', 'Confirm finalized event')}</Button>
               <Button variant="ghost" size="sm" onClick={() => void deletePlan(thread.id)}><Trash2 size={13} />{text('删除', 'Delete')}</Button>
             </div>
+            )}
             {eventPlanId === thread.id && <div className="grid grid-cols-2 gap-2 border-t pt-3" style={{ borderColor: 'var(--color-border)' }}>
               <NativeSelect value={eventDraftId} onChange={event => setEventDraftId(Number(event.target.value))}>{finalizedDrafts.map(draft => <option key={draft.id} value={draft.id}>{text(`第${draft.chapterNumber}章 · 定稿 v${draft.version}`, `Chapter ${draft.chapterNumber} · Finalized v${draft.version}`)}</option>)}</NativeSelect>
               <NativeSelect value={eventType} onChange={event => setEventType(event.target.value as NarrativeThreadEventType)}><option value="planted">{text('埋设', 'Planted')}</option><option value="progressing">{text('推进', 'Progressing')}</option><option value="resolved">{text('解决', 'Resolved')}</option><option value="abandoned">{text('放弃', 'Abandoned')}</option></NativeSelect>

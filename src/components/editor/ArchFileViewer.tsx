@@ -21,7 +21,7 @@ import { useProjectStore } from '../../stores/project-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
 import { createArchitectureWorkflow } from '../../services/workflows/architecture-workflow'
-import { renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix } from '../../shared/plot-outline-contract'
+import { renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix, plotOutlineCoveredTo } from '../../shared/plot-outline-contract'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { useLayoutStore } from '../../stores/layout-store'
 import { globalEventBus } from '../../shared/event-bus'
@@ -187,6 +187,11 @@ function ArchFileViewerSession({
   const [showDialog, setShowDialog] = useState(false)
   const [checkingArch, setCheckingArch] = useState(false)
   const [fullArchStatus, setFullArchStatus] = useState<Record<string, boolean>>({})
+  /**
+   * 当前大纲已覆盖到第几章（0 = 无章级条目）。
+   * 供对话框的「续写」勾选项自动推出下一批起点，见 `plotOutlineCoveredTo`。
+   */
+  const [synopsisCoveredTo, setSynopsisCoveredTo] = useState(0)
   const lastCompletedArchitectureRunRef = useRef<string | null>(null)
   const [refreshBlockedMessage, setRefreshBlockedMessage] = useState<string | null>(null)
   const reloadGateRef = useRef(new ArchReloadGate())
@@ -587,6 +592,8 @@ function ArchFileViewerSession({
         status[stepKey] = true
       }
       setFullArchStatus(status)
+      // 「续写」起点由**章级标题**推出（不用末尾那句提示行：它只在未写满时存在，且可被手改）。
+      setSynopsisCoveredTo(plotOutlineCoveredTo(core?.synopsis))
       setShowDialog(true)
     } catch (error) {
       if (isProjectSessionCurrent(projectSession)) {
@@ -895,6 +902,7 @@ function ArchFileViewerSession({
           onClose={() => setShowDialog(false)}
           archStatus={fullArchStatus}
           initialSelectedSteps={[stepKey]}
+          synopsisCoveredTo={synopsisCoveredTo}
           onConfirm={handleConfirm}
         />
       )}

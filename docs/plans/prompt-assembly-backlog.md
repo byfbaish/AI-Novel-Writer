@@ -53,6 +53,10 @@
 | 14 | **C1（中）** | **角色管理：批量删除 + 剧情相关性筛选 + 重生成前提示** | **L5 数据层 + UI** | 🆕 2026-10-11：**批量删除已完成**（`CharactersView` 多选 + `character-store.deleteCharacters` 单次 roster 提交）。**剩两项待办**：① 按"是否与当前设定/大纲挂钩"筛选；② 重新生成角色图谱前提示"同名将覆盖、异名是否删除"。②依赖图谱生成工作流的确认面，见下方「C1 详述」 |
 | 15 | ~~**C2**~~ | ~~弧光结构纳入「AI 生成角色卡」来源~~ | — | 🏁 **已撤回**（2026-10-11，作者定调）：**弧光不该作为建卡来源**。正确顺序是**大纲先出、角色随后补**，因此改为「大纲生成后的显著提示」（见下方「C2 详述（已撤回，替代方案已实施）」）。弧光阶段的角色由既有 P1 蓝图通路按需产生 |
 | 16 | **O1（中高）** | **情节大纲：能否按"弧"而不是按 10 章批** | **L3 生成策略** | 🆕 2026-10-11：`PLANNING_ACTION_CHAPTER_LIMIT = 10` 是**双端硬契约**（`plot-outline-contract.ts:8` + `assertPlanningActionRange`）。作者问"按弧生成"是否更符合人类思路。见下方「O1 详述」 |
+| 17 | ~~**D1**~~ | ~~大纲生成范围的「续写」入口~~ | — | ✅ **已实施**（2026-10-11，作者提案）：范围面板加「续写」勾选项，勾选后自动以**已覆盖章 + 1** 为起点、默认推 10 章；起点由**章级标题**推出（不依赖末尾那句提示行）。落点：`plotOutlineCoveredTo` / `plotOutlineContinuationStart` + `ArchitectureConfirmDialog` + `ArchFileViewer` |
+| 18 | ~~**C3**~~ | ~~伏笔批量删除~~ | — | ✅ **已实施**（2026-10-11，作者反馈）：`db:narrative-thread-plan-delete-many`（**一条带 IN 的 DELETE**：原子 + 外键级联清理已确认事件）+ 计划清单多选 / 全选 / 删除选中。回归测试锁定「一次调用删多条 + 去重 + 空参数报错」 |
+| 19 | **S4（中，需评估）** | ★ **非角色状态的承载**（物品 / 世界 / 空间状态） | **L4 事实层** | 🆕 2026-10-11：外部报告指出的**唯一真缺口**。角色状态已有（`characters.currentState` + `finalized_continuity_facts`），但「走廊门数=4」「楼层少一格」这类**世界 / 空间状态**无处承载。落点在事实层（**不是大纲**），需先评估是否值得建表。见 [`outline-structure-marker-assessment.md`](./outline-structure-marker-assessment.md) §3 |
+| 20 | ~~**A1**~~ | ~~给大纲加「标记行」作为正文硬约束~~ | — | 🏁 **不建议**（2026-10-11）：本项目在「大纲→正文」之间**已有结构化层（章节蓝图 JSON）**，且正文只读**本章那一段**大纲；加标记行＝重复事实源 + 给散文步骤加格式契约（已连踩 4 次）。**替代方案已落地**：把**已存在**的 `【第N章必现】` 标记接入大纲（1 行改动），见 [`outline-structure-marker-assessment.md`](./outline-structure-marker-assessment.md) §5 |
 
 > ★ **新增台账（AC 系列）**：[`architecture-consistency-design.md`](./architecture-consistency-design.md)
 > （作者问「可以做故事架构五层一致性校验么」的评估）。
