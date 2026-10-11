@@ -1,7 +1,7 @@
 import { formatResourceUri } from '../../shared/project-paths'
 import { parseResourceUri, resourceWriteAllowed } from '../../shared/project-paths'
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Sparkles, Search, BadgeCheck, Save, FileStack, FileText, Wrench, Check } from 'lucide-react'
+import { Sparkles, Search, BadgeCheck, Save, FileStack, FileText, Wrench, Check, Info } from 'lucide-react'
 
 import { useProjectStore } from '../../stores/project-store'
 import { registerEditorExitSaveHandler, useEditorStore } from '../../stores/editor-store'
@@ -756,6 +756,20 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
                 {text(`审稿报告(${reviewCount})`, `Review report (${reviewCount})`)}
               </Button>
             )}
+
+            {/* 步骤顺序建议：三个按钮本身就是按正确顺序排的，但顺序很容易走反 ——
+                先审稿再精修，精修会以「重写文风」覆盖掉刚统一的一致性修订。 */}
+            <span
+              className="text-[0.68rem] px-1.5 py-0.5 rounded flex-shrink-0 inline-flex items-center gap-1"
+              style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-hover)' }}
+              title={text(
+                '推荐顺序：AI 修稿 → AI 审稿 → 定稿。修稿负责把文字打磨到位，审稿负责查一致性，定稿确认终稿。反序（先审稿再修稿）会让精修重写文风时覆盖掉审稿刚统一掉的细节，白跑一轮。审稿报告里若有确认后的意见，请用「按确认意见修稿」，不要回头再点 AI 修稿。',
+                'Recommended order: AI revise → AI review → finalize. Revise polishes the prose, review checks consistency, finalize confirms. Reversing review and revise makes the polish rewrite overwrite details the review just unified, wasting a cycle. If a review report has confirmed findings, use “Revise from confirmed checklist” instead of running AI revise again.',
+              )}
+            >
+              <Info size={11} />
+              {text('顺序：修稿 › 审稿 › 定稿', 'Order: revise › review › finalize')}
+            </span>
 
             {/* AI 修稿 */}
             <Button

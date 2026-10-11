@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronDown, ChevronRight, Globe, FolderOpen, RotateCcw, AlertTriangle, CheckCircle2, XCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Globe, FolderOpen, RotateCcw, AlertTriangle, CheckCircle2, XCircle, Layers } from 'lucide-react'
 import {
+  ARCHITECTURE_PROMPT_KEYS,
   BUILTIN_PROMPTS,
   EDITABLE_PROMPT_KEYS,
   getBuiltinPromptTemplate,
@@ -165,6 +166,8 @@ export default function PromptSettings() {
         <span className="flex-shrink-0 mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{text('提示', 'Note')}</span>
         <span>
           {text('自定义提示词仅修改 AI 的创作指导策略，输出格式约束（如 JSON schema）会自动追加，不受自定义影响。支持两级覆盖：全局（所有小说生效）和项目（仅当前小说生效）。', 'Custom prompts change AI writing guidance only. Output constraints such as JSON schemas are appended automatically. Overrides can be global for all novels or project-specific.')}
+          <br />
+          {text('标注「架构链」的模板是故事架构的一整套（前提 → 角色图谱 → 世界观 → 弧光结构 → 情节大纲 → 章节蓝图），上下游互相咬合，建议保持内置默认；而草稿、精修、审稿属于可按你的文风定制的输出层。', 'Templates tagged “Architecture chain” form one interlocking story-architecture pipeline (premise → characters → world → arc structure → plot synopsis → chapter blueprint) and are best left at the built-in default. Drafting, revision, and review templates are the output layer you can freely customize.')}
         </span>
       </div>
 
@@ -259,6 +262,8 @@ function TemplateItem({
   }
 
   const sourceConf = SOURCE_CONFIG[source]
+  // 架构链模板：产物环环相扣并被全书引用，改一处会级联整条链 —— 只标注，不限制编辑。
+  const isArchitecture = ARCHITECTURE_PROMPT_KEYS.includes(builtinTemplate.key)
   // 覆盖文件里冻结的是**保存当时**的内置正文，因此内置模板升级后它不会自动跟进。
   // 这里只做提示：不动数据、不自动合并（无法区分「作者有意定制」与「旧版原样副本」）。
   const builtinRevisionValue = promptBuiltinRevision(builtinTemplate)
@@ -389,6 +394,22 @@ function TemplateItem({
             >
               {text(sourceConf.label, sourceConf.labelEn)}
             </span>
+            {isArchitecture && (
+              <span
+                className="text-[0.65rem] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 inline-flex items-center gap-1"
+                style={{
+                  color: 'var(--color-info)',
+                  backgroundColor: 'color-mix(in srgb, var(--color-info) 12%, transparent)',
+                }}
+                title={text(
+                  '故事架构链模板：每一步的产物都是下一步的输入，并被后续所有章节的蓝图与正文引用。改动会沿链级联，不建议修改。',
+                  'Story-architecture chain template: each step feeds the next and is cited by every later chapter blueprint and draft. Edits cascade down the chain and are not recommended.',
+                )}
+              >
+                <Layers size={10} />
+                {text('架构链', 'Architecture chain')}
+              </span>
+            )}
             {builtinOutdated && (
               <span
                 className="text-[0.65rem] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 inline-flex items-center gap-1"
@@ -415,6 +436,23 @@ function TemplateItem({
       {/* 展开编辑区 */}
       {isExpanded && (
         <div className="px-4 pb-4 space-y-3" style={{ borderTop: '1px solid var(--color-border)' }}>
+          {/* 架构链：整条链互相咬合，这里只提醒「不建议改」，不阻止作者定制。 */}
+          {isArchitecture && (
+            <div
+              className="mt-3 rounded-lg px-3 py-2.5 text-[0.68rem] leading-relaxed"
+              style={{
+                color: 'var(--color-info)',
+                backgroundColor: 'color-mix(in srgb, var(--color-info) 10%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--color-info) 25%, transparent)',
+              }}
+            >
+              <Layers size={12} className="inline mr-1" />
+              {text(
+                '这是「故事架构链」模板（前提 → 角色图谱 → 世界观 → 弧光结构 → 情节大纲 → 章节蓝图），一套互相咬合的产物：每一步的输出是下一步的输入，并且会被后续所有章节的蓝图与正文引用。建议保持内置默认 —— 确需定制时，请在「补充创作指导」里增补你的要求，不要删改正文里的输出契约、字段清单与判定标准，否则下游会连锁失准。',
+                'This is a story-architecture chain template (premise → characters → world → arc structure → plot synopsis → chapter blueprint). The steps interlock: each output feeds the next and is cited by every later chapter blueprint and draft. Keep the built-in default; if you must customize, add your requirements under “Additional creative guidance” rather than editing the output contracts, field lists, and decision criteria in the body, which would misalign everything downstream.',
+              )}
+            </div>
+          )}
           {/* W1：覆盖文件会冻结保存当时的内置正文，内置升级后不会自动跟进 —— 只提示，不自动改。 */}
           {builtinOutdated && (
             <div
