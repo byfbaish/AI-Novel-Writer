@@ -41,6 +41,33 @@ describe('main owned generation facade', () => {
     await expect(runtime.read()).rejects.toThrow('MAIN_SNAPSHOT_REGRESSION')
     await runtime.close()
   })
+  it('accepts a late derived-status label on an otherwise identical artifact instead of failing the step', async () => {
+    // 实测（2026-10-11 角色详情）：rev/durableRevision/len/textHash 全等，
+    // 仅 status 由 completed 变回 running —— 两条投影路径（实时推送 vs 拉取）
+    // 对同一份不可变产物给出的派生标签乱序。内容没变，不该报废整步。
+    const f = fixture(), shown = vi.fn()
+    const runtime = await createGenerationRuntime({ runHandle: handle, onSnapshot: shown }, f.transport)
+    const settled = { ...await snapshot('雨夜来信', 8), status: 'completed' as const }
+    f.emit(settled)
+    await runtime.read()
+    f.emit({ ...settled, status: 'running' })
+    await runtime.read()
+    // 终态不回退：已 settle 的产物不该被打回 running。
+    expect(shown).toHaveBeenLastCalledWith(expect.objectContaining({ text: settled.text, status: 'completed' }))
+    await runtime.close()
+  })
+
+  it('still rejects a genuine content change on the same revision', async () => {
+    const f = fixture()
+    const runtime = await createGenerationRuntime({ runHandle: handle, onSnapshot: vi.fn() }, f.transport)
+    const settled = { ...await snapshot('雨夜来信', 8), status: 'completed' as const }
+    f.emit(settled)
+    await runtime.read()
+    f.emit({ ...await snapshot('雨夜来信改', 8), status: 'completed' })
+    await expect(runtime.read()).rejects.toThrow('MAIN_SNAPSHOT_REGRESSION')
+    await runtime.close()
+  })
+
   it('forwards diagnostics with unchanged empty artifacts and ignores stale metadata', async () => {
     const f = fixture(), shown = vi.fn(), runtime = await createGenerationRuntime({ runHandle: handle, onSnapshot: shown }, f.transport)
     const empty = await snapshot('', 0)

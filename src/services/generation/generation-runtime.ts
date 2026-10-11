@@ -182,10 +182,34 @@ export async function createMainOwnedGenerationRuntime(options: MainOwnedGenerat
         if (previous.attemptId !== captured.attemptId) throw new Error('MAIN_ARTIFACT_ATTEMPT_CHANGED')
         // Delivery order can differ from commit order. Older acknowledged views never replace newer ones.
         if (captured.revision < previous.revision) return
-        const cancelledSettledArtifact = (previous.status === 'failed' || previous.status === 'unknown') && captured.status === 'cancelled'
-          && captured.revision === previous.revision && captured.durableRevision === previous.durableRevision
-          && captured.text === previous.text && captured.textHash === previous.textHash
-        if (previous.status !== 'running' && !cancelledSettledArtifact && (captured.status !== previous.status || captured.textHash !== previous.textHash || captured.revision !== previous.revision)
+        // ★ 内容完全一致（revision / durableRevision / text / textHash 全等）时，只有 `status`
+        //   这一个**派生标签**可能不同：主进程有两条独立投影路径 —— `generation:snapshot` 实时推送
+        //   与 `read()`/`viewOf` 拉取 —— 二者对同一份不可变产物可以给出先后不一致的状态标签
+        //   （artifact 落库时 DB 状态是 'partial'，快照 status 由 attempt 是否终态推导）。
+        //   实测：rev/dur/len/sha 全等，仅 completed → running，导致整步报废。
+        //   这不是内容回退，接受它；但**终态不回退**（已 settle 的产物不该被打回 running）。
+        //   内容类校验（文本变更 / 变短 / durableRevision 回退 / 同 revision 换哈希）全部保留。
+        const identicalContent = captured.revision === previous.revision
+          && captured.durableRevision === previous.durableRevision
+          && captured.textHash === previous.textHash
+          && captured.text === previous.text
+        if (identicalContent) {
+          const status = captured.status === 'running' && previous.status !== 'running'
+            ? previous.status
+            : captured.status
+          const diagnostics = !captured.diagnostics
+            || previous.diagnostics && captured.diagnostics.elapsedMs < previous.diagnostics.elapsedMs
+            ? previous.diagnostics
+            : captured.diagnostics
+          if (status === previous.status && JSON.stringify(diagnostics) === JSON.stringify(previous.diagnostics)) return
+          const merged = Object.freeze({ ...captured, status, ...(diagnostics ? { diagnostics } : {}) })
+          snapshots.set(captured.artifactId, merged)
+          options.onSnapshot?.(merged)
+          return
+        }
+        // 走到这里内容已经不同（identicalContent 分支已在上方 return），
+        // 故原先用于「failed/unknown → cancelled 且内容全等」的特例已被该分支涵盖。
+        if (previous.status !== 'running' && (captured.status !== previous.status || captured.textHash !== previous.textHash || captured.revision !== previous.revision)
           || captured.durableRevision < previous.durableRevision || !captured.text.startsWith(previous.text)
           || captured.revision === previous.revision && captured.textHash !== previous.textHash) {
           // 自证：协议码 + **无空白**的诊断尾（不含任何自由文本，故可安全回显）。
