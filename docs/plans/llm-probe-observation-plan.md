@@ -133,6 +133,29 @@ Get-Content $file | ForEach-Object {
 - 探针文件是纯诊断产物，**删除它不影响任何东西**。
 - 观察结束后，关掉环境变量或用普通终端启动。
 
+## 附：数据库里其实已经存了 prompt（不必依赖探针）
+
+`generation_attempts.usage_receipt_json` 的 `replayTask.messages` 保存了**每次请求的完整 messages**，
+可以离线复盘。项目库是 `.ai-novel/project.db`（Electron ABI 的 better-sqlite3，普通 node 打不开，
+用 Python 的 `sqlite3` 只读副本即可）：
+
+```python
+import sqlite3, json, re
+con = sqlite3.connect(r"<副本>/project.db")
+for rowid, raw in con.execute(
+    "SELECT rowid, usage_receipt_json FROM generation_attempts ORDER BY rowid DESC LIMIT 20"):
+    task = (json.loads(raw or "{}").get("replayTask") or {})
+    messages = task.get("messages") or []
+    full = "\n".join(m.get("content", "") for m in messages)
+    entries = re.findall(r"^[\t ]*(?:#{1,6}[\t ]+)?第[\t ]*(\d+)[\t ]*章(?=[\t ]*[：:])", full, re.M)
+    print(rowid, task.get("purpose"), "msgs=%d" % len(messages), "chars=%d" % len(full),
+          "章条目=%d" % len(entries),
+          "大纲标题=%s" % bool(re.search(r"^#{1,3}[\t ]*情节大纲[\t ]*$", full, re.M)))
+```
+
+**注意**：`chapter-blueprint-directory` 那条的 receipt 里 `replayTask` 可能不含 `messages`
+（实测为空）—— 要核蓝图 prompt，仍需探针。
+
 ## 六、判读后的处置预案
 
 先拿数据，处置另开一轮。
