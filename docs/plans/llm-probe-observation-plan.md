@@ -207,17 +207,29 @@ for rowid, raw in con.execute(
 **残留的保守回退**（这两类大纲仍会把章级内容带进正文，但机器生成的大纲不会触发）：
 含代码围栏的大纲、无法解析的标题风格（中文数字章号 / 混级标题 / 列表式章号）。
 
-### 6.3 遗留（未处理，需作者拍板）
+### 6.3 `{{architecture}}` 双份渲染 —— 已清理（2026-10-11）
 
-`{{architecture}}` **仍然渲染两遍**（模板正文 1 次 + 作者 `taskGuidance` 1 次），
-实测约 10 000 字符、占本次 prompt 约 44%。大纲移除后两遍都是同一份设定层文本，
-属纯冗余而非语义冲突。原因是作者工程的
-`<全局数据根>/generations/<session>/prompts/first_chapter_draft.zh-CN.json`
-的 `taskGuidance` 重列了整套变量（形似旧版自动生成物）。
+正文 prompt 里 `{{architecture}}` 曾渲染两遍（模板正文【全书设定池】1 次 +
+覆盖模板 `taskGuidance` 1 次），实测第二处约 10 000 字符、占该 prompt 约 44%。
 
-候选处置：① 作者侧精简 `taskGuidance`，删掉与正文重复的变量引用（最直接）；
-② 装配层检测「同一变量在 content 与 taskGuidance 各用一次」并告警；
-③ 不动。
+**根因不在代码**：作者全局覆盖
+`<全局数据根>/generations/<session>/prompts/*.json` 是**旧版内置模板的整份快照**，
+其 `taskGuidance` 首句是旧版留下的「变量清单式」复述。新版内置的 20 个模板里
+已无 `taskGuidance`（仅 `assistant_writing_identity` 保留）—— 上游早已清理，
+是 W1「只提示、不自动合并」的纪律让覆盖一直沿用旧文本。
+
+**处置（已实施；属作者数据，不进 git）**：`first_chapter_draft.zh-CN.json` 与
+`next_chapter_draft.zh-CN.json` 的 `taskGuidance` 首句压成一句任务说明，变量清单删除。
+覆盖面核对：两模板 `taskGuidance` 引用的变量（first 8 个 / next 13 个）**全部**已在
+`content` 或内置 `systemSuffix` 中有出口，删掉不减少任何信息；作者自写的
+去精确堆砌 / 去AI机械化 / 强制排版三段指导完整保留。备份见 `prompts.bak-20261011-2145/`。
+
+**全量发现（未处理）**：扫描 20 个覆盖模板，全部存在同类 `taskGuidance` 重复渲染。
+其中 `refine_chapter`（guidance 1355 字，重复 `draft_content` 整份草稿）与
+`refine_from_review`（745 字，重复 `draft_content` + `review_report`）属正文/修订链路、
+浪费最大，处理方式与本次相同（删首句清单、留作者指导）。其余 16 个模板的变量嵌在任务句中
+（如「生成第 {{n}} 章至第 {{m}} 章」），**不能直接删**，否则句子残缺 —— 要清的话应把
+长文本变量替换成 `variables[key]` 的说明文字。
 
 ### 6.4 原判读预案（保留备查）
 
