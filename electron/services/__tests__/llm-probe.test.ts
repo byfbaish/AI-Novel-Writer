@@ -6,25 +6,43 @@ import {
   probeLlmRequest,
 } from '../llm-probe'
 
-const ORIGINAL = process.env.AI_NOVEL_LLM_PROBE
+const ORIGINAL_PROBE = process.env.AI_NOVEL_LLM_PROBE
+const ORIGINAL_DEV_SERVER = process.env.VITE_DEV_SERVER_URL
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) delete process.env[name]
+  else process.env[name] = value
+}
 
 afterEach(() => {
-  if (ORIGINAL === undefined) delete process.env.AI_NOVEL_LLM_PROBE
-  else process.env.AI_NOVEL_LLM_PROBE = ORIGINAL
+  restoreEnv('AI_NOVEL_LLM_PROBE', ORIGINAL_PROBE)
+  restoreEnv('VITE_DEV_SERVER_URL', ORIGINAL_DEV_SERVER)
 })
 
 describe('isLlmProbeEnabled', () => {
-  it('默认关闭', () => {
+  it('非 dev 且未设置时关闭', () => {
     delete process.env.AI_NOVEL_LLM_PROBE
+    delete process.env.VITE_DEV_SERVER_URL
     expect(isLlmProbeEnabled()).toBe(false)
   })
 
-  it('仅显式开启值生效', () => {
+  it('dev 环境（存在 VITE_DEV_SERVER_URL）默认开启', () => {
+    delete process.env.AI_NOVEL_LLM_PROBE
+    process.env.VITE_DEV_SERVER_URL = 'http://localhost:5173'
+    expect(isLlmProbeEnabled()).toBe(true)
+  })
+
+  it('显式关闭优先于 dev 默认', () => {
+    process.env.VITE_DEV_SERVER_URL = 'http://localhost:5173'
+    process.env.AI_NOVEL_LLM_PROBE = '0'
+    expect(isLlmProbeEnabled()).toBe(false)
+  })
+
+  it('显式开启 / 关闭值均生效', () => {
+    delete process.env.VITE_DEV_SERVER_URL
     process.env.AI_NOVEL_LLM_PROBE = '1'
     expect(isLlmProbeEnabled()).toBe(true)
     process.env.AI_NOVEL_LLM_PROBE = 'off'
-    expect(isLlmProbeEnabled()).toBe(false)
-    process.env.AI_NOVEL_LLM_PROBE = 'false'
     expect(isLlmProbeEnabled()).toBe(false)
   })
 })
@@ -112,6 +130,7 @@ describe('inspectLlmProbeMessages', () => {
 describe('probeLlmRequest', () => {
   it('未开启时返回 null，不做任何记录', () => {
     delete process.env.AI_NOVEL_LLM_PROBE
+    delete process.env.VITE_DEV_SERVER_URL
     const handle = probeLlmRequest(
       { modelId: 'm', messages: [{ role: 'user', content: 'hi' }] },
       'invoke',

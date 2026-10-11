@@ -14,7 +14,8 @@
  *
  * ## 开关与落盘
  *
- * - 开关：环境变量 `AI_NOVEL_LLM_PROBE=1`（默认关闭；不设则生产行为零变化）。
+ * - 开关：**dev 默认开启**；`AI_NOVEL_LLM_PROBE=0` 关闭，`=1` 强制开启。
+ *   打包后的应用默认关闭，生产行为零变化。
  * - 位置：`<全局数据根>/debug/llm-probe-<YYYY-MM-DD>.jsonl`，一天一个文件，
  *   每行一条 JSON（request / response 两条一组，用 `sequence` 关联）。
  *
@@ -82,8 +83,11 @@ let warned = false
 
 export function isLlmProbeEnabled(): boolean {
   const value = process.env.AI_NOVEL_LLM_PROBE?.trim().toLowerCase()
-  if (!value) return false
-  return !['0', 'false', 'off', 'no'].includes(value)
+  if (value) return !['0', 'false', 'off', 'no'].includes(value)
+  // 未显式设置时：**dev 默认开启**。忘了设环境变量是最常见的失败模式 ——
+  // 2026-10-11 首次实机观察就因此一条数据都没拿到。
+  // 打包后的应用里 VITE_DEV_SERVER_URL 不存在 → 默认关闭，生产行为零变化。
+  return Boolean(process.env.VITE_DEV_SERVER_URL)
 }
 
 /** 用途分类：决定「这次请求按设计应该看到什么」。 */
