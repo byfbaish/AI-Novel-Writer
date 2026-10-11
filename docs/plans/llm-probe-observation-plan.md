@@ -251,3 +251,53 @@ for rowid, raw in con.execute(
 | 正文注入了大纲（切片或整份） | 在 `readArchitecture()` 移除 `synopsisForDraftChapter` 注入 —— 正文只看蓝图 |
 | 蓝图整份注入大纲 | 改为按章切片注入，并补「以大纲为准、只做结构化落地」的约束 |
 | 两份表述冲突导致正文跑偏 | 补优先级声明：本章蓝图为准，大纲为背景 |
+
+### 6.5 第二次实机：蓝图失败收据「一发未发」，但原因被吞了两层（2026-10-11 22:09）
+
+作者清空蓝图与章节正文后重跑「生成章节蓝图（全量）」，得到：
+
+```
+[失败] [生成章节蓝图（全量）] 步骤: 生成蓝图 — 结构化生成失败；
+generationAttempts=none code=generation_failed reason=server_error errorName=Error
+```
+
+**先把「一发未发」坐实**（三处独立证据互证，来自 `国运怪谈直播-新版副本/.ai-novel/project.db`）：
+
+| 证据 | 值 | 含义 |
+|---|---|---|
+| `generation_attempts`（该 run） | 0 行 | 没有物理请求落账 |
+| `generation_artifacts`（该 run） | 0 行 | 没有候选产物 |
+| `generation_roots.active_since_ms` | `NULL`，`active_elapsed_ms=0` | 该 root 从未被激活（`reserve()` 只在真正派发时写 `active_since_ms`） |
+
+结论：**请求真的一次都没发出去**，与模型服务、上下文窗口、输出上限都无关。
+
+**那 `reason=server_error` 是怎么来的？** 它不是事实，是兜底默认值。原因被吞了两层：
+
+1. **主进程 IPC 边界**（`electron/controllers/generation-controller.ts`）：白名单
+   （`GENERATION_*` / `MAIN_*` / …）之外的错误一律压成裸字符串
+   `GENERATION_REQUEST_FAILED`，原 message 永久消失。
+2. **渲染侧协议码识别**（`structured-batch-executor.ts` 的 `PROTOCOL_CODE_MESSAGE`）：
+   只吃掉了 `Error invoking remote method '…': ` 一层，而 Electron 的真实格式是
+   `Error invoking remote method 'generation:execute': Error: <message>`
+   ——**中间的 `Error: ` 让整条正则失配**，于是即便主进程透传了明确的协议码，
+   到达这里也变成「未知错误」，再被贴上 `reason=server_error`。
+
+顺带修正一个会误导排查的字段语义：兜底分支原先把 `reason` 一律写成
+`server_error`，把「发前拒绝」伪装成模型服务故障。现在只有协议码真命中
+`PROVIDER_REQUEST_FAILED` 才是 `server_error`，其余兜底一律 `unknown`。
+
+处置（commit `21061bc`）：
+
+- 协议码前缀按 Electron 实际形态放宽（含无引号通道名变体），**前缀之后仍必须是纯协议码**，
+  安全边界不变（`MAIN_RUN_NON_REPLAYABLE Bearer test-secret` 这类夹带依旧被拦）。
+- 协议码命中 `KNOWN_HARNESS_FAILURES` → 精确分类并带 `errorCode`；表外的自有码
+  （`GENERATION_SOURCE_CHANGED`、`MAIN_RUN_NON_REPLAYABLE`…）直接作为 `errorCode`
+  回显，`reason=unknown`。
+- 主进程兜底码附带错误类名：`GENERATION_REQUEST_FAILED:Error`，至少能区分
+  「第三方/Node 错误」与「本项目守卫写错文案」。
+- 新增 3 个 IPC 包装形态用例；更新 5 处 `reason` 断言。
+
+**这一轮只让真因可见，还没修好蓝图失败本身** —— 需要重启 dev 后重跑一次，
+读新收据里的 `errorCode=`。按证据推断，真因大概率是 `begin` 与 `execute` 之间
+某个 `GENERATION_*` 守卫（最可疑的是 `GENERATION_SOURCE_CHANGED`：源绑定重算与
+冻结时不一致），而非预算或容量问题。
