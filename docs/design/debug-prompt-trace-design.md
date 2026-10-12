@@ -618,6 +618,12 @@ TRACE-META -->
   2. **落盘只靠 30ms 短定时器，缺确定时序收尾** —— 定时器可能在作用域状态变化时错过。→ `trace-scope.ts` 新增零依赖的 `setTraceScopeTeardownHook` / `runTraceScopeTeardown`，由 `install-prompt-trace.ts` 注入 `flushTraceNow`；`executeWithGenerationRuntime` 的 `finally` 在 `disposeTraceScope()` **之前** await 一次收尾。用注入而非直接 import，避免把渲染层依赖（ipc-client / debug-store）拖进工作流分层（100+ 工作流测试跑在无 window 的 Node 环境）。
   3. **无作用域时静默 return，面板永远停在"等待落盘"** —— 旧 `scheduleTraceFlush` 首行 `if (!scope) return`，不产出任何 outcome。→ 现在所有早退分支都产出 `skipped` + 可读原因（`reportSynthetic`），定时器回调也加 `.catch()` 兜底。
   - **顺带修重复落盘**：同一作用域会被触发两次（短定时器 + 收尾），引入 `flushedWatermark` 判重——内容未变则跳过，IO 后到（`noio → io`）才覆盖写一次。
+- ✅ **P2.2 补齐「域外装配」的三条链路（已完成）**：P2.1 把失败变成可见后，面板报出「提示词装配发生在生成作用域之外」。逐一排查后确认**三条链路的提示词装配确实不在 trace scope 内**（`build()` 落在 `executeWithGenerationRuntime` 之外）：
+  1. **`analyze-style`（普通文风分析）**：`execute()` 的非导入分支直接 `this.executeWithinGeneration(params)`，而 `executeWithGenerationRuntime` 只在方法**尾部**、且只包住 `generate`，头部的 `build()` 在作用域外。→ 把装配移进 `generate` 内（它本来就只服务于那次调用）。**注意**：不能改「包装上移」，因为 `selectedFinalizedDraftIds`/`authorInputs` 是采样后才知道的，且被 `structured-planning-runtime.test.ts` 锁定。
+  2. **`generate-draft`（正文）**：它**自建 runtime**（需要用专用 `DRAFT_GENERATION_BUDGET`），从不经过 `executeWithGenerationRuntime`，因此没有任何地方广播作用域。→ 在外层 `try` 内手动 `pushTraceScope`，`context.mainGenerationRunHandle` 由 begin 阶段写入，故在 `runtime.execute` 回调开头回填 `traceScope.runHandle`；`finally` 里先 `runTraceScopeTeardown()` 再 dispose。
+  3. **`finalize-chapter`（章节要点 / 角色卡）**：由独立的 `runFinalizationGeneration` 驱动（句柄经 `onHandle` 回调写入 `context`），本命令不建 runtime。→ 构造 `traceScope` 对象后，把 `pushTraceScope` **推迟到 `runPostProcessPipeline` 调用前一行**（前后无可抛错语句，确保 `finally` 一定能 dispose，不会泄漏作用域栈）；`onHandle` 回调内回填 `runHandle`。
+  - **诊断增强**：域外回显带上 `promptKey`（「…生成作用域之外（promptKey=xxx）…」），避免再靠读代码反推是哪一步。
+  - **同批次核对（确认本就安全，无需改动）**：`refine-draft` / `review-chapter` / `refine-from-review` 的 `build()` 都在 `generateAndCommit` 内，而基类 `ReviewRevisionCommand` 就在 `executeWithGenerationRuntime` 里调用它；`directory`（蓝图）的 `build()` 在 contract 回调内，由 `:438` 的运行时包住。
 - **P3 结构化路径（路径 B/C）**：路径 B（`structured-batch-executor`，蓝图等）与路径 C（`plot-tree-generator`/`narrative-thread-candidate-generator` 等直连 `session.complete`）。前者绕过提示词装配，能抓到的信息有限；后者无模板 key，`promptKey` 记 `task:*`。
 - **P4 收尾**：`INDEX.md`/`index.json` 跨 run 索引；StatusBar「打开 trace 目录」；自定义绝对路径 + 沙箱白名单核查。
 
@@ -632,6 +638,7 @@ TRACE-META -->
 - 无作用域 / 无项目会话 / 无快照时不写文件（不产生空文件噪音）。
 - **面板不得停在"等待落盘"**：任何一次 `build()` 捕获后（无论走哪条分支），状态面板都必须给出终态——`已写出 N 份` / `本次未写出文件 + 原因` / `落盘失败 + 原因`。只有"落盘正在进行中"才允许短暂显示等待态。
 - **同一轮生成只产生一份文件**：短定时器与作用域收尾命中同一作用域时不重复写；IO 后到时覆盖写一次以带上输出面。
+- **不出现「生成作用域之外」**：架构各步 / 蓝图 / 正文 / 精修 / 审稿 / 文风分析 / 定稿后处理，凡走提示词装配的链路都必须落在 trace scope 内并能落盘（P2.2 已按此逐条核对）。
 
 **P3 待达成（路径 B/C）**：
 - 章节蓝图被捕获（路径 B）。
@@ -664,6 +671,20 @@ TRACE-META -->
 - 装配：`src/services/prompts/install-prompt-trace.ts`（`main.tsx` 启动调用一次；注入 sink + IO 观察者 + 收尾钩子）
 - IO 抓取点：`src/services/generation/generation-harness.ts` `setHarnessIoObserver` + `complete()` 成功路径
 - 作用域注入点：`src/services/workflows/commands/base-command.ts` `executeWithGenerationRuntime`（push 作用域 → 操作体 → **收尾落盘** → pop）
+
+**⚠️ 提示词装配必须在 trace scope 内（P2.2 已补全的清单）**
+
+只有 `executeWithGenerationRuntime` 会自动广播作用域。以下命令的装配一度落在作用域外，已单独处理：
+
+| 命令 | 为什么不走统一入口 | 处理方式 |
+| --- | --- | --- |
+| `generate-draft`（正文） | 自建 runtime 以使用专用 `DRAFT_GENERATION_BUDGET` | 外层 `try` 内 `pushTraceScope`；`runtime.execute` 回调开头回填 `runHandle`；`finally` 里 `runTraceScopeTeardown()` → dispose |
+| `finalize-chapter`（章节要点 / 角色卡） | 由独立 `runFinalizationGeneration` 驱动 | `pushTraceScope` 推迟到 `runPostProcessPipeline` 前一行（前后无可抛错语句，防栈泄漏）；`onHandle` 回调回填 `runHandle` |
+| `analyze-style`（非导入分支） | 包装只在方法尾部、只包住 `generate` | 把 `build()` 移进 `generate` 内（它只服务于那次调用） |
+
+已核对安全（`build()` 本就在作用域内）：`refine-draft` / `review-chapter` / `refine-from-review`（经基类 `ReviewRevisionCommand:88`）、`directory`（contract 回调由 `:438` 运行时包住）。
+
+**新增生成命令时的自检**：若 `build()` 不在 `executeWithGenerationRuntime` 调用链内，必须手动广播作用域——否则追踪会明确报「提示词装配发生在生成作用域之外（promptKey=xxx）」。
 
 **⚠️ 落盘失败的两个必知事实（踩过坑）**
 - `fs:write-file` / `fs:mkdir` 失败时**返回 `{success:false, error}`，不抛错**（见 `electron/controllers/fs-controller.ts:239/285`）。任何 `await` 后都必须判 `success`。

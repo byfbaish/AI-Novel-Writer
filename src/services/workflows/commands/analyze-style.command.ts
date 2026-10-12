@@ -105,13 +105,18 @@ export class AnalyzeWritingStyleCommand extends BaseWorkflowCommand<string> {
     if (!template) throw new Error(text('未找到文风分析模板', 'The writing-style analysis prompt template was not found.'))
 
     const sampleText = sampleTexts.join('\n\n---\n\n')
-    const prompt = new BasePromptBuilder(template, writingLanguage)
-      // 使用 protected variables 需要通过子类或反射，这里使用 build 前手动设置
-      ; (prompt as unknown as { variables: { sample_text: string } }).variables = { sample_text: sampleText }
-    const finalPrompt = prompt.build()
 
     callbacks.log(text('调用 AI 分析文风特征...', 'Running AI writing-style analysis...'))
     const generate = async () => {
+      // 提示词装配必须发生在生成作用域内：本命令的非导入路径（`execute` 里 selection
+      // 为空的那一支）只有 `generate` 被 `executeWithGenerationRuntime` 包住。
+      // 若把 build() 放在 runner 之外，装配会落在作用域外——追踪拿不到 runHandle、
+      // 也定位不到落盘目录，且"这次用了哪份提示词"无从归因。
+      const prompt = new BasePromptBuilder(template, writingLanguage)
+      // 使用 protected variables 需要通过子类或反射，这里使用 build 前手动设置
+      ; (prompt as unknown as { variables: { sample_text: string } }).variables = { sample_text: sampleText }
+      const finalPrompt = prompt.build()
+
       const result = await this.callLLM(
         finalPrompt,
         composePromptSystemRole(template, writingLanguage),

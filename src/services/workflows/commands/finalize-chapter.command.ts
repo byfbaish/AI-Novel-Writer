@@ -12,6 +12,7 @@ import type { StepCallbacks, WorkflowContext } from '../../../stores/workflow-st
 import { useProjectStore } from '../../../stores/project-store'
 import { resolvePromptTemplate } from '../../prompt-templates'
 import { PostProcessPromptBuilder } from '../../prompts/prompt-builder'
+import { pushTraceScope, runTraceScopeTeardown, type TraceScope } from '../../prompts/trace-scope'
 import { ipc } from '../../ipc-client'
 import { requireIpcSuccess } from '../../ipc-result'
 import { commitFinalizationSnapshot } from '../../finalization-client'
@@ -330,6 +331,15 @@ export class RunFinalizePostProcessCommand extends BaseWorkflowCommand<PostProce
 
   private async executeWithinGeneration({ context, callbacks }: CommandExecuteParams): Promise<PostProcessStatus> {
     const projectSession = requireWorkflowProjectSession(context)
+    // 定稿后处理由 `runFinalizationGeneration` 独立驱动，不经过 `executeWithGenerationRuntime`，
+    // 因此手动广播追踪作用域：否则后处理步骤里的提示词装配会落在作用域外，提示词追踪
+    // 既拿不到 runHandle、也定位不到落盘目录。这里只构造对象，`pushTraceScope` 推迟到
+    // 不可能抛错的调用点，避免中途抛错导致作用域栈泄漏。
+    const traceScope: TraceScope = {
+      operation: 'finalize-post-process',
+      chapterNumber: this.params.chapterNumber,
+      projectSession,
+    }
     const finalizedSource = await ipc.invokeWithProjectSession(
       projectSession,
       'db:continuity-read-source',
@@ -357,7 +367,11 @@ export class RunFinalizePostProcessCommand extends BaseWorkflowCommand<PostProce
         ...(generationContext.data.generationBatchId && generationContext.mainGenerationRootHandle
           ? { parentRootActionId: generationContext.mainGenerationRootHandle.rootActionId } : {}),
         cancelled: () => generationContext.cancelled,
-        onHandle: handle => { generationContext.mainGenerationRunHandle = Object.freeze({ ...handle }) },
+        onHandle: handle => {
+          generationContext.mainGenerationRunHandle = Object.freeze({ ...handle })
+          // 句柄由生成服务在运行开启后回调；写回作用域对象供落盘命名与归并。
+          traceScope.runHandle = `${handle.projectId}/${handle.epoch}/${handle.runId}`
+        },
       }),
       complete: async () => { throw new Error('FINALIZATION_GENERATION_MAIN_REQUIRED') },
     }
@@ -384,20 +398,27 @@ export class RunFinalizePostProcessCommand extends BaseWorkflowCommand<PostProce
         `Unknown post-processing step: ${this.params.stepKey}`,
       ))
     }
-    return runPostProcessPipeline(
-      this.params.project.path,
-      getChapterFinalizeScope(this.params.chapterNumber),
-      this.params.sourceLabel,
-      steps,
-      callbacks,
-      {
-        stopOnFailure: this.params.stopOnFailure,
-        onlyFailed: this.params.onlyFailed,
-        finalizedSource: this.params.finalizedSource,
-        cancellation: context,
-        projectSession,
-      },
-    )
+    const disposeTraceScope = pushTraceScope(traceScope)
+    try {
+      return await runPostProcessPipeline(
+        this.params.project.path,
+        getChapterFinalizeScope(this.params.chapterNumber),
+        this.params.sourceLabel,
+        steps,
+        callbacks,
+        {
+          stopOnFailure: this.params.stopOnFailure,
+          onlyFailed: this.params.onlyFailed,
+          finalizedSource: this.params.finalizedSource,
+          cancellation: context,
+          projectSession,
+        },
+      )
+    } finally {
+      // 落盘收尾排在退出作用域之前；追踪是旁路，失败不影响定稿结果。
+      await runTraceScopeTeardown()
+      disposeTraceScope()
+    }
   }
 }
 

@@ -20,6 +20,7 @@ import { hashAuthorText } from '../../../shared/source-ref'
 import { resolvePromptTemplate } from '../../prompt-templates'
 import type { PromptTemplate } from '../../builtin-prompt-templates'
 import { ChapterPromptBuilder } from '../../prompts/prompt-builder'
+import { pushTraceScope, runTraceScopeTeardown, type TraceScope } from '../../prompts/trace-scope'
 import { ipc } from '../../ipc-client'
 import { unwrapKnowledgeValue } from '../../knowledge-service'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../../shared/project-session-context'
@@ -1034,6 +1035,16 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     try {
       this.assertNotCancelled(context)
       const cancellation = observeWorkflowCancellation(context)
+      // 正文生成不经过 `executeWithGenerationRuntime`（它需要专用预算并自建 runtime），
+      // 因此在这里手动广播追踪作用域：否则 `build()` 期间的提示词装配会落在作用域外，
+      // 提示词追踪既拿不到 runHandle、也定位不到落盘目录。
+      // 必须放在本层 try 内，才能与下面的 finally 配对（内层 try 只有 catch）。
+      const traceScope: TraceScope = {
+        operation: 'chapter-draft',
+        chapterNumber: this.chapterInfo.chapterNumber,
+        projectSession,
+      }
+      const disposeTraceScope = pushTraceScope(traceScope)
       let runtime: GenerationRuntime | null = null
       let cleanDraftText: string
       let acknowledgedPreview = ''
@@ -1076,6 +1087,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         } })
         mainOwned = (runtime as { mainOwned?: boolean }).mainOwned === true
         cleanDraftText = await runtime.execute(async ({ session }) => {
+          // runHandle 由 begin 阶段写入 context，必须进入执行体之后才能读到；
+          // 写回作用域对象，让落盘时能用它以 `项目/纪元/运行` 做文件名与归并键。
+          const openedHandle = context.mainGenerationRunHandle
+          traceScope.runHandle = openedHandle
+            ? `${openedHandle.projectId}/${openedHandle.epoch}/${openedHandle.runId}`
+            : undefined
           let recovery = mainOwned && this.resumeHandle
             ? await ipc.invokeWithProjectSession(projectSession, 'generation:read-context', { handle: context.mainGenerationRunHandle! })
             : null
@@ -1305,6 +1322,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         if (context.cancelled) throw new Error(uiText('工作流已取消', 'Workflow was cancelled.'))
         throw error
       } finally {
+        // 落盘收尾必须排在退出作用域之前：此刻真实请求的 messages 与模型输出都已就绪，
+        // 且作用域仍在栈顶，落盘器能读到 runHandle。追踪是旁路，失败不影响生成结果。
+        await runTraceScopeTeardown()
+        disposeTraceScope()
         cancellation.dispose()
         if (runtime) {
           try { await runtime.close() } catch { /* execute close failure already fails before persistence */ }

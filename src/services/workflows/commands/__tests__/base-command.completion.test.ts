@@ -15,6 +15,12 @@ import {
   type WorkflowGenerationIntent,
   type WorkflowGenerationRuntimeDependencies,
 } from '../base-command'
+import {
+  currentTraceScope,
+  resetTraceScope,
+  setTraceScopeTeardownHook,
+  type TraceScope,
+} from '../../../prompts/trace-scope'
 
 type ProbeStep =
   | { kind: 'single' }
@@ -125,6 +131,41 @@ function dependenciesFor(environment: GenerationRuntimeEnvironment): WorkflowGen
     ),
   }
 }
+
+describe('追踪作用域接线（executeWithGenerationRuntime）', () => {
+  afterEach(() => {
+    setTraceScopeTeardownHook(null)
+    resetTraceScope()
+  })
+
+  it('在退出作用域之前调用收尾钩子，且此刻作用域仍在栈顶', async () => {
+    // 提示词追踪的落盘收尾必须发生在 `disposeTraceScope()` 之前：此刻作用域还在栈顶，
+    // 落盘器才能读到 `runHandle` 与项目会话去定位项目根。顺序颠倒会退化成"无作用域"。
+    const environment: GenerationRuntimeEnvironment = {
+      snapshotDefaultModelId: () => 'model-a',
+      beginModelExecution: vi.fn().mockResolvedValue(leaseReceipt()),
+      completeWithLease: vi.fn().mockResolvedValue({ content: '{"ok":true}', finishReason: 'stop' }),
+      closeModelExecution: vi.fn().mockResolvedValue(undefined),
+    }
+    let scopeAtTeardown: TraceScope | undefined
+    const teardown = vi.fn(() => { scopeAtTeardown = currentTraceScope() })
+    setTraceScopeTeardownHook(teardown)
+    try {
+      await new CompletionProbeCommand(dependenciesFor(environment)).execute({
+        step: { kind: 'single' } satisfies ProbeStep,
+        context: { ...context },
+        callbacks,
+      })
+    } finally {
+      setTraceScopeTeardownHook(null)
+    }
+
+    expect(teardown).toHaveBeenCalledTimes(1)
+    expect(scopeAtTeardown?.projectSession?.projectId).toBe('probe')
+    // 收尾之后作用域必须已弹出，避免污染后续任务。
+    expect(currentTraceScope()).toBeUndefined()
+  })
+})
 
 describe('BaseWorkflowCommand completion boundary', () => {
   afterEach(() => {
