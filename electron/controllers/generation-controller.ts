@@ -226,6 +226,7 @@ export function registerGenerationController(options: {
   register('review-revision:commit-review', 1, (owner, request) => owner.commitReview(request))
   register('review-revision:commit-revision', 1, (owner, request) => owner.commitRevision(request))
   register('review-revision:read-recovery', 1, (owner, request) => owner.readReviewRevisionRecovery(request.handle))
+  register('review-revision:probe-recovery', 1, (owner, request) => owner.probeReviewRevisionRecovery(request.handle))
   register('agent-generation:begin', 1, (owner, request) => owner.agents.begin(request))
   register('agent-generation:read', 1, (owner, request) => owner.agents.read(request.handle))
   register('import-generation:read', 1, (owner, request) => owner.readImportGeneration(request.slot))

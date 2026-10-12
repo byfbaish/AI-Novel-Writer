@@ -173,4 +173,11 @@ export interface ReviewRevisionGenerationInvokeChannels {
   'review-revision:commit-review': { args: [request: ReviewGenerationCommitRequest]; return: ReviewRevisionCommitReceipt }
   'review-revision:commit-revision': { args: [request: RevisionGenerationCommitRequest]; return: ReviewRevisionCommitReceipt }
   'review-revision:read-recovery': { args: [request: { handle: MainGenerationRunHandle }]; return: ReviewRevisionRecovery }
+  /**
+   * 尽力探测通道：与 read-recovery 校验完全相同，但**不可恢复时返回 null 而不抛错**。
+   * 供「列出所有候选」这类批量只读探测使用——账本指认整体不一致（例如审稿后草稿又被动过）
+   * 只是「这个候选没得恢复」，不是故障；走 read-recovery 会让 Electron 给每次探测打一坨
+   * 未捕获 handler 异常。真正要执行恢复仍必须走 read-recovery 的硬失败语义。
+   */
+  'review-revision:probe-recovery': { args: [request: { handle: MainGenerationRunHandle }]; return: ReviewRevisionRecovery | null }
 }

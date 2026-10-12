@@ -70,5 +70,5 @@ export function registerIPCHandlers() {
   registerKBController()
   registerImportController()
 
-  console.log('[AI Novel IPC] 所有 Controller 已注册完成')
+  if (process.env.NODE_ENV !== 'production') console.log('[AI Novel IPC] 所有 Controller 已注册完成')
 }

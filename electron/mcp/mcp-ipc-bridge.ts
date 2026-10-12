@@ -5,7 +5,7 @@
  * 让渲染进程能够通过 IPC 管理和调用 MCP 服务器。
  */
 
-import { ipcMain } from 'electron'
+import { app, ipcMain } from 'electron'
 import { mcpManager } from './mcp-manager'
 
 /**
@@ -84,5 +84,5 @@ export function registerMCPHandlers(): void {
     return mcpManager.getDefaultConfigPath()
   })
 
-  console.log('[MCP] IPC 处理器已注册')
+  if (!app.isPackaged) console.log('[MCP] IPC 处理器已注册')
 }
