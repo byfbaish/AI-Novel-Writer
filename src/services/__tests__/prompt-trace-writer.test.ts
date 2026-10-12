@@ -128,3 +128,60 @@ describe('prompt-trace-writer', () => {
     expect(invoke.mock.calls.filter(([, channel]) => channel === 'fs:write-file')).toHaveLength(0)
   })
 })
+
+describe('落盘结果回显（状态面板数据源）', () => {
+  it('写出文件后回报 ok 与相对路径', async () => {
+    const { lastTraceFlushOutcome, resetTraceIoQueue: reset } = await import('../prompts/prompt-trace-writer')
+    reset()
+    const dispose = pushTraceScope({ runHandle: 'proj/lease/run-ok', operation: 'chapter-draft', projectSession: session })
+    try {
+      recordFragments({ template: builtin(), variables: {}, built: 'x', writingLanguage: 'zh-CN' })
+      await flush()
+    } finally { dispose() }
+    const outcome = lastTraceFlushOutcome()
+    expect(outcome?.status).toBe('ok')
+    expect(outcome?.files).toHaveLength(2)
+    expect(outcome?.files?.[0]).toMatch(/^debug\/prompt-trace\//)
+    expect(outcome?.operation).toBe('chapter-draft')
+  })
+
+  it('缺少项目会话时回报 skipped 并说明原因', async () => {
+    const { lastTraceFlushOutcome, resetTraceIoQueue: reset } = await import('../prompts/prompt-trace-writer')
+    reset()
+    const dispose = pushTraceScope({ runHandle: 'proj/lease/run-ns', operation: 'chapter-draft' })
+    try {
+      recordFragments({ template: builtin(), variables: {}, built: 'x', writingLanguage: 'zh-CN' })
+      await flush()
+    } finally { dispose() }
+    const outcome = lastTraceFlushOutcome()
+    expect(outcome?.status).toBe('skipped')
+    expect(outcome?.reason).toContain('项目会话')
+  })
+
+  it('写入失败时回报 failed 与原因', async () => {
+    const { lastTraceFlushOutcome, resetTraceIoQueue: reset } = await import('../prompts/prompt-trace-writer')
+    reset()
+    invoke.mockRejectedValue(new Error('磁盘写满'))
+    const dispose = pushTraceScope({ runHandle: 'proj/lease/run-fail', operation: 'chapter-draft', projectSession: session })
+    try {
+      recordFragments({ template: builtin(), variables: {}, built: 'x', writingLanguage: 'zh-CN' })
+      await flush()
+    } finally { dispose() }
+    const outcome = lastTraceFlushOutcome()
+    expect(outcome?.status).toBe('failed')
+    expect(outcome?.reason).toContain('磁盘写满')
+  })
+
+  it('订阅者能收到结果，且订阅者抛错不影响落盘', async () => {
+    const { subscribeTraceFlushOutcome, resetTraceIoQueue: reset } = await import('../prompts/prompt-trace-writer')
+    reset()
+    const seen: string[] = []
+    const unsubscribe = subscribeTraceFlushOutcome((o) => { seen.push(o.status); throw new Error('订阅方炸了') })
+    const dispose = pushTraceScope({ runHandle: 'proj/lease/run-sub', operation: 'chapter-draft', projectSession: session })
+    try {
+      recordFragments({ template: builtin(), variables: {}, built: 'x', writingLanguage: 'zh-CN' })
+      await flush()
+    } finally { dispose(); unsubscribe() }
+    expect(seen).toEqual(['ok'])
+  })
+})
