@@ -62,7 +62,6 @@ export default function AIOutputPanel() {
   const [recoveryCandidates, setRecoveryCandidates] = useState<RecoveryCandidate[]>([])
   const [recoveryError, setRecoveryError] = useState('')
 
-  console.log('[AIOutputPanel] render: viewRunId=', viewRunId, 'activeRun=', activeRun?.id, activeRun?.status, 'activeRuns.len=', activeRuns.length)
 
   // 自动跟随最新活跃任务
   useEffect(() => {
@@ -185,9 +184,9 @@ export default function AIOutputPanel() {
     activeRun ||
     undefined
 
-  // DEBUG: 面板切换时追踪状态
-  if (viewRun?.status === 'failed' && viewRun.steps.some(s => s.status === 'pending' || s.status === 'running')) {
-    console.log('[AIOutputPanel] viewRun out of sync! run.status=', viewRun.status, 'steps=', viewRun.steps.map(s => s.status))
+  // 面板切换时追踪状态：失败态却仍有未结束步骤 = 状态机不同步，仅开发期提示。
+  if (import.meta.env.DEV && viewRun?.status === 'failed' && viewRun.steps.some(s => s.status === 'pending' || s.status === 'running')) {
+    console.warn('[AIOutputPanel] viewRun out of sync! run.status=', viewRun.status, 'steps=', viewRun.steps.map(s => s.status))
   }
 
   const recentHistory = history.slice(0, 10)
@@ -305,7 +304,7 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
         recovery: await ipc.invokeWithProjectSession(session, 'generation:read-context', { handle: view.handle }),
       })))
       const reviewContexts = await Promise.allSettled(contexts.filter(item => ['review-chapter', 'refine-draft', 'refine-from-review'].includes(item.recovery.operation))
-        .map(async ({ view }) => ({ view, recovery: await ipc.invokeWithProjectSession(session, 'review-revision:read-recovery', { handle: view.handle }) })))
+        .map(async ({ view }) => ({ view, recovery: await ipc.invokeWithProjectSession(session, 'review-revision:probe-recovery', { handle: view.handle }) })))
       const agentRoots = new Map(contexts.filter(item => item.recovery.operation === 'agent-round').map(item => [item.view.handle.rootActionId, item.view.handle]))
       const agentContexts = await Promise.allSettled([...agentRoots.values()].map(handle => ipc.invokeWithProjectSession(session, 'agent-generation:read', { handle })))
       const editorContexts = await Promise.allSettled(contexts.filter(item => item.recovery.operation === 'editor-inline')
@@ -313,7 +312,8 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
       if (!active) return
       setPlanningRuns(contexts.flatMap(item => (item.recovery.plotOutlineRecovery || item.recovery.blueprintRecovery)
         && item.recovery.planningContinuation?.state !== 'complete' ? [item.recovery] : []))
-      setReviewRuns(reviewContexts.flatMap(result => result.status === 'fulfilled' ? [result.value] : []))
+      setReviewRuns(reviewContexts.flatMap(result => result.status === 'fulfilled' && result.value.recovery
+        ? [{ view: result.value.view, recovery: result.value.recovery }] : []))
       setAgentRuns(agentContexts.flatMap(result => result.status === 'fulfilled' ? [result.value] : []))
       setEditorRuns(editorContexts.flatMap(result => result.status === 'fulfilled' ? [result.value] : []))
       setRuns(contexts.filter(item => item.recovery.operation === 'chapter-draft' && !item.recovery.batchId

@@ -1279,6 +1279,18 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     readReviewRevisionRecovery: (handle: MainGenerationRunHandle) => reviewRevisions.readRecovery(handle,
       run => compareGenerationSourceBindings(run.binding, deps.rebuildBinding(run.binding, currentModelReceipt(run.binding))),
       run => viewOf(run).candidates?.at(-1)),
+    probeReviewRevisionRecovery: (handle: MainGenerationRunHandle) => {
+      // 批量只读探测：只吞「回执校验不通过」这类**否定结论**，其余错误（身份不符/owner 已关）
+      // 仍照常抛出，避免把真实故障伪装成「没有可恢复候选」。
+      try {
+        return reviewRevisions.readRecovery(handle,
+          run => compareGenerationSourceBindings(run.binding, deps.rebuildBinding(run.binding, currentModelReceipt(run.binding))),
+          run => viewOf(run).candidates?.at(-1))
+      } catch (error) {
+        if (error instanceof Error && error.message === 'GENERATION_REVIEW_RECEIPT_INVALID') return null
+        throw error
+      }
+    },
     readContext, readBatch, prepareDraftContext, preparedKnowledge, draftPreparationBinding, retryDraftShortOutline,
     beginBatch: (request: BeginGenerationBatchRequest) => {
       assertGenerationBatchIntent(request)

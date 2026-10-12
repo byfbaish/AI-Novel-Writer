@@ -38,7 +38,7 @@ it.each(['zh-CN', 'en-US'] as const)('合法改稿后的生成记录与审稿同
       ? { handle, operation: 'chapter-draft', chapterNumber: 1, draftSave: { kind: 'changed' },
           composition: null, attemptedPurposes: ['chapter-draft'] }
       : { handle: reviewHandle, operation: 'review-chapter', draftSave: { kind: 'absent' } }
-    if (channel === 'review-revision:read-recovery') return { handle: reviewHandle, modelId: '原模型', sourceStatus: 'current', canResume: true,
+    if (channel === 'review-revision:probe-recovery') return { handle: reviewHandle, modelId: '原模型', sourceStatus: 'current', canResume: true,
       context: { operation: 'review-chapter', source: { id: 1, chapterNumber: 1, version: 1, status: 'revised', content: '作者当前正文。' } },
       attemptedPurposes: ['review-chapter'] }
     throw new Error(`Unexpected action: ${channel}`)
@@ -129,7 +129,7 @@ it.each(['review-chapter', 'refine-draft', 'refine-from-review'] as const)('中�
     if (channel === 'generation:list') return [view]
     if (channel === 'generation:list-batches' || channel === 'db:recovery-candidate-list') return []
     if (channel === 'generation:read-context') return { draftSave: { kind: 'absent' }, handle, operation }
-    if (channel === 'review-revision:read-recovery') return recovery()
+    if (channel === 'review-revision:probe-recovery') return recovery()
     throw new Error(`Unexpected action: ${channel}`)
   })
   Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: () => () => {} } })
@@ -186,7 +186,7 @@ it.each(['zh-CN', 'en-US'] as const)('耗尽或取消的审稿保留复制且不
     if (channel === 'generation:list') return [view]
     if (channel === 'generation:list-batches' || channel === 'db:recovery-candidate-list') return []
     if (channel === 'generation:read-context') return { draftSave: { kind: 'absent' }, handle, operation: 'review-chapter' }
-    if (channel === 'review-revision:read-recovery') return recovery
+    if (channel === 'review-revision:probe-recovery') return recovery
     throw new Error(`Unexpected action: ${channel}`)
   })
   Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: () => () => {} } })
@@ -380,4 +380,32 @@ it.each(['unknown', 'conflict', 'cancelled'] as const)('助手恢复卡只显示
   } finally {
     useAgentStore.setState(agentState, true); useLayoutStore.setState(layoutState, true)
   }
+})
+
+it('批量探测判定「回执已失效」的候选时静默跳过，不向面板抛错', async () => {
+  // 该候选的回执校验不通过（例如审稿后草稿又被改动），probe 通道返回 null 表示「不可恢复」，
+  // 面板应视为无候选而不是报错——旧实现走 read-recovery 会让主进程每次探测都抛未捕获异常。
+  const session = { projectId: '失效回执', leaseId: '当前会话', projectPath: 'C:/合成失效回执' }
+  const handle: MainGenerationRunHandle = { projectId: session.projectId, epoch: session.leaseId, rootActionId: '原根', runId: '失效审稿' }
+  const view = { handle, status: 'failed', artifacts: [], ledger: { physicalRequests: 1 } }
+  const invoke = vi.fn(async (channel: string) => {
+    if (channel === 'generation:list') return [view]
+    if (channel === 'generation:list-batches' || channel === 'db:recovery-candidate-list') return []
+    if (channel === 'generation:read-context') return { draftSave: { kind: 'absent' }, handle, operation: 'review-chapter' }
+    if (channel === 'review-revision:probe-recovery') return null
+    if (channel === 'review-revision:read-recovery') throw new Error('不应再走硬失败通道')
+    throw new Error(`Unexpected action: ${channel}`)
+  })
+  Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: () => () => {} } })
+  useProjectStore.setState({ currentProject: { id: session.projectId, path: session.projectPath, name: '失效回执', sessionLease: session.leaseId, novelConfig: {} } as never })
+  useWorkflowStore.setState({ activeRuns: [], history: [], currentRun: null, startWorkflow: vi.fn() })
+  useLocaleStore.setState({ locale: 'zh-CN' })
+  container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container)
+  await act(async () => root!.render(<AIOutputPanel />))
+  await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === 'review-revision:probe-recovery')).toBe(true))
+  await act(async () => { await Promise.resolve() })
+  expect(invoke.mock.calls.some(([channel]) => channel === 'review-revision:read-recovery')).toBe(false)
+  expect(container!.querySelector('[role=alert]')).toBeNull()
+  expect(container!.textContent).not.toContain('部分任务暂时无法读取')
+  expect(container!.textContent).not.toContain('恢复此审修任务')
 })
