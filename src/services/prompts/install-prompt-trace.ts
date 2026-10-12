@@ -35,8 +35,12 @@ export function installPromptTraceFromDebugStore(): void {
     scheduleTraceFlush()
   })
   // 命令退出作用域前的**确定时序**落盘点：不依赖 30ms 定时器是否被调度到，
-  // 只要走过 `executeWithGenerationRuntime` 就一定有一次落盘尝试（含 skipped 回显）。
-  setTraceScopeTeardownHook(() => flushTraceNow())
+  // 只要走过生成运行时（`executeWithGenerationRuntime` 或自建 runtime 的命令）就一定
+  // 有一次落盘尝试（含 skipped 回显）。追踪关闭时直接返回，保持零开销。
+  setTraceScopeTeardownHook(() => {
+    if (!isPromptTraceEnabled()) return
+    return flushTraceNow()
+  })
   // 抓取真实发出的 messages 与模型输出，与片段快照按 runHandle 归并。
   setHarnessIoObserver((observation) => {
     if (!isPromptTraceEnabled()) return

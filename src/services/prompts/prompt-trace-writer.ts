@@ -18,7 +18,7 @@
 
 import { ipc } from '../ipc-client'
 import { currentTraceScope, type TraceScope } from './trace-scope'
-import { promptTraceSnapshots, type PromptTraceSnapshot } from './prompt-trace'
+import { promptTraceSnapshots, lastPromptTraceSnapshot, type PromptTraceSnapshot } from './prompt-trace'
 import { useDebugStore } from '../../stores/debug-store'
 
 /** 项目内落盘目录（相对项目根，用 `/` 分隔，由调用方与项目根拼接）。 */
@@ -328,9 +328,12 @@ export function scheduleTraceFlush(): void {
   const scope = currentTraceScope()
   if (!scope) {
     // 关键诊断：装配发生在生成作用域之外时，落盘无从定位项目根。
-    // 过去这里静默 return，面板只会停在"已捕获 N 块，等待落盘"——无法区分
-    // 「作用域外装配」与「定时器没跑」。现在把它记成一条明确的 skipped。
-    lastScheduleSkip = '提示词装配发生在生成作用域之外（无 runHandle/项目会话），无法定位落盘目录'
+    // 顺带报出最近一次捕获的 promptKey——它能直接指出是哪条生成链路没广播作用域，
+    // 不必再去翻代码猜是哪一步。
+    const last = lastPromptTraceSnapshot()
+    lastScheduleSkip = last
+      ? `提示词装配发生在生成作用域之外（promptKey=${last.promptKey}），无法定位落盘目录`
+      : '提示词装配发生在生成作用域之外（无 runHandle/项目会话），无法定位落盘目录'
     reportSynthetic('skipped', lastScheduleSkip)
     return
   }
