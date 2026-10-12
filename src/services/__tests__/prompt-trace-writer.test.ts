@@ -207,6 +207,42 @@ describe('prompt-trace-writer', () => {
   })
 })
 
+describe('prompt-trace-markdown（纯渲染模块，零运行时依赖）', () => {
+  it('旧版数据缺 systemMessage 时不崩溃，并给出可读说明', async () => {
+    // 兼容性：本字段是 P2.3 才加的，此前落盘的 .json 没有它（离线重渲染会走到这里）。
+    const { buildTraceMarkdown } = await import('../prompts/prompt-trace-markdown')
+    const markdown = buildTraceMarkdown({
+      operation: 'chapter-draft',
+      writtenAt: 0,
+      snapshots: [{
+        promptKey: 'first_chapter_draft',
+        writingLanguage: 'zh-CN',
+        capturedAt: 0,
+        builtLength: 4,
+        built: '组装结果',
+        fragments: [{
+          order: 1, sourceKind: 'override-systemRole', label: '创作角色定位（system）',
+          editable: true, resolvedFrom: 'global', rawText: '你是作家', variables: [],
+        }],
+      }],
+    })
+    expect(markdown).toContain('#### system')
+    expect(markdown).toContain('尚未采集 system message')
+    // user 正文仍必须完整呈现——它才是评估提示词的主体。
+    expect(markdown).toContain('组装结果')
+  })
+
+  it('没有真实请求面时不伪造「实际发出」', async () => {
+    const { buildTraceMarkdown } = await import('../prompts/prompt-trace-markdown')
+    const markdown = buildTraceMarkdown({
+      writtenAt: 0,
+      snapshots: [{ promptKey: 'k', writingLanguage: 'zh-CN', capturedAt: 0, builtLength: 1, built: 'x', systemMessage: 's', fragments: [] }],
+    })
+    expect(markdown).toContain('请求面来源：按装配结果重建')
+    expect(markdown).not.toContain('请求面来源：实际发出')
+  })
+})
+
 describe('落盘结果回显（状态面板数据源）', () => {
   it('写出文件后回报 ok 与相对路径', async () => {
     const { lastTraceFlushOutcome, resetTraceIoQueue: reset } = await import('../prompts/prompt-trace-writer')
