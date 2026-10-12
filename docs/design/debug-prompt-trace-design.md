@@ -6,7 +6,7 @@
 
 ---
 
-> 状态：v2（已按自评审修正）。v1 的"唯一 chokepoint = `callLLMResult`"判断**已作废**。
+> 状态：v3（作者视角改稿 + 输入面清单 + 缓存热重载）。P0（追踪开关骨架 + 提示词热重载）**已施工并提交**（commit 5c77f8f）；P1 起为待办。v1 的"唯一 chokepoint = `callLLMResult`"判断**已作废**。
 
 ---
 
@@ -267,43 +267,56 @@ prompt-trace/
 
 ## 6. 输出格式样例（★ 人读 + 大模型读，**全量步骤**）
 
-**设计要求**：单一 markdown 文件承载三件事——① 组成（哪些片段、各占多少字）② 来源（每段从哪来、能不能在 UI 改、当前生效来源）③ 输出（模型原始产出）。用 \`\` 注释块给大模型提供机器可读的紧凑 JSON，正文用 markdown 标题给人读。一个文件、两种读者。
+**设计要求**：单一 markdown 文件承载三件事——① 组装构成（哪些片段拼成的）② 来源（每块从哪来、谁写的、能不能在 UI 改、去哪改）③ 输出（模型原始产出）。
+
+**首读者是"调 prompt 的作者"，不是"读代码的工程师"**（这是立项理由，见开篇）——所以正文用**人话标题 + 四列表格**（是什么 / 谁写的（现在生效）/ 能改吗 / 去哪改），"去哪改"给**UI 入口路径**而非 `file:line`；工程枚举（`sourceKind` / `resolvedFrom` / `path`）退居 `` 注释块，只给机器读。一个文件、两种读者。
+
+**色标三态**（渲染器给正文加类名，纯文本降级为文字标注）：
+- 🔵 可改（内置默认）· 🟢 可改（你的全局覆盖）· 🟣 可改（你的项目覆盖）
+- 🟡 系统自动加（你没写、系统补的）
+- 🔴 代码硬编码（**UI 改不了，想改只能动代码**）
 
 ### 6.1 通用骨架（**每个**步骤的 `input.prompt.md` 都长这样）
 
 ````markdown
 # TRACE · <promptKey> · <中文名>
 
+> 一句话摘要：这次 prompt 由 N 块拼成 —— 其中 **X 块你能改**（去哪改见下表），**Y 块系统自动加**，**Z 块代码硬编码改不了**。
 
+## 1. 这次 prompt 由哪几块拼成
 
-## 1. 组成总览
-| # | 片段 | 来源 | 可在 UI 改 | 字节 |
-|---|------|------|-----------|------|
-| 1 | 模板正文 content | 内置 `synopsis` | ✓ | 4,120 |
-| 2 | 作者全局指导 globalGuidance | NovelConfigEditor | ✓ | 412 |
-| 3 | 补回必需上下文 requiredContext | 系统 | ✗ | 980 |
-| Σ | — | — | — | 5,512 |
+> 每行 = 一块。"谁写的（现在生效）"回答"全局还是项目的"。
 
-## 2. 逐片段明细
-### 片段 1 · 模板正文 content
-- 来源：`global` → `~/.ai-novel-writer-dev/…/prompts/synopsis.zh-CN.json`（覆盖生效）
-- 可编辑：✓（架构链，仅标注不建议改）
-- 变量出口：`global_guidance` / `premise` / `character_dynamics` / `world_building` / `plot_structure_guide`
+| # | 这一块是什么 | 谁写的（现在生效） | 能改吗 | 去哪改 | 字节 |
+|---|-------------|------------------|--------|--------|------|
+| ① | 出厂设定（模板正文） | 内置 `synopsis` | 🔵 能 | 设置→提示词模板→情节大纲 | 4,120 |
+| ② | 你的全局写作要求 | 你的**项目**级设置 | 🟣 能 | 小说配置→全局写作要求 | 412 |
+| ③ | 系统补回的必需上下文 | 系统自动 | 🟡 否 | —（自动） | 980 |
+| ④ | 本步骤来自作者补充 | 你的**项目**级设置 | 🟣 能 | 生成情节大纲对话框→本步骤补充 | 120 |
+| Σ | | | | | 5,632 |
+
+> 一句话读法：**看"能改吗"这一列** —— 想调优就只动🔵🟢🟣；🔴/🟡 改了也没用（见 §7.1 哪些已被系统强制）。
+
+## 2. 逐块详情（每块贴原文 + 一句话说明）
+
+### ① 出厂设定（模板正文）
+- **谁写的**：内置默认；**当前生效**：`global` 覆盖（你在设置里改过 → 出厂原文被遮挡，见下方 META 的 `builtinRevision`）
+- **去哪改**：设置 → 提示词模板 → 「情节大纲」→ 补充创作指导
+- **变量出口**：`global_guidance` / `premise` / `character_dynamics` / `world_building` / `plot_structure_guide`
 ```text
 （贴 content 原文，变量位保留 {{xxx}} 形式）
-````
+```
 
-### 片段 2 · 作者全局指导 globalGuidance
-
-- 来源：`ui` → `NovelConfigEditor.tsx:510`，项目级，可编辑 ✓
-
+### ② 你的全局写作要求（globalGuidance）
+- **谁写的**：小说配置 → 全局写作要求；**作用域**：项目级
+- **去哪改**：小说配置 → 全局写作要求
 ```text
 （贴实际值）
 ```
 
-…（依此类推每个片段）
+…（依此类推每一块）
 
-## 3. 组装后 user message（最终输入）
+## 3. 组装后 user message（最终喂给模型的原文）
 
 ```text
 （build() 结果拼接后的完整 user prompt）
@@ -312,7 +325,7 @@ prompt-trace/
 ## 4. system message
 
 ```text
-（getSystemRole() + 不可变合同）
+（getSystemRole() + 不可变合同 systemSuffix）
 ```
 
 ## 5. 模型输出
@@ -322,6 +335,20 @@ prompt-trace/
 ```
 
 ````
+
+#### 6.1.1 关键设计点：三条"看家字段"
+
+1. **"谁写的（现在生效）"** —— 直接回答作者最常问的"全局的还是项目的"。取值 = `project`/`global`/`builtin`（人话翻译）+ 你的 UI 入口。
+2. **"能改吗"** —— 由系统判定（`EDITABLE_PROMPT_KEYS` + `sourceKind`），不是手写。🔴 出现即说明"这段你改 UI 无效"。
+3. **``（机器读）** —— 紧凑 JSON，给大模型扫，含 `seq`/`stepGroup`/`path`/`resolvedFrom`/`editable`/`builtinRevision`。人类不需要读它。
+
+```json
+<!-- TRACE-META
+{"v":1,"runId":"8f3a21c0","seq":1,"stepGroup":"architecture","promptKey":"synopsis",
+ "path":"A","resolvedFrom":"global","editable":true,"archChain":true,
+ "builtinRevision":"r7","overrideBuiltinRevision":"r5","blocks":5,"bytes":5632}
+TRACE-META -->
+```
 
 ### 6.2 全量步骤差异表（同一骨架，META 与提示不同）
 
@@ -350,70 +377,92 @@ prompt-trace/
 
 *`goal_config_field` 实为 `generate_novel_config_field`。
 
-### 6.3 情节大纲（`synopsis`）实例片段
+### 6.3 情节大纲（`synopsis`，路径 A）实例
 
 ```markdown
 # TRACE · synopsis · 情节大纲
 
+> 一句话摘要：这次 prompt 由 **3 块**拼成 —— 你能改 **2 块**，系统自动加 **1 块**。
 
-## 1. 组成总览
-| # | 片段 | 来源 | 可在 UI 改 | 字节 |
-|---|------|------|-----------|------|
-| 1 | 模板正文 content | 内置 `synopsis` | ✓ | 4,120 |
-| 2 | 作者全局指导 | NovelConfigEditor | ✓ | 412 |
-| 3 | 补回必需上下文 | 系统 | ✗ | 980 |
-| Σ | | | | 5,512 |
+## 1. 这次 prompt 由哪几块拼成
+
+| # | 这一块是什么 | 谁写的（现在生效） | 能改吗 | 去哪改 | 字节 |
+|---|-------------|------------------|--------|--------|------|
+| ① | 出厂设定（模板正文） | 内置 `synopsis` | 🔵 能 | 设置→提示词模板→情节大纲 | 4,120 |
+| ② | 你的全局写作要求 | 你的**项目**级设置 | 🟣 能 | 小说配置→全局写作要求 | 412 |
+| ③ | 系统补回的必需上下文 | 系统自动 | 🟡 否 | —（自动） | 980 |
+| Σ | | | | | 5,512 |
+
+> 本步走路径 A（`callLLMResult`）；架构链模板，改正文会级联下游，建议只在「补充创作指导」里增补。
 
 ## 5. 模型输出
 ```text
 【情节大纲】第1卷 ...
 - 第1章：因为主角误触古镜（X），所以被卷入（Y）……
-````
+```
+
+```json
+<!-- TRACE-META
+{"v":1,"runId":"8f3a21c0","seq":1,"stepGroup":"architecture","promptKey":"synopsis",
+ "path":"A","resolvedFrom":"global","editable":true,"archChain":true,"blocks":3,"bytes":5512}
+TRACE-META -->
+```
 
 ````
 
-### 6.4 伏笔叙事（路径 C，**无模板 key**）实例片段
+### 6.4 伏笔叙事（**无模板 key**，路径 C）实例
 
 ```markdown
 # TRACE · task:narrative-thread-plan · 伏笔叙事（规划）
 
+> 一句话摘要：这次 prompt 由 **2 块**拼成 —— **0 块你能改**（本步骤没有 UI 入口，只能动代码）。
 
+## ⚠️ 先说清楚：这一步没有"提示词模板"
 
-> ⚠️ 本步骤**无 prompt 模板 key**，task 由 `buildNarrativeThreadPlanTask()`（`shared/narrative-thread-generation-pure.ts`）代码拼装。
-> 没有"UI 覆盖来源"，也没有 `EDITABLE_PROMPT_KEYS` 条目——`editable:false`，想改只能动代码。
+它不走你熟悉的"设置→提示词模板"，task 由**代码** `buildNarrativeThreadPlanTask()`（`shared/narrative-thread-generation-pure.ts`）直接拼装。
+所以：**没有"全局/项目覆盖"，也没有"恢复默认"** —— 报告里它归为 🔴 代码硬编码。
 
-## 1. 组成总览
-| # | 片段 | 来源 | 可在 UI 改 | 字节 |
-|---|------|------|-----------|------|
-| 1 | task 主体 | 代码 `narrative-thread-generation-pure.ts` | ✗ | 1,860 |
-| 2 | 全书章节清单 | 系统派生 | ✗ | 420 |
-| Σ | | | | 2,280 |
+## 1. 这次 prompt 由哪几块拼成
+
+| # | 这一块是什么 | 谁写的（现在生效） | 能改吗 | 去哪改 | 字节 |
+|---|-------------|------------------|--------|--------|------|
+| ① | task 主体 | 代码 `narrative-thread-generation-pure.ts` | 🔴 否 | 只能改代码 | 1,860 |
+| ② | 全书章节清单 | 系统自动派生 | 🟡 否 | —（自动） | 420 |
+| Σ | | | | | 2,280 |
 
 ## 5. 模型输出
 ```json
 { "candidates": [ { "id": "T1", "plantAt": 2, "resolveAt": 18, "summary": "…" } ] }
-````
+```
+
+```json
+<!-- TRACE-META
+{"v":1,"runId":"8f3a21c0","seq":5,"stepGroup":"aux","promptKey":"task:narrative-thread-plan",
+ "path":"C","resolvedFrom":"none","editable":false,"blocks":2,"bytes":2280}
+TRACE-META -->
+```
 
 ````
 
-> 同类还有 `plot-tree-generator.ts`（路径 C）；都在索引里占一行，`promptKey` 记 `task:<label>`。
+> 同类还有 `plot-tree-generator.ts`（路径 C）；都在索引里各占一行，`promptKey` 记 `task:<label>`。
 
-### 6.5 章节蓝图（`chapter_blueprint_chunk`，路径 **B**）实例片段
+### 6.5 章节蓝图（`chapter_blueprint_chunk`，路径 **B**）实例
 
 ```markdown
 # TRACE · chapter_blueprint_chunk · 章节蓝图（分块）
 
+> 一句话摘要：这次 prompt 由 **5 块**拼成 —— 你能改 **3 块**，系统自动加 **2 块**。
 
+## 1. 这次 prompt 由哪几块拼成
 
-## 1. 组成总览
-| # | 片段 | 来源 | 可在 UI 改 | 字节 |
-|---|------|------|-----------|------|
-| 1 | 模板正文 content | 内置 `chapter_blueprint_chunk` | ✓ | 6,240 |
-| 2 | 作者全局指导 | NovelConfigEditor | ✓ | 412 |
-| 3 | 节奏指导 pacingGuidance | DirectoryConfigDialog | ✓ | 88 |
-| 4 | `novel_architecture`（上游大纲投影） | 系统派生 | ✗ | 2,310 |
-| 5 | 章节列表 chapter_list | 系统派生 | ✗ | 640 |
-| Σ | | | | 9,690 |
+| # | 这一块是什么 | 谁写的（现在生效） | 能改吗 | 去哪改 | 字节 |
+|---|-------------|------------------|--------|--------|------|
+| ① | 出厂设定（模板正文） | 内置 `chapter_blueprint_chunk` | 🔵 能 | 设置→提示词模板→章节蓝图（分块） | 6,240 |
+| ② | 你的全局写作要求 | 你的**项目**级设置 | 🟣 能 | 小说配置→全局写作要求 | 412 |
+| ③ | 本步骤来自作者补充（节奏/风格） | 你的**章纲**级设置 | 🟢 能 | 生成章节蓝图对话框→节奏/风格指导 | 88 |
+| ④ | 上游大纲投影 | 系统自动派生 | 🟡 否 | —（自动） | 2,310 |
+| ⑤ | 章节列表 | 系统自动派生 | 🟡 否 | —（自动） | 640 |
+| Σ | | | | | 9,690 |
 
 > 本步由 `directory.command.ts:451` 经 `createStructuredBatchExecutor` 直连 `session.complete`，
 > **不经 `callLLMResult`**（v1 会漏掉的就是它）。
@@ -421,75 +470,149 @@ prompt-trace/
 ## 5. 模型输出
 ```json
 { "blueprints": [ { "chapterNumber": 1, "title": "…", "keyEvents": […], "breakHook": "…" } ] }
-````
+```
 
 > ⚠️ 此处是**原始 JSON 串**，≠ 落库后的 blueprint 记录（还要经解析/校验/`blueprint_commit_operations`）。
 
+```json
+<!-- TRACE-META
+{"v":1,"runId":"8f3a21c0","seq":2,"stepGroup":"blueprint","promptKey":"chapter_blueprint_chunk",
+ "path":"structured-batch","resolvedFrom":"project","editable":true,"chunk":true,"blocks":5,"bytes":9690}
+TRACE-META -->
+```
+
 ````
 
-### 6.6 正文多轮续写（`first_chapter_draft` / `next_chapter_draft`）实例片段
+### 6.6 正文多轮续写（`first_chapter_draft` / `next_chapter_draft`）实例
 
 ```markdown
 # TRACE · first_chapter_draft · 第一章草稿
 
+> 一句话摘要：这次 prompt 由 **5 块**拼成（首轮）—— 你能改 **3 块**；★ 第 2/3 轮**重装后只剩 2 块可改**。
 
-## 1. 组成总览
-| # | 片段 | 来源 | 可在 UI 改 | 字节 |
-|---|------|------|-----------|------|
-| 1 | 模板正文 content | 内置 `first_chapter_draft` | ✓ | 5,180 |
-| 2 | 作者全局指导 | NovelConfigEditor | ✓ | 412 |
-| 3 | 写作 Skill（stage=drafting） | 冻结快照 | ✓ | 340 |
-| 4 | 章节材料块 chapterMaterials | 系统运行时拼装 | ✗ | 3,900 |
-| 5 | **续写第2/3轮**：`draftAuthorMaterialBlock()` 手工拼装 | 代码 | ✗ | 2,100 |
+## 1. 这次 prompt 由哪几块拼成
+
+| # | 这一块是什么 | 谁写的（现在生效） | 能改吗 | 去哪改 | 字节 |
+|---|-------------|------------------|--------|--------|------|
+| ① | 出厂设定（模板正文） | 内置 `first_chapter_draft` | 🔵 能 | 设置→提示词模板→第一章草稿 | 5,180 |
+| ② | 你的全局写作要求 | 你的**项目**级设置 | 🟣 能 | 小说配置→全局写作要求 | 412 |
+| ③ | 写作 Skill（drafting 阶段） | 冻结快照 | 🔵 能 | 设置→写作 Skills | 340 |
+| ④ | 章节材料块 | 系统运行时拼装 | 🟡 否 | —（自动） | 3,900 |
+| ⑤ | **续写第2/3轮**的补写块 | 代码 `draftAuthorMaterialBlock()` | 🔴 否 | 只能改代码 | 2,100 |
 
 > ★ 续写轮**不走 `BasePromptBuilder`**（`generate-draft.command.ts:1620/1808`），
-> 模板级 taskGuidance **不会**出现在后面轮次——这正是"作者补充指导只覆盖首段"的根因，
+> 模板级「补充创作指导」**不会**出现在后面轮次——这正是"作者补充指导只覆盖首段"的根因，
 > 本 trace 就是用来定位这类问题的。
 
 ## 5. 模型输出
 ### 轮次 1（finishReason=length）
 ```text
 （首段正文）
-````
+```
 
 ### 轮次 2（续写，finishReason=stop）
-
 ```text
 （续写内容）
 ```
 
+```json
+<!-- TRACE-META
+{"v":1,"runId":"8f3a21c0","seq":3,"stepGroup":"draft","promptKey":"first_chapter_draft",
+ "path":"A","resolvedFrom":"global","editable":true,"rounds":3,"blocks":5,"bytes":11932}
+TRACE-META -->
 ```
 
-**差异一目了然**：大纲/蓝图/正文/伏笔/辅助各带自己的 `stepGroup` 与 `path`；路径 C 显式暴露"无模板 key、只能改代码"；正文暴露"续写不带模板指导"。这正是按片段来源调优所需的全部信息。
+````
+
+**差异一目了然**：大纲/蓝图/正文/伏笔/辅助各带自己的 `stepGroup` 与 `path`；路径 C 显式暴露"无模板 key、只能改代码"；正文暴露"续写不带模板指导"。每块的"能改吗 / 去哪改"直接指向 UI 入口 —— 这正是按片段来源调优所需的全部信息。
 
 ---
 
-## 7. UI 开关落点
+## 7. Prompt 的「全部人工输入面」清单（作者可改的一切）
 
-- **状态宿主**：新增 `src/stores/debug-store.ts`（zustand，持久化到 localStorage），字段 `debugPromptTraceEnabled: boolean` + `debugTraceRoot?: string`（自定义路径）。仓库当前无现成 debug 标志（已核）。
-- **设置入口**：在 `src/components/settings/SettingsModal.tsx` 下加一个"开发者 / Developer"子页（或并入 `PromptSettings.tsx`），放开关 + 可选路径输入。
-- **常驻指示**：`src/components/layout/StatusBar.tsx` 加 `DEBUG: ON` 分段，点击可快速开关，并提供"打开 trace 目录"动作。
+调优的前提是**知道一共几个入口**。逐一核对代码后，作者能人工影响生成内容的输入面只有下面这些，追踪必须**全覆盖**：
+
+| 输入面（UI 入口） | 具体内容 | 归属 | 注入方式 | 代码位置 |
+|---|---|---|---|---|
+| 设置→**提示词模板** | 25 个模板的 `content` / `systemRole` / `taskGuidance` | 全局 + 项目双层 | `resolvePromptTemplate` | `prompt-catalog.ts` |
+| 设置→**写作 Skills** | 分阶段创作方法 | 全局 | `writingSkills` 按 stage 前置 | `base-command.ts:462` |
+| **小说配置** | 核心大纲(=前提)、世界观/初始设定、质量与连续性… | 项目级 | `novel_config` / `global_guidance` 变量 | `NovelConfigEditor.tsx` |
+| 小说配置→**全局写作要求** | `globalGuidance` | 项目级 | `{{global_guidance}}`（11 模板） | `NovelConfigEditor.tsx:510` |
+| 故事架构各步的**本步骤额外指导** | 前提/角色/世界观/弧光/大纲，每步一段 | 项目级 | `{{step_guidance}}` + 模板 systemSuffix | `architecture.command.ts` |
+| **生成章节蓝图** 对话框→节奏/风格指导 | 如"前30章快节奏" | 章纲级 | `{{pacing_guidance}}` | `DirectoryConfigDialog.tsx:518` |
+
+> ★ **统一说辞（已定名，采纳作者提议）**：上表最后两行（架构各步 step_guidance、章纲的 pacingGuidance）虽然**散在不同对话框**，但**语义同类——当前这一步的作者补充**。追踪报告与人读界面里**统一归为 `step-note`，显示名固定为「本步骤来自作者补充」**，用同一种说法呈现，不再让作者困惑"这两处是不是一回事"。
+
+### 7.1 已被系统结构性承载的（改这些没用，别白改）
+
+调 prompt 前先知道哪些**系统已经强制**，否则改了也不生效（详见项目笔记）：
+
+| 已由系统强制 | 出处 |
+|---|---|
+| 章末钩子必须具体 | `blueprint-semantic-contract.ts` + 校验 |
+| 伏笔三段式 埋→浮现→收 | `narrative-thread.ts` 状态机 |
+| 「某章必须发生 X」 | 备注写 `【第N章必现】` → 冻结清单 → 审稿核对 |
+| 黄金三章 / 第1章开场高能 / AI味反制 4 条 / 排版 | 模板 content + **systemSuffix（用户覆盖不到）** |
+| 文风仅选表达方式、无需逐条兑现 | 三份草稿模板 systemSuffix【文风适用边界】 |
+
+> 推论：**报告里标 🔴（代码硬编码）的片段，作者改 UI 是无效的**——这正是要一眼标红的原因。
 
 ---
 
-## 8. 可复用现有机制（省事）
+## 8. Prompt 缓存热重载（解决"改了要重启"）
+
+### 8.1 问题（已核）
+- 全局覆盖：`ensureGlobalLoaded()`（`prompt-catalog.ts:273`）`globalLoaded=true` 后**永不重读**；全代码**无 fs.watch**。
+- 项目覆盖：按 `sessionKey` 缓存（`ensureProjectLoaded()`），仅切项目时 `clearProject()` 清一次（`prompt-templates.ts:17`）。
+- **真相分两种路径**：
+  - **在 UI 保存** → `commit()`（`:176`）**当场更新内存缓存**，其实**即刻生效、不用重启**。
+  - **外部改磁盘 json**（IDE/记事本）或**调优反复试版本** → 要重启。这才是真痛点。
+
+### 8.2 解法：给 `PromptCatalog` 加 reload + UI 刷新入口
+1. **`reloadGlobal()`**：置 `globalLoaded=false`，重新 `ensureGlobalLoaded()`，重建 `globalPrompts`。
+2. **`reloadProject(session)`**：复用已有 `clearProject()` 清缓存，再 `ensureProjectLoaded()`。
+3. **UI 刷新按钮**：设置页顶部 + `StatusBar` 各放一个「重新加载提示词」；**保存后自动 reload**（双保险）。
+4. **可选增强**：debug 开启时对 `VELA_HOME/prompts/` 与 `<项目>/.ai-novel/prompts/` 做**轻量 mtime 轮询**，变了自动 reload——彻底免手动。
+
+### 8.3 风险控制
+- reload **只换内存快照**，不改生成中的会话。生成中应**禁点或排队**到生成结束，避免一次生成读到半新半旧的片段。
+- reload 与 §4 的片段 hook 天然协同：reload 后再生成，trace 的 `resolvedFrom` 会立刻反映新版本——**调优闭环 = 改 → 刷新 → 跑一步 → 看新 trace**。
+
+### 8.4 实施状态（已落 P0，commit 5c77f8f）
+- ✅ `PromptCatalog.reloadGlobal()` / `reloadProject()` 已实现；`prompt-templates.ts` 暴露 `reloadGlobalCustomPrompts()` / `reloadProjectCustomPrompts(session)`。
+- ✅ 三处入口：`PromptSettings.tsx` 顶部按钮、新增「开发者」设置分类、`StatusBar.tsx` 左侧「重载提示词」分段。
+- ⬜ mtime 轮询自动重载（可选增强）未做。
+
+> ★ **命名留档**：作者明确"也许以后可以做个全套装配的工具，或者 agent 整体调优配置，那刷新就很管用了"——本 §8 的 reload 是那个未来工具的**地基**：任何"改配置→立即重跑"的闭环都依赖它。
+
+---
+
+## 9. UI 开关落点
+
+- **状态宿主（已实现）**：新增 `src/stores/debug-store.ts`（zustand，持久化到 localStorage，键 `ai-novel-writer.debug`），字段 `promptTraceEnabled: boolean` + `traceRoot: string | null`（自定义路径）。工厂 `createDebugStore(storage)` 可注入内存存储供测试。仓库此前无现成 debug 标志（已核）。
+- **设置入口（已实现）**：`SettingsModal.tsx` 新增「开发者 / Developer」分类（`SettingsSection` 加 `'developer'`），内含 `DeveloperSettings.tsx`：追踪开关 + 可选路径输入 + 热重载按钮。
+- **常驻指示（部分实现）**：`StatusBar.tsx` 左侧加「重载提示词」分段（已实现）；`DEBUG: ON` 分段 + 「打开 trace 目录」动作**待 P2/P3**（落盘目录要先存在）。
+
+---
+
+## 10. 可复用现有机制（省事）
 
 - `GenerationTask.promptBudget.sections`（`src/services/generation/generation-harness.ts`）已做字节级区段标注（含 `writing-skill`）。记录器可直接复用它给 `` 的 `sections` 字段供数，不必重新解析字符串。
 - 落盘复用既有 `fs:write-file` IPC（`src/shared/ipc-channels.ts:476`）：`ipc.invokeWithProjectSession(session, 'fs:write-file', path, content, projectPath)`。renderer 不能直写任意路径，统一走主进程 handler。
 
 ---
 
-## 9. 实施阶段（增量、可随时停）
+## 11. 实施阶段（增量、可随时停）
 
-- **P0 开关骨架**：`debug-store.ts` + 设置开关 + StatusBar 指示。暂不抓数据。
+- ✅ **P0 开关骨架（已完成，commit 5c77f8f）**：`debug-store.ts`（zustand + localStorage）+ 新增「开发者」设置分类（追踪开关 + 自定义落盘目录）+ 提示词热重载（§8，三处入口）。暂不抓数据。
 - **P1 片段层验证**：hook `BasePromptBuilder.build()` 上报，先 `console.log` 跑一轮，确认每个片段的来源/`editable`/`resolvedFrom` 标对。
 - **P2 IO 层接线**：hook `GenerationSession.complete` 抓最终 messages + output（**三条路径全覆盖**）；按 `executeWithGenerationRuntime` 作用域把两层配对，经 `fs:write-file` 写外部目录。
-- **P3 格式化 + 索引**：按 §6 生成 `input.prompt.md`（人读+模型读）+ `output.txt`；生成 `<runId>/index.md` 与跨 run `INDEX.md` / `index.json`；复用 `promptBudget.sections` 补 `sections`；StatusBar"打开 trace 目录"。
+- **P3 格式化 + 索引**：按 §6 生成 `input.prompt.md`（人读+模型读）+ `output.txt`；生成 `<runId>/index.md` 与跨 run `INDEX.md` / `index.json`；复用 `promptBudget.sections` 补 `sections`；StatusBar「打开 trace 目录」。
 - **P4 边界**：自定义绝对路径 + 沙箱白名单核查；agent 管线（可选，超出"正文链路"范围）。
 
 ---
 
-## 10. 验收标准
+## 12. 验收标准
 
 - 开关 ON → 跑一轮（架构 + 蓝图 + 正文 + 伏笔）→ 外部目录出现 `<runId>/<stepGroup>/<seq>-<key>/{fragment.json, input.prompt.md, output.txt}`，且 `INDEX.md` / `index.json` 同步。
 - 打开 `input.prompt.md`：能区分"这段是内置 systemSuffix、代码硬编码、UI 改不了" vs "这段是 NovelConfigEditor 的 globalGuidance、可在 UI 改"，且 `` 可供大模型直接解析。
@@ -499,7 +622,7 @@ prompt-trace/
 
 ---
 
-## 11. 边界与风险
+## 13. 边界与风险
 
 - **沙箱路径**：自定义绝对外部路径需先确认主进程 `fs:write-file` handler 不拦截；默认放项目数据内最稳，必要时再加专用 `debug:write-trace` IPC。
 - **隐私/密钥**：prompt 含用户小说内容（非密钥），无 API Key；`receipt` 只摘 usage 摘要，不写 `errorCode`/内部栈。已去 `<think>`。
@@ -512,7 +635,7 @@ prompt-trace/
 
 ---
 
-## 12. 关键文件速查
+## 14. 关键文件速查
 
 - **统一 IO 点**：`src/services/generation/generation-harness.ts:575` `GenerationSession.complete`（**三条**路径共同下游）
 - 路径 A 汇聚：`src/services/workflows/commands/base-command.ts:437 callLLMResult`（`:265/:520/:529/:283/:339` 全汇于此）
@@ -525,6 +648,8 @@ prompt-trace/
 - 可编辑 UI 字段：`PromptSettings.tsx` / `NovelConfigEditor.tsx:510` (globalGuidance) / `DirectoryConfigDialog.tsx:89,518` (pacingGuidance)
 - 续写旁路（不带模板指导）：`generate-draft.command.ts:1620/1808`（`draftAuthorMaterialBlock()`）
 - 区段归因复用：`generation-harness.ts` 的 `promptBudget.sections`
+- **热重载（已实现，§8）**：`prompt-catalog.ts` 的 `reloadGlobal()` / `reloadProject()`；门面 `prompt-templates.ts` 的 `reloadGlobalCustomPrompts()` / `reloadProjectCustomPrompts(session)`；三处入口 `PromptSettings.tsx` / `DeveloperSettings.tsx` / `StatusBar.tsx`
+- **追踪开关（已实现，§9）**：`src/stores/debug-store.ts`（`promptTraceEnabled` / `traceRoot`）、`src/components/settings/DeveloperSettings.tsx`
 - 落盘通道：`src/shared/ipc-channels.ts:476` (`fs:write-file`)
 - 设置/状态栏：`SettingsModal.tsx` / `StatusBar.tsx` / `src/stores/layout-store.ts`
 ```
