@@ -254,6 +254,80 @@ describe('PromptCatalog lifecycle', () => {
       source: 'builtin',
     }])
   })
+
+  it('reloadGlobal re-reads disk and drops the latched global snapshot', async () => {
+    let diskContent = 'global v1'
+    const adapter = persistence({
+      loadGlobal: vi.fn(async () => ({
+        templates: [{ ...builtin, content: diskContent }],
+        diagnostics: [],
+      })),
+    })
+    const catalog = new PromptCatalog([builtin], adapter, () => null)
+
+    await expect(catalog.resolve(builtin.key)).resolves.toMatchObject({
+      template: { content: 'global v1' },
+      source: 'global',
+    })
+    expect(adapter.loadGlobal).toHaveBeenCalledTimes(1)
+
+    // 外部改了磁盘但缓存已锁定：普通 resolve 读到的仍是旧值。
+    diskContent = 'global v2'
+    await expect(catalog.resolve(builtin.key)).resolves.toMatchObject({ template: { content: 'global v1' } })
+    expect(adapter.loadGlobal).toHaveBeenCalledTimes(1)
+
+    // reloadGlobal 丢弃快照并重读，最新内容随即生效。
+    await expect(catalog.reloadGlobal()).resolves.toBe(1)
+    expect(adapter.loadGlobal).toHaveBeenCalledTimes(2)
+    await expect(catalog.resolve(builtin.key)).resolves.toMatchObject({
+      template: { content: 'global v2' },
+      source: 'global',
+    })
+  })
+
+  it('reloadGlobal reports the number of active global overrides', async () => {
+    const adapter = persistence({
+      loadGlobal: vi.fn(async () => ({
+        templates: [
+          { ...builtin, content: 'override one' },
+          { ...builtin, key: 'next_chapter_draft', content: 'override two' },
+        ],
+        diagnostics: [],
+      })),
+    })
+    const catalog = new PromptCatalog([
+      builtin,
+      { ...builtin, key: 'next_chapter_draft', content: 'next builtin' },
+    ], adapter, () => null)
+
+    await expect(catalog.reloadGlobal()).resolves.toBe(2)
+  })
+
+  it('reloadProject re-reads the project override for the current session', async () => {
+    let diskContent = 'project v1'
+    const adapter = persistence({
+      loadProject: vi.fn(async () => ({
+        templates: [{ ...builtin, content: diskContent }],
+        diagnostics: [],
+      })),
+    })
+    const catalog = new PromptCatalog([builtin], adapter, () => session)
+
+    await expect(catalog.resolve(builtin.key, session)).resolves.toMatchObject({ template: { content: 'project v1' } })
+    expect(adapter.loadProject).toHaveBeenCalledTimes(1)
+
+    diskContent = 'project v2'
+    await expect(catalog.reloadProject(session)).resolves.toBe(true)
+    expect(adapter.loadProject).toHaveBeenCalledTimes(2)
+    await expect(catalog.resolve(builtin.key, session)).resolves.toMatchObject({ template: { content: 'project v2' } })
+  })
+
+  it('reloadProject refuses a stale session instead of reusing another lease', async () => {
+    const adapter = persistence()
+    const catalog = new PromptCatalog([builtin], adapter, () => null)
+
+    await expect(catalog.reloadProject(session)).resolves.toBe(false)
+  })
 })
 
 

@@ -2,10 +2,11 @@ import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import {
   X, Plus, Trash2, Check, Save, Globe, Cpu, Database,
   Type, Settings2, Zap, Eye, EyeOff, ChevronDown, MessageSquare,
-  Info, Palette, ExternalLink, RefreshCw, RotateCcw, BookOpen, HardDriveUpload,
+  Info, Palette, ExternalLink, RefreshCw, RotateCcw, BookOpen, HardDriveUpload, Bug,
 } from 'lucide-react'
 import PromptSettings from './PromptSettings'
 import SkillSettings from './SkillSettings'
+import DeveloperSettings from './DeveloperSettings'
 import AppearanceSettings from './AppearanceSettings'
 import { useLLMStore } from '../../stores/llm-store'
 import { useThemeStore, FONT_OPTIONS, type FontId } from '../../stores/theme-store'
@@ -62,6 +63,7 @@ export const SETTINGS_SECTIONS: SectionItem[] = [
   { id: 'prompts', label: '提示词模板', labelEn: 'Prompt templates', icon: <MessageSquare size={16} />, description: '自定义 AI 创作各环节使用的提示词模板', descriptionEn: 'Customize guidance for each AI writing stage' },
   { id: 'skills', label: '写作 Skills', labelEn: 'Writing skills', icon: <BookOpen size={16} />, description: '检查、安装并绑定提示词型写作 Skill', descriptionEn: 'Inspect, install, and bind prompt-only writing skills' },
   { id: 'backup', label: '项目备份', labelEn: 'Project backup', icon: <HardDriveUpload size={16} />, description: '导出本地存档，或显式绑定 WebDAV 后创建云备份', descriptionEn: 'Export local archives or explicitly bind WebDAV for cloud backups' },
+  { id: 'developer', label: '开发者', labelEn: 'Developer', icon: <Bug size={16} />, description: 'Prompt 追踪与热重载等调试工具，不影响正常创作', descriptionEn: 'Prompt tracing and hot reload; debugging tools that do not affect normal writing' },
   { id: 'about', label: '关于', labelEn: 'About', icon: <Info size={16} />, description: '版本、定位与本地部署说明', descriptionEn: 'Version, positioning, and local deployment' },
 ]
 
@@ -167,6 +169,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             {section === 'prompts' && <PromptSettings />}
             {section === 'skills' && <SkillSettings />}
             {section === 'backup' && <ProjectBackupPanel />}
+            {section === 'developer' && <DeveloperSettings />}
             {section === 'about' && <AboutSection />}
           </div>
         </main>

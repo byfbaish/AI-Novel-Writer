@@ -1,11 +1,16 @@
 import { useState, useEffect } from 'react'
-import { Wifi, BookOpen, CheckCircle2, FolderOpen } from 'lucide-react'
+import { Wifi, BookOpen, CheckCircle2, FolderOpen, RefreshCw } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
 import { useLLMStore } from '../../stores/llm-store'
 import { useLayoutStore } from '../../stores/layout-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { APP_BRAND } from '../../shared/brand'
 import { useLocaleStore } from '../../stores/locale-store'
+import {
+  reloadGlobalCustomPrompts,
+  reloadProjectCustomPrompts,
+} from '../../services/prompt-templates'
+import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
 
 /** 底部状态栏 — JetBrains 风格：22px、深灰底、多分段、hover 可点击感 */
 export default function StatusBar() {
@@ -17,6 +22,30 @@ export default function StatusBar() {
     (m) => m.id === defaultModelId && m.purposes?.some((p) => p !== 'embedding')
   )
   const text = useLocaleStore(s => s.text)
+  const [reloadingPrompts, setReloadingPrompts] = useState(false)
+
+  /**
+   * 状态栏快捷重载：外部改了提示词文件后，免重启加载最新内容。
+   * 与设置面板里的「重新加载提示词」是同一动作，这里给调优时的高频路径多一个入口。
+   */
+  const reloadPrompts = async () => {
+    if (reloadingPrompts) return
+    setReloadingPrompts(true)
+    try {
+      await reloadGlobalCustomPrompts()
+      const project = useProjectStore.getState().currentProject
+      const session = project?.id && project.path && project.sessionLease
+        ? captureProjectSession({ id: project.id, path: project.path, sessionLease: project.sessionLease })
+        : null
+      if (session && isProjectSessionCurrent(session)) {
+        await reloadProjectCustomPrompts(session)
+      }
+    } catch {
+      // 静默失败：状态栏只做快捷入口，错误细节由设置面板承载。
+    } finally {
+      setReloadingPrompts(false)
+    }
+  }
 
   return (
     <div
@@ -45,6 +74,14 @@ export default function StatusBar() {
           </>
         )}
 
+        <StatusBarDivider />
+        <StatusBarSegment
+          title={text('重新加载提示词（外部改动免重启生效）', 'Reload prompts (apply external edits without restarting)')}
+          onClick={() => void reloadPrompts()}
+        >
+          <RefreshCw size={11} className={reloadingPrompts ? 'animate-spin' : undefined} style={{ opacity: 0.8 }} />
+          <span className="opacity-80">{text('重载提示词', 'Reload prompts')}</span>
+        </StatusBarSegment>
       </div>
 
       {/* 右侧：AI 胶囊 + 模型名 */}

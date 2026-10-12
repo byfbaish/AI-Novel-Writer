@@ -13,7 +13,7 @@ export type RightView = 'agent' | 'ai-output'
 export type LeftRailItem = SidebarView | 'blueprint' | 'world' | 'plot-tree' | BottomTab
 
 /** 设置弹窗分类 */
-export type SettingsSection = 'llm' | 'embedding' | 'proxy' | 'editor' | 'prompts' | 'skills' | 'backup' | 'about'
+export type SettingsSection = 'llm' | 'embedding' | 'proxy' | 'editor' | 'prompts' | 'skills' | 'backup' | 'developer' | 'about'
 
 /** 章节创建对话框的预填参数 */
 export type ChapterCreationPrefill = Record<string, unknown> | null

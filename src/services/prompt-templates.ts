@@ -17,6 +17,25 @@ export function clearProjectCustomPrompts(): void {
   promptCatalog.clearProject()
 }
 
+/**
+ * 重新从磁盘读取全局覆盖，丢弃内存快照。
+ *
+ * 用于「改了要重启」的调优痛点：`ensureGlobalLoaded` 首次读入后
+ * 就锁死不再重读，外部（IDE / 记事本 / 脚本换版本）改动的
+ * `~/.vela/prompts/` 不会自动生效。UI 里保存本就走 `commit()` 即时生效；
+ * 这里补的是外部文件改动的重载通道。返回当前生效的全局覆盖条数。
+ */
+export async function reloadGlobalCustomPrompts(): Promise<number> {
+  return promptCatalog.reloadGlobal()
+}
+
+/** 重新从磁盘读取当前项目的提示词覆盖（与 reloadGlobalCustomPrompts 对应）。 */
+export async function reloadProjectCustomPrompts(
+  projectSession: ProjectSessionContext,
+): Promise<boolean> {
+  return promptCatalog.reloadProject(projectSession)
+}
+
 /** 加载全局自定义 Prompt 覆盖（从 ~/.vela/prompts/ 目录） */
 export async function loadCustomPrompts(writingLanguage: WritingLanguage = 'zh-CN'): Promise<void> {
   await promptCatalog.list(undefined, writingLanguage)
