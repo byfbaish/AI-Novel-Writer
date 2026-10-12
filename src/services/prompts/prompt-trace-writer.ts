@@ -54,7 +54,8 @@ function scopeStartedAt(scope: TraceScope): number {
   return scope.startedAt ?? 0
 }
 
-/** 把项目根与相对段拼成平台路径。不引入 node:path（渲染层无此依赖）。 */function joinProjectPath(root: string, ...segments: string[]): string {
+/** 把项目根与相对段拼成平台路径。不引入 node:path（渲染层无此依赖）。 */
+function joinProjectPath(root: string, ...segments: string[]): string {
   const separator = root.includes('\\') ? '\\' : '/'
   const trimmed = root.replace(/[\\/]+$/, '')
   return [trimmed, ...segments].join(separator)
@@ -178,6 +179,32 @@ const pendingIo = new Map<string, TraceIoRecord>()
 let lastFlushWarning = ''
 
 /**
+ * 已落盘过的「作用域标识 → 内容水位」。
+ *
+ * 一次命令里落盘可能被触发两次：① 片段捕获后的 30ms 短定时器（拿到片段、可能还没 IO）；
+ * ② 命令退出作用域前的确定时序收尾（片段 + IO 都齐）。若不判重，同一份内容会写出两份文件。
+ * 水位 = `快照数 + IO 是否就绪`：内容变多则覆盖写一次（IO 后到是有价值的增量），
+ * 完全没变则跳过，避免重复文件。
+ */
+const flushedWatermark = new Map<string, string>()
+
+function watermarkOf(runKey: string, snapshotCount: number): string {
+  return `${snapshotCount}|${pendingIo.has(runKey) ? 'io' : 'noio'}`
+}
+
+/** 只有同一作用域内"内容确实变多"时才允许再次写出。 */
+function shouldWrite(key: string, watermark: string): boolean {
+  const previous = flushedWatermark.get(key)
+  if (previous === undefined) return true
+  if (previous === watermark) return false
+  // 内容变多（如从"仅片段"到"片段+IO"）值得覆盖写一次；变少不可能，按新值写。
+  const [prevCount, prevIo] = previous.split('|')
+  const [nextCount, nextIo] = watermark.split('|')
+  if (Number(nextCount) > Number(prevCount)) return true
+  return prevIo === 'noio' && nextIo === 'io'
+}
+
+/**
  * 主进程-渲染层归并落盘。
  *
  * 之所以要"攒一下再写"：一次命令可能触发多次 `build()`（分批/多步），
@@ -192,7 +219,10 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
   }
   if (!session) {
     // 渲染层拿不到项目会话 = 工作流未走项目作用域（如纯本地步骤），无从确定项目根。
-    reportOutcome(scope, { status: 'skipped', reason: '当前作用域没有项目会话，无法确定项目根目录' })
+    reportOutcome(scope, {
+      status: 'skipped',
+      reason: `当前作用域没有项目会话，无法确定项目根目录（operation=${scope.operation ?? '未知'}，runHandle=${scope.runHandle ?? '无'}）`,
+    })
     return
   }
 
@@ -209,6 +239,11 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
     reportOutcome(scope, { status: 'skipped', reason: '本次任务没有捕获到提示词片段（可能未走提示词装配）' })
     return
   }
+
+  // 同一作用域可能被触发两次（短定时器 + 作用域收尾）。内容没变就不重复写文件，
+  // 也不要让第二次的 skipped 覆盖掉第一次的 ok 回显。
+  const watermark = watermarkOf(runKey, fresh.length)
+  if (!shouldWrite(runKey, watermark)) return
 
   const io = pendingIo.get(runKey)
   const writtenAt = Date.now()
@@ -233,18 +268,24 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
   const relativeBase = `${promptTraceRelativeDir()}/${fileName}`
 
   // 目录创建失败要分辨「已存在」与「真失败」：前者照常写文件，后者必须暴露。
+  // 注意：`fs:mkdir` 失败时主进程**返回 `{success:false}` 而非抛错**，必须显式判 success。
   let mkdirFailure: string | null = null
   try {
-    await ipc.invokeWithProjectSession(session, 'fs:mkdir', dir, session.projectPath)
+    const result = await ipc.invokeWithProjectSession(session, 'fs:mkdir', dir, session.projectPath)
+    if (!result.success) mkdirFailure = result.error ?? '主进程未说明原因'
   } catch (error) {
     mkdirFailure = error instanceof Error ? error.message : String(error)
   }
 
   try {
     const markdown = buildMarkdown(payload)
-    await ipc.invokeWithProjectSession(session, 'fs:write-file', `${dir}/${fileName}.md`, markdown, session.projectPath)
-    await ipc.invokeWithProjectSession(session, 'fs:write-file', `${dir}/${fileName}.json`, JSON.stringify(payload, null, 2), session.projectPath)
+    // 同上：`fs:write-file` 失败也是返回 `{success:false}`，不判 success 会把失败当成功。
+    const mdResult = await ipc.invokeWithProjectSession(session, 'fs:write-file', `${dir}/${fileName}.md`, markdown, session.projectPath)
+    if (!mdResult.success) throw new Error(mdResult.error ?? '写入 markdown 失败（主进程未说明原因）')
+    const jsonResult = await ipc.invokeWithProjectSession(session, 'fs:write-file', `${dir}/${fileName}.json`, JSON.stringify(payload, null, 2), session.projectPath)
+    if (!jsonResult.success) throw new Error(jsonResult.error ?? '写入 json 失败（主进程未说明原因）')
     lastFlushWarning = ''
+    flushedWatermark.set(runKey, watermark)
     reportOutcome(scope, { status: 'ok', files: [`${relativeBase}.md`, `${relativeBase}.json`] })
   } catch (error) {
     // 落盘失败不得影响生成；把原因同时交给面板与（首次出现的）控制台。
@@ -272,17 +313,68 @@ const FLUSH_DELAY_MS = 30
 let flushTimer: ReturnType<typeof setTimeout> | null = null
 let pendingScope: TraceScope | null = null
 
+/**
+ * 服务端（主进程）上次看到的**运行期**追踪失败原因，用于在面板上给出可操作提示。
+ * 与 `lastOutcome.reason` 分开：前者是"还没到落盘就失败"，后者是"落盘本身失败"。
+ */
+let lastScheduleSkip: string | null = null
+
+/** 最近一次"未进入落盘"的原因（作用域缺失/无会话等），落盘成功后清空。 */
+export function lastTraceScheduleSkip(): string | null {
+  return lastScheduleSkip
+}
+
 export function scheduleTraceFlush(): void {
   const scope = currentTraceScope()
-  if (!scope) return
+  if (!scope) {
+    // 关键诊断：装配发生在生成作用域之外时，落盘无从定位项目根。
+    // 过去这里静默 return，面板只会停在"已捕获 N 块，等待落盘"——无法区分
+    // 「作用域外装配」与「定时器没跑」。现在把它记成一条明确的 skipped。
+    lastScheduleSkip = '提示词装配发生在生成作用域之外（无 runHandle/项目会话），无法定位落盘目录'
+    reportSynthetic('skipped', lastScheduleSkip)
+    return
+  }
+  if (!scope.projectSession) {
+    lastScheduleSkip = `当前生成作用域缺少项目会话（operation=${scope.operation ?? '未知'}），无法定位落盘目录`
+    reportSynthetic('skipped', lastScheduleSkip, scope)
+    return
+  }
+  lastScheduleSkip = null
   pendingScope = scope
   if (flushTimer !== null) clearTimeout(flushTimer)
   flushTimer = setTimeout(() => {
     flushTimer = null
     const target = pendingScope
     pendingScope = null
-    if (target) void flushTraceFile(target)
+    if (!target) return
+    // 定时器回调里必须兜底：`flushTraceFile` 内部已 try/catch，
+    // 但 `reportOutcome` 之外的任何意外（如 store 读取抛错）都不能静默成"永远等待落盘"。
+    void flushTraceFile(target).catch((error) => {
+      reportOutcome(target, {
+        status: 'failed',
+        reason: `落盘任务异常：${error instanceof Error ? error.message : String(error)}`,
+      })
+    })
   }, FLUSH_DELAY_MS)
+}
+
+/** 在没有作用域/会话时也能产生一条可见结果（保持面板不再停在"等待落盘"）。 */
+function reportSynthetic(
+  status: TraceFlushOutcome['status'],
+  reason: string,
+  scope?: TraceScope,
+): void {
+  const full: TraceFlushOutcome = {
+    status,
+    at: Date.now(),
+    reason,
+    ...(scope?.operation ? { operation: scope.operation } : {}),
+    ...(scope?.runHandle ? { runHandle: scope.runHandle } : {}),
+  }
+  lastOutcome = full
+  for (const listener of outcomeListeners) {
+    try { listener(full) } catch { /* 订阅方出错不影响。 */ }
+  }
 }
 
 /** 记录 IO 面，等待与片段快照一起落盘。 */
@@ -296,10 +388,12 @@ export function recordTraceIo(record: TraceIoRecord): void {
 /** 仅测试用：清空待落盘的 IO 缓存与计时器。 */
 export function resetTraceIoQueue(): void {
   pendingIo.clear()
+  flushedWatermark.clear()
   pendingScope = null
   if (flushTimer !== null) { clearTimeout(flushTimer); flushTimer = null }
   lastFlushWarning = ''
   lastOutcome = null
+  lastScheduleSkip = null
   capturedSinceEnable = 0
 }
 

@@ -613,6 +613,11 @@ TRACE-META -->
   - `install-prompt-trace.ts`：注入 `runHandle`（读 trace-scope）、`setSnapshotSink`（落盘调度）、`setHarnessIoObserver`（IO 抓取）。
   - **范围决策**：本期只覆盖路径 A（走 `BasePromptBuilder` + `callLLMResult` 的主链路）。路径 B/C 见 P3/P4。
   - **落点决策**：固定写项目根内 `debug/prompt-trace`——`fs:write-file` 强制目标在项目根内（既有沙箱边界），写到项目外需新增专用受控 IPC，收益不抵新增攻击面。`debug-store.traceRoot` 保留为预留字段。
+- ✅ **P2.1 落盘可靠性补丁（已完成）**：首轮实测出现「面板停在『已捕获 1 块，等待落盘』、磁盘无文件」。三处根因：
+  1. **主进程写盘失败不抛错而是返回 `{success:false}`** —— `fs:write-file` / `fs:mkdir` 的 handler 用 `projectFilesystemFailure()` **return** 失败对象。渲染层原实现只 `await` 不判 `success`，会把「目标越界 / 租约失效」静默当成写成功。→ 现在显式判 `success`，失败抛错进入 `failed` 回显。
+  2. **落盘只靠 30ms 短定时器，缺确定时序收尾** —— 定时器可能在作用域状态变化时错过。→ `trace-scope.ts` 新增零依赖的 `setTraceScopeTeardownHook` / `runTraceScopeTeardown`，由 `install-prompt-trace.ts` 注入 `flushTraceNow`；`executeWithGenerationRuntime` 的 `finally` 在 `disposeTraceScope()` **之前** await 一次收尾。用注入而非直接 import，避免把渲染层依赖（ipc-client / debug-store）拖进工作流分层（100+ 工作流测试跑在无 window 的 Node 环境）。
+  3. **无作用域时静默 return，面板永远停在"等待落盘"** —— 旧 `scheduleTraceFlush` 首行 `if (!scope) return`，不产出任何 outcome。→ 现在所有早退分支都产出 `skipped` + 可读原因（`reportSynthetic`），定时器回调也加 `.catch()` 兜底。
+  - **顺带修重复落盘**：同一作用域会被触发两次（短定时器 + 收尾），引入 `flushedWatermark` 判重——内容未变则跳过，IO 后到（`noio → io`）才覆盖写一次。
 - **P3 结构化路径（路径 B/C）**：路径 B（`structured-batch-executor`，蓝图等）与路径 C（`plot-tree-generator`/`narrative-thread-candidate-generator` 等直连 `session.complete`）。前者绕过提示词装配，能抓到的信息有限；后者无模板 key，`promptKey` 记 `task:*`。
 - **P4 收尾**：`INDEX.md`/`index.json` 跨 run 索引；StatusBar「打开 trace 目录」；自定义绝对路径 + 沙箱白名单核查。
 
@@ -625,6 +630,8 @@ TRACE-META -->
 - `.md` 能区分「这段是内置 systemSuffix、代码硬编码、UI 改不了」vs「这段来自项目/全局覆盖」，并附「实际发出的请求」与「模型输出」两节。
 - 追踪 OFF 时零开销（`recordFragments` 首行短路）；落盘失败只 warn，不影响生成结果。
 - 无作用域 / 无项目会话 / 无快照时不写文件（不产生空文件噪音）。
+- **面板不得停在"等待落盘"**：任何一次 `build()` 捕获后（无论走哪条分支），状态面板都必须给出终态——`已写出 N 份` / `本次未写出文件 + 原因` / `落盘失败 + 原因`。只有"落盘正在进行中"才允许短暂显示等待态。
+- **同一轮生成只产生一份文件**：短定时器与作用域收尾命中同一作用域时不重复写；IO 后到时覆盖写一次以带上输出面。
 
 **P3 待达成（路径 B/C）**：
 - 章节蓝图被捕获（路径 B）。
@@ -648,14 +655,19 @@ TRACE-META -->
 
 ## 14. 关键文件速查
 
-**追踪自身（P0~P2）**
+**追踪自身（P0~P2.1）**
 - 追踪开关与状态：`src/stores/debug-store.ts`（`promptTraceEnabled` / `traceRoot` 预留）、`src/components/settings/DeveloperSettings.tsx`
 - 片段归因：`src/services/prompts/prompt-trace.ts`（`deriveFragments()` 纯函数 + `recordFragments()` 短路捕获 + `setSnapshotSink`）
-- 作用域广播：`src/services/prompts/trace-scope.ts`（`pushTraceScope` / `currentTraceScope`）
-- 落盘：`src/services/prompts/prompt-trace-writer.ts`（`recordTraceIo` / `scheduleTraceFlush` / `flushTraceNow`），落到 `<项目根>/debug/prompt-trace/`
-- 装配：`src/services/prompts/install-prompt-trace.ts`（`main.tsx` 启动调用一次）
+- 作用域广播：`src/services/prompts/trace-scope.ts`（`pushTraceScope` / `currentTraceScope` / `setTraceScopeTeardownHook` / `runTraceScopeTeardown`）——**零依赖，可被工作流核心安全引用**
+- 落盘：`src/services/prompts/prompt-trace-writer.ts`（`recordTraceIo` / `scheduleTraceFlush` / `flushTraceNow` / `TraceFlushOutcome` 订阅），落到 `<项目根>/debug/prompt-trace/`
+- 状态回显 UI：`src/components/settings/PromptTraceStatus.tsx`（四态：等待/已写出/未写出/失败）
+- 装配：`src/services/prompts/install-prompt-trace.ts`（`main.tsx` 启动调用一次；注入 sink + IO 观察者 + 收尾钩子）
 - IO 抓取点：`src/services/generation/generation-harness.ts` `setHarnessIoObserver` + `complete()` 成功路径
-- 作用域注入点：`src/services/workflows/commands/base-command.ts` `executeWithGenerationRuntime`
+- 作用域注入点：`src/services/workflows/commands/base-command.ts` `executeWithGenerationRuntime`（push 作用域 → 操作体 → **收尾落盘** → pop）
+
+**⚠️ 落盘失败的两个必知事实（踩过坑）**
+- `fs:write-file` / `fs:mkdir` 失败时**返回 `{success:false, error}`，不抛错**（见 `electron/controllers/fs-controller.ts:239/285`）。任何 `await` 后都必须判 `success`。
+- 渲染层改 `src/` 非组件模块**不会**通过 Vite HMR 传播；调试追踪链路必须先**重启 `pnpm dev`**（`dist/` 是 `pnpm build` 产物，dev 下渲染层走 Vite 内存服务，时间戳会误导判断）。
 
 **被观测的生成链路**
 - 统一 IO 点：`src/services/generation/generation-harness.ts:575` `GenerationSession.complete`（**三条**路径共同下游）

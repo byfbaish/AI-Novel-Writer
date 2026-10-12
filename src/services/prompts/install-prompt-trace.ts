@@ -1,6 +1,6 @@
 import { configurePromptTrace, isPromptTraceEnabled, setSnapshotSink } from './prompt-trace'
-import { currentTraceScope } from './trace-scope'
-import { noteTraceCapture, recordTraceIo, scheduleTraceFlush } from './prompt-trace-writer'
+import { currentTraceScope, setTraceScopeTeardownHook } from './trace-scope'
+import { noteTraceCapture, recordTraceIo, scheduleTraceFlush, flushTraceNow } from './prompt-trace-writer'
 import { setHarnessIoObserver } from '../generation/generation-harness'
 import { useDebugStore } from '../../stores/debug-store'
 import { promptCatalog } from '../prompt-templates'
@@ -34,6 +34,9 @@ export function installPromptTraceFromDebugStore(): void {
     noteTraceCapture()
     scheduleTraceFlush()
   })
+  // 命令退出作用域前的**确定时序**落盘点：不依赖 30ms 定时器是否被调度到，
+  // 只要走过 `executeWithGenerationRuntime` 就一定有一次落盘尝试（含 skipped 回显）。
+  setTraceScopeTeardownHook(() => flushTraceNow())
   // 抓取真实发出的 messages 与模型输出，与片段快照按 runHandle 归并。
   setHarnessIoObserver((observation) => {
     if (!isPromptTraceEnabled()) return
