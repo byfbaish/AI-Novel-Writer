@@ -636,6 +636,11 @@ TRACE-META -->
     - **文件名改为按作用域稳定**（`scope.startedAt` 而非写入时刻）。原来每次增量写盘都会**新增**一份半成品；现在一轮生成只对应一份文件，增量覆盖写。
     - **水位判定改用内容指纹**（FNV-1a）。原来只比「快照数 + 有无 IO」，而一轮的两跳请求（短纲 → 正文）长度可能恰好相同，会被判成"没变"而**丢掉后一跳的请求面**。
   - **system message 的捕获**：`PromptTraceSnapshot` 新增 `systemMessage`，由 `composePromptSystemRole(template, lang)` 得到（= `systemRole` + 代码追加的「不可变系统合同」）。合同段不属于任何可编辑片段，但真实出现在请求里，评估时必须能看到。重建路径下把它作为 `system` 节渲染。
+- ✅ **P2.4 一轮多次调用全量保留（已完成）**：作者实测正文一轮**发了三次请求**（日志：短纲 → 初始生成 → 自动续写第 1 段），而落盘文件的「模型输出」**只有最后一次**。根因是 `pendingIo` 用 `Map<runKey, TraceIoRecord>` **单值存**，后一次直接覆盖前一次；且 `flushTraceFile` 的 `finally` 每次落盘就 `delete`，等于把"累积"彻底断掉。→ 三处改动：
+  1. **`pendingIo` 改为按作用域累积的数组**（`Map<runKey, TraceIoRecord[]>`），去掉每次落盘后的 `delete`；清理点改到「作用域退出」这个确定时刻（`releaseTraceScopeState()`，由收尾钩子在落盘后调用），并加 `MAX_PENDING_SCOPES=32` 兜住异常路径。
+  2. **每次调用带上 `purpose`**（`task.purpose`：`chapter-draft-short-outline` / `chapter-draft` / `chapter-draft-continuation` / `chapter-draft-condense` 等）。两个观察点（`generation-harness` 的 `complete`、`generation-runtime` 的 `transport.execute`）都能拿到，此前白白丢弃 —— 有了它才能逐次区分、逐次标注。
+  3. **`io` → `ioCalls`（数组）**，payload 与 markdown 同步：新增「实际发出的请求与输出（N 次调用）」章节，按发生顺序列出每一次的 system/user/模型输出；水位判定也改为对**全部调用**取指纹。
+  - **顺带修一个关联误判**：单快照 + 单调用曾无条件互相认领，但"唯一录到的那次"可能属于**另一个阶段**（作者那份真实数据正是如此：快照是「首次成稿」，唯一录到的请求却是「自动续写」）→ 会把续写请求当成首次成稿的提示词，直接误导调优。现在要求**真实请求里确实包含该快照的组装正文**（取 `built` 前 120 字做包含判断）才关联，判不出就退回重建 + 全量列出。
 - **P3 结构化路径（路径 B/C）**：路径 B（`structured-batch-executor`，蓝图等）与路径 C（`plot-tree-generator`/`narrative-thread-candidate-generator` 等直连 `session.complete`）。前者绕过提示词装配，能抓到的信息有限；后者无模板 key，`promptKey` 记 `task:*`。
 - **P4 收尾**：`INDEX.md`/`index.json` 跨 run 索引；StatusBar「打开 trace 目录」；自定义绝对路径 + 沙箱白名单核查。
 
@@ -653,6 +658,8 @@ TRACE-META -->
 - **面板不得停在"等待落盘"**：任何一次 `build()` 捕获后（无论走哪条分支），状态面板都必须给出终态——`已写出 N 份` / `本次未写出文件 + 原因` / `落盘失败 + 原因`。只有"落盘正在进行中"才允许短暂显示等待态。
 - **同一轮生成只产生一份文件**：文件名按作用域稳定；短定时器 / 作用域收尾 / 一轮内多次 LLM 调用都覆盖写同一份文件，不产生半成品残留。
 - **一轮内多次 LLM 调用的请求面不得丢失**：短纲 → 正文两跳的 messages 可能长度相同，水位判定必须基于**内容**而非长度。
+- **一轮内每一次调用的请求与输出都必须保留**：`ioCalls` 是数组，按发生顺序全量落盘（实测正文一轮 3 次：短纲 / 初始生成 / 自动续写），并带 `purpose` 供人区分；「模型输出」只留最后一次即为不合格。人读面必须有「实际发出的请求与输出（N 次调用）」章节。
+- **不得张冠李戴**：只有当真实请求里确实包含某快照的组装正文时，才把该次请求当作该快照的提示词；否则一律按装配结果重建 + 全量列出请求。
 - **不出现「生成作用域之外」**：架构各步 / 蓝图 / 正文 / 精修 / 审稿 / 文风分析 / 定稿后处理，凡走提示词装配的链路都必须落在 trace scope 内并能落盘（P2.2 已按此逐条核对）。
 
 **P3 待达成（路径 B/C）**：
@@ -677,14 +684,15 @@ TRACE-META -->
 
 ## 14. 关键文件速查
 
-**追踪自身（P0~P2.3）**
+**追踪自身（P0~P2.4）**
 - 追踪开关与状态：`src/stores/debug-store.ts`（`promptTraceEnabled` / `traceRoot` 预留）、`src/components/settings/DeveloperSettings.tsx`
 - 片段归因：`src/services/prompts/prompt-trace.ts`（`deriveFragments()` 纯函数 + `recordFragments()` 短路捕获 + `setSnapshotSink`；快照含 `built`（组装后 user 正文）与 `systemMessage`）
 - 作用域广播：`src/services/prompts/trace-scope.ts`（`pushTraceScope` / `currentTraceScope` / `setTraceScopeTeardownHook` / `runTraceScopeTeardown`）——**零依赖，可被工作流核心安全引用**
-- 落盘：`src/services/prompts/prompt-trace-writer.ts`（`recordTraceIo` / `scheduleTraceFlush` / `flushTraceNow` / `TraceFlushOutcome` 订阅 + `buildMarkdown` 首屏拼装态），落到 `<项目根>/debug/prompt-trace/`
+- 落盘：`src/services/prompts/prompt-trace-writer.ts`（`recordTraceIo` 按作用域**累积多次调用** / `releaseTraceScopeState` 作用域退出回收 / `scheduleTraceFlush` / `flushTraceNow` / `TraceFlushOutcome` 订阅），落到 `<项目根>/debug/prompt-trace/`
+- markdown 渲染：`src/services/prompts/prompt-trace-markdown.ts`（**零运行时依赖纯函数**；首屏拼装态 + 「实际发出的请求与输出（N 次调用）」；离线预览复用此入口）
 - 状态回显 UI：`src/components/settings/PromptTraceStatus.tsx`（四态：等待/已写出/未写出/失败）
-- 装配：`src/services/prompts/install-prompt-trace.ts`（`main.tsx` 启动调用一次；注入 sink + 两个 IO 观察者 + 收尾钩子）
-- IO 抓取点（二选一，覆盖全部执行位置）：
+- 装配：`src/services/prompts/install-prompt-trace.ts`（`main.tsx` 启动调用一次；注入 sink + 两个 IO 观察者 + 收尾钩子（落盘后释放作用域内存态））
+- IO 抓取点（二选一，覆盖全部执行位置；**上报都带 `task.purpose`**）：
   - **本地执行**：`src/services/generation/generation-harness.ts` `setHarnessIoObserver` + `complete()` 返回路径
   - **主进程代跑（main-owned）**：`src/services/generation/generation-runtime.ts` `setMainTaskIoObserver` + `transport.execute` 前后
 - 作用域注入点：`src/services/workflows/commands/base-command.ts` `executeWithGenerationRuntime`（push 作用域 → 操作体 → **收尾落盘** → pop）

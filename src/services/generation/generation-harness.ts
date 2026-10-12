@@ -282,6 +282,8 @@ const CONTEXT_SAFETY_RESERVE_TOKENS = 512
  * 这样主进程引用本文件时不会连带加载渲染层代码。
  */
 export interface GenerationIoObservation {
+  /** `task.purpose`：一轮生成内区分多次请求的唯一标识（如 `chapter-draft-continuation`）。 */
+  purpose: string
   messages: ReadonlyArray<{ role: string; content: string }>
   output: string
   finishReason: string
@@ -758,7 +760,9 @@ export function createGenerationHarness(dependencies: {
 
           // P2：把「实际发出的 messages + 模型输出」交给追踪落盘（关闭时零开销）。
           // 动态引入避免 harness（主进程亦可用）静态依赖渲染层的落盘器。
-          void recordHarnessIo(task.messages, completion.content, finishReason)
+          // 带上 `purpose`：一轮生成可能发多次请求（短纲 → 正文 → 续写），
+          // 追踪需要按 purpose 逐次区分，而不是只留最后一次。
+          void recordHarnessIo(task.purpose, task.messages, completion.content, finishReason)
 
           if (finishReason === 'stop') {
             return {
@@ -782,12 +786,14 @@ export function createGenerationHarness(dependencies: {
 
 /** 把一次真实请求的 IO 面交给追踪器；追踪未开启或落盘器不可用时静默跳过。 */
 function recordHarnessIo(
+  purpose: string,
   messages: readonly { role: string; content: string }[],
   output: string,
   finishReason: string,
 ): void {
   try {
     harnessIoObserver?.({
+      purpose,
       messages: messages.map(message => ({ role: message.role, content: message.content })),
       output,
       finishReason,

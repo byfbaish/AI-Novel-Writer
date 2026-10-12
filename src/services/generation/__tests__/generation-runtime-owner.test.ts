@@ -205,12 +205,14 @@ describe('main owned generation facade', () => {
   it('主进程代跑时在 transport 边界回报真实请求面（messages + 输出）', async () => {
     // 回归：main-owned 生成在主进程执行，渲染层的 harness 观察点收不到；
     // 若没有这个观察点，提示词追踪拿不到「实际发出的请求」，只能退化为重建。
-    const f = fixture(); const seen: Array<{ messages: ReadonlyArray<{ role: string; content: string }>; output: string; finishReason: string }> = []
+    const f = fixture(); const seen: Array<{ purpose: string; messages: ReadonlyArray<{ role: string; content: string }>; output: string; finishReason: string }> = []
     setMainTaskIoObserver(observation => { seen.push(observation) })
     try {
       const runtime = await createGenerationRuntime({ runHandle: handle }, f.transport)
       await runtime.execute(({ session }) => session.complete(task, { invocationNonce: '点击甲' }))
       expect(seen).toHaveLength(1)
+      // 必须带上 purpose：一轮生成多次请求（短纲/正文/续写）靠它区分，否则只能留最后一次。
+      expect(seen[0].purpose).toBe(task.purpose)
       // 必须是**实际发出去**的那份 messages（与 transport 收到的逐字一致）。
       expect(seen[0].messages).toEqual(task.messages)
       expect(seen[0].output).toBe(f.outcome.content)
