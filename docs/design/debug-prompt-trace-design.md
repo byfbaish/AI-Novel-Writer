@@ -6,7 +6,7 @@
 
 ---
 
-> 状态：v3（作者视角改稿 + 输入面清单 + 缓存热重载）。P0（追踪开关骨架 + 提示词热重载）**已施工并提交**（commit 5c77f8f）；P1 起为待办。v1 的"唯一 chokepoint = `callLLMResult`"判断**已作废**。
+> 状态：v3（作者视角改稿 + 输入面清单 + 缓存热重载）。P0（追踪开关骨架 + 提示词热重载，commit 5c77f8f）与 P1（片段层追踪，commit 25c987a）**已施工并提交**；P2 起为待办。v1 的"唯一 chokepoint = `callLLMResult`"判断**已作废**。
 
 ---
 
@@ -605,8 +605,8 @@ TRACE-META -->
 ## 11. 实施阶段（增量、可随时停）
 
 - ✅ **P0 开关骨架（已完成，commit 5c77f8f）**：`debug-store.ts`（zustand + localStorage）+ 新增「开发者」设置分类（追踪开关 + 自定义落盘目录）+ 提示词热重载（§8，三处入口）。暂不抓数据。
-- **P1 片段层验证**：hook `BasePromptBuilder.build()` 上报，先 `console.log` 跑一轮，确认每个片段的来源/`editable`/`resolvedFrom` 标对。
-- **P2 IO 层接线**：hook `GenerationSession.complete` 抓最终 messages + output（**三条路径全覆盖**）；按 `executeWithGenerationRuntime` 作用域把两层配对，经 `fs:write-file` 写外部目录。
+- ✅ **P1 片段层（已完成，commit 25c987a）**：`prompt-trace.ts`（`deriveFragments()` 纯函数归因 + `recordFragments()` 短路捕获 + 环形快照 + `console.table` 核对视图）；`build()` 尾部 side-channel 上报（不改返回值）；`install-prompt-trace.ts` 装配 sink（读 debug-store + `promptCatalog.peek`）；`main.tsx` 启动装配。9 例单测。
+- **P2 IO 层接线**：hook `GenerationSession.complete` 抓最终 messages + output（**三条路径全覆盖**）；按 `executeWithGenerationRuntime` 作用域把两层配对（注入 `runHandle`），经 `fs:write-file` 写外部目录。
 - **P3 格式化 + 索引**：按 §6 生成 `input.prompt.md`（人读+模型读）+ `output.txt`；生成 `<runId>/index.md` 与跨 run `INDEX.md` / `index.json`；复用 `promptBudget.sections` 补 `sections`；StatusBar「打开 trace 目录」。
 - **P4 边界**：自定义绝对路径 + 沙箱白名单核查；agent 管线（可选，超出"正文链路"范围）。
 
@@ -650,6 +650,7 @@ TRACE-META -->
 - 区段归因复用：`generation-harness.ts` 的 `promptBudget.sections`
 - **热重载（已实现，§8）**：`prompt-catalog.ts` 的 `reloadGlobal()` / `reloadProject()`；门面 `prompt-templates.ts` 的 `reloadGlobalCustomPrompts()` / `reloadProjectCustomPrompts(session)`；三处入口 `PromptSettings.tsx` / `DeveloperSettings.tsx` / `StatusBar.tsx`
 - **追踪开关（已实现，§9）**：`src/stores/debug-store.ts`（`promptTraceEnabled` / `traceRoot`）、`src/components/settings/DeveloperSettings.tsx`
+- **片段层追踪（已实现，P1）**：`src/services/prompts/prompt-trace.ts`（`deriveFragments` / `recordFragments` / `lastPromptTraceSnapshot`）、`src/services/prompts/install-prompt-trace.ts`、`prompt-builder.ts` 的 `build()` 尾部 hook
 - 落盘通道：`src/shared/ipc-channels.ts:476` (`fs:write-file`)
 - 设置/状态栏：`SettingsModal.tsx` / `StatusBar.tsx` / `src/stores/layout-store.ts`
 ```
