@@ -127,6 +127,22 @@ describe('prompt-trace-writer', () => {
     await flush()
     expect(invoke.mock.calls.filter(([, channel]) => channel === 'fs:write-file')).toHaveLength(0)
   })
+
+  it('主进程返回 success:false 时按失败处理，不得误报已写出', async () => {
+    // 回归：`fs:write-file` 失败时**返回 `{success:false}` 而非抛错**。
+    // 早期版本只 `await` 不判 success，会把越界/租约失效静默当成写成功。
+    invoke.mockResolvedValue({ success: false, commitState: 'not_committed', error: '目标超出当前项目范围，已拒绝操作。' } as never)
+    const { lastTraceFlushOutcome, resetTraceIoQueue: reset } = await import('../prompts/prompt-trace-writer')
+    reset()
+    const dispose = pushTraceScope({ runHandle: 'proj/lease/run-refused', operation: 'chapter-draft', projectSession: session })
+    try {
+      recordFragments({ template: builtin(), variables: {}, built: 'x', writingLanguage: 'zh-CN' })
+      await flush()
+    } finally { dispose() }
+    const outcome = lastTraceFlushOutcome()
+    expect(outcome?.status).toBe('failed')
+    expect(outcome?.reason).toContain('超出当前项目范围')
+  })
 })
 
 describe('落盘结果回显（状态面板数据源）', () => {
@@ -183,5 +199,48 @@ describe('落盘结果回显（状态面板数据源）', () => {
       await flush()
     } finally { dispose(); unsubscribe() }
     expect(seen).toEqual(['ok'])
+  })
+
+  it('作用域外装配必须回显 skipped，面板不得永远停在「等待落盘」', async () => {
+    // 回归：装配发生在 `executeWithGenerationRuntime` 之外时，旧实现静默 return，
+    // 面板只会停在「已捕获 N 块，等待落盘」——无从判断是"没跑"还是"跑失败"。
+    const { lastTraceFlushOutcome, resetTraceIoQueue: reset } = await import('../prompts/prompt-trace-writer')
+    reset()
+    recordFragments({ template: builtin(), variables: {}, built: 'x', writingLanguage: 'zh-CN' })
+    await flush()
+    const outcome = lastTraceFlushOutcome()
+    expect(outcome?.status).toBe('skipped')
+    expect(outcome?.reason).toContain('生成作用域之外')
+  })
+
+  it('短定时器与作用域收尾命中同一作用域时只写一份文件', async () => {
+    // 一轮命令里落盘会被触发两次：片段捕获后的 30ms 定时器 + 退出作用域前的收尾。
+    // 内容没变时第二次必须跳过，否则每次生成都会留下两份重复文件。
+    const { flushTraceNow } = await import('../prompts/prompt-trace-writer')
+    const dispose = pushTraceScope({ runHandle: 'proj/lease/run-once', operation: 'chapter-draft', projectSession: session })
+    try {
+      recordFragments({ template: builtin(), variables: {}, built: 'x', writingLanguage: 'zh-CN' })
+      await flush()
+      await flushTraceNow()
+    } finally { dispose() }
+    expect(invoke.mock.calls.filter(([, channel]) => channel === 'fs:write-file')).toHaveLength(2)
+  })
+
+  it('收尾时若 IO 后到，则覆盖写一次以带上输出面', async () => {
+    const { flushTraceNow } = await import('../prompts/prompt-trace-writer')
+    const dispose = pushTraceScope({ runHandle: 'proj/lease/run-io-late', operation: 'chapter-draft', projectSession: session })
+    try {
+      // 片段先到，30ms 定时器先写一份"只有片段"的。
+      recordFragments({ template: builtin(), variables: {}, built: 'x', writingLanguage: 'zh-CN' })
+      await flush()
+      // IO 后到，收尾时必须再写一次把输出面带上。
+      recordTraceIo({ messages: [{ role: 'user', content: '写第1章' }], output: '第一章正文', finishReason: 'stop' })
+      await flushTraceNow()
+    } finally { dispose() }
+    const writeCalls = invoke.mock.calls.filter(([, channel]) => channel === 'fs:write-file')
+    const jsonCalls = writeCalls.filter(([, , path]) => String(path).endsWith('.json'))
+    expect(jsonCalls).toHaveLength(2)
+    const lastPayload = JSON.parse(jsonCalls[1][3] as string)
+    expect(lastPayload.io.output).toBe('第一章正文')
   })
 })

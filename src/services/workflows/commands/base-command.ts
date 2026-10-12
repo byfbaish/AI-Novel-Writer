@@ -2,7 +2,7 @@ import type { WorkflowContext, StepCallbacks } from '../../../stores/workflow-st
 import { globalEventBus, EventPayloadMap } from '../../../shared/event-bus'
 import type { LLMFinishReason, ProjectSessionContext } from '../../../shared/ipc-channels'
 import type { BasePromptBuilder } from '../../prompts/prompt-builder'
-import { pushTraceScope } from '../../prompts/trace-scope'
+import { pushTraceScope, runTraceScopeTeardown } from '../../prompts/trace-scope'
 import {
   createGenerationRuntime,
   type CreateGenerationRuntimeOptions,
@@ -238,6 +238,10 @@ export abstract class BaseWorkflowCommand<TResult = string> {
           this.assertNotCancelled(params.context)
           return await operation()
         } finally {
+          // 落盘收尾必须在**退出作用域之前**做：此刻 IO 面（真实 messages + 输出）
+          // 已经拿到，而 30ms 短定时器不能作为唯一保障——它可能因作用域/host 状态变化
+          // 而错过。这里是命令级唯一的确定时序点；钩子未注入时（非渲染环境）为 no-op。
+          await runTraceScopeTeardown()
           disposeTraceScope()
           this.activeGenerationExecution = null
         }
