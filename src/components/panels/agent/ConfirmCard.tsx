@@ -13,7 +13,6 @@ import { useProjectStore } from '../../../stores/project-store'
 import { resolveWritingLanguage, type WritingLanguage } from '../../../shared/writing-language'
 import ConfigImpactPreview, { useConfigImpactPreview } from './ConfigImpactPreview'
 import DomainProposalDiff, { useDomainProposalPreview } from './DomainProposalDiff'
-import DraftEditPreview from './DraftEditPreview'
 
 interface Props {
   toolCall: ToolCallInfo
@@ -46,7 +45,6 @@ export default function ConfirmCard({ toolCall }: Props) {
       <div className="confirm-card-body">
         <div>{description}</div>
         <DomainProposalDiff toolCall={toolCall} preview={proposalPreview} />
-        <DraftEditPreview toolCall={toolCall} />
         <ConfigImpactPreview
           preview={impactPreview}
           selectedKeys={selectedImpactKeys}
@@ -57,7 +55,7 @@ export default function ConfirmCard({ toolCall }: Props) {
             return next
           })}
         />
-        {!isDomainProposal && toolName !== 'revise_draft_content' && Object.keys(args).length > 0 && (
+        {!isDomainProposal && Object.keys(args).length > 0 && (
           <div
             style={{
               marginTop: 6,
@@ -154,13 +152,6 @@ function generateDescription(
         `第 ${args.chapter_number ?? '？'} 章蓝图变更提案`,
         `Chapter ${args.chapter_number ?? '?'} blueprint change proposal`,
       )
-    case 'revise_draft_content': {
-      const chapter = typeof args.chapter_number === 'number' ? args.chapter_number : '？'
-      const count = Array.isArray(args.edits) ? args.edits.length : null
-      return count === null
-        ? text(`将整章覆盖第 ${chapter} 章正文`, `Will replace the whole draft of chapter ${chapter}`)
-        : text(`将修改第 ${chapter} 章正文（${count} 处替换）`, `Will revise chapter ${chapter} (${count} replacements)`)
-    }
     default:
       return text(`将执行操作：${toolName}`, `Will run operation: ${toolName}`)
   }
