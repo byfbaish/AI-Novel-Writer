@@ -1,6 +1,6 @@
 import { configurePromptTrace, isPromptTraceEnabled, setSnapshotSink } from './prompt-trace'
 import { currentTraceScope } from './trace-scope'
-import { recordTraceIo, scheduleTraceFlush } from './prompt-trace-writer'
+import { noteTraceCapture, recordTraceIo, scheduleTraceFlush } from './prompt-trace-writer'
 import { setHarnessIoObserver } from '../generation/generation-harness'
 import { useDebugStore } from '../../stores/debug-store'
 import { promptCatalog } from '../prompt-templates'
@@ -20,6 +20,7 @@ export function installPromptTraceFromDebugStore(): void {
     enabled: () => useDebugStore.getState().promptTraceEnabled,
     // 由 `executeWithGenerationRuntime` 通过 trace-scope 在命令执行期内注入。
     runHandle: () => currentTraceScope()?.runHandle,
+    hasProjectSession: () => !!currentTraceScope()?.projectSession,
     resolveSource: (key) => {
       try {
         return promptCatalog.peek(key, getActiveProjectSessionContext() ?? undefined)?.source ?? 'builtin'
@@ -28,8 +29,11 @@ export function installPromptTraceFromDebugStore(): void {
       }
     },
   })
-  // 每捕获一块就安排一次落盘（微任务内合并，避免同任务写多份文件）。
-  setSnapshotSink(scheduleTraceFlush)
+  // 每捕获一块就安排一次落盘，并累加计数供面板回显「这一轮到底抓到没有」。
+  setSnapshotSink(() => {
+    noteTraceCapture()
+    scheduleTraceFlush()
+  })
   // 抓取真实发出的 messages 与模型输出，与片段快照按 runHandle 归并。
   setHarnessIoObserver((observation) => {
     if (!isPromptTraceEnabled()) return

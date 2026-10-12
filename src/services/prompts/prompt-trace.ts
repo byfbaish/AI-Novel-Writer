@@ -79,6 +79,8 @@ export interface PromptTraceSink {
    * 避免 `prompt-builder` 反向依赖 catalog 造成循环。
    */
   resolveSource?: (key: string) => PromptResolvedFrom
+  /** 当前作用域是否带有项目会话（决定能否定位落盘目录）。仅用于诊断提示。 */
+  hasProjectSession?: () => boolean
 }
 
 /** 依赖注入的默认探测：渲染层读 debug-store，其余环境默认关闭。 */
@@ -248,12 +250,42 @@ export function recordFragments(input: RecordFragmentsInput): PromptTraceSnapsho
   const handle = safeRunHandle()
   if (handle) snapshot.runHandle = handle
 
+  logScopeDiagnostic(input.template.key, handle, safeHasProjectSession())
+
   snapshots.push(snapshot)
   if (snapshots.length > MAX_SNAPSHOTS) snapshots.splice(0, snapshots.length - MAX_SNAPSHOTS)
 
   logSnapshot(snapshot)
   notifySnapshotCaptured()
   return snapshot
+}
+
+/**
+ * 诊断：把「捕获时的作用域上下文」打出来一次。
+ *
+ * 落盘需要 `scope.projectSession` 才能定位项目根；若提示词装配发生在
+ * `executeWithGenerationRuntime` 作用域**之外**（例如运行前预构建），
+ * 句柄与会话都会缺失，落盘会被安全跳过——而过去这种情况完全静默。
+ * 这里把「有/无作用域」明确写进控制台，避免再去猜。
+ */
+let scopeDiagnosticLogged = false
+
+function logScopeDiagnostic(promptKey: string, runHandle: string | undefined, hasProjectSession: boolean): void {
+  if (scopeDiagnosticLogged) return
+  scopeDiagnosticLogged = true
+  if (runHandle && hasProjectSession) return
+  console.warn(
+    '[PromptTrace] 提示词装配发生在生成作用域之外，本次无法定位落盘目录。',
+    `promptKey=${promptKey}`,
+    `runHandle=${runHandle ?? '（无）'}`,
+    `projectSession=${hasProjectSession ? '有' : '（无）'}`,
+    '—— 需要把提示词构建放进 executeWithGenerationRuntime 内。',
+  )
+}
+
+/** 仅测试用：允许重新打印一次诊断。 */
+export function resetScopeDiagnostic(): void {
+  scopeDiagnosticLogged = false
 }
 
 /**
@@ -287,6 +319,14 @@ function safeResolveSource(key: string): PromptResolvedFrom {
     return traceSink.resolveSource?.(key) ?? 'builtin'
   } catch {
     return 'builtin'
+  }
+}
+
+function safeHasProjectSession(): boolean {
+  try {
+    return traceSink.hasProjectSession?.() === true
+  } catch {
+    return false
   }
 }
 

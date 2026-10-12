@@ -134,6 +134,46 @@ export interface TraceIoRecord {
   finishReason?: string
 }
 
+/** 一次落盘尝试的结果，供开发者面板回显——避免「静默失败」只能靠翻控制台。 */
+export interface TraceFlushOutcome {
+  /** `ok` 写了文件；`skipped` 是条件不满足（正常）；`failed` 是真出错。 */
+  status: 'ok' | 'skipped' | 'failed'
+  at: number
+  /** 已写文件的项目内相对路径（`status==='ok'` 时）。 */
+  files?: string[]
+  /** 跳过/失败的可读原因。 */
+  reason?: string
+  operation?: string
+  runHandle?: string
+}
+
+let lastOutcome: TraceFlushOutcome | null = null
+const outcomeListeners = new Set<(outcome: TraceFlushOutcome) => void>()
+
+/** 最近一次落盘结果（未落过盘时为 null）。 */
+export function lastTraceFlushOutcome(): TraceFlushOutcome | null {
+  return lastOutcome
+}
+
+/** 订阅落盘结果变化，返回取消订阅函数。 */
+export function subscribeTraceFlushOutcome(listener: (outcome: TraceFlushOutcome) => void): () => void {
+  outcomeListeners.add(listener)
+  return () => { outcomeListeners.delete(listener) }
+}
+
+function reportOutcome(scope: TraceScope, outcome: Omit<TraceFlushOutcome, 'at' | 'operation' | 'runHandle'>): void {
+  const full: TraceFlushOutcome = {
+    ...outcome,
+    at: Date.now(),
+    ...(scope.operation ? { operation: scope.operation } : {}),
+    ...(scope.runHandle ? { runHandle: scope.runHandle } : {}),
+  }
+  lastOutcome = full
+  for (const listener of outcomeListeners) {
+    try { listener(full) } catch { /* 订阅方出错不影响落盘。 */ }
+  }
+}
+
 const pendingIo = new Map<string, TraceIoRecord>()
 let lastFlushWarning = ''
 
@@ -146,16 +186,30 @@ let lastFlushWarning = ''
 async function flushTraceFile(scope: TraceScope): Promise<void> {
   const session = scope.projectSession
   const store = useDebugStore.getState()
-  if (!session || !store.promptTraceEnabled) return
+  if (!store.promptTraceEnabled) {
+    reportOutcome(scope, { status: 'skipped', reason: '追踪已关闭' })
+    return
+  }
+  if (!session) {
+    // 渲染层拿不到项目会话 = 工作流未走项目作用域（如纯本地步骤），无从确定项目根。
+    reportOutcome(scope, { status: 'skipped', reason: '当前作用域没有项目会话，无法确定项目根目录' })
+    return
+  }
 
   const snapshots = promptTraceSnapshots()
   // 只落盘本次作用域内新捕获的快照：
   // ① 环形缓冲是全局的，含历史任务的快照，必须按时间水位过滤；
   // ② 同一作用域可能多次触发 flush（片段先到、IO 后到），后一次应包含前一次的片段。
-  const fresh = snapshots.filter(snapshot => snapshot.capturedAt >= scopeStartedAt(scope))
-  if (fresh.length === 0 && !pendingIo.has(scope.runHandle ?? 'unscoped')) return
-
+  // 水位比较放宽 1s：同一毫秒内 push 作用域与捕获快照会让 capturedAt 与 startedAt 相等，
+  // 而时钟回拨/粗粒度时间源可能让 capturedAt 略小——宁可多写也不丢证据。
+  const since = scopeStartedAt(scope) - 1000
+  const fresh = snapshots.filter(snapshot => snapshot.capturedAt >= since)
   const runKey = scope.runHandle ?? 'unscoped'
+  if (fresh.length === 0 && !pendingIo.has(runKey)) {
+    reportOutcome(scope, { status: 'skipped', reason: '本次任务没有捕获到提示词片段（可能未走提示词装配）' })
+    return
+  }
+
   const io = pendingIo.get(runKey)
   const writtenAt = Date.now()
   const payload: TraceFilePayload = {
@@ -176,23 +230,31 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
 
   const fileName = `${compactTimestamp(writtenAt)}-${sanitizeFileSegment(scope.operation ?? 'unknown')}-${sanitizeFileSegment(scope.runHandle?.split('/').pop() ?? 'run')}`
   const dir = joinProjectPath(session.projectPath, ...PROMPT_TRACE_DIR_SEGMENTS)
+  const relativeBase = `${promptTraceRelativeDir()}/${fileName}`
 
+  // 目录创建失败要分辨「已存在」与「真失败」：前者照常写文件，后者必须暴露。
+  let mkdirFailure: string | null = null
   try {
     await ipc.invokeWithProjectSession(session, 'fs:mkdir', dir, session.projectPath)
-  } catch { /* 目录已存在时 mkdir 会失败，继续写文件即可。 */ }
+  } catch (error) {
+    mkdirFailure = error instanceof Error ? error.message : String(error)
+  }
 
   try {
     const markdown = buildMarkdown(payload)
     await ipc.invokeWithProjectSession(session, 'fs:write-file', `${dir}/${fileName}.md`, markdown, session.projectPath)
     await ipc.invokeWithProjectSession(session, 'fs:write-file', `${dir}/${fileName}.json`, JSON.stringify(payload, null, 2), session.projectPath)
     lastFlushWarning = ''
+    reportOutcome(scope, { status: 'ok', files: [`${relativeBase}.md`, `${relativeBase}.json`] })
   } catch (error) {
-    // 落盘失败不得影响生成；只提示一次，避免刷屏。
+    // 落盘失败不得影响生成；把原因同时交给面板与（首次出现的）控制台。
     const message = error instanceof Error ? error.message : String(error)
-    if (message !== lastFlushWarning) {
-      lastFlushWarning = message
-      console.warn('[PromptTrace] 快照落盘失败（不影响生成）:', message)
+    const reason = mkdirFailure ? `建目录失败：${mkdirFailure}` : message
+    if (reason !== lastFlushWarning) {
+      lastFlushWarning = reason
+      console.warn('[PromptTrace] 快照落盘失败（不影响生成）:', reason)
     }
+    reportOutcome(scope, { status: 'failed', reason: `写入失败：${reason}` })
   } finally {
     pendingIo.delete(runKey)
   }
@@ -237,6 +299,30 @@ export function resetTraceIoQueue(): void {
   pendingScope = null
   if (flushTimer !== null) { clearTimeout(flushTimer); flushTimer = null }
   lastFlushWarning = ''
+  lastOutcome = null
+  capturedSinceEnable = 0
+}
+
+/**
+ * 「自上次开启追踪以来捕获过多少块」。
+ *
+ * 用于区分两种"没生成文件"：① 开关开了但压根没跑生成（计数为 0）；
+ * ② 跑了但落盘没成功（计数 > 0 且最近结果是 failed/skipped）。
+ */
+let capturedSinceEnable = 0
+
+export function traceCapturedCount(): number {
+  return capturedSinceEnable
+}
+
+/** 片段捕获时递增（由装配层调用）。 */
+export function noteTraceCapture(): void {
+  capturedSinceEnable += 1
+}
+
+/** 开关切换时的重置：开启即清零，便于"这一轮到底有没有抓到"可判读。 */
+export function resetTraceCaptureCount(): void {
+  capturedSinceEnable = 0
 }
 
 /**

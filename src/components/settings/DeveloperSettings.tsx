@@ -6,7 +6,8 @@ import { Switch } from '../ui/Switch'
 import { Label } from '../ui/Label'
 import { Button } from '../ui/Button'
 import { reloadGlobalCustomPrompts, reloadProjectCustomPrompts } from '../../services/prompt-templates'
-import { promptTraceRelativeDir } from '../../services/prompts/prompt-trace-writer'
+import { promptTraceRelativeDir, resetTraceCaptureCount } from '../../services/prompts/prompt-trace-writer'
+import PromptTraceStatus from './PromptTraceStatus'
 import { useProjectStore } from '../../stores/project-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
 
@@ -26,6 +27,12 @@ export default function DeveloperSettings() {
   const setPromptTraceEnabled = useDebugStore((s) => s.setPromptTraceEnabled)
   const [reloading, setReloading] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+
+  /** 每次开启都从零计数，这样面板上的「累计捕获」就等于「这一轮抓到多少」。 */
+  const handleToggleTrace = (enabled: boolean) => {
+    if (enabled) resetTraceCaptureCount()
+    setPromptTraceEnabled(enabled)
+  }
 
   const handleReload = async () => {
     setReloading(true)
@@ -74,7 +81,7 @@ export default function DeveloperSettings() {
         </div>
         <Switch
           checked={promptTraceEnabled}
-          onCheckedChange={setPromptTraceEnabled}
+          onCheckedChange={handleToggleTrace}
           aria-label={text('Prompt 追踪', 'Prompt trace')}
         />
       </div>
@@ -98,6 +105,9 @@ export default function DeveloperSettings() {
           </p>
         </div>
       )}
+
+      {/* 实时状态回显：区分「没跑过」「跑过但没抓到」「抓到了但写失败」 */}
+      <PromptTraceStatus />
 
       {/* 提示词热重载 */}
       <div
