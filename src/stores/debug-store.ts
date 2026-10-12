@@ -14,9 +14,15 @@ import { create } from 'zustand'
 const STORAGE_KEY = 'ai-novel-writer.debug'
 
 export interface DebugSettings {
-  /** Prompt 片段追踪总开关：打开后把每次生成的输入/输出落盘到外部目录。 */
+  /** Prompt 片段追踪总开关：打开后把每次生成的输入/输出落盘。 */
   promptTraceEnabled: boolean
-  /** 自定义落盘根目录；为空时由记录器决定默认位置（项目数据根下的 debug 目录）。 */
+  /**
+   * 预留：自定义落盘根目录。
+   *
+   * 当前落盘固定在项目根内的 `debug/prompt-trace`——`fs:write-file` 强制目标位于
+   * 项目根内（既有沙箱边界），写到项目外需要新增一条专用受控 IPC。字段先保留，
+   * 以免破坏已持久化的 localStorage 结构；启用外部目录时再接线。
+   */
   traceRoot: string | null
 }
 
