@@ -6,7 +6,7 @@
 
 ---
 
-> 状态：v3（作者视角改稿 + 输入面清单 + 缓存热重载）。P0（追踪开关骨架 + 提示词热重载，commit 5c77f8f）与 P1（片段层追踪，commit 25c987a）**已施工并提交**；P2 起为待办。v1 的"唯一 chokepoint = `callLLMResult`"判断**已作废**。
+> 状态：v4（P2 落地：runHandle 作用域注入 + 项目内落盘 + IO 抓取）。P0（追踪开关骨架 + 提示词热重载，commit 5c77f8f）、P1（片段层追踪，commit 25c987a）、P2（IO 接线，路径 A）**已施工并提交**；P3（路径 B/C）起为待办。v1 的"唯一 chokepoint = `callLLMResult`"判断**已作废**。
 
 ---
 
@@ -606,19 +606,30 @@ TRACE-META -->
 
 - ✅ **P0 开关骨架（已完成，commit 5c77f8f）**：`debug-store.ts`（zustand + localStorage）+ 新增「开发者」设置分类（追踪开关 + 自定义落盘目录）+ 提示词热重载（§8，三处入口）。暂不抓数据。
 - ✅ **P1 片段层（已完成，commit 25c987a）**：`prompt-trace.ts`（`deriveFragments()` 纯函数归因 + `recordFragments()` 短路捕获 + 环形快照 + `console.table` 核对视图）；`build()` 尾部 side-channel 上报（不改返回值）；`install-prompt-trace.ts` 装配 sink（读 debug-store + `promptCatalog.peek`）；`main.tsx` 启动装配。9 例单测。
-- **P2 IO 层接线**：hook `GenerationSession.complete` 抓最终 messages + output（**三条路径全覆盖**）；按 `executeWithGenerationRuntime` 作用域把两层配对（注入 `runHandle`），经 `fs:write-file` 写外部目录。
-- **P3 格式化 + 索引**：按 §6 生成 `input.prompt.md`（人读+模型读）+ `output.txt`；生成 `<runId>/index.md` 与跨 run `INDEX.md` / `index.json`；复用 `promptBudget.sections` 补 `sections`；StatusBar「打开 trace 目录」。
-- **P4 边界**：自定义绝对路径 + 沙箱白名单核查；agent 管线（可选，超出"正文链路"范围）。
+- ✅ **P2 IO 层接线（已完成，路径 A）**：
+  - `trace-scope.ts`（新）：命令级「当前任务」广播栈。`executeWithGenerationRuntime` 进入时 push、退出时 pop；`build()` 是同步的，靠它读到 `runHandle`/`operation`/`projectSession`。
+  - `prompt-trace-writer.ts`（新）：按作用域归并「片段快照 + 真实请求 IO」，写 `<项目根>/debug/prompt-trace/<时间戳>-<操作>-<runId>.{md,json}`。30ms 短定时器聚合（片段先捕获、IO 后到达），失败只 warn 不阻断。
+  - `generation-harness.ts`：新增通用 `setHarnessIoObserver`（**不直接依赖 trace 模块**，主进程引用本文件时零连带加载）；`complete()` 成功路径上报 messages + output + finishReason。
+  - `install-prompt-trace.ts`：注入 `runHandle`（读 trace-scope）、`setSnapshotSink`（落盘调度）、`setHarnessIoObserver`（IO 抓取）。
+  - **范围决策**：本期只覆盖路径 A（走 `BasePromptBuilder` + `callLLMResult` 的主链路）。路径 B/C 见 P3/P4。
+  - **落点决策**：固定写项目根内 `debug/prompt-trace`——`fs:write-file` 强制目标在项目根内（既有沙箱边界），写到项目外需新增专用受控 IPC，收益不抵新增攻击面。`debug-store.traceRoot` 保留为预留字段。
+- **P3 结构化路径（路径 B/C）**：路径 B（`structured-batch-executor`，蓝图等）与路径 C（`plot-tree-generator`/`narrative-thread-candidate-generator` 等直连 `session.complete`）。前者绕过提示词装配，能抓到的信息有限；后者无模板 key，`promptKey` 记 `task:*`。
+- **P4 收尾**：`INDEX.md`/`index.json` 跨 run 索引；StatusBar「打开 trace 目录」；自定义绝对路径 + 沙箱白名单核查。
 
 ---
 
 ## 12. 验收标准
 
-- 开关 ON → 跑一轮（架构 + 蓝图 + 正文 + 伏笔）→ 外部目录出现 `<runId>/<stepGroup>/<seq>-<key>/{fragment.json, input.prompt.md, output.txt}`，且 `INDEX.md` / `index.json` 同步。
-- 打开 `input.prompt.md`：能区分"这段是内置 systemSuffix、代码硬编码、UI 改不了" vs "这段是 NovelConfigEditor 的 globalGuidance、可在 UI 改"，且 `` 可供大模型直接解析。
-- **章节蓝图必须被捕获**（路径 B）——v1 会漏。
-- **伏笔叙事必须被捕获**（路径 C，无模板 key，`promptKey` 记 `task:*`）。
-- 一次 run 内**未实际发生的步骤不产生空目录**；只发生 3 步就只有 3 个目录。
+**P2 已达成（路径 A）**：
+- 开关 ON → 跑一轮走主链路的生成（架构各步 / 蓝图 / 正文 / 精修）→ `<项目根>/debug/prompt-trace/` 出现 `<时间戳>-<操作>-<runId>.md` 与 `.json`。
+- `.md` 能区分「这段是内置 systemSuffix、代码硬编码、UI 改不了」vs「这段来自项目/全局覆盖」，并附「实际发出的请求」与「模型输出」两节。
+- 追踪 OFF 时零开销（`recordFragments` 首行短路）；落盘失败只 warn，不影响生成结果。
+- 无作用域 / 无项目会话 / 无快照时不写文件（不产生空文件噪音）。
+
+**P3 待达成（路径 B/C）**：
+- 章节蓝图被捕获（路径 B）。
+- 伏笔叙事被捕获（路径 C，无模板 key，`promptKey` 记 `task:*`）。
+- 一次 run 内**未实际发生的步骤不产生空文件**。
 
 ---
 
@@ -637,10 +648,20 @@ TRACE-META -->
 
 ## 14. 关键文件速查
 
-- **统一 IO 点**：`src/services/generation/generation-harness.ts:575` `GenerationSession.complete`（**三条**路径共同下游）
+**追踪自身（P0~P2）**
+- 追踪开关与状态：`src/stores/debug-store.ts`（`promptTraceEnabled` / `traceRoot` 预留）、`src/components/settings/DeveloperSettings.tsx`
+- 片段归因：`src/services/prompts/prompt-trace.ts`（`deriveFragments()` 纯函数 + `recordFragments()` 短路捕获 + `setSnapshotSink`）
+- 作用域广播：`src/services/prompts/trace-scope.ts`（`pushTraceScope` / `currentTraceScope`）
+- 落盘：`src/services/prompts/prompt-trace-writer.ts`（`recordTraceIo` / `scheduleTraceFlush` / `flushTraceNow`），落到 `<项目根>/debug/prompt-trace/`
+- 装配：`src/services/prompts/install-prompt-trace.ts`（`main.tsx` 启动调用一次）
+- IO 抓取点：`src/services/generation/generation-harness.ts` `setHarnessIoObserver` + `complete()` 成功路径
+- 作用域注入点：`src/services/workflows/commands/base-command.ts` `executeWithGenerationRuntime`
+
+**被观测的生成链路**
+- 统一 IO 点：`src/services/generation/generation-harness.ts:575` `GenerationSession.complete`（**三条**路径共同下游）
 - 路径 A 汇聚：`src/services/workflows/commands/base-command.ts:437 callLLMResult`（`:265/:520/:529/:283/:339` 全汇于此）
-- 路径 B（绕过 A）：`src/services/workflows/structured-batch-executor.ts:324/:420`；使用者 `directory.command.ts:451`（蓝图）、`architecture.command.ts:1333`、`import-novel.command.ts:31`（逆向推演）、`planning-material.command.ts:20`
-- 路径 C（绕过 A/B）：`plot-tree-generator.ts:41`、`narrative-thread-candidate-generator.ts:39/71`（伏笔叙事）、`character-card-generation.command.ts:149`
+- 路径 B（绕过 A，P3 待接）：`src/services/workflows/structured-batch-executor.ts:324/:420`；使用者 `directory.command.ts:451`（蓝图）、`architecture.command.ts:1333`、`import-novel.command.ts:31`（逆向推演）、`planning-material.command.ts:20`
+- 路径 C（绕过 A/B，P3 待接）：`plot-tree-generator.ts:41`、`narrative-thread-candidate-generator.ts:39/71`（伏笔叙事）、`character-card-generation.command.ts:149`
 - **片段来源点**：`src/services/prompts/prompt-builder.ts:14`（`build():28`，`template`/`variables` 在 `:15/:16`）
 - 各步骤 key 解析：`architecture.command.ts:854/1046/1143/1473/1788/1946`（config/premise/角色/世界观/弧光/大纲）、`directory.command.ts:342`（蓝图）、`refine-draft.command.ts:40`（AI 修稿）、`refine-from-review.command.ts:79`（审稿修稿）、`review-chapter.command.ts:48`（审稿）、`finalize-chapter.command.ts:190/283`（章节要点/角色卡）、`import-novel.command.ts:354/355/625`（逆向推演）
 - 内置模板：`src/services/builtin-prompt-templates.ts`（`EDITABLE_PROMPT_KEYS:37`、`ARCHITECTURE_PROMPT_KEYS:74`）

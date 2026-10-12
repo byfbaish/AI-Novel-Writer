@@ -2,6 +2,7 @@ import type { WorkflowContext, StepCallbacks } from '../../../stores/workflow-st
 import { globalEventBus, EventPayloadMap } from '../../../shared/event-bus'
 import type { LLMFinishReason, ProjectSessionContext } from '../../../shared/ipc-channels'
 import type { BasePromptBuilder } from '../../prompts/prompt-builder'
+import { pushTraceScope } from '../../prompts/trace-scope'
 import {
   createGenerationRuntime,
   type CreateGenerationRuntimeOptions,
@@ -225,10 +226,19 @@ export abstract class BaseWorkflowCommand<TResult = string> {
           runtime,
           mainOwned: (runtime as Partial<WorkflowMainGenerationRuntime>).mainOwned === true,
         }
+        // 把本次任务的 runHandle 广播给同步的提示词装配链（`build()` 期间读取）。
+        // handle 由 begin 阶段写入 context，因此必须在进入操作体之后再取值。
+        const handle = params.context.mainGenerationRunHandle
+        const disposeTraceScope = pushTraceScope({
+          ...(handle ? { runHandle: `${handle.projectId}/${handle.epoch}/${handle.runId}` } : {}),
+          operation: intent,
+          ...(params.context.projectSession ? { projectSession: params.context.projectSession } : {}),
+        })
         try {
           this.assertNotCancelled(params.context)
           return await operation()
         } finally {
+          disposeTraceScope()
           this.activeGenerationExecution = null
         }
       })

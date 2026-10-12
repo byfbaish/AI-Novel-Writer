@@ -276,6 +276,24 @@ export function safeReceiptPurpose(purpose: string): string {
 
 const CONTEXT_SAFETY_RESERVE_TOKENS = 512
 
+/**
+ * 每次真实请求完成后的观察者（可选）。运行时值由渲染层在启动时注入，
+ * 用于调试追踪；未注入时零开销。刻意设计成通用形状而非直接依赖 trace 模块，
+ * 这样主进程引用本文件时不会连带加载渲染层代码。
+ */
+export interface GenerationIoObservation {
+  messages: ReadonlyArray<{ role: string; content: string }>
+  output: string
+  finishReason: string
+}
+
+let harnessIoObserver: ((observation: GenerationIoObservation) => void) | null = null
+
+/** 注入请求 IO 观察者；传 null 取消。 */
+export function setHarnessIoObserver(observer: ((observation: GenerationIoObservation) => void) | null): void {
+  harnessIoObserver = observer
+}
+
 function utf8Bytes(value: string): number {
   return new TextEncoder().encode(value).byteLength
 }
@@ -738,6 +756,10 @@ export function createGenerationHarness(dependencies: {
             promptBudget,
           )
 
+          // P2：把「实际发出的 messages + 模型输出」交给追踪落盘（关闭时零开销）。
+          // 动态引入避免 harness（主进程亦可用）静态依赖渲染层的落盘器。
+          void recordHarnessIo(task.messages, completion.content, finishReason)
+
           if (finishReason === 'stop') {
             return {
               status: 'completed',
@@ -756,4 +778,19 @@ export function createGenerationHarness(dependencies: {
       }
     },
   }
+}
+
+/** 把一次真实请求的 IO 面交给追踪器；追踪未开启或落盘器不可用时静默跳过。 */
+function recordHarnessIo(
+  messages: readonly { role: string; content: string }[],
+  output: string,
+  finishReason: string,
+): void {
+  try {
+    harnessIoObserver?.({
+      messages: messages.map(message => ({ role: message.role, content: message.content })),
+      output,
+      finishReason,
+    })
+  } catch { /* 追踪是旁路，绝不影响生成结果。 */ }
 }

@@ -252,7 +252,25 @@ export function recordFragments(input: RecordFragmentsInput): PromptTraceSnapsho
   if (snapshots.length > MAX_SNAPSHOTS) snapshots.splice(0, snapshots.length - MAX_SNAPSHOTS)
 
   logSnapshot(snapshot)
+  notifySnapshotCaptured()
   return snapshot
+}
+
+/**
+ * 快照捕获钩子。默认空实现（保持本模块零依赖、可被主进程/单测单独引用）；
+ * 渲染层启动时通过 `setSnapshotSink` 接到落盘器。
+ */
+let snapshotSink: (() => void) | null = null
+
+/** 注入快照捕获回调（渲染层落盘用）。 */
+export function setSnapshotSink(sink: (() => void) | null): void {
+  snapshotSink = sink
+}
+
+function notifySnapshotCaptured(): void {
+  try {
+    snapshotSink?.()
+  } catch { /* 落盘调度失败不得影响提示词装配。 */ }
 }
 
 function safeRunHandle(): string | undefined {

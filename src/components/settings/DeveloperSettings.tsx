@@ -3,21 +3,18 @@ import { Bug, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-
 import { useDebugStore } from '../../stores/debug-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { Switch } from '../ui/Switch'
-import { Input } from '../ui/Input'
 import { Label } from '../ui/Label'
 import { Button } from '../ui/Button'
-import {
-  reloadGlobalCustomPrompts,
-  reloadProjectCustomPrompts,
-} from '../../services/prompt-templates'
+import { reloadGlobalCustomPrompts, reloadProjectCustomPrompts } from '../../services/prompt-templates'
+import { promptTraceRelativeDir } from '../../services/prompts/prompt-trace-writer'
 import { useProjectStore } from '../../stores/project-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
 
 /**
- * 开发者设置面板（P0 骨架）。
+ * 开发者设置面板。
  *
- * 当前承载两件事：
- * 1. Prompt 追踪开关 + 落盘目录（追踪记录器尚未接线，开关先就位）。
+ * 承载两件事：
+ * 1. Prompt 追踪开关（P2 已接线：取片段 + 真实请求 IO，落盘到项目内 debug/prompt-trace）。
  * 2. 提示词热重载入口（与设置页「提示词模板」顶部、状态栏的是同一动作）。
  *
  * 定位：这是给「调 prompt 的人」用的，不是给普通作者用的，所以单列一个分类，
@@ -26,9 +23,7 @@ import { captureProjectSession, isProjectSessionCurrent } from '../project-sessi
 export default function DeveloperSettings() {
   const text = useLocaleStore((s) => s.text)
   const promptTraceEnabled = useDebugStore((s) => s.promptTraceEnabled)
-  const traceRoot = useDebugStore((s) => s.traceRoot)
   const setPromptTraceEnabled = useDebugStore((s) => s.setPromptTraceEnabled)
-  const setTraceRoot = useDebugStore((s) => s.setTraceRoot)
   const [reloading, setReloading] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -72,8 +67,8 @@ export default function DeveloperSettings() {
           </p>
           <p className="text-[0.68rem] mt-1" style={{ color: 'var(--color-text-muted)' }}>
             {text(
-              '打开后，每次生成会把「组装前的提示词片段（含来源）+ 组装后原文 + 模型输出」写到外部文件夹，供定位调优。追踪记录器尚未接线，开关先就位。',
-              'When on, each generation writes the pre-assembly prompt fragments (with sources), the assembled prompt, and the model output to an external folder for tuning. The recorder is not wired yet; the switch is in place.',
+              '打开后，每次生成会把「组装前的提示词片段（含来源）+ 组装后原文 + 实际发出的请求与模型输出」写到当前项目的 debug/prompt-trace 文件夹，供定位调优。',
+              'When on, each generation writes the pre-assembly prompt fragments (with sources), the assembled prompt, and the actual request plus model output to the project debug/prompt-trace folder for tuning.',
             )}
           </p>
         </div>
@@ -84,15 +79,23 @@ export default function DeveloperSettings() {
         />
       </div>
 
-      {/* 落盘目录 */}
+      {/* 落盘位置（固定在项目内，受既有文件沙箱保护） */}
       {promptTraceEnabled && (
         <div className="space-y-1.5">
-          <Label>{text('追踪落盘目录（留空用默认）', 'Trace output directory (empty = default)')}</Label>
-          <Input
-            value={traceRoot ?? ''}
-            onChange={(e) => setTraceRoot(e.target.value || null)}
-            placeholder={text('留空：写到项目数据根目录下的 debug 文件夹', 'Empty: writes to the debug folder under the project data root')}
-          />
+          <Label>{text('追踪落盘位置', 'Trace output location')}</Label>
+          <p className="text-[0.68rem]" style={{ color: 'var(--color-text-muted)' }}>
+            {text(
+              '固定写到当前项目根目录下：',
+              'Always written under the current project root: ',
+            )}
+            <code className="px-1 py-0.5 rounded" style={{ backgroundColor: 'var(--color-hover)', fontFamily: 'ui-monospace, monospace' }}>
+              {promptTraceRelativeDir()}/
+            </code>
+            {text(
+              '（每次生成一枚 .md 便于阅读 + 一枚 .json 便于脚本处理）',
+              ' (one readable .md and one scriptable .json per generation)',
+            )}
+          </p>
         </div>
       )}
 
