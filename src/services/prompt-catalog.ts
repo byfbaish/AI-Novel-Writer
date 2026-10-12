@@ -256,6 +256,38 @@ export class PromptCatalog {
     this.projectLoads.clear()
   }
 
+  /**
+   * Drop the in-memory global snapshot and re-read it from durable storage.
+   *
+   * Necessary because `ensureGlobalLoaded()` latches `globalLoaded` after the
+   * first read and never re-reads: edits made to the prompts directory outside
+   * the app (IDE, notepad, scripted version swaps) would otherwise stay invisible
+   * until the process restarts. In-app saves already refresh via `commit()`.
+   *
+   * Returns the number of global overrides now in effect, so callers can show a
+   * concrete "reloaded N overrides" confirmation.
+   */
+  async reloadGlobal(): Promise<number> {
+    this.globalLoaded = false
+    this.globalLoad = null
+    this.globalPrompts = new Map()
+    this.globalDiagnostics = []
+    await this.ensureGlobalLoaded()
+    return this.globalPrompts.size
+  }
+
+  /**
+   * Drop the cached project snapshot for `projectSession` and re-read it from disk.
+   *
+   * Mirrors `reloadGlobal()` for the project tier. Safe on a stale session: the
+   * reload returns `false` rather than reusing another lease's overrides, matching
+   * the guard already enforced by `ensureProjectLoaded()`.
+   */
+  async reloadProject(projectSession: ProjectSessionContext): Promise<boolean> {
+    this.clearProject()
+    return this.ensureProjectLoaded(projectSession)
+  }
+
   /** Compatibility preload; normal callers should use resolve/list. */
   async loadProject(
     projectSession: ProjectSessionContext,

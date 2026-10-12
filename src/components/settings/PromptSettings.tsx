@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronDown, ChevronRight, Globe, FolderOpen, RotateCcw, AlertTriangle, CheckCircle2, XCircle, Layers } from 'lucide-react'
+import { ChevronDown, ChevronRight, Globe, FolderOpen, RotateCcw, AlertTriangle, CheckCircle2, XCircle, Layers, RefreshCw } from 'lucide-react'
 import {
   ARCHITECTURE_PROMPT_KEYS,
   BUILTIN_PROMPTS,
@@ -15,6 +15,8 @@ import {
   clearProjectCustomPrompts,
   loadCustomPrompts,
   loadProjectCustomPrompts,
+  reloadGlobalCustomPrompts,
+  reloadProjectCustomPrompts,
   type PromptTemplate,
 } from '../../services/prompt-templates'
 import { resolveWritingLanguage, type WritingLanguage } from '../../shared/writing-language'
@@ -143,6 +145,49 @@ export default function PromptSettings() {
 
   const triggerRefresh = useCallback(() => setRefreshKey((k) => k + 1), [])
 
+  const [reloading, setReloading] = useState(false)
+  const [reloadNotice, setReloadNotice] = useState<string | null>(null)
+
+  /**
+   * 从磁盘重载提示词覆盖。
+   *
+   * UI 里保存本就会即时生效（走 `commit()` 更新内存缓存），这个按钮解决的是另一件事：
+   * 在 IDE / 记事本 / 脚本里直接改了提示词目录后，进程内缓存不会自动跟随，
+   * 以往只能重启。这里显式丢弃快照并重读，省掉重启。
+   */
+  const handleReloadFromDisk = async () => {
+    setReloading(true)
+    setReloadNotice(null)
+    try {
+      const globalCount = await reloadGlobalCustomPrompts()
+      let projectCount = 0
+      const session = projectId && projectPath && projectLease
+        ? captureProjectSession({ id: projectId, path: projectPath, sessionLease: projectLease })
+        : null
+      if (session && isProjectSessionCurrent(session)) {
+        const loaded = await reloadProjectCustomPrompts(session)
+        if (loaded) {
+          projectCount = BUILTIN_PROMPTS.filter(
+            (template) => getPromptSource(template.key, session, editingLanguage) === 'project',
+          ).length
+        }
+      }
+      setRefreshKey((k) => k + 1)
+      setReloadNotice(text(
+        `已从磁盘重新加载：全局覆盖 ${globalCount} 项、项目覆盖 ${projectCount} 项。下一次生成即使用最新内容。`,
+        `Reloaded from disk: ${globalCount} global override(s), ${projectCount} project override(s). The next generation uses the latest content.`,
+      ))
+    } catch {
+      setReloadNotice(text(
+        '重新加载失败，请检查提示词目录后重试。',
+        'Reload failed. Check the prompts directory and try again.',
+      ))
+    } finally {
+      setReloading(false)
+      window.setTimeout(() => setReloadNotice(null), 4000)
+    }
+  }
+
   return (
     <div className="space-y-2" key={refreshKey}>
       {globalLoadError && (
@@ -171,6 +216,37 @@ export default function PromptSettings() {
           {text('标注「架构链」的模板是故事架构的一整套（前提 → 角色图谱 → 世界观 → 弧光结构 → 情节大纲 → 章节蓝图），上下游互相咬合，建议保持内置默认；而草稿、精修、审稿属于可按你的文风定制的输出层。', 'Templates tagged “Architecture chain” form one interlocking story-architecture pipeline (premise → characters → world → arc structure → plot synopsis → chapter blueprint) and are best left at the built-in default. Drafting, revision, and review templates are the output layer you can freely customize.')}
         </span>
       </div>
+
+      {/* 从磁盘重新加载：外部改动（IDE/脚本换版本）无需重启即可生效 */}
+      <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-[var(--color-border)] mb-2">
+        <span className="min-w-0">
+          <span className="block text-xs font-medium text-[var(--color-text)]">
+            {text('重新加载提示词', 'Reload prompts')}
+          </span>
+          <span className="block text-[0.68rem] text-[var(--color-text-muted)]">
+            {text('本面板保存会立即生效；若你在 IDE / 记事本 / 脚本里直接改了提示词文件，点这里即可免重启加载最新内容。', 'Saving here takes effect immediately. If you edited prompt files directly in an IDE, notepad, or a script, click here to load the latest content without restarting.')}
+          </span>
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void handleReloadFromDisk()}
+          disabled={reloading}
+          className="flex-shrink-0"
+        >
+          <RefreshCw size={12} className={reloading ? 'animate-spin' : undefined} />
+          {reloading ? text('加载中...', 'Reloading...') : text('重新加载', 'Reload')}
+        </Button>
+      </div>
+      {reloadNotice && (
+        <div
+          className="mb-2 px-3 py-2 rounded-lg text-xs"
+          style={{ backgroundColor: 'var(--color-hover)', color: 'var(--color-text-secondary)' }}
+        >
+          <CheckCircle2 size={13} className="inline mr-1" />
+          {reloadNotice}
+        </div>
+      )}
 
       <label className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg border border-[var(--color-border)]">
         <span>
