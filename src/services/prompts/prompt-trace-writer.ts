@@ -62,12 +62,19 @@ function compactTimestamp(at: number): string {
   ].join('')
 }
 
-/** 记录 IO 面（由 `GenerationSession.complete` 调用）。 */
+/** 记录一次真实请求的 IO 面（由 harness / main transport 观察点调用）。 */
 export interface TraceIoRecord {
+  /** `task.purpose`：一轮内区分多次请求（短纲 / 正文 / 续写 / 压缩…）。 */
+  purpose?: string
   messages: Array<{ role: string; content: string }>
   output: string
   finishReason?: string
+  /** 记录时刻，用于按序展示与排查时序。 */
+  at: number
 }
+
+/** 调用方传入的形状：`at` 由落盘器统一打点，调用方无需关心。 */
+export type TraceIoInput = Omit<TraceIoRecord, 'at'>
 
 /** 一次落盘尝试的结果，供开发者面板回显——避免「静默失败」只能靠翻控制台。 */
 export interface TraceFlushOutcome {
@@ -109,7 +116,37 @@ function reportOutcome(scope: TraceScope, outcome: Omit<TraceFlushOutcome, 'at' 
   }
 }
 
-const pendingIo = new Map<string, TraceIoRecord>()
+/**
+ * 待落盘的 IO 面：**按作用域累积的多次调用**。
+ *
+ * 一轮生成常常发多次请求（正文 = 短纲 → 正文 → 续写），旧实现用单值记录，
+ * 后一次直接覆盖前一次 —— 人看到的"模型输出"只有最后一次，中间请求的提示词
+ * 与产出全部丢失，无法评估。现在按序累积，全部落盘。
+ */
+const pendingIo = new Map<string, TraceIoRecord[]>()
+
+/**
+ * 作用域数量上限（防御性）。正常路径由作用域收尾显式清理（`releaseTraceScopeState`），
+ * 这里只兜住"收尾信号没到"的异常路径（进程被杀、作用域泄漏），避免长会话按 runKey 累积。
+ */
+const MAX_PENDING_SCOPES = 32
+
+function rememberPendingIo(runKey: string, record: TraceIoRecord): void {
+  let records = pendingIo.get(runKey)
+  if (!records) {
+    records = []
+    if (pendingIo.size >= MAX_PENDING_SCOPES) {
+      const oldest = pendingIo.keys().next().value
+      if (oldest !== undefined && oldest !== runKey) {
+        pendingIo.delete(oldest)
+        flushedWatermark.delete(oldest)
+      }
+    }
+    pendingIo.set(runKey, records)
+  }
+  records.push(record)
+}
+
 let lastFlushWarning = ''
 
 /**
@@ -126,9 +163,15 @@ const flushedWatermark = new Map<string, string>()
 
 /** 内容水位：任一分量变化即代表有新内容值得重写。 */
 function watermarkOf(runKey: string, snapshotSignature: string): string {
-  const io = pendingIo.get(runKey)
-  const ioSignature = io
-    ? `${io.messages.length}:${contentFingerprint(io.messages.map(message => `${message.role}\u0000${message.content}`).join('\u0001'))}:${contentFingerprint(io.output)}:${io.finishReason ?? ''}`
+  const records = pendingIo.get(runKey)
+  const ioSignature = records && records.length > 0
+    ? records.map((record, index) => [
+      index,
+      record.messages.length,
+      contentFingerprint(record.messages.map(message => `${message.role}\u0000${message.content}`).join('\u0001')),
+      contentFingerprint(record.output),
+      record.finishReason ?? '',
+    ].join(':')).join('|')
     : 'noio'
   return `${snapshotSignature}|${ioSignature}`
 }
@@ -195,7 +238,7 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
   const watermark = watermarkOf(runKey, snapshotSignature)
   if (!shouldWrite(runKey, watermark)) return
 
-  const io = pendingIo.get(runKey)
+  const ioCalls = pendingIo.get(runKey)
   const writtenAt = Date.now()
   const payload: TraceFilePayload = {
     ...(scope.runHandle ? { runHandle: scope.runHandle } : {}),
@@ -211,7 +254,7 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
       built: snapshot.built,
       systemMessage: snapshot.systemMessage,
     })),
-    ...(io ? { io } : {}),
+    ...(ioCalls && ioCalls.length > 0 ? { ioCalls } : {}),
   }
 
   // 文件名按**作用域**稳定（而非写入时刻）：一轮生成只对应一份文件，
@@ -251,9 +294,10 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
       console.warn('[PromptTrace] 快照落盘失败（不影响生成）:', reason)
     }
     reportOutcome(scope, { status: 'failed', reason: `写入失败：${reason}` })
-  } finally {
-    pendingIo.delete(runKey)
   }
+  // 注意：这里**不清理** `pendingIo`。一轮生成会连续发多次请求，每次完成都触发一次落盘；
+  // 若在此清空，后一次请求就看不到前一次的 IO —— 正是"只剩最后一次"的根因。
+  // 该作用域的内存态统一在退出作用域时由 `releaseTraceScopeState()` 释放。
 }
 
 /**
@@ -335,12 +379,25 @@ function reportSynthetic(
   }
 }
 
-/** 记录 IO 面，等待与片段快照一起落盘。 */
-export function recordTraceIo(record: TraceIoRecord): void {
+/** 记录 IO 面，等待与片段快照一起落盘（同一作用域内按序累积，不覆盖）。 */
+export function recordTraceIo(record: TraceIoInput): void {
   const scope = currentTraceScope()
   if (!scope) return
-  pendingIo.set(scope.runHandle ?? 'unscoped', record)
+  rememberPendingIo(scope.runHandle ?? 'unscoped', { ...record, at: Date.now() })
   scheduleTraceFlush()
+}
+
+/**
+ * 释放某个作用域的内存态（由命令在退出作用域时调用）。
+ *
+ * 作用域结束时该轮的 IO 已落盘完毕，留着只会让长会话按 runKey 累积；
+ * 但 `pendingIo` 不能在每次落盘后就清（见 `flushTraceFile` 末尾说明），
+ * 所以清理点必须落在"作用域退出"这个确定时刻。
+ */
+export function releaseTraceScopeState(scope?: TraceScope): void {
+  const key = scope?.runHandle ?? currentTraceScope()?.runHandle ?? 'unscoped'
+  pendingIo.delete(key)
+  flushedWatermark.delete(key)
 }
 
 /** 仅测试用：清空待落盘的 IO 缓存与计时器。 */

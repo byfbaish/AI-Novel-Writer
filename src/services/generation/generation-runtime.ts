@@ -157,6 +157,8 @@ export function installMainGenerationTransport(transport: MainGenerationTranspor
  * 只暴露回调、不反向依赖追踪模块，避免把渲染层依赖拖进本层。
  */
 export interface MainTaskIoObservation {
+  /** `task.purpose`：一轮生成内区分多次请求的唯一标识（短纲/正文/续写各一次）。 */
+  purpose: string
   messages: ReadonlyArray<{ role: string; content: string }>
   output: string
   finishReason: string
@@ -292,6 +294,7 @@ export async function createMainOwnedGenerationRuntime(options: MainOwnedGenerat
       // 主进程代跑的生成，真正的请求在这里跨进程发出——这是渲染层唯一能看到
       // 「实际发出的 messages + 模型输出」的位置（本地执行的链路由 generation-harness 观察）。
       notifyMainTaskIo({
+        purpose: dispatched.purpose,
         messages: dispatched.messages,
         output: receipt.outcome.content ?? '',
         finishReason: receipt.outcome.finishReason ?? 'unknown',

@@ -160,9 +160,10 @@ describe('prompt-trace-writer', () => {
 
     const jsonCall = invoke.mock.calls.find(([, channel, path]) => channel === 'fs:write-file' && String(path).endsWith('.json'))
     const payload = JSON.parse(jsonCall?.[3] as string)
-    expect(payload.io.output).toBe('第一章正文')
-    expect(payload.io.finishReason).toBe('stop')
-    expect(payload.io.messages).toHaveLength(2)
+    expect(payload.ioCalls).toHaveLength(1)
+    expect(payload.ioCalls[0].output).toBe('第一章正文')
+    expect(payload.ioCalls[0].finishReason).toBe('stop')
+    expect(payload.ioCalls[0].messages).toHaveLength(2)
     expect(payload.snapshots).toHaveLength(1)
   })
 
@@ -339,37 +340,99 @@ describe('落盘结果回显（状态面板数据源）', () => {
     const jsonCalls = writeCalls.filter(([, , path]) => String(path).endsWith('.json'))
     expect(jsonCalls).toHaveLength(2)
     const lastPayload = JSON.parse(jsonCalls[1][3] as string)
-    expect(lastPayload.io.output).toBe('第一章正文')
+    expect(lastPayload.ioCalls[0].output).toBe('第一章正文')
   })
 
-  it('一轮内多次 LLM 调用时写同一份文件，且保留最后一次真实请求面', async () => {
-    // 正文这类步骤一轮会发多次请求（短纲 → 正文）。若文件名按写入时刻生成，
-    // 每次增量都会**新增**一份半成品；若水位判定只认"有没有 IO"，
-    // 后一次请求的 messages 会被当成"没变化"而丢弃。
+  it('一轮内多次 LLM 调用时写同一份文件，且每一次请求与输出都保留', async () => {
+    // 回归（作者实测）：正文一轮会发多次请求（短纲 → 正文 → 续写）。
+    // 旧实现把 IO 存成单值，后一次直接覆盖前一次 —— 文件里的"模型输出"只剩最后一次，
+    // 中间的提示词与产出全部丢失，无从评估。现在必须按序全留。
     const { flushTraceNow } = await import('../prompts/prompt-trace-writer')
     const dispose = pushTraceScope({ runHandle: 'proj/lease/run-multi', operation: 'chapter-draft', projectSession: session })
     try {
       recordFragments({ template: builtin(), variables: {}, built: '组装结果', writingLanguage: 'zh-CN' })
       await flush()
-      recordTraceIo({ messages: [{ role: 'user', content: '第一跳：短纲' }], output: '短纲结果', finishReason: 'stop' })
+      recordTraceIo({ purpose: 'chapter-draft-short-outline', messages: [{ role: 'user', content: '第一跳：短纲' }], output: '短纲结果', finishReason: 'stop' })
       await flushTraceNow()
-      recordTraceIo({ messages: [{ role: 'user', content: '第二跳：正文' }], output: '正文结果', finishReason: 'stop' })
+      recordTraceIo({ purpose: 'chapter-draft', messages: [{ role: 'user', content: '第二跳：正文' }], output: '正文结果', finishReason: 'stop' })
+      await flushTraceNow()
+      recordTraceIo({ purpose: 'chapter-draft-continuation', messages: [{ role: 'user', content: '第三跳：续写' }], output: '续写结果', finishReason: 'stop' })
       await flushTraceNow()
     } finally { dispose() }
 
     const writes = invoke.mock.calls.filter(([, channel]) => channel === 'fs:write-file')
     const mdPaths = writes.filter(([, , path]) => String(path).endsWith('.md')).map(([, , path]) => String(path))
     const jsonPaths = writes.filter(([, , path]) => String(path).endsWith('.json')).map(([, , path]) => String(path))
-    // 文件名按作用域稳定：三次落盘（无 IO → 短纲 → 正文）都指向同一份文件。
+    // 文件名按作用域稳定：多次落盘（无 IO → 三次调用）都指向同一份文件。
     expect(new Set(mdPaths).size).toBe(1)
     expect(new Set(jsonPaths).size).toBe(1)
-    // 每次真实请求面变化都必须反映到文件里，最终保留最后一次（正文）。
+
     const last = writes.filter(([, , path]) => String(path).endsWith('.json')).at(-1)
     const payload = JSON.parse(last?.[3] as string)
-    expect(payload.io.output).toBe('正文结果')
-    expect(payload.io.messages[0].content).toBe('第二跳：正文')
+    expect(payload.ioCalls).toHaveLength(3)
+    expect(payload.ioCalls.map((call: { purpose: string }) => call.purpose)).toEqual([
+      'chapter-draft-short-outline', 'chapter-draft', 'chapter-draft-continuation',
+    ])
+    expect(payload.ioCalls.map((call: { output: string }) => call.output)).toEqual(['短纲结果', '正文结果', '续写结果'])
+
+    // 人读面：三次请求与三次输出都必须出现（只留最后一次是不可接受的）。
     const md = writes.filter(([, , path]) => String(path).endsWith('.md')).at(-1)?.[3] as string
+    expect(md).toContain('实际发出的请求与输出（3 次调用）')
+    expect(md).toContain('第一跳：短纲')
     expect(md).toContain('第二跳：正文')
-    expect(md).toContain('正文结果')
+    expect(md).toContain('第三跳：续写')
+    expect(md).toContain('短纲结果')
+    expect(md).toContain('续写结果')
+  })
+
+  it('恰好一次调用且请求含该快照正文时，首屏直接用真实请求，不重复贴同一段提示词', async () => {
+    const { flushTraceNow } = await import('../prompts/prompt-trace-writer')
+    const dispose = pushTraceScope({ runHandle: 'proj/lease/run-single', operation: 'chapter-draft', projectSession: session })
+    try {
+      recordFragments({ template: builtin(), variables: {}, built: '组装结果', writingLanguage: 'zh-CN' })
+      recordTraceIo({ purpose: 'chapter-draft', messages: [{ role: 'user', content: '前置材料\n\n组装结果\n\n后置合同' }], output: '唯一输出', finishReason: 'stop' })
+      await flushTraceNow()
+    } finally { dispose() }
+    const md = invoke.mock.calls.filter(([, channel, path]) => channel === 'fs:write-file' && String(path).endsWith('.md')).at(-1)?.[3] as string
+    // 请求只在首屏出现一次；下方只给输出，不重复整段请求。
+    expect(md.match(/前置材料/g)).toHaveLength(1)
+    expect(md).toContain('唯一输出')
+    expect(md).toContain('其请求已在上方「拼装后的完整提示词」中逐字呈现')
+  })
+
+  it('唯一一次调用与该快照无关时（如只录到续写、快照是首次成稿）不得张冠李戴', async () => {
+    // 回归：作者实测的正文一轮里，唯一录到的请求是「自动续写」，而快照是「首次成稿」。
+    // 若仅凭"数量都是 1"就关联，首屏会把续写请求当成首次成稿的提示词 —— 直接误导调优。
+    const { buildTraceMarkdown } = await import('../prompts/prompt-trace-markdown')
+    const md = buildTraceMarkdown({
+      operation: 'chapter-draft',
+      writtenAt: 0,
+      snapshots: [{ promptKey: 'first_chapter_draft', writingLanguage: 'zh-CN', capturedAt: 0, builtLength: 4, built: '首次成稿的组装正文', systemMessage: 's', fragments: [] }],
+      ioCalls: [{ purpose: 'chapter-draft-continuation', messages: [{ role: 'user', content: '自动续写用的另一种提示词' }], output: '续写片段', finishReason: 'stop' }],
+    })
+    expect(md).toContain('按装配结果重建')
+    expect(md).toContain('首次成稿的组装正文')
+    // 真实请求仍要完整列出（它在下方"实际发出的请求与输出"里）。
+    expect(md).toContain('实际发出的请求与输出（1 次调用）')
+    expect(md).toContain('自动续写用的另一种提示词')
+    expect(md).toContain('续写片段')
+  })
+
+  it('作用域收尾会释放该轮的内存态（不按 runKey 累积）', async () => {
+    const { releaseTraceScopeState, flushTraceNow } = await import('../prompts/prompt-trace-writer')
+    const scope = { runHandle: 'proj/lease/run-release', operation: 'chapter-draft', projectSession: session }
+    const dispose = pushTraceScope(scope)
+    try {
+      recordTraceIo({ purpose: 'chapter-draft', messages: [{ role: 'user', content: 'A' }], output: 'a', finishReason: 'stop' })
+      await flushTraceNow()
+      releaseTraceScopeState(scope)
+      // 释放后再记录时不应把上一轮的调用带进来。
+      recordTraceIo({ purpose: 'chapter-draft-continuation', messages: [{ role: 'user', content: 'B' }], output: 'b', finishReason: 'stop' })
+      await flushTraceNow()
+    } finally { dispose() }
+    const last = invoke.mock.calls.filter(([, channel, path]) => channel === 'fs:write-file' && String(path).endsWith('.json')).at(-1)
+    const payload = JSON.parse(last?.[3] as string)
+    expect(payload.ioCalls).toHaveLength(1)
+    expect(payload.ioCalls[0].output).toBe('b')
   })
 })
