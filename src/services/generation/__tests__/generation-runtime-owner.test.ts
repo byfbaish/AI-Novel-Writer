@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createGenerationRuntime as createFacade, createMainOwnedGenerationRuntime as createGenerationRuntime, listMainGenerationRuns, readMainGenerationRun, type MainGenerationRunHandle, type MainGenerationRunView, type MainGenerationSnapshot, type MainGenerationTransport } from '../generation-runtime'
+import { createGenerationRuntime as createFacade, createMainOwnedGenerationRuntime as createGenerationRuntime, listMainGenerationRuns, readMainGenerationRun, setMainTaskIoObserver, type MainGenerationRunHandle, type MainGenerationRunView, type MainGenerationSnapshot, type MainGenerationTransport } from '../generation-runtime'
 import type { GenerationOutcome, GenerationTask } from '../generation-harness'
 import { hashAuthorText } from '../../../shared/source-ref'
 import { useLLMStore } from '../../../stores/llm-store'
@@ -200,6 +200,34 @@ describe('main owned generation facade', () => {
       await gate; await Promise.resolve(); await Promise.resolve()
       expect(shown).not.toHaveBeenCalled()
     } finally { hashing.mockRestore() }
+  })
+
+  it('主进程代跑时在 transport 边界回报真实请求面（messages + 输出）', async () => {
+    // 回归：main-owned 生成在主进程执行，渲染层的 harness 观察点收不到；
+    // 若没有这个观察点，提示词追踪拿不到「实际发出的请求」，只能退化为重建。
+    const f = fixture(); const seen: Array<{ messages: ReadonlyArray<{ role: string; content: string }>; output: string; finishReason: string }> = []
+    setMainTaskIoObserver(observation => { seen.push(observation) })
+    try {
+      const runtime = await createGenerationRuntime({ runHandle: handle }, f.transport)
+      await runtime.execute(({ session }) => session.complete(task, { invocationNonce: '点击甲' }))
+      expect(seen).toHaveLength(1)
+      // 必须是**实际发出去**的那份 messages（与 transport 收到的逐字一致）。
+      expect(seen[0].messages).toEqual(task.messages)
+      expect(seen[0].output).toBe(f.outcome.content)
+      expect(seen[0].finishReason).toBe(f.outcome.finishReason)
+      await runtime.close()
+    } finally { setMainTaskIoObserver(null) }
+  })
+
+  it('观察点抛错不得影响生成结果（旁路）', async () => {
+    const f = fixture()
+    setMainTaskIoObserver(() => { throw new Error('追踪器炸了') })
+    try {
+      const runtime = await createGenerationRuntime({ runHandle: handle }, f.transport)
+      await expect(runtime.execute(({ session }) => session.complete(task, { invocationNonce: '点击甲' })))
+        .resolves.toEqual(f.outcome)
+      await runtime.close()
+    } finally { setMainTaskIoObserver(null) }
   })
 
 })

@@ -147,6 +147,29 @@ export function installMainGenerationTransport(transport: MainGenerationTranspor
   if (defaultMainTransport && defaultMainTransport !== transport) throw new Error('GENERATION_TRANSPORT_ALREADY_INSTALLED')
   defaultMainTransport = transport
 }
+
+/**
+ * 「主进程代跑」生成的实际请求面观察点（旁路，默认 null 时零开销）。
+ *
+ * 为什么要在这里观察：main-owned 的生成由主进程执行，渲染层的
+ * `generation-harness` 观察点不会触发；而该 `transport.execute` 是请求跨进程
+ * 发出去之前、渲染层能同时看到「补全后的 messages」与「回传输出」的唯一位置。
+ * 只暴露回调、不反向依赖追踪模块，避免把渲染层依赖拖进本层。
+ */
+export interface MainTaskIoObservation {
+  messages: ReadonlyArray<{ role: string; content: string }>
+  output: string
+  finishReason: string
+}
+let mainTaskIoObserver: ((observation: MainTaskIoObservation) => void) | null = null
+export function setMainTaskIoObserver(observer: ((observation: MainTaskIoObservation) => void) | null): void {
+  mainTaskIoObserver = observer
+}
+function notifyMainTaskIo(observation: MainTaskIoObservation): void {
+  try {
+    mainTaskIoObserver?.(observation)
+  } catch { /* 追踪是旁路，绝不影响生成结果。 */ }
+}
 function sameHandle(left: MainGenerationRunHandle, right: MainGenerationRunHandle): boolean {
   return ['projectId', 'epoch', 'rootActionId', 'runId'].every(key => {
     const field = key as keyof MainGenerationRunHandle
@@ -258,13 +281,21 @@ export async function createMainOwnedGenerationRuntime(options: MainOwnedGenerat
       if (execution?.signal) throw new Error('MAIN_CANCEL_REQUIRES_EXPLICIT_ACTION')
       // Old onChunk cannot safely append independent attempts. Use full snapshot receipts instead.
       if (execution?.onChunk) throw new Error('MAIN_SNAPSHOT_CALLBACK_REQUIRED')
-      const receipt = await transport.execute({ handle, invocationNonce, task: structuredClone(task) })
+      const dispatched = structuredClone(task)
+      const receipt = await transport.execute({ handle, invocationNonce, task: dispatched })
       assertView(receipt.run)
       for (const snapshot of receipt.run.artifacts) accept(snapshot, 'receipt')
       await queue
       if (projectionError) throw projectionError
       if (receipt.outcome.status === 'completed' && receipt.outcome.finishReason !== 'stop'
         || receipt.outcome.receipt.finishReason !== receipt.outcome.finishReason) throw new Error('INVALID_MAIN_OUTCOME')
+      // 主进程代跑的生成，真正的请求在这里跨进程发出——这是渲染层唯一能看到
+      // 「实际发出的 messages + 模型输出」的位置（本地执行的链路由 generation-harness 观察）。
+      notifyMainTaskIo({
+        messages: dispatched.messages,
+        output: receipt.outcome.content ?? '',
+        finishReason: receipt.outcome.finishReason ?? 'unknown',
+      })
       return receipt.outcome
     },
   }

@@ -279,62 +279,67 @@ prompt-trace/
 ### 6.1 通用骨架（**每个**步骤的 `input.prompt.md` 都长这样）
 
 ````markdown
-# TRACE · <promptKey> · <中文名>
+# Prompt 追踪快照
 
-> 一句话摘要：这次 prompt 由 N 块拼成 —— 其中 **X 块你能改**（去哪改见下表），**Y 块系统自动加**，**Z 块代码硬编码改不了**。
+- 生成任务：`chapter-draft`
+- 关联句柄：`项目/纪元/运行`
+- 章节：第 1 章
+- 记录时刻：2026/10/12 23:51:01
+- 片段批次：1
+- 请求面来源：**实际发出（与模型收到的一致）** 或 **按装配结果重建**
 
-## 1. 这次 prompt 由哪几块拼成
+## 1. `<promptKey>`（如 `first_chapter_draft`）
 
-> 每行 = 一块。"谁写的（现在生效）"回答"全局还是项目的"。
+组装后长度：11283 字 · 共 4 块
 
-| # | 这一块是什么 | 谁写的（现在生效） | 能改吗 | 去哪改 | 字节 |
-|---|-------------|------------------|--------|--------|------|
-| ① | 出厂设定（模板正文） | 内置 `synopsis` | 🔵 能 | 设置→提示词模板→情节大纲 | 4,120 |
-| ② | 你的全局写作要求 | 你的**项目**级设置 | 🟣 能 | 小说配置→全局写作要求 | 412 |
-| ③ | 系统补回的必需上下文 | 系统自动 | 🟡 否 | —（自动） | 980 |
-| ④ | 本步骤来自作者补充 | 你的**项目**级设置 | 🟣 能 | 生成情节大纲对话框→本步骤补充 | 120 |
-| Σ | | | | | 5,632 |
+### 1.1 拼装后的完整提示词（发送给模型前）★ 首屏
 
-> 一句话读法：**看"能改吗"这一列** —— 想调优就只动🔵🟢🟣；🔴/🟡 改了也没用（见 §7.1 哪些已被系统强制）。
+> **评估提示词质量只看这一节**。模板态（带 `{{var}}`）在后面，仅用于回答"这块从哪来、能不能改"。
 
-## 2. 逐块详情（每块贴原文 + 一句话说明）
+两种来源按可信度择一，并在文件头与本节内显式标注：
 
-### ① 出厂设定（模板正文）
-- **谁写的**：内置默认；**当前生效**：`global` 覆盖（你在设置里改过 → 出厂原文被遮挡，见下方 META 的 `builtinRevision`）
-- **去哪改**：设置 → 提示词模板 → 「情节大纲」→ 补充创作指导
-- **变量出口**：`global_guidance` / `premise` / `character_dynamics` / `world_building` / `plot_structure_guide`
-```text
-（贴 content 原文，变量位保留 {{xxx}} 形式）
-```
-
-### ② 你的全局写作要求（globalGuidance）
-- **谁写的**：小说配置 → 全局写作要求；**作用域**：项目级
-- **去哪改**：小说配置 → 全局写作要求
-```text
-（贴实际值）
-```
-
-…（依此类推每一块）
-
-## 3. 组装后 user message（最终喂给模型的原文）
+- **实际发出** —— 用 `io.messages` 逐字呈现（与模型收到的完全一致，**包含运行时注入的「补充写作 Skill」**）。
+- **按装配结果重建** —— 未拿到真实请求面时，用 `systemMessage` + `built` 拼出骨架；
+  运行时注入的内容不在此列，故必须标注来源，不得让人误以为就是发出的全部。
 
 ```text
-（build() 结果拼接后的完整 user prompt）
+#### system
+（systemRole + 代码追加的「不可变系统合同」）
+
+#### user
+（build() 结果：模板正文替换变量 + taskGuidance + systemSuffix + requiredContext）
 ```
 
-## 4. system message
+### 1.2 片段来源（可改性归因）
 
+| 序号 | 来源 | 名称 | 可改 | 生效来源 | 变量 |
+| --- | --- | --- | --- | --- | --- |
+| 1 | override-content | 这个步骤的提示词模板正文 | 可改 | global | `{{architecture}}` … |
+| 2 | override-taskGuidance | 补充创作指导 | 可改 | global | — |
+| 3 | override-systemRole | 创作角色定位（system） | 可改 | global | — |
+| 4 | builtin-systemSuffix | 输出格式与判定标准（自动追加） | 锁定 | builtin | `{{novel_config}}` … |
+
+> 一句话读法：**看"可改吗"这一列** —— 想调优就只动可改的；锁定的改了也没用（见 §7.1）。
+
+#### 第 N 块 · <名称>
+- 来源：`<sourceKind>` · 生效于 `<global|project|builtin>`
 ```text
-（getSystemRole() + 不可变合同 systemSuffix）
+（该片段的**原始模板**，变量未替换——只用于定位来源与可改性）
 ```
 
-## 5. 模型输出
+## 模型输出
 
+- finishReason：`stop`
 ```text
-（completion.content，已去 <think>）
+（模型输出正文）
 ```
 
+未捕获到输出时明确写出原因（该链路在主进程执行 / 请求面未回传），不留空节。
 ````
+
+**首屏规则的由来（P2.2 修正）**：P2.1 的实现把片段表放在最前、把「组装后正文」放到第 3 节，
+于是**人打开文件看到的仍是 `{{architecture}}` 这类模板占位**，无法评估提示词质量——
+这与本功能的目的（调优提示词）相反。现改为：**拼装态优先，模板态殿后**。
 
 #### 6.1.1 关键设计点：三条"看家字段"
 
@@ -624,6 +629,13 @@ TRACE-META -->
   3. **`finalize-chapter`（章节要点 / 角色卡）**：由独立的 `runFinalizationGeneration` 驱动（句柄经 `onHandle` 回调写入 `context`），本命令不建 runtime。→ 构造 `traceScope` 对象后，把 `pushTraceScope` **推迟到 `runPostProcessPipeline` 调用前一行**（前后无可抛错语句，确保 `finally` 一定能 dispose，不会泄漏作用域栈）；`onHandle` 回调内回填 `runHandle`。
   - **诊断增强**：域外回显带上 `promptKey`（「…生成作用域之外（promptKey=xxx）…」），避免再靠读代码反推是哪一步。
   - **同批次核对（确认本就安全，无需改动）**：`refine-draft` / `review-chapter` / `refine-from-review` 的 `build()` 都在 `generateAndCommit` 内，而基类 `ReviewRevisionCommand` 就在 `executeWithGenerationRuntime` 里调用它；`directory`（蓝图）的 `build()` 在 contract 回调内，由 `:438` 的运行时包住。
+- ✅ **P2.3 首屏改成「拼装态」+ 补 main-owned 的真实请求面（已完成）**：首轮真实落盘产出后暴露两个问题。
+  1. **人看到的还是模板**——`.md` 只渲染 `fragments[].rawText`（变量未替换），`built`（组装后全文）虽已捕获、只进了 `.json`。→ `buildMarkdown` 重构：**首屏 = 拼装后的完整提示词**，模板片段后置且明确标注「变量未替换，仅用于定位来源」。
+  2. **`io` 整段缺失**——`chapter-draft` 属 **main-owned**（`createWorkflowMainGenerationRuntime` → `createMainOwnedGenerationRuntime` → `transport` 走 IPC），真正的请求在主进程发出，渲染层的 `setHarnessIoObserver` 根本不会触发。→ `generation-runtime.ts` 在 `transport.execute` 前新增 `setMainTaskIoObserver`（同样只暴露回调、不依赖追踪模块），上报**补全后的 messages**（含 `injectWritingSkillIntoTask` 注入的写作 Skill）与回传的输出；`install-prompt-trace.ts` 把两个观察点接到同一个 `recordTraceIo`。
+  - **顺带修两个由多跳请求暴露的落盘缺陷**：
+    - **文件名改为按作用域稳定**（`scope.startedAt` 而非写入时刻）。原来每次增量写盘都会**新增**一份半成品；现在一轮生成只对应一份文件，增量覆盖写。
+    - **水位判定改用内容指纹**（FNV-1a）。原来只比「快照数 + 有无 IO」，而一轮的两跳请求（短纲 → 正文）长度可能恰好相同，会被判成"没变"而**丢掉后一跳的请求面**。
+  - **system message 的捕获**：`PromptTraceSnapshot` 新增 `systemMessage`，由 `composePromptSystemRole(template, lang)` 得到（= `systemRole` + 代码追加的「不可变系统合同」）。合同段不属于任何可编辑片段，但真实出现在请求里，评估时必须能看到。重建路径下把它作为 `system` 节渲染。
 - **P3 结构化路径（路径 B/C）**：路径 B（`structured-batch-executor`，蓝图等）与路径 C（`plot-tree-generator`/`narrative-thread-candidate-generator` 等直连 `session.complete`）。前者绕过提示词装配，能抓到的信息有限；后者无模板 key，`promptKey` 记 `task:*`。
 - **P4 收尾**：`INDEX.md`/`index.json` 跨 run 索引；StatusBar「打开 trace 目录」；自定义绝对路径 + 沙箱白名单核查。
 
@@ -633,11 +645,14 @@ TRACE-META -->
 
 **P2 已达成（路径 A）**：
 - 开关 ON → 跑一轮走主链路的生成（架构各步 / 蓝图 / 正文 / 精修）→ `<项目根>/debug/prompt-trace/` 出现 `<时间戳>-<操作>-<runId>.md` 与 `.json`。
-- `.md` 能区分「这段是内置 systemSuffix、代码硬编码、UI 改不了」vs「这段来自项目/全局覆盖」，并附「实际发出的请求」与「模型输出」两节。
+- `.md` **首屏必须是拼装后的完整提示词**（变量已替换）；模板态（含 `{{var}}`）只能出现在后半段且需标注「仅用于定位来源」。首屏位置必须早于片段表。
+- **请求面来源必须显式标注**：拿到真实请求面时标「实际发出（与模型收到的一致）」并逐字呈现（含运行时注入的写作 Skill）；未拿到时标「按装配结果重建」并说明缺什么，不得让人误以为就是发出的全部。
+- `.md` 能区分「这段是内置 systemSuffix、代码硬编码、UI 改不了」vs「这段来自项目/全局覆盖」。
 - 追踪 OFF 时零开销（`recordFragments` 首行短路）；落盘失败只 warn，不影响生成结果。
 - 无作用域 / 无项目会话 / 无快照时不写文件（不产生空文件噪音）。
 - **面板不得停在"等待落盘"**：任何一次 `build()` 捕获后（无论走哪条分支），状态面板都必须给出终态——`已写出 N 份` / `本次未写出文件 + 原因` / `落盘失败 + 原因`。只有"落盘正在进行中"才允许短暂显示等待态。
-- **同一轮生成只产生一份文件**：短定时器与作用域收尾命中同一作用域时不重复写；IO 后到时覆盖写一次以带上输出面。
+- **同一轮生成只产生一份文件**：文件名按作用域稳定；短定时器 / 作用域收尾 / 一轮内多次 LLM 调用都覆盖写同一份文件，不产生半成品残留。
+- **一轮内多次 LLM 调用的请求面不得丢失**：短纲 → 正文两跳的 messages 可能长度相同，水位判定必须基于**内容**而非长度。
 - **不出现「生成作用域之外」**：架构各步 / 蓝图 / 正文 / 精修 / 审稿 / 文风分析 / 定稿后处理，凡走提示词装配的链路都必须落在 trace scope 内并能落盘（P2.2 已按此逐条核对）。
 
 **P3 待达成（路径 B/C）**：
@@ -662,15 +677,21 @@ TRACE-META -->
 
 ## 14. 关键文件速查
 
-**追踪自身（P0~P2.1）**
+**追踪自身（P0~P2.3）**
 - 追踪开关与状态：`src/stores/debug-store.ts`（`promptTraceEnabled` / `traceRoot` 预留）、`src/components/settings/DeveloperSettings.tsx`
-- 片段归因：`src/services/prompts/prompt-trace.ts`（`deriveFragments()` 纯函数 + `recordFragments()` 短路捕获 + `setSnapshotSink`）
+- 片段归因：`src/services/prompts/prompt-trace.ts`（`deriveFragments()` 纯函数 + `recordFragments()` 短路捕获 + `setSnapshotSink`；快照含 `built`（组装后 user 正文）与 `systemMessage`）
 - 作用域广播：`src/services/prompts/trace-scope.ts`（`pushTraceScope` / `currentTraceScope` / `setTraceScopeTeardownHook` / `runTraceScopeTeardown`）——**零依赖，可被工作流核心安全引用**
-- 落盘：`src/services/prompts/prompt-trace-writer.ts`（`recordTraceIo` / `scheduleTraceFlush` / `flushTraceNow` / `TraceFlushOutcome` 订阅），落到 `<项目根>/debug/prompt-trace/`
+- 落盘：`src/services/prompts/prompt-trace-writer.ts`（`recordTraceIo` / `scheduleTraceFlush` / `flushTraceNow` / `TraceFlushOutcome` 订阅 + `buildMarkdown` 首屏拼装态），落到 `<项目根>/debug/prompt-trace/`
 - 状态回显 UI：`src/components/settings/PromptTraceStatus.tsx`（四态：等待/已写出/未写出/失败）
-- 装配：`src/services/prompts/install-prompt-trace.ts`（`main.tsx` 启动调用一次；注入 sink + IO 观察者 + 收尾钩子）
-- IO 抓取点：`src/services/generation/generation-harness.ts` `setHarnessIoObserver` + `complete()` 成功路径
+- 装配：`src/services/prompts/install-prompt-trace.ts`（`main.tsx` 启动调用一次；注入 sink + 两个 IO 观察者 + 收尾钩子）
+- IO 抓取点（二选一，覆盖全部执行位置）：
+  - **本地执行**：`src/services/generation/generation-harness.ts` `setHarnessIoObserver` + `complete()` 返回路径
+  - **主进程代跑（main-owned）**：`src/services/generation/generation-runtime.ts` `setMainTaskIoObserver` + `transport.execute` 前后
 - 作用域注入点：`src/services/workflows/commands/base-command.ts` `executeWithGenerationRuntime`（push 作用域 → 操作体 → **收尾落盘** → pop）
+
+**⚠️ 为什么需要两个 IO 观察点（踩过坑）**
+
+`main-owned` 的生成（正文等）由**主进程**执行：`createWorkflowMainGenerationRuntime` → `createMainOwnedGenerationRuntime` → `transport.execute`（IPC）。渲染侧的 `generation-harness` 观察者**永远不会触发**，所以「实际发出的请求」会整段缺失，只能退化为重建。`transport.execute` 是请求跨进程发出前、渲染层唯一能同时看到「补全后的 messages」与「回传输出」的位置——这也是唯一能看到 `injectWritingSkillIntoTask` 注入内容的时机（`built` 与 `io.messages` 的区别就在这里）。
 
 **⚠️ 提示词装配必须在 trace scope 内（P2.2 已补全的清单）**
 

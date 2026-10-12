@@ -2,6 +2,7 @@ import { configurePromptTrace, isPromptTraceEnabled, setSnapshotSink } from './p
 import { currentTraceScope, setTraceScopeTeardownHook } from './trace-scope'
 import { noteTraceCapture, recordTraceIo, scheduleTraceFlush, flushTraceNow } from './prompt-trace-writer'
 import { setHarnessIoObserver } from '../generation/generation-harness'
+import { setMainTaskIoObserver } from '../generation/generation-runtime'
 import { useDebugStore } from '../../stores/debug-store'
 import { promptCatalog } from '../prompt-templates'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
@@ -42,8 +43,13 @@ export function installPromptTraceFromDebugStore(): void {
     return flushTraceNow()
   })
   // 抓取真实发出的 messages 与模型输出，与片段快照按 runHandle 归并。
-  setHarnessIoObserver((observation) => {
+  // 两个观察点互补，覆盖全部执行位置：
+  // ① harness：渲染层**本地执行**的生成（architecture 等）；
+  // ② main transport：**主进程代跑**的生成（正文等 main-owned），其请求不经本地 harness。
+  const captureIo = (observation: { messages: ReadonlyArray<{ role: string; content: string }>; output: string; finishReason: string }) => {
     if (!isPromptTraceEnabled()) return
     recordTraceIo({ messages: [...observation.messages], output: observation.output, finishReason: observation.finishReason })
-  })
+  }
+  setHarnessIoObserver(captureIo)
+  setMainTaskIoObserver(captureIo)
 }

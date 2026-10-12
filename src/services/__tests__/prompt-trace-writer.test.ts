@@ -88,6 +88,68 @@ describe('prompt-trace-writer', () => {
     expect(markdown).toContain('这个步骤的提示词模板正文')
   })
 
+  it('md 首屏必须是拼装后的完整提示词，而非模板', async () => {
+    // 回归：早期只渲染片段 rawText（变量未替换），人看到的还是 `{{architecture}}`，
+    // 无法评估提示词质量。首屏必须是替换变量后的成品。
+    const dispose = pushTraceScope({ runHandle: 'proj/lease/run-built', operation: 'chapter-draft', projectSession: session })
+    try {
+      recordFragments({
+        template: builtin(),
+        variables: { architecture: '【全书设定池】替换后的架构正文' },
+        built: '请开始创作这本小说的第一章。\n\n【全书设定池】替换后的架构正文',
+        writingLanguage: 'zh-CN',
+      })
+      await flush()
+    } finally { dispose() }
+
+    const md = invoke.mock.calls.find(([, channel, path]) => channel === 'fs:write-file' && String(path).endsWith('.md'))?.[3] as string
+    expect(md).toContain('### 拼装后的完整提示词（发送给模型前）')
+    // 替换后的内容必须出现在首屏（拼装态）。
+    expect(md).toContain('替换后的架构正文')
+    // 首屏位置必须早于"片段来源"（模板态）——保证默认看到的是拼装结果。
+    expect(md.indexOf('### 拼装后的完整提示词（发送给模型前）'))
+      .toBeLessThan(md.indexOf('### 片段来源（可改性归因）'))
+  })
+
+  it('无实际请求面时用「system + 组装正文」重建并标注来源', async () => {
+    const dispose = pushTraceScope({ runHandle: 'proj/lease/run-rebuild', operation: 'chapter-draft', projectSession: session })
+    try {
+      recordFragments({ template: builtin(), variables: {}, built: '组装结果', writingLanguage: 'zh-CN' })
+      await flush()
+    } finally { dispose() }
+
+    const md = invoke.mock.calls.find(([, channel, path]) => channel === 'fs:write-file' && String(path).endsWith('.md'))?.[3] as string
+    expect(md).toContain('请求面来源：按装配结果重建')
+    expect(md).toContain('按装配结果重建')
+    expect(md).toContain('#### system')
+    expect(md).toContain('#### user')
+    // 系统合同段由 composePromptSystemRole 追加，不属于任何片段，必须能被看到。
+    expect(md).toContain('不可变系统合同')
+    expect(md).toContain('组装结果')
+  })
+
+  it('有实际请求面时直接用真实 messages，并与模型收到的一致', async () => {
+    const dispose = pushTraceScope({ runHandle: 'proj/lease/run-io', operation: 'chapter-draft', projectSession: session })
+    try {
+      recordFragments({ template: builtin(), variables: {}, built: '组装结果', writingLanguage: 'zh-CN' })
+      recordTraceIo({
+        messages: [
+          { role: 'system', content: '你是作家' },
+          { role: 'user', content: '【补充写作 Skill：快节奏】\n\n组装结果（运行时注入后）' },
+        ],
+        output: '第一章正文',
+        finishReason: 'stop',
+      })
+      await flush()
+    } finally { dispose() }
+
+    const md = invoke.mock.calls.find(([, channel, path]) => channel === 'fs:write-file' && String(path).endsWith('.md'))?.[3] as string
+    expect(md).toContain('请求面来源：实际发出')
+    // 运行时注入的写作 Skill 只在真实请求面里出现，模板/重建都拿不到。
+    expect(md).toContain('补充写作 Skill')
+    expect(md).toContain('第一章正文')
+  })
+
   it('IO 面与片段归并到同一份文件', async () => {
     const dispose = pushTraceScope({ runHandle: 'proj/lease/run-3', operation: 'chapter-draft', projectSession: session })
     try {
@@ -242,5 +304,36 @@ describe('落盘结果回显（状态面板数据源）', () => {
     expect(jsonCalls).toHaveLength(2)
     const lastPayload = JSON.parse(jsonCalls[1][3] as string)
     expect(lastPayload.io.output).toBe('第一章正文')
+  })
+
+  it('一轮内多次 LLM 调用时写同一份文件，且保留最后一次真实请求面', async () => {
+    // 正文这类步骤一轮会发多次请求（短纲 → 正文）。若文件名按写入时刻生成，
+    // 每次增量都会**新增**一份半成品；若水位判定只认"有没有 IO"，
+    // 后一次请求的 messages 会被当成"没变化"而丢弃。
+    const { flushTraceNow } = await import('../prompts/prompt-trace-writer')
+    const dispose = pushTraceScope({ runHandle: 'proj/lease/run-multi', operation: 'chapter-draft', projectSession: session })
+    try {
+      recordFragments({ template: builtin(), variables: {}, built: '组装结果', writingLanguage: 'zh-CN' })
+      await flush()
+      recordTraceIo({ messages: [{ role: 'user', content: '第一跳：短纲' }], output: '短纲结果', finishReason: 'stop' })
+      await flushTraceNow()
+      recordTraceIo({ messages: [{ role: 'user', content: '第二跳：正文' }], output: '正文结果', finishReason: 'stop' })
+      await flushTraceNow()
+    } finally { dispose() }
+
+    const writes = invoke.mock.calls.filter(([, channel]) => channel === 'fs:write-file')
+    const mdPaths = writes.filter(([, , path]) => String(path).endsWith('.md')).map(([, , path]) => String(path))
+    const jsonPaths = writes.filter(([, , path]) => String(path).endsWith('.json')).map(([, , path]) => String(path))
+    // 文件名按作用域稳定：三次落盘（无 IO → 短纲 → 正文）都指向同一份文件。
+    expect(new Set(mdPaths).size).toBe(1)
+    expect(new Set(jsonPaths).size).toBe(1)
+    // 每次真实请求面变化都必须反映到文件里，最终保留最后一次（正文）。
+    const last = writes.filter(([, , path]) => String(path).endsWith('.json')).at(-1)
+    const payload = JSON.parse(last?.[3] as string)
+    expect(payload.io.output).toBe('正文结果')
+    expect(payload.io.messages[0].content).toBe('第二跳：正文')
+    const md = writes.filter(([, , path]) => String(path).endsWith('.md')).at(-1)?.[3] as string
+    expect(md).toContain('第二跳：正文')
+    expect(md).toContain('正文结果')
   })
 })

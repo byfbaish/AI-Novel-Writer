@@ -40,7 +40,10 @@ interface TraceFilePayload {
     capturedAt: number
     builtLength: number
     fragments: PromptTraceSnapshot['fragments']
+    /** 组装后的 user 正文（变量已替换）。 */
     built: string
+    /** 实际作为 system message 发送的内容。 */
+    systemMessage: string
   }>
   io?: {
     messages: Array<{ role: string; content: string }>
@@ -78,6 +81,23 @@ function compactTimestamp(at: number): string {
   ].join('')
 }
 
+/** 追加一个 ```text 代码块（反引号转义，避免截断 markdown）。 */
+function pushCodeBlock(lines: string[], text: string): void {
+  lines.push('```text')
+  lines.push(text.replace(/\r\n/g, '\n').replace(/```/g, "'''"))
+  lines.push('```', '')
+}
+
+/**
+ * 人读快照。
+ *
+ * 首屏必须是**拼装后的完整提示词**（评估提示词质量看这里），而不是模板。
+ * 模板片段（变量未替换）排在后面，只用于回答"这一块从哪来、能不能改"。
+ *
+ * 请求面的两个来源，按可信度择一：
+ * - `io.messages`：主进程/本地实际发出的请求，**与模型收到的完全一致**（含运行时注入的写作 Skill）。
+ * - 快照重建：`systemMessage` + `built` 拼出请求骨架；运行时注入的内容不在此列，故显式标注来源。
+ */
 function buildMarkdown(payload: TraceFilePayload): string {
   const lines: string[] = []
   lines.push('# Prompt 追踪快照', '')
@@ -85,13 +105,36 @@ function buildMarkdown(payload: TraceFilePayload): string {
   lines.push(`- 关联句柄：\`${payload.runHandle ?? '（无，未进入命令作用域）'}\``)
   if (payload.chapterNumber !== undefined) lines.push(`- 章节：第 ${payload.chapterNumber} 章`)
   lines.push(`- 记录时刻：${new Date(payload.writtenAt).toLocaleString('zh-CN')}`)
-  lines.push(`- 片段批次：${payload.snapshots.length}`, '')
+  lines.push(`- 片段批次：${payload.snapshots.length}`)
+  lines.push(`- 请求面来源：${payload.io ? '实际发出（与模型收到的一致）' : '按装配结果重建'}`, '')
+
+  const ioMessages = payload.io?.messages ?? []
 
   for (const [index, snapshot] of payload.snapshots.entries()) {
     lines.push('---', '')
-    lines.push(`## ${index + 1}. \`${snapshot.promptKey}\``)
-    lines.push(`组装后长度：${snapshot.builtLength} 字 · 共 ${snapshot.fragments.length} 块`)
-    lines.push('')
+    lines.push(`## ${index + 1}. \`${snapshot.promptKey}\``, '')
+    lines.push(`组装后长度：${snapshot.builtLength} 字 · 共 ${snapshot.fragments.length} 块`, '')
+
+    // ① 首屏：拼装后的完整提示词
+    lines.push('### 拼装后的完整提示词（发送给模型前）', '')
+    if (ioMessages.length > 0) {
+      lines.push('> 来源：**实际发出的请求**，与模型收到的逐字一致。', '')
+      for (const message of ioMessages) {
+        lines.push(`#### ${message.role}`, '')
+        pushCodeBlock(lines, message.content)
+      }
+    } else {
+      lines.push('> 来源：**按装配结果重建**。本次未拿到实际请求面（该链路在主进程执行，')
+      lines.push('> 请求/输出未回传渲染层），故由「system 角色」+「组装后正文」拼出骨架；')
+      lines.push('> 运行时注入的「补充写作 Skill」等不在其中。', '')
+      lines.push('#### system', '')
+      pushCodeBlock(lines, snapshot.systemMessage)
+      lines.push('#### user', '')
+      pushCodeBlock(lines, snapshot.built)
+    }
+
+    // ② 片段来源：回答"这块从哪来、能不能改"
+    lines.push('### 片段来源（可改性归因）', '')
     lines.push('| 序号 | 来源 | 名称 | 可改 | 生效来源 | 变量 |')
     lines.push('| --- | --- | --- | --- | --- | --- |')
     for (const fragment of snapshot.fragments) {
@@ -99,30 +142,24 @@ function buildMarkdown(payload: TraceFilePayload): string {
       lines.push(`| ${fragment.order} | ${fragment.sourceKind} | ${fragment.label} | ${fragment.editable ? '可改' : '锁定'} | ${fragment.resolvedFrom ?? '—'} | ${variables} |`)
     }
     lines.push('')
+    lines.push('> 以下为各片段的**原始模板**（变量尚未替换），仅用于定位来源与可改性。', '')
     for (const fragment of snapshot.fragments) {
-      lines.push(`### 第 ${fragment.order} 块 · ${fragment.label}`, '')
+      lines.push(`#### 第 ${fragment.order} 块 · ${fragment.label}`, '')
       lines.push(`- 来源：\`${fragment.sourceKind}\`${fragment.resolvedFrom ? ` · 生效于 \`${fragment.resolvedFrom}\`` : ''}`)
       if (fragment.note) lines.push(`- 说明：${fragment.note}`)
       lines.push('')
-      lines.push('```text')
-      lines.push(fragment.rawText.replace(/\r\n/g, '\n').replace(/```/g, "'''"))
-      lines.push('```', '')
+      pushCodeBlock(lines, fragment.rawText)
     }
   }
 
+  lines.push('---', '')
+  lines.push('## 模型输出', '')
   if (payload.io) {
-    lines.push('---', '')
-    lines.push('## 实际发出的请求与输出', '')
-    for (const message of payload.io.messages) {
-      lines.push(`### ${message.role}`, '')
-      lines.push('```text')
-      lines.push(message.content.replace(/\r\n/g, '\n').replace(/```/g, "'''"))
-      lines.push('```', '')
-    }
-    lines.push(`### 模型输出${payload.io.finishReason ? `（finishReason=${payload.io.finishReason}）` : ''}`, '')
-    lines.push('```text')
-    lines.push(payload.io.output.replace(/\r\n/g, '\n').replace(/```/g, "'''"))
-    lines.push('```', '')
+    lines.push(`- finishReason：\`${payload.io.finishReason ?? 'unknown'}\``, '')
+    pushCodeBlock(lines, payload.io.output)
+  } else {
+    lines.push('- 本次未捕获到模型输出（该链路的请求面未回传渲染层）。', '')
+    lines.push('- 正文成品可在项目内查看；此处缺失不影响上方提示词的评估。', '')
   }
 
   return lines.join('\n')
@@ -181,27 +218,42 @@ let lastFlushWarning = ''
 /**
  * 已落盘过的「作用域标识 → 内容水位」。
  *
- * 一次命令里落盘可能被触发两次：① 片段捕获后的 30ms 短定时器（拿到片段、可能还没 IO）；
- * ② 命令退出作用域前的确定时序收尾（片段 + IO 都齐）。若不判重，同一份内容会写出两份文件。
- * 水位 = `快照数 + IO 是否就绪`：内容变多则覆盖写一次（IO 后到是有价值的增量），
- * 完全没变则跳过，避免重复文件。
+ * 一次命令里落盘会被触发多次：① 片段捕获后的 30ms 短定时器（可能还没 IO）；
+ * ② 命令退出作用域前的确定时序收尾（片段 + IO 都齐）；③ 一轮内多次 LLM 调用
+ * 各自回报 IO（如正文的短纲 + 正文）。
+ *
+ * 水位 = `快照数 + IO 面签名`：内容变了就重写**同一份文件**（文件名按作用域稳定），
+ * 完全没变则跳过，避免无意义的重复写。
  */
 const flushedWatermark = new Map<string, string>()
 
-function watermarkOf(runKey: string, snapshotCount: number): string {
-  return `${snapshotCount}|${pendingIo.has(runKey) ? 'io' : 'noio'}`
+/** 内容水位：任一分量变化即代表有新内容值得重写。 */
+function watermarkOf(runKey: string, snapshotSignature: string): string {
+  const io = pendingIo.get(runKey)
+  const ioSignature = io
+    ? `${io.messages.length}:${contentFingerprint(io.messages.map(message => `${message.role}\u0000${message.content}`).join('\u0001'))}:${contentFingerprint(io.output)}:${io.finishReason ?? ''}`
+    : 'noio'
+  return `${snapshotSignature}|${ioSignature}`
 }
 
-/** 只有同一作用域内"内容确实变多"时才允许再次写出。 */
+/**
+ * 轻量内容指纹（FNV-1a）。
+ *
+ * 必须**基于内容本身**而非长度：一轮生成的两跳请求长度可能恰好相同
+ * （如「第一跳：短纲」与「第二跳：正文」），只比长度会把真正的变化判成"没变"而丢弃。
+ */
+function contentFingerprint(text: string): string {
+  let hash = 0x811c9dc5
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return hash.toString(16)
+}
+
+/** 同一作用域内内容未变则不重复写。文件名按作用域稳定，故变化时是覆盖写而非新增文件。 */
 function shouldWrite(key: string, watermark: string): boolean {
-  const previous = flushedWatermark.get(key)
-  if (previous === undefined) return true
-  if (previous === watermark) return false
-  // 内容变多（如从"仅片段"到"片段+IO"）值得覆盖写一次；变少不可能，按新值写。
-  const [prevCount, prevIo] = previous.split('|')
-  const [nextCount, nextIo] = watermark.split('|')
-  if (Number(nextCount) > Number(prevCount)) return true
-  return prevIo === 'noio' && nextIo === 'io'
+  return flushedWatermark.get(key) !== watermark
 }
 
 /**
@@ -240,9 +292,10 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
     return
   }
 
-  // 同一作用域可能被触发两次（短定时器 + 作用域收尾）。内容没变就不重复写文件，
-  // 也不要让第二次的 skipped 覆盖掉第一次的 ok 回显。
-  const watermark = watermarkOf(runKey, fresh.length)
+  // 同一作用域可能被触发多次（短定时器 + 作用域收尾 + 一轮内多次 LLM 调用）。
+  // 内容没变就不重复写；变了则覆盖写同一份文件，也不让后一次的 skipped 覆盖掉 ok 回显。
+  const snapshotSignature = fresh.map(snapshot => `${snapshot.promptKey}:${contentFingerprint(snapshot.built)}`).join(',')
+  const watermark = watermarkOf(runKey, snapshotSignature)
   if (!shouldWrite(runKey, watermark)) return
 
   const io = pendingIo.get(runKey)
@@ -259,11 +312,16 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
       builtLength: snapshot.built.length,
       fragments: snapshot.fragments,
       built: snapshot.built,
+      systemMessage: snapshot.systemMessage,
     })),
     ...(io ? { io } : {}),
   }
 
-  const fileName = `${compactTimestamp(writtenAt)}-${sanitizeFileSegment(scope.operation ?? 'unknown')}-${sanitizeFileSegment(scope.runHandle?.split('/').pop() ?? 'run')}`
+  // 文件名按**作用域**稳定（而非写入时刻）：一轮生成只对应一份文件，
+  // IO 后到、多次 LLM 调用等增量都覆盖写同一个文件，不会留下一堆半成品。
+  const startedAt = scopeStartedAt(scope)
+  const stamp = compactTimestamp(startedAt > 0 ? startedAt : writtenAt)
+  const fileName = `${stamp}-${sanitizeFileSegment(scope.operation ?? 'unknown')}-${sanitizeFileSegment(scope.runHandle?.split('/').pop() ?? 'run')}`
   const dir = joinProjectPath(session.projectPath, ...PROMPT_TRACE_DIR_SEGMENTS)
   const relativeBase = `${promptTraceRelativeDir()}/${fileName}`
 

@@ -2,6 +2,7 @@ import type { PromptTemplate } from '../prompt-templates'
 import {
   ARCHITECTURE_PROMPT_KEYS,
   EDITABLE_PROMPT_KEYS,
+  composePromptSystemRole,
   getBuiltinPromptTemplate,
 } from '../builtin-prompt-templates'
 import type { WritingLanguage } from '../../shared/writing-language'
@@ -59,8 +60,15 @@ export interface PromptFragment {
 export interface PromptTraceSnapshot {
   promptKey: string
   writingLanguage: WritingLanguage
-  /** 组装后的最终字符串（供与 IO 层对账，P2 用）。 */
+  /** 组装后的最终字符串（= 发给模型的 user 正文，变量已替换）。 */
   built: string
+  /**
+   * 实际作为 system message 发送的内容（`systemRole` + 代码追加的「不可变系统合同」）。
+   *
+   * 不复用片段：合同段由 `composePromptSystemRole` 动态拼接，不属于任何可编辑片段，
+   * 却真实出现在请求里——评估提示词时必须能看到。
+   */
+  systemMessage: string
   fragments: PromptFragment[]
   /** 捕获时刻（毫秒时间戳）。 */
   capturedAt: number
@@ -244,6 +252,7 @@ export function recordFragments(input: RecordFragmentsInput): PromptTraceSnapsho
     promptKey: input.template.key,
     writingLanguage: input.writingLanguage,
     built: input.built,
+    systemMessage: composePromptSystemRole(input.template, input.writingLanguage),
     fragments,
     capturedAt: Date.now(),
   }
