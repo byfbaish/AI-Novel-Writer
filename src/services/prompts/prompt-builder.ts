@@ -6,6 +6,7 @@ import {
   pruneEmptyOptionalPromptSections,
 } from '../prompt-templates'
 import type { WritingLanguage } from '../../shared/writing-language'
+import { recordFragments } from './prompt-trace'
 
 /**
  * 基础抽象 Prompt 建造者
@@ -65,6 +66,16 @@ export class BasePromptBuilder {
     if (missing) {
       console.warn(`[PromptBuilder] 警告：模板 "${this.template.name}" 中有未赋值的变量残留:`, missing)
     }
+
+    // Prompt 片段追踪（P1）：在合并之前逐块归因，供调优定位来源。
+    // 关闭时首行即短路，零开销；不改本方法的返回值。
+    recordFragments({
+      template: this.template,
+      variables: this.variables,
+      built: result,
+      writingLanguage: this.writingLanguage,
+    })
+
     return result
   }
 }
