@@ -1133,7 +1133,8 @@ function ChapterCardEditorSession({
                   <div>
                     <Label>{text('出场关键人（顿号或逗号分隔）', 'Key characters (separated by 、 or ,)')}</Label>
                     <Input
-                      value={selected.characters.join('、')}
+                      key={selected.chapterNumber}
+                      defaultValue={selected.characters.join('、')}
                       onChange={e => updateField('characters', e.target.value.split(/[,，、\s]+/).filter(Boolean))}
                       placeholder={text('如：主角、反派A', 'For example: protagonist, antagonist A')}
                     />
