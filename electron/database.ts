@@ -26,7 +26,9 @@ export function createProjectDatabase(projectPath: string, importSourceSecret?: 
   const database = new Database(file, { fileMustExist: true })
   try {
     database.pragma('foreign_keys = ON')
-    initializeLegacyBaselineSchema(database, importSourceSecret)
+    // 新建项目的 baseline 建表必须原子：中途失败则整段回滚，不留半成品 schema。
+    // 只改变失败时的原子性，执行的 DDL 语句与顺序不变 ⇒ sqlite_master 指纹不受影响。
+    database.transaction(() => initializeLegacyBaselineSchema(database, importSourceSecret))()
     migrateSchema(new SqliteSchemaAdapter(database), getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
   } finally { database.close() }
 }
