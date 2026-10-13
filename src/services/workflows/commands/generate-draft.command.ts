@@ -936,12 +936,26 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       .filter(Boolean)
       .join('\n\n')
     const prompt = composeInitialPrompt('')
-    const outlinePrompt = draftShortOutlinePrompt(writingLanguage, prompt)
+    const previousEnding = chapterMaterials.previousEnding
+    // P0-1：短细纲只喂该步材料。此前它直接吃 `prompt`（整份初始正文 prompt，实测
+    // 16,736 字：全书设定池 5,049 / 参考作品 3,071 / 文风要求 1,492 / 全局写作要求 315 /
+    // 篇幅合同 / 黄金第一章法则 / AI 味反制…），而这一步的调用**没有 system 消息** ——
+    // 模型看到的唯一输入就是「指令 + 正文写作材料」，材料形态本身在教它写散文
+    //（实测输出 1,747 字）。取舍与裁定见 docs/design/p0-1-short-outline-scoping-design.md §6。
+    const outlinePrompt = draftShortOutlinePrompt(writingLanguage, {
+      // 本步没有 system 消息，作者本章指导只能靠蓝图 JSON 承载 → 不 drop userGuidance。
+      chapterInfo: JSON.stringify(toBlueprintProjection(writerChapterInfo), null, 2),
+      // 前驱取上一章**定稿**原文（作者裁定给全文）；首章、或前驱仍是未定稿候选时退回
+      // 结尾摘录 —— 宁可少给，也不把未定稿候选当成已确立事实喂进"计划"。
+      predecessor: chapterMaterials.consumedFinalizedSources
+        .find(source => source.chapterNumber === this.chapterInfo.chapterNumber - 1)?.content?.trim()
+        || previousEnding,
+      executionContract: chapterExecutionContract.rules,
+    })
     const withSkill = (content: string) => injectWritingSkillIntoTask({ purpose: 'chapter-draft', output: 'visible-text',
       messages: [{ role: 'user', content }] }, context, 'drafting').task.messages[0]!.content
     const materialDecision = { ...chapterMaterials.decision, promptHash: await hashAuthorText(withSkill(prompt)),
       ...(!this.resumeHandle ? { shortOutlinePromptHash: await hashAuthorText(withSkill(outlinePrompt)) } : {}) }
-    const previousEnding = chapterMaterials.previousEnding
 
     callbacks.log(uiText(
       '调用 AI 生成章节草稿...',
