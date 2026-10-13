@@ -13,6 +13,7 @@ import {
   GenerateConfigCommand as RuntimeGenerateConfigCommand,
   GenerateCoreSeedCommand,
   GenerateWorldBuildingCommand,
+  GeneratePlotStructureCommand,
   GeneratePlotArchitectureCommand,
 } from '../architecture.command'
 import {
@@ -842,6 +843,100 @@ describe('GenerateCharactersCommand structured roster seam', () => {
       expect(request).not.toContain('科幻')
       expect(request).not.toContain('全龄')
       expect(request).not.toContain('你是一位网络小说策划专家与故事架构师')
+    }
+  })
+
+  it('自由文本按步骤分区：架构侧只吃「架构」档与未标注段', async () => {
+    // 作者裁定（2026-10-13）：① 参考作品要进架构层（体系/机制本就该沉淀在世界观里）；
+    // ② 「只对正文有意义」的排版纪律不得污染架构。两者用段级标签分开给。
+    const referenceWorks = [
+      '## 一、可借鉴的机制（未标注 → 所有步骤都可见）',
+      '借它「规则必须有实体痕迹支撑」的设计手法。',
+      '【适用：正文】',
+      '正文专用：规则清单一句一段。',
+    ].join('\n')
+    const globalGuidance = [
+      '【适用：架构】',
+      '基调克制，不写心理告白。',
+      '【适用：正文】',
+      '弹幕语言用【】括起来。',
+    ].join('\n')
+    const novelConfig = {
+      writingLanguage: 'zh-CN',
+      genre: '玄幻',
+      subGenre: '怪谈',
+      targetAudience: '男频',
+      totalChapters: 20,
+      wordsPerChapter: 2500,
+      plotStructure: 'three_act',
+      narrativePOV: 'third_limited',
+      coreOutline: '一座小城每天夜里多出一条不存在的街。',
+      worldSetting: '规则怪谈以城市为单位运转，违规者会被替换。',
+      goldenFinger: '主角能看见规则的实体痕迹。',
+      protagonistProfile: '主角谨慎、记性好。',
+      globalGuidance,
+      referenceWorks,
+    }
+    useProjectStore.setState({
+      currentProject: { ...project(projectAPath), novelConfig } as never,
+    })
+    const observed = new Map<string, string>()
+    useLLMStore.setState({
+      defaultModelId: 'model-1',
+      generateStream: vi.fn(async (
+        messages: Parameters<ReturnType<typeof useLLMStore.getState>['generateStream']>[0],
+        streamCallbacks,
+        _modelId,
+        options,
+      ) => {
+        observed.set(options?.purpose ?? 'unknown', messages.map(message => message.content).join('\n'))
+        streamCallbacks.onError?.('captured request')
+        return 'architecture-scope-request'
+      }),
+    })
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
+      if (channel === 'fs:check-exists') return false
+      if (channel === 'fs:read-json') return { success: true, data: {} }
+      if (channel === 'db:project-core-get') {
+        return {
+          premise: 'A sufficiently detailed premise for the architecture scoping request.',
+          charactersArch: '林舟与顾岩目标冲突。',
+          worldbuilding: '夜里的那条街会按规则替换违规者：写下名字的人次日消失，只留下实体痕迹；规则必须由实体痕迹支撑，否则不成立。',
+          synopsis: '调查在三幕中升级。',
+        }
+      }
+      throw new Error(`Unexpected IPC channel: ${channel}`)
+    })
+    vi.stubGlobal('window', {
+      aiNovelAPI: { invoke, on: vi.fn(), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn() },
+    })
+    const snapshot = { expectedProjectPath: projectAPath, novelConfig } as never
+    const commands = [
+      new GenerateCoreSeedCommand(snapshot, workflowRuntimeDependencies),
+      new GenerateWorldBuildingCommand(snapshot, workflowRuntimeDependencies),
+      new GeneratePlotStructureCommand(snapshot, workflowRuntimeDependencies),
+    ]
+    const failures = new Map<string, unknown>()
+    for (const command of commands) {
+      try {
+        await command.execute({ step: {}, context, callbacks })
+      } catch (error) {
+        failures.set(command.constructor.name, error)
+      }
+    }
+
+    for (const purpose of ['generate-core-seed', 'generate-world-building', 'generate-plot-structure']) {
+      const request = observed.get(purpose)
+      expect(request, `${purpose} 应当收到请求；失败：${commands.map(c => `${c.constructor.name}=${String(failures.get(c.constructor.name))}`).join(' | ')}`).toBeTruthy()
+      // 未标注段 + 架构档 → 架构侧必须看得到（含"参考作品进了世界观/弧光"这条裁定）。
+      expect(request, purpose).toContain('规则必须有实体痕迹支撑')
+      expect(request, purpose).toContain('基调克制')
+      // 正文档 → 架构侧必须看不到。
+      expect(request, purpose).not.toContain('规则清单一句一段')
+      expect(request, purpose).not.toContain('弹幕语言用【】括起来')
+      // 标签行本身永不进 prompt。
+      expect(request, purpose).not.toContain('【适用：')
     }
   })
 

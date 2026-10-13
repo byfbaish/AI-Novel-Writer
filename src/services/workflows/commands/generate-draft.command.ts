@@ -5,6 +5,7 @@ import { DRAFT_RECONCILE_PURPOSE, draftReconciliationBlock } from '../../../shar
 import { DRAFT_SHORT_OUTLINE_PURPOSE, draftShortOutlinePrompt, draftShortOutlineBlock } from '../../../shared/draft-short-outline'
 export { sanitizeDraftText } from '../../../shared/draft-visible-text'
 import { synopsisSettingSectionsForDraft } from '../../../shared/synopsis-projection'
+import { projectScopedText } from '../../../shared/text-scope-tags'
 export { synopsisSettingSectionsForDraft } from '../../../shared/synopsis-projection'
 import { createWorkflowMainGenerationRuntime, type WorkflowMainGenerationRequest } from '../workflow-main-generation'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
@@ -685,9 +686,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       projectSession,
       writingLanguage,
     )
+    // 自由文本按步骤分区（段级标签）：正文链只取「正文」档与未标注段。
+    // 两个来源（作者全局写作要求 / 项目级补充指导）是两段独立自由文本 → 标签各自生效，故先投影再合并。
+    // 无标签时 `projectScopedText` 逐字返回原文，旧项目行为不变。
     const mergedGuidance = [
-      novelConfig.globalGuidance?.trim() || '',
-      projectPrompts,
+      projectScopedText(novelConfig.globalGuidance?.trim() || '', 'draft').text,
+      projectScopedText(projectPrompts, 'draft').text,
     ].filter(Boolean).join('\n\n')
 
     const characterProfilesResult = await this.readCharacterProfiles(
@@ -738,11 +742,13 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // Prompt 构建——按「稳定前缀 → 可变后缀」排列
     // 以最大化 LLM 上下文缓存命中率
     // ==========================================
-    const writingStyle = novelConfig.writingStyle?.trim() || ''
+    // 文风与参考作品同样走段级标签投影：两者都只在正文链注入（架构侧没有这两个槽位），
+    // 打标签时按「正文」档取舍；不打标签则逐字不变。
+    const writingStyle = projectScopedText(novelConfig.writingStyle?.trim() || '', 'draft').text
     // 参考作品与文风同属「表达层」配置：它们只影响怎么写，不影响写什么。
     // 单独成段注入（而非塞进 novel_config JSON），既让模型看清其「仅供借鉴」的边界，
     // 也避免与【不可偏离的作者事实】混为一谈。
-    const referenceWorks = novelConfig.referenceWorks?.trim() || ''
+    const referenceWorks = projectScopedText(novelConfig.referenceWorks?.trim() || '', 'draft').text
     const promptOnlyConfigKeys = new Set([
       'globalGuidance',
       'writingStyle',

@@ -21,6 +21,7 @@ import { Input } from '../ui/Input'
 import { Textarea } from '../ui/Textarea'
 import { NativeSelect } from '../ui/NativeSelect'
 import GenerateConfigDialog from '../dialogs/GenerateConfigDialog'
+import ScopeTagBar from './ScopeTagBar'
 import { useLocaleStore } from '../../stores/locale-store'
 import {
   captureProjectSession,
@@ -72,6 +73,9 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
   ))
   // 第五层「弧光结构 / 自由弧」是否存在：决定上面那个枚举下拉框是"生效"还是"兜底"。
   const [hasFreeArc, setHasFreeArc] = useState(false)
+  // 「按步骤分区」标签要插到光标处，故这两个自由文本框需要 ref（Textarea 支持 forwardRef）。
+  const globalGuidanceRef = useRef<HTMLTextAreaElement>(null)
+  const referenceWorksRef = useRef<HTMLTextAreaElement>(null)
   const exitSaveRef = useRef<(propagateFailure?: boolean) => Promise<void>>(async () => undefined)
   useEffect(() => {
     registerEditorExitSaveHandler({
@@ -506,16 +510,22 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
           {/* 全局写作要求 */}
           <Section
             title={text('全局写作要求', 'Global writing guidance')}
-            desc={text('写作风格、禁忌事项、节奏控制等全局规则（AI 填充配置时会自动生成）', 'Global rules for style, pacing, and content restrictions.')}
+            desc={text('写作风格、禁忌事项、节奏控制等全局规则（AI 填充配置时会自动生成）。排版类要求（如"一句一段"）只对正文有意义，可用下方标签标出。', 'Global rules for style, pacing, and content restrictions. Formatting rules (e.g. "one sentence per paragraph") only matter for drafts — scope them with the tags below.')}
             aiFieldKey="globalGuidance"
             generatingField={generatingField}
             onAIGenerate={handleFieldGenerate}
           >
             <Textarea
+              ref={globalGuidanceRef}
               value={config.globalGuidance}
               onChange={(e) => update('globalGuidance', e.target.value)}
               placeholder={text('全局的写作风格要求、禁忌事项、特殊规则...', 'Global style requirements, restrictions, and special rules...')}
               rows={6}
+            />
+            <ScopeTagBar
+              value={config.globalGuidance}
+              onChange={(next) => update('globalGuidance', next)}
+              textareaRef={globalGuidanceRef}
             />
           </Section>
 
@@ -536,8 +546,22 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
           </Section>
 
           {/* 参考作品 */}
-          <Section title={text('参考作品', 'Reference works')} desc={text('参考作品的风格、体系或机制，如：“参考《证道》的修炼体系”', 'Reference the style, setting, or mechanics of other works.')}>
-            <Textarea value={config.referenceWorks || ''} onChange={(e) => update('referenceWorks', e.target.value)} placeholder={text('参考哪些作品的风格、设定或机制？（AI 架构生成时会参考）', 'Which works should inform the style, setting, or mechanics?')} rows={2} />
+          <Section
+            title={text('参考作品', 'Reference works')}
+            desc={text('写清「作品名 + 想借鉴的具体点 + 明确不要照搬的点」。默认对主架构与每章正文都生效，可用下方标签分开给。', 'Name the work, what to borrow, and what not to copy. Applies to the architecture steps and every chapter draft unless you scope it with the tags below.')}
+          >
+            <Textarea
+              ref={referenceWorksRef}
+              value={config.referenceWorks || ''}
+              onChange={(e) => update('referenceWorks', e.target.value)}
+              placeholder={text('例：《某规则怪谈》——借它「规则必须有实体痕迹支撑」的设计手法；不要照搬它的规则条文与结局链。', 'e.g. “Rules-based horror”: borrow how its rules always leave physical traces; do not copy its rule texts or ending chain.')}
+              rows={4}
+            />
+            <ScopeTagBar
+              value={config.referenceWorks || ''}
+              onChange={(next) => update('referenceWorks', next)}
+              textareaRef={referenceWorksRef}
+            />
           </Section>
         </div>
       </div>

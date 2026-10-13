@@ -5,6 +5,7 @@ import { ReviewRevisionCommand, type ReviewRevisionCommandSource } from './revie
 import { resolvePromptTemplate } from '../../prompt-templates'
 import { ChapterPromptBuilder } from '../../prompts/prompt-builder'
 import { promptLanguageText } from '../../prompt-language'
+import { projectScopedText } from '../../../shared/text-scope-tags'
 import {
   ChapterMaterialCapacityError,
   type ReviewRevisionMaterialAdmission,
@@ -69,11 +70,11 @@ export class RefineDraftCommand extends ReviewRevisionCommand {
       .withChapterInfo({ projectPath: params.context.projectPath, chapterNumber: frozen.source.chapterNumber,
         title: blueprint?.title ?? '', role: blueprint?.role ?? '', purpose: blueprint?.purpose ?? '',
         characters: blueprint?.characters ?? [], keyEvents: blueprint?.keyEvents ?? '' })
-      .withGlobalGuidance(guidance)
+      .withGlobalGuidance(projectScopedText(guidance, 'draft').text)
       .withGlobalSummary(historySummary)
       .withShortSummary(historySummary)
       .withWordNumber(frozen.config.wordsPerChapter)
-      .withWritingStyle(frozen.config.writingStyle || '')
+      .withWritingStyle(projectScopedText(frozen.config.writingStyle || '', 'draft').text)
       .withUserRefinePrompt(userPromptBlock)
     const prompt = [builder.build(), ...admission.admitted.filter(material => material.category !== 'finalized-history').map(material => material.text)].join('\n\n')
     await this.bindMaterialDecision(params, admission.decision, prompt)

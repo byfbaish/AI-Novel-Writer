@@ -2737,13 +2737,52 @@ ${headingPrefix}第3章：潮门
 
     const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
     // [1] 参考作品以独立段落注入，原文可见。
-    expect(completePrompt).toContain('【参考作品（如有，仅供借鉴调性与节奏，不是必须兑现的作者事实）】')
+    expect(completePrompt).toContain('【参考作品（如有，借鉴其体系/机制/调性，禁止照搬的条款必须遵守；不是必须兑现的作者事实）】')
     expect(completePrompt).toContain(referenceWorks)
     // [2] 参考作品不得出现在【不可偏离的作者事实】的 novel_config JSON 里。
     const configSection = completePrompt.split('小说配置：')[1] ?? ''
     expect(configSection).not.toContain(referenceWorks)
     // [3] 参考作品的语义边界说明必须同时存在于提示词中（防止被当作硬约束）。
     expect(completePrompt).toContain('不是必须兑现的作者事实')
+  })
+
+  it('自由文本按步骤分区：正文侧只吃「正文」档与未标注段', async () => {
+    // 与架构侧的用例（architecture.command.test.ts）配对：同一段自由文本，两侧看到的内容互补。
+    // 作者裁定：架构标签的内容仅供主架构使用，大纲与正文不该重复吃上层材料。
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask = task
+      return outcome('新事件继续发生。'.repeat(70), 'stop')
+    })
+    const { context, callbacks, command } = setup({
+      runtime,
+      wordsTarget: 500,
+      globalGuidance: [
+        '【适用：架构】',
+        '架构侧专用：弧光必须三层嵌套。',
+        '【适用：正文】',
+        '正文侧专用：一句一段。',
+      ].join('\n'),
+      referenceWorks: [
+        '未标注段：防抄袭禁则，两边都遵守。',
+        '【适用：架构】',
+        '架构侧专用：借它的体系设计手法。',
+        '【适用：正文】',
+        '正文侧专用：对话只承载推进信息。',
+      ].join('\n'),
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
+    // 未标注段 + 正文档 → 正文侧必须看得到。
+    expect(completePrompt).toContain('防抄袭禁则')
+    expect(completePrompt).toContain('正文侧专用：一句一段。')
+    expect(completePrompt).toContain('正文侧专用：对话只承载推进信息。')
+    // 架构档 → 正文侧必须看不到。
+    expect(completePrompt).not.toContain('架构侧专用')
+    // 标签行本身永不进 prompt。
+    expect(completePrompt).not.toContain('【适用：')
   })
 
   it('prunes the reference-works block when no reference works are configured', async () => {
@@ -2779,8 +2818,8 @@ ${headingPrefix}第3章：潮门
   })
 
   it.each([
-    { writingLanguage: 'zh-CN' as const, heading: '【参考作品（如有，仅供借鉴调性与节奏，不是必须兑现的作者事实）】' },
-    { writingLanguage: 'en-US' as const, heading: '[Reference works — tone and pacing reference only; not author facts that must be honored]' },
+    { writingLanguage: 'zh-CN' as const, heading: '【参考作品（如有，借鉴其体系/机制/调性，禁止照搬的条款必须遵守；不是必须兑现的作者事实）】' },
+    { writingLanguage: 'en-US' as const, heading: '[Reference works — borrow systems/mechanics/tone; obey stated prohibitions; not author facts that must be honored]' },
   ])('injects reference works in the $writingLanguage draft prompt for chapter 2', async ({ writingLanguage, heading }) => {
     const referenceWorks = writingLanguage === 'zh-CN'
       ? '《长夜余火》：废土旅途，克制白描。'
@@ -3156,8 +3195,13 @@ ${headingPrefix}第3章：潮门
       const runtime = fakeRuntime(attempt => attempt === 1 ? outcome('初'.repeat(100), 'length', 1) : outcome(`${'续'.repeat(400)}。`, 'stop', 2),
         () => { throw new Error('new runs must not ask for generated planning') })
       const source = '林澄写下核查安排。\n\n作者更正：林澄撤回先前核查安排，等待新的通行许可。'
+      // P0-1 载荷断言的三个「正文形态」标记：它们必须只出现在正文请求里。
+      const globalGuidance = '【全局基调标记】克制。'
+      const writingStyle = '【文风标记】短句为主。'
+      const referenceWorks = '【参考作品标记】某参考书。'
       const { context, callbacks, command } = setup({ runtime, wordsTarget: 500, writingLanguage, chapterNumber: 2,
-        keyEvents: '核查遇阻；承担代价', worldSetting: '铜钥匙始终由林澄保管。', previousFinalizedContent: source })
+        keyEvents: '核查遇阻；承担代价', worldSetting: '铜钥匙始终由林澄保管。', previousFinalizedContent: source,
+        globalGuidance, writingStyle, referenceWorks })
 
       await command.execute({ step: {}, context, callbacks })
 
@@ -3179,6 +3223,35 @@ ${headingPrefix}第3章：潮门
       const decision = runtime.createRuntime.mock.calls[0]?.[1]?.selection.materialDecision
       expect(decision?.reconciliationPromptHash).toBeUndefined()
       expect(decision?.promptHash).toBe(createHash('sha256').update(stripDraftShortOutlineBlock(initial, '目标：读信；前驱：信已送到；行动与结果：本章读完信；结尾：保留原约束。')!).digest('hex'))
+
+      // P0-1：短细纲只喂该步材料 —— 本章蓝图 + 前驱全文 + 本章执行合同。
+      const outlinePrompt = runtime.outline.mock.calls[0]![0].messages[0]!.content
+      const blueprintLabel = writingLanguage === 'en-US' ? '[Current-chapter blueprint]' : '【本章蓝图】'
+      const contractLabel = writingLanguage === 'en-US' ? '[Current-chapter execution contract]' : '【本章执行合同】'
+      for (const kept of [blueprintLabel, contractLabel, source, '核查遇阻；承担代价']) {
+        expect(outlinePrompt).toContain(kept)
+      }
+      // 全书设定（世界设定）、全局写作要求、文风、参考作品一律不进短细纲；
+      // 这几个标记同时必须出现在正文请求里 —— 否则断言只是「夹具里本来就没有这些块」。
+      for (const proseOnly of [globalGuidance, writingStyle, referenceWorks, '铜钥匙始终由林澄保管。']) {
+        expect(outlinePrompt).not.toContain(proseOnly)
+        expect(initial).toContain(proseOnly)
+      }
+    })
+
+    it.each(['zh-CN', 'en-US'] as const)('feeds the %s short outline the previous chapter in full, not just its ending excerpt', async writingLanguage => {
+      const runtime = fakeOutcomes(outcome('初'.repeat(100), 'length'), outcome(`${'续'.repeat(400)}。`, 'stop'))
+      // previousChapterEnding 只保留结尾 ≤1,000 字 → 会丢掉开篇；作者裁定前驱给全文，故这里必须看得到开篇。
+      const previous = `开篇标记${'旧'.repeat(1_500)}定稿结尾。`
+      const f = setup({ runtime, wordsTarget: 500, writingLanguage, chapterNumber: 2, keyEvents: '读信',
+        previousFinalizedContent: previous })
+
+      await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+
+      expect(previous.length).toBeGreaterThan(1_000)
+      const outlinePrompt = runtime.outline.mock.calls[0]![0].messages[0]!.content
+      expect(outlinePrompt).toContain('开篇标记')
+      expect(outlinePrompt).toContain(previous)
     })
 
     it.each(['zh-CN', 'en-US'] as const)('preserves %s source and requirements in the single condense request without generated planning', async writingLanguage => {
@@ -3864,10 +3937,15 @@ ${headingPrefix}第3章：潮门
     await expect(command.execute({ step: {}, context, callbacks })).resolves.toContain('正文')
 
     expect(completeWithLease).toHaveBeenCalledTimes(2)
-    const physicalRequest = completeWithLease.mock.calls[0]![0]
+    // ⚠️ 不能按序号取：`calls[0]` 是短细纲。P0-1 之后它只带该步材料（本章蓝图 + 前驱 +
+    // 执行合同），实测 ~660 字，不再是大载荷。「30K 不本地拒发」这条针对的是**正文**请求，
+    // 故按 purpose 取；否则本条会因短细纲变小而假红（2026-10-13 P0-1 实测）。
+    const physicalRequest = completeWithLease.mock.calls
+      .map(([request]) => request)
+      .find(request => request.purpose === 'chapter-draft')!
     const promptChars = physicalRequest.messages.reduce((sum, message) => sum + message.content.length, 0)
     expect(promptChars).toBeGreaterThan(30_000)
-    expect(completeWithLease.mock.calls[0]?.[0].plan.maxOutputTokens).toBe(8192)
+    expect(physicalRequest.plan.maxOutputTokens).toBe(8192)
   })
 
   it('accepts exactly 70% of the target without requesting a continuation', async () => {

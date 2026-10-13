@@ -4,6 +4,7 @@ import { ReviewRevisionCommand, type ReviewRevisionCommandSource } from './revie
 import { hasIncludedReviewItems, parseHumanConfirmedReviewSnapshot } from '../../../shared/human-confirmed-review'
 import { resolvePromptTemplate } from '../../prompt-templates'
 import { ChapterPromptBuilder } from '../../prompts/prompt-builder'
+import { projectScopedText } from '../../../shared/text-scope-tags'
 import {
   ChapterMaterialCapacityError,
   type ReviewRevisionMaterialAdmission,
@@ -95,7 +96,7 @@ export class RefineFromReviewCommand extends ReviewRevisionCommand {
       .withReviewReport(admission.admitted.filter(material => material.identity.sourceId === aiReviewSourceId)
         .map(material => material.text).join('\n\n'))
       .withDraftContent(frozen.source.content)
-      .withGlobalGuidance(frozen.config.globalGuidance || '')
+      .withGlobalGuidance(projectScopedText(frozen.config.globalGuidance || '', 'draft').text)
       .withUserRefinePrompt('')
     const prompt = appendCompleteRevisionContract([
       promptLanguageText(frozen.writingLanguage, '【修稿依据｜作者材料与前驱原文】', '[Revision sources | author material and predecessor prose]'),

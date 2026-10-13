@@ -28,6 +28,7 @@ import { Button } from '../ui/Button'
 import { cn } from '../../lib/utils'
 import { useLocaleStore } from '../../stores/locale-store'
 import { extractTemplateVariables, findDuplicatedBodyVariables } from '../../services/prompt-variable-usage'
+import { insertSnippetAtCursor } from '../insert-at-cursor'
 
 // ==================== 来源标签配置 ====================
 
@@ -351,20 +352,10 @@ function TemplateItem({
   const bodyVariables = new Set(extractTemplateVariables(currentTemplate.content ?? ''))
   const duplicatedVariables = findDuplicatedBodyVariables(currentTemplate.content ?? '', editGuidance)
 
-  // 插入变量到光标位置
+  // 插入变量到光标位置（共享实现，与小说配置里的段级标签 chip 同一处逻辑）
   const insertVariable = (varName: string) => {
-    const textarea = textareaRef.current
-    if (!textarea) return
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const text = `{{${varName}}}`
-    const newContent = editGuidance.slice(0, start) + text + editGuidance.slice(end)
-    setEditGuidance(newContent)
-    // 恢复光标
-    requestAnimationFrame(() => {
-      textarea.focus()
-      textarea.setSelectionRange(start + text.length, start + text.length)
-    })
+    const next = insertSnippetAtCursor(textareaRef.current, editGuidance, `{{${varName}}}`)
+    if (next !== null) setEditGuidance(next)
   }
 
   // 保存到全局

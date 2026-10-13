@@ -7,6 +7,7 @@ import type { MainGenerationRunHandle } from '../../generation/generation-runtim
 import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
 import { withProjectedArcGuide } from '../../../shared/arc-position'
+import { projectScopedConfigFields, projectScopedText } from '../../../shared/text-scope-tags'
 import { declareTraceScopeChapterRange } from '../../prompts/trace-scope'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
 import {
@@ -1061,9 +1062,9 @@ export class GenerateCoreSeedCommand extends BaseWorkflowCommand<string> {
       .withCoreSetting(config.worldSetting || missingValue)
       .withGoldenFinger(config.goldenFinger || missingValue)
       .withProtagonistProfile(config.protagonistProfile || missingValue)
-      .withGlobalGuidance(config.globalGuidance || missingValue)
+      .withGlobalGuidance(projectScopedText(config.globalGuidance || '', 'architecture').text || missingValue)
       .withStepGuidance(((context.data.stepGuidance as Record<string, string>) || {}).premise || '')
-      .withReferenceWorks(config.referenceWorks || '')
+      .withReferenceWorks(projectScopedText(config.referenceWorks || '', 'architecture').text)
 
     const result = await this.callLLMWithBuilder(
       promptBuilder,
@@ -1534,8 +1535,11 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
       .withCoreSetting(config.worldSetting || missingValue)
       .withGoldenFinger(config.goldenFinger || missingValue)
       .withProtagonistProfile(config.protagonistProfile || missingValue)
-      .withGlobalGuidance(config.globalGuidance || missingValue)
+      .withGlobalGuidance(projectScopedText(config.globalGuidance || '', 'architecture').text || missingValue)
       .withStepGuidance(stepGuidance)
+      // 参考作品也进世界观/弧光（作者裁定 ②）：体系与机制的借鉴本就该沉淀在世界观里，
+      // 而不是只在正文层反复出现。投影与注入点同址：模板是"出口声明"，投影是"数据准备"。
+      .withReferenceWorks(projectScopedText(config.referenceWorks || '', 'architecture').text)
     const taskPrompt = promptBuilder.build()
     const systemPrompt = promptBuilder.getSystemRole()
     const llmOptions = {
@@ -1800,8 +1804,9 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
       .withGenre(modelFacts.genre)
       .withNumberOfChapters(config.totalChapters)
       .withWordNumber(config.wordsPerChapter)
-      .withGlobalGuidance(config.globalGuidance || missingValue)
+      .withGlobalGuidance(projectScopedText(config.globalGuidance || '', 'architecture').text || missingValue)
       .withStepGuidance(((context.data.stepGuidance as Record<string, string>) || {}).plotStructure || '')
+      .withReferenceWorks(projectScopedText(config.referenceWorks || '', 'architecture').text)
 
     const result = await this.callLLMWithBuilder(
       promptBuilder,
@@ -2143,7 +2148,8 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       //   其他大弧只留接续理由），再追加弧位硬约束块。结构不可解析时行为与改造前一致。
       .withPlotStructureGuide(withProjectedArcGuide(guide, core?.plotStructurePlan, totalChapters, from, to, writingLanguage))
       .withNarrativePov(pov)
-      .withGlobalGuidance(config.globalGuidance || promptLanguageText(writingLanguage, '（未填写）', '(not provided)'))
+      .withGlobalGuidance(projectScopedText(config.globalGuidance || '', 'outline').text
+        || promptLanguageText(writingLanguage, '（未填写）', '(not provided)'))
       .withStepGuidance(effectiveStepGuidance)
 
     if (mode === 'resume') {
@@ -2410,6 +2416,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     // 同批量路径 :2122 前的说明：逐章大纲的章节段也只能由命令显式声明（purpose 后到）。
     // 必须在下面 promptBuilder.build()（即 prompt-trace 装配）之前调用。
     declareTraceScopeChapterRange(initial.range.from, initial.range.to)
+    // P0-2：本步属「大纲」档。投影必须发生在写入 builder 之前，且**同一份投影值**要同时
+    // 供模板变量与下面的「其余冻结作者配置」块使用（见该块注释）。
+    const projectedGlobalGuidance = projectScopedText(sourceExpected.globalGuidance || '', 'outline').text
     const { resolveStageStructureGuide, getNarrativePOVLabel } = await import('../architecture-workflow')
     const promptBuilder = new ArchitecturePromptBuilder(template, language)
       .withCoreSeed(sourceExpected.premise).withCharacterDynamics(sourceExpected.charactersArch).withWorldBuilding(sourceExpected.worldbuilding)
@@ -2421,11 +2430,16 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         resolveStageStructureGuide(sourceExpected.plotStructurePlan, config.plotStructure, sourceExpected.totalChapters, language),
         sourceExpected.plotStructurePlan, sourceExpected.totalChapters, initial.range.from, initial.range.to, language))
       .withNarrativePov(getNarrativePOVLabel(config.narrativePOV || 'third_limited', language))
-      .withGlobalGuidance(sourceExpected.globalGuidance).withStepGuidance(guidance)
+      .withGlobalGuidance(projectedGlobalGuidance).withStepGuidance(guidance)
+    // ★ 这是段级标签的「第 7 个注入点」，不走模板变量，而是把**整份 config** JSON 直灌 prompt：
+    //   不投影就会把打了【适用：架构】的参考作品/文风原样（含标签行）送进大纲请求 ——
+    //   等于"大纲照样吃上层材料"，正是作者裁定 ① 要禁止的事（2026-10-13 实机取证发现）。
+    //   `representedConfig` 也必须用**投影后**的 globalGuidance 比对，否则值不等会让它被重灌一遍。
+    const scopedConfig = projectScopedConfigFields(config, 'outline')
     const representedConfig: Record<string, unknown> = { genre: config.genre, totalChapters: sourceExpected.totalChapters,
       wordsPerChapter: sourceExpected.wordsPerChapter, plotStructure: config.plotStructure, narrativePOV: config.narrativePOV,
-      globalGuidance: sourceExpected.globalGuidance, writingLanguage: language }
-    const additionalConfig = Object.fromEntries(Object.entries(config).filter(([key, value]) => representedConfig[key] !== value))
+      globalGuidance: projectedGlobalGuidance, writingLanguage: language }
+    const additionalConfig = Object.fromEntries(Object.entries(scopedConfig).filter(([key, value]) => representedConfig[key] !== value))
     const originalPrompt = [promptBuilder.build(), ...(Object.keys(additionalConfig).length ? [promptLanguageText(language,
       `【其余冻结作者配置，须保留全部硬要求】\n${JSON.stringify(additionalConfig)}`,
       `[Additional frozen author configuration; preserve all hard requirements]\n${JSON.stringify(additionalConfig)}`)] : [])].join('\n\n')
