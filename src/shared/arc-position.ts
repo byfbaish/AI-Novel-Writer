@@ -60,8 +60,21 @@ export interface ArcSpan {
   nextMidName: string | null
 }
 
-const MAJOR_HEADING = /^#{2,3}[\t ]*大弧[^：:]*[：:][\t ]*(.+?)[\t ]*(?:（[\t ]*约?[\t ]*([0-9]+)[\t ]*章[\t ]*）)?[\t ]*$/u
-const MID_HEADING = /^#{3,4}[\t ]*中弧[\t ]*[0-9]*[\t ]*[：:][\t ]*(.+?)[\t ]*(?:（[\t ]*约?[\t ]*([0-9]+)[\t ]*章[\t ]*）)?[\t ]*$/u
+/**
+ * 弧标题的章数标注：`（约 94 章）` 与 `（约 1–94 章）` **两种都要认**。
+ *
+ * ⚠️ 2026-10-13 修复（既有缺陷）：原正则的章数捕获只有 `([0-9]+)`，只认单值；
+ * 而内置模板 `builtin-prompt-templates.ts:680/704` 给模型的**格式示范本身就写区间**
+ * （`## 大弧一：<名称>（约 X–Y 章）`，中弧 `:685` 写单值 `（约 N 章）`）。
+ * 作者按模板产出 → 大弧全是区间 → 捕获失败 → `chapters` 全为 0 → 整个结构被
+ * `usable` 过滤为空 → **`parseArcStructure` 恒返回 `null`**，弧位块与弧光裁剪
+ * **从未生效过**，且失败是静默的（返回 null 后调用方直接跳过）。
+ *
+ * 区间取 `末 − 首 + 1`：它同时是"该弧含多少章"，与单值标注语义一致。
+ */
+const CHAPTER_COUNT = '([0-9]+)(?:[\\t ]*[–—~～-][\\t ]*([0-9]+))?[\\t ]*章'
+const MAJOR_HEADING = new RegExp(`^#{2,3}[\\t ]*大弧[^：:]*[：:][\\t ]*(.+?)[\\t ]*(?:（[\\t ]*约?[\\t ]*${CHAPTER_COUNT}[\\t ]*）)?[\\t ]*$`, 'u')
+const MID_HEADING = new RegExp(`^#{3,4}[\\t ]*中弧[\\t ]*[0-9]*[\\t ]*[：:][\\t ]*(.+?)[\\t ]*(?:（[\\t ]*约?[\\t ]*${CHAPTER_COUNT}[\\t ]*）)?[\\t ]*$`, 'u')
 /** `- **类型**：A 因果驱动型` / `- 因果：…` —— 字段名与值 */
 const FIELD_LINE = /^[-*][\t ]*\*{0,2}([^：:*]{1,12}?)\*{0,2}[\t ]*[：:][\t ]*(.+?)[\t ]*$/u
 /** 只保留能定位内容的字段，忽略纯枚举（类型）与排版字段 */
@@ -73,6 +86,23 @@ function stripBrackets(value: string): string {
 
 function toText(value: string): string {
   return value.replace(/\*\*/gu, '').replace(/\s+/gu, ' ').trim()
+}
+
+/**
+ * 从标题捕获组算出该弧的章数。
+ * - `start` 缺失（标题没写章数）→ null（该条被丢弃）。
+ * - 单值形式 `（约 100 章）` → 章数就是 100（**不是**区间长度）。
+ * - 区间形式 `（约 1–94 章）` → 章数 = `末 − 首 + 1`。
+ * - 乱序或非正数 → null（该条被丢弃）。
+ */
+function headingChapterCount(start: string | undefined, end: string | undefined): number | null {
+  if (start === undefined) return null
+  const first = Number(start)
+  if (!Number.isSafeInteger(first) || first < 1) return null
+  if (end === undefined) return first
+  const last = Number(end)
+  if (!Number.isSafeInteger(last) || last < first) return null
+  return last - first + 1
 }
 
 /**
@@ -88,15 +118,17 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
   for (const rawLine of plan.split(/\r?\n/u)) {
     const line = rawLine.trim()
     const majorMatch = MAJOR_HEADING.exec(line)
-    if (majorMatch?.[2]) {
-      major = { name: stripBrackets(majorMatch[1]!), chapters: Number(majorMatch[2]), fields: [], mids: [] }
+    const majorChapters = majorMatch ? headingChapterCount(majorMatch[2], majorMatch[3]) : null
+    if (majorMatch && majorChapters !== null) {
+      major = { name: stripBrackets(majorMatch[1]!), chapters: majorChapters, fields: [], mids: [] }
       majors.push(major as ArcMajor)
       mid = null
       continue
     }
     const midMatch = MID_HEADING.exec(line)
-    if (midMatch?.[2] && major) {
-      mid = { name: stripBrackets(midMatch[1]!), chapters: Number(midMatch[2]), fields: [] }
+    const midChapters = midMatch ? headingChapterCount(midMatch[2], midMatch[3]) : null
+    if (midMatch && midChapters !== null && major) {
+      mid = { name: stripBrackets(midMatch[1]!), chapters: midChapters, fields: [] }
       major.mids.push(mid)
       continue
     }
