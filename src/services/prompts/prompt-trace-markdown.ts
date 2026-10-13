@@ -48,6 +48,8 @@ export interface PromptTraceMarkdownPayload {
   runHandle?: string
   operation?: string
   chapterNumber?: number
+  /** 本批覆盖的章节范围（大纲链用；它没有单章号，只有批次范围）。 */
+  chapterRange?: { from: number; to: number }
   writtenAt: number
   snapshots: ReadonlyArray<PromptTraceMarkdownSnapshot>
   /** 本轮实际发出的**全部**请求，按序（这是评估提示词的主要依据）。 */
@@ -117,6 +119,7 @@ export function buildTraceMarkdown(payload: PromptTraceMarkdownPayload): string 
   lines.push(`- 生成任务：\`${payload.operation ?? '未知'}\``)
   lines.push(`- 关联句柄：\`${payload.runHandle ?? '（无，未进入命令作用域）'}\``)
   if (payload.chapterNumber !== undefined) lines.push(`- 章节：第 ${payload.chapterNumber} 章`)
+  if (payload.chapterRange) lines.push(`- 章节范围：第 ${payload.chapterRange.from}–${payload.chapterRange.to} 章`)
   lines.push(`- 记录时刻：${new Date(payload.writtenAt).toLocaleString('zh-CN')}`)
   lines.push(`- 提示词装配批次：${payload.snapshots.length}`)
   lines.push(`- 实际调用次数：${ioCalls.length}`)

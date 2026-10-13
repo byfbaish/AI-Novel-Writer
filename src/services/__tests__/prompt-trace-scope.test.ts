@@ -5,7 +5,13 @@ import {
   resetPromptTrace,
   type PromptTraceSink,
 } from '../prompts/prompt-trace'
-import { currentTraceScope, pushTraceScope, resetTraceScope, type TraceScope } from '../prompts/trace-scope'
+import {
+  currentTraceScope,
+  declareTraceScopeChapterRange,
+  pushTraceScope,
+  resetTraceScope,
+  type TraceScope,
+} from '../prompts/trace-scope'
 import { resetTraceIoQueue } from '../prompts/prompt-trace-writer'
 import { getBuiltinPromptTemplate } from '../builtin-prompt-templates'
 
@@ -67,6 +73,47 @@ describe('trace-scope', () => {
     expect(currentTraceScope()?.runHandle).toBe('same')
     second()
     expect(currentTraceScope()).toBeUndefined()
+  })
+})
+
+describe('本批章节范围声明', () => {
+  // 大纲链没有 chapterNumber、模板里也没有 n/m，章节号只在**后到的**请求 purpose 里；
+  // 而文件名在首次落盘时就钉住了 —— 所以范围必须由命令在装配前显式声明。
+  it('声明后写入当前作用域', () => {
+    const scope: TraceScope = { runHandle: 'p/e/r' }
+    const dispose = pushTraceScope(scope)
+    declareTraceScopeChapterRange(8, 10)
+    expect(currentTraceScope()?.chapterRange).toEqual({ from: 8, to: 10 })
+    dispose()
+  })
+
+  it('无作用域时静默忽略', () => {
+    expect(() => declareTraceScopeChapterRange(8, 10)).not.toThrow()
+    expect(currentTraceScope()).toBeUndefined()
+  })
+
+  it('文件名已钉住后拒绝再改（否则会写出第二份文件）', () => {
+    const scope: TraceScope = {
+      runHandle: 'p/e/r',
+      traceFileName: '20261013-191720-497-大纲-ch8-10-8650c580',
+    }
+    const dispose = pushTraceScope(scope)
+    declareTraceScopeChapterRange(11, 12)
+    expect(scope.chapterRange).toBeUndefined()
+    dispose()
+  })
+
+  it('拒绝非法范围（非整数 / 越界 / 逆序）', () => {
+    const scope: TraceScope = { runHandle: 'p/e/r' }
+    const dispose = pushTraceScope(scope)
+    declareTraceScopeChapterRange(0, 3)
+    declareTraceScopeChapterRange(5, 3)
+    declareTraceScopeChapterRange(1.5, 3)
+    declareTraceScopeChapterRange(Number.NaN, 3)
+    expect(scope.chapterRange).toBeUndefined()
+    declareTraceScopeChapterRange(6, 6)
+    expect(scope.chapterRange).toEqual({ from: 6, to: 6 })
+    dispose()
   })
 })
 
