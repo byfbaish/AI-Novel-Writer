@@ -428,7 +428,7 @@ interface PromptTemplate {
 
 **作者计划：新建空项目跑全流程**（尚未执行；跑前须重启 `pnpm dev`）。
 
-**（2026-10-14 收口补记）** P0 主线（P0-0 / P0-1 / P0-2 / P0-2b / P0-3）**已全部完成并提交**，最近的正文层实机验证（ch1 + ch2）机制层全绿。同轮两件事：① AGL 设计稿（`docs/design/global-guidance-scope-lint-design.md`）经作者裁定**搁置** —— 「黄金三章拆分属使用层问题，框架不做兜底」，不进框架、保留备查（作者处置路径 = 手动拆进「节奏/风格指导」+`userGuidance`）；② 修复**大纲生成弹框进度记录无上限堆叠**（`DirectoryConfigDialog.tsx`，commit `1c3d436`）。**下一步起点 = 下方 B-4（`keyEvents` 结构化），它是 P1 系的共同前提。**
+**（2026-10-14 收口补记）** P0 主线（P0-0 / P0-1 / P0-2 / P0-2b / P0-3）**已全部完成并提交**，最近的正文层实机验证（ch1 + ch2）机制层全绿。同轮两件事：① AGL 设计稿（`docs/design/global-guidance-scope-lint-design.md`）经作者裁定**搁置** —— 「黄金三章拆分属使用层问题，框架不做兜底」，不进框架、保留备查（作者处置路径 = 手动拆进「节奏/风格指导」+`userGuidance`）；② 修复**大纲生成弹框进度记录无上限堆叠**（`DirectoryConfigDialog.tsx`，commit `1c3d436`）。③ **三项待裁定口径已裁定并落地**（原 §7.1-D）：加优先级声明（模板三处：内置 zh/en + 作者覆盖版）、修弧光跨界缺口（`arc-position.ts`，本批跨中弧时后半批缺规格）、空项目暂不跑先推代码 —— 见 `p0-0-upstream-projection-design.md` §13 与新版 §7.1-D。**下一步起点 = 下方 B-4（`keyEvents` 结构化），它是 P1 系的共同前提。**
 
 **A. 已完成的代码改动（4 项，均已过 tsc + 测试）**
 
@@ -479,11 +479,11 @@ interface PromptTemplate {
 - **改 `requiredContextVariables` / 模板变量前**跑 `prompt-language-contract.test.ts` + `prompt-local-qwen-contract.test.ts`。
 - trace 取证路径：`<项目根>/debug/prompt-trace/`；只读排查项目库需**连 WAL 一起复制**。
 
-**D. 待作者裁定（不阻塞，但影响后续口径）**
+**D. 三项口径已裁定（2026-10-14，原「待作者裁定」）**
 
-1. `chapter_list`（已生成章节实际进度）与 `novel_architecture` 的 `# 情节大纲` 段**同 prompt 内语义重叠**——**不可简单删**，需定"谁是权威"（§7.0.6-C3）。
-2. 空项目纯净基线是否要跑（§7.0.4；本轮取证均在原项目，含 legacy 角色与旧蓝图行噪声）。
-3. 上游投影的**边界**：`plot_structure_guide`（185 章弧光）该投影到"本章所在弧"还是"本章 ± N 章"。
+1. **`chapter_list` vs `# 情节大纲` 的残留重叠** → **加优先级声明**。⚠️ 现状先厘清：`chapter_list` = `previous.slice(-100)` 的"已生成蓝图事件要点"（模板定位语：【前置剧情进度与连贯性检查】），`# 情节大纲` = 规划；**P0-0a 已剔除被 `chapter_list` 覆盖的前序章**，残留重叠只发生在本批章已有旧蓝图的场景。裁定 = 在蓝图续写模板里显式声明"已定稿的既有蓝图是事实、情节大纲是规划背景，冲突时以本节为准"。落点 = 内置 zh + 内置 en + **作者全局覆盖版**（覆盖版遮蔽内置）；见 `p0-0-upstream-projection-design.md` §7-4 / §13.2。
+2. **空项目纯净基线** → **暂不跑，先推代码**。"取证纯净"动机撤销（P0-0/0-1/0-2 的读数已在原项目逐字精确验证）；仍保留"新书冷启动体验"这一独立目标，等 P1 系改动成批后一次跑。
+3. **上游投影的边界** → **修：跨边界弧全字段**。取证发现真缺口：本批跨中弧边界时，后半批所属的新中弧只拿到 gist、无规格字段（而弧位块的跨界提示要求"按新中弧的规格写"，自相矛盾），且 `remainingMids` 仍把已进入的中弧列为"后续"。`ArcSpan` 新增 `endMidIndex` / `afterBatchMidBoundary`；见 `p0-0-upstream-projection-design.md` §7-5 / §13.1。
 
 ---
 
