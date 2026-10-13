@@ -424,7 +424,11 @@ interface PromptTemplate {
 
 ### 7.1 进度与接手入口（★ 新会话/新助手从这里开始读）
 
-**一句话现状**：设计已定稿、取证已完成四轮（正文侧 + 上游侧 + **P0-0 实机验证** + **P0-1 实机验证**）、**P0 主线已全部落地（P0-0 / P0-1 / P0-2 + P0-2b + P0-3）**。**P0-2 由"新槽位 `draftingRules`"改为"段级标签机制"并已实施**（作者裁定四项；改前需先出小设计稿——已出并经作者过目）。**P0-0 / P0-1 均已实施并实机取证**：P0-0 蓝图侧 + 大纲侧**两条链全生效**（叠加弧标题解析缺陷修复，见 `p0-0-upstream-projection-design.md` §10–§12）；P0-1 短细纲载荷**省 92%**、输出回到 5 条清单（见 `p0-1-short-outline-scoping-design.md` §8.1）。**全部改动已 commit 且工作区干净**：`14fc64c`（P0-1）+ `20fca6a`（P0-2）+ docs。**作者全局覆盖版已按裁定 ② 同步**（`world_building` 补槽位、4 处表头统一；见 `free-text-scoping-design.md` §11.7），故**当前项目与空项目的机制层已一致**。**下一轮 = 作者新建空项目跑全流程。**
+**一句话现状**：设计已定稿、取证已完成四轮（正文侧 + 上游侧 + **P0-0 实机验证** + **P0-1 实机验证**）、**P0 主线已全部落地（P0-0 / P0-1 / P0-2 + P0-2b + P0-3）**。**P0-2 由"新槽位 `draftingRules`"改为"段级标签机制"并已实施**（作者裁定四项；改前需先出小设计稿——已出并经作者过目）。**P0-0 / P0-1 均已实施并实机取证**：P0-0 蓝图侧 + 大纲侧**两条链全生效**（叠加弧标题解析缺陷修复，见 `p0-0-upstream-projection-design.md` §10–§12）；P0-1 短细纲载荷**省 92%**、输出回到 5 条清单（见 `p0-1-short-outline-scoping-design.md` §8.1）。**全部改动已 commit 且工作区干净**：`14fc64c`（P0-1）+ `20fca6a`（P0-2）+ docs。**作者全局覆盖版已按裁定 ② 同步**（`world_building` 补槽位、4 处表头统一；见 `free-text-scoping-design.md` §11.7），故**当前项目与空项目的机制层已一致**。
+
+**作者计划：新建空项目跑全流程**（尚未执行；跑前须重启 `pnpm dev`）。
+
+**（2026-10-14 收口补记）** P0 主线（P0-0 / P0-1 / P0-2 / P0-2b / P0-3）**已全部完成并提交**，最近的正文层实机验证（ch1 + ch2）机制层全绿。同轮两件事：① AGL 设计稿（`docs/design/global-guidance-scope-lint-design.md`）经作者裁定**搁置** —— 「黄金三章拆分属使用层问题，框架不做兜底」，不进框架、保留备查（作者处置路径 = 手动拆进「节奏/风格指导」+`userGuidance`）；② 修复**大纲生成弹框进度记录无上限堆叠**（`DirectoryConfigDialog.tsx`，commit `1c3d436`）。**下一步起点 = 下方 B-4（`keyEvents` 结构化），它是 P1 系的共同前提。**
 
 **A. 已完成的代码改动（4 项，均已过 tsc + 测试）**
 
@@ -465,7 +469,7 @@ interface PromptTemplate {
    - **本步不依赖 `keyEvents` 结构化**（不消费 `estimatedUnits`，按 §8-7 YAGNI 不立项）。
    - 主进程**不必改**（重试回放 `usage_replayTask`；哈希两侧同源）。
    - **踩坑提醒（新）**：P0-1 会让"以前最大的那个请求"变小 —— 凡按**序号**取"第一个/最大请求"做断言的测试都会假红（本轮 `does not locally reject a 30K prompt…` 即此，已改为**按 `purpose` 取**）。
-4. **共同前提 · `keyEvents` 结构化**（`string` → `Array<{id, event, estimatedUnits}>`）—— 落点在**蓝图 schema**，**必须走 lane 六步**（见 `notes/data-and-schema.md`）。§5.5 表里有三行都依赖它。
+4. ★ **当前起点 · 共同前提 `keyEvents` 结构化**（`string` → `Array<{id, event, estimatedUnits}>`）—— 落点在**蓝图 schema**，**必须走 lane 六步**（见 `notes/data-and-schema.md`）。§5.5 表里有三行都依赖它。**动手前先出小设计稿给作者过目**（项目惯例）。
 5. **P1-1 / P1-2 / P1-3**（见上表；P1-1 落点已修正为【后续计划边界】块）。
 
 **C. 接手必做（否则会踩已知坑）**
