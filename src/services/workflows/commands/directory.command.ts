@@ -42,6 +42,10 @@ import { readAuthoritativeNextChapter } from '../../authoritative-chapter-sequen
 import { localizeNovelConfigFacts } from '../../../shared/novel-config-localization'
 import { normalizeChapterWordsTarget } from '../chapter-creation-parameters'
 import { draftTargetUnitRange } from '../../../shared/draft-units'
+import {
+  renderBlueprintArchitecture,
+  type BlueprintArchitecturePart,
+} from '../../../shared/synopsis-projection'
 
 type CreateDirectoryGenerationRuntime = NonNullable<WorkflowGenerationRuntimeDependencies['createRuntime']>
 
@@ -291,6 +295,11 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
     const projectSession = requireWorkflowProjectSession(context)
     const writingLanguage = workflowWritingLanguage(context)
     const architecture = context.data.architecture as string
+    // 有结构化分段时按本批章号投影 `synopsis` 段；没有（旧调用方/测试直接塞字符串）时
+    // 视为不可分割的整体，不做章级投影，行为与改造前完全一致。
+    const architectureParts: readonly BlueprintArchitecturePart[] | null = Array.isArray(context.data.architectureParts)
+      ? context.data.architectureParts as BlueprintArchitecturePart[]
+      : null
     const existingBlueprints = (context.data.existingBlueprints || []) as ChapterBlueprint[]
     const { expectedProjectPath, novelConfig } = this.projectSnapshot
     const modelFacts = localizeNovelConfigFacts(novelConfig, writingLanguage)
@@ -347,12 +356,22 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
       item: number,
       validatedPrefix: readonly ChapterBlueprint[],
       diagnostic?: { code: string; path: string; field: string },
-    ) => (
-      buildCompactBlueprintTask({
+    ) => {
+      const previousForItem = [...existingBlueprints, ...validatedPrefix]
+      const coveredForItem = new Set(previousForItem.slice(-100).map(chapter => chapter.chapterNumber))
+      return buildCompactBlueprintTask({
         chapterNumber: item,
         targetUnits,
-        architecture,
-        previous: [...existingBlueprints, ...validatedPrefix],
+        // 与批量路径同口径：单章兜底同样按本章范围投影大纲章级条目。
+        architecture: architectureParts
+          ? renderBlueprintArchitecture(architectureParts, {
+            from: item,
+            to: item,
+            coveredChapters: coveredForItem,
+            writingLanguage,
+          })
+          : architecture,
+        previous: previousForItem,
         totalChapters,
         wordsPerChapter,
         genre: modelFacts.genre,
@@ -362,7 +381,7 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
         writingLanguage,
         diagnostic,
       })
-    )
+    }
     const contract: StructuredBatchContract<number, ChapterBlueprint> = {
       buildTask: ({ items, validatedPrefix }) => {
         const batchStart = items[0]
@@ -380,15 +399,29 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           ((batchStart - startChapter) / chapterNumbers.length) * 90,
         ))
         const previous = [...existingBlueprints, ...validatedPrefix]
-        const chapterList = previous.slice(-100)
+        const chapterListWindow = previous.slice(-100)
+        const chapterList = chapterListWindow
           .map(chapter => promptLanguageText(
             writingLanguage,
             `第${chapter.chapterNumber}章 ${chapter.title}：${chapter.keyEvents}`,
             `Chapter ${chapter.chapterNumber} — ${chapter.title}: ${chapter.keyEvents}`,
           ))
           .join('\n')
+        // P0-0：大纲章级条目按本批范围三段切分（前序剔 / 本批留 / 后续降级为边界声明）。
+        // 前序剔除范围**必须**是本批 `chapter_list` 实际覆盖的章号集合 —— 它来自
+        // `previous.slice(-100)`，超 100 章的老项目更早的前序章不在其中，误剔会净损失信息。
+        // `synopsis` 段之外的前提 / 角色图谱 / 世界观是设定事实源，与章级无关，一律原样保留。
+        // 没有结构化分段时（旧调用方）不做投影，保持改造前行为。
+        const projectedArchitecture = architectureParts
+          ? renderBlueprintArchitecture(architectureParts, {
+            from: batchStart,
+            to: batchEnd,
+            coveredChapters: new Set(chapterListWindow.map(chapter => chapter.chapterNumber)),
+            writingLanguage,
+          })
+          : architecture
         const prompt = new DirectoryPromptBuilder(template, writingLanguage)
-          .withNovelArchitecture(architecture)
+          .withNovelArchitecture(projectedArchitecture)
           .withChapterList(chapterList || promptLanguageText(writingLanguage, '（首批生成，尚无前置章节）', '(first batch; no preceding chapters)'))
           .withNumberOfChapters(totalChapters)
           .withN(batchStart)

@@ -188,6 +188,110 @@ export function arcStructureNeedsRescale(parsed: ParsedArcStructure | null, tota
   return !!parsed && parsed.declaredTotal > 0 && parsed.declaredTotal !== totalChapters
 }
 
+/** `- **接续理由**：…` / `- Continuation reason: …` —— 大弧之间的推进理由（B 档要保留）。 */
+const CONTINUATION_REASON = /^[-*][\t ]*\*{0,2}(接续理由|Continuation reason|Why this arc follows)\*{0,2}[\t ]*[：:]/iu
+
+function isContinuationReasonLine(line: string): boolean {
+  return CONTINUATION_REASON.test(line)
+}
+
+/**
+ * 在一段中弧正文里挑出**唯一的**一句话定位行（与 `gistOf` 同口径：优先
+ * 因果 / 目标 / 动机，否则取第一条内容字段）。返回**原始行**而非截断值 ——
+ * 投影只减少"给多少"，不改写作者原文。
+ */
+function pickGistLine(lines: readonly string[]): string | null {
+  let first: string | null = null
+  for (const rawLine of lines) {
+    const match = FIELD_LINE.exec(rawLine.trim())
+    if (!match) continue
+    const name = toText(match[1]!)
+    if (SKIP_FIELDS.has(name)) continue
+    if (!toText(match[2]!)) continue
+    if (/因果|目标|动机|Causality|Goal|Motivation/u.test(name)) return rawLine
+    if (first === null) first = rawLine
+  }
+  return first
+}
+
+/**
+ * 「弧光结构」文本的**分级裁剪**（P0-0b，B 档尺度）。
+ *
+ * 动机：大纲每批只写 ≤10 章，却携带**全书**弧光结构（实测 12,513 字 / 全书 185 章）。
+ * 裁剪按与本批的关系分三级：
+ *
+ * | 位置 | 保留 |
+ * |---|---|
+ * | 本中弧 | 全字段（本批的执行依据） |
+ * | 本大弧内其他中弧 | 中弧标题 + 一句话定位（与 `remainingMids` 同形） |
+ * | 其他大弧 | 大弧标题 + **接续理由**（弧与弧之间为什么这样接，是作者的规划意图） |
+ * | 首个大弧之前的引言 | 原样保留 |
+ *
+ * **这是投影不是改写**：保留的每一行都是作者原文，只删不改。裁剪后仍由
+ * `renderArcPositionBlock` 追加【本批所处弧位】硬约束块。
+ *
+ * 结构不可解析或本批定位不出弧位时**原样返回** —— 与 `parseArcStructure` 的失败姿态一致。
+ */
+export function projectArcStructureText(plan: string, span: ArcSpan): string {
+  const lines = plan.split(/\r?\n/u)
+  const out: string[] = []
+  let majorIndex = 0
+  let midIndex = 0
+  let mode: 'preamble' | 'current-major' | 'other-major' = 'preamble'
+  let currentMid = false
+  let midBuffer: string[] | null = null
+
+  const flushMidBuffer = () => {
+    if (midBuffer === null) return
+    const picked = pickGistLine(midBuffer)
+    if (picked !== null) out.push(picked)
+    midBuffer = null
+  }
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim()
+    const majorMatch = MAJOR_HEADING.exec(line)
+    if (majorMatch?.[2]) {
+      flushMidBuffer()
+      majorIndex += 1
+      midIndex = 0
+      currentMid = false
+      mode = majorIndex === span.majorIndex ? 'current-major' : 'other-major'
+      out.push(rawLine)
+      continue
+    }
+    const midMatch = MID_HEADING.exec(line)
+    if (midMatch?.[2] && majorIndex > 0) {
+      flushMidBuffer()
+      midIndex += 1
+      currentMid = mode === 'current-major' && midIndex === span.midIndex
+      // 其他大弧只保留大弧级信息（标题 + 接续理由），中弧一律不注入。
+      if (mode === 'other-major') continue
+      // 本大弧内、非本中弧的：降级为「中弧标题 + 一句话定位」。
+      if (!currentMid) midBuffer = []
+      out.push(rawLine)
+      continue
+    }
+    if (mode === 'preamble') {
+      out.push(rawLine)
+      continue
+    }
+    if (mode === 'other-major') {
+      // 其他大弧只留"为什么这样接"；中弧细节与其余字段一律不注入。
+      if (isContinuationReasonLine(line)) out.push(rawLine)
+      continue
+    }
+    if (midBuffer !== null) {
+      midBuffer.push(rawLine)
+      continue
+    }
+    // 本大弧的大弧级字段，或本中弧正文 —— 全字段保留。
+    out.push(rawLine)
+  }
+  flushMidBuffer()
+  return out.join('\n').trim()
+}
+
 /**
  * 把弧位块拼到「弧光结构」文本之后 —— 这是大纲步骤的注入点。
  * 结构不可解析（例如作者用的是枚举故事结构模板）时原样返回，不注入、不干扰。
@@ -202,6 +306,27 @@ export function withArcPositionGuide(
 ): string {
   const block = renderArcPositionBlock(parseArcStructure(plan), totalChapters, from, to, writingLanguage)
   return block ? `${guide}\n\n${block}` : guide
+}
+
+/**
+ * 大纲步骤的**唯一注入入口**（P0-0b）：先按本批弧位分级裁剪弧光结构，再追加弧位硬约束块。
+ *
+ * 与 `withArcPositionGuide` 的区别只在"裁"这一步：定位不出弧位（结构不可解析 /
+ * 本批越界）时不裁剪，退化为改造前行为。
+ */
+export function withProjectedArcGuide(
+  guide: string,
+  plan: string | null | undefined,
+  totalChapters: number,
+  from: number,
+  to: number,
+  writingLanguage: WritingLanguage,
+): string {
+  const parsed = parseArcStructure(plan)
+  const span = arcSpanForChapters(parsed, totalChapters, from, to)
+  const trimmed = span && plan ? projectArcStructureText(plan, span) : guide
+  const block = renderArcPositionBlock(parsed, totalChapters, from, to, writingLanguage)
+  return block ? `${trimmed}\n\n${block}` : trimmed
 }
 
 /**

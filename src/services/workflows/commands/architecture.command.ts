@@ -6,7 +6,7 @@ import { defaultCharacterProposalRelationships, defaultCharacterProposalSelectio
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
-import { withArcPositionGuide } from '../../../shared/arc-position'
+import { withProjectedArcGuide } from '../../../shared/arc-position'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
 import {
   BaseWorkflowCommand,
@@ -2132,7 +2132,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       .withWordNumber(config.wordsPerChapter)
       // ★ 弧位圈定：把「本批落在哪个大弧/中弧」显式告诉模型。
       //   实测（2026-10-11）：不注入时，中弧 2 的核心动作会在中弧 1 的第 9–10 章被提前执行完。
-      .withPlotStructureGuide(withArcPositionGuide(guide, core?.plotStructurePlan, totalChapters, from, to, writingLanguage))
+      //   P0-0b：先按本批弧位**分级裁剪**弧光结构（本中弧全字段 / 本大弧他中弧只留一句话 /
+      //   其他大弧只留接续理由），再追加弧位硬约束块。结构不可解析时行为与改造前一致。
+      .withPlotStructureGuide(withProjectedArcGuide(guide, core?.plotStructurePlan, totalChapters, from, to, writingLanguage))
       .withNarrativePov(pov)
       .withGlobalGuidance(config.globalGuidance || promptLanguageText(writingLanguage, '（未填写）', '(not provided)'))
       .withStepGuidance(effectiveStepGuidance)
@@ -2403,8 +2405,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       .withCoreSeed(sourceExpected.premise).withCharacterDynamics(sourceExpected.charactersArch).withWorldBuilding(sourceExpected.worldbuilding)
       .withGenre(localizeNovelConfigFacts(config, language).genre).withNumberOfChapters(sourceExpected.totalChapters)
       .withWordNumber(sourceExpected.wordsPerChapter)
-      // ★ 弧位圈定同 :2132（断点续写路径）：让模型知道本批落在哪个中弧，避免提前执行后续中弧。
-      .withPlotStructureGuide(withArcPositionGuide(
+      // ★ 弧位圈定同 :2135（断点续写路径）：让模型知道本批落在哪个中弧，避免提前执行后续中弧。
+      //   P0-0b：同样先按本批弧位分级裁剪弧光结构，再追加弧位硬约束块。
+      .withPlotStructureGuide(withProjectedArcGuide(
         resolveStageStructureGuide(sourceExpected.plotStructurePlan, config.plotStructure, sourceExpected.totalChapters, language),
         sourceExpected.plotStructurePlan, sourceExpected.totalChapters, initial.range.from, initial.range.to, language))
       .withNarrativePov(getNarrativePOVLabel(config.narrativePOV || 'third_limited', language))
