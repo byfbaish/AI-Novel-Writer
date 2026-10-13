@@ -423,12 +423,12 @@ interface PromptTemplate {
 
 **B. 下一步（建议顺序，含"第一步动作"）**
 
-1. ~~**P0-0 上游章级投影**~~ ✅ **已完成 + 已实机取证（2026-10-13）** —— 三项裁定、实施记录、取证结论见 `docs/design/p0-0-upstream-projection-design.md` §7 / §9 / **§10**。
+1. ~~**P0-0 上游章级投影**~~ ✅ **已完成 + 已实机取证 + 缺陷已修（2026-10-13）** —— 三项裁定、实施记录、取证结论、修复记录见 `docs/design/p0-0-upstream-projection-design.md` §7 / §9 / §10 / **§11**。
    - 关键认知（仍适用于后续）：**不能照抄正文侧全剔章级**——大纲的章级条目对蓝图步骤是**本步输入**（不是冗余），故须**三段切分**（前序→剔（由 `chapter_list` 承载）/ 本批→保留 / 后续→降级为边界声明）；
    - 实施落点与设计稿的偏差：投影**下移到 `directory.command.ts`**（`n`/`m` 与 `chapter_list` 同处一室），workflow 侧只负责输出 `context.data.architectureParts`；B 档**未动 `SKIP_FIELDS`**（改为按行识别接续理由）；
-   - **实机结果**：**蓝图侧 ✅ 生效**（`novel_architecture` 10,392 → **9,313 字**，与期望值精确相等；只剩本批 ch6–10 章标题）；**大纲侧 ❌ 未生效**（`plot_structure_guide` 仍 12,513 字）。
-   - **新增待办（新缺陷，待裁定）**：`arc-position.ts:63-64` 的弧标题正则只认「（约 N 章）」单值，而内置模板 `builtin-prompt-templates.ts:680/704` 示范写区间「（约 X–Y 章）」→ `parseArcStructure` 恒返回 `null` → **弧位块与 B 档裁剪从未生效**（既有缺陷，非本轮引入）。修复方向已验证（加区间捕获后 9 大弧/33 中弧全解析，合计 846≈845）。
-   - **其余待办**：① 若章末 `suspenseHook` 质量下降，把后续段降级起点由 `m+1` 回退为 `m+2`；② git commit。
+   - **实机结果**：**蓝图侧 ✅ 生效**（`novel_architecture` 10,392 → **9,313 字**，与期望值精确相等；只剩本批 ch6–10 章标题）；**大纲侧曾 ❌ 未生效**（`plot_structure_guide` 仍 12,513 字）。
+   - **根因已定位并已修（既有缺陷）**：`arc-position.ts` 的弧标题正则只认「（约 N 章）」单值，而内置模板 `builtin-prompt-templates.ts:680/704` 示范写区间「（约 X–Y 章）」→ `parseArcStructure` 恒返回 `null` → **弧位块与 B 档裁剪从未生效**（静默失败）。修复后真实数据：9 大弧/33 中弧全解析（合计 846≈845），弧位块 701 字，**B 档裁剪 12,513 → 2,279 字（省 82%）**。
+   - **其余待办**：① 作者再生成两章大纲+蓝图实机复验；② 若章末 `suspenseHook` 质量下降，把后续段降级起点由 `m+1` 回退为 `m+2`；③ 弧标题修复 commit。
 2. **P0-2 `global_guidance` 分区**（落点已定案）—— 第一步动作：逐句标注作者那 304 字的 4 条正文形态纪律，界定"哪几句属 `draftingRules`、哪几句属基调"；需定新槽位 `draftingRules` 的落点（项目配置 UI + 注入点）。
 3. **P0-1 短细纲只喂该步材料** —— 第一步动作：读 `generate-draft.command.ts:1012` 附近，确认短细纲当前复用了哪份 prompt；**改动量最小**，可作 P0-0/P0-2 前的热身。
 4. **共同前提 · `keyEvents` 结构化**（`string` → `Array<{id, event, estimatedUnits}>`）—— 落点在**蓝图 schema**，**必须走 lane 六步**（见 `notes/data-and-schema.md`）。§5.5 表里有三行都依赖它。
