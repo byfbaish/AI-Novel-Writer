@@ -52,12 +52,23 @@ export interface ArcSpan {
   midIndex: number
   midName: string
   midRange: readonly [number, number]
+  /**
+   * 本批**覆盖到的最后一个中弧**的序号（1-based）。
+   *
+   * ⚠️ 2026-10-14 修复：批 ≤10 章但中弧可能更短，**本批会跨越中弧边界**；此前
+   * 只按 `from` 定位本中弧（`midIndex`），导致后半批所属的新中弧**只拿到一句 gist**、
+   * 拿不到规格字段 —— 而弧位块的跨界提示恰恰要求"跨过边界后按新中弧的规格写"。
+   * 未跨界时 `endMidIndex === midIndex`。
+   */
+  endMidIndex: number
   midFields: readonly (readonly [string, string])[]
-  /** 同一大弧内、位于本中弧之后的剩余中弧 */
+  /** 同一大弧内、位于**本批之后**的剩余中弧（已进入的中弧不算） */
   remainingMids: readonly { name: string; range: readonly [number, number]; gist: string }[]
   /** 本批跨越到下一个中弧时的分界章（含该章起属下一个中弧） */
   nextMidBoundary: number | null
   nextMidName: string | null
+  /** 本批之后第一个中弧的起点章；本批已走到本大弧末尾时为 null */
+  afterBatchMidBoundary: number | null
 }
 
 /**
@@ -197,6 +208,16 @@ export function arcSpanForChapters(
   const next = major.mids[midIndex + 1]
   const nextMidBoundary = next ? majorRange[0] + midBounds[midIndex + 1]! : null
 
+  // 本批覆盖到哪个中弧为止：批 ≤10 章，中弧可能更短 → 本批会跨越边界。
+  // `to` 超出本大弧时按本大弧最后一个中弧算（跨大弧的部分由下一个大弧的 `span` 负责）。
+  const withinMajorEnd = Math.min(to, majorRange[1])
+  const lastCovered = major.mids.findIndex((_, index) => (
+    withinMajorEnd - majorRange[0] + 1 <= midBounds[index + 1]!
+  ))
+  const endMidIndex = lastCovered < 0 ? major.mids.length - 1 : Math.max(lastCovered, midIndex)
+  const afterBatch = major.mids[endMidIndex + 1]
+  const afterBatchMidBoundary = afterBatch ? majorRange[0] + midBounds[endMidIndex + 1]! : null
+
   return Object.freeze({
     majorIndex: majorIndex + 1,
     majorName: major.name,
@@ -204,14 +225,16 @@ export function arcSpanForChapters(
     midIndex: midIndex + 1,
     midName: mid.name,
     midRange,
+    endMidIndex: endMidIndex + 1,
     midFields: mid.fields,
-    remainingMids: major.mids.slice(midIndex + 1).map((item, offset) => Object.freeze({
+    remainingMids: major.mids.slice(endMidIndex + 1).map((item, offset) => Object.freeze({
       name: item.name,
-      range: [majorRange[0] + midBounds[midIndex + 1 + offset]!, majorRange[0] + midBounds[midIndex + 2 + offset]! - 1] as const,
+      range: [majorRange[0] + midBounds[endMidIndex + 1 + offset]!, majorRange[0] + midBounds[endMidIndex + 2 + offset]! - 1] as const,
       gist: gistOf(item.fields),
     })),
     nextMidBoundary: nextMidBoundary !== null && nextMidBoundary <= to ? nextMidBoundary : null,
     nextMidName: next ? next.name : null,
+    afterBatchMidBoundary,
   })
 }
 
@@ -254,7 +277,7 @@ function pickGistLine(lines: readonly string[]): string | null {
  *
  * | 位置 | 保留 |
  * |---|---|
- * | 本中弧 | 全字段（本批的执行依据） |
+ * | 本批**覆盖到**的中弧（`midIndex … endMidIndex`） | 全字段（本批的执行依据；跨边界时含新进入的中弧） |
  * | 本大弧内其他中弧 | 中弧标题 + 一句话定位（与 `remainingMids` 同形） |
  * | 其他大弧 | 大弧标题 + **接续理由**（弧与弧之间为什么这样接，是作者的规划意图） |
  * | 首个大弧之前的引言 | 原样保留 |
@@ -296,7 +319,9 @@ export function projectArcStructureText(plan: string, span: ArcSpan): string {
     if (midMatch?.[2] && majorIndex > 0) {
       flushMidBuffer()
       midIndex += 1
-      currentMid = mode === 'current-major' && midIndex === span.midIndex
+      // 本批**覆盖到**的中弧全部保留全字段 —— 批可能跨越中弧边界，后半批的执行依据是
+      // 最后一个中弧的规格（弧位块的跨界提示也要求"按新中弧的规格写"，见 `endMidIndex`）。
+      currentMid = mode === 'current-major' && midIndex >= span.midIndex && midIndex <= span.endMidIndex
       // 其他大弧只保留大弧级信息（标题 + 接续理由），中弧一律不注入。
       if (mode === 'other-major') continue
       // 本大弧内、非本中弧的：降级为「中弧标题 + 一句话定位」。
@@ -391,8 +416,8 @@ export function renderArcPositionBlock(
 
   const crossing = span.nextMidBoundary !== null && span.nextMidName
     ? (en
-        ? `\n★ This batch crosses a mid-arc boundary: chapter ${span.nextMidBoundary} onward belongs to mid arc ${span.nextMidName}. Write that part from the NEW mid arc's spec — but do not pull in anything from the mid arcs after it.`
-        : `\n★ 本批跨越中弧边界：第 ${span.nextMidBoundary} 章起属于 中弧【${span.nextMidName}】。跨过边界后按**新中弧**的规格写，但**不得**连带把更后面的中弧内容提前。`)
+        ? `\n★ This batch crosses a mid-arc boundary: chapter ${span.nextMidBoundary} onward belongs to mid arc ${span.nextMidName}. Write that part from the NEW mid arc's spec (its full spec is in the arc structure above) — but do not pull in anything from the mid arcs after it.`
+        : `\n★ 本批跨越中弧边界：第 ${span.nextMidBoundary} 章起属于 中弧【${span.nextMidName}】。跨过边界后按**新中弧**的规格写（其完整规格见上方「弧光结构」中的该中弧），但**不得**连带把更后面的中弧内容提前。`)
     : ''
 
   return en
@@ -404,7 +429,7 @@ export function renderArcPositionBlock(
   - ${remaining}
 [HARD RULE — this failure has actually happened]
 1. Advance only what is still unplayed inside "${span.midName}".
-2. The goal / attempts / turning point of any LATER mid arc must NOT happen in this batch — they belong to chapter ${span.nextMidBoundary ?? span.midRange[1] + 1} and beyond.
+2. The goal / attempts / turning point of any mid arc AFTER this batch must NOT happen in this batch — they belong to chapter ${span.afterBatchMidBoundary ?? span.midRange[1] + 1} and beyond.
 3. If this batch reaches the turning point of the current mid arc, close it out and ease into the next minor arc; do not jump to the next mid arc's goal.${crossing}`
     : `【本批所处弧位（据「弧光结构」推算，仅用于定位，不改变弧光本身）】
 - 本批范围：第 ${from}–${to} 章（全书 ${totalChapters} 章）${rescale}
@@ -414,6 +439,6 @@ export function renderArcPositionBlock(
   - ${remaining}
 【硬约束·防提前】（实测已发生过，务必遵守）
 1. 本批只推进【${span.midName}】内**尚未发生**的内容；
-2. 后续中弧的「目标 / 尝试 / 转折」**不得在本批提前实现** —— 它们属于第 ${span.nextMidBoundary ?? span.midRange[1] + 1} 章及以后；
+2. 本批之后的中弧，「目标 / 尝试 / 转折」**不得在本批提前实现** —— 它们属于第 ${span.afterBatchMidBoundary ?? span.midRange[1] + 1} 章及以后；
 3. 若本批已写到当前中弧的转折点，请在此收束并向下一小弧过渡，**不要**跳到下一个中弧的目标。${crossing}`
 }
