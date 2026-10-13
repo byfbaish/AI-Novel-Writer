@@ -4,6 +4,8 @@ import { sanitizeDraftText, composeDraftVisibleContinuation, DRAFT_CONDENSE_PURP
 import { DRAFT_RECONCILE_PURPOSE, draftReconciliationBlock } from '../../../shared/draft-reconciliation'
 import { DRAFT_SHORT_OUTLINE_PURPOSE, draftShortOutlinePrompt, draftShortOutlineBlock } from '../../../shared/draft-short-outline'
 export { sanitizeDraftText } from '../../../shared/draft-visible-text'
+import { synopsisSettingSectionsForDraft } from '../../../shared/synopsis-projection'
+export { synopsisSettingSectionsForDraft } from '../../../shared/synopsis-projection'
 import { createWorkflowMainGenerationRuntime, type WorkflowMainGenerationRequest } from '../workflow-main-generation'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import { formatResourceUri } from '../../../shared/project-paths'
@@ -73,84 +75,9 @@ const ACTIVE_THREAD_CONTEXT_MAX_CHARS = 1200
 const ACTIVE_THREAD_CONTEXT_MAX_ITEMS = 6
 const STREAM_PREVIEW_INTERVAL_MS = 250
 
-type ChapterHeading = Readonly<{
-  lineIndex: number
-  from: number
-  to: number
-  markdownLevel: number
-}>
-
-function parseChapterHeading(line: string, lineIndex: number): ChapterHeading | null {
-  const match = /^\s*(?:(#{1,6})[\t ]+)?(?:第\s*([1-9]\d*)(?:\s*[–—-]\s*([1-9]\d*))?\s*章|Chapters?[\t ]+([1-9]\d*)(?:[\t ]*[–—-][\t ]*([1-9]\d*))?)(?=[\t ]*(?:[:：.．—-]|$))/iu.exec(line)
-  if (!match) return null
-  // Bare headings must use the production outline's explicit title separator.
-  if (!match[1] && !/^[\t ]*[:：]\s*\S/u.test(line.slice(match[0].length))) return null
-  const from = Number(match[2] ?? match[4])
-  const to = Number(match[3] ?? match[5] ?? from)
-  return {
-    lineIndex,
-    from,
-    to,
-    markdownLevel: match[1]?.length ?? 0,
-  }
-}
-
-/**
- * 情节大纲 → 正文的**设定层投影**：只保留非章级的段落（全书总纲、全局禁则等），
- * 章级条目一律不进正文。
- *
- * 分层是 弧光 → 情节大纲 → 章节蓝图 → 正文：大纲的章级条目与本章蓝图（chapter_info）
- * 说的是同一件事；两者并排进入正文 prompt 且没有任何优先级声明时，模型会在两份表述
- * 之间自由取舍（2026-10-11 第 1 章实机核对，见 docs/plans/llm-probe-observation-plan.md）。
- * 正文的章级内容只由本章蓝图与后续蓝图承载。
- *
- * 但作者写在大纲里的**全局**设定/禁则在大纲之外没有第二个存放位置，所以一律原样保留。
- * 结构无法可靠解析时整体保持原样：宁可多留，也不猜着丢作者事实。
- */
-export function synopsisSettingSectionsForDraft(synopsis: string): string {
-  const sections = projectSettingSections(synopsis)
-  // 只剩悬空标题 = 没有设定层内容（机器生成大纲开头的「# 情节大纲」就是这样）→ 不注入。
-  const hasSubstance = sections.split(/\r?\n/u)
-    .some(line => line.trim() && !/^\s*#{1,6}[\t ]+\S/u.test(line))
-  return hasSubstance ? sections : ''
-}
-
-function projectSettingSections(synopsis: string): string {
-  // Quoted examples can contain chapter-like headings; do not interpret them.
-  if (/^\s*(?:`{3,}|~{3,})/mu.test(synopsis)) return synopsis.trim()
-  const lines = synopsis.trim().split(/\r?\n/u)
-  const headings = lines
-    .map((line, lineIndex) => parseChapterHeading(line, lineIndex))
-    .filter((heading): heading is ChapterHeading => heading !== null)
-  // 一条章标题都没有 = 整份都是设定层文本（老项目的手写大纲就是这种形态）→ 原样保留。
-  if (!headings.length) return synopsis.trim()
-
-  const firstLevel = headings[0]!.markdownLevel
-  const hasConsistentHeadingStyle = headings.every(heading => heading.markdownLevel === firstLevel)
-  const hasStrictChapterOrder = headings.every((heading, index) => (
-    heading.from <= heading.to
-    && (index === 0 || heading.from > headings[index - 1]!.to)
-  ))
-  if (!hasConsistentHeadingStyle || !hasStrictChapterOrder) return synopsis.trim()
-
-  const headingsByLine = new Map(headings.map(heading => [heading.lineIndex, heading]))
-  let insideChapterRange = false
-  const projected: string[] = []
-  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
-    const line = lines[lineIndex]!
-    const chapterHeading = headingsByLine.get(lineIndex)
-    if (chapterHeading) {
-      insideChapterRange = true
-    } else {
-      const markdownHeading = /^\s*(#{1,6})\s+/u.exec(line)
-      if (markdownHeading && (firstLevel === 0 || markdownHeading[1]!.length <= firstLevel)) {
-        insideChapterRange = false
-      }
-    }
-    if (!insideChapterRange) projected.push(line)
-  }
-  return projected.join('\n').trim()
-}
+// 情节大纲的章级投影统一由 `src/shared/synopsis-projection.ts` 提供（见顶部 import/export）：
+// 正文侧（设定层投影）与蓝图侧（三段切分投影）共用同一份章标题解析与失败姿态，
+// 避免两处口径漂移。此处保留 re-export 以维持既有导入面（跨模块测试直接引用本模块）。
 
 /**
  * 段落级去重指纹。

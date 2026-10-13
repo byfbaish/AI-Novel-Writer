@@ -28,6 +28,7 @@ import type {
 } from '../../../electron/repositories/blueprint-repository'
 import { stripThinkingTags } from './workflow-utils'
 import { requireWorkflowProjectSession } from './workflow-project-session'
+import type { BlueprintArchitecturePart } from '../../shared/synopsis-projection'
 
 // ==========================================
 // 1. 结构与类型导出 (保留对外的向后兼容)
@@ -358,18 +359,22 @@ export function createDirectoryWorkflow(
             'Project core data has not been initialized.',
           ))
 
-          const parts: string[] = []
-          if (core.premise && core.premise.length > 50) parts.push(core.premise)
-          if (core.charactersArch && core.charactersArch.length > 50) parts.push(core.charactersArch)
-          if (core.worldbuilding && core.worldbuilding.length > 50) parts.push(core.worldbuilding)
-          if (core.synopsis && core.synopsis.length > 50) parts.push(core.synopsis)
+          const parts: BlueprintArchitecturePart[] = []
+          if (core.premise && core.premise.length > 50) parts.push({ kind: 'premise', text: core.premise })
+          if (core.charactersArch && core.charactersArch.length > 50) parts.push({ kind: 'characters-arch', text: core.charactersArch })
+          if (core.worldbuilding && core.worldbuilding.length > 50) parts.push({ kind: 'worldbuilding', text: core.worldbuilding })
+          if (core.synopsis && core.synopsis.length > 50) parts.push({ kind: 'synopsis', text: core.synopsis })
 
           if (parts.length === 0) throw new Error(text(
             '项目主要架构均未生成',
             'The main story architecture has not been generated yet.',
           ))
 
-          context.data.architecture = parts.join('\n\n---\n\n')
+          // 结构化保留各段来源：`synopsis` 需按本批章号做三段切分投影（P0-0），
+          // 而章号要到 `directory.command.ts` 的批次回调里才知道。这里同时给出
+          // 未投影的整份拼接作为兜底（任何只认 `architecture` 字符串的读取方行为不变）。
+          context.data.architectureParts = parts
+          context.data.architecture = parts.map(part => part.text).join('\n\n---\n\n')
           // 注入节奏指导到 context，供 Command 读取
           if (params.pacingGuidance) context.data.pacingGuidance = params.pacingGuidance
           if (params.mode === 'append' || params.continueDirectoryOperationId) {
