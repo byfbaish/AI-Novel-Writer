@@ -13,7 +13,7 @@
 | 角色 | 名称 | 指向 | 说明 |
 |---|---|---|---|
 | 我方主线 | `dev_byf` | 见下方快照 | 全部开发工作在这里 |
-| 上游基线（本地） | `upstream-baseline` | `upstream/master` | **2026-10-14 新建**，用途：随时与上游比 diff 的锚点；本地跟随 |
+| 上游基线（本地） | `upstream-baseline` | `upstream/master` | **2026-10-14 新建**，用途：随时与上游比 diff 的锚点；**已推送远程** |
 | 上游（远程） | `upstream` = `EthanYoQ/AI-Novel-Writer` | — | **原项目**，只读参照，不推 |
 | 我方 fork（远程） | `origin` = `byfbaish/AI-Novel-Writer` | — | 自己的远端；`origin/master` 自 2026-10-09 后未再同步 |
 
@@ -150,3 +150,19 @@ git branch -f upstream-baseline upstream/master
 - `git fetch upstream --prune` **已成功** —— 沙箱网络时好时坏，**失败就重试 1–2 次**。
 - ⚠️ **沙箱内访问 GitHub 不稳定**（`CONNECT tunnel failed / 502`）。经验：**先直接重试**，
   往往第二次就通；不必先去调代理。若连续失败，再用 `dangerouslyDisableSandbox` 走主机网络。
+
+**⏳ 待办：推送 `dev_byf` 到远程（尚未完成）**
+
+`dev_byf` 至今**只存在于本地**（无任何远程跟踪分支）。2026-10-14 尝试推送时网络反复中断
+（`CONNECT tunnel failed 502` / `OpenSSL unexpected eof`），多次重试未成功。
+
+**请在网络稳定时执行**（或直接重试多次）：
+
+```bash
+git push -u origin dev_byf
+```
+
+推送后请把 §1 表格里 `dev_byf` 的说明补上远程跟踪，并删除本待办段。
+
+> 备注：`upstream-baseline` 已成功推送，说明账号权限与凭据都正常 —— **纯粹是网络波动**，
+> 不是配置问题。分支名与远程均无需调整。
