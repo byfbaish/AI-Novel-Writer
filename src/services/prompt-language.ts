@@ -231,7 +231,7 @@ State the immediate visible threat and the deeper hidden truth or long-term myst
 4. Follow the project-wide writing guidance.
 5. Use only the requested Markdown headings and content; add no explanation.
 
-[Reference works]
+[Reference works — borrow systems/mechanics/tone; obey stated prohibitions]
 {{reference_works}}`,
     systemSuffix: `[Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
@@ -266,7 +266,7 @@ State the immediate visible threat and the deeper hidden truth or long-term myst
 [Output contract]
 Return exactly one JSON object whose fields are strictly equal to the field contract supplied by the runtime — never add a field beyond that contract (a single extra field invalidates the entire response), and never add headings, prefaces, or comments. The design dimensions listed in items 1–3 are for internal reasoning only and are not output fields. Do not output Markdown, a preface, a code fence, or reasoning.
 
-[Reference works]
+[Reference works — borrow systems/mechanics/tone; obey stated prohibitions]
 {{reference_works}}`,
     systemSuffix: `[Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
@@ -317,7 +317,11 @@ Build four connected dimensions. The first three each need a concrete source of 
 4. The World foundation supplied by the author is authoritative and is injected verbatim into every chapter. Do not restate or rewrite entries already present in it — supply only what it does not cover.
 5. The **four-dimension structure must still be complete**: even when part of a dimension already appears in the World foundation, fill in the parts that dimension does not cover — in particular dimension 4 (spatial structure / map and regions) must at least list the main spaces and their entry or restriction rules. **Returning only the first three dimensions is a failure.**
 6. The spatial names fixed in dimension 4 are the single key for later references; do not use multiple aliases for one place.
-7. Return the world-building text only, with no code, analysis, or explanation.`,
+7. Return the world-building text only, with no code, analysis, or explanation.
+
+[Reference works — borrow systems/mechanics/tone; obey stated prohibitions]
+{{reference_works}}
+`,
     systemSuffix: `[Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
   },
@@ -437,6 +441,9 @@ Minor arcs: give **name + chapter count only** (one line of positioning). Their 
 4. If a mid arc is type C, do not force a causal link — write motivation/path instead, or it becomes fake causality.
 5. Minor arcs get a name and a chapter count only; do not develop their plot.
 6. Return only the content above, with no explanation, greetings, or code fences.
+
+[Reference works — borrow systems/mechanics/tone; obey stated prohibitions]
+{{reference_works}}
 `,
     systemSuffix: `[Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
@@ -827,7 +834,7 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 [Writing style]
 {{writing_style}}
 
-[Reference works — tone and pacing reference only; not author facts that must be honored]
+[Reference works — borrow systems/mechanics/tone; obey stated prohibitions; not author facts that must be honored]
 {{reference_works}}`,
     systemSuffix: `[Authoritative facts that must not drift]
 - Author-confirmed novel configuration: {{novel_config}}
@@ -876,7 +883,7 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 [Writing style]
 {{writing_style}}
 
-[Reference works — tone and pacing reference only; not author facts that must be honored]
+[Reference works — borrow systems/mechanics/tone; obey stated prohibitions; not author facts that must be honored]
 {{reference_works}}`,
     systemSuffix: `[Authoritative facts that must not drift]
 - Story architecture: {{architecture}}

@@ -40,6 +40,7 @@ import {
 } from '../blueprint-batch-policy'
 import { readAuthoritativeNextChapter } from '../../authoritative-chapter-sequence'
 import { localizeNovelConfigFacts } from '../../../shared/novel-config-localization'
+import { projectScopedText } from '../../../shared/text-scope-tags'
 import { normalizeChapterWordsTarget } from '../chapter-creation-parameters'
 import { draftTargetUnitRange } from '../../../shared/draft-units'
 import {
@@ -375,7 +376,7 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
         totalChapters,
         wordsPerChapter,
         genre: modelFacts.genre,
-        globalGuidance: novelConfig.globalGuidance || '',
+        globalGuidance: projectScopedText(novelConfig.globalGuidance || '', 'outline').text,
         pacingGuidance: (context.data.pacingGuidance as string) || '',
         systemRole: template.systemRole || promptLanguageText(writingLanguage, '你是一位经验丰富的小说架构师。', 'You are an experienced fiction architect.'),
         writingLanguage,
@@ -426,7 +427,7 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           .withNumberOfChapters(totalChapters)
           .withN(batchStart)
           .withM(batchEnd)
-          .withGlobalGuidance(novelConfig.globalGuidance || '')
+          .withGlobalGuidance(projectScopedText(novelConfig.globalGuidance || '', 'outline').text)
           .withGenre(modelFacts.genre)
           .withPacingGuidance((context.data.pacingGuidance as string) || '')
           .build()

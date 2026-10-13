@@ -187,6 +187,9 @@ const OPTIONAL_PROMPT_LABEL_PATTERN = [
   '★【[^】]*】★[：:]',
   '【[^】]*（如有[^）]*）[^】]*】',
   '【(?:作者补充指导|作者节奏\\/风格指导|作者要求重点检查的维度)】',
+  // 英文侧参考作品段：此前只有中文表头进了这张表，英文项目在"本步无参考作品"时会
+  // 留一个空标题（自由文本按步骤分区后，"本步为空"成了常见态，必须两边对称裁剪）。
+  '\\[Reference works[^\\]\\r\\n]*\\]',
 ].join('|')
 
 /**
@@ -428,7 +431,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 5. 【避免复述】「核心大纲」「世界观基盘」由作者提供，是权威版本且会随每章原样注入；不要复述或改写其中已写明的条目，只输出基于它们的提炼与推进。
 6. 使用上述 Markdown 小节标题分隔，不要添加额外解释。
 
-【参考作品风格（如有，调性与节奏可参考以下作品）】
+【参考作品（如有，借鉴其体系/机制/调性，禁止照搬的条款必须遵守）】
 {{reference_works}}`,
     systemSuffix: `★【作者对本步骤的额外指导（如有，最高优先级）】★：
 {{step_guidance}}`,
@@ -522,7 +525,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
    上面 1–3 节里列出的设计维度只用于**内部构思**，不是输出字段。
 6. 不要输出 Markdown、客套话、代码围栏或思考过程。
 
-【参考作品风格（如有，调性与节奏可参考以下作品）】
+【参考作品（如有，借鉴其体系/机制/调性，禁止照搬的条款必须遵守）】
 {{reference_works}}`,
     systemSuffix: `★【作者对本步骤的额外指导（如有，最高优先级）】★：
 {{step_guidance}}`,
@@ -541,6 +544,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       protagonist_profile: '主角人设',
       global_guidance: '全局写作要求',
       step_guidance: '作者对本步骤的补充指导（可选）',
+      reference_works: '参考作品（可选）',
     },
     requiredContextVariables: [
       'premise',
@@ -549,6 +553,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       'golden_finger',
       'protagonist_profile',
       'global_guidance',
+      'reference_works',
     ],
     content: `请将基础设定转化为能直接引发冲突的"剧情游乐场"。
 
@@ -596,6 +601,8 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 6. 第 4 维度的空间名一旦确定，就是后续引用的唯一键；不要为同一地点使用多个别名。
 7. 仅返回世界观设定文本，不要生成任何无关代码或解释。
 
+【参考作品（如有，借鉴其体系/机制/调性，禁止照搬的条款必须遵守）】
+{{reference_works}}
 `,
     systemSuffix: `★【作者对本步骤的额外指导（如有，最高优先级）】★：
 {{step_guidance}}`,
@@ -615,6 +622,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       word_number: '单章字数',
       global_guidance: '全局写作要求',
       step_guidance: '作者对本步骤的补充指导（可选）',
+      reference_works: '参考作品（可选）',
     },
     requiredContextVariables: [
       'premise',
@@ -623,6 +631,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       'genre',
       'number_of_chapters',
       'global_guidance',
+      'reference_works',
     ],
     content: `请为本书规划一条【弧光结构】——它描述"故事按三层嵌套推进、每层怎么接上一层"，供后续情节大纲遵循。
 
@@ -734,6 +743,9 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 4. 若某中弧属于 C 探索型，不要强行编造因果 —— 写清"动机/路径"即可，否则会写成伪因果。
 5. 小弧只给名称与章数，不展开情节。
 6. 仅返回上述内容，不要解释、不要客套话、不要代码围栏。
+
+【参考作品（如有，借鉴其体系/机制/调性，禁止照搬的条款必须遵守）】
+{{reference_works}}
 `,
     systemSuffix: `★【作者对本步骤的额外指导（如有，最高优先级）】★：
 {{step_guidance}}`,
@@ -994,7 +1006,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 【文风要求（如有）】
 {{writing_style}}
 
-【参考作品（如有，仅供借鉴调性与节奏，不是必须兑现的作者事实）】
+【参考作品（如有，借鉴其体系/机制/调性，禁止照搬的条款必须遵守；不是必须兑现的作者事实）】
 {{reference_works}}`,
     systemSuffix: `【不可偏离的作者事实】
 - 小说配置：{{novel_config}}
@@ -1071,7 +1083,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 【文风要求（如有）】
 {{writing_style}}
 
-【参考作品（如有，仅供借鉴调性与节奏，不是必须兑现的作者事实）】
+【参考作品（如有，借鉴其体系/机制/调性，禁止照搬的条款必须遵守；不是必须兑现的作者事实）】
 {{reference_works}}`,
     systemSuffix: `【不可偏离的作者事实】
 - 故事架构：{{architecture}}

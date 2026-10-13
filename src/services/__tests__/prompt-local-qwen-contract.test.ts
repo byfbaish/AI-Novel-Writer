@@ -44,6 +44,7 @@ const expectedPromptVariables: Record<string, string[]> = {
     'protagonist_profile',
     'global_guidance',
     'step_guidance',
+    'reference_works',
   ],
   plot_structure: [
     'premise',
@@ -54,6 +55,7 @@ const expectedPromptVariables: Record<string, string[]> = {
     'word_number',
     'global_guidance',
     'step_guidance',
+    'reference_works',
   ],
   synopsis: [
     'premise',
