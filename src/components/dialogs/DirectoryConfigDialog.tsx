@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { FileText, RotateCcw } from 'lucide-react'
 import type { BlueprintCharacterSyncOperation } from '../../../electron/repositories/blueprint-repository'
 import { useProjectStore } from '../../stores/project-store'
@@ -30,6 +30,13 @@ import { readAuthoritativeNextChapter } from '../../services/authoritative-chapt
 import { ipc } from '../../services/ipc-client'
 import { resolveWritingLanguage } from '../../shared/writing-language'
 import { assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS, DEFAULT_PLANNING_TARGET_UNITS, parsePlanningTargetUnits, PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../shared/plot-outline-contract'
+
+/**
+ * 已保存进度记录默认展示条数。
+ * 进度记录会跨「独立操作」累积（同一条链会被 `terminalDirectoryProgress` 收敛，
+ * 但每次独立生成都会留下一条）——长期连载后不设上限会把弹框可视区全部吃掉。
+ */
+const COMPLETED_PROGRESS_VISIBLE = 2
 
 interface Props {
   isOpen: boolean
@@ -100,6 +107,18 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
   const [directoryProgress, setDirectoryProgress] = useState<DirectoryGenerationProgress[]>([])
   const [progressError, setProgressError] = useState<string | null>(null)
   const [progressSessionKey, setProgressSessionKey] = useState('')
+  const [showAllProgress, setShowAllProgress] = useState(false)
+
+  // 进度记录累积治理：未完成项（带「继续」按钮）必须始终可见；
+  // 已完成项只保留最近 COMPLETED_PROGRESS_VISIBLE 条，其余折叠为一行计数。
+  const visibleProgress = useMemo(() => {
+    if (showAllProgress) return directoryProgress
+    const completed = directoryProgress.filter(item => !item.remainingRange)
+    if (completed.length <= COMPLETED_PROGRESS_VISIBLE) return directoryProgress
+    const kept = new Set(completed.slice(-COMPLETED_PROGRESS_VISIBLE).map(item => item.operationId))
+    return directoryProgress.filter(item => item.remainingRange || kept.has(item.operationId))
+  }, [directoryProgress, showAllProgress])
+  const hiddenProgressCount = directoryProgress.length - visibleProgress.length
   useEffect(() => {
     if (!isOpen) return
     let disposed = false
@@ -339,29 +358,57 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
 
         <div className="px-5 py-4 space-y-4">
           {progressSessionKey === currentProject.id + ':' + currentProject.sessionLease && progressError && <p role="alert" className="text-xs">{progressError}</p>}
-          {(progressSessionKey === currentProject.id + ':' + currentProject.sessionLease ? directoryProgress : []).map(progress => (
-            <div key={progress.operationId} className="rounded-lg border p-3 text-xs">
-              <p>{text(
-                '已保存第 ' + progress.committedRange.startChapter + '–' + progress.committedRange.endChapter + ' 章蓝图。',
-                'Blueprints for chapters ' + progress.committedRange.startChapter + '–' + progress.committedRange.endChapter + ' are saved.',
-              )}</p>
-              {progress.remainingRange ? (
-                <Button variant="outline" className="mt-2" disabled={isConfirming} onClick={async () => {
-                  const session = captureProjectSession(currentProject)
-                  if (!session || !isProjectSessionCurrent(session)) return
-                  setIsConfirming(true)
-                  try {
-                    await onConfirm({ mode: 'append', continueDirectoryOperationId: progress.operationId })
-                    setLaunchError(null); onClose()
-                  } catch (error) { setLaunchError(error instanceof Error ? error.message : String(error)) }
-                  finally { setIsConfirming(false) }
-                }}>
-                  {text('继续第 ' + progress.remainingRange.startChapter + '–' + progress.remainingRange.endChapter + ' 章（沿用原预算）',
-                    'Continue chapters ' + progress.remainingRange.startChapter + '–' + progress.remainingRange.endChapter + ' (same budget)')}
-                </Button>
-              ) : <p>{text('该范围已完成。', 'This range is complete.')}</p>}
+          {progressSessionKey === currentProject.id + ':' + currentProject.sessionLease && (
+            <div className="space-y-3 max-h-[11rem] overflow-y-auto pr-1">
+              {showAllProgress
+                ? directoryProgress.length > COMPLETED_PROGRESS_VISIBLE && (
+                  <button
+                    type="button"
+                    className="w-full rounded-lg border border-dashed px-3 py-2 text-left text-xs"
+                    style={{ color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}
+                    onClick={() => setShowAllProgress(false)}
+                  >
+                    {text('收起更早的保存记录', 'Collapse earlier saved records')}
+                  </button>
+                )
+                : hiddenProgressCount > 0 && (
+                  <button
+                    type="button"
+                    className="w-full rounded-lg border border-dashed px-3 py-2 text-left text-xs"
+                    style={{ color: 'var(--color-text-secondary)', borderColor: 'var(--color-border)' }}
+                    onClick={() => setShowAllProgress(true)}
+                  >
+                    {text(
+                      '另有 ' + hiddenProgressCount + ' 条更早的保存记录（点击展开）',
+                      hiddenProgressCount + ' earlier saved record(s) (click to expand)',
+                    )}
+                  </button>
+                )}
+              {visibleProgress.map(progress => (
+                <div key={progress.operationId} className="rounded-lg border p-3 text-xs">
+                  <p>{text(
+                    '已保存第 ' + progress.committedRange.startChapter + '–' + progress.committedRange.endChapter + ' 章蓝图。',
+                    'Blueprints for chapters ' + progress.committedRange.startChapter + '–' + progress.committedRange.endChapter + ' are saved.',
+                  )}</p>
+                  {progress.remainingRange ? (
+                    <Button variant="outline" className="mt-2" disabled={isConfirming} onClick={async () => {
+                      const session = captureProjectSession(currentProject)
+                      if (!session || !isProjectSessionCurrent(session)) return
+                      setIsConfirming(true)
+                      try {
+                        await onConfirm({ mode: 'append', continueDirectoryOperationId: progress.operationId })
+                        setLaunchError(null); onClose()
+                      } catch (error) { setLaunchError(error instanceof Error ? error.message : String(error)) }
+                      finally { setIsConfirming(false) }
+                    }}>
+                      {text('继续第 ' + progress.remainingRange.startChapter + '–' + progress.remainingRange.endChapter + ' 章（沿用原预算）',
+                        'Continue chapters ' + progress.remainingRange.startChapter + '–' + progress.remainingRange.endChapter + ' (same budget)')}
+                    </Button>
+                  ) : <p>{text('该范围已完成。', 'This range is complete.')}</p>}
+                </div>
+              ))}
             </div>
-          ))}
+          )}
           {(isRecoveryLoading || pendingCharacterSyncs.length > 0 || recoveryError) && (
             <div
               className="rounded-lg border px-3 py-2.5 text-xs"
