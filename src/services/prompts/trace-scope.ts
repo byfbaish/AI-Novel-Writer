@@ -22,8 +22,25 @@ export interface TraceScope {
   projectSession?: { projectId: string; leaseId: string; projectPath: string }
   /** 章节号等可读定位信息。 */
   chapterNumber?: number
+  /**
+   * 本批覆盖的章节范围（由命令在**装配之前**显式声明，见 `declareTraceScopeChapterRange`）。
+   *
+   * 为什么需要显式声明：大纲链既没有 `chapterNumber`，模板变量里也没有 `n`/`m`——
+   * 它唯一的章节号来源是**请求的 `purpose`**（`plot-outline:chapter:N`），而 `purpose`
+   * 要等 IO 回传才拿到，首次落盘时还不存在。名字一旦钉住（`traceFileName`），
+   * 章节段就永久丢了。命令在装配前把本批范围报出来即可补上。
+   */
+  chapterRange?: { from: number; to: number }
   /** 进入作用域的时刻，用于过滤环形缓冲里属于历史任务的快照。 */
   startedAt?: number
+  /**
+   * 首次落盘时钉住的文件名（由落盘器写入，作用域内只算一次）。
+   *
+   * 为什么必须钉住：文件名里的「章节段」是从"当前已收到的 ioCalls"现算的，而一次生成
+   * 会多次落盘、ioCalls 逐次增多（大纲逐章生成：0 次 → `ch11` → `ch11-12`）。若每次重算，
+   * 同一作用域会写出三份各不完整的文件（旧的不会被清掉）。钉住后只覆盖写同一份。
+   */
+  traceFileName?: string
 }
 
 const stack: TraceScope[] = []
@@ -45,6 +62,24 @@ export function pushTraceScope(scope: TraceScope): () => void {
 /** 当前最内层作用域；无作用域时为 undefined。 */
 export function currentTraceScope(): TraceScope | undefined {
   return stack.length > 0 ? stack[stack.length - 1] : undefined
+}
+
+/**
+ * 声明当前作用域覆盖的章节范围（只影响文件名里的「章节段」）。
+ *
+ * 为什么不作为 `pushTraceScope` 的参数：范围是**命令体内部**才算出来的
+ * （大纲的 from/to 依赖断点检查点、已覆盖水位与总章数），`pushTraceScope` 时还不知道。
+ *
+ * 两条守卫：
+ * - 无作用域 → 静默返回（追踪未开启，或该链路不在生成作用域内）；
+ * - 名字已钉住（`traceFileName`）→ 不再改。否则"晚到的范围"会让同一作用域写出第二份文件，
+ *   正是 2026-10-13 修掉的那类回归。所以调用方必须在**首次落盘之前**（即装配之前）声明。
+ */
+export function declareTraceScopeChapterRange(from: number, to: number): void {
+  const scope = currentTraceScope()
+  if (!scope || scope.traceFileName) return
+  if (!Number.isInteger(from) || !Number.isInteger(to) || from < 1 || to < from) return
+  scope.chapterRange = { from, to }
 }
 
 /**

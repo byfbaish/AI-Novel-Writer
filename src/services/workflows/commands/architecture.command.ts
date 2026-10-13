@@ -7,6 +7,7 @@ import type { MainGenerationRunHandle } from '../../generation/generation-runtim
 import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
 import { withProjectedArcGuide } from '../../../shared/arc-position'
+import { declareTraceScopeChapterRange } from '../../prompts/trace-scope'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
 import {
   BaseWorkflowCommand,
@@ -2117,6 +2118,12 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       }
     }
 
+    // 追踪文件名要用「本批章节段」。大纲链没有 chapterNumber、模板里也没有 n/m，
+    // 章节号只存在于请求的 purpose（`plot-outline:chapter:N`）——而它要等 IO 回传，
+    // 首次落盘时还没有；名字一旦钉住就再也补不上（作者反馈"分不清同类之间的先后"）。
+    // 故必须在**装配之前**声明本批范围。必须在下面 build() 之前调用。
+    declareTraceScopeChapterRange(from, to)
+
     const factsFingerprint = synopsisInputsFingerprint(
       sourceExpected,
       effectiveStepGuidance,
@@ -2400,6 +2407,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     const language = sourceExpected.writingLanguage
     const template = await resolvePromptTemplate('synopsis', session, language)
     if (!template) throw new Error(text('模板丢失', 'The plot-outline template is missing.'))
+    // 同批量路径 :2122 前的说明：逐章大纲的章节段也只能由命令显式声明（purpose 后到）。
+    // 必须在下面 promptBuilder.build()（即 prompt-trace 装配）之前调用。
+    declareTraceScopeChapterRange(initial.range.from, initial.range.to)
     const { resolveStageStructureGuide, getNarrativePOVLabel } = await import('../architecture-workflow')
     const promptBuilder = new ArchitecturePromptBuilder(template, language)
       .withCoreSeed(sourceExpected.premise).withCharacterDynamics(sourceExpected.charactersArch).withWorldBuilding(sourceExpected.worldbuilding)

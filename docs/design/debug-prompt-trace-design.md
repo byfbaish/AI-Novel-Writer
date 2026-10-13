@@ -687,7 +687,8 @@ TRACE-META -->
 **追踪自身（P0~P2.4）**
 - 追踪开关与状态：`src/stores/debug-store.ts`（`promptTraceEnabled` / `traceRoot` 预留）、`src/components/settings/DeveloperSettings.tsx`
 - 片段归因：`src/services/prompts/prompt-trace.ts`（`deriveFragments()` 纯函数 + `recordFragments()` 短路捕获 + `setSnapshotSink`；快照含 `built`（组装后 user 正文）与 `systemMessage`）
-- 作用域广播：`src/services/prompts/trace-scope.ts`（`pushTraceScope` / `currentTraceScope` / `setTraceScopeTeardownHook` / `runTraceScopeTeardown`）——**零依赖，可被工作流核心安全引用**
+- 作用域广播：`src/services/prompts/trace-scope.ts`（`pushTraceScope` / `currentTraceScope` / `declareTraceScopeChapterRange` / `setTraceScopeTeardownHook` / `runTraceScopeTeardown`）——**零依赖，可被工作流核心安全引用**
+  - `declareTraceScopeChapterRange(from, to)`：声明本批章节范围，只影响文件名里的**章节段**。给"既没有 `chapterNumber`、模板里也没有 `n`/`m`"的链路用（**目前只有大纲**：它的章号原本只存在于**后到的** `ioCalls[].purpose`（`plot-outline:chapter:N`），而文件名在首次落盘时就钉住了 → 不显式声明就永久缺段）。调用方必须在**装配（`build()`）之前**声明；名字一旦钉住则拒绝再改（否则会写出第二份文件）。现有调用点：`architecture.command.ts` 的批量路径（`from`/`to` 定稿后）与 `executeChapterOutline`（`initial.range`）。
 - 落盘：`src/services/prompts/prompt-trace-writer.ts`（`recordTraceIo` 按作用域**累积多次调用** / `releaseTraceScopeState` 作用域退出回收 / `scheduleTraceFlush` / `flushTraceNow` / `TraceFlushOutcome` 订阅），落到 `<项目根>/debug/prompt-trace/`
 - markdown 渲染：`src/services/prompts/prompt-trace-markdown.ts`（**零运行时依赖纯函数**；首屏拼装态 + 「实际发出的请求与输出（N 次调用）」；离线预览复用此入口）
 - 状态回显 UI：`src/components/settings/PromptTraceStatus.tsx`（四态：等待/已写出/未写出/失败）

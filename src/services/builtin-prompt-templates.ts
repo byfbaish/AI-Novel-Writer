@@ -135,6 +135,12 @@ export const PROMPT_VARIABLE_DESCRIPTIONS_EN: Readonly<Record<string, string>> =
   chapter_number: 'Chapter number',
   chapter_title: 'Chapter title',
   existing_cards_json: 'Existing character records as JSON',
+  // `character_background_synthesis`（2026-10-10 引入）的四个变量；此前漏登记，
+  // 导致「可编辑模板的英文变量说明必须齐全」这条审计长期为红。
+  character_name: 'Name of the character to flesh out (one at a time)',
+  mainline: 'Volume outline and main storyline text',
+  mentions: 'Blueprint passages that mention this character',
+  existing_roster: 'Existing character-card summary (used only to avoid sameness)',
   sample_content: 'Imported manuscript sample',
   novel_config_summary: 'Established novel configuration summary',
   sampled_worldview: 'Retrieved world-building evidence',

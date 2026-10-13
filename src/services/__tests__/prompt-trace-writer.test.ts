@@ -13,7 +13,7 @@ import {
   resetTraceIoQueue,
   scheduleTraceFlush,
 } from '../prompts/prompt-trace-writer'
-import { pushTraceScope, resetTraceScope } from '../prompts/trace-scope'
+import { declareTraceScopeChapterRange, pushTraceScope, resetTraceScope } from '../prompts/trace-scope'
 import { configurePromptTrace, recordFragments, resetPromptTrace } from '../prompts/prompt-trace'
 import { setSnapshotSink } from '../prompts/prompt-trace'
 import { getBuiltinPromptTemplate } from '../builtin-prompt-templates'
@@ -117,6 +117,84 @@ describe('prompt-trace-writer', () => {
       .map(([, , path]) => path as string)
       .find(path => path.endsWith('.json'))
     expect(file).toContain('-大纲-ch6-7-67b38f0b.json')
+  })
+
+  it('大纲：命令声明本批范围后，首次落盘就有章节段，且一次作用域只写一份文件', async () => {
+    // 回归（作者实测）：大纲逐章生成会**多次落盘**，而 ioCalls 逐次增多（0 次 → ch11 → ch11-12）。
+    // 早期实现把「章节段」从"当前已收到的 ioCalls"**现算**，于是同一个作用域写出三份
+    // 各不完整的文件（旧的不会被清掉）——作者必须翻到最后一份才是完整的，还白占磁盘。
+    // 修法 ①：文件名在**首次落盘时钉住**，后续落盘只覆盖写同一份。
+    // 修法 ②（同轮）：钉住意味着"首次落盘时取不到章节号 → 永久缺段"，而大纲的章节号
+    //           只在**后到的** purpose 里 → 由命令在装配前显式声明本批范围（本例用 11–12）。
+    // 目标：既只写一份文件，又保住章节段（作者要求"分不清同类先后"必须解决）。
+    //
+    // ⚠️ 本用例必须用**含 `chapter:N` 的 purpose**：同文件里「一轮内多次 LLM 调用写同一份」
+    // 那条用的是 chapter-draft* 系列（不含 `chapter:N`），章节段恒为 null，恰好绕过了该 bug。
+    const { flushTraceNow } = await import('../prompts/prompt-trace-writer')
+    const synopsis = getBuiltinPromptTemplate('synopsis', 'zh-CN')
+    if (!synopsis) throw new Error('内置模板缺失')
+    // 大纲作用域不带 chapterNumber（实测为空）。
+    const dispose = pushTraceScope({
+      runHandle: 'proj/lease/8650c580-3bd5-4c11-8888-9999aaaabbbb',
+      operation: 'text',
+      projectSession: session,
+    })
+    try {
+      declareTraceScopeChapterRange(11, 12) // 命令在装配前声明（architecture.command.ts）——须早于 build()
+      recordFragments({ template: synopsis, variables: {}, built: '组装结果', writingLanguage: 'zh-CN' })
+      await flush() // ① 片段先到、ioCalls 仍为空；此刻名字必须已带 ch11-12
+      recordTraceIo({ purpose: 'plot-outline:chapter:11', messages: [{ role: 'user', content: '第11章' }], output: '第十一章大纲', finishReason: 'stop' })
+      await flushTraceNow() // ② 多出 chapter:11（若重算，名字会变）
+      recordTraceIo({ purpose: 'plot-outline:chapter:12', messages: [{ role: 'user', content: '第12章' }], output: '第十二章大纲', finishReason: 'stop' })
+      await flushTraceNow() // ③ 多出 chapter:12（若重算，名字又变）
+    } finally { dispose() }
+
+    const writes = invoke.mock.calls.filter(([, channel]) => channel === 'fs:write-file')
+    const mdPaths = writes.filter(([, , path]) => String(path).endsWith('.md')).map(([, , path]) => String(path))
+    const jsonPaths = writes.filter(([, , path]) => String(path).endsWith('.json')).map(([, , path]) => String(path))
+    // 三次内容确实都在变、都写了；但文件名已钉住，故只有**一份**文件（不是三份半成品）。
+    expect(mdPaths).toHaveLength(3)
+    expect(new Set(mdPaths).size).toBe(1)
+    expect(new Set(jsonPaths).size).toBe(1)
+    // 业务标签 + 章节段都必须保住。
+    expect(mdPaths[0]).toContain('-大纲-ch11-12-8650c580.md')
+    expect(mdPaths[0]).not.toContain('-text-')
+    // 首屏也读得到本批范围（人不用去翻 json 才知道这批是第几章）。
+    const firstMd = writes.find(([, , path]) => String(path).endsWith('.md'))?.[3] as string
+    expect(firstMd).toContain('章节范围：第 11–12 章')
+
+    // 最后一份内容必须完整（覆盖写，不丢任何一次调用）。
+    const last = writes.filter(([, , path]) => String(path).endsWith('.json')).at(-1)
+    const payload = JSON.parse(last?.[3] as string)
+    expect(payload.ioCalls).toHaveLength(2)
+    expect(payload.ioCalls.map((call: { output: string }) => call.output)).toEqual(['第十一章大纲', '第十二章大纲'])
+  })
+
+  it('范围声明晚于首次落盘时不改名（钉住优先，避免又写出第二份文件）', async () => {
+    // 这是"钉住"不可退让的一面：若允许后来补章段就改名，同一作用域必然留下两份文件
+    // （旧文件不会被清掉），正是上一轮修掉的回归。故命令必须在装配前声明。
+    const { flushTraceNow } = await import('../prompts/prompt-trace-writer')
+    const synopsis = getBuiltinPromptTemplate('synopsis', 'zh-CN')
+    if (!synopsis) throw new Error('内置模板缺失')
+    const dispose = pushTraceScope({
+      runHandle: 'proj/lease/7923a61e-1111-2222-3333-444455556666',
+      operation: 'text',
+      projectSession: session,
+    })
+    try {
+      recordFragments({ template: synopsis, variables: {}, built: '组装结果', writingLanguage: 'zh-CN' })
+      await flush() // 首次落盘：未声明范围 → 名字里没有章节段，并就此钉住
+      declareTraceScopeChapterRange(8, 10)
+      recordTraceIo({ purpose: 'plot-outline:chapter:8', messages: [{ role: 'user', content: '第8章' }], output: '第八章大纲', finishReason: 'stop' })
+      await flushTraceNow()
+    } finally { dispose() }
+
+    const mdPaths = invoke.mock.calls
+      .filter(([, channel, path]) => channel === 'fs:write-file' && String(path).endsWith('.md'))
+      .map(([, , path]) => String(path))
+    expect(new Set(mdPaths).size).toBe(1)
+    expect(mdPaths[0]).toContain('-大纲-')
+    expect(mdPaths[0]).not.toMatch(/-ch\d/)
   })
 
   it('md 含片段表格与来源标注', async () => {

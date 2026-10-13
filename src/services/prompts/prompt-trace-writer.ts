@@ -123,13 +123,18 @@ function formatChapterSegment(chapters: ReadonlyArray<number>): string {
 /**
  * 章节定位段（如 `ch6-7`）。
  *
- * 三级取证，缺一不可：
- * ① `chapterNumber` —— 正文链会带，实测大纲/蓝图作用域**为空**；
+ * 四级取证，命中即止：
+ * ⓪ `chapterRange` —— 命令在装配前**显式声明**的本批范围（最可靠）。大纲链只能靠它：
+ *    它既没有 `chapterNumber`，模板变量里也没有 `n`/`m`，章节号原本只存在于
+ *    `ioCalls[].purpose` 里——而 `purpose` 要等 IO 回传，**首次落盘时还没有**，
+ *    名字一旦钉住就永久缺段（作者反馈"分不清同类之间的先后"正是因为这一段）。
+ * ① `chapterNumber` —— 正文/定稿链会带，实测大纲/蓝图作用域**为空**；
  * ② `ioCalls[].purpose` —— 大纲逐章生成时形如 `plot-outline:chapter:6`；
- * ③ 模板变量 `n`/`m` —— 蓝图分块形如 `n=6, m=7`（未覆盖章节号时唯一来源）。
+ * ③ 模板变量 `n`/`m` —— 蓝图分块形如 `n=6, m=7`（未声明范围时唯一来源）。
  * 都取不到时返回 null（该段整体省略，文件名仍然可用）。
  */
 function traceChapterSegment(payload: TraceFilePayload): string | null {
+  if (payload.chapterRange) return formatChapterSegment([payload.chapterRange.from, payload.chapterRange.to])
   if (typeof payload.chapterNumber === 'number') return formatChapterSegment([payload.chapterNumber])
   const fromPurpose: number[] = []
   for (const call of payload.ioCalls ?? []) {
@@ -334,6 +339,7 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
     ...(scope.runHandle ? { runHandle: scope.runHandle } : {}),
     ...(scope.operation ? { operation: scope.operation } : {}),
     ...(scope.chapterNumber !== undefined ? { chapterNumber: scope.chapterNumber } : {}),
+    ...(scope.chapterRange ? { chapterRange: scope.chapterRange } : {}),
     writtenAt,
     snapshots: fresh.map(snapshot => ({
       promptKey: snapshot.promptKey,
@@ -351,14 +357,25 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
   // IO 后到、多次 LLM 调用等增量都覆盖写同一个文件，不会留下一堆半成品。
   // 命名 = `<时间戳>-<业务标签>-<章节段>-<runId 前 8 位>`（章节段与 runId 缺失时省略）。
   // runId 截到 8 位：此处只用于"同秒同标签"时区分，完整值仍保留在 json 的 runHandle。
+  //
+  // ⚠️ 名字必须在**首次落盘时钉住**（2026-10-13 修复回归）：
+  // 章节段是从"当前已收到的 ioCalls"现算的，而一次生成会多次落盘、ioCalls 逐次增多
+  // （大纲逐章生成：先 0 次 → ch11 → ch11-12）。若每次重算，同一作用域会写出
+  // `…-大纲-<runId>` / `…-大纲-ch11-<runId>` / `…-大纲-ch11-12-<runId>` **三份文件**，
+  // 每份都是不完整快照（旧的不会被清掉）。钉住后只覆盖写同一份。
+  //
+  // ⚠️ 钉住带来一个代价：首次落盘时若还取不到章节号，名字里就永久没有该段。
+  // 大纲链正是这种情况（章节号只在后到的 `purpose` 里）→ 现在由命令在装配前
+  // `declareTraceScopeChapterRange(from, to)` 显式声明，段落不再丢。
   const startedAt = scopeStartedAt(scope)
   const stamp = compactTimestamp(startedAt > 0 ? startedAt : writtenAt)
-  const fileName = [
+  const fileName = scope.traceFileName ?? [
     stamp,
     sanitizeFileSegment(traceSubjectLabel(payload)),
     traceChapterSegment(payload),
     sanitizeFileSegment((scope.runHandle?.split('/').pop() ?? 'run').slice(0, 8)),
   ].filter((part): part is string => !!part).join('-')
+  scope.traceFileName = fileName
   const dir = joinProjectPath(session.projectPath, ...PROMPT_TRACE_DIR_SEGMENTS)
   const relativeBase = `${promptTraceRelativeDir()}/${fileName}`
 

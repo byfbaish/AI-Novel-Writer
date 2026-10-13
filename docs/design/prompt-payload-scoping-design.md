@@ -375,9 +375,20 @@ interface PromptTemplate {
 
 **★ 就地实施 A：trace 文件名加业务标签 + 章节段**（作者指出"分不清大纲/蓝图/正文，同类看不出先后"）
 - 根因：文件名用了 `scope.operation`，而它是**执行器类型**（`text`/`structured`/`chapter-draft`）——`synopsis` 与 `chapter_blueprint_chunk` **都**落成 `text`/`structured`。
-- 改法（`prompt-trace-writer.ts`）：改用**模板 key 映射的业务标签**（`大纲`/`蓝图`/`正文`/`章纲`/…），并加**章节段**（三级取证：`chapterNumber` → `ioCalls[].purpose` 的 `chapter:N` → 模板变量 `n`/`m`），runId 截前 8 位。
+- 改法（`prompt-trace-writer.ts`）：改用**模板 key 映射的业务标签**（`大纲`/`蓝图`/`正文`/`章纲`/…），并加**章节段**（四级取证：⓪ 命令显式声明 `chapterRange` → ① `chapterNumber` → ② `ioCalls[].purpose` 的 `chapter:N` → ③ 模板变量 `n`/`m`），runId 截前 8 位。
 - 新命名：`<时间戳>-<业务标签>-<章节段>-<runId8>`，例：`20261013-035913-498-蓝图-ch6-7-6f969673.json`。
 - 测试：新增 2 例（业务标签替代 `operation`；逐章调用收成 `ch6-7` 区间），**trace 相关 38/38 通过**。旧文件名不追溯改名。
+- **★ 同日二次修复（该命名的回归，作者实机发现）**：章节段是**从"当前已收到的 `ioCalls`"现算**的，而水位判重只看**内容**、不看**文件名** → 一次作用域随 `ioCalls` 递增写出 **3–4 份**各不完整的文件（旧的不清）。实机取证：`…/prompt-trace/` 内 `20261013-182416-646-大纲-{7923a61e,ch8,ch8-9,ch8-10}.{md,json}` 共 4 份、`20261013-191720-497-大纲-{8650c580,ch11,ch11-12}.{md,json}` 共 3 份（同 `runId8`）；蓝图侧恒为 1 份（`n`/`m` 在**首次**落盘时已在快照里）。
+  - **修法（方案 A，已落地）**：`TraceScope` 加 `traceFileName?: string`，`flushTraceFile` 改为 `scope.traceFileName ?? […]` 并回写 → **首次落盘钉住名字**，后续只覆盖写同一份。
+  - **验证手法**：`git stash push` 只撤 `prompt-trace-writer.ts` → 新回归用例立即红（`expected 3 to be 1`），恢复后绿。**回归用例必须能在未修复时红。**
+  - **当时的代价（同日已补，见「三次修复」）**：`synopsis` 模板变量里**没有 `n`/`m`**，其章节段只能来自 `ioCalls[].purpose`（首次落盘时还没到）→ 大纲文件名一度不再带章节段；蓝图（`n`/`m`）与正文/定稿（`chapterNumber`，两条链**自建作用域** `generate-draft.command.ts:974` / `finalize-chapter.command.ts:401`）不受影响。
+- **★ 同日三次修复：把大纲的章节段找回来（作者裁定"章节段还是要的，不然违背易读的初衷"）**
+  - **为什么不能靠"晚点再补"**：`traceFileName` 已钉住 → 首次落盘时没有的段就永久没有；若改回"后来补就改名"则会重新写出第二份文件（回到二修前的病）。所以**必须在首次落盘之前就有值**。
+  - **修法**：`TraceScope` 加 `chapterRange?: { from, to }` + 新纯函数 `declareTraceScopeChapterRange(from, to)`（`trace-scope.ts`，两条守卫：无作用域静默返回；`traceFileName` 已钉住则拒绝再改）。
+  - **调用点**（`architecture.command.ts`，都必须在**装配前**，即 `build()` 之前）：批量/正常路径在 `from`/`to` 定稿后（原 `:2120` 前）、逐章路径 `executeChapterOutline` 在 `promptBuilder` 构造前（用 `initial.range`）。
+  - **为什么不是"`pushTraceScope` 时传入"**：大纲的 `from`/`to` 是**命令体内部**才算出来的（依赖断点检查点、已覆盖水位、总章数），push 时还不知道 → 改为命令体主动声明。
+  - **落到人眼**：`.md` 头部新增 `- 章节范围：第 11–12 章`（此前只能翻 `.json`）。
+  - **测试**：新增 5 例（`prompt-trace-scope.test.ts` 4 例：写入/无作用域/钉住后拒改/非法范围；`prompt-trace-writer.test.ts` 改 1 例 + 增 1 例）→ 断言 `-大纲-ch11-12-8650c580.md`，并锁"钉住优先、声明晚到不改名"。`prompt*` 全组 **11 文件 149/149**。
 
 **★ 就地实施 B：`role` 由软约束改硬枚举，节奏意图改走 `purpose`**（作者裁定："跨章指涉不该显式，但意思是对的，换成本章视角表述"）
 - 落地三处：内置 `chapter_blueprint` + `chapter_blueprint_chunk`（`builtin-prompt-templates.ts`），**以及作者的全局覆盖版** `chapter_blueprint_chunk.zh-CN.json`（**不改覆盖版则不生效**——实测 `resolvedFrom=global`）。
@@ -390,7 +401,9 @@ interface PromptTemplate {
 - 结论：两项均为**测试期望表过时**，非代码缺陷。
   - ① `expectedPromptVariables` 漏登记 `character_background_synthesis`（内置 25 个模板 vs 期望表 24 个；该模板在数组中列**第 2 位**）→ 补齐，含 4 个变量 `character_name`/`mainline`/`mentions`/`existing_roster`。
   - ② `expectedJsonFields.character_dynamics` 仍要求 `schemaVersion`，但该字段**已被第五层架构改造移出输出合同**——`prompt-language.ts` 的 `detailSystem`/`detailContract` 现明确写"不得输出 schemaVersion、relationships" → 期望表改为 `['entries']`，并加注释说明**勿回填已废弃字段**，防下次又被"补"回去。
-- 结果：该文件 **21/21 通过**（原 `2 failed | 19 passed`）。相邻契约与 trace 测试 **5 文件 88/88 通过**（`prompt-language-contract` 29 / `prompt-local-qwen-contract` 21 / `prompt-trace-writer` 26 / `prompt-trace-scope` 9 / `prompt-trace-integration` 3）。
+  - ③ **同日二次发现（第 3 条，同一根因）**：`prompt-project-session.test.ts > provides audited English descriptions for every variable shown by editable prompts` 报 `character_background_synthesis.character_name` 缺属性。`git stash` 全撤后**同样红** → 既有。根因：该模板由 `5933a50`（2026-10-10）引入时，`PROMPT_VARIABLE_DESCRIPTIONS_EN` 未同步，**红到今天** → 补 4 条（`character_name`/`mainline`/`mentions`/`existing_roster`）。
+- 结果：`prompt-local-qwen-contract` **21/21 通过**（原 `2 failed | 19 passed`）；`prompt-project-session` **9/9**；`prompt*` 全组 **11 文件 144/144 通过**。
+- **可复用规律（三条同一根因）**：本项目的红测试多为「**模板已演进、支撑表/审计表没跟上**」，而非代码缺陷。故遇到契约类红测试，**先 diff 模板与期望表，再怀疑实现**。
 
 **未排除项**：所有取证**仍在原项目**执行（非空项目），遗留 legacy 角色（`retired=1`）与旧蓝图行噪声未隔离；若需纯净基线，仍建议空项目重跑。
 
@@ -416,9 +429,10 @@ interface PromptTemplate {
 
 | 项 | 落点 | 状态 |
 |---|---|---|
-| trace 文件名加业务标签 + 章节段 | `src/services/prompts/prompt-trace-writer.ts`（映射表 + `<时间戳>-<业务标签>-<章节段>-<runId8>`） | ✅ 测试 2 例 |
+| trace 文件名加业务标签 + 章节段 | `src/services/prompts/prompt-trace-writer.ts`（映射表 + `<时间戳>-<业务标签>-<章节段>-<runId8>`）+ `trace-scope.ts`（`traceFileName` 钉住） | ✅ 测试 3 例；**含同日二次修复**：名字改为**首次落盘钉住**，消除 3–4 份半成品（详见 §7.0.6 实施 A） |
 | `role` 硬枚举契约（节奏意图改走 `purpose`） | `src/services/builtin-prompt-templates.ts`（两处）+ **作者全局覆盖版** `<VELA_HOME>/prompts/chapter_blueprint_chunk.zh-CN.json` | ✅ 措辞已改；**ch6/ch7 旧值未改** |
 | 契约测试期望表修正 | `src/services/__tests__/prompt-local-qwen-contract.test.ts`（补 `character_background_synthesis`；`character_dynamics` 去 `schemaVersion`） | ✅ 21/21 |
+| 英文变量说明表补登记（第 3 条既有失败） | `src/services/builtin-prompt-templates.ts` 的 `PROMPT_VARIABLE_DESCRIPTIONS_EN` 补 `character_name`/`mainline`/`mentions`/`existing_roster` | ✅ `prompt-project-session.test.ts` 9/9；`prompt*` 全组 **144/144** |
 | **P0-0 上游章级/弧光投影** | 新建 `src/shared/synopsis-projection.ts`；改 `directory-workflow.ts` / `directory.command.ts` / `arc-position.ts` / `architecture.command.ts` / `generate-draft.command.ts` | ✅ 28 例单测全绿；**蓝图侧实机确认生效**；⚠️ **大纲侧未生效（既有解析缺陷）**；**待 commit** |
 
 **B. 下一步（建议顺序，含"第一步动作"）**
@@ -431,7 +445,10 @@ interface PromptTemplate {
    - **★ 修复后复验（第二轮 ch11–12）**：大纲侧 `plot_structure_guide` **12,513 → 2,983 字（省 76%）**，变量**逐字等于**「B 档裁剪 2,279 + `\n\n` + 弧位块 702」，两次调用 user 消息**都含【本批所处弧位】与防提前硬约束**（user 20,472 / 20,712）；蓝图侧 `novel_architecture` **8,629 字**与期望值精确相等（只剩 ch11–12 章标题，前序 1–10 已剔）。**两条链均已确认生效。**
    - **其余待办**：① 若章末 `suspenseHook` 质量下降，把后续段降级起点由 `m+1` 回退为 `m+2`；② `charactersArch` 投影单独立项。
 2. **P0-2 `global_guidance` 分区**（落点已定案）—— 第一步动作：逐句标注作者那 304 字的 4 条正文形态纪律，界定"哪几句属 `draftingRules`、哪几句属基调"；需定新槽位 `draftingRules` 的落点（项目配置 UI + 注入点）。
-3. **P0-1 短细纲只喂该步材料** —— 第一步动作：读 `generate-draft.command.ts:1012` 附近，确认短细纲当前复用了哪份 prompt；**改动量最小**，可作 P0-0/P0-2 前的热身。
+3. **P0-1 短细纲只喂该步材料** —— ✅ **小设计稿已出（2026-10-13）** → `docs/design/p0-1-short-outline-scoping-design.md`（**待作者裁定 3 项**：后续计划边界给不给 / 前驱给全文还是结尾摘录 / 执行合同给不给）。
+   - ⚠️ **本文原写的行号 `generate-draft.command.ts:1012` 已漂移**，实际落点 = **`:939`**（`const outlinePrompt = draftShortOutlinePrompt(writingLanguage, prompt)`，构造在 `:934-938`）；短细纲唯一一次 LLM 调用在 `:1108-1112`，**只有 user 消息、无 system**。
+   - **本步不依赖 `keyEvents` 结构化**（不消费 `estimatedUnits`，按 §8-7 YAGNI 不立项）——该结构化只是 §5.5 表中 2/3/5 行的共同前提。
+   - 主进程**不必改**：重试回放 `usage_replayTask`（`main-generation-owner.ts:162-179`），哈希比对为两侧同源。
 4. **共同前提 · `keyEvents` 结构化**（`string` → `Array<{id, event, estimatedUnits}>`）—— 落点在**蓝图 schema**，**必须走 lane 六步**（见 `notes/data-and-schema.md`）。§5.5 表里有三行都依赖它。
 5. **P1-1 / P1-2 / P1-3**（见上表；P1-1 落点已修正为【后续计划边界】块）。
 
