@@ -180,6 +180,26 @@ describe('ChapterCardEditor writing entry', () => {
     expect(useLayoutStore.getState().chapterCreationPrefill?.role).toBe('高潮')
   })
 
+  it('keeps the key-character input uncontrolled so separators survive typing', async () => {
+    // 回归（吸收自上游 eb8c3f00）：此前用受控 value={characters.join('、')}，
+    // 输入中间的分隔符会被 split(...).filter(Boolean) 吞掉 → 光标跳动、顿号打不出来。
+    // 改为 key + defaultValue 后输入态不再受重渲染干扰。
+    installIpc({ blueprints: [{ ...blueprint(1), characters: ['沈砺', '老猫'] }] })
+    await renderEditor()
+    await vi.waitFor(() => expect(container?.textContent).toContain('出场关键人'))
+
+    const input = Array.from(container!.querySelectorAll<HTMLInputElement>('input'))
+      .find(candidate => candidate.value === '沈砺、老猫')
+    expect(input).toBeDefined()
+
+    // 用户继续输入（含尾随顿号）——受控实现会立刻把尾随顿号吞掉
+    await act(async () => {
+      input!.value = '沈砺、老猫、'
+      input!.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+    expect(input!.value).toBe('沈砺、老猫、')
+  })
+
   it('propagates blueprint save failure to the exit gate', async () => {
     installIpc({ saveError: '蓝图写入失败' })
     useEditorStore.setState({
