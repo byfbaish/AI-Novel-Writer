@@ -522,6 +522,7 @@ Return JSON only, with no Markdown, preface, analysis, plan, code fence, or reas
 {{novel_architecture}}
 
 [Previously validated blueprint progress]
+The following are already-finalized prior chapters (brief excerpts, to prevent drifting off the mainline). They are established facts: when they conflict with the plot outline (planning) inside [Story architecture] above, this section wins.
 {{chapter_list}}
 
 [Requirements]

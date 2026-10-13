@@ -193,6 +193,36 @@ describe('arcSpanForChapters', () => {
     expect(arcSpanForChapters(parsed, 195, 0, 5)).toBeNull()
     expect(arcSpanForChapters(null, 195, 1, 5)).toBeNull()
   })
+
+  /**
+   * 回归（2026-10-14）：批 ≤10 章，但中弧可能更短 → 本批会跨越中弧边界。
+   * 修复前只按 `from` 定位（`midIndex`），后半批所属的新中弧拿不到规格字段。
+   */
+  it('本批跨越中弧边界时标记覆盖到的最后一个中弧，且不再把它列为「后续」', () => {
+    const cross = arcSpanForChapters(parsed, 195, 20, 29)!
+    expect(cross.midName).toBe('生存与死线')
+    expect(cross.endMidIndex).toBe(2) // 第 26–29 章已进入 中弧 2【工程题拆解】
+    expect(cross.remainingMids.map(item => item.name)).toEqual(['现实线锚点', '老猫入局'])
+    expect(cross.afterBatchMidBoundary).toBe(51) // 本批之后的第一个中弧起点
+    // 跨界提示仍指向本批跨越的那个边界
+    expect(cross.nextMidBoundary).toBe(26)
+    expect(cross.nextMidName).toBe('工程题拆解')
+  })
+
+  it('未跨界时 endMidIndex 等于 midIndex（行为与从前一致）', () => {
+    const within = arcSpanForChapters(parsed, 195, 26, 35)!
+    expect(within.endMidIndex).toBe(within.midIndex)
+    expect(within.remainingMids.map(item => item.name)).toEqual(['现实线锚点', '老猫入局'])
+    expect(within.afterBatchMidBoundary).toBe(51)
+  })
+
+  it('本批走到本大弧末尾（或跨大弧）时，不再有本批之后的中弧', () => {
+    const overMajor = arcSpanForChapters(parsed, 195, 95, 105)!
+    expect(overMajor.majorName).toBe('规则初学')
+    expect(overMajor.endMidIndex).toBe(4)
+    expect(overMajor.remainingMids).toHaveLength(0)
+    expect(overMajor.afterBatchMidBoundary).toBeNull()
+  })
 })
 
 describe('renderArcPositionBlock / withArcPositionGuide', () => {
@@ -206,6 +236,16 @@ describe('renderArcPositionBlock / withArcPositionGuide', () => {
     // 折算只在需要时声明
     expect(block).not.toContain('等比折算')
     expect(renderArcPositionBlock(parsed, 390, 16, 25, 'zh-CN')).toContain('等比折算')
+  })
+
+  it('跨越中弧边界时，防提前的章号指向本批之后的中弧（2026-10-14 修复）', () => {
+    const block = renderArcPositionBlock(parsed, 195, 20, 29, 'zh-CN')
+    expect(block).toContain('本批跨越中弧边界：第 26 章起属于 中弧【工程题拆解】')
+    // 修复前取 nextMidBoundary(26) ⇒ 写成"不得提前…属于第 26 章及以后"，与"本批含第 26–29 章"自相矛盾
+    expect(block).toContain('它们属于第 51 章及以后')
+    expect(block).not.toContain('它们属于第 26 章及以后')
+    // 未跨界时与从前一致（下一个中弧起点 = 本中弧末尾 + 1）
+    expect(renderArcPositionBlock(parsed, 195, 16, 25, 'zh-CN')).toContain('它们属于第 26 章及以后')
   })
 
   it('renders the English block and appends to the guide only when parseable', () => {
@@ -272,6 +312,18 @@ describe('projectArcStructureText · B 档分级裁剪', () => {
   it('引言（首个大弧之前的内容）原样保留', () => {
     expect(projected).toContain('【篇幅预算】')
     expect(projected).toContain('总章数：845 章。')
+  })
+
+  it('本批跨越中弧边界时，新进入的中弧同样保留全字段（2026-10-14 修复）', () => {
+    const crossSpan = arcSpanForChapters(parsed, 195, 20, 29)!
+    const out = projectArcStructureText(PLAN, crossSpan)
+    // 本批覆盖的两个中弧都是本批的执行依据 → 都保留全字段
+    expect(out).toContain('时序：本中弧起点 = 主角在休整区醒来。')
+    expect(out).toContain('目标：从「背诵规则」进化到「寻找规则漏洞」。')
+    expect(out).toContain('尝试 1：<观察字面歧义> → 结果 <利用「访客身份」规避停留限制>')
+    // 仍未进入的中弧继续降级为「标题 + 一句话定位」
+    expect(out).toContain('### 中弧 3：【现实线锚点】（约 25 章）')
+    expect(out).not.toContain('类型：C 探索型')
   })
 
   it('定位到最后一个大弧时，其他大弧只留标题（其中弧全部降级）', () => {
