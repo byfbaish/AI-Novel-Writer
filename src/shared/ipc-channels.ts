@@ -726,6 +726,36 @@ export interface AppDataChannels {
   }
 }
 
+/**
+ * 用户级「创作资产包」。与项目存档并列但**作用域独立**：不读取、也不要求当前项目会话，
+ * 因此在没有打开任何项目时同样可用。
+ */
+export interface UserSettingsPackChannels {
+  'dialog:select-settings-pack-export': {
+    args: [suggestedName: string]
+    return: ExternalFileGrant | null
+  }
+  'dialog:select-settings-pack-import': {
+    args: []
+    return: ExternalFileGrant | null
+  }
+  'settings-pack:export': {
+    args: [request: import('./user-settings-pack').UserSettingsPackExportRequest]
+    return: { success: true; receipt: import('./user-settings-pack').UserSettingsPackExportReceipt }
+      | import('./user-settings-pack').UserSettingsPackFailure
+  }
+  'settings-pack:inspect': {
+    args: [request: import('./user-settings-pack').UserSettingsPackInspectRequest]
+    return: { success: true; receipt: import('./user-settings-pack').UserSettingsPackInspectReceipt }
+      | import('./user-settings-pack').UserSettingsPackFailure
+  }
+  'settings-pack:import': {
+    args: [request: import('./user-settings-pack').UserSettingsPackImportRequest]
+    return: { success: true; receipt: import('./user-settings-pack').UserSettingsPackImportReceipt }
+      | import('./user-settings-pack').UserSettingsPackFailure
+  }
+}
+
 export interface LLMRequest {
   modelId: string
   /** Optional frozen main-process model snapshot; when present it is authoritative. */
@@ -1330,7 +1360,7 @@ export interface MCPChannels {
 }
 
 // ===== 合并所有频道 =====
-export type AllInvokeChannels = LegacyRosterGenerationChannels & CharacterAvatarChannels & CloudBackupChannels & GraphGenerationChannels & FinalizationGenerationChannels & EditorInlineGenerationChannels & ImportGenerationChannels & AgentGenerationChannels & ReviewRevisionGenerationInvokeChannels & FinalizedCharacterGenerationChannels & CharacterProposalChannels & GenerationOwnerChannels & StartupChannels & WindowChannels & OfficialHomepageChannels & ModelProviderResourceChannels & ConfigChannels & UpdateChannels & SkinChannels & ProjectChannels & FileChannels & AppDataChannels & LLMChannels & DatabaseChannels & KnowledgeBaseChannels & ChapterLifecycleChannels & ImportChannels & MCPChannels
+export type AllInvokeChannels = LegacyRosterGenerationChannels & CharacterAvatarChannels & CloudBackupChannels & GraphGenerationChannels & FinalizationGenerationChannels & EditorInlineGenerationChannels & ImportGenerationChannels & AgentGenerationChannels & ReviewRevisionGenerationInvokeChannels & FinalizedCharacterGenerationChannels & CharacterProposalChannels & GenerationOwnerChannels & StartupChannels & WindowChannels & OfficialHomepageChannels & ModelProviderResourceChannels & ConfigChannels & UpdateChannels & SkinChannels & ProjectChannels & FileChannels & AppDataChannels & UserSettingsPackChannels & LLMChannels & DatabaseChannels & KnowledgeBaseChannels & ChapterLifecycleChannels & ImportChannels & MCPChannels
 export type AllEventChannels = GenerationOwnerEvents & LLMStreamEvents & UpdateStateEvents & WindowEvents
 
 /** 提取 invoke 频道名 */

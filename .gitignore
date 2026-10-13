@@ -43,6 +43,10 @@ tailwind.config.js.bak
 .release-gate*.txt
 /.vitest-attachments/
 
+# 创作资产包是作者的本地备份（含提示词 / 写作 Skill / 皮肤），永不入库。
+# 它们由设置页「备份与迁移」导出到作者自选位置，属于个人资产而非项目源码。
+*.vela-pack
+
 # 本地工具索引与会话
 .codegraph/
 .superpowers/
