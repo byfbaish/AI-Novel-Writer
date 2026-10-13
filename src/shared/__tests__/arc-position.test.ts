@@ -67,6 +67,95 @@ describe('parseArcStructure', () => {
   })
 })
 
+/**
+ * 回归：内置模板给模型的格式示范**本身就写区间**（`（约 X–Y 章）`）。
+ * 原正则只认单值 → 作者按模板产出时 `chapters` 全为 0 → 结构被过滤为空 →
+ * `parseArcStructure` 恒返回 null → 弧位块与弧光裁剪**从未生效**（静默失败）。
+ */
+describe('parseArcStructure · 区间章数标注（既有缺陷回归）', () => {
+  // 与作者真实产出同形：大弧写区间、中弧写单值
+  const REAL_SHAPE = [
+    '# 弧光结构',
+    '',
+    '【篇幅预算】',
+    '总章数：845 章。',
+    '',
+    '## 大弧一：第一个读墙的人（约 1–94 章）',
+    '- 类型：A 因果驱动型',
+    '- 接续理由：开篇起点',
+    '### 中弧 1：无声公寓的六个夜晚（约 1–24 章）',
+    '- 因果：因为他读了墙。',
+    '### 中弧 2：休整区的第一批人（约 25–47 章）',
+    '- 目标：从被动应付到主动拆解。',
+    '## 大弧二：两个立法者（约 95–185 章）',
+    '- 接续理由：因为大弧一末他读懂了墙。',
+    '### 中弧 1：两套措辞（约 95–125 章）',
+    '- 因果：因为出现了第二套规则。',
+  ].join('\n')
+
+  it('区间形式（约 1–94 章）算作 94 章，不再返回 null', () => {
+    const parsed = parseArcStructure(REAL_SHAPE)
+    expect(parsed).not.toBeNull()
+    expect(parsed!.majors).toHaveLength(2)
+    expect(parsed!.majors[0]!.chapters).toBe(94)
+    expect(parsed!.majors[1]!.chapters).toBe(91)
+    // 区间中弧同样算长度：1–24 ⇒ 24，25–47 ⇒ 23，95–125 ⇒ 31
+    expect(parsed!.majors[0]!.mids.map(m => m.chapters)).toEqual([24, 23])
+    expect(parsed!.majors[1]!.mids[0]!.chapters).toBe(31)
+    // 区间大弧合计 94+91=185，用于折算声明
+    expect(parsed!.declaredTotal).toBe(185)
+  })
+
+  it('单值与区间混用都能解析（模板示范就是混用）', () => {
+    const mixed = [
+      '## 大弧一：甲（约 100 章）',
+      '### 中弧 1：乙（约 25 章）',
+      '- 因果：x',
+      '## 大弧二：丙（约 101–195 章）',
+      '### 中弧 1：丁（约 30 章）',
+      '- 因果：y',
+    ].join('\n')
+    const parsed = parseArcStructure(mixed)!
+    expect(parsed.majors.map(m => m.chapters)).toEqual([100, 95])
+    expect(parsed.declaredTotal).toBe(195)
+  })
+
+  it('区间解析后弧位可定位，弧位块不再为空（真实产出的核心收益）', () => {
+    const parsed = parseArcStructure(REAL_SHAPE)!
+    // 第 8–10 章应落在 大弧一 / 中弧 1
+    const span = arcSpanForChapters(parsed, 845, 8, 10)!
+    expect(span.majorName).toBe('第一个读墙的人')
+    expect(span.midName).toBe('无声公寓的六个夜晚')
+    // 折算：大弧 94/185 章 → 845 章下约 1–429；本中弧 24/47 章 → 约 1–219
+    expect(span.majorRange).toEqual([1, 429])
+    expect(span.midRange).toEqual([1, 219])
+    const block = renderArcPositionBlock(parsed, 845, 8, 10, 'zh-CN')
+    expect(block).not.toBe('')
+    expect(block).toContain('所在中弧：中弧1【无声公寓的六个夜晚】')
+    expect(block).toContain('等比折算') // 185 ≠ 845，必须声明折算
+  })
+
+  it('其他分隔符与全角/半角都认（– — ~ ～ -）', () => {
+    for (const dash of ['–', '—', '~', '～', '-']) {
+      const plan = `## 大弧一：甲（约 1${dash}94 章）\n### 中弧 1：乙（约 1 章）\n- 因果：x`
+      const parsed = parseArcStructure(plan)
+      expect(parsed, `dash=${dash}`).not.toBeNull()
+      expect(parsed!.majors[0]!.chapters, `dash=${dash}`).toBe(94)
+    }
+  })
+
+  it('乱序或非正数区间仍被丢弃（不猜测）', () => {
+    expect(parseArcStructure('## 大弧一：甲（约 94–1 章）\n### 中弧 1：乙（约 1 章）\n- 因果：x')).toBeNull()
+    expect(parseArcStructure('## 大弧一：甲（约 0–94 章）\n### 中弧 1：乙（约 1 章）\n- 因果：x')).toBeNull()
+    // 大弧区间合法但中弧乱序 → 该大弧仍被丢弃
+    expect(parseArcStructure('## 大弧一：甲（约 1–94 章）\n### 中弧 1：乙（约 24–1 章）\n- 因果：x')).toBeNull()
+  })
+
+  it('标题完全没有章数标注时该条被丢弃', () => {
+    expect(parseArcStructure('## 大弧一：甲\n### 中弧 1：乙\n- 因果：x')).toBeNull()
+  })
+})
+
 describe('arcSpanForChapters', () => {
   const parsed = parseArcStructure(PLAN)!
 
