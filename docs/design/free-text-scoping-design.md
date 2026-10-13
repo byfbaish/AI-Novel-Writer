@@ -390,19 +390,66 @@ export function textScopeTagToken(choice: TextScopeChoice): string // chip 插�
 
 **未落测试的部分（如实登记）**：命令级回归（在大纲请求里断言"无 `【适用`"）需要构造 `recovery.plotOutline` + `generation:read` 状态机夹具，`plot-outline-batch.command.test.ts` 现有夹具均走**批次路径**、到不了 `executeChapterOutline`。**本轮以真实 trace 取证替代**，夹具待补。
 
-### 11.6 全局覆盖版与内置的分歧（实机暴露，待作者定夺）
+### 11.6 全局覆盖版与内置的分歧（实机暴露）
 
-段级机制生效点对比（`getPromptSource` + 实际覆盖目录，**不是** `~/.vela`）：
+段级机制生效点对比（`getPromptSource` + 实际覆盖目录，**不是** `~/.vela` —— 那是 legacy 只读源）：
 
-| key | 全局覆盖 | 覆盖版含 `{{reference_works}}` | 本轮改内置的效果 |
+| key | 全局覆盖 | 覆盖版含 `{{reference_works}}` | 改内置的效果 |
 |---|---|---|---|
-| `premise` | 有 | ✅ | 表头改写被遮蔽 |
-| `character_dynamics` | 有 | ✅ | 表头改写被遮蔽 |
-| `first_chapter_draft` | 有 | ✅（旧表头） | 表头改写被遮蔽 |
-| `next_chapter_draft` | 有 | ✅（旧表头） | 表头改写被遮蔽 |
-| **`world_building`** | 有 | ❌ **无** | **新增槽位被遮蔽 → 本项目不生效** |
-| **`plot_structure`** | **无** | — | **builtin 生效 → 新增槽位生效** |
+| `premise` | 有 | ✅ | 表头改写被覆盖版遮蔽 |
+| `character_dynamics` | 有 | ✅ | 表头改写被覆盖版遮蔽 |
+| `first_chapter_draft` | 有 | ✅（旧表头） | 表头改写被覆盖版遮蔽 |
+| `next_chapter_draft` | 有 | ✅（旧表头） | 表头改写被覆盖版遮蔽 |
+| **`world_building`** | 有 | ❌ 无 | **新增槽位改前零注入、改后走末端兜底**（见下） |
+| **`plot_structure`** | **无** | — | **builtin 直接生效 → 新增槽位当场生效** |
 | `synopsis` / `chapter_blueprint_chunk` | 有 | ❌（内置也没有） | — |
 
-⇒ **作者裁定 ② 在当前项目只落地一半**（弧光生效、世界观被遮蔽），**空项目跑流程会两处全生效** —— 与作者"整体改造完成后跑空项目再验证"的计划一致。若要当前项目也生效，需要把 `{{reference_works}}` 补进全局覆盖版 `world_building.zh-CN.json`（**作者资产，须作者点头**）。
+#### ⚠️ 本节初稿写过一句错话，这里纠正并留档
 
+初稿写的是「`world_building` 被遮蔽 → **本项目不生效**」。**这不准确**。真正的判据是 `appendRequiredPromptContext()`（`src/shared/render-prompt.ts`）：它拿**内置**的 `requiredContextVariables` 去比对**解析后（含覆盖版）**的 `content` / `taskGuidance` / 内置 `systemSuffix`，凡「内置声明了、覆盖版没引用」的变量，会以 `【自定义模板未引用但仍必须遵循的权威项目设定】` + `变量名:\n值` **追加在正文末尾**。
+
+⇒ 所以 `world_building` 的参考作品有**两条通路**，状态随本轮改动而变：
+
+| 时点 | 通路 | 结果 |
+|---|---|---|
+| 改内置**之前** | 覆盖版不引用 + 内置**未**声明 → 兜底也不触发 | **真的零注入** |
+| 改内置**之后**、未同步覆盖版时 | 内置已声明 → 兜底触发 | **内容进了请求**，但落在正文**末尾**，表头是变量名「参考作品（可选）」而非 `【参考作品…】` |
+| 同步覆盖版**之后**（本次已做，见 §11.7） | 覆盖版直接引用 `{{reference_works}}` | **就地按统一表头渲染** ✅ |
+
+⇒ 结论修正为：**裁定 ② 在本项目并非「不生效」，而是「以末端兜底块形式生效」**；同步覆盖版的价值是**位置正确 + 表头统一**，不是「从无到有」。`plot_structure` 无全局覆盖 → 一直由 builtin 直接生效。
+
+**另一条推论（对后续维护更有用）**：覆盖版的 `requiredContextVariables` / `variables` 两个字段**不参与渲染决策** —— 渲染只读**内置**那份 required 清单 + **覆盖版**的 `content`/`taskGuidance`。它们只影响提示词设置界面的展示与 `builtinRevision` 计算。**因此「改内置 requiredContextVariables」是能穿透作者覆盖版的**：这既是本轮兜底得以生效的手段，也是风险（改内置会悄悄改变所有有覆盖版项目的请求载荷），改前必须意识到。
+
+### 11.7 同步作者全局覆盖版（2026-10-13，作者同意后执行）
+
+真实目录 = `<VELA_HOME>/prompts/`（`C://Users//伯云飞//.ai-novel-writer-dev//generations//88ac198e-7a28-40b6-97c2-bb2bf88cb542//prompts`，**不是** `~/.vela`；判别证据：trace 里 `first_chapter_draft` 的 `override-content` `rawText` 长度 **474**，与 `~/.vela` 那份 420 字不一致、与这份一致）。
+
+| 文件 | 改动 |
+|---|---|
+| `world_building.zh-CN.json` | `requiredContextVariables` 与 `variables` 补 `reference_works`；`content` 末尾补 `【参考作品（如有，借鉴其体系/机制/调性，禁止照搬的条款必须遵守）】` + `{{reference_works}}` |
+| `premise.zh-CN.json` | 表头 → 统一版；`taskGuidance` 简称引用 `【参考作品风格】` → `【参考作品】` |
+| `character_dynamics.zh-CN.json` | 同上 |
+| `first_chapter_draft.zh-CN.json` | 表头 → 统一版（带「；不是必须兑现的作者事实」） |
+| `next_chapter_draft.zh-CN.json` | 同上 |
+
+**安全措施**：整目录（20 个文件）先备份到同级 `prompts-backup-20261013-2355/`；逐文件**保留原有行尾风格**（该目录内 CRLF 与 LF 混存）；写入走「同目录临时文件 + `os.replace`」原子替换。
+
+**校验（逐条实测）**：
+- 字段级深比对备份 → **只有上表字段发生变化**：20 个文件里 5 个改动、**0 处附带改动**。
+- 行尾风格逐文件不变；旧表头全盘残留 **0**；`world_building` 键顺序保持（`reference_works` 紧跟 `global_guidance` / `step_guidance`）。
+- **真实渲染验证**：把改后的覆盖版喂进**真实的** `renderPrompt()`（含 `pruneEmptyOptionalPromptSections` + `appendRequiredPromptContext`）→ ① 有内容时就地渲染在 `【参考作品…】` 表头下，**不再出现末端兜底块**；② 本步无参考作品时**空段连同表头一起被裁掉**；③ 五份文件均无 `{{` 残留、无旧表头残留。
+- 一次性校验脚本用后即删（不进仓库，避免把作者本机路径写死成测试依赖）。
+
+**刻意不动**：覆盖版其余内容与内置的差异（作者自定的番茄文风与任务指导措辞）**一律未动** —— 本次只碰「参考作品」这一个语义点。
+
+### 11.8 提交状态（2026-10-13）
+
+| commit | 内容 |
+|---|---|
+| `14fc64c` | `feat(prompt): 短细纲只喂该步材料（P0-1）` |
+| `20fca6a` | `feat(prompt): 自由文本按步骤分区（段级标签，原 P0-2）` |
+| 本提交 | `docs(design):` 覆盖版同步 + 提交状态回写 |
+
+`P0-1` 与 `P0-2` 在同一文件 `generate-draft.command.ts` 上各有改动，故按 **hunk 级**拆分提交（`git apply --cached` 单独暂存 P0-1 那个 hunk），保证两个 feature 可独立 revert。
+
+**下一轮（作者）**：新建空项目跑全流程。**注意**：同步覆盖版之后，当前项目与空项目的差别**只剩**「作者覆盖版文案 vs 内置文案」，机制层已一致；因此空项目主要是验「无覆盖版时 builtin 是否两处都生效」以及端到端观感。
