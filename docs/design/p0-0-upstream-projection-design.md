@@ -213,6 +213,8 @@ if (projected) parts.push(projected)
 | 1 | P0-0b 裁剪尺度 | **B 档**（其他大弧保留"接续理由"） | ✅ `projectArcStructureText` |
 | 2 | P0-0a 后续段降级起点 | **`m+1` 起即降级**。⚠️ **本档为初始选择，可能根据实际效果优化为 `m+2` 起**（保留"下一章"给章末钩子）——若 `suspenseHook` 质量下降即回退到 `m+2` | ✅ `boundaryNotice` 对所有 `from > to` 的章生效 |
 | 3 | `charactersArch` 是否投影 | **单独立项，后续详细讨论**（作者判断"蓝图按理说只需要本章出场角色"）。本文**不做**，保持全量 | ⏸ 未实施，已登记 |
+| 4 | 蓝图 prompt 内 `chapter_list`（已定稿前置章）与「# 情节大纲」的**残留语义重叠** | **加优先级声明**（2026-10-14）：蓝图续写模板里写明"已定稿的既有蓝图为事实、情节大纲为规划背景，冲突时以本节为准" | ✅ 内置 zh + 内置 en + **作者全局覆盖版**（不改覆盖版则不生效，红线 3） |
+| 5 | 弧光投影的**边界**：本批跨越中弧边界时，后半批所属的新中弧只拿到 gist、无规格 | **修：跨边界弧全字段**（2026-10-14）。`ArcSpan` 新增 `endMidIndex` / `afterBatchMidBoundary`；本批**覆盖到的**中弧全部保留全字段；防提前章号改指"本批之后的中弧" | ✅ `arc-position.ts` + 5 例新测试（28/28） |
 
 裁定 2 的可调点已写进代码注释与单测，回退成本 = 改 `projectSynopsisForBlueprint` 里一个比较符（`heading.from > options.to` → `heading.from > options.to + 1`）+ 同步断言。
 
@@ -403,3 +405,48 @@ const MID_HEADING   = new RegExp(`^#{3,4}[\\t ]*中弧[\\t ]*[0-9]*[\\t ]*[：:]
 - 本次修复**未改动任何模板**，纯解析层修复即恢复了两条链的预期行为。
 
 **结论**：P0-0（蓝图三段切分 + 大纲 B 档裁剪）**两条链均已实机确认生效**，且大纲侧额外修掉了一个**从未生效过**的既有解析缺陷。
+
+---
+
+## 13. 2026-10-14 两项裁定落地（§7-4 / §7-5）
+
+**来源**：主稿 §7.1-D 的三项待裁定，作者 2026-10-14 一次性裁定。第二项（空项目基线）裁定为「暂不跑，先推代码」，不涉及代码改动。
+
+### 13.1 §7-5 弧光跨界缺口（代码修复）
+
+**缺口（本轮取证发现）**：`projectArcStructureText` 的 `currentMid` 判定原为 `midIndex === span.midIndex` —— 只认 **`from` 所在**的那个中弧为"本中弧"。批上限 10 章，但中弧可能更短，本批**跨越中弧边界**时：
+
+- 后半批所属的**新中弧只拿到一句 gist**、拿不到规格字段；
+- 而弧位块的跨界提示恰恰写「跨过边界后按**新中弧**的规格写」⇒ **自相矛盾**；
+- 且 `remainingMids` 仍把**本批已进入**的中弧列为"后续·不得提前执行"。
+
+**修法**（`src/shared/arc-position.ts`）：
+
+| 改动 | 说明 |
+|---|---|
+| `ArcSpan.endMidIndex`（新） | 本批**覆盖到的最后一个中弧**序号；`to` 超出本大弧时取本大弧最后一个中弧。未跨界时 `=== midIndex` |
+| `ArcSpan.afterBatchMidBoundary`（新） | 本批**之后**第一个中弧的起点章；已到本大弧末尾时为 `null` |
+| `remainingMids` | 起点由 `midIndex+1` 改为 `endMidIndex+1` —— 已进入的中弧不再被列为"后续" |
+| `projectArcStructureText` | `currentMid = midIndex >= span.midIndex && midIndex <= span.endMidIndex` |
+| `renderArcPositionBlock` 硬约束 2 | 章号由 `nextMidBoundary ?? midRange[1]+1` 改为 `afterBatchMidBoundary ?? midRange[1]+1`（**未跨界时两者等价**，故存量行为不变） |
+| 跨界提示文案 | 补"其完整规格见上方「弧光结构」中的该中弧"，与新保留下来的规格字段对上 |
+
+**测试**：`arc-position.test.ts` 新增 5 例（跨界标记 / 未跨界等价 / 跨大弧时 `null` / 跨界裁剪保留新中弧全字段 / 跨界防提前章号）→ **28/28 通过**（原 23 例零改动）。
+
+### 13.2 §7-4 优先级声明（模板改动）
+
+`chapter_list` 的定位语原本只说"以防遗忘主线进度"，未声明它与 `novel_architecture` 里情节大纲的关系。改为显式声明：
+
+> 【前置剧情进度与连贯性检查】以下是**已经定稿的前置章节**……它们是已经发生的事实；与上文【全书架构数据池】里的情节大纲（规划）不一致时，以本节为准：
+
+落点三处（**缺一不可**）：内置 zh（`builtin-prompt-templates.ts`）、内置 en（`prompt-language.ts` 的 `[Previously validated blueprint progress]`）、**作者全局覆盖版** `chapter_blueprint_chunk.zh-CN.json`（覆盖版遮蔽内置）。覆盖版改动前已备份至 `<VELA_HOME>/generations/<uuid>/prompts-backup-20261014-0120/`。
+
+### 13.3 验证
+
+| 项 | 结果 |
+|---|---|
+| `pnpm typecheck` | **0 错** |
+| `arc-position.test.ts` | **28/28** |
+| `pnpm test prompt`（提示词契约组） | **14 文件全通过** |
+| `architecture.command` / `synopsis-projection` | 通过 |
+| `plot-outline-batch.command` | **11 failed**（与 `git stash` 基线**完全一致** ⇒ **预先存在**，零新增） |
