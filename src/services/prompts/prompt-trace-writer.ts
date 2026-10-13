@@ -4,8 +4,13 @@
  * 把一次生成的「输入面」（片段清单 + 组装后文本）与「输出面」（最终 messages + 模型输出）
  * 按 `runHandle` 归并，写成人类可读的 markdown + 机器可读的 json，落在项目根内固定目录：
  *
- *     <项目根>/debug/prompt-trace/<时间戳>-<operation>-<runId>.md
- *     <项目根>/debug/prompt-trace/<时间戳>-<operation>-<runId>.json
+ *     <项目根>/debug/prompt-trace/<时间戳>-<业务标签>-<章节段>-<runId 前 8 位>.md
+ *     <项目根>/debug/prompt-trace/<时间戳>-<业务标签>-<章节段>-<runId 前 8 位>.json
+ *
+ * 文件名为什么不用 `operation`：`operation` 是**执行器类型**（`text` / `structured` /
+ * `chapter-draft`），大纲与蓝图都落成 `text`/`structured`，人无法从文件名判断
+ * "这一步在业务上是干什么的"。故改用模板 key 还原的业务标签（`大纲` / `蓝图` / …），
+ * 并附章节定位段（`ch6-7`），使同类文件可按时间戳排序、按标签分类。
  *
  * 为什么放在项目内：`fs:write-file` 强制目标位于项目根内（`assertProjectFilePath`），
  * 这是既有的沙箱边界。放到项目外需要新增一条专用受控 IPC，收益不足以抵消新增攻击面。
@@ -60,6 +65,91 @@ function compactTimestamp(at: number): string {
     pad(date.getHours()), pad(date.getMinutes()), pad(date.getSeconds()),
     '-', pad(date.getMilliseconds(), 3),
   ].join('')
+}
+
+/**
+ * 模板 key → 文件名业务标签。
+ *
+ * 为什么要这张表：落盘层的 `operation` 是执行器类型（`text`/`structured`/`chapter-draft`），
+ * 不含业务语义——实测 `synopsis`（大纲）与 `chapter_blueprint_chunk`（蓝图）**都**落成
+ * `text`/`structured`，人从文件名分不出类别，也看不出同类之间的先后。
+ * 模板 key 是装配期就确定的业务标识，用它还原标签即可。
+ */
+const TRACE_FILE_LABELS: Readonly<Record<string, string>> = {
+  premise: '前提',
+  character_dynamics: '角色图谱',
+  character_background_synthesis: '角色补全',
+  extract_initial_characters: '角色提取',
+  world_building: '世界观',
+  plot_structure: '弧光',
+  synopsis: '大纲',
+  infer_single_chapter_blueprint: '单章蓝图',
+  chapter_blueprint: '蓝图',
+  chapter_blueprint_chunk: '蓝图',
+  first_chapter_draft: '正文',
+  next_chapter_draft: '正文',
+  refine_chapter: '精修',
+  refine_from_review: '审稿精修',
+  consistency_check: '审稿',
+  edit_selected_text: '改稿',
+  analyze_writing_style: '文风',
+  generate_chapter_notes: '章注',
+  generate_global_config: '全局配置',
+  generate_novel_config_field: '配置字段',
+  infer_novel_config: '小说配置',
+  infer_novel_config_with_vectors: '小说配置',
+  update_character_cards: '角色卡',
+  assistant_writing_identity: '助手人设',
+  planning_material_character_extraction: '素材角色提取',
+}
+
+/** 业务标签：取第一个可识别的 `promptKey`；都不认识时回退 `operation`（宁粗不丢）。 */
+function traceSubjectLabel(payload: TraceFilePayload): string {
+  for (const snapshot of payload.snapshots) {
+    const label = TRACE_FILE_LABELS[snapshot.promptKey]
+    if (label) return label
+  }
+  return payload.operation ?? 'unknown'
+}
+
+/** 章节号序列 → 紧凑段（`ch6-7` / `ch1`）。 */
+function formatChapterSegment(chapters: ReadonlyArray<number>): string {
+  const sorted = [...new Set(chapters)].sort((a, b) => a - b)
+  const first = sorted[0]
+  const last = sorted[sorted.length - 1]
+  return first === last ? `ch${first}` : `ch${first}-${last}`
+}
+
+/**
+ * 章节定位段（如 `ch6-7`）。
+ *
+ * 三级取证，缺一不可：
+ * ① `chapterNumber` —— 正文链会带，实测大纲/蓝图作用域**为空**；
+ * ② `ioCalls[].purpose` —— 大纲逐章生成时形如 `plot-outline:chapter:6`；
+ * ③ 模板变量 `n`/`m` —— 蓝图分块形如 `n=6, m=7`（未覆盖章节号时唯一来源）。
+ * 都取不到时返回 null（该段整体省略，文件名仍然可用）。
+ */
+function traceChapterSegment(payload: TraceFilePayload): string | null {
+  if (typeof payload.chapterNumber === 'number') return formatChapterSegment([payload.chapterNumber])
+  const fromPurpose: number[] = []
+  for (const call of payload.ioCalls ?? []) {
+    for (const match of (call.purpose ?? '').matchAll(/chapter[:=](\d+)/gi)) {
+      fromPurpose.push(Number(match[1]))
+    }
+  }
+  if (fromPurpose.length > 0) return formatChapterSegment(fromPurpose)
+  const fromVariables: number[] = []
+  for (const snapshot of payload.snapshots) {
+    for (const fragment of snapshot.fragments) {
+      for (const variable of fragment.variables) {
+        if (variable.key !== 'n' && variable.key !== 'm') continue
+        const value = Number(variable.value)
+        // `n`/`m` 也用作"第几块/共几块"，故仅接受正整数，且交给格式化去重排序。
+        if (Number.isInteger(value) && value > 0) fromVariables.push(value)
+      }
+    }
+  }
+  return fromVariables.length > 0 ? formatChapterSegment(fromVariables) : null
 }
 
 /** 记录一次真实请求的 IO 面（由 harness / main transport 观察点调用）。 */
@@ -259,9 +349,16 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
 
   // 文件名按**作用域**稳定（而非写入时刻）：一轮生成只对应一份文件，
   // IO 后到、多次 LLM 调用等增量都覆盖写同一个文件，不会留下一堆半成品。
+  // 命名 = `<时间戳>-<业务标签>-<章节段>-<runId 前 8 位>`（章节段与 runId 缺失时省略）。
+  // runId 截到 8 位：此处只用于"同秒同标签"时区分，完整值仍保留在 json 的 runHandle。
   const startedAt = scopeStartedAt(scope)
   const stamp = compactTimestamp(startedAt > 0 ? startedAt : writtenAt)
-  const fileName = `${stamp}-${sanitizeFileSegment(scope.operation ?? 'unknown')}-${sanitizeFileSegment(scope.runHandle?.split('/').pop() ?? 'run')}`
+  const fileName = [
+    stamp,
+    sanitizeFileSegment(traceSubjectLabel(payload)),
+    traceChapterSegment(payload),
+    sanitizeFileSegment((scope.runHandle?.split('/').pop() ?? 'run').slice(0, 8)),
+  ].filter((part): part is string => !!part).join('-')
   const dir = joinProjectPath(session.projectPath, ...PROMPT_TRACE_DIR_SEGMENTS)
   const relativeBase = `${promptTraceRelativeDir()}/${fileName}`
 

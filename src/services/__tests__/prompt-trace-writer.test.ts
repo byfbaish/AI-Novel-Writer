@@ -72,6 +72,53 @@ describe('prompt-trace-writer', () => {
     expect(writeCalls.every(([, , , , expected]) => expected === session.projectPath)).toBe(true)
   })
 
+  it('文件名用业务标签与章节段，而不是执行器类型', async () => {
+    // operation 是执行器类型（text/structured），业务语义只在 promptKey 上：
+    // 老命名会把大纲与蓝图都写成 text/structured，人无法分辨类别与先后。
+    const dispose = pushTraceScope({
+      runHandle: 'proj/lease/0f3c9a1e-1111-2222-3333-444455556666',
+      operation: 'text',
+      chapterNumber: 7,
+      projectSession: session,
+    })
+    try {
+      recordFragments({ template: builtin(), variables: {}, built: '组装结果', writingLanguage: 'zh-CN' })
+      await flush()
+    } finally { dispose() }
+
+    const file = invoke.mock.calls
+      .filter(([, channel]) => channel === 'fs:write-file')
+      .map(([, , path]) => path as string)
+      .find(path => path.endsWith('.json'))
+    expect(file).toBeDefined()
+    // first_chapter_draft → 正文；runId 截到前 8 位；章节号来自 chapterNumber。
+    expect(file).toContain('-正文-ch7-0f3c9a1e.json')
+    expect(file).not.toContain('-text-')
+  })
+
+  it('逐章调用的大纲把章节号收成区间段（ch6-7）', async () => {
+    const synopsis = getBuiltinPromptTemplate('synopsis', 'zh-CN')
+    if (!synopsis) throw new Error('内置模板缺失')
+    // 大纲作用域不带 chapterNumber，章节号只在 ioCalls 的 purpose 里。
+    const dispose = pushTraceScope({
+      runHandle: 'proj/lease/67b38f0b-aaaa-bbbb-cccc-ddddeeeeffff',
+      operation: 'text',
+      projectSession: session,
+    })
+    try {
+      recordFragments({ template: synopsis, variables: {}, built: '组装结果', writingLanguage: 'zh-CN' })
+      recordTraceIo({ purpose: 'plot-outline:chapter:6', messages: [], output: '' })
+      recordTraceIo({ purpose: 'plot-outline:chapter:7', messages: [], output: '' })
+      await flush()
+    } finally { dispose() }
+
+    const file = invoke.mock.calls
+      .filter(([, channel]) => channel === 'fs:write-file')
+      .map(([, , path]) => path as string)
+      .find(path => path.endsWith('.json'))
+    expect(file).toContain('-大纲-ch6-7-67b38f0b.json')
+  })
+
   it('md 含片段表格与来源标注', async () => {
     const dispose = pushTraceScope({ runHandle: 'proj/lease/run-2', operation: 'chapter-draft', projectSession: session })
     try {

@@ -847,7 +847,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     {
       "chapterNumber": 1,
       "title": "引人入胜的标题",
-      "role": "本章在全书结构中的功能，例如建置、发展、转折或高潮",
+      "role": "本章在全书结构中的功能，只能填一个词：建置、铺垫、发展、冲突、高潮、转折、收尾",
       "purpose": "本章主角最想解决的一件事",
       "characters": ["本章互动的要人A", "要人B"],
       "relationships": [{ "from": "要人A", "to": "要人B", "relation": "本章可确认的关系；无则空数组" }],
@@ -863,6 +863,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 要求：
 - 每章的 keyEvents 控制在 100-150 字以内，信息密度必须极高。
 - 每个对象必须包含完整的 chapterNumber、title、role、purpose、characters、relationships、keyEvents、suspenseHook；relationships 仅写本章可确认的角色关系，无则输出空数组。
+- role 只填一个功能词，不附加括号、破折号或任何说明；"为后文铺垫"一类的节奏意图写进 purpose，且只用本章自身要达到的状态来描述（例如"本章收尾要把某条线索推到临界"），不得提及后续章节号或后续情节。
 - 仅给出最终的 JSON 文本，不要任何客套解释、分析、计划、Markdown 或代码块。
 
 ★【作者节奏/风格指导（如有，最高优先级）】★：
@@ -923,7 +924,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     {
       "chapterNumber": n,
       "title": "引人入胜的标题",
-      "role": "本章在全书结构中的功能，例如建置、发展、转折或高潮",
+      "role": "本章在全书结构中的功能，只能填一个词：建置、铺垫、发展、冲突、高潮、转折、收尾",
       "purpose": "本章主角最想解决的一件事",
       "characters": ["本章互动的要人A", "要人B"],
       "relationships": [{ "from": "要人A", "to": "要人B", "relation": "本章可确认的关系；无则空数组" }],
@@ -936,6 +937,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 要求：
 - 严格遵循上下文连贯，不要前后矛盾。
 - 每个对象必须包含完整的 chapterNumber、title、role、purpose、characters、relationships、keyEvents、suspenseHook；relationships 仅写本章可确认的角色关系，无则输出空数组。
+- role 只填一个功能词，不附加括号、破折号或任何说明；"为后文铺垫"一类的节奏意图写进 purpose，且只用本章自身要达到的状态来描述（例如"本章收尾要把某条线索推到临界"），不得提及后续章节号或后续情节。
 - 仅给出最终的 JSON 文本，不要解释、分析、计划、Markdown 或代码块。
 
 ★【作者节奏/风格指导（如有，最高优先级）】★：

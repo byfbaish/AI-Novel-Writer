@@ -6,6 +6,7 @@ import { BUILTIN_PROMPTS, EDITABLE_PROMPT_KEYS, getBuiltinPromptTemplate, getPro
 
 const expectedPromptVariables: Record<string, string[]> = {
   planning_material_character_extraction: ['requested_ids', 'sources'],
+  character_background_synthesis: ['character_name', 'mainline', 'mentions', 'existing_roster'],
   assistant_writing_identity: ['mode_instruction'],
   edit_selected_text: ['edit_instruction', 'selected_text'],
   generate_novel_config_field: ['existing_config', 'field_label', 'field_requirements'],
@@ -134,7 +135,10 @@ const expectedPromptVariables: Record<string, string[]> = {
 }
 
 const expectedJsonFields: Record<string, string[]> = {
-  character_dynamics: ['schemaVersion', 'entries'],
+  // schemaVersion 已被第五层架构改造移出角色图谱输出合同：prompt-language.ts 的
+  // detailSystem / detailContract 现在明确要求「不得输出 schemaVersion、relationships」。
+  // 此处跟随模板演进，不要再回填已废弃字段。
+  character_dynamics: ['entries'],
   generate_global_config: [
     'genre',
     'targetAudience',
