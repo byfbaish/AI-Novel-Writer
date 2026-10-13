@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
-import { app, ipcMain } from 'electron'
-import type { AppPromptLoadReceipt, AppPromptTemplate } from '../../src/shared/ipc-channels'
+import { ipcMain } from 'electron'
+import type { AppPromptTemplate } from '../../src/shared/ipc-channels'
 import type { WritingLanguage } from '../../src/shared/writing-language'
 import {
   inspectWritingSkillMarkdown,
@@ -10,122 +10,23 @@ import {
   type InstalledWritingSkill,
   type RemoteWritingSkillInspection,
 } from '../../src/shared/writing-skills'
-import { mainText } from '../i18n'
-import { VELA_HOME, writeJsonFile } from '../utils/config-utils'
 import { assertGlobalDataReady } from '../services/app-data-locator'
-
-function text(zhCNText: string, enUSText: string): string {
-  return mainText(app.getLocale(), zhCNText, enUSText)
-}
-
-function isContainedPath(rootPath: string, candidatePath: string): boolean {
-  const relative = path.relative(rootPath, candidatePath)
-  return !(
-    relative === '..'
-    || relative.startsWith(`..${path.sep}`)
-    || path.isAbsolute(relative)
-  )
-}
-
-function promptKeyPath(key: string, writingLanguage?: WritingLanguage): string {
-  if (
-    !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(key)
-    || key === '.'
-    || key === '..'
-  ) {
-    throw new Error(text('提示词标识无效', 'The prompt identifier is invalid'))
-  }
-  const promptsDirectory = path.join(VELA_HOME, 'prompts')
-  const suffix = writingLanguage ? `.${writingLanguage}` : ''
-  const candidatePath = path.resolve(promptsDirectory, `${key}${suffix}.json`)
-  if (!isContainedPath(promptsDirectory, candidatePath)) {
-    throw new Error(text('提示词目标超出应用目录', 'The prompt target is outside the app directory'))
-  }
-  return candidatePath
-}
-
-function isPromptTemplate(value: unknown): value is AppPromptTemplate {
-  return !!value
-    && typeof value === 'object'
-    && !Array.isArray(value)
-    && typeof (value as AppPromptTemplate).key === 'string'
-    && (
-      (value as AppPromptTemplate).writingLanguage === undefined
-      || (value as AppPromptTemplate).writingLanguage === 'zh-CN'
-      || (value as AppPromptTemplate).writingLanguage === 'en-US'
-    )
-}
-
-const WRITING_SKILL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
-const MAX_WRITING_SKILL_BYTES = 64 * 1024
-
-function writingSkillDirectory(name: string): string {
-  if (!WRITING_SKILL_NAME.test(name) || name === '.' || name === '..') {
-    throw new Error(text('写作 Skill 名称无效', 'The writing skill name is invalid'))
-  }
-  const root = path.join(VELA_HOME, 'skills')
-  const candidate = path.resolve(root, name)
-  if (!isContainedPath(root, candidate)) {
-    throw new Error(text('写作 Skill 目标超出应用目录', 'The writing skill target is outside the app directory'))
-  }
-  return candidate
-}
-
-function ensureOwnedSkillsRoot(): string {
-  assertGlobalDataReady()
-  if (fs.existsSync(VELA_HOME)) {
-    const homeInfo = fs.lstatSync(VELA_HOME)
-    if (homeInfo.isSymbolicLink() || !homeInfo.isDirectory()) {
-      throw new Error(text('应用数据目录不是受信任的本地目录', 'The app data root is not a trusted local directory'))
-    }
-  } else {
-    fs.mkdirSync(VELA_HOME, { recursive: true })
-  }
-  const canonicalVelaHome = fs.realpathSync.native(VELA_HOME)
-  const skillsRoot = path.join(VELA_HOME, 'skills')
-  if (fs.existsSync(skillsRoot)) {
-    const rootInfo = fs.lstatSync(skillsRoot)
-    if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) {
-      throw new Error(text('用户 Skill 目录不是受信任的本地目录', 'The user skill root is not a trusted local directory'))
-    }
-  } else {
-    fs.mkdirSync(skillsRoot)
-  }
-  const canonicalRoot = fs.realpathSync.native(skillsRoot)
-  if (!isContainedPath(canonicalVelaHome, canonicalRoot)) {
-    throw new Error(text('用户 Skill 目录超出应用目录', 'The user skill root is outside the app directory'))
-  }
-  return canonicalRoot
-}
-
-function ensureOwnedSkillTarget(name: string): { directory: string; filePath: string } {
-  const canonicalRoot = ensureOwnedSkillsRoot()
-  const requestedDirectory = writingSkillDirectory(name)
-  if (fs.existsSync(requestedDirectory)) {
-    const directoryInfo = fs.lstatSync(requestedDirectory)
-    if (directoryInfo.isSymbolicLink() || !directoryInfo.isDirectory()) {
-      throw new Error(text('拒绝写入链接或非目录 Skill 目标', 'Refusing to write to a linked or non-directory skill target'))
-    }
-  } else {
-    fs.mkdirSync(requestedDirectory)
-  }
-  const directory = fs.realpathSync.native(requestedDirectory)
-  if (!isContainedPath(canonicalRoot, directory)) {
-    throw new Error(text('写作 Skill 目标超出应用目录', 'The writing skill target is outside the app directory'))
-  }
-  const filePath = path.join(directory, 'SKILL.md')
-  if (fs.existsSync(filePath)) {
-    const fileInfo = fs.lstatSync(filePath)
-    if (fileInfo.isSymbolicLink() || !fileInfo.isFile()) {
-      throw new Error(text('拒绝覆盖链接或非文件 SKILL.md', 'Refusing to overwrite a linked or non-file SKILL.md'))
-    }
-    const canonicalFile = fs.realpathSync.native(filePath)
-    if (!isContainedPath(directory, canonicalFile)) {
-      throw new Error(text('SKILL.md 超出 Skill 目录', 'SKILL.md is outside its skill directory'))
-    }
-  }
-  return { directory, filePath }
-}
+import {
+  MAX_WRITING_SKILL_BYTES,
+  WRITING_SKILL_FILE_NAME,
+  WRITING_SKILL_NAME,
+  ensureOwnedSkillTarget,
+  ensureOwnedSkillsRoot,
+  isContainedPath,
+  skillsDirectory,
+  text,
+  writingSkillDirectory,
+} from '../services/user-asset-paths'
+import {
+  deleteGlobalPromptTemplate,
+  readGlobalPromptTemplates,
+  writeGlobalPromptTemplate,
+} from '../services/user-prompt-store'
 
 function githubRawUrl(owner: string, repo: string, ref: string, filePath: string): string {
   const segments = [owner, repo, ref, ...filePath.split('/')].map(encodeURIComponent)
@@ -188,84 +89,21 @@ async function fetchGitHubWritingSkill(sourceUrl: string): Promise<{
   }
 }
 
-function promptFilename(template: AppPromptTemplate): string {
-  return `${template.key}${template.writingLanguage ? `.${template.writingLanguage}` : ''}`
-}
-
-function promptKeyFromFilename(filename: string): string {
-  return path.basename(filename, '.json').replace(/\.(?:zh-CN|en-US)$/u, '')
-}
-
-function promptLanguageFromFilename(filename: string): WritingLanguage | undefined {
-  const match = filename.match(/\.(zh-CN|en-US)\.json$/u)
-  return match?.[1] as WritingLanguage | undefined
-}
-
 /**
  * 已准入全局 generation 的提示词和用户 Skill 只能由此固定根目录控制器访问；渲染层不接收
  * 任意 app-data 路径，也不借用外部文件授权。
+ *
+ * 路径守卫与提示词读写判据已抽到 `user-asset-paths` / `user-prompt-store`，
+ * 与「创作资产包」导入共用同一份实现。
  */
 export function registerAppDataController(): void {
   assertGlobalDataReady()
   const inspectedWritingSkills = new Map<string, Pick<RemoteWritingSkillInspection, 'contentSha256' | 'resolvedUrl'>>()
-  ipcMain.handle('prompt:load-global', async (): Promise<AppPromptLoadReceipt> => {
-    const promptsDirectory = path.join(VELA_HOME, 'prompts')
-    if (!fs.existsSync(promptsDirectory)) return { templates: [], diagnostics: [] }
-
-    const prompts: AppPromptTemplate[] = []
-    const diagnostics: AppPromptLoadReceipt['diagnostics'] = []
-    let entries: fs.Dirent[]
-    try {
-      entries = fs.readdirSync(promptsDirectory, { withFileTypes: true })
-    } catch (error) {
-      return {
-        templates: [],
-        diagnostics: [{
-          path: 'prompts',
-          error: error instanceof Error ? error.message : String(error),
-        }],
-      }
-    }
-    for (const entry of entries) {
-      if (!entry.isFile() || !entry.name.endsWith('.json')) continue
-      try {
-        const candidatePath = path.join(promptsDirectory, entry.name)
-        const canonicalPath = fs.realpathSync.native(candidatePath)
-        if (!isContainedPath(fs.realpathSync.native(promptsDirectory), canonicalPath)) continue
-        const parsed = JSON.parse(fs.readFileSync(canonicalPath, 'utf8')) as unknown
-        if (!isPromptTemplate(parsed)) {
-          throw new Error(text('提示词内容结构无效', 'The prompt content shape is invalid'))
-        }
-        const filenameKey = path.basename(entry.name, '.json')
-        if (promptFilename(parsed) !== filenameKey) {
-          throw new Error(text('提示词标识或语言与文件名不一致', 'The prompt identifier or language does not match its filename'))
-        }
-        prompts.push(parsed)
-      } catch (error) {
-        diagnostics.push({
-          key: promptKeyFromFilename(entry.name),
-          ...(promptLanguageFromFilename(entry.name)
-            ? { writingLanguage: promptLanguageFromFilename(entry.name) }
-            : {}),
-          path: entry.name,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      }
-    }
-    return { templates: prompts, diagnostics }
-  })
+  ipcMain.handle('prompt:load-global', async () => readGlobalPromptTemplates())
 
   ipcMain.handle('prompt:save-global', async (_event, template: AppPromptTemplate) => {
     try {
-      if (!isPromptTemplate(template)) {
-        throw new Error(text('提示词内容无效', 'The prompt content is invalid'))
-      }
-      const writingLanguage = template.writingLanguage ?? 'zh-CN'
-      writeJsonFile(promptKeyPath(template.key, writingLanguage), { ...template, writingLanguage })
-      if (writingLanguage === 'zh-CN') {
-        const legacyPath = promptKeyPath(template.key)
-        if (fs.existsSync(legacyPath)) fs.unlinkSync(legacyPath)
-      }
+      writeGlobalPromptTemplate(template)
       return { success: true }
     } catch (error) {
       return { success: false, error: String(error) }
@@ -274,11 +112,7 @@ export function registerAppDataController(): void {
 
   ipcMain.handle('prompt:delete-global', async (_event, key: string, writingLanguage: WritingLanguage) => {
     try {
-      const filePaths = [promptKeyPath(key, writingLanguage)]
-      if (writingLanguage === 'zh-CN') filePaths.push(promptKeyPath(key))
-      for (const filePath of filePaths) {
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
-      }
+      deleteGlobalPromptTemplate(key, writingLanguage)
       return { success: true }
     } catch (error) {
       return { success: false, error: String(error) }
@@ -286,8 +120,8 @@ export function registerAppDataController(): void {
   })
 
   ipcMain.handle('skills:list-user', async () => {
-    const skillsDirectory = path.join(VELA_HOME, 'skills')
-    if (!fs.existsSync(skillsDirectory)) return []
+    const directory = skillsDirectory()
+    if (!fs.existsSync(directory)) return []
 
     const canonicalSkillsDirectory = ensureOwnedSkillsRoot()
     const skills: Array<{ name: string; content: string; baseDir: string; filePath: string }> = []
@@ -296,7 +130,7 @@ export function registerAppDataController(): void {
       try {
         const baseDir = fs.realpathSync.native(path.join(canonicalSkillsDirectory, entry.name))
         if (!isContainedPath(canonicalSkillsDirectory, baseDir)) continue
-        const filePath = fs.realpathSync.native(path.join(baseDir, 'SKILL.md'))
+        const filePath = fs.realpathSync.native(path.join(baseDir, WRITING_SKILL_FILE_NAME))
         if (!isContainedPath(baseDir, filePath) || !fs.statSync(filePath).isFile()) continue
         skills.push({
           name: entry.name,
@@ -384,8 +218,8 @@ export function registerAppDataController(): void {
   ipcMain.handle('skills:uninstall-user', async (_event, name: string) => {
     try {
       const directory = writingSkillDirectory(name)
-      const skillsRoot = path.join(VELA_HOME, 'skills')
-      if (!fs.existsSync(skillsRoot)) return { success: true }
+      const root = skillsDirectory()
+      if (!fs.existsSync(root)) return { success: true }
       const canonicalRoot = ensureOwnedSkillsRoot()
       if (!fs.existsSync(directory)) return { success: true }
       if (fs.lstatSync(directory).isSymbolicLink()) {

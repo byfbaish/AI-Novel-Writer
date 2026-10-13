@@ -18,6 +18,7 @@ import { registerFinalizationController } from './controllers/finalization-contr
 import { registerChapterLifecycleController } from './controllers/chapter-lifecycle-controller'
 import { registerExternalFileGrantController } from './controllers/external-file-grant-controller'
 import { registerAppDataController } from './controllers/app-data-controller'
+import { registerUserSettingsPackageController } from './controllers/user-settings-package-controller'
 import { registerSkinController } from './controllers/skin-controller'
 import { registerCharacterAvatarController } from './controllers/character-avatar-controller'
 import { skinService } from './services/skin-service'
@@ -41,6 +42,7 @@ export function registerIPCHandlers() {
   registerModelProviderResourceController()
   registerConfigController()
   registerAppDataController()
+  registerUserSettingsPackageController()
   const cloudProjectBindings = new CloudProjectBindingStore()
   registerProjectController({
     removeDeletedProjectBinding: projectId => { cloudProjectBindings.removeDeletedProject(projectId) },

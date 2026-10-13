@@ -39,6 +39,7 @@ import {
   ProjectCreativeStrategySettings,
 } from './ReasoningPolicySettings'
 import ProjectBackupPanel from '../backups/ProjectBackupPanel'
+import UserSettingsPackPanel from './UserSettingsPackPanel'
 
 // ==================== 分类定义 ====================
 
@@ -62,7 +63,7 @@ export const SETTINGS_SECTIONS: SectionItem[] = [
   { id: 'editor', label: '编辑器', labelEn: 'Editor', icon: <Type size={16} />, description: '字体大小、自动保存等编辑器偏好设置', descriptionEn: 'Fonts and other editor preferences' },
   { id: 'prompts', label: '提示词模板', labelEn: 'Prompt templates', icon: <MessageSquare size={16} />, description: '自定义 AI 创作各环节使用的提示词模板', descriptionEn: 'Customize guidance for each AI writing stage' },
   { id: 'skills', label: '写作 Skills', labelEn: 'Writing skills', icon: <BookOpen size={16} />, description: '检查、安装并绑定提示词型写作 Skill', descriptionEn: 'Inspect, install, and bind prompt-only writing skills' },
-  { id: 'backup', label: '项目备份', labelEn: 'Project backup', icon: <HardDriveUpload size={16} />, description: '导出本地存档，或显式绑定 WebDAV 后创建云备份', descriptionEn: 'Export local archives or explicitly bind WebDAV for cloud backups' },
+  { id: 'backup', label: '备份与迁移', labelEn: 'Backup & migration', icon: <HardDriveUpload size={16} />, description: '导出可复用的创作资产包，或备份当前项目与云世代', descriptionEn: 'Export reusable creative asset packs, or back up projects and cloud generations' },
   { id: 'developer', label: '开发者', labelEn: 'Developer', icon: <Bug size={16} />, description: 'Prompt 追踪与热重载等调试工具，不影响正常创作', descriptionEn: 'Prompt tracing and hot reload; debugging tools that do not affect normal writing' },
   { id: 'about', label: '关于', labelEn: 'About', icon: <Info size={16} />, description: '版本、定位与本地部署说明', descriptionEn: 'Version, positioning, and local deployment' },
 ]
@@ -168,7 +169,12 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
             {section === 'editor' && <EditorSection />}
             {section === 'prompts' && <PromptSettings />}
             {section === 'skills' && <SkillSettings />}
-            {section === 'backup' && <ProjectBackupPanel />}
+            {section === 'backup' && (
+              <div className="space-y-7">
+                <UserSettingsPackPanel />
+                <ProjectBackupPanel />
+              </div>
+            )}
             {section === 'developer' && <DeveloperSettings />}
             {section === 'about' && <AboutSection />}
           </div>
@@ -798,6 +804,12 @@ function ModelForm({
             {showKey ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
         </div>
+        <p className="mt-1 text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>
+          {text(
+            '「创作资产包」只导出提示词与写作 Skill，不包含此密钥；若改为手工分享模型配置，请先确认对方可信。',
+            'Creative asset packs export only prompts and writing skills, never this key. If you share model settings manually, confirm the recipient is trusted first.',
+          )}
+        </p>
       </div>
 
       <div className="space-y-2 rounded-lg p-3" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-hover)' }}>
