@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { WorkflowRun } from '../../stores/workflow-store'
-import { diagnosticWorkflowForCall, type LLMCallRecord } from '../stats-service'
+import { diagnosticWorkflowForCall, llmCallTime, type LLMCallRecord } from '../stats-service'
 
 const call: LLMCallRecord = {
   id: 9,
@@ -74,5 +74,21 @@ describe('safe diagnostic workflow association', () => {
       [failedRun('run-1'), failedRun('run-2')],
       'C:\\novels\\safe-project',
     )).toEqual({ finishReason: 'content_filter' })
+  })
+})
+
+describe('llm call timestamp', () => {
+  // SQLite 的 datetime('now') 是不带时区的 UTC 串；直接交给 Date 会被当成本地时间（东八区慢 8 小时）。
+  it('reads a SQLite UTC string as UTC, not local time', () => {
+    expect(llmCallTime('2026-08-29 10:00:00').getTime()).toBe(Date.parse('2026-08-29T10:00:00Z'))
+  })
+
+  it('keeps an already-zoned ISO timestamp unchanged', () => {
+    expect(llmCallTime('2026-08-29T10:00:00.000Z').getTime()).toBe(Date.parse('2026-08-29T10:00:00.000Z'))
+  })
+
+  it('returns an invalid date instead of throwing on an unparseable value', () => {
+    expect(Number.isNaN(llmCallTime('').getTime())).toBe(true)
+    expect(Number.isNaN(llmCallTime('not-a-time').getTime())).toBe(true)
   })
 })

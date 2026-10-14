@@ -18,7 +18,7 @@ import {
 import { Button } from '../ui/Button'
 import { toast } from '../ui/Toast'
 import { LLMDataRequestGate } from './llm-data-request-gate'
-import { diagnosticWorkflowForCall, type LLMCallRecord } from '../../services/stats-service'
+import { diagnosticWorkflowForCall, llmCallTime, type LLMCallRecord } from '../../services/stats-service'
 import {
   coarseRuntimePlatform,
   formatSafeCallDiagnostic,
@@ -812,7 +812,7 @@ function ModelsView() {
                   style={{ borderBottom: '1px solid var(--color-border)' }}
                 >
                   <td className="px-4 py-1 text-[var(--color-text-muted)]">
-                    {new Date(row.createdAt).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    {llmCallTime(row.createdAt).toLocaleString(locale, { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}
                   </td>
                   <td className="px-2 py-1 text-[var(--color-text-secondary)]">{row.modelName || '-'}</td>
                   <td className="px-2 py-1 text-[var(--color-text-secondary)]">{row.purpose || '-'}</td>
