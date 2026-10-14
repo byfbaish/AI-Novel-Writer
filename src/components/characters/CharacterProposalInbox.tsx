@@ -25,6 +25,7 @@ function describeFailure(raw: string, text: (zh: string, en: string) => string):
   if (raw.includes('CHARACTER_PROPOSAL_SOURCE_CHANGED')) return text('生成这批候选所依据的来源已被修改（例如对应章节的角色名单变了），候选已过期。请取消这个批次；重新生成后会产出与现状一致的新候选。', 'The source these candidates were derived from has since changed (for example the chapter roster). The batch is stale: cancel it; regenerating produces fresh candidates.')
   if (raw.includes('CHARACTER_ID_REVISION_CONFLICT')) return text('角色名册刚被其他操作更新，请重新打开该批次后再保存。', 'The roster changed in another operation. Reopen this batch and save again.')
   if (raw.includes('CHARACTER_PROPOSAL_SOURCE_MISSING')) return text('这批候选的来源记录已不存在，只能取消这个批次。', 'The source record for this batch no longer exists; the batch can only be cancelled.')
+  if (raw.includes('CHARACTER_RELATIONSHIP_PROPOSAL_INVALID')) return text('某条关系提议的两端没有被采用（新建/采用到已有角色），关系无处可写。请把该关系的两端改为新建或采用，或放弃这条关系后再保存。', 'A proposed edge has an endpoint that produces no character. Set both endpoints to create/adopt, or drop that edge, then save.')
   return raw
 }
 
