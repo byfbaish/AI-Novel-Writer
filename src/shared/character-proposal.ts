@@ -109,5 +109,6 @@ export interface CharacterProposalChannels {
   'character-proposal:read-pending-finalized': { args: [{ proposalBatchId: string }]; return: CharacterProposalBatch }
   'character-proposal:approve': { args: [ApproveCharacterProposalRequest]; return: { batch: CharacterProposalBatch; created: { selectionKey: string; characterId: string }[] } }
   'character-proposal:cancel': { args: [CancelCharacterProposalRequest]; return: CharacterProposalBatch }
+  'character-proposal:reopen': { args: [CancelCharacterProposalRequest]; return: CharacterProposalBatch }
   'character-identity:read': { args: []; return: CharacterIdentitySnapshot }
 }
