@@ -5,7 +5,6 @@ import type { CharacterProposalItem, CharacterProposalSource } from '../../src/s
 import type { GenerationAuthorInput } from '../../src/shared/generation-owner-contract'
 import { characterProposalMaterialChunks, parseArchitectureCharacterProposal, parsePlanningMaterialCharacterProposal, type ArchitectureDerivationVersion } from '../../src/shared/character-proposal-parser'
 import { GenerationRunRepository, textHash } from '../repositories/generation-run-repository'
-import { normalizeKeyEvents } from '../../src/shared/blueprint-key-events'
 import type { BlueprintData } from '../repositories/blueprint-repository'
 import type { CharacterProposalProof } from './character-proposal-service'
 import type { ImportGlobalFactsReceipt } from '../../src/shared/import-global-facts'
@@ -112,13 +111,16 @@ export function proveCharacterProposal(db: Database.Database, runs: GenerationRu
     if (operation.blueprint_commit_payload_hash !== operation.payload_hash || operation.sync_input !== operation.character_sync_input) throw new Error('CHARACTER_PROPOSAL_SOURCE_INVALID')
     const blueprints = JSON.parse(operation.character_sync_input) as BlueprintData[]
     if (!Array.isArray(blueprints)) throw new Error('CHARACTER_PROPOSAL_SOURCE_INVALID')
+    // 候选只从「本章角色名单」派生（newCharacterCandidates 必须在名单内）。作者在确认前
+    // 补写章指导、改标题/钩子/关键事件，都不改变"候选是谁"，不应判「来源已变」——那会把
+    // 每一次正常的大纲编辑都变成候选批次的死刑（实机：ch1-3 补写 user_guidance 后保存即炸）。
+    // 名单本身被动过（或整章被删）才说明候选与现状脱钩，需要重新生成。
     if (forWrite) for (const blueprint of blueprints) {
-      const current = db.prepare('SELECT title,role,purpose,key_events,characters,suspense_hook,user_guidance FROM blueprints WHERE chapter_number=?').get(blueprint.chapterNumber) as Record<string, string> | undefined
-      // `key_events` 列现在存 JSON 数组串，冻结输入里是数组：两侧都过归一化再比，避免形态差异误判为「来源已变」。
-      const keyEventsOf = (value: unknown): unknown =>
-        normalizeKeyEvents(value, { chapterNumber: blueprint.chapterNumber })
-      if (!current || JSON.stringify([current.title, current.role, current.purpose, keyEventsOf(current.key_events), JSON.parse(current.characters), current.suspense_hook, current.user_guidance])
-        !== JSON.stringify([blueprint.title, blueprint.role, blueprint.purpose, keyEventsOf(blueprint.keyEvents), blueprint.characters, blueprint.suspenseHook, blueprint.userGuidance])) throw new Error('CHARACTER_PROPOSAL_SOURCE_CHANGED')
+      const current = db.prepare('SELECT characters FROM blueprints WHERE chapter_number=?').get(blueprint.chapterNumber) as { characters: string } | undefined
+      const roster = (value: unknown): string[] => {
+        try { const parsed: unknown = JSON.parse(String(value)); return Array.isArray(parsed) ? parsed.map(item => String(item)) : [] } catch { return [] }
+      }
+      if (!current || JSON.stringify(roster(current.characters)) !== JSON.stringify([...blueprint.characters])) throw new Error('CHARACTER_PROPOSAL_SOURCE_CHANGED')
     }
     const items: Omit<CharacterProposalItem, 'resolution'>[] = blueprints.flatMap(blueprint => (blueprint.newCharacterCandidates ?? []).map((candidate, index) => {
       if (!candidate || !candidate.name?.trim() || !['protagonist', 'antagonist', 'supporting', 'minor'].includes(candidate.role)
