@@ -599,7 +599,8 @@ Output the complete revised manuscript as plain prose only. Do not include Markd
 3. Character location, capability, physical state, and emotional state.
 4. Locate contradictions or causal gaps in this chapter's connections to legitimate prior context, foreshadowing or hooks.
 5. Explicit required goals for this chapter: check the original goals supplied with the request under the existing goalReviews contract. Identify the original goal when it is missing or lacks evidence; do not invent a manuscript quotation or repeat the same goal issue in items.
-6. Prior-event retelling: locate passages that completely retell an event that already happened without providing necessary new information, action or change. Explain which prior event is repeated and why the passage adds no new progression.`,
+6. Prior-event retelling: locate passages that completely retell an event that already happened without providing necessary new information, action or change. Explain which prior event is repeated and why the passage adds no new progression.
+7. Ordinal and universal claims: ordinal or universal claims in the author materials (blueprint key events, frozen goals, this chapter's author guidance, etc.), such as "the first", "the only", "every time" or "never", are claims to verify rather than established facts. Recheck each of them independently against the chapter under review; never accept the assertion itself as evidence, and never treat "the chapter does state it" as proof that "it holds".`,
     systemSuffix: `[Author-requested review focus — prioritize when present]
 {{review_focus}}
 
