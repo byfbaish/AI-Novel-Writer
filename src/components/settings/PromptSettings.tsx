@@ -538,11 +538,74 @@ function TemplateItem({
             >
               <AlertTriangle size={12} className="inline mr-1" />
               {text(
-                '内置模板已更新，但当前生效的是「全局 / 项目」覆盖 —— 它冻结了保存当时的旧版内置正文与说明，新版的改进不会自动生效。若想采用新版，点「恢复默认」后再按需重新定制（注意：该操作会清除你对该模板的全部自定义）。本提示不会自动修改任何内容。',
-                'The built-in template has been updated, but a global/project override is in effect. It froze the older built-in body and description, so improvements in the new version do not apply. To adopt them, use “Restore default” and re-customize as needed (this clears all your customizations for this template). Nothing is changed automatically.',
+                '内置模板已更新，但当前生效的是「全局 / 项目」覆盖 —— 它冻结了保存当时的旧版内置正文与说明，新版的改进不会自动生效。下方已同时列出「当前生效的模板正文」与「新版内置正文」，可对照后决定：先留存你的自定义内容，再点「恢复默认」即可让新版生效（注意：该操作会清除你对该模板的全部自定义）。本提示不会自动修改任何内容。',
+                'The built-in template has been updated, but a global/project override is in effect. It froze the older built-in body and description, so improvements in the new version do not apply. Both the effective template body and the new built-in body are listed below so you can compare them; save your customizations first, then use “Restore default” to adopt the new version (this clears all your customizations for this template). Nothing is changed automatically.',
               )}
             </div>
           )}
+          {/* 模板正文只读展示：覆盖版冻结的是「保存当时」的内置正文，
+              而正文此前在这个面板里完全不可见 —— 作者无从知道"现在生效的到底是什么规则"，
+              内置更新时也无从比对。这里只展示、不提供编辑入口。 */}
+          <details
+            className="mt-3 rounded-lg overflow-hidden"
+            style={{ border: '1px solid var(--color-border)' }}
+          >
+            <summary
+              className="px-3 py-2.5 text-[0.68rem] font-medium cursor-pointer select-none"
+              style={{ color: 'var(--color-text-muted)', backgroundColor: 'var(--color-hover)' }}
+            >
+              {text(
+                `当前生效的模板正文（只读，${currentTemplate.content.length} 字）`,
+                `Effective template body (read-only, ${currentTemplate.content.length} chars)`,
+              )}
+            </summary>
+            <pre
+              className="px-3 py-2.5 text-[0.68rem] font-mono whitespace-pre-wrap break-words overflow-auto"
+              style={{
+                margin: 0,
+                backgroundColor: 'var(--color-editor-bg)',
+                color: 'var(--color-text-secondary)',
+                maxHeight: '360px',
+                lineHeight: 1.6,
+              }}
+            >
+              {currentTemplate.content}
+            </pre>
+          </details>
+
+          {/* 内置已更新时才追加：两侧正文同时可见，作者可先留存自己的自定义，再点「恢复默认」比对。 */}
+          {builtinOutdated && (
+            <details
+              className="mt-2 rounded-lg overflow-hidden"
+              style={{ border: '1px solid color-mix(in srgb, var(--color-warning) 35%, transparent)' }}
+            >
+              <summary
+                className="px-3 py-2.5 text-[0.68rem] font-medium cursor-pointer select-none"
+                style={{
+                  color: 'var(--color-warning)',
+                  backgroundColor: 'color-mix(in srgb, var(--color-warning) 10%, transparent)',
+                }}
+              >
+                {text(
+                  `新版内置正文（尚未生效，${builtinTemplate.content.length} 字）`,
+                  `New built-in body (not in effect yet, ${builtinTemplate.content.length} chars)`,
+                )}
+              </summary>
+              <pre
+                className="px-3 py-2.5 text-[0.68rem] font-mono whitespace-pre-wrap break-words overflow-auto"
+                style={{
+                  margin: 0,
+                  backgroundColor: 'var(--color-editor-bg)',
+                  color: 'var(--color-text-secondary)',
+                  maxHeight: '360px',
+                  lineHeight: 1.6,
+                }}
+              >
+                {builtinTemplate.content}
+              </pre>
+            </details>
+          )}
+
           {/* 变量标签栏 */}
           <div className="pt-3">
             <p className="text-[0.68rem] font-medium mb-1.5" style={{ color: 'var(--color-text-muted)' }}>
@@ -610,7 +673,7 @@ function TemplateItem({
             />
           </label>
 
-          {/* 用户层只追加创作指导；内置任务与输出合同保持隐藏且不可改。 */}
+          {/* 用户层只追加创作指导；内置任务与输出合同保持只读（正文可在上方折叠区查看，但不提供编辑入口）。 */}
           <div>
             <p className="text-[0.68rem] font-medium mb-1.5 text-[var(--color-text-muted)]">
               {text('补充创作指导', 'Additional creative guidance')}
