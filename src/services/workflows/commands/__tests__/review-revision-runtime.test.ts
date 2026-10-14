@@ -196,6 +196,33 @@ describe('review/revision consumers using the main contract (synthetic transport
     }
   })
 
+  // ★ 回归（2026-10-14）：蓝图进 prompt 时 `keyEvents` 必须是**文本**。
+  // 曾经的缺陷：`reviewRevisionAuthorMaterial` 直接 `JSON.stringify(context.blueprints)`，
+  // 于是把代码账目（`id` / `estimatedUnits`）一并喂给模型，且与正文路径不一致。
+  // 注意本用例刻意**不镜像实现**：只断言「不该出现的东西不能出现」。
+  it('renders blueprint key events as text in the author material, never as the structured ledger', async () => {
+    const f = setup([{ content: review, finishReason: 'stop' }])
+    const original = f.fixture.invoke.bind(f.fixture)
+    vi.spyOn(f.fixture, 'invoke').mockImplementation(async (channel, ...args) => {
+      const result = await original(channel, ...args)
+      if (channel === 'review-revision:prepare') {
+        const prepared = result as NonNullable<typeof f.fixture.prepared>
+        prepared.context.blueprints = [{ chapterNumber: 1, title: 'Current', characters: [], role: '', purpose: '',
+          suspenseHook: '', notes: '', userGuidance: '', keyEvents: normalizeKeyEvents('本章必须交出印章') }]
+        f.fixture.prepared = structuredClone(prepared)
+      }
+      return result
+    })
+
+    await f.command('review-chapter').execute(f.args)
+
+    const author = reviewRevisionAuthorMaterial(f.fixture.prepared!.context)
+    expect(author).toContain('本章必须交出印章')
+    expect(author).not.toMatch(/ch\d+:E\d+/u)
+    expect(author).not.toContain('estimatedUnits')
+    expect(author).not.toMatch(/"keyEvents":\s*\[/u)
+  })
+
   it.each(['zh-CN', 'en-US'] as const)('sends temporal checks and separated author constraints through all review consumers in %s', async language => {
     const project = useProjectStore.getState().currentProject!
     useProjectStore.setState({ currentProject: { ...project, novelConfig: { ...project.novelConfig, writingLanguage: language } } })
