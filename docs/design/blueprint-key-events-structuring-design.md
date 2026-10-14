@@ -49,6 +49,17 @@
 ⇒ **改 `keyEvents` 不需要加列、不需要走 lane 六步、不需要动 `baseline-schema.ts` 一个字节**（红线 1 不碰）。
 （原设计稿 §5.5 写的「必须走 lane 六步」是基于「要加列/改 DDL」的**假设**，本次调研否证了该假设。）
 
+### 2.1b ⚠️ 列不是唯一落点：还有 4 类**持久化 JSON blob**
+
+这些地方把 `keyEvents` 连同整个蓝图对象序列化存了下来，**旧数据（字符串）与新数据（数组）必须能共存**：
+
+| blob | 位置 | 风险 |
+|---|---|---|
+| `recovery_candidates.source_snapshot` + `source_hash` | `electron/repositories/recovery-candidate-repository.ts:59-61` / `:85-94` | ★★ **`source_hash` 是对快照整体取 `sha256`** —— 旧库（字符串）与新代码（数组）算出**不同 hash** ⇒ **旧恢复候选会被一律判 stale**。这是全改造**唯一可能造成"用户可见行为变化"**的点，阶段 1 必须先统一 normalize 再序列化 |
+| `character_sync_input` ×2 | `electron/migrations/baseline-blueprint-schema.ts:12` / `:23`（存 `BlueprintData[]`）；读 `electron/services/generation-character-proposal-proof.ts:112-117` | 逐字段 `JSON.stringify` 比对 |
+| 项目归档 / 审稿快照 | `electron/services/project-archive-service.ts:364` / `:373`（`safeString(source.keyEvents)`）、`:528-531` | ★ `safeString` 会**把数组强转成字符串** ⇒ 归档内容变形 |
+| 便携字段策略 | `electron/services/portable-project-field-policy.json:77`（`blueprints.key_events` 标 "D"） | 需确认数组形态是否仍可便携 |
+
 ### 2.2 契约层
 
 | 项 | 位置 | 现状 |
@@ -57,7 +68,7 @@
 | 语言合同（zh/en） | `blueprint-semantic-contract.ts:44` / `:54` | 「keyEvents **必须是非空字符串**」 |
 | 解析校验 | `blueprint-semantic-contract.ts:217` | `requiredText(fieldValue(...'keyEvents'...))` → 强制 string |
 | 语言化输出合同 | `src/services/prompt-language.ts:505` | 英文合同点名 `keyEvents` |
-| 类型定义（**7 处**） | `blueprint-semantic-contract.ts:73`、`electron/repositories/blueprint-repository.ts:24`/`:40`、`src/shared/plot-tree.ts:71`、`src/shared/consistency-preflight.ts:29`、`src/shared/recovery-candidate.ts:8`、`src/services/auto-next-chapter.ts:6`、`src/shared/narrative-thread.ts:60` | 全部 `keyEvents: string` |
+| 类型定义（**9 处**） | `blueprint-semantic-contract.ts:73`、`electron/repositories/blueprint-repository.ts:24`/`:40`、`src/shared/plot-tree.ts:71`、`src/shared/consistency-preflight.ts:29`、`src/shared/recovery-candidate.ts:8`、`src/services/auto-next-chapter.ts:6`、`src/shared/narrative-thread.ts:60`、`src/services/workflows/chapter-creation-parameters.ts:13`、`src/services/workflows/chapter-workflow.ts:29` | 全部 `keyEvents: string` |
 
 ### 2.3 产出模板（模型侧）
 
@@ -91,13 +102,20 @@
 | 蓝图续写·前置进度 | `directory.command.ts:227`（`recentBlueprints`）/ `:407-408` | 拼成 `第N章 标题：keyEvents` 作为 `chapter_list`（P0-0 的"前序已定稿事实"） | 需 join |
 | **Agent 提案白名单** | `src/services/agent/tools/propose-chapter-blueprint.tool.ts:8` | 允许 agent 提案写入的字段含 `keyEvents` | ★ **必须同步**，否则 agent 无法再提案该字段 |
 | **Agent 读蓝图** | `src/services/agent/tools/read-blueprint.tool.ts:39-40` | `关键事件: ${bp.keyEvents}` 直接拼文本 | 数组会被拼成 `[object Object]`，**必须改** |
-| 域变更对比面板 | `src/components/panels/agent/DomainProposalDiff.tsx:23` | 字段 label 映射含 `keyEvents` | 需检查值的渲染方式 |
+| 域变更对比面板 | `src/components/panels/agent/DomainProposalDiff.tsx:23` / `:33-37` | label 映射 + `displayValue`：`Array.isArray → value.join('、')` | ★ **对象数组会渲染成 `[object Object]`** |
+| 蓝图变更检测 | `src/services/workflows/directory-workflow.ts:271` | `saved.keyEvents !== blueprint.keyEvents` | 需双侧同形 |
+| 生成 owner 深比较 | `electron/services/main-generation-owner.ts:734-735` | `fields` 含 keyEvents + `isDeepStrictEqual` | 需双侧同形 |
+| 缩略文本截断 | `src/shared/plot-tree-generation-pure.ts:286`（`boundedText`）/ `:222`（`.trim()`） | 按**字符**截断 / 空值判定 | 需改按数组 |
+| 章节创建弹窗 | `src/components/dialogs/ChapterCreationDialog.tsx:517-521` | **第二处 Textarea**（Label「关键事件」） | ★ 与 `ChapterCardEditor` 同处理 |
+| 输入 token 估算 | `src/services/generation/generation-harness.ts:508-509` | 整段 messages 字符累加 | 随文本自然变化，无需改 |
 
 ### 2.5 测试
 
-构造 `keyEvents` 值的测试至少分布在：`electron/repositories/__tests__/blueprint-repository.test.ts`、
-`plot-tree-repository.test.ts`、`character-repository.test.ts`、`import-run-*.test.ts`、
-`recovery-candidate-migration.test.ts`、`src/services/workflows/__tests__/` 与 `src/shared/__tests__/` 多份契约测试。
+构造 `keyEvents` 值的测试**规模 ≈ src 35 个文件 + electron 20 个文件**，密集点在
+`generate-draft.command.test.ts`、`directory.command.test.ts`、`main-generation-owner.test.ts`、
+`blueprint-repository.test.ts`、`chapter-goal-review.test.ts`、`prompt-local-qwen-contract.test.ts`。
+另注：`plugins/dsh-ai-novel-writer/` 是**独立插件包**，其 `keyEvents` 已是 `readonly string[]`
+（`novel-store.ts:122`），与主程序模型不同，**不计入本次改动面**。
 
 ---
 
@@ -172,6 +190,9 @@ export interface BlueprintKeyEvent {
 | §8-7 YAGNI | 契约字段膨胀 | 第一版**只有** `id` / `event` / `estimatedUnits` 三个字段，不加"伏笔权重""情绪曲线" |
 | 覆盖版遮蔽内置 | 改内置 ≠ 生效 | 阶段 2 必须**三处同改**；动手前先 `getPromptSource(key)` |
 | **Agent 侧两处白名单** | `electron/services/agent-domain-tool-effect.ts:10`（`blueprintStrings` 含 `keyEvents`）+ `src/services/agent/tools/propose-chapter-blueprint.tool.ts:8` | 结构体写入时会因"非字符串"被拒 / agent 提案被过滤 ⇒ 阶段 1 必须同改（**最易漏的两处**） |
+| **恢复候选 sha256** | `recovery-candidate-repository.ts:85-94` 的 `source_hash` 是整体快照 sha256 | ★★ 旧候选（字符串）与新数组**算出不同 hash ⇒ 一律判 stale**；阶段 1 必须先统一 normalize（见 §2.1b） |
+| **归档 `safeString`** | `project-archive-service.ts:364` / `:373` | 会把数组**强转字符串** ⇒ 归档变形；阶段 1 同改 |
+| **验收脚本读 manifest** | `scripts/real-provider-generation-qualification.mjs:760/845/874/1213`、`scripts/quality-modernization-driver.mjs:1881` 读 `BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST` | 阶段 2 改 `requiredFields` 会波及这两套验收脚本，需同步 |
 
 ---
 
@@ -195,8 +216,14 @@ export interface BlueprintKeyEvent {
 2. **D2 id 编号方案** —— 我推荐代码按序号生成（`E1…`）。若作者希望编号在**跨章**层面也稳定（如 `ch7:E3`），需要现在定，后改会牵动已存数据。
 3. **分期边界** —— 是否同意"阶段 1 单独提交、观察一轮再进阶段 2"。
 
-**我判断的最大不确定性**：`estimatedUnits` 的实际取值质量（模型估的字数与真实产出差多少）。
-这只影响**阶段 3** 的停止点精度，不影响阶段 1/2，因此**不阻塞**开工；建议阶段 3 前先在 trace 里实测 2–3 章的偏差。
+**我判断的最大不确定性有两个**：
+
+1. **旧数据兼容（★ 应重点评审）** —— 四类持久化 blob 里，最危险的是 `recovery_candidates.source_hash`
+   的 **sha256 全快照比对**：旧库（字符串）与新代码（数组）会算出不同 hash，若不先统一 normalize，
+   **旧恢复候选会被一律判为 stale**。这是本改造**唯一可能造成用户可见行为变化**的地方，
+   阶段 1 必须优先处理并配回归测试。
+2. **`estimatedUnits` 的实际取值质量**（模型估的字数与真实产出差多少）—— 只影响**阶段 3** 的停止点精度，
+   不影响阶段 1/2，**不阻塞**开工；建议阶段 3 前先在 trace 里实测 2–3 章的偏差。
 
 **建议的最小第一步**：阶段 1 的 1–3 项（类型 + repository 边界 + 6 处类型定义），**一次提交**，跑契约测试证明零回归。
 
