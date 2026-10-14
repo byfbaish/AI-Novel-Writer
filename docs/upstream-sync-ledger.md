@@ -13,20 +13,33 @@
 | 角色 | 名称 | 指向 | 说明 |
 |---|---|---|---|
 | 我方主线 | `dev_byf` | 见下方快照 | 全部开发工作在这里；**2026-10-14 已推送远程** `origin/dev_byf` |
-| 上游基线（本地） | `upstream-baseline` | `upstream/master` | **2026-10-14 新建**，用途：随时与上游比 diff 的锚点；**已推送远程** |
+| 上游基线（本地） | `upstream-baseline` | **`bb3c80a0`**（2026-10-14 推进） | 用途：随时与上游比 diff 的锚点；**已推送远程** |
 | 上游（远程） | `upstream` = `EthanYoQ/AI-Novel-Writer` | — | **原项目**，只读参照，不推 |
 | 我方 fork（远程） | `origin` = `byfbaish/AI-Novel-Writer` | — | 自己的远端；`origin/master` 自 2026-10-09 后未再同步 |
 
 **分叉点（merge-base）**：`8c93403`（2026-10-09，`Merge pull request #331`）
 
-**当前快照**
+**当前快照**（2026-10-14 更新）
 
 | 项 | 值 |
 |---|---|
-| dev_byf HEAD | `c74a018`（2026-10-14） |
-| 独有提交数（分叉点之后） | **123** |
+| dev_byf HEAD | `febd9e0f`（2026-10-14） |
+| 独有提交数（分叉点之后） | **132** |
 | 上游侧独有提交数 | **0**（分叉点之后 origin/master 无新增） |
 | 上游侧被引入的提交 | **3 个**：`464aa95`(#335)、`dc74cde`(#336)、`1f8f22d`(#337) —— 2026-10-10 从 `upstream/master` 拉入，**已在 dev_byf 上** |
+
+**基线推进记录**
+
+| 日期 | 推进前 → 推进后 | 依据 |
+|---|---|---|
+| 2026-10-14 | `1f8f22d` → `bb3c80a0` | 首次 diff（116 笔）评估完毕、遗留项清空。⚠️ **未推到最新**：`bb3c80a0..upstream/master` 尚有 27 笔未逐笔评估，推过去会让它们"消失在基线里" |
+
+**当前待评估区间**：`bb3c80a0` → `upstream/master`（现为 `549522d4`）= **27 笔**
+（初判：几乎全为 RD-4 运行侧页 / 新外壳方向。**唯一候选** = `2f357054` 在
+`src/services/stats-service.ts` 新增 `llmCallTime()`，修「SQLite 的 `CURRENT_TIMESTAMP` 不带时区，
+直接交给 `Date` 会被当成本地时间 ⇒ 东八区慢 8 小时」。我方有同名同位置的 `callCompletionRange`
+(`stats-service.ts:42`)，但**需核对其消费方（渲染侧「模型调用」/诊断分页）是否直接 `Date.parse`**）。
+
 
 > ⚠️ **重要判据**：origin/master 与 upstream/master 的差异**只有这 3 笔**。
 > 也就是说 `dev_byf` 相对 `upstream/master` 已经是"分叉点 + 3 笔上游 + 120 笔自有"。
@@ -113,18 +126,14 @@ git branch -f upstream-baseline upstream/master
 |---|---|---|
 | ⛔ 跳过 | **100** | `redesign`（RD-0~RD-8 前端重设计）89 笔 + `docs(design)` 11 笔 —— **上游在走"纸墨设计系统 + 新外壳"，是另一个方向** |
 | ✅ 吸收 | **1** | `eb8c3f00` 的「章节卡出场关键人输入被打断」半 —— **我方有同样 bug**（`ChapterCardEditor.tsx:1136` 仍用受控 `value`），手工应用 2 行 |
-| ✅ 部分吸收 | **1** | `b5781975` 的**部分 Ⅰ**（`electron/database.ts` 单事务）→ 已落地 `55122230`；**部分 Ⅱ**（短细纲首次失败可重试）保留待评估 |
+| ✅ 全部吸收 | **1** | `b5781975` —— 两部分均已落地：部分 Ⅰ（`electron/database.ts` 单事务）`55122230`；部分 Ⅱ（短细纲首次失败自动重试）`febd9e0f` |
 
-**遗留待评估项**（下次 diff 必先看）：
+**遗留待评估项**：**无**（本轮已清空）。
 
-| 项 | 提交 | 阻塞原因 |
-|---|---|---|
-| 短细纲**首次**失败未进重试队列 | `b5781975` 部分 Ⅱ | 与我方 P0-1 落点重叠（`generate-draft.command.ts:1111-1137`）。上游把「首次生成」上提到 retry 分支之前、并用外层 `let outlined` 汇聚两条分支的判定 —— 与 P0-1 的 `outlinePrompt` 逻辑同段，逐行对齐有回归风险。**缺陷真实存在**（我方首次失败走 `:1133` 直接 throw，不落可重试记录），但性质是"失败体验"（用户须整章重跑），非数据损坏 |
-
-> ⚠️ **基线暂未推进**（仍 `1f8f22d`）—— `b5781975` 部分 Ⅱ 未处理完，推进会让它"消失在基线里"。
-> 待该项处理完，执行 `git branch -f upstream-baseline upstream/master` 并更新本节。
-> **注意**：`upstream/master` 已从 `bb3c80a0` 继续前进（2026-10-14 又见 `#400` 等新提交），
-> 下次 diff 的实际区间会比 §4.2 标题写的 `1f8f22d → bb3c80a0` 更长。
+> ✅ **基线已推进**（2026-10-14）：`1f8f22d` → `bb3c80a0`（已评估边界）。
+> ⚠️ **未推到 `upstream/master`** —— `bb3c80a0..upstream/master`（现 `549522d4`）尚有 **27 笔**未逐笔评估，
+> 推过去会让它们"消失在基线里"；见 §1「当前待评估区间」。
+> 下次 diff 的起点 = `bb3c80a0`，实际区间会比本节标题写的 `1f8f22d → bb3c80a0` 更长。
 
 ---
 
@@ -156,8 +165,8 @@ git branch -f upstream-baseline upstream/master
 **✅ 2026-10-14 推送已完成（三条分支全部在远程）**
 
 ```
-refs/heads/dev_byf            f3bb8e39   ← 我方主线（123 笔自有提交）
-refs/heads/upstream-baseline  1f8f22d4   ← 上游基线锚点
+refs/heads/dev_byf            febd9e0f   ← 我方主线（132 笔自有提交）
+refs/heads/upstream-baseline  bb3c80a0   ← 上游基线锚点（2026-10-14 由 1f8f22d4 推进）
 refs/heads/master             8c934037   ← 与 origin/master 对应，未动
 ```
 

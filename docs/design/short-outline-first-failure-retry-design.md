@@ -2,7 +2,8 @@
 
 > 来源：吸收上游 `b5781975` 的**部分 Ⅱ**（`fix(draft): retry the first eligible short-outline failure`）。
 > 部分 Ⅰ（新项目 baseline 单事务）已于 `55122230` 落地，见 `docs/handoffs/upstream-sync/2026-10-14-diff.md` §2.1.2。
-> 状态：**待作者过目，未动代码。**
+> 状态：**已实施（`febd9e0f`，2026-10-14）**。作者裁定「按建议来」⇒ 取舍 ① 采纳、② 采纳、③ 不动（登记观察项）。
+> 验证：目标文件 218/218 通过；负向验证 5 组变红；同目录失败用例 29/29 逐条与基线一致；tsc 0 错。
 
 ---
 
@@ -267,9 +268,11 @@ if (recovery?.draftShortOutline && !shortOutline) throw new Error('GENERATION_DR
 
 ---
 
-## 11. 待你确认
+## 11. 待你确认（已于 2026-10-14 裁定，保留原问以备追溯）
 
-- **取舍 ①** 错误文案：采纳「可读文案 + 代码后缀」？（建议：采纳）
-- **取舍 ②** `logDraftAttempt` 无条件化？（建议：采纳）
-- **取舍 ③** 「首次成功后 outline artifact 未入 `reconciliationArtifactIds`」是否本轮顺带修？（建议：不动，另开一轮）
-- **是否要跑实机**（§8.3），还是只做单测就收。
+**作者裁定：「按建议来」** ⇒ ① 采纳、② 采纳、③ 不动。实施提交 `febd9e0f`。
+
+- **取舍 ①** 错误文案：采纳「可读文案 + 代码后缀」。（建议：采纳）
+- **取舍 ②** `logDraftAttempt` 无条件化：采纳。（建议：采纳）
+- **取舍 ③** 「首次成功后 outline artifact 未入 `reconciliationArtifactIds`」：不动，登记为观察项。
+- **实机**（§8.3）：**不跑** —— 机制层与模型无关，命令侧单测已覆盖。
