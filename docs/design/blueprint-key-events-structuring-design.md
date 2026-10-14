@@ -57,7 +57,7 @@
 | 语言合同（zh/en） | `blueprint-semantic-contract.ts:44` / `:54` | 「keyEvents **必须是非空字符串**」 |
 | 解析校验 | `blueprint-semantic-contract.ts:217` | `requiredText(fieldValue(...'keyEvents'...))` → 强制 string |
 | 语言化输出合同 | `src/services/prompt-language.ts:505` | 英文合同点名 `keyEvents` |
-| 类型定义（**6 处**） | `blueprint-semantic-contract.ts:73`、`electron/repositories/blueprint-repository.ts:24`/`:40`、`src/shared/plot-tree.ts:71`、`src/shared/consistency-preflight.ts:29`、`src/shared/recovery-candidate.ts:8`、`src/services/auto-next-chapter.ts:6` | 全部 `keyEvents: string` |
+| 类型定义（**7 处**） | `blueprint-semantic-contract.ts:73`、`electron/repositories/blueprint-repository.ts:24`/`:40`、`src/shared/plot-tree.ts:71`、`src/shared/consistency-preflight.ts:29`、`src/shared/recovery-candidate.ts:8`、`src/services/auto-next-chapter.ts:6`、`src/shared/narrative-thread.ts:60` | 全部 `keyEvents: string` |
 
 ### 2.3 产出模板（模型侧）
 
@@ -66,6 +66,7 @@
 | 章节蓝图（首轮） | `builtin-prompt-templates.ts:872` / `:882` | `"keyEvents": "…100字左右具体说明"`；「控制在 100-150 字以内」 |
 | 章节蓝图（分块续写） | `builtin-prompt-templates.ts:949` / `:957` | 同上 |
 | **导入已有小说·反向提取** | `builtin-prompt-templates.ts:1610` / `:1615` | 「本章核心事件概述（100-150字…）」+「必须基于正文实际内容提取，不可臆造」 |
+| ⚠️ **内联 JSON 形状（易漏）** | `src/services/workflows/commands/directory.command.ts:241-242` | 蓝图续写请求里**内联**的 `【精确 JSON 形状】` 说明（`"keyEvents":"简洁事件摘要"`），**不在 builtin 模板里** |
 
 ⚠️ **第三类容易被漏**：它不是「生成本章要写什么」，而是「读已有正文、回头补出一章蓝图」。
 结构化后它也必须产出数组，否则导入链路产出的仍是旧格式。
@@ -87,6 +88,7 @@
 | 字段清单 | `electron/services/main-generation-owner.ts:734` | `fields` 数组含 `keyEvents` | 检查 |
 | **作者编辑器** | `src/components/editor/ChapterCardEditor.tsx:1157-1158` | **Textarea**，`updateField('keyEvents', e.target.value)` | ★ **UI 决策点（见 D4）** |
 | 章节创建预填 | `ChapterCardEditor.tsx:777`、`src/services/auto-next-chapter.ts:30` | 传值给弹窗/创建参数 | 需 join 或改形态 |
+| 蓝图续写·前置进度 | `directory.command.ts:227`（`recentBlueprints`）/ `:407-408` | 拼成 `第N章 标题：keyEvents` 作为 `chapter_list`（P0-0 的"前序已定稿事实"） | 需 join |
 | **Agent 提案白名单** | `src/services/agent/tools/propose-chapter-blueprint.tool.ts:8` | 允许 agent 提案写入的字段含 `keyEvents` | ★ **必须同步**，否则 agent 无法再提案该字段 |
 | **Agent 读蓝图** | `src/services/agent/tools/read-blueprint.tool.ts:39-40` | `关键事件: ${bp.keyEvents}` 直接拼文本 | 数组会被拼成 `[object Object]`，**必须改** |
 | 域变更对比面板 | `src/components/panels/agent/DomainProposalDiff.tsx:23` | 字段 label 映射含 `keyEvents` | 需检查值的渲染方式 |
