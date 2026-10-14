@@ -240,8 +240,8 @@ function buildCompactBlueprintTask(input: {
     blueprintSemanticGenerationContract(input.writingLanguage),
     promptLanguageText(
       input.writingLanguage,
-      `【精确 JSON 形状】{"blueprints":[{"chapterNumber":${input.chapterNumber},"title":"短标题","role":"简短结构标签","purpose":"一句简洁陈述","keyEvents":"简洁事件摘要","characters":["完整姓名"],"relationships":[],"suspenseHook":"一句简洁陈述"}]}`,
-      `[Exact JSON shape] {"blueprints":[{"chapterNumber":${input.chapterNumber},"title":"short title","role":"short structural label","purpose":"one concise sentence","keyEvents":"concise event summary","characters":["full name"],"relationships":[],"suspenseHook":"one concise sentence"}]}`,
+      `【精确 JSON 形状】{"blueprints":[{"chapterNumber":${input.chapterNumber},"title":"短标题","role":"简短结构标签","purpose":"一句简洁陈述","keyEvents":[{"id":"n:E1","event":"具体事件摘要","estimatedUnits":700}],"characters":["完整姓名"],"relationships":[],"suspenseHook":"一句简洁陈述"}]}`,
+      `[Exact JSON shape] {"blueprints":[{"chapterNumber":${input.chapterNumber},"title":"short title","role":"short structural label","purpose":"one concise sentence","keyEvents":[{"id":"n:E1","event":"concise event summary","estimatedUnits":700}],"characters":["full name"],"relationships":[],"suspenseHook":"one concise sentence"}]}`,
     ),
     ...(input.diagnostic
       ? [promptLanguageText(

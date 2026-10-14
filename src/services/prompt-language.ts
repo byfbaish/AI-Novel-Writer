@@ -509,7 +509,7 @@ Produce a complete outline made of structural turning points rather than chapter
 4. End every chapter with a concrete variable that creates forward pressure.
 
 [JSON output contract]
-Return exactly one object with a blueprints array. Every item must contain chapterNumber, title, role, purpose, characters, relationships, keyEvents, and suspenseHook. relationships contains only relationships established in that chapter and is [] when empty. keyEvents must concisely state actions, reversals, consequences, and relevant use of the central advantage.
+Return exactly one object with a blueprints array. Every item must contain chapterNumber, title, role, purpose, characters, relationships, keyEvents, and suspenseHook. relationships contains only relationships established in that chapter and is [] when empty. keyEvents must be an ordered array of 2-5 items; each item carries id, event (30-80 characters stating actions, reversals, consequences, and relevant use of the central advantage), and estimatedUnits (a positive integer for the manuscript units that event is expected to take).
 Return JSON only, with no Markdown, preface, analysis, plan, code fence, or reasoning.
 
 [Author pacing and style guidance — highest priority when present]
