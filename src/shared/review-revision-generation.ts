@@ -11,6 +11,7 @@ import type { HumanConfirmedReviewSnapshot } from './human-confirmed-review'
 import type { ReviewCycleRecheckContext } from './review-cycle'
 import { renderHumanConfirmedReviewBrief } from './human-confirmed-review'
 import { writingLanguageText } from './writing-language'
+import { keyEventsText } from './blueprint-key-events'
 
 export type ReviewRevisionOperation = 'review-chapter' | 'refine-draft' | 'refine-from-review'
 /** Asserts the author's selected version; prose and all stored facts are loaded by main. */
@@ -78,6 +79,12 @@ export interface ReviewRevisionContext {
   recheck?: ReviewCycleRecheckContext
 }
 
+/** 蓝图进 prompt 的投影：`keyEvents` 收敛为「一行一条」文本（设计稿 §3 文本呈现）。 */
+type PromptBlueprint = Omit<BlueprintForPreflight, 'keyEvents'> & { keyEvents: string }
+function blueprintForPrompt(blueprint: BlueprintForPreflight): PromptBlueprint {
+  return { ...blueprint, keyEvents: keyEventsText(blueprint.keyEvents) }
+}
+
 /** Task approval does not turn an AI-proposed replacement into an author fact. */
 export function reviewRevisionAiBrief(context: ReviewRevisionContext): string {
   const snapshot = context.confirmation?.snapshot
@@ -114,9 +121,13 @@ export function reviewRevisionAuthorMaterial(context: ReviewRevisionContext): st
     text('【世界观设定】', '[Worldbuilding]'), authorText('worldbuilding', context.worldbuilding),
     text('【作者角色状态｜以标注时点为准】', '[Author character state | scoped to its annotated time]'), context.characterStates,
     text('【本章作者指导｜约束】', '[Current chapter author guidance | constraints]'),
-    JSON.stringify(context.blueprints.filter(blueprint => blueprint.chapterNumber === context.source.chapterNumber), null, 2),
+    // `keyEvents` 是结构化事件清单，但**进 prompt 必须收敛为文本**：否则会把代码账目
+    // （`id` / `estimatedUnits`）暴露给模型，且与正文路径（`keyEventsText`）不一致。
+    JSON.stringify(context.blueprints.filter(blueprint => blueprint.chapterNumber === context.source.chapterNumber)
+      .map(blueprintForPrompt), null, 2),
     text('【后续蓝图/计划｜非既定历史】', '[Future blueprints/plans | not established history]'),
-    JSON.stringify(context.blueprints.filter(blueprint => blueprint.chapterNumber !== context.source.chapterNumber), null, 2),
+    JSON.stringify(context.blueprints.filter(blueprint => blueprint.chapterNumber !== context.source.chapterNumber)
+      .map(blueprintForPrompt), null, 2),
     text('【本章冻结目标｜须由正文证明】', '[Frozen chapter goals | require manuscript evidence]'),
     JSON.stringify(context.frozenGoals),
     ...context.authorInputs.map(input => input.text),

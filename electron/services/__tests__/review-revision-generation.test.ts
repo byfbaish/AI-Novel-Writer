@@ -176,10 +176,19 @@ describe('review and revision generation through the actual owner and SQLite', (
 
   it('explicitly refuses recovery of the old combined blueprint material hash while retaining its artifact', async () => {
     const current = reviewRevisionMaterials.reviewRevisionAuthorMaterial
-    const legacy = vi.spyOn(reviewRevisionMaterials, 'reviewRevisionAuthorMaterial').mockImplementation(context => current(context).replace([
-      '【本章作者指导｜约束】', JSON.stringify(context.blueprints.filter(item => item.chapterNumber === context.source.chapterNumber), null, 2),
-      '【后续蓝图/计划｜非既定历史】', JSON.stringify(context.blueprints.filter(item => item.chapterNumber !== context.source.chapterNumber), null, 2),
-    ].join('\n\n'), ['【当前及未来蓝图/计划｜非既定历史】', JSON.stringify(context.blueprints, null, 2)].join('\n\n')))
+    // 旧形态：两块（本章 / 后续）合并为一块，且蓝图按**改造前的渲染**（`keyEvents` 是结构化数组）。
+    // 这里按标签切分而不是整体匹配 JSON —— 否则一旦渲染方式调整，替换会静默失配、测试假绿。
+    const currentLabel = '【本章作者指导｜约束】'
+    const futureLabel = '【后续蓝图/计划｜非既定历史】'
+    const legacy = vi.spyOn(reviewRevisionMaterials, 'reviewRevisionAuthorMaterial').mockImplementation(context => {
+      const material = current(context)
+      const start = material.indexOf(currentLabel)
+      const futureAt = material.indexOf(futureLabel)
+      if (start < 0 || futureAt < 0) return material
+      const rest = material.slice(futureAt + futureLabel.length).replace(/^\n+/u, '')
+      return material.slice(0, start)
+        + ['【当前及未来蓝图/计划｜非既定历史】', JSON.stringify(context.blueprints, null, 2), rest].join('\n\n')
+    })
     const f = fixture(), prepared = f.prepare(), selection = f.selection(prepared)
     const admission = await selectFrozenReviewRevisionMaterials(prepared.context, { projectId: 'project', epoch: 'epoch-1' })
     const prompt = admission.admitted.map(item => item.text).join('\n\n')
