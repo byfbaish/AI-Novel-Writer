@@ -1,7 +1,9 @@
 import type Database from 'better-sqlite3'
 import { isDeepStrictEqual } from 'node:util'
 import type { MainGenerationRunHandle } from '../../src/services/generation/generation-runtime'
-import type { CharacterProposalItem, CharacterProposalSource } from '../../src/shared/character-proposal'
+import type { CharacterProposalItem, CharacterProposalSource, CharacterStaticFields } from '../../src/shared/character-proposal'
+import { parseCharacterBackgroundSynthesis } from '../../src/shared/character-background-synthesis'
+import { characterRosterIdentityKey } from '../../src/shared/character-roster'
 import type { GenerationAuthorInput } from '../../src/shared/generation-owner-contract'
 import { characterProposalMaterialChunks, parseArchitectureCharacterProposal, parsePlanningMaterialCharacterProposal, type ArchitectureDerivationVersion } from '../../src/shared/character-proposal-parser'
 import { GenerationRunRepository, textHash } from '../repositories/generation-run-repository'
@@ -38,6 +40,25 @@ function importCharacterEntriesFromArtifacts(db: Database.Database, runs: Genera
   try {
     return (delta ? decodeImportInferenceWithEndpointDelta(original, delta, (_zh, en) => en) : decodeImportInferenceJson(original)).characterCards
   } catch { return null }
+}
+
+/**
+ * 「为指定角色补全背景」的产物流 → 候选条目。
+ *
+ * 独立成纯函数是为了可测：它编码了这条路的**形状合同**（恰好一张卡、key 与渲染层一致、
+ * 关系提议按 target/relation 映射）。从冻结产物重建 —— 作者看到的与证明算出的必须同源。
+ */
+export function characterSynthesisProposalItems(text: string): Omit<CharacterProposalItem, 'resolution'>[] {
+  const parsed = parseCharacterBackgroundSynthesis(text)
+  return [{
+    selectionKey: `background:${characterRosterIdentityKey(parsed.characterCard.name)}`,
+    sourceId: `character-background:${parsed.characterCard.name}`,
+    fields: parsed.characterCard as unknown as CharacterStaticFields,
+    relationships: parsed.relationships.map(relation => ({
+      targetName: relation.targetName, relation: relation.relation, raw: structuredClone(relation),
+    })),
+    rawValue: structuredClone(parsed),
+  }]
 }
 
 export function proveCharacterProposal(db: Database.Database, runs: GenerationRunRepository, projectId: string,
@@ -163,15 +184,24 @@ export function proveCharacterProposal(db: Database.Database, runs: GenerationRu
     if (!manifest || run.binding.sourceManifest.operation !== 'character-architecture') throw new Error('CHARACTER_PROPOSAL_MANIFEST_INVALID')
     items = parseArchitectureCharacterProposal({ manifest, details: artifacts.filter(item => item !== manifest) }, architectureDerivationVersion)
   } else {
-    if (source.manifestArtifactId || run.binding.sourceManifest.operation !== 'planning-material-character-extraction') throw new Error('CHARACTER_PROPOSAL_SOURCE_INVALID')
-    const inputs = run.binding.sourceManifest.authorInputs as GenerationAuthorInput[]
-    const materials = inputs.map((input, index) => {
-      if (input.id !== `planning-material:${index}`) throw new Error('CHARACTER_PROPOSAL_SOURCE_INVALID')
-      const material = JSON.parse(input.text) as { fileName: string; text: string }
-      if (typeof material.fileName !== 'string' || typeof material.text !== 'string') throw new Error('CHARACTER_PROPOSAL_SOURCE_INVALID')
-      return material
-    })
-    items = parsePlanningMaterialCharacterProposal({ artifacts, expectedSourceIds: characterProposalMaterialChunks(materials).map(item => item.sourceId) })
+    const operation = run.binding.sourceManifest.operation
+    if (operation === 'character-background-synthesis') {
+      // 单角色补全：产物是**一张卡**（对象），不是分块数组 —— 用与渲染层同一份解析重建候选，
+      // 否则"作者看到的候选"与"证明算出的候选"会各自漂移。此前的分块分支要求 operation 必须是
+      // planning-material-character-extraction，导致这条路的 stage 从未成功过（实机 INVALID）。
+      if (source.manifestArtifactId || artifacts.length !== 1) throw new Error('CHARACTER_PROPOSAL_SOURCE_INVALID')
+      items = characterSynthesisProposalItems(artifacts[0].text)
+    } else {
+      if (source.manifestArtifactId || operation !== 'planning-material-character-extraction') throw new Error('CHARACTER_PROPOSAL_SOURCE_INVALID')
+      const inputs = run.binding.sourceManifest.authorInputs as GenerationAuthorInput[]
+      const materials = inputs.map((input, index) => {
+        if (input.id !== `planning-material:${index}`) throw new Error('CHARACTER_PROPOSAL_SOURCE_INVALID')
+        const material = JSON.parse(input.text) as { fileName: string; text: string }
+        if (typeof material.fileName !== 'string' || typeof material.text !== 'string') throw new Error('CHARACTER_PROPOSAL_SOURCE_INVALID')
+        return material
+      })
+      items = parsePlanningMaterialCharacterProposal({ artifacts, expectedSourceIds: characterProposalMaterialChunks(materials).map(item => item.sourceId) })
+    }
   }
   const model = run.binding.sourceManifest.modelReceipt as { modelRevision: string }
   const sourceHash = textHash(JSON.stringify([source, items]))
