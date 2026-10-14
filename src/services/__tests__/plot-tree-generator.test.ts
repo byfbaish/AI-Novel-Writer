@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../shared/blueprint-key-events'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
@@ -90,7 +91,7 @@ function sources(): PlotTreeSourceBundle {
       chapterNumber: 1,
       title: 'The empty safe',
       purpose: 'Launch the investigation',
-      keyEvents: 'The clerk discovers the missing ledger.',
+      keyEvents: normalizeKeyEvents('The clerk discovers the missing ledger.'),
     }],
     finalizedChapters: [{
       draftId: 41,
@@ -146,7 +147,7 @@ describe('plot tree AI boundary', () => {
     }],
     ['non-empty invalid source rows', () => {
       const value = sources()
-      value.blueprints = [{ chapterNumber: 0, title: '', purpose: '', keyEvents: '' }]
+      value.blueprints = [{ chapterNumber: 0, title: '', purpose: '', keyEvents: [] }]
       value.finalizedChapters = [{ draftId: 0, chapterNumber: 1, title: '', summary: '' }]
       value.narrativeThreads = []
       return value
@@ -353,7 +354,7 @@ describe('plot tree AI boundary', () => {
       chapterNumber,
       title: `第${chapterNumber}章`,
       purpose: `推进第${chapterNumber}章`,
-      keyEvents: `第${chapterNumber}章计划事件`,
+      keyEvents: normalizeKeyEvents(`第${chapterNumber}章计划事件`),
     }))
     plotSources.finalizedChapters = [1, 2, 3].map(chapterNumber => ({
       draftId: 40 + chapterNumber,
@@ -489,7 +490,7 @@ describe('plot tree AI boundary', () => {
       chapterNumber: index + 1,
       title: `Title ${index} ${'T'.repeat(500)}`,
       purpose: 'P'.repeat(1_000),
-      keyEvents: 'K'.repeat(1_000),
+      keyEvents: normalizeKeyEvents('K'.repeat(1_000)),
     }))
     oversized.finalizedChapters = Array.from({ length: chapterCount }, (_, index) => ({
       draftId: 41 + index,
@@ -571,7 +572,7 @@ describe('plot tree AI boundary', () => {
       chapterNumber: index + 1,
       title: `Chapter ${index + 1}`,
       purpose: 'Advance the plot.',
-      keyEvents: 'A sourced event occurs.',
+      keyEvents: normalizeKeyEvents('A sourced event occurs.'),
     }))
     const createRuntime = vi.fn()
 

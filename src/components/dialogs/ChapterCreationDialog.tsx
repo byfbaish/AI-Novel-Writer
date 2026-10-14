@@ -1,4 +1,5 @@
 import { CANONICAL_PROJECT_DIRECTORY } from '../../shared/project-format'
+import { keyEventsText, normalizeKeyEvents } from '../../shared/blueprint-key-events'
 import { useState, useEffect, useRef } from 'react'
 import { Sparkles, Play, AlertCircle } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
@@ -213,7 +214,8 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
         setTitle(String(prefill.title || ''))
         setRole(String(prefill.role ?? '发展'))
         setPurpose(String(prefill.purpose || ''))
-        setKeyEvents(String(prefill.keyEvents || ''))
+        // 预填可能来自蓝图（结构化事件数组）或自动续写（文本）；统一转成「一行一条」文本。
+        setKeyEvents(keyEventsText(normalizeKeyEvents(prefill.keyEvents)))
         setCharacters(String(prefill.characters || ''))
         setUserGuidance(String(prefill.userGuidance || ''))
         setWordsTarget(defaultWordsTarget)
@@ -331,7 +333,7 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
           title,
           role,
           purpose,
-          keyEvents,
+          keyEvents: normalizeKeyEvents(keyEvents, { chapterNumber: targetChapter }),
           characters: characters.split(/[、,，]/u).map(value => value.trim()).filter(Boolean),
           suspenseHook: '',
           userGuidance,
@@ -514,11 +516,11 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
               </div>
 
               <div>
-                <Label>{text('关键事件', 'Key events')}</Label>
+                <Label>{text('关键事件', 'Key events')} <span className="text-[0.7rem] opacity-50">{text('（每行一条）', '(one per line)')}</span></Label>
                 <Textarea
                   value={keyEvents}
                   onChange={(e) => setKeyEvents(e.target.value)}
-                  placeholder={text('本章需要发生的关键事件...', 'Events that must happen in this chapter...')}
+                  placeholder={text('本章需要发生的关键事件，每行一条...', 'Events that must happen in this chapter, one per line...')}
                   rows={2}
                 />
               </div>

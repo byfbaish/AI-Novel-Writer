@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { closeProjectDatabase, getProjectDb } from '../../database'
 import { openCanonicalProjectFixture as initProjectDatabase } from '../../../test/helpers/canonical-project-fixture'
 import { countDraftUnits } from '../../../src/shared/draft-units'
+import { normalizeKeyEvents } from '../../../src/shared/blueprint-key-events'
 import type { PlotTreeSnapshot } from '../../../src/shared/plot-tree'
 import { FinalizedDraftImportRepository } from '../finalized-draft-import-repository'
 import { NarrativeThreadRepository } from '../narrative-thread-repository'
@@ -173,7 +174,8 @@ describe('PlotTreeRepository', () => {
         chapterNumber: 1,
         title: 'The altered map',
         purpose: 'Start the investigation',
-        keyEvents: 'Mara finds a street missing from every official map.',
+        // 种子按**旧形态**（自由文本）写入 `key_events`；读取路径会归一化为结构化清单。
+        keyEvents: normalizeKeyEvents('Mara finds a street missing from every official map.', { chapterNumber: 1 }),
       }],
       finalizedChapters: [{
         draftId: ids.draftId,

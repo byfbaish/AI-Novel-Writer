@@ -180,7 +180,7 @@ describe('generation public IPC with actual project authority and SQLite', () =>
       writingLanguage: 'zh-CN', uiLocale, cancelled: false, data: {} }
     const callbacks: StepCallbacks = { log: vi.fn(), setProgress: vi.fn(), appendText: vi.fn() }
     const commands = [new ReviewChapterCommand(source), new RefineDraftCommand({ ...source,
-      chapterInfo: { projectPath: session.projectPath, chapterNumber: 1, title: '', role: '', purpose: '', keyEvents: '', characters: [] } })]
+      chapterInfo: { projectPath: session.projectPath, chapterNumber: 1, title: '', role: '', purpose: '', keyEvents: [], characters: [] } })]
     const messages = uiLocale === 'zh-CN'
       ? ['源草稿在 AI 审稿期间已变化。审稿报告未保存，请重新打开当前草稿后再次执行 AI 审稿。',
         '源草稿在 AI 修稿期间已变化。修订未保存，请重新打开当前草稿后再次执行 AI 修稿。']

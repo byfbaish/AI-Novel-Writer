@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../../shared/blueprint-key-events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 
@@ -164,7 +165,7 @@ function chapterInfo() {
     title: '第一章',
     role: '开端',
     purpose: '建立冲突',
-    keyEvents: '事件',
+    keyEvents: normalizeKeyEvents('事件'),
     characters: [],
   }
 }
@@ -969,14 +970,14 @@ describe('workflow mutation failure boundaries', () => {
   it.each([true, false, 'invalid-evidence'] as const)('同一次审稿冻结本章目标，漏项或无效证据不重试（返回到期目标：%s）', async (includeDueGoal) => {
     const blueprint = {
       chapterNumber: 1, title: '相册', role: '发展', purpose: '缓和关系',
-      keyEvents: '完成相册；约定周三搬设备', characters: [], suspenseHook: '', userGuidance: '', notes: '', notesUpdatedAt: '',
+      keyEvents: normalizeKeyEvents('完成相册；约定周三搬设备'), characters: [], suspenseHook: '', userGuidance: '', notes: '', notesUpdatedAt: '',
     }
     const draft = '她说，明天再装订相册。两人约定周三搬设备。'
     let saved: Record<string, unknown> = {}
     const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
       if (channel === 'db:continuity-list-before' || channel === 'db:character-get-all') return []
       if (channel === 'db:project-core-get') return {}
-      if (channel === 'db:blueprint-get-all') return [blueprint, { ...blueprint, chapterNumber: 2, keyEvents: '搬运设备' }]
+      if (channel === 'db:blueprint-get-all') return [blueprint, { ...blueprint, chapterNumber: 2, keyEvents: normalizeKeyEvents('搬运设备') }]
       if (channel === 'db:blueprint-get') return null
       if (channel === 'db:draft-get-meta') return { id: 1, chapterNumber: 1, version: 1, status: 'draft', source: 'write' }
       if (channel === 'db:review-create') {
@@ -990,7 +991,7 @@ describe('workflow mutation failure boundaries', () => {
     const generateStream = vi.fn(async (messages, streamCallbacks) => {
       prompt = messages.map((message: { content: string }) => message.content).join('\n')
       // A late editor change must not replace the checklist sent with this draft.
-      blueprint.keyEvents = '仅准备相册'
+      blueprint.keyEvents = normalizeKeyEvents('仅准备相册', { chapterNumber: 1 })
       streamCallbacks.onDone?.(JSON.stringify({
         summary: '全部通过',
         items: [{ category: '连续性', severity: 'pass', description: '未发现其他冲突。' }],
@@ -1388,7 +1389,7 @@ describe('workflow mutation failure boundaries', () => {
       goalReviews: [{ id: 'ch1:keyEvents:1', status: 'completed', description: '借书已归还。', evidence: [{ quote: '她将借书交还管理员。' }] }],
     })
     const originalDraft = '她将借书交还管理员。'
-    const blueprint = { chapterNumber: 1, keyEvents: '归还借书' }
+    const blueprint = { chapterNumber: 1, keyEvents: normalizeKeyEvents('归还借书') }
     let saved: Record<string, unknown> = {}
     const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
       if (channel === 'kb:search') return []
@@ -1413,7 +1414,7 @@ describe('workflow mutation failure boundaries', () => {
       streamCallbacks: Parameters<ReturnType<typeof useLLMStore.getState>['generateStream']>[1],
     ) => {
       const firstAttempt = generateStream.mock.calls.length === 1
-      if (firstAttempt) blueprint.keyEvents = '生成期间外部改写的目标'
+      if (firstAttempt) blueprint.keyEvents = normalizeKeyEvents('生成期间外部改写的目标', { chapterNumber: 1 })
       if (!firstAttempt) {
         rebuildPrompts.push(messages.map(message => message.content).join('\n'))
       }

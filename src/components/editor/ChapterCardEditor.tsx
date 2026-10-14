@@ -32,6 +32,7 @@ import { Textarea } from '../ui/Textarea'
 import { Label } from '../ui/Label'
 import { NativeSelect } from '../ui/NativeSelect'
 import { chapterRoleOptions, chapterRoleSelectValue, getChapterRoleLabels } from '../../shared/chapter-role'
+import { keyEventsText, normalizeKeyEvents } from '../../shared/blueprint-key-events'
 import { cn } from '../../lib/utils'
 import { toast } from '../ui/Toast'
 import { confirm } from '../ui/Confirm'
@@ -617,7 +618,7 @@ function ChapterCardEditorSession({
       title: '',
       role: '发展',
       purpose: '',
-      keyEvents: '',
+      keyEvents: [],
       characters: [],
       suspenseHook: '',
       userGuidance: '',
@@ -1152,11 +1153,11 @@ function ChapterCardEditorSession({
                 </div>
 
                 <div>
-                  <Label>{text('实质冲突与转折', 'Core conflict and turning point')}</Label>
+                  <Label>{text('实质冲突与转折', 'Core conflict and turning point')} <span className="text-[0.7rem] opacity-50">{text('（每行一条事件）', '(one event per line)')}</span></Label>
                   <Textarea
-                    value={selected.keyEvents}
-                    onChange={e => updateField('keyEvents', e.target.value)}
-                    placeholder={text('主角做了什么，遭遇了什么反转，金手指怎么用的...', 'What the protagonist does, the reversal they encounter, and how special abilities are used...')}
+                    value={keyEventsText(selected.keyEvents)}
+                    onChange={e => updateField('keyEvents', normalizeKeyEvents(e.target.value, { chapterNumber: selected.chapterNumber }))}
+                    placeholder={text('主角做了什么，遭遇了什么反转，金手指怎么用的...（每行一条）', 'What the protagonist does, the reversal they encounter, and how special abilities are used... (one event per line)')}
                     rows={4}
                   />
                 </div>

@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../../shared/blueprint-key-events'
 import { createMainGenerationOwner } from '../../../../../electron/services/main-generation-owner'
 import { ModelExecutionLeaseRegistry } from '../../../../../electron/services/model-execution-lease'
 import { readMainGenerationPolicy } from '../../../../../electron/services/main-generation-plan'
@@ -550,7 +551,7 @@ describe('RunFinalizePostProcessCommand character-state persistence', () => {
       title: 'After the Handoff',
       role: 'development',
       purpose: 'continue after the handoff',
-      keyEvents: 'Zhou Yan leaves with the key',
+      keyEvents: normalizeKeyEvents('Zhou Yan leaves with the key'),
       characters: ['Lin Lan'],
       userGuidance: '',
       wordsTarget: 100,
@@ -631,7 +632,7 @@ describe('RunFinalizePostProcessCommand character-state persistence', () => {
       title: 'Before Dawn',
       role: 'development',
       purpose: 'continue the tide investigation',
-      keyEvents: 'Lin Lan reads the ledger two chapters after the handoff',
+      keyEvents: normalizeKeyEvents('Lin Lan reads the ledger two chapters after the handoff'),
       characters: ['Lin Lan'],
       userGuidance: '',
       wordsTarget: 100,

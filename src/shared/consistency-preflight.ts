@@ -1,4 +1,5 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
+import type { BlueprintKeyEvent } from './blueprint-key-events'
 
 export interface ConsistencyExemption {
   stableFactKey: string
@@ -26,7 +27,7 @@ export interface BlueprintForPreflight {
   title: string
   role: string
   purpose: string
-  keyEvents: string
+  keyEvents: BlueprintKeyEvent[]
   characters: string[]
   suspenseHook: string
   userGuidance: string

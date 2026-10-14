@@ -1,3 +1,5 @@
+import type { BlueprintKeyEvent } from './blueprint-key-events'
+
 export type NarrativeThreadStatus = 'planned' | 'planted' | 'progressing' | 'resolved' | 'abandoned'
 export type NarrativeThreadEventType = Exclude<NarrativeThreadStatus, 'planned'>
 
@@ -57,6 +59,6 @@ export interface NarrativeThreadPlanRecord extends NarrativeThreadPlanInput {
 export interface NarrativeThreadChapterContext {
   chapterNumber: number
   title: string
-  keyEvents: string
+  keyEvents: BlueprintKeyEvent[]
   characters: string[]
 }

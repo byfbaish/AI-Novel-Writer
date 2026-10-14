@@ -31,7 +31,16 @@ export interface DomainProposalPreview {
 }
 
 function displayValue(value: unknown, locale: string): string {
-  if (Array.isArray(value)) return value.join(locale === 'zh-CN' ? '、' : ', ')
+  if (Array.isArray(value)) {
+    // `characters` 是字符串数组，`keyEvents` 是 `{ id, event, estimatedUnits }` 对象数组；
+    // 后者直接 join 会渲染成 `[object Object]`，故取 `event` 正文。
+    return value
+      .map(item => (item && typeof item === 'object' && 'event' in item
+        ? String((item as { event?: unknown }).event ?? '')
+        : String(item)))
+      .filter(text => text.trim().length > 0)
+      .join(locale === 'zh-CN' ? '、' : ', ')
+  }
   if (value === undefined || value === null || value === '') return '—'
   return String(value)
 }

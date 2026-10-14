@@ -8,6 +8,7 @@ import type {
 } from '../../src/shared/recovery-candidate'
 import { getCurrentProjectPath, getProjectDb } from '../database'
 import { readPortableRuntimeFreeze } from '../services/portable-runtime-freeze'
+import { normalizeKeyEvents } from '../../src/shared/blueprint-key-events'
 import { BlueprintRepository } from './blueprint-repository'
 import { DraftRepository } from './draft-repository'
 
@@ -43,21 +44,58 @@ function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex')
 }
 
-function sourceSnapshot(source: RecoveryChapterSource): RecoveryChapterSource {
+/** 参与 `source_hash` 的字段与顺序 —— 改这里等于改哈希，必须同步。 */
+function comparedSnapshot(source: RecoveryChapterSource, keyEvents: unknown): Record<string, unknown> {
   return {
     chapterNumber: source.chapterNumber,
     title: source.title,
     role: source.role,
     purpose: source.purpose,
-    keyEvents: source.keyEvents,
+    keyEvents,
     characters: [...source.characters],
     suspenseHook: source.suspenseHook ?? '',
     userGuidance: source.userGuidance ?? '',
   }
 }
 
+function sourceSnapshot(source: RecoveryChapterSource): RecoveryChapterSource {
+  return comparedSnapshot(
+    source,
+    normalizeKeyEvents(source.keyEvents, { chapterNumber: source.chapterNumber }),
+  ) as unknown as RecoveryChapterSource
+}
+
 function serializedSource(source: RecoveryChapterSource): string {
   return JSON.stringify(sourceSnapshot(source))
+}
+
+function currentSource(row: RecoveryCandidateRow): RecoveryChapterSource | null {
+  const current = BlueprintRepository.getByChapter(row.chapter_number)
+  if (!current) return null
+  return {
+    chapterNumber: current.chapterNumber,
+    title: current.title,
+    role: current.role,
+    purpose: current.purpose,
+    keyEvents: current.keyEvents,
+    characters: current.characters,
+    suspenseHook: current.suspenseHook,
+    userGuidance: current.userGuidance,
+  }
+}
+
+/**
+ * 兼容旧候选：`keyEvents` 由字符串改为结构化数组之前，`source_hash` 是按**自由文本**算的。
+ * 这里补一次旧形态比对 —— 只有当该蓝图自升级以来从未被重写（`key_events` 列仍是纯文本）
+ * 时才可能命中；命中即视为仍新鲜，避免升级后老候选被一律判成 stale。
+ * **只读、不回写**（守"绝不自动执行副作用"）。
+ */
+function legacySourceHashMatches(row: RecoveryCandidateRow, source: RecoveryChapterSource): boolean {
+  const persisted = requireDb()
+    .prepare('SELECT key_events FROM blueprints WHERE chapter_number = ?')
+    .get(row.chapter_number) as { key_events: string } | undefined
+  if (!persisted) return false
+  return sha256(JSON.stringify(comparedSnapshot(source, persisted.key_events))) === row.source_hash
 }
 
 function visibleOnly(text: string): string {
@@ -80,18 +118,10 @@ function assertText(value: string, label: string, max: number): string {
 
 function sourceIsCurrent(row: RecoveryCandidateRow): boolean {
   if (row.source_draft_identity_captured !== 1) return false
-  const current = BlueprintRepository.getByChapter(row.chapter_number)
+  const current = currentSource(row)
   if (!current) return false
-  const blueprintCurrent = sha256(serializedSource({
-    chapterNumber: current.chapterNumber,
-    title: current.title,
-    role: current.role,
-    purpose: current.purpose,
-    keyEvents: current.keyEvents,
-    characters: current.characters,
-    suspenseHook: current.suspenseHook,
-    userGuidance: current.userGuidance,
-  })) === row.source_hash
+  const blueprintCurrent = sha256(serializedSource(current)) === row.source_hash
+    || legacySourceHashMatches(row, current)
   if (!blueprintCurrent) return false
 
   const currentDraft = DraftRepository.getLatestByChapter(row.chapter_number)

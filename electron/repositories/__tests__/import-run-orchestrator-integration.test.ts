@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../src/shared/blueprint-key-events'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -42,7 +43,7 @@ function blueprint(number: number): BlueprintData {
     title: `Generated ${number}`,
     role: 'setup',
     purpose: `Advance chapter ${number}`,
-    keyEvents: `Event ${number}`,
+    keyEvents: normalizeKeyEvents(`Event ${number}`),
     characters: [],
     suspenseHook: `Hook ${number}`,
     userGuidance: '',

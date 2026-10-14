@@ -13,6 +13,7 @@ import { findCharacterProposalEvidence } from '../services/character-proposal-se
 import { proveCharacterProposal } from '../services/generation-character-proposal-proof'
 import { GenerationRunRepository } from './generation-run-repository'
 import { blueprintCharacterSyncFactError } from '../../src/shared/blueprint-character-sync-evidence'
+import { normalizeKeyEvents, type BlueprintKeyEvent } from '../../src/shared/blueprint-key-events'
 import type { BlueprintNewCharacterCandidate } from '../../src/shared/blueprint-semantic-contract'
 
 /** 蓝图行类型（DB 蛇形命名） */
@@ -37,7 +38,12 @@ export interface BlueprintData {
     title: string
     role: string
     purpose: string
-    keyEvents: string
+    /**
+     * 结构化事件清单。库中 `key_events` 是 `TEXT`，存 `JSON.stringify` 后的数组
+     * （与同表 `characters` 同一惯用法）；读写两侧都过 `normalizeKeyEvents`，
+     * 因此旧库的自由文本会被按原规则切成多条，且**永不出现两种格式混存**。
+     */
+    keyEvents: BlueprintKeyEvent[]
     characters: string[]
     /** Important recurring characters first introduced by this blueprint. */
     newCharacterCandidates?: BlueprintNewCharacterCandidate[]
@@ -152,7 +158,7 @@ function rowToData(row: BlueprintRow): BlueprintData {
         title: row.title,
         role: row.role,
         purpose: row.purpose,
-        keyEvents: row.key_events,
+        keyEvents: normalizeKeyEvents(row.key_events, { chapterNumber: row.chapter_number }),
         characters: chars,
         suspenseHook: row.suspense_hook,
         userGuidance: row.user_guidance,
@@ -461,12 +467,23 @@ function samePersistedBlueprint(left: BlueprintData, right: BlueprintData): bool
         && left.title === right.title
         && left.role === right.role
         && left.purpose === right.purpose
-        && left.keyEvents === right.keyEvents
+        && JSON.stringify(left.keyEvents) === JSON.stringify(right.keyEvents)
         && JSON.stringify(left.characters) === JSON.stringify(right.characters)
         && left.suspenseHook === right.suspenseHook
         && left.userGuidance === right.userGuidance
         && left.notes === right.notes
         && left.notesUpdatedAt === right.notesUpdatedAt
+}
+
+/**
+ * 唯一的写入归一化点：任何来源（模型 / 编辑器 Textarea / agent 提案 / 导入）都先过
+ * `normalizeKeyEvents` 再落库，因此 `key_events` 列里永远只有 JSON 数组一种形态。
+ */
+function normalizeBlueprintKeyEvents(blueprint: BlueprintData): BlueprintData {
+    return {
+        ...blueprint,
+        keyEvents: normalizeKeyEvents(blueprint.keyEvents, { chapterNumber: blueprint.chapterNumber }),
+    }
 }
 
 export class BlueprintRepository {
@@ -505,6 +522,7 @@ export class BlueprintRepository {
     /** 插入或更新蓝图 */
     static upsert(data: BlueprintData, db = requireProjectDb()): void {
 
+        const blueprint = normalizeBlueprintKeyEvents(data)
         db.prepare(`
       INSERT INTO blueprints (
         chapter_number, title, role, purpose, key_events, characters,
@@ -522,16 +540,16 @@ export class BlueprintRepository {
         notes_updated_at = excluded.notes_updated_at,
         updated_at = datetime('now')
     `).run(
-            data.chapterNumber,
-            data.title,
-            data.role,
-            data.purpose,
-            data.keyEvents,
-            JSON.stringify(data.characters),
-            data.suspenseHook,
-            data.userGuidance,
-            data.notes,
-            data.notesUpdatedAt,
+            blueprint.chapterNumber,
+            blueprint.title,
+            blueprint.role,
+            blueprint.purpose,
+            JSON.stringify(blueprint.keyEvents),
+            JSON.stringify(blueprint.characters),
+            blueprint.suspenseHook,
+            blueprint.userGuidance,
+            blueprint.notes,
+            blueprint.notesUpdatedAt,
         )
     }
 
@@ -587,9 +605,15 @@ export class BlueprintRepository {
 
     /** 完整逻辑范围只提交一次，并在同一事务内回读验证后返回收据。 */
     static commitRange(request: BlueprintRangeCommitRequest, assertGenerationSources?: () => void, db = requireProjectDb()): BlueprintRangeCommitReceipt {
-        assertExactRange(request)
+        // 提交前统一归一化：payload 哈希、落库、回读比对、冻结的 character_sync_input
+        // 全部基于同一形态，否则旧调用方传入的字符串 keyEvents 会与回读的数组不等。
+        const normalizedRequest: BlueprintRangeCommitRequest = {
+            ...request,
+            blueprints: request.blueprints.map(normalizeBlueprintKeyEvents),
+        }
+        assertExactRange(normalizedRequest)
         ensureBlueprintCommitSchema(db)
-        const payloadHash = commitPayloadHash(request)
+        const payloadHash = commitPayloadHash(normalizedRequest)
         const tx = db.transaction(() => {
             const existingOperation = db.prepare(`
               SELECT operation_id, payload_hash, mode, start_chapter, end_chapter, character_sync_input
@@ -631,19 +655,19 @@ export class BlueprintRepository {
             // An acknowledged operation is read-only on replay. New effects must
             // revalidate frozen sources inside this same write transaction.
             assertGenerationSources?.()
-            if (request.mode === 'full') {
+            if (normalizedRequest.mode === 'full') {
                 db.prepare(
                     'DELETE FROM blueprints WHERE chapter_number < ? OR chapter_number > ?',
-                ).run(request.startChapter, request.endChapter)
+                ).run(normalizedRequest.startChapter, normalizedRequest.endChapter)
             }
-            for (const blueprint of request.blueprints) {
+            for (const blueprint of normalizedRequest.blueprints) {
                 BlueprintRepository.upsert(blueprint, db)
             }
 
-            const persisted = readExactRange(db, request)
+            const persisted = readExactRange(db, normalizedRequest)
 
             const expectedByChapter = new Map(
-                request.blueprints.map(blueprint => [blueprint.chapterNumber, blueprint] as const),
+                normalizedRequest.blueprints.map(blueprint => [blueprint.chapterNumber, blueprint] as const),
             )
             for (const saved of persisted) {
                 const expected = expectedByChapter.get(saved.chapterNumber)
@@ -652,20 +676,20 @@ export class BlueprintRepository {
                 }
             }
 
-            const characterSyncInput = request.blueprints.map(blueprint => ({ ...blueprint }))
+            const characterSyncInput = normalizedRequest.blueprints.map(blueprint => ({ ...blueprint }))
             db.prepare(`
               INSERT INTO blueprint_commit_operations (
                 operation_id, payload_hash, mode, start_chapter, end_chapter, character_sync_input
               ) VALUES (?, ?, ?, ?, ?, ?)
             `).run(
-                request.operationId,
+                normalizedRequest.operationId,
                 payloadHash,
-                request.mode,
-                request.startChapter,
-                request.endChapter,
+                normalizedRequest.mode,
+                normalizedRequest.startChapter,
+                normalizedRequest.endChapter,
                 JSON.stringify(characterSyncInput),
             )
-            const syncOperationId = characterSyncOperationId(request.operationId)
+            const syncOperationId = characterSyncOperationId(normalizedRequest.operationId)
             db.prepare(`
               INSERT INTO blueprint_character_sync_operations (
                 operation_id,
@@ -677,10 +701,10 @@ export class BlueprintRepository {
               ) VALUES (?, ?, ?, ?, ?, ?)
             `).run(
                 syncOperationId,
-                request.operationId,
+                normalizedRequest.operationId,
                 payloadHash,
-                request.startChapter,
-                request.endChapter,
+                normalizedRequest.startChapter,
+                normalizedRequest.endChapter,
                 JSON.stringify(characterSyncInput),
             )
             const snapshot = snapshotWithCharacterSyncFacts(persisted, characterSyncInput)
@@ -688,12 +712,12 @@ export class BlueprintRepository {
             if (!characterSyncOperation) throw new Error('蓝图提交未创建可恢复的角色同步操作')
 
             return {
-                mode: request.mode,
-                operationId: request.operationId,
+                mode: normalizedRequest.mode,
+                operationId: normalizedRequest.operationId,
                 payloadHash,
                 idempotent: false,
-                startChapter: request.startChapter,
-                endChapter: request.endChapter,
+                startChapter: normalizedRequest.startChapter,
+                endChapter: normalizedRequest.endChapter,
                 chapterNumbers: snapshot.map(blueprint => blueprint.chapterNumber),
                 snapshot,
                 characterSyncInput,

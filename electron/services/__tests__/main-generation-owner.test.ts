@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../src/shared/blueprint-key-events'
 import { planBlueprintGenerationCost } from '../../../src/services/workflows/blueprint-batch-policy'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -426,7 +427,7 @@ describe('chapter outline main authority', () => {
 
 describe('explicit planning recovery with real SQLite', () => {
   const blueprint = (chapterNumber: number, keyEvents = '作者补齐了完整行动、冲突与结果。') => ({ chapterNumber, title: `完整第${chapterNumber}章`, role: '转折',
-    purpose: '确认线索', keyEvents, characters: ['林岚'], relationshipHints: [], newCharacterCandidates: [], suspenseHook: '下一步核验证据。', userGuidance: '', notes: '', notesUpdatedAt: '' })
+    purpose: '确认线索', keyEvents: normalizeKeyEvents(keyEvents, { chapterNumber }), characters: ['林岚'], relationshipHints: [], newCharacterCandidates: [], suspenseHook: '下一步核验证据。', userGuidance: '', notes: '', notesUpdatedAt: '' })
   const directorySelection = (f: ReturnType<typeof fixture>, from = 1, to = 3): BeginGenerationRequest => ({
     operation: 'chapter-blueprint-directory', uiActionNonce: 'blueprint-action', modelId: f.model.id,
     selectedDraftIds: [], selectedFinalizedDraftIds: [], selectedBlueprintChapterNumbers: [1, 2, 3],
@@ -519,7 +520,7 @@ describe('explicit planning recovery with real SQLite', () => {
     const before = f.db.prepare('SELECT * FROM generation_attempts').all(), outside = BlueprintRepository.getAll().find(item => item.chapterNumber === 8)
     const characters = Array.from({ length: 13 }, (_, index) => `角色${index}`)
     const repaired = { ...blueprint(1), title: '标题'.repeat(100), role: '角色作用'.repeat(100), purpose: '章节目的'.repeat(200),
-      keyEvents: '完整叙述。'.repeat(280) + '尾部必须保留。', suspenseHook: '悬念'.repeat(200), characters,
+      keyEvents: normalizeKeyEvents('完整叙述。'.repeat(280) + '尾部必须保留。', { chapterNumber: 1 }), suspenseHook: '悬念'.repeat(200), characters,
       relationshipHints: characters.slice(1, 10).map(to => ({ from: characters[0], to, relation: '同行' })),
       newCharacterCandidates: characters.map(name => ({ name, role: 'supporting' as const })),
       userGuidance: '  作者指导保留原字节。\r\n', notes: '<think>作者备注中的原文标签</think>\n第二行。', notesUpdatedAt: '2026-10-04T13:00:00.000Z' }
@@ -563,7 +564,9 @@ describe('explicit planning recovery with real SQLite', () => {
     const savedPrefix = { ...prefix, authorRecovery }
     if (prefixKind === 'author-saved') f.db.transaction(() => f.owner.commitBlueprintAuthorEdit(savedPrefix)).immediate()
     expect(f.owner.readContext(run.handle).planningContinuation).toMatchObject({ state: 'ready', remainingRange: { from: 2, to: 3 } })
-    expect(BlueprintRepository.getAll().find(item => item.chapterNumber === 1)?.keyEvents).toBe(blueprint(1).keyEvents)
+    // 阶段 1：`keyEvents` 是结构化数组，每次归一化都新建对象 ⇒ 断言值相等用 `toEqual`
+    // （`toBe` 是引用相等，字符串时代成立、数组时代必然失败）。
+    expect(BlueprintRepository.getAll().find(item => item.chapterNumber === 1)?.keyEvents).toEqual(blueprint(1).keyEvents)
     const request = prefixKind === 'author-saved' ? savedPrefix : { ...prefix, authorRecovery, operationId: 'repair-next',
       startChapter: 2, endChapter: 2, blueprints: [blueprint(2)] }
     const save = () => f.db.transaction(() => f.owner.commitBlueprintAuthorEdit(request)).immediate()
@@ -1059,7 +1062,7 @@ describe('durable directory commit and remaining stage', () => {
     const request = (operationId: string, startChapter: number, endChapter: number): BlueprintRangeCommitRequest => ({
       operationId, mode: 'replace-range', startChapter, endChapter,
       blueprints: Array.from({ length: endChapter - startChapter + 1 }, (_, index) => ({ chapterNumber: startChapter + index,
-        title: '已生成章节', role: '推进', purpose: '寻找线索', keyEvents: '角色发现关键线索', characters: [], suspenseHook: '', userGuidance: '', notes: '', notesUpdatedAt: '' })),
+        title: '已生成章节', role: '推进', purpose: '寻找线索', keyEvents: normalizeKeyEvents('角色发现关键线索', { chapterNumber: startChapter + index }), characters: [], suspenseHook: '', userGuidance: '', notes: '', notesUpdatedAt: '' })),
     })
     const commit = (owner: typeof f.owner, handle: typeof run.handle, input: BlueprintRangeCommitRequest, requestedRange: { startChapter: number; endChapter: number }) => f.db.transaction(() => {
       const receipt = BlueprintRepository.commitRange(input, () => owner.assertSourcesCurrent(handle, requestedRange))

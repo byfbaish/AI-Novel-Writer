@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../shared/blueprint-key-events'
 import { describe, expect, it } from 'vitest'
 
 import { getAutoNextChapterPrefill } from '../auto-next-chapter'
@@ -7,7 +8,7 @@ const blueprint = {
   title: '雨夜来信',
   role: '发展',
   purpose: '推进调查',
-  keyEvents: '收到密信',
+  keyEvents: normalizeKeyEvents('收到密信', { chapterNumber: 2 }),
   characters: ['林舟', '苏雨'],
   userGuidance: '保留悬念',
 }

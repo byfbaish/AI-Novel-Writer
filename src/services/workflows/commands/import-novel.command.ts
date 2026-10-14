@@ -1,4 +1,5 @@
 import type { NovelConfig } from '../../../shared/ipc-channels'
+import { keyEventsText } from '../../../shared/blueprint-key-events'
 import type { ImportGenerationContext, ImportGenerationSlot } from '../../../shared/import-generation'
 import type { BeginGenerationRequest } from '../../../shared/generation-owner-contract'
 import type { WorkflowContext } from '../../../stores/workflow-store'
@@ -669,8 +670,8 @@ export class InferBlueprintsPerChapterCommand extends BaseWorkflowCommand<void> 
         const prior = validatedPrefix.slice(-10)
           .map(item => promptLanguageText(
             writingLanguage,
-            `第${item.chapterNumber}章 ${item.title}：${item.keyEvents}`,
-            `Chapter ${item.chapterNumber}: ${item.title} — ${item.keyEvents}`,
+            `第${item.chapterNumber}章 ${item.title}：${keyEventsText(item.keyEvents)}`,
+            `Chapter ${item.chapterNumber}: ${item.title} — ${keyEventsText(item.keyEvents)}`,
           ))
           .join('\n') || promptLanguageText(writingLanguage, '（无）', '(none)')
         const prompt = new ImportPromptBuilder(template, writingLanguage)

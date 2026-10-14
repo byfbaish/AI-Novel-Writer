@@ -1,5 +1,6 @@
 import { StructuredContractDiagnostic } from './structured-contract-diagnostic'
 import { CHARACTER_ROLES, type CharacterRole } from './character-role'
+import { normalizeKeyEvents, type BlueprintKeyEvent } from './blueprint-key-events'
 import type { WritingLanguage } from './writing-language'
 
 export interface BlueprintRelationshipFact {
@@ -70,7 +71,8 @@ export interface BlueprintSemanticItem {
   title: string
   role: string
   purpose: string
-  keyEvents: string
+  /** 结构化事件清单（归一化入口见 `blueprint-key-events.ts`）。 */
+  keyEvents: BlueprintKeyEvent[]
   characters: string[]
   newCharacterCandidates: BlueprintNewCharacterCandidate[]
   relationshipHints: BlueprintRelationshipFact[]
@@ -104,6 +106,21 @@ function requiredText(value: unknown, path: string): string {
   if (typeof value !== 'string') throw new StructuredContractDiagnostic('invalid_type', path)
   if (!value.trim()) throw new StructuredContractDiagnostic('empty_value', path)
   return value.trim()
+}
+
+/**
+ * `keyEvents` 的双形态入口（阶段 1）。
+ *
+ * 模型产出仍是字符串，但**已解码的领域对象**（`keyEvents: BlueprintKeyEvent[]`）会被
+ * `structured-batch-executor.ts` 的 `validateItem` 再校验一次；若只接受字符串，
+ * 二次校验必然抛 `invalid_type`，整条蓝图生成链路失败。两种形态都在这里放行，
+ * 具体切分/归一化交给 `normalizeKeyEvents`。
+ *
+ * 空字符串仍按原规则报 `empty_value`（保持既有诊断口径）。
+ */
+function requiredKeyEvents(value: unknown, path: string): unknown {
+  if (Array.isArray(value)) return value
+  return requiredText(value, path)
 }
 
 function normalizedChapterNumber(value: Record<string, unknown>, path: string): number {
@@ -214,9 +231,10 @@ export function normalizeBlueprintSemanticItem(value: unknown, path = 'blueprint
     title: requiredText(value.title, `${path}.title`),
     role: requiredText(value.role, `${path}.role`),
     purpose: requiredText(value.purpose, `${path}.purpose`),
-    keyEvents: requiredText(
-      fieldValue(value, 'keyEvents', ['key_events']),
-      `${path}.keyEvents`,
+    // 阶段 1：模型产出字符串，已解码产出是数组 —— 两者都接受（见 requiredKeyEvents）。
+    keyEvents: normalizeKeyEvents(
+      requiredKeyEvents(fieldValue(value, 'keyEvents', ['key_events']), `${path}.keyEvents`),
+      { chapterNumber },
     ),
     characters,
     newCharacterCandidates,

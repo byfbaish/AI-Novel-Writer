@@ -1,9 +1,11 @@
+import { keyEventsText, type BlueprintKeyEvent } from '../shared/blueprint-key-events'
+
 export interface NextChapterBlueprint {
   chapterNumber: number
   title: string
   role: string
   purpose: string
-  keyEvents: string
+  keyEvents: BlueprintKeyEvent[]
   characters: string[]
   userGuidance: string
 }
@@ -27,7 +29,7 @@ export function getAutoNextChapterPrefill(
     title: blueprint.title,
     role: blueprint.role,
     purpose: blueprint.purpose,
-    keyEvents: blueprint.keyEvents,
+    keyEvents: keyEventsText(blueprint.keyEvents),
     characters: blueprint.characters.join('、'),
     userGuidance: blueprint.userGuidance || '',
   }

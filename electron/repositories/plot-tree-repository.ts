@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import { getProjectDb } from '../database'
 import { NarrativeThreadRepository } from './narrative-thread-repository'
+import { normalizeKeyEvents } from '../../src/shared/blueprint-key-events'
 import {
   assertPlotTreeSnapshot,
   assertStoredPlotTreeSnapshot,
@@ -91,7 +92,7 @@ export class PlotTreeRepository {
       chapterNumber: row.chapter_number,
       title: row.title,
       purpose: row.purpose,
-      keyEvents: row.key_events,
+      keyEvents: normalizeKeyEvents(row.key_events, { chapterNumber: row.chapter_number }),
     }))
     const finalizedChapters = finalizedRows.map(row => ({
       draftId: row.draft_id,

@@ -1,4 +1,5 @@
 import type { CharacterData } from '../../../../electron/repositories/character-repository'
+import { keyEventsText } from '../../../shared/blueprint-key-events'
 import type { BlueprintCharacterSyncOperation, BlueprintData } from '../../../../electron/repositories/blueprint-repository'
 import type { CharacterProposalBatch, CharacterStaticFields } from '../../../shared/character-proposal'
 import type { CharacterRole } from '../../../shared/character-role'
@@ -135,7 +136,7 @@ export class SynthesizeCharacterBackgroundCommand extends BaseWorkflowCommand<st
     const mentions = blueprints
       .filter(blueprint => blueprint.characters.includes(name)
         || blueprint.newCharacterCandidates?.some(candidate => candidate.name === name))
-      .map(blueprint => `【第 ${blueprint.chapterNumber} 章 · ${blueprint.title}】\n${blueprint.purpose}\n${blueprint.keyEvents}`)
+      .map(blueprint => `【第 ${blueprint.chapterNumber} 章 · ${blueprint.title}】\n${blueprint.purpose}\n${keyEventsText(blueprint.keyEvents)}`)
       .join('\n\n')
       || promptLanguageText(writingLanguage, '（蓝图未提到该角色）', '(No blueprint mentions this character)')
     const roster = cards

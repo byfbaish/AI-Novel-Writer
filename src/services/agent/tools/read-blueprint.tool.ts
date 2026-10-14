@@ -2,6 +2,7 @@
  * read_blueprint — 读取章节蓝图
  */
 import { buildAgentTool } from '../tool-registry'
+import { keyEventsText } from '../../../shared/blueprint-key-events'
 import { ipc } from '../../ipc-client'
 import { agentToolText, assertAgentProjectCurrent, requireAgentProject } from './project-context'
 
@@ -36,8 +37,8 @@ export const readBlueprintTool = buildAgentTool({
         return { success: false, content: '', error: text(`第 ${chapterNum} 章蓝图不存在或读取失败`, `The blueprint for Chapter ${chapterNum} does not exist or could not be read`) }
       }
       return { success: true, content: text(
-        `📋 第 ${chapterNum} 章蓝图\n\n标题: ${bp.title}\n作用: ${bp.role}\n目的: ${bp.purpose}\n关键事件: ${bp.keyEvents}\n角色: ${bp.characters.join(', ')}\n悬念: ${bp.suspenseHook}\n备注: ${bp.notes}\n用户指引: ${bp.userGuidance}`,
-        `📋 Chapter ${chapterNum} blueprint\n\nTitle: ${bp.title}\nRole: ${bp.role}\nPurpose: ${bp.purpose}\nKey events: ${bp.keyEvents}\nCharacters: ${bp.characters.join(', ')}\nSuspense hook: ${bp.suspenseHook}\nNotes: ${bp.notes}\nUser guidance: ${bp.userGuidance}`,
+        `📋 第 ${chapterNum} 章蓝图\n\n标题: ${bp.title}\n作用: ${bp.role}\n目的: ${bp.purpose}\n关键事件: ${keyEventsText(bp.keyEvents)}\n角色: ${bp.characters.join(', ')}\n悬念: ${bp.suspenseHook}\n备注: ${bp.notes}\n用户指引: ${bp.userGuidance}`,
+        `📋 Chapter ${chapterNum} blueprint\n\nTitle: ${bp.title}\nRole: ${bp.role}\nPurpose: ${bp.purpose}\nKey events: ${keyEventsText(bp.keyEvents)}\nCharacters: ${bp.characters.join(', ')}\nSuspense hook: ${bp.suspenseHook}\nNotes: ${bp.notes}\nUser guidance: ${bp.userGuidance}`,
       ) }
     }
 

@@ -1,4 +1,5 @@
 import type { NarrativeThreadEventType, NarrativeThreadStatus } from './narrative-thread'
+import { keyEventsText, type BlueprintKeyEvent } from './blueprint-key-events'
 import { WRITING_LANGUAGES, type WritingLanguage } from './writing-language'
 
 export type PlotTreeTrackRole = 'main' | 'subplot'
@@ -68,7 +69,7 @@ export interface PlotTreeSourceBundle {
     chapterNumber: number
     title: string
     purpose: string
-    keyEvents: string
+    keyEvents: BlueprintKeyEvent[]
   }>
   finalizedChapters: Array<{
     draftId: number
@@ -130,7 +131,8 @@ function plotTreeSourceChapterBounds(
   const ranges: Array<readonly [number, number]> = []
   for (const blueprint of Array.isArray(sources.blueprints) ? sources.blueprints : []) {
     if (validChapterNumber(blueprint?.chapterNumber)
-      && [blueprint.title, blueprint.purpose, blueprint.keyEvents].some(nonEmptyString)) {
+      && (nonEmptyString(blueprint.title) || nonEmptyString(blueprint.purpose)
+        || Boolean(keyEventsText(blueprint.keyEvents).trim()))) {
       ranges.push([blueprint.chapterNumber, blueprint.chapterNumber])
     }
   }

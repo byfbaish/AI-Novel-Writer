@@ -1,4 +1,5 @@
 import { reviewRevisionAiBrief, reviewRevisionAuthorMaterial, type ReviewRevisionContext } from '../../../shared/review-revision-generation'
+import { keyEventsText } from '../../../shared/blueprint-key-events'
 import { hashAuthorText } from '../../../shared/source-ref'
 import { promptLanguageText } from '../../prompt-language'
 import { selectReviewRevisionMaterials, unknownReviewMaterialIdentity, type ChapterMaterialIdentity, type ReviewRevisionMaterial } from '../chapter-materials'
@@ -33,5 +34,5 @@ export async function selectFrozenReviewRevisionMaterials(frozen: ReviewRevision
   return selectReviewRevisionMaterials({ current, writingLanguage: frozen.writingLanguage, materials,
     // Optional history keeps its local allowance; main admits the complete request including all required material.
     budgetChars: 8_000,
-    relevanceTerms: [blueprint?.title ?? '', blueprint?.keyEvents ?? '', ...(blueprint?.characters ?? [])] })
+    relevanceTerms: [blueprint?.title ?? '', keyEventsText(blueprint?.keyEvents), ...(blueprint?.characters ?? [])] })
 }

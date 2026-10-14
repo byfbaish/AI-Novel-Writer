@@ -2,12 +2,15 @@ import type Database from 'better-sqlite3'
 import { ProjectCoreRepository, type ProjectCoreData } from '../repositories/project-core-repository'
 import { BlueprintRepository, type BlueprintData } from '../repositories/blueprint-repository'
 import { textHash } from '../repositories/generation-run-repository'
+import { normalizeKeyEvents } from '../../src/shared/blueprint-key-events'
 import type { AgentDomainToolReceipt } from '../../src/shared/agent-generation'
 
 const configStrings = new Set(['genre', 'subGenre', 'targetAudience', 'coreOutline', 'worldSetting', 'goldenFinger', 'protagonistProfile', 'globalGuidance', 'writingStyle', 'referenceWorks'])
 const configEnums: Record<string, readonly string[]> = { plotStructure: ['three_act', 'heros_journey', 'save_the_cat', 'kishotenketsu', 'multi_thread', 'freeform'],
   narrativePOV: ['third_limited', 'first_person', 'third_omniscient', 'multi_pov'], writingLanguage: ['zh-CN', 'en-US'] }
-const blueprintStrings = new Set(['title', 'role', 'purpose', 'keyEvents', 'suspenseHook', 'userGuidance', 'notes'])
+// `keyEvents` 自阶段 1 起是结构化事件数组（不是字符串），因此**必须**自本集合移出，
+// 否则 renderer 归一化后的数组会被当成非法值拒收。
+const blueprintStrings = new Set(['title', 'role', 'purpose', 'suspenseHook', 'userGuidance', 'notes'])
 const fail = (): never => { throw new Error('GENERATION_AGENT_DOMAIN_TOOL_INVALID') }
 export function isAgentDomainToolCurrent(db: Database.Database, receipt: AgentDomainToolReceipt): boolean {
   const current = receipt.kind === 'config' ? ProjectCoreRepository.get(db)
@@ -22,6 +25,9 @@ export function commitAgentDomainTool(db: Database.Database, toolCallId: string,
   if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate) || !Object.keys(candidate).length) fail()
   const changes: Record<string, unknown> = {}
   const config = name === 'propose_novel_config'
+  const keyEventsChapterNumber = Number.isSafeInteger(args.chapter_number) && Number(args.chapter_number) >= 1
+    ? Number(args.chapter_number)
+    : 0
   for (const [original, raw] of Object.entries(candidate as Record<string, unknown>)) {
     const field = config ? original === 'narrativePov' ? 'narrativePOV' : original : ['作者微操指导', '用户指引'].includes(original) ? 'userGuidance' : original
     const value = field === 'writingLanguage' ? raw === '简体中文' ? 'zh-CN' : raw === 'English' ? 'en-US' : raw : raw
@@ -29,6 +35,10 @@ export function commitAgentDomainTool(db: Database.Database, toolCallId: string,
     if ((config ? configStrings : blueprintStrings).has(field)) { if (typeof value !== 'string') fail() }
     else if (config && ['totalChapters', 'wordsPerChapter'].includes(field)) { if (!Number.isSafeInteger(value) || Number(value) < 1) fail() }
     else if (config && Object.hasOwn(configEnums, field)) { if (typeof value !== 'string' || !configEnums[field]!.includes(value)) fail() }
+    // 文本（agent 提案原样）与已归一化的事件数组都必须接受，落库前再统一归一化一次。
+    else if (!config && field === 'keyEvents') { if (typeof value !== 'string' && !Array.isArray(value)) fail()
+      changes[field] = structuredClone(normalizeKeyEvents(value, { chapterNumber: keyEventsChapterNumber }))
+      continue }
     else if (!config && field === 'characters') { if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) fail() }
     else fail()
     changes[field] = structuredClone(value)

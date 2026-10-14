@@ -359,6 +359,25 @@ function projectSourceDependencies(value: unknown): unknown[] {
   })
 }
 
+/**
+ * `keyEvents` 在旧快照里是自由文本、在新快照里是结构化事件数组。
+ * 这里**只校验、不改形** —— `source_hash` 是对整串快照取 sha256，
+ * 投影一旦改写形态，还原后的 `sha256(source_snapshot)` 就与 `source_hash` 不符，
+ * 候选会被判「完整性校验失败」。因此原值必须逐字保留。
+ */
+function portableKeyEvents(value: unknown): unknown {
+  if (typeof value === 'string') return safeString(value)
+  if (!Array.isArray(value) || value.length > 10_000) fail('PORTABLE_UNSAFE_PROJECTION')
+  return value.map((item) => {
+    const event = object(item, ['id', 'event', 'estimatedUnits'])
+    return {
+      id: safeString(event.id, 1_024),
+      event: safeString(event.event),
+      estimatedUnits: safeInteger(event.estimatedUnits),
+    }
+  })
+}
+
 function projectRecoverySource(value: unknown): Record<string, unknown> {
   const source = object(parseJson(value), [
     'chapterNumber', 'title', 'role', 'purpose', 'keyEvents', 'characters', 'suspenseHook', 'userGuidance',
@@ -370,7 +389,7 @@ function projectRecoverySource(value: unknown): Record<string, unknown> {
     title: safeString(source.title),
     role: safeString(source.role),
     purpose: safeString(source.purpose),
-    keyEvents: safeString(source.keyEvents),
+    keyEvents: portableKeyEvents(source.keyEvents),
     characters: source.characters.map(item => safeString(item)),
   }
   if (source.suspenseHook !== undefined) projected.suspenseHook = safeString(source.suspenseHook)
@@ -396,6 +415,22 @@ function reviewTextFields(record: Record<string, unknown>, fields: readonly stri
 
 function reviewIntegerFields(record: Record<string, unknown>, fields: readonly string[]): void {
   for (const field of fields) if (field in record) safeInteger(record[field])
+}
+
+/**
+ * `keyEvents` 在校验通过后必须**原值保留** —— 审稿上下文的
+ * `reviewRevisionContextHash` 是整串 sha256，任何形态改写都会让哈希对不上。
+ * 旧上下文是自由文本、新上下文是结构化事件数组，两者都接受。
+ */
+function reviewKeyEventsField(record: Record<string, unknown>): void {
+  const value = record.keyEvents
+  if (value === undefined) return
+  if (typeof value === 'string') { safeString(value); return }
+  for (const entry of reviewArray(value)) {
+    const event = object(entry, ['id', 'event', 'estimatedUnits'])
+    reviewTextFields(event, ['id', 'event'])
+    reviewIntegerFields(event, ['estimatedUnits'])
+  }
 }
 
 function reviewSource(value: unknown): Record<string, unknown> {
@@ -528,8 +563,9 @@ function assertReviewContext(value: unknown): Record<string, unknown> {
     const blueprint = object(value, ['chapterNumber', 'title', 'role', 'purpose', 'keyEvents',
       'characters', 'suspenseHook', 'userGuidance', 'notes'])
     reviewIntegerFields(blueprint, ['chapterNumber'])
-    reviewTextFields(blueprint, ['title', 'role', 'purpose', 'keyEvents', 'suspenseHook', 'userGuidance', 'notes'])
+    reviewTextFields(blueprint, ['title', 'role', 'purpose', 'suspenseHook', 'userGuidance', 'notes'])
     reviewArray(blueprint.characters).forEach(item => safeString(item))
+    reviewKeyEventsField(blueprint)
   }
   const goals = object(context.frozenGoals, ['chapterNumber', 'coverage', 'items'])
   reviewIntegerFields(goals, ['chapterNumber'])

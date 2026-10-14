@@ -1181,7 +1181,10 @@ describe('GenerateDirectoryCommand', () => {
       step: {}, context: workflowContext(), callbacks: stepCallbacks(),
     })
 
-    expect(result[0].keyEvents).toBe(`${'事'.repeat(1_200)}但主角已撤销该行动`)
+    // 阶段 1：`keyEvents` 是结构化清单，文本呈现按行连接（长文本仍是单条）。
+    expect(result[0].keyEvents).toEqual([
+      { id: 'ch1:E1', event: `${'事'.repeat(1_200)}但主角已撤销该行动`, estimatedUnits: 0 },
+    ])
     expect(complete).toHaveBeenCalledTimes(1)
     expect(invoke.mock.calls.filter(([channel]) => channel === 'db:blueprint-commit-range')).toHaveLength(1)
   })

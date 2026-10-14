@@ -1,4 +1,5 @@
 import { getProjectDb } from '../database'
+import { keyEventsText } from '../../src/shared/blueprint-key-events'
 import type {
   NarrativeThreadEvent,
   NarrativeThreadEventInput,
@@ -167,7 +168,7 @@ export class NarrativeThreadRepository {
   }
 
   static listRelevantActive(context: NarrativeThreadChapterContext, db = requireDb()): NarrativeThreadView[] {
-    const currentText = `${context.title}\n${context.keyEvents}`
+    const currentText = `${context.title}\n${keyEventsText(context.keyEvents)}`
     const characters = context.characters.map(character => character.trim()).filter(Boolean)
     return this.list(db).filter((thread) => {
       if (thread.status === 'resolved' || thread.status === 'abandoned') return false

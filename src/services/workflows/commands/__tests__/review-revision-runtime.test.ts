@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../../shared/blueprint-key-events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 import { RefineDraftCommand } from '../refine-draft.command'
@@ -77,7 +78,7 @@ function setup(responses: Response[], projections: FinalizedContinuityProjection
     if (operation === 'refine-from-review') return new RefineFromReviewCommand({ ...selected, reviewSourceId: 10,
       confirmedReviewContent: confirmation, userRefinePrompt: '未确认的临时指导' }, dependencies)
     return new RefineDraftCommand({ ...selected, userRefinePrompt: '作者选定的修稿指导', mergedGuidance: '明确合并指导', shortSummary: '未绑定摘要',
-      chapterInfo: { projectPath, chapterNumber: 1, title: '未绑定标题', role: '', purpose: '', keyEvents: '', characters: [] } }, dependencies)
+      chapterInfo: { projectPath, chapterNumber: 1, title: '未绑定标题', role: '', purpose: '', keyEvents: [], characters: [] } }, dependencies)
   }
   return { fixture, provider, providerBindCounts, dependencies, backend, invoke, args, command,
     failSaves: (count: number) => { saveFailures = count }, writes: () => writes,
@@ -207,9 +208,9 @@ describe('review/revision consumers using the main contract (synthetic transport
         const result = await original(channel, ...args)
         if (channel === 'review-revision:prepare') {
           const prepared = result as NonNullable<typeof f.fixture.prepared>
-          prepared.context.blueprints = [{ chapterNumber: 1, title: 'Current', keyEvents: '', characters: [],
+          prepared.context.blueprints = [{ chapterNumber: 1, title: 'Current', keyEvents: [], characters: [],
             role: '', purpose: '', suspenseHook: '', notes: '', userGuidance: 'CURRENT_AUTHOR_TIME' },
-          { chapterNumber: 2, title: 'Future', keyEvents: 'FUTURE_PLAN', characters: [],
+          { chapterNumber: 2, title: 'Future', keyEvents: normalizeKeyEvents('FUTURE_PLAN'), characters: [],
             role: '', purpose: '', suspenseHook: '', notes: '', userGuidance: '' }]
           f.fixture.prepared = structuredClone(prepared)
         }
@@ -333,7 +334,7 @@ describe('review/revision consumers using the main contract (synthetic transport
           prepared.context.predecessor = { draftId: 8, chapterNumber: 0, chapterTitle: '', content: '已选保存前驱：角色仍未定稿。',
             identity: { projectId: session.projectId, sourceId: 'candidate:8', revision: 1,
               contentHash: hash('已选保存前驱：角色仍未定稿。'), provenance: 'generated' } }
-          prepared.context.blueprints = [{ chapterNumber: 1, title: '开门', keyEvents: '本章必须交出印章', characters: [], role: '', purpose: '', suspenseHook: '', userGuidance: '', notes: '' }]
+          prepared.context.blueprints = [{ chapterNumber: 1, title: '开门', keyEvents: normalizeKeyEvents('本章必须交出印章'), characters: [], role: '', purpose: '', suspenseHook: '', userGuidance: '', notes: '' }]
           if (prepared.context.confirmation) prepared.context.confirmation.snapshot = {
             ...prepared.context.confirmation.snapshot, items: [
               { category: '地点', severity: 'warning', description: '把钟楼改成地下室。', decision: 'apply', origin: 'ai' },

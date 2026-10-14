@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../../shared/blueprint-key-events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 
@@ -97,7 +98,7 @@ describe('FinalizeChapterCommand blueprint character fallback', () => {
         title: '钟楼真相',
         role: '高潮',
         purpose: '揭露真相',
-        keyEvents: '韩峥死亡',
+        keyEvents: normalizeKeyEvents('韩峥死亡'),
         characters: [],
       },
     })
@@ -204,7 +205,7 @@ describe('FinalizeChapterCommand blueprint character fallback', () => {
         title: '钟楼真相',
         role: '高潮',
         purpose: '揭露真相',
-        keyEvents: '韩峥死亡',
+        keyEvents: normalizeKeyEvents('韩峥死亡'),
         characters: [],
       },
       snapshot: Object.freeze({

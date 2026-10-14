@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../shared/blueprint-key-events'
 import type { ChapterInfo } from './chapter-workflow'
 
 export const CHAPTER_WORDS_TARGET_MIN = 100
@@ -51,7 +52,9 @@ export function createChapterInfoFromDialogInput(input: ChapterCreationDialogInp
     role: input.role,
     purpose: input.purpose,
     characters: input.characters.split(/[、,，]/).map(s => s.trim()).filter(Boolean),
-    keyEvents: input.keyEvents,
+    // 弹窗里的「关键事件」是 Textarea 文本（每行一条）；在这里归一化为事件数组，
+    // 使 `ChapterInfo` 之后一律持有结构化清单（阶段 1 不改编辑器形态，见设计稿 D4）。
+    keyEvents: normalizeKeyEvents(input.keyEvents, { chapterNumber }),
     userGuidance: input.userGuidance,
     wordsTarget: normalizeChapterWordsTarget(input.wordsTarget, input.defaultWordsTarget),
     knowledgeQueryHint: input.knowledgeQueryHint.trim() || undefined,

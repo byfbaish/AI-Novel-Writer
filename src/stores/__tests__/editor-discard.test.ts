@@ -96,7 +96,7 @@ function chapter(chapterNumber: number, title: string): ChapterBlueprint {
     title,
     role: '发展',
     purpose: '',
-    keyEvents: '',
+    keyEvents: [],
     characters: [],
     suspenseHook: '',
     userGuidance: '',

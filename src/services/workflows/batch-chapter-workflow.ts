@@ -1,4 +1,5 @@
 import { useProjectStore } from '../../stores/project-store'
+import { normalizeKeyEvents } from '../../shared/blueprint-key-events'
 import { MAX_BATCH_CHAPTERS, MIN_BATCH_CHAPTERS, type GenerationBatchProgress } from '../../shared/generation-owner-contract'
 import { hashAuthorText } from '../../shared/source-ref'
 import { parseResourceUri } from '../../shared/project-paths'
@@ -86,7 +87,7 @@ function toChapterInfo(
     role: blueprint.role ?? '发展',
     purpose: blueprint.purpose || '',
     characters: Array.isArray(blueprint.characters) ? blueprint.characters : [],
-    keyEvents: blueprint.keyEvents || '',
+    keyEvents: normalizeKeyEvents(blueprint.keyEvents, { chapterNumber: blueprint.chapterNumber }),
     suspenseHook: blueprint.suspenseHook || '',
     userGuidance: blueprint.userGuidance || '',
     wordsTarget: chapterWordsTarget,

@@ -69,7 +69,7 @@ export class RefineDraftCommand extends ReviewRevisionCommand {
       .withDraftContent(frozen.source.content)
       .withChapterInfo({ projectPath: params.context.projectPath, chapterNumber: frozen.source.chapterNumber,
         title: blueprint?.title ?? '', role: blueprint?.role ?? '', purpose: blueprint?.purpose ?? '',
-        characters: blueprint?.characters ?? [], keyEvents: blueprint?.keyEvents ?? '' })
+        characters: blueprint?.characters ?? [], keyEvents: blueprint?.keyEvents ?? [] })
       .withGlobalGuidance(projectScopedText(guidance, 'draft').text)
       .withGlobalSummary(historySummary)
       .withShortSummary(historySummary)

@@ -5,6 +5,7 @@ import { workflowResourceKey } from '../../stores/workflow-store'
 import { ipc } from '../ipc-client'
 import { createMainGenerationTransport } from '../generation/main-generation-transport'
 import { DRAFT_VISIBLE_TEXT_VERSION, isDraftVisibleTextVersion } from '../../shared/draft-visible-text'
+import { normalizeKeyEvents } from '../../shared/blueprint-key-events'
 import { GenerateDraftCommand } from './commands/generate-draft.command'
 import type { ChapterInfo } from './chapter-workflow'
 import { createBatchChapterWorkflow } from './batch-chapter-workflow'
@@ -56,8 +57,19 @@ export async function createDraftRecoveryWorkflow(
   if (recovery.draftSave.kind === 'absent' && recovery.selectedDraftIds.length && !recovery.selectedDrafts)
     throw new Error('GENERATION_DRAFT_RECOVERY_SOURCE_CHANGED')
   const selectedCandidateDrafts = recovery.draftSave.kind === 'current' ? [] : recovery.selectedDrafts ?? []
-  const command = new GenerateDraftCommand({ ...info, projectPath: session.projectPath, wordsTarget: target } as ChapterInfo,
-    { resumeHandle: handle, selectedCandidateDrafts })
+  // 恢复上下文里的 `draft:chapter-info` 是**写入时的投影**，其 `keyEvents` 是字符串
+  // （见 `generate-draft.command.ts` 的 `toWriterChapterInfo`）；而 `ChapterInfo` 的
+  // 领域契约是结构化事件数组 ⇒ 必须在边界归一化，否则下游按数组消费会崩。
+  const command = new GenerateDraftCommand({
+    ...info,
+    projectPath: session.projectPath,
+    wordsTarget: target,
+    keyEvents: normalizeKeyEvents(info.keyEvents, {
+      chapterNumber: Number(info.chapterNumber),
+      ...(target > 0 ? { targetUnits: target } : {}),
+    }),
+  } as ChapterInfo,
+  { resumeHandle: handle, selectedCandidateDrafts })
   return {
     type: 'chapter_creation', title: `第 ${info.chapterNumber} 章 · 继续正文`, projectPath: session.projectPath,
     projectSession: session, generationModelId: recovery.modelId, chapterWordsTarget: target,

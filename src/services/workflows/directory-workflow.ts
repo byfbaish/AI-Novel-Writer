@@ -268,7 +268,7 @@ export async function verifyBlueprintsPersisted(
       saved.title !== blueprint.title ||
       saved.role !== blueprint.role ||
       saved.purpose !== blueprint.purpose ||
-      saved.keyEvents !== blueprint.keyEvents ||
+      JSON.stringify(saved.keyEvents) !== JSON.stringify(blueprint.keyEvents) ||
       saved.suspenseHook !== blueprint.suspenseHook
     ) {
       throw new Error(`蓝图保存后验证失败：第 ${blueprint.chapterNumber} 章内容与本次生成结果不一致`)

@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../src/shared/blueprint-key-events'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -104,7 +105,7 @@ const blueprint: BlueprintData = {
   title: 'Chapter One',
   role: 'setup',
   purpose: 'Introduce the conflict',
-  keyEvents: 'The protagonist discovers a clue',
+  keyEvents: normalizeKeyEvents('The protagonist discovers a clue'),
   characters: ['Protagonist'],
   suspenseHook: 'Someone knocks at the door',
   userGuidance: '',

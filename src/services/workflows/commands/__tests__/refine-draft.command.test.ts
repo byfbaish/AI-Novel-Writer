@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../../shared/blueprint-key-events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -207,7 +208,7 @@ function command(
       title: '第一章',
       role: '开端',
       purpose: '建立冲突',
-      keyEvents: '事件',
+      keyEvents: normalizeKeyEvents('事件'),
       characters: [],
     },
   }, runtimeDependencies(completeWithLease))
@@ -1219,7 +1220,7 @@ describe('ReviewChapterCommand reasoning stage', () => {
       if (channel === 'db:project-core-get') return { worldbuilding: worldFact }
       if (channel === 'db:blueprint-get') return {
         chapterNumber: 1, title: 'Current chapter', role: 'opening', purpose: '',
-        keyEvents: 'CURRENT_CHAPTER_GOAL_SENTINEL', characters: [], suspenseHook: '', userGuidance: '', notes: '', notesUpdatedAt: '',
+        keyEvents: normalizeKeyEvents('CURRENT_CHAPTER_GOAL_SENTINEL'), characters: [], suspenseHook: '', userGuidance: '', notes: '', notesUpdatedAt: '',
       }
       if (channel === 'db:draft-get-meta') return { id: 1, chapterNumber: 1, version: 1, status: 'draft', source: 'write' }
       if (channel === 'db:review-next-index') return 1
@@ -1330,7 +1331,7 @@ describe('ReviewChapterCommand reasoning stage', () => {
         title: '潮门之后',
         role: '发展',
         purpose: '揭示新目标',
-        keyEvents: 'FUTURE_BLUEPRINT_PLAN：顾舟将在下一章调查潮门。',
+        keyEvents: normalizeKeyEvents('FUTURE_BLUEPRINT_PLAN：顾舟将在下一章调查潮门。'),
         characters: ['顾舟'],
         suspenseHook: '潮门通向哪里',
         userGuidance: '',
@@ -1383,7 +1384,7 @@ describe('ReviewChapterCommand reasoning stage', () => {
       if (channel === 'db:draft-get-meta') return { id: 1, chapterNumber: 2, version: 1, status: 'draft', source: 'write' }
       if (channel === 'db:review-next-index') return 1
       if (channel === 'db:blueprint-get') return {
-        chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: '顾舟敲门',
+        chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: normalizeKeyEvents('顾舟敲门'),
         characters: ['顾舟'], suspenseHook: '他为何归来', userGuidance: '', notes: '', notesUpdatedAt: '',
       }
       if (channel === 'db:consistency-exemption-list') return []
@@ -1421,7 +1422,7 @@ describe('ReviewChapterCommand reasoning stage', () => {
       if (channel === 'db:draft-get-meta') return { id: 1, chapterNumber: 2, version: 1, status: 'draft', source: 'write' }
       if (channel === 'db:review-next-index') return 1
       if (channel === 'db:blueprint-get') return {
-        chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: '顾舟敲门',
+        chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: normalizeKeyEvents('顾舟敲门'),
         characters: ['顾舟'], suspenseHook: '他为何归来', userGuidance: '', notes: '', notesUpdatedAt: '',
       }
       if (channel === 'db:consistency-exemption-list') return []
@@ -1603,7 +1604,7 @@ describe('修稿路径不再整段拼接（S10B-2）', () => {
       chapterNumber,
       chapterInfo: {
         projectPath: PROJECT_PATH, chapterNumber, title: `第${chapterNumber}章`, role: '发展',
-        purpose: '推进', keyEvents: '事件', characters: [],
+        purpose: '推进', keyEvents: normalizeKeyEvents('事件'), characters: [],
       },
     }, runtimeDependencies(completeWithLease))
   }
