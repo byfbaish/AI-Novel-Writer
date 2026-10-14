@@ -109,3 +109,32 @@ it('cancelling keeps candidates, and reopening returns them to pending-approval 
   expect(owner.cancel({ proposalBatchId: batch.proposalBatchId, expectedRevision: reopened.revision }).status)
     .toBe('cancelled')
 })
+
+/** 直接改封存信封：模拟"暂存时进度标记还在、后来标记消失"的目录批次。 */
+function sealWithProvenance(proposalBatchId: string, mutate?: (envelope: Record<string, unknown>) => void) {
+  const db = getProjectDb()!
+  const row = db.prepare('SELECT raw_value FROM character_identity_proposals WHERE proposal_id=?').get(proposalBatchId) as { raw_value: string }
+  const envelope = JSON.parse(row.raw_value) as Record<string, unknown>
+  const proof = envelope.proof as Record<string, unknown>
+  proof.provenance = { kind: 'generated', modelRevision: 'a'.repeat(64),
+    source: { projectId: 'x', epoch: 'epoch', sourceId: 'blueprint-sync-op', revision: 0, contentHash: 'b'.repeat(64) } }
+  if (mutate) mutate(envelope)
+  const encoded = JSON.stringify(envelope)
+  db.prepare('UPDATE character_identity_proposals SET raw_value=?,source_hash=? WHERE proposal_id=?')
+    .run(encoded, createHash('sha256').update(encoded).digest('hex'), proposalBatchId)
+}
+
+it('reuses the provenance sealed with a directory batch when the transient progress marker is gone', () => {
+  const owner = service()
+  const batch = owner.stage({ kind: 'directory', operationId: commitBlueprintReceipt() })
+  sealWithProvenance(batch.proposalBatchId)
+  // 进度标记是过渡性的（清蓝图/重跑即消失），但封存的那份记录的是历史事实 —— 读取必须照常。
+  const reopened = owner.read(batch.proposalBatchId)
+  expect(reopened.status).toBe('pending-approval')
+  // 证据被改（候选名单变了）时仍必须判定过期，不能因为复用 provenance 而放行。
+  sealWithProvenance(batch.proposalBatchId, envelope => {
+    const proof = envelope.proof as { items: unknown[] }
+    proof.items = [{ selectionKey: 'forged', sourceId: 'forged', fields: { name: '伪造', role: 'minor' }, relationships: [], rawValue: {} }]
+  })
+  expect(() => owner.read(batch.proposalBatchId)).toThrow('CHARACTER_PROPOSAL_SOURCE_CHANGED')
+})
