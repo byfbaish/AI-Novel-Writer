@@ -64,10 +64,13 @@ it('V3 规划资料候选先编辑字段再确认，采用请求带作者修改'
  })
 })
 it('actual等待host一次选择同名乙+新建，显式关系经原批准command传送', async () => {
- const { pending } = await start(); const selects = container.querySelectorAll('select')
- expect(selects[0].value).toBe('keep-unresolved'); expect(selects[1].value).toBe('create')
- await act(async () => { selects[0].value = 'map:乙'; selects[0].dispatchEvent(new Event('change', { bubbles: true })) })
- await act(async () => (container.querySelector('input[type="checkbox"]') as HTMLInputElement).click())
+ const { pending } = await start()
+ const selectOf = (label: string) => container.querySelector<HTMLSelectElement>(`select[aria-label="采用方式：同名 · ${label}"]`)!
+ // 新面孔（b，默认新建）平铺在上；同名候选（a，默认暂不采用）收进折叠组（仍在 DOM 中）。
+ expect(selectOf('b').value).toBe('create'); expect(selectOf('a').value).toBe('keep-unresolved')
+ await act(async () => { selectOf('a').value = 'map:乙'; selectOf('a').dispatchEvent(new Event('change', { bubbles: true })) })
+ const relation = container.querySelector<HTMLSelectElement>('select[aria-label="关系处理：同名 → 同名"]')!
+ await act(async () => { relation.value = 'adopt'; relation.dispatchEvent(new Event('change', { bubbles: true })) })
  expect(invoke.mock.calls.some(([channel]) => channel === 'character-proposal:approve')).toBe(false)
  await act(async () => (container.querySelector('[data-testid="workflow-confirmation-confirm"]') as HTMLButtonElement).click())
  await pending
@@ -79,10 +82,10 @@ it('规划资料按唯一候选姓名显示关系，角色定位不提供无法�
    items: batch.items.map((item, index) => ({ ...item, fields: { ...item.fields, name: index ? '乙' : '甲', role: 'supporting' },
      resolution: { status: 'unresolved', candidateIds: [] }, relationships: index ? [] : [{ targetName: '乙', relation: '同伴' }] })) }
  const { pending } = await start(planning, true)
- const relation = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!
+ const relation = container.querySelector<HTMLSelectElement>('select[aria-label="关系处理：甲 → 乙"]')!
  expect(relation.disabled).toBe(false)
  expect(container.querySelector('select[aria-label="编辑候选角色定位：a"] option[value=""]')).toBeNull()
- await act(async () => relation.click())
+ await act(async () => { relation.value = 'adopt'; relation.dispatchEvent(new Event('change', { bubbles: true })) })
  await act(async () => (container.querySelector('[data-testid="workflow-confirmation-confirm"]') as HTMLButtonElement).click())
  await pending
  expect(invoke.mock.calls.find(([channel]) => channel === 'character-proposal:approve')?.[1]).toMatchObject({
