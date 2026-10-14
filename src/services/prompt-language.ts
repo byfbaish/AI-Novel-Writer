@@ -308,6 +308,7 @@ Build four connected dimensions. The first three each need a concrete source of 
 - List the main spaces, regions, or strongholds where the story takes place and how they relate (adjacent, nested, connected, gated).
 - Give each space its key rule or constraint (entry conditions, dangers, mechanics that differ from other spaces).
 - Use the format "Space name: one-line role + key rule"; names must be fixed and unique, because later plot and arc structure will reference them by the same name.
+- ★ Any key rule about **time windows or entry** must be written in a form that can be **judged on the spot**: opening and visiting hours as explicit ranges like 07:00–09:00, entry conditions as verifiable actions or credentials such as "requires badge swipe" or "ID must match the queried person". Avoid words that can only be guessed at ("in the morning", "during the day", "sometimes", "usually") — later layers use these rules to decide whether an event can happen in that space, and a vague rule turns that into a guess that carries all the way into the prose.
 - Mark which spaces are long-term stages and which are one-off scenes. Do not add decorative geography unrelated to the plot.
 - ★ [Named cast registry] Fixed closing block of this dimension: if a space rule or background line names a **named person** (e.g. "the owner, Old Chen"), that person must also be **registered here on their own line**, four fields separated by a vertical bar:
   Name｜One-line role｜Fixed verbal tic｜Relationship to the protagonist
