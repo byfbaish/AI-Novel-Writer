@@ -160,7 +160,16 @@ export class CommitPlanningMaterialCharactersCommand extends BaseWorkflowCommand
     )) throw new Error(text('当前项目已切换，角色导入已停止', 'The project changed, so character import stopped.'))
 
     this.assertNotCancelled(context)
-    const entries = context.data[PLANNING_MATERIAL_CHARACTER_CANDIDATES] as CharacterRosterEntry[] | undefined
+    // 该键区分"没得确认"（空数组，优雅收场）与"提取步没跑"（undefined，配置错误）。
+    // 蓝图 / 单角色补全来源不走键，它们已把待确认批次放进 characterProposalBatch ——
+    // 有批次就足够过闸，写入路径本就只消费批次。
+    let entries = context.data[PLANNING_MATERIAL_CHARACTER_CANDIDATES] as CharacterRosterEntry[] | undefined
+    const shownEarly = context.data.characterProposalBatch as CharacterProposalBatch | undefined
+    if (entries === undefined && shownEarly) {
+      entries = shownEarly.items.map(item => ({
+        name: item.fields.name, role: item.fields.role || 'supporting',
+      })) as unknown as CharacterRosterEntry[]
+    }
     if (!entries) throw new Error(text(
       '缺少已预览的角色卡候选，未写入角色名单',
       'No reviewed character-card candidates are available; the character roster was not changed.',

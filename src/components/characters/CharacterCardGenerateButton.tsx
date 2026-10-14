@@ -171,7 +171,7 @@ function SessionGenerateButton({ session, compact, disabled, initialView = 'comp
     setReadingId(entry.proposalBatchId)
     try {
       if (entry.status === 'cancelled') {
-        toast.warning(text('该批次已取消；取消的批次不能采用。', 'That batch was cancelled, and a cancelled batch cannot be adopted.'))
+        toast.warning(text('该批次已取消；可在角色列表顶部的「待处理角色候选」里重新打开它。', 'That batch was cancelled; reopen it from "Pending character candidates" at the top of the character list.'))
         return
       }
       const batch = await restageCharacterProposalBatch(session, entry.source)

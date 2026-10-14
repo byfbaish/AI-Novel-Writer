@@ -224,7 +224,8 @@ export default function App() {
             projectSessionContextFromProject(useProjectStore.getState().currentProject),
           )) return
           const [operations, cards, declined] = await Promise.all([
-            ipc.invokeWithProjectSession(projectSession, 'db:blueprint-character-sync-list-pending', projectSession.projectPath),
+            // 全量而非 pending：completion 只说明"提议已暂存过"，未决定的候选仍是待办。
+            ipc.invokeWithProjectSession(projectSession, 'db:blueprint-character-sync-list-all', projectSession.projectPath),
             ipc.invokeWithProjectSession(projectSession, 'db:character-get-all', projectSession.projectPath),
             ipc.invokeWithProjectSession(projectSession, 'character-proposal:list-declined'),
           ])

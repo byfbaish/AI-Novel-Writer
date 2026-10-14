@@ -61,7 +61,10 @@ function SessionInbox({ session }: { session: ProjectSessionContext }) {
     try {
       const history = await ipc.invokeWithProjectSession(session, 'character-proposal:list-history')
       if (!isProjectSessionCurrent(session)) return
-      setEntries(history.filter(entry => entry.status === 'pending-approval' && !FINALIZED_GROUPS.includes(entry.sourceGroup)))
+      // 取消 = 纯状态翻转、无任何身份效果；若就此消失，作者（常因保存报错而取消）
+      // 会永远失去这批候选 —— 把它们留在收件箱里给一个「重新打开」的出路。
+      setEntries(history.filter(entry => !FINALIZED_GROUPS.includes(entry.sourceGroup)
+        && ['pending-approval', 'cancelled'].includes(entry.status)))
       setError(failure)
     } catch (cause) {
       if (isProjectSessionCurrent(session)) setError(cause instanceof Error ? cause.message : String(cause))
@@ -109,15 +112,37 @@ function SessionInbox({ session }: { session: ProjectSessionContext }) {
     }
   }
 
+  async function reopen(entry: CharacterProposalHistoryEntry) {
+    if (busy) return
+    setBusy(true); setError('')
+    try {
+      await ipc.invokeWithProjectSession(session, 'character-proposal:reopen',
+        { proposalBatchId: entry.proposalBatchId, expectedRevision: entry.revision })
+      if (!isProjectSessionCurrent(session)) return
+      await loadEntries()
+    } catch (cause) {
+      if (isProjectSessionCurrent(session)) {
+        const raw = cause instanceof Error ? cause.message : String(cause)
+        setError(describeFailure(raw, text))
+      }
+    } finally {
+      if (isProjectSessionCurrent(session)) setBusy(false)
+    }
+  }
+
   if (!entries.length && !error) return null
   return <section className="border-b border-[var(--color-border)] p-2 space-y-2" aria-label={text('待处理角色候选', 'Pending character candidates')}>
     {entries.length > 0 && <>
       <div className="text-xs font-medium">{text(`待处理角色候选（${entries.length}）`, `Pending character candidates (${entries.length})`)}</div>
       <p className="text-xs text-[var(--color-text-secondary)]">{text('这些候选还没有结论。可以新建角色、采用到已有角色、登记为功能配角（不建卡），或暂不采用。', 'These candidates have no decision yet. Create a character, adopt into an existing one, register an anchored supporting role without a card, or keep unresolved.')}</p>
-      {!batch && entries.map(entry => <Button key={entry.proposalBatchId} variant="outline" size="sm" disabled={busy}
-        aria-label={text(`检查角色候选：${entry.label}`, `Review character candidates: ${entry.label}`)} onClick={() => void read(entry)}>
-        {entry.label}
-      </Button>)}
+      {!batch && entries.map(entry => <div key={entry.proposalBatchId} className="flex items-center gap-2">
+        <Button variant={entry.status === 'pending-approval' ? 'outline' : 'ghost'} size="sm" disabled={busy}
+          aria-label={text(`检查角色候选：${entry.label}`, `Review character candidates: ${entry.label}`)} onClick={() => void read(entry)}>
+          {entry.status === 'cancelled' ? text(`已取消 · ${entry.label}`, `Cancelled · ${entry.label}`) : entry.label}
+        </Button>
+        {entry.status === 'cancelled' && <Button variant="outline" size="sm" disabled={busy}
+          onClick={() => void reopen(entry)}>{text('重新打开', 'Reopen')}</Button>}
+      </div>)}
     </>}
     {error && <p role="alert" className="text-xs text-[var(--color-error)] break-all">{error}</p>}
     {batch && choices && <>
