@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { CharacterProposalBatch } from '../../shared/character-proposal'
+import type { CharacterProposalBatch, CharacterProposalItem } from '../../shared/character-proposal'
 import { isAdoptedCharacterDecision } from '../../shared/character-proposal'
 import { CHARACTER_ROLES, getCharacterRoleLabels } from '../../shared/character-role'
 import type { CharacterProposalChoices, CharacterProposalRelationshipChoice } from '../../services/character-proposal-choices'
@@ -21,87 +21,125 @@ export function CharacterProposalSelectionPanel({ batch, identities, choices, on
   disabled?: boolean
 }) {
   const text = useLocaleStore(state => state.text)
-  // 角色定位按当前语言显示中文（主角、配角…），不再把 protagonist/supporting 直接给作者看。
-  const roleLabel = (role: string | undefined) => {
-    if (!role) return undefined
-    const label = getCharacterRoleLabels(role)
-    return text(label.zhCN, label.enUS)
-  }
   if (choices.proposalBatchId !== batch.proposalBatchId || choices.revision !== batch.revision) return <p role="alert">{text('提议已改变，请重新载入选择。', 'The proposals changed. Reload the choices.')}</p>
+  // 名字已命中名册（resolution 带候选 id）的候选收进折叠组：中后期这批会远多于新面孔，
+  // 平铺会把"老陈"这种真正要决定的新人淹没（作者实测反馈）。同名永不自动合并，折叠只是视觉收纳。
+  const matched = (item: CharacterProposalItem) => item.resolution.status === 'resolved' || item.resolution.candidateIds.length > 0
+  const freshItems = batch.items.filter(item => !matched(item))
+  const matchedItems = batch.items.filter(matched)
   const relations = batch.items.flatMap(item => item.relationships.map(relation => {
     const matches = batch.items.filter(candidate => candidate.fields.name === relation.targetName)
     return { sourceSelectionKey: item.selectionKey,
       targetSelectionKey: relation.targetSelectionKey ?? (matches.length === 1 ? matches[0].selectionKey : undefined),
       targetName: relation.targetName, relation: relation.relation }
   }))
+  const matchedKeys = new Set(matchedItems.map(item => item.selectionKey))
+  const freshRelations = relations.filter(relation => !matchedKeys.has(relation.sourceSelectionKey)
+    || relation.targetSelectionKey !== undefined && !matchedKeys.has(relation.targetSelectionKey))
+  const matchedRelations = relations.filter(relation => !freshRelations.includes(relation))
+  const rowProps = { batch, identities, choices, onChange, disabled }
   return <section className="space-y-3" aria-label={text('批量选择角色采用方式', 'Choose character adoption in one batch')}>
-    <p className="text-xs text-[var(--color-text-secondary)]">{text('同名或共享别名不会自动合并。可选择对应角色、新建、登记为功能配角或暂不采用；最后一次确认统一保存。', 'Matching names or shared aliases are not merged automatically. Choose a character, create one, register an anchored supporting role, or keep unresolved, then confirm the batch once.')}</p>
-    {batch.items.map(item => {
-      const choice = choices.selections.find(value => value.selectionKey === item.selectionKey)
-      const editable = batch.source.kind === 'generation' && batch.source.inputKind === 'planning-material'
-      const edit = choices.edits?.find(value => value.selectionKey === item.selectionKey)
-      const updateField = (field: string, value: string) => {
-        const changed = { ...edit?.fields } as Record<string, string>
-        if (value === (item.fields[field as keyof typeof item.fields] ?? '')) delete changed[field]
-        else changed[field] = value
-        const edits = (choices.edits ?? []).filter(value => value.selectionKey !== item.selectionKey)
-        if (Object.keys(changed).length) edits.push({ selectionKey: item.selectionKey, fields: changed })
-        onChange({ ...choices, edits })
-      }
-      return <div className="block space-y-1" key={item.selectionKey}>
-        <span>{item.fields.name} · {roleLabel(item.fields.role) ?? text('角色候选', 'Character candidate')}</span>
-        <span className="block text-xs text-[var(--color-text-secondary)]">{item.fields.background || item.sourceId}</span>
-        <NativeSelect aria-label={text(`采用方式：${item.fields.name} · ${item.selectionKey}`, `Adoption: ${item.fields.name} · ${item.selectionKey}`)} disabled={disabled || batch.status !== 'pending-approval'}
-          value={choice?.action === 'map' ? `map:${choice.characterId}` : choice?.action ?? 'keep-unresolved'}
-          onChange={event => {
-            const value = event.target.value
-            const selection = value.startsWith('map:')
-              ? { selectionKey: item.selectionKey, action: 'map' as const, characterId: value.slice(4) }
-              : { selectionKey: item.selectionKey, action: value === 'create' ? 'create' as const
-                : value === 'functional' ? 'functional' as const : 'keep-unresolved' as const }
-            const selections = choices.selections.filter(current => current.selectionKey !== item.selectionKey).concat(selection)
-            const adopted = new Set(selections.filter(current => isAdoptedCharacterDecision(current.action)).map(current => current.selectionKey))
-            onChange({ ...choices, selections,
-              edits: isAdoptedCharacterDecision(selection.action) ? choices.edits : choices.edits?.filter(edit => edit.selectionKey !== item.selectionKey),
-              // Drop a proposal-derived edge only when one of its two candidate endpoints stops
-              // being adopted. An author-declared edge from an existing card has no selection key
-              // and must survive: it was not derived from this batch.
-              relationships: choices.relationships.filter(relation => relation.sourceSelectionKey === undefined
-                || (!!relation.targetSelectionKey && adopted.has(relation.sourceSelectionKey) && adopted.has(relation.targetSelectionKey))) })
-          }}>
-          <option value="keep-unresolved">{text('暂不采用，保留候选', 'Keep unresolved')}</option>
-          <option value="create">{text('新建独立角色', 'Create a separate character')}</option>
-          <option value="functional">{text('登记为功能配角，不建卡', 'Register as anchored supporting role (no card)')}</option>
-          {identities.map(identity => <option key={identity.characterId} value={`map:${identity.characterId}`}>{identity.name} · {roleLabel(identity.role) ?? ''} · {identity.characterId.slice(-8)}</option>)}
-        </NativeSelect>
-        {editable && isAdoptedCharacterDecision(choice?.action ?? 'keep-unresolved') && <details className="text-xs" onClick={event => event.stopPropagation()}>
-          <summary className="cursor-pointer">{text('编辑导入候选', 'Edit imported candidate')}</summary>
-          <div className="grid grid-cols-1 gap-2 pt-2">
-            {editableFields.map(([field, zh, en]) => <label key={field} className="grid gap-1">
-              <span>{text(zh, en)}</span>
-              <input aria-label={text(`编辑候选${zh}：${item.selectionKey}`, `Edit candidate ${en}: ${item.selectionKey}`)}
-                className="w-full rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1"
-                disabled={disabled || batch.status !== 'pending-approval'}
-                value={edit?.fields[field] ?? item.fields[field] ?? ''}
-                onChange={event => updateField(field, event.target.value)} />
-            </label>)}
-            <label className="grid gap-1"><span>{text('角色定位', 'Role')}</span>
-              <NativeSelect aria-label={text(`编辑候选角色定位：${item.selectionKey}`, `Edit candidate role: ${item.selectionKey}`)}
-                disabled={disabled || batch.status !== 'pending-approval'} value={edit?.fields.role ?? item.fields.role ?? ''}
-                onChange={event => updateField('role', event.target.value)}>
-                {!item.fields.role && !edit?.fields.role && <option value="" disabled>{text('未指定', 'Unspecified')}</option>}
-                {CHARACTER_ROLES.map(role => { const label = getCharacterRoleLabels(role); return <option key={role} value={role}>{text(label.zhCN, label.enUS)}</option> })}
-              </NativeSelect>
-            </label>
-          </div>
-        </details>}
-      </div>
-    })}
-    {relations.map((relation, index) => <RelationshipBinding key={`${relation.sourceSelectionKey}:${relation.targetSelectionKey ?? relation.targetName}:${index}`}
-      relation={relation} batch={batch} identities={identities} choices={choices} onChange={onChange} disabled={disabled} />)}
+    <p className="text-xs text-[var(--color-text-secondary)]">{text('新面孔在上；与已有角色同名的候选和已有角色之间的关系折叠在下方（同名不会自动合并）。可选择对应角色、新建、登记为功能配角或暂不采用；最后一次确认统一保存。', 'New faces first; candidates sharing a name with an existing card and edges between existing cards are collapsed below (names are never merged automatically). Choose a character, create one, register an anchored supporting role, or keep unresolved, then confirm the batch once.')}</p>
+    <div className="max-h-80 space-y-1 overflow-y-auto pr-1">
+      {freshItems.map(item => <CandidateItem key={item.selectionKey} item={item} {...rowProps} />)}
+      {freshRelations.map((relation, index) => <RelationshipBinding key={`${relation.sourceSelectionKey}:${relation.targetSelectionKey ?? relation.targetName}:${index}`}
+        relation={relation} batch={batch} identities={identities} choices={choices} onChange={onChange} disabled={disabled} />)}
+      {matchedItems.length > 0 && <details className="text-xs">
+        <summary className="cursor-pointer">{text(`与已有角色同名，待确认是否同一人（${matchedItems.length}）`, `Shares a name with an existing card; confirm identity (${matchedItems.length})`)}</summary>
+        <div className="mt-2 space-y-1">
+          {matchedItems.map(item => <CandidateItem key={item.selectionKey} item={item} {...rowProps} />)}
+        </div>
+      </details>}
+      {matchedRelations.length > 0 && <details className="text-xs">
+        <summary className="cursor-pointer">{text(`已有角色之间的关系提议（${matchedRelations.length}）`, `Proposed edges between existing cards (${matchedRelations.length})`)}</summary>
+        <div className="mt-2 space-y-2">
+          {matchedRelations.map((relation, index) => <RelationshipBinding key={`${relation.sourceSelectionKey}:${relation.targetSelectionKey ?? relation.targetName}:${index}`}
+            relation={relation} batch={batch} identities={identities} choices={choices} onChange={onChange} disabled={disabled} />)}
+        </div>
+      </details>}
+    </div>
     <ExistingSourceRelations identities={identities} choices={choices} onChange={onChange}
       disabled={disabled || batch.status !== 'pending-approval'} />
   </section>
+}
+
+/**
+ * 一个候选行的四选一：映射到已有角色 / 新建 / 登记为功能配角 / 暂不采用。
+ * 从平铺列表里抽出，供「新面孔」区与「与已有角色同名」折叠组共用。
+ */
+function CandidateItem({ batch, item, identities, choices, onChange, disabled }: {
+  batch: CharacterProposalBatch
+  item: CharacterProposalItem
+  identities: Array<{ characterId: string; name: string; role?: string }>
+  choices: CharacterProposalChoices
+  onChange(choices: CharacterProposalChoices): void
+  disabled: boolean
+}) {
+  const text = useLocaleStore(state => state.text)
+  const roleLabel = (role: string | undefined) => {
+    if (!role) return undefined
+    const label = getCharacterRoleLabels(role)
+    return text(label.zhCN, label.enUS)
+  }
+  const choice = choices.selections.find(value => value.selectionKey === item.selectionKey)
+  const editable = batch.source.kind === 'generation' && batch.source.inputKind === 'planning-material'
+  const edit = choices.edits?.find(value => value.selectionKey === item.selectionKey)
+  const updateField = (field: string, value: string) => {
+    const changed = { ...edit?.fields } as Record<string, string>
+    if (value === (item.fields[field as keyof typeof item.fields] ?? '')) delete changed[field]
+    else changed[field] = value
+    const edits = (choices.edits ?? []).filter(value => value.selectionKey !== item.selectionKey)
+    if (Object.keys(changed).length) edits.push({ selectionKey: item.selectionKey, fields: changed })
+    onChange({ ...choices, edits })
+  }
+  return <div className="block space-y-1" key={item.selectionKey}>
+    <span>{item.fields.name} · {roleLabel(item.fields.role) ?? text('角色候选', 'Character candidate')}</span>
+    <span className="block text-xs text-[var(--color-text-secondary)]">{item.fields.background || item.sourceId}</span>
+    <NativeSelect aria-label={text(`采用方式：${item.fields.name} · ${item.selectionKey}`, `Adoption: ${item.fields.name} · ${item.selectionKey}`)} disabled={disabled || batch.status !== 'pending-approval'}
+      value={choice?.action === 'map' ? `map:${choice.characterId}` : choice?.action ?? 'keep-unresolved'}
+      onChange={event => {
+        const value = event.target.value
+        const selection = value.startsWith('map:')
+          ? { selectionKey: item.selectionKey, action: 'map' as const, characterId: value.slice(4) }
+          : { selectionKey: item.selectionKey, action: value === 'create' ? 'create' as const
+            : value === 'functional' ? 'functional' as const : 'keep-unresolved' as const }
+        const selections = choices.selections.filter(current => current.selectionKey !== item.selectionKey).concat(selection)
+        const adopted = new Set(selections.filter(current => isAdoptedCharacterDecision(current.action)).map(current => current.selectionKey))
+        onChange({ ...choices, selections,
+          edits: isAdoptedCharacterDecision(selection.action) ? choices.edits : choices.edits?.filter(edit => edit.selectionKey !== item.selectionKey),
+          // Drop a proposal-derived edge only when one of its two candidate endpoints stops
+          // being adopted. An author-declared edge from an existing card has no selection key
+          // and must survive: it was not derived from this batch.
+          relationships: choices.relationships.filter(relation => relation.sourceSelectionKey === undefined
+            || (!!relation.targetSelectionKey && adopted.has(relation.sourceSelectionKey) && adopted.has(relation.targetSelectionKey))) })
+      }}>
+      <option value="keep-unresolved">{text('暂不采用，保留候选', 'Keep unresolved')}</option>
+      <option value="create">{text('新建独立角色', 'Create a separate character')}</option>
+      <option value="functional">{text('登记为功能配角，不建卡', 'Register as anchored supporting role (no card)')}</option>
+      {identities.map(identity => <option key={identity.characterId} value={`map:${identity.characterId}`}>{identity.name} · {roleLabel(identity.role) ?? ''} · {identity.characterId.slice(-8)}</option>)}
+    </NativeSelect>
+    {editable && isAdoptedCharacterDecision(choice?.action ?? 'keep-unresolved') && <details className="text-xs" onClick={event => event.stopPropagation()}>
+      <summary className="cursor-pointer">{text('编辑导入候选', 'Edit imported candidate')}</summary>
+      <div className="grid grid-cols-1 gap-2 pt-2">
+        {editableFields.map(([field, zh, en]) => <label key={field} className="grid gap-1">
+          <span>{text(zh, en)}</span>
+          <input aria-label={text(`编辑候选${zh}：${item.selectionKey}`, `Edit candidate ${en}: ${item.selectionKey}`)}
+            className="w-full rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1"
+            disabled={disabled || batch.status !== 'pending-approval'}
+            value={edit?.fields[field] ?? item.fields[field] ?? ''}
+            onChange={event => updateField(field, event.target.value)} />
+        </label>)}
+        <label className="grid gap-1"><span>{text('角色定位', 'Role')}</span>
+          <NativeSelect aria-label={text(`编辑候选角色定位：${item.selectionKey}`, `Edit candidate role: ${item.selectionKey}`)}
+            disabled={disabled || batch.status !== 'pending-approval'} value={edit?.fields.role ?? item.fields.role ?? ''}
+            onChange={event => updateField('role', event.target.value)}>
+            {!item.fields.role && !edit?.fields.role && <option value="" disabled>{text('未指定', 'Unspecified')}</option>}
+            {CHARACTER_ROLES.map(role => { const label = getCharacterRoleLabels(role); return <option key={role} value={role}>{text(label.zhCN, label.enUS)}</option> })}
+          </NativeSelect>
+        </label>
+      </div>
+    </details>}
+  </div>
 }
 
 /**

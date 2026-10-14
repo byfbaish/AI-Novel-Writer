@@ -17,6 +17,18 @@ import { CharacterProposalSelectionPanel } from './CharacterProposalSelectionPan
 const FINALIZED_GROUPS: readonly string[] = ['finalized-generation', 'import']
 
 /**
+ * 把主进程的错误码翻译成作者能行动的话；未知码原样透出（便于取证）。
+ * SOURCE_CHANGED 在证明收窄后只剩一种触发：候选所依据的本章角色名单被动过，
+ * 或整次生成使命已被替换——两种情况都只能取消批次重来。
+ */
+function describeFailure(raw: string, text: (zh: string, en: string) => string): string {
+  if (raw.includes('CHARACTER_PROPOSAL_SOURCE_CHANGED')) return text('生成这批候选所依据的来源已被修改（例如对应章节的角色名单变了），候选已过期。请取消这个批次；重新生成后会产出与现状一致的新候选。', 'The source these candidates were derived from has since changed (for example the chapter roster). The batch is stale: cancel it; regenerating produces fresh candidates.')
+  if (raw.includes('CHARACTER_ID_REVISION_CONFLICT')) return text('角色名册刚被其他操作更新，请重新打开该批次后再保存。', 'The roster changed in another operation. Reopen this batch and save again.')
+  if (raw.includes('CHARACTER_PROPOSAL_SOURCE_MISSING')) return text('这批候选的来源记录已不存在，只能取消这个批次。', 'The source record for this batch no longer exists; the batch can only be cancelled.')
+  return raw
+}
+
+/**
  * 待处理角色候选的常驻入口。
  *
  * 为什么需要它：候选批次是按来源分别落库的（前提+配置 / 章节蓝图 / 创作资料 …），
@@ -90,7 +102,8 @@ function SessionInbox({ session }: { session: ProjectSessionContext }) {
     } catch (cause) {
       if (!isProjectSessionCurrent(session)) return
       setBatch(null); setChoices(null)
-      await loadEntries(cause instanceof Error ? cause.message : String(cause))
+      const raw = cause instanceof Error ? cause.message : String(cause)
+      await loadEntries(describeFailure(raw, text))
     } finally {
       if (isProjectSessionCurrent(session)) setBusy(false)
     }
