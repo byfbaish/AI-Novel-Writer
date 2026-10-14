@@ -1,5 +1,6 @@
 import type { CharacterData } from '../../../../electron/repositories/character-repository'
 import { keyEventsText } from '../../../shared/blueprint-key-events'
+import { repairUnescapedStringQuotes } from '../../../shared/json-text-repair'
 import type { BlueprintCharacterSyncOperation, BlueprintData } from '../../../../electron/repositories/blueprint-repository'
 import type { CharacterProposalBatch, CharacterStaticFields } from '../../../shared/character-proposal'
 import type { CharacterRole } from '../../../shared/character-role'
@@ -58,8 +59,14 @@ function parseJsonRoot(raw: string): unknown {
   if (!candidate || !/^[{[]/u.test(candidate)) throw new Error('CHARACTER_BACKGROUND_CONTRACT_INVALID')
   try {
     return JSON.parse(candidate) as unknown
-  } catch {
-    throw new Error('CHARACTER_BACKGROUND_CONTRACT_INVALID')
+  } catch (error) {
+    // 语法级容错（不含任何语义判断）：模型常在字符串值里直接写英文引号，
+    // 合法的 JSON 需要 \"。只在严格解析失败后尝试一次，失败仍按原样报错。
+    try {
+      return JSON.parse(repairUnescapedStringQuotes(candidate)) as unknown
+    } catch {
+      throw error
+    }
   }
 }
 

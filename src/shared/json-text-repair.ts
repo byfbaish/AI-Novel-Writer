@@ -1,0 +1,48 @@
+/**
+ * 一个**只**在严格解析失败后才使用的本地容错：修掉字符串值里未转义的双引号。
+ *
+ * 实机案例（2026-10-15，本地 qwen）：模型输出
+ *   {"background":"在梅林坳巷口经营"老陈记"早餐摊多年，…"}
+ * —— 合法 JSON 里内层引号必须写成 \"，模型却按中文习惯直接写了英文引号，
+ * 于是 JSON.parse 在第 205 字符处失败、整条工作流报废。
+ *
+ * 判据：这是**语法**问题，不是语义问题 —— 与「框架不解析自然语言」的边界裁定无关，
+ * 它连一个中文字都不必读懂：只要能在不改变字符内容的前提下把结构补回合法即可。
+ *
+ * 保守性设计：
+ * - 仅在 `JSON.parse` 失败后调用；解析成功时永不触碰原文；
+ * - 只处理引号，不猜测缺失逗号/括号，也不展开 Markdown；
+ * - 判定「收尾引号」的标准是其后第一个非空白字符属于结构分隔符（`, : } ]` 或文末），
+ *   其余一律按「内容里的引号」转义 —— 保留原字符，只加反斜杠。
+ */
+export function repairUnescapedStringQuotes(input: string): string {
+  let output = ''
+  let inString = false
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index]
+    // 已转义的序列整段抄走，避免把 \" 当成收尾引号。
+    if (inString && char === '\\') {
+      output += char + (input[index + 1] ?? '')
+      index += 1
+      continue
+    }
+    if (char !== '"') {
+      output += char
+      continue
+    }
+    if (!inString) {
+      inString = true
+      output += char
+      continue
+    }
+    let lookahead = index + 1
+    while (lookahead < input.length && /\s/u.test(input[lookahead])) lookahead += 1
+    const next = input[lookahead]
+    const closes = next === undefined || next === ',' || next === ':' || next === '}' || next === ']'
+    if (closes) {
+      inString = false
+      output += char
+    } else output += '\\"'
+  }
+  return output
+}
