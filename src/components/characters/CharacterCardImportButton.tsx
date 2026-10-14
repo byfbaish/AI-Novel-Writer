@@ -8,6 +8,7 @@ import { useWorkflowStore, workflowResourceConflictMessage } from '../../stores/
 import { selectPlanningMaterials, type PlanningMaterial } from '../../services/knowledge-service'
 import { createPlanningMaterialCharacterExtractionWorkflow } from '../../services/workflows/planning-material-workflow'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
+import { isAdoptedCharacterDecision } from '../../shared/character-proposal'
 import { appErrorMessage } from '../../i18n/app-errors'
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../project-session-gate'
 import { Button } from '../ui/Button'
@@ -139,7 +140,7 @@ function SessionImportButton({ session, compact, disabled }: Props & { session: 
       if (!isProjectSessionCurrent(session)) return
       const run = useWorkflowStore.getState().history.find(candidate => candidate.id === runId)
       const rejected = run?.status === 'completed' && run.characterProposalChoices
-        && !run.characterProposalChoices.selections.some(choice => choice.action !== 'keep-unresolved')
+        && !run.characterProposalChoices.selections.some(choice => isAdoptedCharacterDecision(choice.action))
       if (rejected) {
         setOpen(true)
         toast.warning(text('未采用任何角色，输入内容已保留。', 'No characters were adopted; your input was kept.'))

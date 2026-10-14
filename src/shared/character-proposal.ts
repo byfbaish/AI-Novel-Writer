@@ -45,6 +45,18 @@ export type CharacterProposalDecision =
   | { selectionKey: string; action: 'create' }
   | { selectionKey: string; action: 'map'; characterId: string }
   | { selectionKey: string; action: 'keep-unresolved' }
+  /**
+   * 作者确认这是「位置锚定型功能配角」：有固定身份与引用键（摊主/门卫/前台），
+   * 会被反复引用，但**不建卡、不进名册**（他没有弧光，建卡只制造维护负担）。
+   * 与 `keep-unresolved` 的区别是**有结论**：它记录的是一个已作出的决定，
+   * 因此该名字可以从「待建卡候选集」里排除，而不是永远挂在待处理中。
+   */
+  | { selectionKey: string; action: 'functional' }
+
+/** 只有新建或映射到已有卡才会产生角色；`functional` 与 `keep-unresolved` 都不产生。 */
+export function isAdoptedCharacterDecision(action: CharacterProposalDecision['action']): boolean {
+  return action === 'create' || action === 'map'
+}
 export interface ApproveCharacterProposalRequest {
   proposalBatchId: string
   expectedRevision: number
@@ -91,6 +103,8 @@ export interface CharacterProposalChannels {
   'character-proposal:stage': { args: [{ source: CharacterProposalSource }]; return: CharacterProposalBatch }
   'character-proposal:read': { args: [{ proposalBatchId: string }]; return: CharacterProposalBatch }
   'character-proposal:list-history': { args: []; return: CharacterProposalHistoryEntry[] }
+  /** 作者已确认「登记为功能配角、不建卡」的名字；用于从待建卡候选集里排除。 */
+  'character-proposal:list-declined': { args: []; return: string[] }
   'character-proposal:list-pending-finalized': { args: []; return: PendingFinalizedCharacterProposalSummary[] }
   'character-proposal:read-pending-finalized': { args: [{ proposalBatchId: string }]; return: CharacterProposalBatch }
   'character-proposal:approve': { args: [ApproveCharacterProposalRequest]; return: { batch: CharacterProposalBatch; created: { selectionKey: string; characterId: string }[] } }
