@@ -1108,32 +1108,52 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           }
           const recordedReconciliation = recovery?.draftReconciliation?.completedOutput
           let shortOutline = recovery?.draftShortOutline?.completedOutput ?? ''
+          // 首次生成必须排在重试分支之前：全新运行时 recovery 为 null，重试分支必然被跳过；
+          // 首次失败会落成 run 里唯一的 attempt，重试授权随即可用，紧随其后的分支据此自动重试一次。
+          // 见 docs/design/short-outline-first-failure-retry-design.md
+          let outlined: GenerationOutcome | undefined
+          if (!recovery) {
+            callbacks.log(uiText('生成短细纲...', 'Generating a short chapter outline...'))
+            outlined = await draftingSession.complete({ purpose: DRAFT_SHORT_OUTLINE_PURPOSE, output: 'visible-text',
+              reasoningStage: 'planning', budgetDemand: { kind: 'draft-units', writingLanguage, requestedUnits: 500, segmentable: false },
+              messages: [{ role: 'user', content: outlinePrompt }] }, { signal: cancellation.signal })
+            logDraftAttempt(callbacks, context, { zhCN: '短细纲', enUS: 'Short outline' }, outlined.receipt)
+            if (outlined.status === 'completed' && outlined.finishReason === 'stop' && outlined.content.trim()) {
+              shortOutline = outlined.content
+            } else if (mainOwned) {
+              // 首次失败已落库 ⇒ 重试授权此时可用，重读上下文取得它。
+              recovery = await ipc.invokeWithProjectSession(projectSession, 'generation:read-context', { handle: context.mainGenerationRunHandle! })
+              if (recovery.draftSave.kind === 'changed') throw new Error('GENERATION_DRAFT_RECEIPT_INVALID')
+            }
+          }
           if (recovery?.draftShortOutline?.retry?.kind === 'available') {
             this.assertNotCancelled(context)
             callbacks.log(uiText('重新生成短细纲...', 'Retrying the short chapter outline...'))
             const retried = await ipc.invokeWithProjectSession(projectSession, 'generation:retry-draft-short-outline', {
               handle: context.mainGenerationRunHandle!, failedAttemptId: recovery.draftShortOutline.retry.failedAttemptId,
             })
-            if (retried.outcome.status !== 'completed' || retried.outcome.finishReason !== 'stop' || !retried.outcome.content.trim())
-              throw new Error('GENERATION_DRAFT_SHORT_OUTLINE_FAILED')
-            recovery = await ipc.invokeWithProjectSession(projectSession, 'generation:read-context', { handle: context.mainGenerationRunHandle! })
-            if (recovery.draftSave.kind === 'changed') throw new Error('GENERATION_DRAFT_RECEIPT_INVALID')
-            shortOutline = recovery.draftShortOutline?.completedOutput ?? ''
-            if (shortOutline !== retried.outcome.content || !retried.outcome.receipt.visibleArtifact
-              || !recovery.draftShortOutline?.artifactIds.includes(retried.outcome.receipt.visibleArtifact.artifactId))
-              throw new Error('GENERATION_DRAFT_SHORT_OUTLINE_FAILED')
-            reconciliationArtifactIds = new Set([...(recovery.draftReconciliation?.artifactIds ?? []), ...recovery.draftShortOutline.artifactIds])
-            logDraftAttempt(callbacks, context, { zhCN: '短细纲', enUS: 'Short outline' }, retried.outcome.receipt)
-          }
-          if (!recovery) {
-            callbacks.log(uiText('生成短细纲...', 'Generating a short chapter outline...'))
-            const outlined = await draftingSession.complete({ purpose: DRAFT_SHORT_OUTLINE_PURPOSE, output: 'visible-text',
-              reasoningStage: 'planning', budgetDemand: { kind: 'draft-units', writingLanguage, requestedUnits: 500, segmentable: false },
-              messages: [{ role: 'user', content: outlinePrompt }] }, { signal: cancellation.signal })
-            if (outlined.status !== 'completed' || outlined.finishReason !== 'stop' || !outlined.content.trim())
-              throw new Error('GENERATION_DRAFT_SHORT_OUTLINE_FAILED')
-            shortOutline = outlined.content
+            outlined = retried.outcome
+            // 日志无条件记录：重试失败也要留痕（校验保持条件式）。
             logDraftAttempt(callbacks, context, { zhCN: '短细纲', enUS: 'Short outline' }, outlined.receipt)
+            if (outlined.status === 'completed' && outlined.finishReason === 'stop' && outlined.content.trim()) {
+              recovery = await ipc.invokeWithProjectSession(projectSession, 'generation:read-context', { handle: context.mainGenerationRunHandle! })
+              if (recovery.draftSave.kind === 'changed') throw new Error('GENERATION_DRAFT_RECEIPT_INVALID')
+              shortOutline = recovery.draftShortOutline?.completedOutput ?? ''
+              if (shortOutline !== outlined.content || !outlined.receipt.visibleArtifact
+                || !recovery.draftShortOutline?.artifactIds.includes(outlined.receipt.visibleArtifact.artifactId))
+                throw new Error('GENERATION_DRAFT_SHORT_OUTLINE_FAILED')
+              reconciliationArtifactIds = new Set([...(recovery.draftReconciliation?.artifactIds ?? []), ...recovery.draftShortOutline.artifactIds])
+            }
+          }
+          // 两条分支的 outcome 在此统一判定：以可读文案说明失败原因，代码以子串保留供既有断言匹配。
+          if (outlined && (outlined.status !== 'completed' || outlined.finishReason !== 'stop' || !outlined.content.trim())) {
+            const reason = outlined.finishReason === 'length'
+              ? uiText('模型输出被截断', 'the model output was truncated')
+              : !outlined.content.trim() ? uiText('模型未返回可见内容', 'the model returned no visible content')
+                : uiText('模型未正常完成输出', 'the model did not complete the output normally')
+            throw new Error(uiText(`短细纲生成失败：${reason}。正文尚未开始。`,
+              `The short chapter outline failed: ${reason}. Drafting has not started.`)
+              + ` (GENERATION_DRAFT_SHORT_OUTLINE_FAILED; status=${outlined.status}; finishReason=${outlined.finishReason})`)
           }
           if (recovery?.draftShortOutline && !shortOutline) throw new Error('GENERATION_DRAFT_SHORT_OUTLINE_FAILED')
           const reconciliationBlock = [recordedReconciliation ? draftReconciliationBlock(writingLanguage, recordedReconciliation) : '',
