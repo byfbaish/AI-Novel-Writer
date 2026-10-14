@@ -273,14 +273,176 @@ export interface BlueprintKeyEvent {
 
 ## 9. 待作者确认清单
 
-- [ ] D1 存储：同意「复用 TEXT 列、不走 lane 六步？」
-- [ ] D2 id：同意改为 **`ch{N}:E{i}`**（跨章唯一）？
-- [ ] D3 `estimatedUnits`：同意「可选 + 缺省按 `wordsTarget / 条数` 均分」？
-- [ ] D4 编辑器：阶段 1 保留 Textarea + **标注"一行一条"**，可以吗？
-- [ ] D5 旧数据：同意「**读写双侧统一 normalize**（字符串按现有规则切分）+ 绝不回写」？
-- [ ] 分期：同意「阶段 1 单独提交 → 阶段 2 → **阶段 2.5 验证期** → 阶段 3」？
+> **2026-10-14 作者逐条确认：全部同意**（阶段 1 获授权开工，见 §11）。
+
+- [x] D1 存储：同意「复用 TEXT 列、不走 lane 六步？」
+- [x] D2 id：同意改为 **`ch{N}:E{i}`**（跨章唯一）？
+- [x] D3 `estimatedUnits`：同意「可选 + 缺省按 `wordsTarget / 条数` 均分」？
+- [x] D4 编辑器：阶段 1 保留 Textarea + **标注"一行一条"**，可以吗？
+- [x] D5 旧数据：同意「**读写双侧统一 normalize**（字符串按现有规则切分）+ 绝不回写」？
+- [x] 分期：同意「阶段 1 单独提交 → 阶段 2 → **阶段 2.5 验证期** → 阶段 3」？
 
 ---
+
+## 11. 实施进度：阶段 1（2026-10-14）
+
+> **状态（2026-10-14 二次修订）：代码完成、`tsc --noEmit` 归零、回归已真比对、待提交。**
+>
+> ⚠️ **本节原写「回归比对通过」是不成立的**，已按 §11.6 的真实读数改写。首轮实施**中途失败**：
+> 实际引入了 **53 条回归**（含 1 条用户可见的生产崩溃），根因两条，均已修复并补了回归测试。
+> 教训：**不要用口径不一致的两份测试日志做"零回归"结论**（见 §11.6）。
+
+### 11.1 落地产物
+
+| 项 | 落点 |
+|---|---|
+| 新模块 | `src/shared/blueprint-key-events.ts`（`BlueprintKeyEvent` / `normalizeKeyEvents` / `keyEventsText` / `keyEventId`） |
+| 新单测 | `src/shared/__tests__/blueprint-key-events.test.ts` |
+| 存储边界 | `electron/repositories/blueprint-repository.ts`（读 `rowToData` / 写 `normalizeBlueprintKeyEvents` / 比较 `samePersistedBlueprint` / `commitRange` 全程改用 `normalizedRequest`） |
+| 恢复候选哈希 | `electron/repositories/recovery-candidate-repository.ts`（新增 `legacySourceHashMatches` 旧形态只读兜底） |
+| agent 两处白名单 | `electron/services/agent-domain-tool-effect.ts`（`keyEvents` 移出 `blueprintStrings`）、`src/services/agent/tools/propose-chapter-blueprint.tool.ts` |
+| 归档 | `electron/services/project-archive-service.ts`（`portableKeyEvents` / `reviewKeyEventsField`，**只校验不改形**） |
+| 消费点 | `chapter-goal-review.ts`、`plot-tree*.ts`、`narrative-thread*.ts`、`consistency-preflight.ts`、`recovery-candidate.ts`、`directory.command.ts`、`generate-draft.command.ts`、`character-card-generation.command.ts`、`import-novel.command.ts`、`review-revision-*.ts`、`batch-chapter-workflow.ts`、`chapter-workflow.ts`、`directory-workflow.ts`、`plot-tree-repository.ts`、`narrative-thread-repository.ts`、`generation-character-proposal-proof.ts`、`read-blueprint.tool.ts` |
+| 编辑器 | `ChapterCardEditor.tsx`、`ChapterCreationDialog.tsx`（Textarea 往返 + **Label/placeholder 标注「每行一条」**，D4）、`DomainProposalDiff.tsx`（对象数组不再渲染 `[object Object]`） |
+| 新增回归 | `recovery-candidate-repository.test.ts`「legacy source_hash compatibility」两条（旧候选仍新鲜 / 真改写后照常 stale）；**另加**：`blueprint-key-events.test.ts` 的 `keyEventsText` 字符串直通 2 条、`blueprint-semantic-contract.test.ts` 的「已解码数组二次校验」1 条（缺陷 A/B 的回归，均经负向验证） |
+
+### 11.2 五个实现口径（**与设计稿的偏差，逐条附理由**）
+
+1. **`commitRange` 必须整体切到 `normalizedRequest`** —— 原设计只提"三个边界"。
+   但 `assertExactRange` / `commitPayloadHash` / `readExactRange` / 回读比对 / 冻结的
+   `character_sync_input` 都读 `request`；若只有 `upsert` 归一化，调用方传字符串时会
+   **落库（数组）与回读（数组）不等** ⇒ 误报「蓝图提交回读不一致」。
+   归一化对已是数组的输入**幂等**（`id` 按序号重算、`estimatedUnits` 保留），故既有路径零变化。
+2. **agent 侧 `keyEvents` 分支不写 `continue` 到 `changes[field] = structuredClone(value)`** ——
+   该分支单独 `continue` 且 `changes[field]` 存**归一化后的数组**，因为原子提交路径随后会再一次归一化；
+   若在此处保留字符串形态，`isAgentDomainToolCurrent` 的 JSON 指纹会变。
+3. **`legacySourceHashMatches` 是设计稿未列的必要补充** —— 设计稿 §8 称 `source_hash` 风险
+   「§3.1 读写双侧归一化直接解决」，但那只对**升级后新记录**的候选成立；**升级前已落库**的
+   pending 候选，其 `source_hash` 是按自由文本算的，若不补旧形态比对，会**一律被判 stale**
+   （= 真实的用户可见行为变化）。该函数**只读、不回写**，命中条件同时要求
+   `source_draft_id` / `source_draft_version` 仍然一致。
+4. **契约的 `keyEvents` 校验必须是双形态（`requiredKeyEvents`）** —— 设计稿只提"三个存储边界"，
+   未提**校验器会吃到自己的产出**。`structured-batch-executor.ts:554` 对已解码产出再调
+   `validateItem`，此时 `keyEvents` 已是数组 ⇒ 只收字符串必然崩（缺陷 A）。
+   这是**阶段 2 之前就必须有的过渡态**：模型产字符串、领域对象是数组，两者共存。
+5. **`keyEventsText` 必须接受字符串，且逐字返回** —— 设计稿 §3「文本呈现」只写了数组分支，
+   未覆盖**续写恢复链路**（`draft:chapter-info` 反序列化出来的是字符串，缺陷 B）。
+   选择"逐字返回"而非"切分再 join"，是为了不把作者原文的 `；` 改写成换行
+   （`【作者资料（保留原文）】` 块承诺原文保留）；同时 `draft-recovery-workflow.ts` 在边界
+   用 `normalizeKeyEvents` 归一化，让下游真正拿到数组。
+
+### 11.3 已知残留（**不影响正确性，记录备查**）
+
+- **文本呈现的分隔符归一**：多条事件进 prompt 时以 `\n` 连接（设计稿 §3「文本呈现」明文规定），
+  因此模型若用 `；` 写多条，载荷中会由 `；` 变成换行。**条目集合不变**（`chapter-goal-review` 旧代码
+  本就按 `/\r?\n|[；;]/` 切分），属设计已裁定行为，**不是偏差**。
+- **升级后"原样重存"同一章会让旧候选转 stale**：升级后作者若把某章蓝图**不加修改地重新保存**，
+  `key_events` 列由纯文本变为 JSON 数组串，旧候选的文本形态哈希不再命中。
+  触发条件三重叠加（升级 + 该章被重存 + 存在未处理旧候选），后果仅为**多一次重新生成**，
+  **无数据丢失**，且不自动回写。**接受为已知限制**，不在阶段 1 处理。
+- **`main-generation-owner.ts:734` 的 `fields` 数组无需改**：`isDeepStrictEqual` 两侧分别来自
+  `JSON.parse(character_sync_input)` 与 `BlueprintRepository.getAll()`，**本就同为数组形态**。
+
+### 11.4 验收读数
+
+- `tsc --noEmit`：**0 错误 / 退出码 0**；`eslint` 全部改动文件**干净**。
+- **同口径回归比对（★ 这才是有效判据）**：同一批 10 个文件
+  （`blueprint-semantic-contract` / `consistency-preflight` / `auto-next-chapter` / `plot-tree-generator` /
+  `directory-workflow` / `generate-draft.command` / `directory.command` / `import-novel.command` /
+  `draft-recovery-workflow` / `editor-discard`）：
+  HEAD = **403 passed / 0 failed**；阶段 1 修复后 = **403 passed / 0 failed**。
+- **src 侧全量 touched 面**：21 个文件 **670 passed / 0 failed**；electron 侧
+  （repository × 7 + `main-generation-owner`）**251 passed / 0 failed**。
+- **★★ 全量套件同口径比对（最终判据）**：纯 HEAD 与「阶段 1 修复后」各跑一次完整 `vitest run`
+  （清空 `NODE_OPTIONS` 以避开 safe-delete shim 噪声）：
+
+  | | HEAD | 阶段 1 修复后 |
+  |---|---|---|
+  | Tests | **140 failed / 5754 passed** | **137 failed / 5779 passed** |
+  | Test Files | 25 failed / 406 passed | 24 failed / 408 passed |
+  | **新增失败文件** | — | **0（无）** |
+
+  ⇒ **零新增回归**；失败数反而**少 3**（均在 `scripts/` 计时敏感用例：`smoke-win-installer`、
+  `quality-modernization-run`、`release-win-verify`，与本改动无关）；通过数 **+25**
+  （新增 `blueprint-key-events.test.ts` 19 例 + 3 条回归 + 修复的 `plot-tree-repository`）。
+  **全部剩余失败均已在 HEAD 逐条复现**，与阶段 1 无关。
+- **已知非回归失败（已逐条在 HEAD 复现）**：
+  - `electron/controllers/__tests__/generation-controller.test.ts` 1 例 `PORTABLE_SCHEMA_UNSUPPORTED`
+    —— **HEAD 同红**（该路径 stage 1 一行未碰）；
+  - `src/services/workflows/commands/__tests__/finalize-postprocess-character.integration.test.ts`
+    2 例 —— **HEAD 同红**（`nextChapterPrompt` 断言）；
+  - `project-restore-service` / `project-archive-service` / `legacy-project-copy-import` /
+    `portable-project-format` / `plot-outline-batch.command` 等 —— **HEAD 同红**。
+- ⚠️ **环境前置**：测试跑在 Node（当前机器 **Node 24.20.0 ⇒ `NODE_MODULE_VERSION 137`**）。
+  若 `better-sqlite3` 处于 Electron ABI（145），**全部 sqlite 相关测试会因 ABI 不匹配集体失败**
+  （实测 1861 failed），这是环境噪声、与本次改动无关；跑测试前先
+  `node scripts/prepare-native-for-node.mjs`，**跑完 dev 前须在非沙箱终端**
+  `pnpm run rebuild:electron` 切回。
+
+### 11.5 下一阶段入口
+
+阶段 2（产出侧）**未动**：`builtin-prompt-templates.ts:872/:882/:949/:957/:1610/:1615` 三处模板 +
+`prompt-language.ts:505` + `directory.command.ts:241-242` 内联 JSON 形状 + **作者全局覆盖版**
++ `BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST` 波及的两套验收脚本。动手前先 `getPromptSource(key)`
+并核对真实覆盖目录（`~/.vela/prompts/` 是 legacy 只读源，**不是生效目录**）。
+
+### 11.6 ★★ 首轮实施失败复盘：两条真实缺陷（2026-10-14 修复）
+
+首轮实施把「代码写完 + `tsc` 归零」当成完成，**漏了两条真实缺陷**。用**同一批 10 个文件**在
+HEAD 与「阶段 1 已应用」下分别实跑，才暴露出真实读数：
+
+| 状态 | 读数 |
+|---|---|
+| HEAD（无阶段 1） | **403 passed / 0 failed** |
+| 阶段 1 首轮 | **53 failed / 350 passed** |
+
+#### 缺陷 A（29+ 条）：契约对「已解码产出」二次校验，打断整条蓝图生成链路
+
+调用链：`directory.command.ts:461`（`validateItem: validateBlueprintSemanticItem`）
+→ `structured-batch-executor.ts:554`（对 `decoded` 逐项调 `validateItem`）
+→ `validateBlueprintSemanticItem` → `normalizeBlueprintSemanticItem`。
+
+`decodeBlueprintSemanticPayload` 已经把 `keyEvents` 变成数组，二次校验时
+`requiredText(数组)` 抛 `StructuredContractDiagnostic('invalid_type', 'blueprint.keyEvents')`
+⇒ 报 `code=invalid_output reason=invalid_item`。**HEAD 下解码产出是字符串，故不报**。
+
+- **修法**：新增 `requiredKeyEvents(value, path)` 双形态入口（数组放行，其余仍走
+  `requiredText` ⇒ 空串仍是 `empty_value`、非串非数组仍是 `invalid_type`）。
+- **教训**：解码器与校验器共用同一个归一化函数时，**必须保证函数对"自己的产出"幂等**。
+
+#### 缺陷 B（4 条）：`keyEventsText` 吃不下旧字符串 —— **用户可见的生产崩溃**
+
+`keyEventsText` 原为 `(events ?? []).map(...)`。而**续写/恢复链路**上传的是字符串：
+`draft-recovery-workflow.ts` 把持久化的 `draft:chapter-info` 原样 `JSON.parse(...) as Partial<ChapterInfo>`，
+而该 authorInput 是 `generate-draft.command.ts:640` 用 `JSON.stringify(writerChapterInfo)` 写入的，
+`WriterChapterInfo.keyEvents` 在 `:267` 被显式声明为 **`string`**。
+⇒ 恢复已中断的章节正文报 `TypeError: (events ?? []).map is not a function`。
+
+- **修法（两层）**：① `keyEventsText` 接受 `string` 并**逐字返回**（不重新切分 —— 保住作者原文，
+  `【作者资料（保留原文）】` 块承诺的正是原文保留）；② `draft-recovery-workflow.ts` 在边界用
+  `normalizeKeyEvents` 把 `keyEvents` 归一化后再构造 `GenerateDraftCommand`，让下游真正拿到数组。
+- **教训**：领域契约改类型时，**要顺着"持久化 authorInput → 反序列化 → 重建命令"这条恢复链路
+  单独走一遍**；`as ChapterInfo` 这类断言会**掩盖**契约不匹配。
+
+#### 缺陷 C（其余，均为 fixture/断言未同步）
+
+- **`normalizeKeyEvents` 漏传 `chapterNumber`**（`directory-workflow` / `blueprint-repository` /
+  `character-repository` / `main-generation-owner` 等）：得到 `ch0:E1`，而生产路径是 `ch1:E1`。
+  **判据**：夹具必须传真实章号，否则 id 与生产不一致。
+- **断言仍按字符串比较**：`toBe(字符串)` → 数组时代必然失败（`toBe` 是引用相等，**改 `toEqual`**）。
+- **`；` 归一为 `\n`**：进 JSON 载荷后 `JSON.stringify` 转义为字面 `\\n`，断言须写
+  `'核查遇阻\\n承担代价'`。这是 §11.3 已承认的设计行为，**不是偏差**。
+
+#### ★ 方法论教训（写进本条以免重犯）
+
+1. **"零回归"必须用同口径基线**：首轮拿 `test-clean-before.txt`（只覆盖 **79** 个文件、且被截断
+   无汇总行）与 `test-clean-after.txt`（覆盖 **432** 个文件）对比 —— **口径不一致，结论无效**。
+   正解：**同一批文件**分别在 HEAD 与改动后各跑一次。
+2. **`tsc` 归零 ≠ 语义正确**：两条缺陷都通过了类型检查（A 是运行时形状不符，B 被 `as` 断言掩盖）。
+3. **新增回归测试必须做负向验证**：撤掉修复后测试要变红，否则测不到东西
+   （本次 `keyEventsText` 与 `requiredKeyEvents` 的 3 条新用例已做负向验证：撤掉修复即 3 红）。
+4. **全量跑失败数不可直接当回归判据**：环境噪声（`better-sqlite3` ABI、超时）会淹没真实信号，
+   要**先分类**（ABI / 超时 / 真实断言差异）再判。
 
 ## 10. 外部评审意见处理（2026-10-14 · 其他项目组意见稿）
 

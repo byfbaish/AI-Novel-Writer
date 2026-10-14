@@ -430,6 +430,14 @@ interface PromptTemplate {
 
 **（2026-10-14 收口补记）** P0 主线（P0-0 / P0-1 / P0-2 / P0-2b / P0-3）**已全部完成并提交**，最近的正文层实机验证（ch1 + ch2）机制层全绿。同轮两件事：① AGL 设计稿（`docs/design/global-guidance-scope-lint-design.md`）经作者裁定**搁置** —— 「黄金三章拆分属使用层问题，框架不做兜底」，不进框架、保留备查（作者处置路径 = 手动拆进「节奏/风格指导」+`userGuidance`）；② 修复**大纲生成弹框进度记录无上限堆叠**（`DirectoryConfigDialog.tsx`，commit `1c3d436`）。③ **三项待裁定口径已裁定并落地**（原 §7.1-D）：加优先级声明（模板三处：内置 zh/en + 作者覆盖版）、修弧光跨界缺口（`arc-position.ts`，本批跨中弧时后半批缺规格）、空项目暂不跑先推代码 —— 见 `p0-0-upstream-projection-design.md` §13 与新版 §7.1-D。**下一步起点 = 下方 B-4（`keyEvents` 结构化），它是 P1 系的共同前提。**
 
+**（2026-10-14 18:25 再补记）** B-4「`keyEvents` 结构化」**阶段 1 已实施并修复完成（未提交）**。
+作者告知首轮实施**中途失败**；经复核，首轮**实际引入 53 条回归**（含 1 条**用户可见的生产崩溃**），
+两条真实缺陷已修、fixture 已同步、新增 3 条回归测试并负向验证。**同口径读数：10 文件 HEAD 403/403、
+修复后 403/403；src touched 面 21 文件 670/670；electron 侧 251/251。**
+**下一步 = 阶段 2（产出侧）**，入口见 `blueprint-key-events-structuring-design.md` §11.5；
+**该稿 §11.6 是本轮最有复用价值的复盘**（"零回归"必须同口径基线 / `tsc` 归零 ≠ 语义正确 /
+契约改类型必须单走恢复链路 / 回归测试必须负向验证）。
+
 **A. 已完成的代码改动（4 项，均已过 tsc + 测试）**
 
 | 项 | 落点 | 状态 |
@@ -469,7 +477,8 @@ interface PromptTemplate {
    - **本步不依赖 `keyEvents` 结构化**（不消费 `estimatedUnits`，按 §8-7 YAGNI 不立项）。
    - 主进程**不必改**（重试回放 `usage_replayTask`；哈希两侧同源）。
    - **踩坑提醒（新）**：P0-1 会让"以前最大的那个请求"变小 —— 凡按**序号**取"第一个/最大请求"做断言的测试都会假红（本轮 `does not locally reject a 30K prompt…` 即此，已改为**按 `purpose` 取**）。
-4. ★ **当前起点 · 共同前提 `keyEvents` 结构化**（`string` → `Array<{id, event, estimatedUnits}>`）—— 落点在**蓝图 schema**，**必须走 lane 六步**（见 `notes/data-and-schema.md`）。§5.5 表里有三行都依赖它。**动手前先出小设计稿给作者过目**（项目惯例）。
+4. ★ **共同前提 `keyEvents` 结构化**（`string` → `Array<{id, event, estimatedUnits}>`）—— 原写「落点在蓝图 schema，**必须走 lane 六步**」，**该前提已被调研否证**：复用 `blueprints.key_events TEXT` 存 `JSON.stringify(array)`（与同表 `characters` 同一惯用法）⇒ **零 schema 迁移、不动 DDL 一字节、基线指纹不受影响**（红线 1 天然满足）。§5.5 表里有三行都依赖它。设计稿 `docs/design/blueprint-key-events-structuring-design.md`（作者已裁定 D1–D6 全部同意）。
+   **★ 阶段 1 已实施并修复完成（2026-10-14，未提交）**：首轮实施**中途失败**、实际引入 **53 条回归**（含 1 条**用户可见的生产崩溃**），两条真实缺陷已修 + fixture 已同步；真实读数与复盘见该稿 **§11.4 / §11.6**。**下一步 = 阶段 2（产出侧）**，入口见其 §11.5。
 5. **P1-1 / P1-2 / P1-3**（见上表；P1-1 落点已修正为【后续计划边界】块）。
 
 **C. 接手必做（否则会踩已知坑）**
