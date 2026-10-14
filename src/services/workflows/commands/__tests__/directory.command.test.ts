@@ -437,6 +437,52 @@ describe('GenerateDirectoryCommand', () => {
     }
   })
 
+  it('把世界观里的空间规则摘录成独立小节送进蓝图请求', async () => {
+    // 老陈案：世界观确实进了请求，但埋在数千字散文里、与七八个空间并列 —— 是"喂了没看见"。
+    // 本用例锁住接线：摘录块必须真的出现在 user message 里（红线 15：看 messages，不看快照）。
+    const worldWithSpaces = [
+      '### 4.【空间结构（地图与区域）】',
+      '',
+      '**老陈记早餐摊（梅林坳巷口）**',
+      '一句话定位：全城风险最高的地方。',
+      '关键规则：7:00—10:00 营业，老板老陈爱搭话，客套话密度极高。',
+      '',
+      '**康宁医院·六楼肾内科**',
+      '一句话定位：母亲住院的地方。',
+      '关键规则：探视时间固定（15:00—19:00），过时不让进。',
+    ].join('\n')
+    stubIpcInvoke(successfulCommitHandler())
+    const observedTasks: GenerationTask[] = []
+    const session = generationSession(async task => {
+      observedTasks.push(task)
+      return {
+        status: 'completed',
+        content: JSON.stringify({ blueprints: [modelBlueprint(1)] }),
+        finishReason: 'stop' as const,
+        receipt: generationReceipt(observedTasks.length, 'stop', task.purpose),
+      }
+    })
+    const context = workflowContext()
+    context.data.architecture = worldWithSpaces
+    const command = new GenerateDirectoryCommand(
+      { mode: 'full', count: 1 },
+      { ...projectSnapshot, novelConfig: { ...projectSnapshot.novelConfig, totalChapters: 1 } },
+      { createRuntime: vi.fn(async () => testRuntime(session)) },
+    )
+    await command.execute({ step: {}, context, callbacks: stepCallbacks() })
+
+    const prompts = observedTasks.map(
+      task => task.messages.find(message => message.role === 'user')?.content ?? '',
+    )
+    expect(prompts.length).toBeGreaterThan(0)
+    for (const prompt of prompts) {
+      expect(prompt).toContain('★【空间约束（硬）】')
+      expect(prompt).toContain('老陈记早餐摊（梅林坳巷口）：7:00—10:00 营业')
+      expect(prompt).toContain('康宁医院·六楼肾内科：探视时间固定（15:00—19:00）')
+      expect(prompt).toContain('不得为了剧情方便而忽略已声明的限制')
+    }
+  })
+
   it('sends English blueprint instructions through the provider request for an English project', async () => {
     stubIpcInvoke(successfulCommitHandler())
     const observedTasks: GenerationTask[] = []
