@@ -191,6 +191,9 @@ function RelationshipBinding({ relation, batch, identities, choices, onChange, d
       <option value="blueprint-pending">{text('标记为「蓝图待建角色」', 'Mark as a blueprint-pending character')}</option>
       {identities.map(identity => <option key={identity.characterId} value={`bind:${identity.characterId}`}>{text('绑定到已有角色卡：', 'Bind to an existing card: ')}{identity.name}</option>)}
     </NativeSelect>
+    {relation.targetSelectionKey && !endpointsAdopted && <span className="w-full text-[var(--color-text-secondary)]">
+      {text('关系两端都需「新建」或「采用到已有角色」才能写入；当前有一端是暂不采用/功能配角（没有卡，关系无处可写）。', 'Both ends must create or adopt a character; one end is unresolved or an anchored supporting role, so the edge has nowhere to be written.')}
+    </span>}
   </div>
 }
 

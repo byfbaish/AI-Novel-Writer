@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
-import { act } from 'react'
+import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
 import { CharacterProposalSelectionPanel } from '../CharacterProposalSelectionPanel'
@@ -38,10 +38,13 @@ async function mount() {
   document.body.append(host)
   root = createRoot(host)
   const choices = createCharacterProposalChoices(batch)
-  await act(async () => {
-    root?.render(<CharacterProposalSelectionPanel batch={batch} identities={[{ characterId: '卡-陈默', name: '陈默', role: 'protagonist' }]}
-      choices={choices} onChange={() => {}} />)
-  })
+  // 受控宿主：决策变化必须回灌，否则测不到"选项随决策收窄"。
+  const Host = () => {
+    const [current, setCurrent] = useState(choices)
+    return <CharacterProposalSelectionPanel batch={batch} identities={[{ characterId: '卡-陈默', name: '陈默', role: 'protagonist' }]}
+      choices={current} onChange={setCurrent} />
+  }
+  await act(async () => { root?.render(<Host />) })
   return host
 }
 
@@ -74,5 +77,28 @@ describe('候选面板的分组与滚动', () => {
     expect(host.textContent).toContain('已有角色之间的关系提议（1）')
     host.querySelectorAll('details')[1]!.open = true
     await expect.element(edge).toBeVisible()
+  })
+
+  it('端点不产生角色时「采用这条关系」消失，并显式说明原因', async () => {
+    const host = await mount()
+    const edge = page.getByLabelText('关系处理：陈默 → 老陈')
+    const options = () => Array.from(edge.element().querySelectorAll('option')).map(option => option.value)
+    const setDecision = async (label: string, value: string) => act(async () => {
+      const select = host.querySelector<HTMLSelectElement>(`select[aria-label="采用方式：${label}"]`)!
+      select.value = value
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    // 实机反馈：作者记得这里曾有「采用」，现在没了却不知道为什么 —— 静默移除像 bug。
+    // 默认下陈默（同名候选）是暂不采用 ⇒ 起点不产生角色，选项不在、原因写明。
+    expect(options()).not.toContain('adopt')
+    await expect.element(page.getByText(/关系两端都需「新建」或「采用到已有角色」才能写入/)).toBeVisible()
+    // 两端都改为新建 ⇒ 关系可写，选项回来、说明消失。
+    await setDecision('陈默 · a', 'create')
+    expect(options()).toContain('adopt')
+    expect(host.textContent).not.toContain('关系两端都需「新建」或「采用到已有角色」才能写入')
+    // 终点改成功能配角 ⇒ 没有卡可挂关系，选项再次收窄并给出同一原因。
+    await setDecision('老陈 · b', 'functional')
+    expect(options()).not.toContain('adopt')
+    await expect.element(page.getByText(/关系两端都需「新建」或「采用到已有角色」才能写入/)).toBeVisible()
   })
 })
