@@ -165,10 +165,21 @@ git branch -f upstream-baseline upstream/master
 **✅ 2026-10-14 推送已完成（三条分支全部在远程）**
 
 ```
-refs/heads/dev_byf            febd9e0f   ← 我方主线（132 笔自有提交）
+refs/heads/dev_byf            0e5f2184   ← 我方主线（132 笔自有提交）
 refs/heads/upstream-baseline  bb3c80a0   ← 上游基线锚点（2026-10-14 由 1f8f22d4 推进）
 refs/heads/master             8c934037   ← 与 origin/master 对应，未动
 ```
+
+**2026-10-14 二次推送（b5781975 部分 Ⅱ 收口）**
+
+```
+5d8fc590..0e5f2184  dev_byf -> dev_byf
+1f8f22d4..bb3c80a0  upstream-baseline -> upstream-baseline
+```
+
+- **`unset` 四个代理变量后第 1 次即成功** —— 再次印证「清代理直连」优于盲重试。
+- 基线推进是 **fast-forward**（`1f8f22d` 是 `bb3c80a0` 的祖先）⇒ **无需 `--force`**。
+- 校验：`origin/dev_byf` = `dev_byf` = `0e5f2184`；`origin/upstream-baseline` = `upstream-baseline` = `bb3c80a0`。
 
 - `git push origin upstream-baseline` 首次因抖动失败，**重试通过**。
 - `git push -u origin dev_byf` 连续失败 **6 次**，**第 7 次通过**。
