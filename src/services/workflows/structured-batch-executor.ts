@@ -7,6 +7,7 @@ import {
   type GenerationTask,
 } from '../generation/generation-harness'
 import { structuredContractDiagnostic } from '../../shared/structured-contract-diagnostic'
+import { repairJsonStructuralPunctuation } from '../../shared/json-text-repair'
 import type { WritingLanguage } from '../../shared/writing-language'
 import {
   buildStructuredSyntaxRepairTask,
@@ -398,7 +399,19 @@ export function createStructuredBatchExecutor<TInput, TOutput>(dependencies: {
         let candidateReceipt = outcome.receipt
         let candidateContent = outcome.content
         let syntaxRepairApplied = false
-        if (isRepairableDirectJsonSyntaxFailure(candidateContent)) {
+        // 确定性本地修复优先：全角标点充当 JSON 分隔符属于**语法**问题，不必花一次整包
+        // 模型往返（实机：本地 qwen 用 `，` 与 `”，` 当分隔符，65536 tokens 的修复轮还
+        // 因证据闸门读不动候选而被拒）。两档启发式先低风险后高风险，只接受能解析且通过
+        // 证据闸门的结果 —— 猜错（例如正文里恰好有 `”，`）就退回既有模型修复路径。
+        const localSyntaxRepair = isRepairableDirectJsonSyntaxFailure(candidateContent)
+          ? ([false, true] as const)
+            .map(closeFullWidthQuotes => repairJsonStructuralPunctuation(candidateContent, { closeFullWidthQuotes }))
+            .find(candidate => candidate !== candidateContent && preservesStructuredJsonEvidence(candidateContent, candidate))
+          : undefined
+        if (localSyntaxRepair) {
+          syntaxRepairApplied = true
+          candidateContent = localSyntaxRepair
+        } else if (isRepairableDirectJsonSyntaxFailure(candidateContent)) {
           const originalContract = task.messages
             .map(message => `[${message.role}]\n${message.content}`)
             .join('\n\n')

@@ -101,6 +101,24 @@ export function buildStructuredSyntaxRepairTask(
   }
 }
 
+
+/** 全角结构标点（模型的常见失误：用中文标点当 JSON 分隔符）。lexer 认它们，闸门才"读得动"候选。 */
+const FULL_WIDTH_LEXICAL: Readonly<Record<string, string>> = {
+  '，': ',', '：': ':', '“': '"', '”': '"', '｛': '{', '｝': '}', '［': '[', '］': ']',
+}
+
+function escapeControlCharacter(character: string): string {
+  return character === '\n' ? '\\n' : character === '\r' ? '\\r' : character === '\t' ? '\\t'
+    : `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`
+}
+
+function structurallyFollowed(source: string, index: number): boolean {
+  let lookahead = index + 1
+  while (lookahead < source.length && /\s/u.test(source[lookahead])) lookahead += 1
+  const next = source[lookahead]
+  return next === undefined || ',:}]，：｝］'.includes(next)
+}
+
 interface JsonLexicalEvidence {
   scalars: string[]
   containers: string
@@ -111,7 +129,9 @@ function lexicalEvidence(source: string): JsonLexicalEvidence | undefined {
   let containers = ''
   let index = 0
   while (index < source.length) {
-    const character = source[index]
+    // 全角标点按 ASCII 等价物分类：否则 lexer 遇到 `，` 直接判"无法解析"，
+    // 闸门对这类候选永远返回 false —— 修复轮无论多正确都会被拒（实机 2026-10-15）。
+    const character = FULL_WIDTH_LEXICAL[source[index]] ?? source[index]
     if (/\s/u.test(character) || character === ',' || character === ':') {
       index += 1
       continue
@@ -122,27 +142,32 @@ function lexicalEvidence(source: string): JsonLexicalEvidence | undefined {
       continue
     }
     if (character === '"') {
-      const start = index
       index += 1
       let escaped = false
+      let content = ''
+      let terminated = false
       while (index < source.length) {
         const current = source[index]
-        if (!escaped && current === '"') {
-          index += 1
-          const raw = source.slice(start, index)
-          try {
-            scalars.push(`s:${JSON.stringify(JSON.parse(raw))}`)
-          } catch {
-            return undefined
-          }
+        // 收尾引号可能是全角 `”`/`“`（位置判据：其后紧跟结构分隔符）。
+        if (!escaped && (current === '"' || (('”' === current || '“' === current) && structurallyFollowed(source, index)))) {
+          terminated = true
           break
         }
-        if (!escaped && current.charCodeAt(0) < 0x20) return undefined
+        // 字符串里的裸控制字符属于**语法**缺陷（非法 JSON），比较时按转义后的等价形式看，
+        // 而不是判"读不动" —— 否则闸门对这类候选永远返回 false（实机 2026-10-15）。
+        if (!escaped && current.charCodeAt(0) < 0x20) content += escapeControlCharacter(current)
+        else content += current
         if (escaped) escaped = false
         else if (current === '\\') escaped = true
         index += 1
       }
-      if (index > source.length || source[index - 1] !== '"') return undefined
+      if (!terminated) return undefined
+      try {
+        scalars.push(`s:${JSON.stringify(JSON.parse(`"${content}"`))}`)
+      } catch {
+        return undefined
+      }
+      index += 1
       continue
     }
     const rest = source.slice(index)
