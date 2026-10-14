@@ -165,7 +165,12 @@ function RelationshipBinding({ relation, batch, identities, choices, onChange, d
   const adopted = choices.relationships.find(value => key(value) === key({ sourceSelectionKey: relation.sourceSelectionKey, targetSelectionKey: relation.targetSelectionKey, relation: relation.relation }))
   const pendingKey = JSON.stringify(['blueprint-pending', relation.sourceSelectionKey, relation.targetName])
   const marked = choices.blueprintPendingRelations?.some(value => JSON.stringify(['blueprint-pending', value.sourceSelectionKey, value.targetName]) === pendingKey) ?? false
-  const mode = adopted?.targetCharacterId ? `bind:${adopted.targetCharacterId}` : adopted ? 'adopt' : marked ? 'blueprint-pending' : 'skip'
+  // 关系只能在"会产生角色"的端点之间成立（主进程同规则校验）：暂不采用/功能配角没有卡，
+  // 边无处可写 —— 选项必须随当前决策收窄，否则作者一保存就炸。
+  const decisionOf = (key: string | undefined) => key ? choices.selections.find(item => item.selectionKey === key)?.action : undefined
+  const endpointsAdopted = isAdoptedCharacterDecision(decisionOf(relation.sourceSelectionKey) ?? 'keep-unresolved')
+    && (!relation.targetSelectionKey || isAdoptedCharacterDecision(decisionOf(relation.targetSelectionKey) ?? 'keep-unresolved'))
+  const mode = adopted?.targetCharacterId ? `bind:${adopted.targetCharacterId}` : adopted && endpointsAdopted ? 'adopt' : marked ? 'blueprint-pending' : 'skip'
   const replace = (next: CharacterProposalRelationshipChoice | null, nextMarked: boolean) => onChange({ ...choices,
     relationships: choices.relationships.filter(value => key(value) !== key({ sourceSelectionKey: relation.sourceSelectionKey, targetSelectionKey: relation.targetSelectionKey, relation: relation.relation })).concat(next ? [next] : []),
     blueprintPendingRelations: (choices.blueprintPendingRelations ?? []).filter(value => JSON.stringify(['blueprint-pending', value.sourceSelectionKey, value.targetName]) !== pendingKey)
@@ -178,11 +183,11 @@ function RelationshipBinding({ relation, batch, identities, choices, onChange, d
         const value = event.target.value
         if (value === 'skip') return replace(null, false)
         if (value === 'blueprint-pending') return replace(null, true)
-        if (value === 'adopt') return replace({ sourceSelectionKey: relation.sourceSelectionKey, targetSelectionKey: relation.targetSelectionKey, relation: relation.relation }, false)
+        if (value === 'adopt') return endpointsAdopted ? replace({ sourceSelectionKey: relation.sourceSelectionKey, targetSelectionKey: relation.targetSelectionKey, relation: relation.relation }, false) : replace(null, false)
         replace({ sourceSelectionKey: relation.sourceSelectionKey, targetCharacterId: value.slice(5), relation: relation.relation }, false)
       }}>
       <option value="skip">{text('暂不采用', 'Do not adopt')}</option>
-      {relation.targetSelectionKey && <option value="adopt">{text('采用这条关系', 'Adopt this relationship')}</option>}
+      {relation.targetSelectionKey && endpointsAdopted && <option value="adopt">{text('采用这条关系', 'Adopt this relationship')}</option>}
       <option value="blueprint-pending">{text('标记为「蓝图待建角色」', 'Mark as a blueprint-pending character')}</option>
       {identities.map(identity => <option key={identity.characterId} value={`bind:${identity.characterId}`}>{text('绑定到已有角色卡：', 'Bind to an existing card: ')}{identity.name}</option>)}
     </NativeSelect>

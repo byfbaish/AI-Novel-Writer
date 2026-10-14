@@ -1,4 +1,5 @@
 import type { ApproveCharacterProposalRequest, CharacterProposalBatch } from '../shared/character-proposal'
+import { isAdoptedCharacterDecision } from '../shared/character-proposal'
 import { defaultCharacterProposalRelationships, defaultCharacterProposalSelections } from './workflows/character-proposal-preview'
 
 /**
@@ -43,7 +44,14 @@ export function createCharacterProposalChoices(batch: CharacterProposalBatch): C
 export function toApproveCharacterProposalRequest(choices: CharacterProposalChoices, operationId: string): ApproveCharacterProposalRequest {
   const keyByCharacterId = new Map(choices.selections.flatMap(selection =>
     selection.action === 'map' ? [[selection.characterId, selection.selectionKey] as const] : []))
+  // 关系只能在"会产生角色"的端点之间成立（主进程同规则校验）。端点被改成
+  // 暂不采用/功能配角时丢弃该行 —— 与面板在改决策时自动清边的语义一致；
+  // 不兜底的话，任何滞留的边都会让整次保存炸 CHARACTER_RELATIONSHIP_PROPOSAL_INVALID。
+  const adoptedKeys = new Set(choices.selections
+    .filter(selection => isAdoptedCharacterDecision(selection.action)).map(selection => selection.selectionKey))
   const relationships = choices.relationships.flatMap(relationship => {
+    if (relationship.sourceSelectionKey !== undefined && !adoptedKeys.has(relationship.sourceSelectionKey)) return []
+    if (relationship.targetSelectionKey !== undefined && !adoptedKeys.has(relationship.targetSelectionKey)) return []
     // A row whose "source" is a card being mapped in this very batch has no id yet: fold it back
     // onto that candidate's selection key. Every other row keeps whichever source it declares.
     if (relationship.sourceCharacterId && keyByCharacterId.has(relationship.sourceCharacterId))
