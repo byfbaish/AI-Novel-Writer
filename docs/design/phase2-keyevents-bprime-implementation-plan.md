@@ -213,3 +213,63 @@
 1. **段二的结构化字段存哪**：① `blueprints` 新增 TEXT 列（**推荐**，与 R6 同一次迁移，语义清晰）；② 塞进 `key_events` 变成 `{events, refs}` 包装对象（零 DDL，但语义混、触及全部现有读者）。
 2. **校验器的触发面**：① 只做**同章内**单点比较（空间名 + 钟点，推荐先做）；② 连跨章一致性一起（同一空间在不同章被赋不同 `hours` 也要判）——后者需要"跨章结构化索引"，建议留阶段 3。
 3. **命名**：`锚点人物（不建卡）` / `无卡角色` / 保留`功能配角`（我推荐第一个；理由：名册里已有「配角」，同词不同义必误导）。
+
+---
+
+## 9. 迁移段执行清单（lane 六步 · 已预置，开工即用）
+
+> 2026-10-15 03:15 预置。**本段是唯一一次 schema 迁移**，段二（B′ 结构化列）与段三（R6 决定日志表）共用它。
+
+### 9.0 现状事实（已核对，不要凭记忆）
+
+| 项 | 值 / 位置 |
+|---|---|
+| 当前 schema 版本 | `LATEST_SCHEMA_VERSION = 8`（`electron/migrations/registry.ts:15`）、`CURRENT_DESKTOP_SCHEMA_VERSION = 8`（`electron/migrations/desktop-registry.ts:17`） |
+| 本次新增 | **M08（from 8 → to 9）** |
+| 参照实现 | `electron/migrations/m07-plot-structure-plan.ts`（幂等 `apply*` + `verify*` + `createM07Migration`） |
+| 基线 | `baseline-schema.ts` **一个字节都不许动**（红线 1）；M00 指纹是 `sha256(JSON.stringify(sqlite_master))` |
+
+### 9.1 迁移内容（两件事，一次做完）
+
+1. **`blueprints` 新增伴随列** `structured_refs TEXT NOT NULL DEFAULT ''` —— 存 B′ 的 `spaceRefs` JSON（与 `key_events` 同法：TEXT 存 JSON，不动既有列）。
+2. **新表 `character_cast_decisions`**（R6 锚点人物的 append-only 作者决定日志）：
+
+```sql
+CREATE TABLE character_cast_decisions (
+  decision_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  anchor_role TEXT NOT NULL,          -- 定位（摊主/门卫…）
+  catchphrase TEXT NOT NULL DEFAULT '',
+  relation_to_protagonist TEXT NOT NULL DEFAULT '',
+  action TEXT NOT NULL,               -- 'register' | 'revoke'
+  source_revision INTEGER NOT NULL,   -- 记录时的角色名册 revision
+  operation_id TEXT NOT NULL,         -- 作者操作幂等键
+  created_at TEXT NOT NULL            -- 展示前补 Z（见 data-and-schema 约定）
+);
+```
+> 语义：**追加**记录，撤销 = 追加一条 `revoke`；当前有效登记 = 按 `name` 取最后一条。
+> 这样「已批准批次不可改写」的历史约束不受影响（与 `reopen` 同一原则）。
+
+### 9.2 六步落点（照 `notes/data-and-schema.md` 的 lane 定义）
+
+| # | 文件 | 动作 |
+|---|---|---|
+| 1 | `electron/migrations/registry.ts` | `MIGRATION_LANE` 追加 `{ id: 'M08', from: 8, to: 9, owner: '<本次>' }`；`LATEST_SCHEMA_VERSION = 9` |
+| 2 | `src/shared/project-storage.ts` | `MIGRATION_IDS` 追加同名 `'M08'` |
+| 3 | `electron/migrations/m08-*.ts`（新建） | `applyM08*`（幂等：列/表已存在即返回）+ `verifyM08*`（`PRAGMA table_info` / `sqlite_master`）+ `createM08Migration({ from: 8, to: 9 })` |
+| 4 | `electron/migrations/desktop-registry.ts` | import + `const m08 = createM08Migration(...)`；`createMigrationRegistry([...m07, m08], [...]`；`CURRENT_DESKTOP_SCHEMA_VERSION = 9` |
+| 5 | `electron/services/sqlite-project-migration.ts` | `CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED` 白名单同步 |
+| 6 | `baseline-schema.ts` | **保持冻结**，不加任何幂等 ALTER |
+
+### 9.3 迁移段的验收
+
+1. **旧项目可升级**：用作者库副本（`每天第一句谎话都会成真`）跑一次打开流程 ⇒ `user_version = 9`、两处新增存在、**不报 `UNRECOGNIZED_SCHEMA`**；
+2. **指纹登记**：`desktop-registry.ts` 的 `schemas(9)` 与实际库指纹一致（跑 `electron/migrations/__tests__` / `sqlite-project-migration` 相关测试）；
+3. **幂等**：同一库重复 apply 不改 `sqlite_master`；
+4. **不碰基线**：`git diff` 里 `baseline-schema.ts` 必须为空；
+5. 附带：`portable-project-field-policy.json` 为新列登记策略（`blueprints.key_events` 现标 "D"）。
+
+### 9.4 迁移后的两段代码（各自独立提交）
+
+- **段三（先做）**：`declinedCandidateNames()` 改读 `character_cast_decisions`（空表时一次性回填：从既有已批准批次的 `functional` 决策派生）+ 「锚点人物（不建卡）」管理面（列表 / 撤销 / 改口吻定位）。
+- **段二（后做）**：世界观产出加机读行（`hours=`/`entry=`）+ 蓝图产出加 `spaceRefs` 写入 `structured_refs` + 新校验器 `space-time-consistency.ts`（**同章内**单点比较，零语义解析，两侧缺字段 fail-open）+ 接既有预检关卡（finding 带「冲突源层级」）。
