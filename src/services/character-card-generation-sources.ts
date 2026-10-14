@@ -23,12 +23,18 @@ export interface BlueprintPendingCandidate {
  * name that merely appears in `characters` is chapter-scoped scenery and must
  * never be silently promoted into a card. Candidates already present in the
  * roster are dropped, so "pending" means exactly "declared but not yet built".
+ *
+ * `declinedNames` are the names the author explicitly registered as anchored
+ * supporting roles without a card. They are settled decisions too: without them
+ * this derived list can never be emptied, because such a character stays absent
+ * from the roster by design.
  */
 export function pendingBlueprintCandidates(
   operations: readonly BlueprintCharacterSyncOperation[],
   rosterNames: readonly string[],
+  declinedNames: readonly string[] = [],
 ): BlueprintPendingCandidate[] {
-  const built = new Set(rosterNames.map(characterRosterIdentityKey).filter(Boolean))
+  const built = new Set([...rosterNames, ...declinedNames].map(characterRosterIdentityKey).filter(Boolean))
   // A character declared in several chapters is introduced once: keep the
   // earliest chapter so provenance points at the first appearance, not a repeat.
   const byName = new Map<string, BlueprintPendingCandidate>()

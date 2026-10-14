@@ -38,6 +38,20 @@ describe('Step 1 · 待建卡候选集', () => {
     const notes = blueprintSourceNotes([{ name: '周砚', chapterNumber: 7 }])
     expect(notes.get('周砚')).toBe('来源：第 7 章蓝图')
   })
+
+  it('作者已登记为功能配角的名字不再算待建卡（否则这份派生清单永远清不空）', () => {
+    const pending = pendingBlueprintCandidates(syncOperation([
+      { chapterNumber: 1, characters: ['陈默', '老陈'], newCharacterCandidates: [{ name: '老陈', role: 'minor' }, { name: '赵启明', role: 'minor' }] },
+    ]), [], ['老陈'])
+    expect(pending.map(candidate => candidate.name)).toEqual(['赵启明'])
+  })
+
+  it('功能配角名单与名册走同一身份键归一化，空白差异不会漏排', () => {
+    const pending = pendingBlueprintCandidates(syncOperation([
+      { chapterNumber: 1, characters: ['老陈'], newCharacterCandidates: [{ name: '老陈', role: 'minor' }] },
+    ]), [], [' 老陈 '])
+    expect(pending).toEqual([])
+  })
 })
 
 describe('Step 1 · 来源多选', () => {

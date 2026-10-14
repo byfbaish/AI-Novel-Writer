@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { CharacterProposalBatch } from '../../shared/character-proposal'
+import { isAdoptedCharacterDecision } from '../../shared/character-proposal'
 import { CHARACTER_ROLES, getCharacterRoleLabels } from '../../shared/character-role'
 import type { CharacterProposalChoices, CharacterProposalRelationshipChoice } from '../../services/character-proposal-choices'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -34,7 +35,7 @@ export function CharacterProposalSelectionPanel({ batch, identities, choices, on
       targetName: relation.targetName, relation: relation.relation }
   }))
   return <section className="space-y-3" aria-label={text('批量选择角色采用方式', 'Choose character adoption in one batch')}>
-    <p className="text-xs text-[var(--color-text-secondary)]">{text('同名或共享别名不会自动合并。可选择对应角色、新建或暂不采用；最后一次确认统一保存。', 'Matching names or shared aliases are not merged automatically. Choose a character, create one, or keep unresolved, then confirm the batch once.')}</p>
+    <p className="text-xs text-[var(--color-text-secondary)]">{text('同名或共享别名不会自动合并。可选择对应角色、新建、登记为功能配角或暂不采用；最后一次确认统一保存。', 'Matching names or shared aliases are not merged automatically. Choose a character, create one, register an anchored supporting role, or keep unresolved, then confirm the batch once.')}</p>
     {batch.items.map(item => {
       const choice = choices.selections.find(value => value.selectionKey === item.selectionKey)
       const editable = batch.source.kind === 'generation' && batch.source.inputKind === 'planning-material'
@@ -56,11 +57,12 @@ export function CharacterProposalSelectionPanel({ batch, identities, choices, on
             const value = event.target.value
             const selection = value.startsWith('map:')
               ? { selectionKey: item.selectionKey, action: 'map' as const, characterId: value.slice(4) }
-              : { selectionKey: item.selectionKey, action: value === 'create' ? 'create' as const : 'keep-unresolved' as const }
+              : { selectionKey: item.selectionKey, action: value === 'create' ? 'create' as const
+                : value === 'functional' ? 'functional' as const : 'keep-unresolved' as const }
             const selections = choices.selections.filter(current => current.selectionKey !== item.selectionKey).concat(selection)
-            const adopted = new Set(selections.filter(current => current.action !== 'keep-unresolved').map(current => current.selectionKey))
+            const adopted = new Set(selections.filter(current => isAdoptedCharacterDecision(current.action)).map(current => current.selectionKey))
             onChange({ ...choices, selections,
-              edits: selection.action === 'keep-unresolved' ? choices.edits?.filter(edit => edit.selectionKey !== item.selectionKey) : choices.edits,
+              edits: isAdoptedCharacterDecision(selection.action) ? choices.edits : choices.edits?.filter(edit => edit.selectionKey !== item.selectionKey),
               // Drop a proposal-derived edge only when one of its two candidate endpoints stops
               // being adopted. An author-declared edge from an existing card has no selection key
               // and must survive: it was not derived from this batch.
@@ -69,9 +71,10 @@ export function CharacterProposalSelectionPanel({ batch, identities, choices, on
           }}>
           <option value="keep-unresolved">{text('暂不采用，保留候选', 'Keep unresolved')}</option>
           <option value="create">{text('新建独立角色', 'Create a separate character')}</option>
+          <option value="functional">{text('登记为功能配角，不建卡', 'Register as anchored supporting role (no card)')}</option>
           {identities.map(identity => <option key={identity.characterId} value={`map:${identity.characterId}`}>{identity.name} · {roleLabel(identity.role) ?? ''} · {identity.characterId.slice(-8)}</option>)}
         </NativeSelect>
-        {editable && choice?.action !== 'keep-unresolved' && <details className="text-xs" onClick={event => event.stopPropagation()}>
+        {editable && isAdoptedCharacterDecision(choice?.action ?? 'keep-unresolved') && <details className="text-xs" onClick={event => event.stopPropagation()}>
           <summary className="cursor-pointer">{text('编辑导入候选', 'Edit imported candidate')}</summary>
           <div className="grid grid-cols-1 gap-2 pt-2">
             {editableFields.map(([field, zh, en]) => <label key={field} className="grid gap-1">

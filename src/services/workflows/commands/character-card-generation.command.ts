@@ -200,7 +200,11 @@ export class ListPendingBlueprintCandidatesCommand extends BaseWorkflowCommand<s
     const cards = await ipc.invokeWithProjectSession(
       projectSession, 'db:character-get-all', expectedProjectPath,
     ) as CharacterData[]
-    const pending = pendingBlueprintCandidates(operations, cards.map(card => card.name))
+    // 作者已确认为「功能配角、不建卡」的名字同样是已处理项，否则该清单永远清不空。
+    const declined = await ipc.invokeWithProjectSession(
+      projectSession, 'character-proposal:list-declined',
+    ) as string[]
+    const pending = pendingBlueprintCandidates(operations, cards.map(card => card.name), declined)
     if (!pending.length) {
       callbacks.setProgress(100)
       return text('没有待建卡角色：蓝图声明的新角色均已有角色卡。', 'No pending candidates: every character declared by blueprints already has a card.')

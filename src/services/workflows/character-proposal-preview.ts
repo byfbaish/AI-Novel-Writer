@@ -1,9 +1,10 @@
-import type { CharacterProposalBatch } from '../../shared/character-proposal'
+import type { CharacterProposalBatch, CharacterProposalDecision } from '../../shared/character-proposal'
+import { isAdoptedCharacterDecision } from '../../shared/character-proposal'
 import { getCharacterRoleLabels } from '../../shared/character-role'
 
 type Text = (zh: string, en: string) => string
 /** Suggestions become effects only after the explicit approval step and main validation. */
-export function defaultCharacterProposalSelections(batch: CharacterProposalBatch) {
+export function defaultCharacterProposalSelections(batch: CharacterProposalBatch): CharacterProposalDecision[] {
   return batch.items.map(item => item.resolution.status === 'resolved'
     ? { selectionKey: item.selectionKey, action: 'map' as const, characterId: item.resolution.characterId }
     : item.resolution.status === 'unresolved' && item.resolution.candidateIds.length === 0
@@ -13,7 +14,7 @@ export function defaultCharacterProposalSelections(batch: CharacterProposalBatch
 /** Names are display labels. Only declared selection-key endpoints can become proposed edges. */
 export function defaultCharacterProposalRelationships(batch: CharacterProposalBatch) {
   const adoptedKeys = new Set(defaultCharacterProposalSelections(batch)
-    .filter(item => item.action !== 'keep-unresolved').map(item => item.selectionKey))
+    .filter(item => isAdoptedCharacterDecision(item.action)).map(item => item.selectionKey))
   return batch.items.flatMap(item => adoptedKeys.has(item.selectionKey)
     ? item.relationships.flatMap(relation => relation.targetSelectionKey && adoptedKeys.has(relation.targetSelectionKey)
       ? [{ sourceSelectionKey: item.selectionKey, targetSelectionKey: relation.targetSelectionKey, relation: relation.relation }]
@@ -40,7 +41,8 @@ export function formatCharacterProposalPreview(batch: CharacterProposalBatch, te
       `${text('来源', 'Source')}：${item.sourceId}`,
       batch.status !== 'pending-approval' ? '' : decisions[index].action === 'create' ? text('确认后：新建角色', 'On confirmation: create a character')
         : decisions[index].action === 'map' ? text('确认后：采用到已确定的角色', 'On confirmation: adopt into the identified character')
-          : text('暂不采用：身份尚未明确，候选保持可读', 'Not adopted: identity is unresolved; the candidate remains readable'),
+          : decisions[index].action === 'functional' ? text('确认后：登记为功能配角，不建卡（名字仍可被后续章节引用）', 'On confirmation: registered as an anchored supporting role without a card (the name stays referenceable)')
+            : text('暂不采用：身份尚未明确，候选保持可读', 'Not adopted: identity is unresolved; the candidate remains readable'),
       ...Object.entries(item.fields).flatMap(([key, value]) => key !== 'name' && typeof value === 'string' && value
         ? [`- ${labels[key] ?? key}：${key === 'role' ? text(getCharacterRoleLabels(value).zhCN, getCharacterRoleLabels(value).enUS) : value}`] : []),
       ...(batch.source.kind === 'legacy-roster-generation' ? [text('原始当前状态仅保留为候选；本次批准不将其写入定稿状态。', 'Original current state is retained as a candidate only; approval does not adopt it as finalized state.'), JSON.stringify(item.rawValue, null, 2)] : []),

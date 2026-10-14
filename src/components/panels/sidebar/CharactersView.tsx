@@ -13,6 +13,7 @@ import { cn } from '../../../lib/utils'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { getCharacterRoleLabels } from '../../../shared/character-role'
 import { CharacterCardImportButton } from '../../characters/CharacterCardImportButton'
+import { CharacterProposalInbox } from '../../characters/CharacterProposalInbox'
 import { CharacterCardGenerateButton } from '../../characters/CharacterCardGenerateButton'
 import { FinalizedCharacterProposalPanel } from '../../characters/FinalizedCharacterProposalPanel'
 import { FinalizedCharacterStateCandidatePanel } from '../../characters/FinalizedCharacterStateCandidatePanel'
@@ -169,6 +170,7 @@ export default function CharactersView() {
           </div>
         </div>
       )}
+      <CharacterProposalInbox />
       <FinalizedCharacterProposalPanel />
       <FinalizedCharacterStateCandidatePanel />
       <div className="relative px-2 py-1.5 border-b border-[var(--color-border)]">

@@ -195,6 +195,7 @@ export function registerGenerationController(options: {
   })
   register('character-proposal:read', 1, (owner, request) => owner.characterProposals.read(request.proposalBatchId))
   register('character-proposal:list-history', 0, owner => owner.characterProposals.listHistory())
+  register('character-proposal:list-declined', 0, owner => owner.characterProposals.declinedCandidateNames())
   register('character-proposal:list-pending-finalized', 0, owner => owner.characterProposals.listPendingFinalized())
   register('character-proposal:read-pending-finalized', 1, (owner, request) => owner.characterProposals.readPendingFinalized(request.proposalBatchId))
   register('character-proposal:approve', 1, (owner, request) => owner.approveCharacterProposal(request))

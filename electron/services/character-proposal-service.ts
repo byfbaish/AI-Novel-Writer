@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3'
 import { isDeepStrictEqual } from 'node:util'
 import type { ApproveCharacterProposalRequest, CancelCharacterProposalRequest, CharacterIdentitySnapshot, CharacterProposalBatch, CharacterProposalHistoryEntry, CharacterProposalItem, CharacterProposalSource, CharacterStaticFields, PendingFinalizedCharacterProposalSummary } from '../../src/shared/character-proposal'
+import { isAdoptedCharacterDecision } from '../../src/shared/character-proposal'
 import { resolveScopedCharacterIdentity, type CharacterStaticProvenance } from '../../src/shared/character-identity'
 import { CHARACTER_ROLES } from '../../src/shared/character-role'
 import { CharacterRosterRepository, commitCharacterIdentities, refreshCharacterIdentityProjection, type CharacterIdentityCommitRequest } from '../repositories/character-roster-repository'
@@ -146,6 +147,33 @@ export class CharacterProposalService {
     })
   }
   /**
+   * Names the author explicitly registered as anchored supporting roles (no card).
+   *
+   * These are settled decisions, not pending ones: a name listed here must stop
+   * appearing in the derived "declared by a blueprint but not yet built" candidate
+   * set, otherwise that set can never be emptied. Batches whose durable proof no
+   * longer verifies are skipped rather than repaired — the record stays readable
+   * in the inbox, where the author can still read or cancel it.
+   */
+  declinedCandidateNames(): string[] {
+    const rows = this.db.prepare('SELECT proposal_id FROM character_identity_proposals WHERE source_key=? ORDER BY proposal_id')
+      .all(`character-proposal-v1:${this.projectId}`) as { proposal_id: string }[]
+    const names = new Set<string>()
+    for (const { proposal_id } of rows) {
+      try {
+        const envelope = this.readEnvelope(proposal_id)
+        const functional = new Set((envelope.decision?.selections ?? [])
+          .filter(selection => selection.action === 'functional').map(selection => selection.selectionKey))
+        if (!functional.size) continue
+        for (const item of envelope.batch.items) {
+          const name = functional.has(item.selectionKey) ? item.fields.name?.trim() : ''
+          if (name) names.add(name)
+        }
+      } catch { /* An unreadable batch contributes nothing; it is never silently repaired. */ }
+    }
+    return [...names]
+  }
+  /**
    * Read-only generation history. The table stores no timestamp, so entries are
    * grouped by the semantic meaning of `source` instead of being time-ordered.
    * Any entry whose durable proof no longer verifies is skipped, never repaired.
@@ -264,7 +292,7 @@ export class CharacterProposalService {
       const proof = this.sourceProof(batch.source, true, envelope.architectureDerivationVersion ?? 1)
       if (!proof.provenance || !['generated', 'derived'].includes(proof.provenance.kind)) throw new Error('CHARACTER_PROPOSAL_PROVENANCE_REQUIRED')
       if (request.selections.length !== byKey.size || new Set(request.selections.map(item => item.selectionKey)).size !== byKey.size) throw new Error('CHARACTER_APPROVAL_SELECTION_INVALID')
-      if (edits?.some(edit => !request.selections.some(selection => selection.selectionKey === edit.selectionKey && selection.action !== 'keep-unresolved')))
+      if (edits?.some(edit => !request.selections.some(selection => selection.selectionKey === edit.selectionKey && isAdoptedCharacterDecision(selection.action))))
         throw new Error('CHARACTER_PROPOSAL_EDIT_INVALID')
       if (batch.source.kind === 'legacy-roster-generation' && !request.selections.some(item => item.action === 'create' || item.action === 'map'))
         throw new Error('CHARACTER_APPROVAL_SELECTION_REQUIRED')
@@ -274,7 +302,7 @@ export class CharacterProposalService {
       const existingCharacters = this.identitySnapshot().characters
       for (const selection of request.selections) {
         const item = byKey.get(selection.selectionKey)
-        if (!item || !['create', 'map', 'keep-unresolved'].includes(selection.action)
+        if (!item || !['create', 'map', 'keep-unresolved', 'functional'].includes(selection.action)
           || Object.keys(selection).some(key => !['selectionKey', 'action', ...(selection.action === 'map' ? ['characterId'] : [])].includes(key))) throw new Error('CHARACTER_APPROVAL_SELECTION_INVALID')
         if (selection.action === 'create') identityRequest.creations.push({ selectionKey: item.selectionKey, fields: item.fields })
         // A finalized occurrence carries a historical display label, not permission to rename an existing identity.
@@ -294,8 +322,9 @@ export class CharacterProposalService {
           throw new Error('CHARACTER_ID_UNKNOWN')
       }
       for (const relation of request.relationships ?? []) {
-        // `from` is a candidate of this batch (any decision except keep-unresolved) or, when
-        // the author attaches an outgoing edge to an existing card, that card's own id.
+        // `from` is a candidate of this batch that actually produces a character (`create`/`map`)
+        // or, when the author attaches an outgoing edge to an existing card, that card's own id.
+        // `keep-unresolved` and `functional` produce no character, so neither can be an edge source.
         const from = relation.sourceSelectionKey
           ? request.selections.find(item => item.selectionKey === relation.sourceSelectionKey) : undefined
         const to = relation.targetSelectionKey
@@ -304,10 +333,10 @@ export class CharacterProposalService {
         const fromCandidate = from !== undefined
         if (fromExisting === fromCandidate
           || fromExisting && (relation.sourceSelectionKey !== undefined || !nonempty(relation.sourceCharacterId))
-          || fromCandidate && (from!.action === 'keep-unresolved'
+          || fromCandidate && (!isAdoptedCharacterDecision(from!.action)
             || !byKey.get(from!.selectionKey)!.relationships.some(item => item.relation === relation.relation
               && (item.targetSelectionKey ? item.targetSelectionKey === relation.targetSelectionKey : Boolean(item.targetName))))
-          || to?.action === 'keep-unresolved'
+          || to !== undefined && !isAdoptedCharacterDecision(to.action)
           || Boolean(to) === Boolean(relation.targetCharacterId)) throw new Error('CHARACTER_RELATIONSHIP_PROPOSAL_INVALID')
         // An existing source can only point at a resolvable target, and relabelling it would
         // rewrite an identity the batch has no authority over.
@@ -315,8 +344,10 @@ export class CharacterProposalService {
           throw new Error('CHARACTER_ID_UNKNOWN')
         identityRequest.relationships.push({
           ...(fromExisting ? { sourceCharacterId: relation.sourceCharacterId }
-            : from!.action === 'create' ? { sourceSelectionKey: from!.selectionKey } : { sourceCharacterId: from!.characterId }),
-          ...(to ? to.action === 'create' ? { targetSelectionKey: to.selectionKey } : { targetCharacterId: to.characterId } : { targetCharacterId: relation.targetCharacterId }),
+            : from!.action === 'map' ? { sourceCharacterId: from!.characterId }
+              : { sourceSelectionKey: from!.selectionKey }),
+          ...(to ? to.action === 'map' ? { targetCharacterId: to.characterId }
+            : { targetSelectionKey: to.selectionKey } : { targetCharacterId: relation.targetCharacterId }),
           relation: relation.relation })
       }
       const frozenRequest = JSON.stringify(identityRequest)

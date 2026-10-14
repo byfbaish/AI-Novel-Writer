@@ -223,9 +223,10 @@ export default function App() {
             projectSession,
             projectSessionContextFromProject(useProjectStore.getState().currentProject),
           )) return
-          const [operations, cards] = await Promise.all([
+          const [operations, cards, declined] = await Promise.all([
             ipc.invokeWithProjectSession(projectSession, 'db:blueprint-character-sync-list-pending', projectSession.projectPath),
             ipc.invokeWithProjectSession(projectSession, 'db:character-get-all', projectSession.projectPath),
+            ipc.invokeWithProjectSession(projectSession, 'character-proposal:list-declined'),
           ])
           if (!sameProjectSessionContext(
             projectSession,
@@ -234,6 +235,7 @@ export default function App() {
           const pending = pendingBlueprintCandidates(
             operations as BlueprintCharacterSyncOperation[],
             (cards as { name: string }[]).map(card => card.name),
+            declined as string[],
           )
           // No candidates means no prompt: an empty notice is pure noise.
           if (!pending.length) return
