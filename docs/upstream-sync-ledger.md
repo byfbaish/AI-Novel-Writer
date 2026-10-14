@@ -23,7 +23,7 @@
 
 | 项 | 值 |
 |---|---|
-| dev_byf HEAD | `5e452a0f`（2026-10-14） |
+| dev_byf HEAD | `ab4a2b84`（2026-10-14） |
 | 独有提交数（分叉点之后） | **135** |
 | 上游侧独有提交数 | **0**（分叉点之后 origin/master 无新增） |
 | 上游侧被引入的提交 | **3 个**：`464aa95`(#335)、`dc74cde`(#336)、`1f8f22d`(#337) —— 2026-10-10 从 `upstream/master` 拉入，**已在 dev_byf 上** |
@@ -141,7 +141,7 @@ git branch -f upstream-baseline upstream/master
 |---|---|---|
 | ⛔ 跳过 | **18** | RD-4 运行侧页 / 新外壳（`src/components/stage/run/`、`src/components/run/` —— 我方**尚无**这些目录）+ `scripts/redesign/` + docs 截图视频 + CI |
 | ✅ 吸收 | **1** | `2f357054` 的两组：① 调用记录按 UTC 解析（`stats-service.ts` 导出 `llmCallTime`，`BottomPanel.tsx` 历史表改用它 —— 我方 `new Date(row.createdAt)` 同样慢 8 小时）；② 角色定位显示中文（`CharacterProposalSelectionPanel.tsx` 两处）→ 落 `5e452a0f` |
-| ⚪ 待作者决策 | **5** | 运行标题改版包：`17dc343b` `862c04ba` `5c5c37c4`（把「写稿 — 第 N 章 · 标题」改为「第 N 章 · 写稿」、去破折号）+ 连带修复 `53017cb6` `a8480855`（去掉 `replace(/^[^\s]+\s/)` 截断） |
+| ⚪ 待作者决策 | **5** | 运行标题改版包：`17dc343b` `862c04ba` `5c5c37c4`（把「写稿 — 第 N 章 · 标题」改为「第 N 章 · 写稿」、去破折号）+ 连带修复 `53017cb6` `a8480855`（去掉 `replace(/^[^\s]+\s/)` 截断） —— **2026-10-14 作者裁定：①② 采用（落 `ab4a2b84`）、③ 保留待议**，详见 §4.4 |
 
 **唯一带独立缺陷修复的是 `2f357054`**：其余 26 笔全部属于 RD-4 设计线或 CI/资产。
 判「`2f357054` 哪几组与我方相关」的方法是**逐组比对文件存在性 + 逐行比对现状代码** ——
@@ -152,13 +152,27 @@ git branch -f upstream-baseline upstream/master
 > 不属于"还没看过"。
 
 
-### 4.4 已评估、待作者决策（不阻塞基线推进）
+### 4.4 已评估项的作者裁定（2026-10-14，原「待作者决策」）
 
-| 项 | 提交 | 性质 | 说明 |
+| 项 | 提交 | 裁定 | 落地 / 说明 |
 |---|---|---|---|
-| 运行标题改版（去破折号、改间隔点） | `17dc343b` `862c04ba` `5c5c37c4` | 设计决策 | 上游把「写稿 — 第 N 章 · 标题」改为「第 N 章 · 写稿」，**破折号不再出现在运行标题里**。我方标题仍是旧格式（`chapter-workflow.ts:252`）。跟进与否 = 是否采用上游运行标题格式 |
-| 去掉运行标题的截断逻辑 | `53017cb6` `a8480855` | 设计决策（可独立） | `AIOutputPanel.tsx:639`/`:1164`、`StatusBar.tsx:167` 的 `replace(/^[^\s]+\s/, '')` 在旧标题下会留下前导破折号（`— 第 1 章 · 标题`）。**即使不跟进标题格式**，改为直接显示完整标题也是净改善 ⇒ 可单独吸收 |
-| 旧外壳隐藏 AI 聊天入口 / 启动不连 MCP | `380406ec` | 产品决策 | 删 `layout-store.rightView`、右侧工具栏去 Agent 按钮、`App` 启动不再 `useMCPStore.init()`。触碰我方多个文件，但是"要不要隐藏聊天入口"的产品取舍 |
+| 运行标题改版（去破折号、改间隔点） | `17dc343b` `862c04ba` `5c5c37c4` | ✅ **采用** | 落 `ab4a2b84`（手工应用，非 cherry-pick） |
+| 去掉运行标题的截断逻辑 | `53017cb6` `a8480855` | ✅ **采用** | 随 `ab4a2b84` 一并落地 |
+| 旧外壳隐藏 AI 聊天入口 / 启动不连 MCP | `380406ec` | ⏸️ **保留待议** | 作者：曾尝试用它的 agent 功能做自然语言改稿，因**调不动本地工具**而失败；但「仍视为有吸引力的未来改进项」⇒ 暂不吸收，登记在案 |
+
+**★ 落地方式（可复用判据）**：这 5 笔**不能 cherry-pick** —— 上游的 `AIOutputPanel.tsx` 相对我方已重写
+（`git diff dev_byf upstream/master -- src/components/panels/AIOutputPanel.tsx` = **760 行**），
+`StatusBar.tsx` 差 54 行。故改为**读上游语义、在我方对应位置手工应用**。
+**判"要不要改"的方法**：逐个 grep 上游改动的字符串字面量，只改**运行标题**；
+三类明确**不动**：① 工作流日志 `开始第N章：…`（上游明确保留的另一处文字）；
+② `DraftEditor` 的按钮 `title` 提示与 `PostProcessStatusPanel` 的提醒文本（非运行标题）；
+③ 按钮文案 `继续第 X–Y 章（沿用原预算）`。
+
+**验证与既有失败**：涉及 5 个 node 测试文件 + 3 个 browser 测试文件。
+其中 **2 处既有失败**（均在本改动前的 HEAD 上逐条比对确认同红，非本次引入）：
+① `app-workflow-complete.test.ts` 1 例 —— `runInNewContext` 执行含 TS `as` 的 App 源码报
+`SyntaxError: Unexpected identifier 'as'`（测试基础设施问题，跑不到断言）；
+② `batch-chapter-completion-mode.browser.tsx` 4 例 —— `vi.waitFor` 等 taskLog 超时（基线同样 4 failed）。
 
 ---
 
