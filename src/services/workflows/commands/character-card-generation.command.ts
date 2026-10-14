@@ -12,7 +12,7 @@ import { composePromptSystemRole, renderPrompt, resolvePromptTemplate } from '..
 import { useProjectStore } from '../../../stores/project-store'
 import { promptLanguageText } from '../../prompt-language'
 import { formatCharacterProposalPreview } from '../character-proposal-preview'
-import { characterRosterIdentityKey } from '../../../shared/character-roster'
+import { characterRosterIdentityKey, type CharacterRosterEntry } from '../../../shared/character-roster'
 import { blueprintCandidateNote, pendingBlueprintCandidates } from '../../character-card-generation-sources'
 import { requireWorkflowProjectSession, workflowUiText, workflowWritingLanguage } from '../workflow-project-session'
 import {
@@ -194,8 +194,10 @@ export class ListPendingBlueprintCandidatesCommand extends BaseWorkflowCommand<s
       throw new Error(text('当前项目已切换，角色卡生成已停止。', 'The project changed, so generation stopped.'))
     }
     const expectedProjectPath = projectSession.projectPath
+    // 必须看全量操作：completion 只说明"提议已暂存过"，不说明"作者已处理"。
+    // 只看 pending 的话，批次一旦暂存过（哪怕后来被取消），这个入口就永久失效（实机：老陈案）。
     const operations = await ipc.invokeWithProjectSession(
-      projectSession, 'db:blueprint-character-sync-list-pending', expectedProjectPath,
+      projectSession, 'db:blueprint-character-sync-list-all', expectedProjectPath,
     ) as BlueprintCharacterSyncOperation[]
     const cards = await ipc.invokeWithProjectSession(
       projectSession, 'db:character-get-all', expectedProjectPath,
@@ -206,8 +208,10 @@ export class ListPendingBlueprintCandidatesCommand extends BaseWorkflowCommand<s
     ) as string[]
     const pending = pendingBlueprintCandidates(operations, cards.map(card => card.name), declined)
     if (!pending.length) {
+      // 空也要落键：确认步以该键区分"没得确认"（优雅收场）与"提取步没跑"（配置错误）。
+      context.data.planningMaterialCharacterCandidates = []
       callbacks.setProgress(100)
-      return text('没有待建卡角色：蓝图声明的新角色均已有角色卡。', 'No pending candidates: every character declared by blueprints already has a card.')
+      return text('没有待建卡角色：蓝图声明的新角色都已有角色卡，或已登记为功能配角。', 'No pending candidates: every character declared by blueprints already has a card or is registered as an anchored supporting role.')
     }
     // The durable per-blueprint sync operation already owns this candidate set,
     // so listing must never re-stage it and clone the completion receipt.
@@ -217,6 +221,28 @@ export class ListPendingBlueprintCandidatesCommand extends BaseWorkflowCommand<s
       `发现 ${pending.length} 个待建卡角色（含逐章溯源）`,
       `Found ${pending.length} pending candidate(s) with per-chapter provenance`,
     ))
+    // 把候选接上确认闸门：对仍含未决定候选的操作幂等 stage（stage 对 proposalBatchId 幂等）。
+    // 取消过的批次在这里重开 —— 取消不落任何身份效果，作者常因保存报错而取消，应能重来。
+    let confirmed: CharacterProposalBatch | undefined
+    for (const operation of operations) {
+      const opNames = new Set(pendingBlueprintCandidates([operation], cards.map(card => card.name), declined).map(item => characterRosterIdentityKey(item.name)))
+      if (!opNames.size) continue
+      let batch = await ipc.invokeWithProjectSession(projectSession, 'character-proposal:stage',
+        { source: { kind: 'directory', operationId: operation.operationId } }) as CharacterProposalBatch
+      if (batch.status === 'cancelled') {
+        batch = await ipc.invokeWithProjectSession(projectSession, 'character-proposal:reopen',
+          { proposalBatchId: batch.proposalBatchId, expectedRevision: batch.revision }) as CharacterProposalBatch
+        callbacks.log(text('此前的候选批次曾被取消，已重新打开供确认。', 'An earlier cancelled batch was reopened for confirmation.'))
+      }
+      if (batch.status === 'pending-approval' && !confirmed) confirmed = batch
+    }
+    if (confirmed) {
+      context.data.characterProposalBatch = confirmed
+      // 确认步以该键区分"没得确认"与"提取步没跑"；写入路径只消费批次，条目仅作闸门。
+      context.data.planningMaterialCharacterCandidates = confirmed.items.map(item => ({
+        name: item.fields.name, role: item.fields.role || 'supporting',
+      })) as unknown as CharacterRosterEntry[]
+    }
     return [text('## 待建卡角色', '## Pending character candidates'), ...lines].join('\n')
   }
 }
