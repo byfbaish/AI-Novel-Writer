@@ -1,4 +1,5 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
+import { keyEventsText } from '../../../shared/blueprint-key-events'
 import { appErrorMessage } from '../../../i18n/app-errors'
 import { sanitizeDraftText, composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, DRAFT_VISIBLE_TEXT_VERSION, isDraftVisibleTextVersion, type DraftVisibleTextVersion } from '../../../shared/draft-visible-text'
 import { DRAFT_RECONCILE_PURPOSE, draftReconciliationBlock } from '../../../shared/draft-reconciliation'
@@ -247,7 +248,14 @@ const DEFAULT_DEPENDENCIES: GenerateDraftCommandDependencies = {
   },
 }
 
-type WriterChapterInfo = Pick<ChapterInfo,
+/**
+ * 渲染进 prompt 的章节蓝图投影。
+ *
+ * `keyEvents` 在此**收敛为「一行一条」文本** —— 结构化事件清单是领域契约，
+ * 但写稿 prompt 的「必需事件」「authorInputs 指纹」都按文本消费（设计稿 §3 消费侧取值规则），
+ * 因此投影后仍是字符串，写稿载荷与改造前逐字一致。
+ */
+type WriterChapterInfo = Omit<Pick<ChapterInfo,
   | 'chapterNumber'
   | 'title'
   | 'role'
@@ -256,7 +264,7 @@ type WriterChapterInfo = Pick<ChapterInfo,
   | 'keyEvents'
   | 'suspenseHook'
   | 'userGuidance'
->
+>, 'keyEvents'> & { keyEvents: string }
 
 /** Keep workflow metadata out of both initial and continuation writer prompts. */
 function toWriterChapterInfo(chapterInfo: ChapterInfo): WriterChapterInfo {
@@ -266,7 +274,7 @@ function toWriterChapterInfo(chapterInfo: ChapterInfo): WriterChapterInfo {
     role: chapterInfo.role,
     purpose: chapterInfo.purpose,
     characters: chapterInfo.characters,
-    keyEvents: chapterInfo.keyEvents,
+    keyEvents: keyEventsText(chapterInfo.keyEvents),
     suspenseHook: chapterInfo.suspenseHook,
     userGuidance: chapterInfo.userGuidance,
   }
@@ -627,7 +635,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const writerChapterInfo = toWriterChapterInfo(this.chapterInfo)
     const targetChars = normalizeChapterWordsTarget(this.chapterInfo.wordsTarget, novelConfig.wordsPerChapter)
     const knowledgeQueryHint = this.chapterInfo.knowledgeQueryHint?.trim() ?? ''
-    const searchQuery = [knowledgeQueryHint, this.chapterInfo.title, this.chapterInfo.keyEvents,
+    const searchQuery = [knowledgeQueryHint, this.chapterInfo.title, keyEventsText(this.chapterInfo.keyEvents),
       this.chapterInfo.characters.join(' ')].filter(Boolean).join(' ')
     const authorInputs = [{ id: 'draft:chapter-info', text: JSON.stringify(writerChapterInfo) },
       { id: 'draft:author-config', text: JSON.stringify(novelConfig) },
@@ -726,8 +734,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       if (futureBlueprintsArr.length > 0) {
         futureBlueprintsStr = futureBlueprintsArr.map(b => promptLanguageText(
           writingLanguage,
-          `第${b.chapterNumber}章 ${b.title}：${b.keyEvents}`,
-          `Chapter ${b.chapterNumber}: ${b.title} — ${b.keyEvents}`,
+          `第${b.chapterNumber}章 ${b.title}：${keyEventsText(b.keyEvents)}`,
+          `Chapter ${b.chapterNumber}: ${b.title} — ${keyEventsText(b.keyEvents)}`,
         )).join('\n')
       }
     } catch { /* 忽略 */ }
@@ -896,7 +904,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         candidates: selectedCandidateDrafts,
         relevanceTerms: [
           this.chapterInfo.title,
-          this.chapterInfo.keyEvents,
+          keyEventsText(this.chapterInfo.keyEvents),
           ...this.chapterInfo.characters,
         ],
       })

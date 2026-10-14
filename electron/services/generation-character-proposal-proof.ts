@@ -5,6 +5,7 @@ import type { CharacterProposalItem, CharacterProposalSource } from '../../src/s
 import type { GenerationAuthorInput } from '../../src/shared/generation-owner-contract'
 import { characterProposalMaterialChunks, parseArchitectureCharacterProposal, parsePlanningMaterialCharacterProposal, type ArchitectureDerivationVersion } from '../../src/shared/character-proposal-parser'
 import { GenerationRunRepository, textHash } from '../repositories/generation-run-repository'
+import { normalizeKeyEvents } from '../../src/shared/blueprint-key-events'
 import type { BlueprintData } from '../repositories/blueprint-repository'
 import type { CharacterProposalProof } from './character-proposal-service'
 import type { ImportGlobalFactsReceipt } from '../../src/shared/import-global-facts'
@@ -113,8 +114,11 @@ export function proveCharacterProposal(db: Database.Database, runs: GenerationRu
     if (!Array.isArray(blueprints)) throw new Error('CHARACTER_PROPOSAL_SOURCE_INVALID')
     if (forWrite) for (const blueprint of blueprints) {
       const current = db.prepare('SELECT title,role,purpose,key_events,characters,suspense_hook,user_guidance FROM blueprints WHERE chapter_number=?').get(blueprint.chapterNumber) as Record<string, string> | undefined
-      if (!current || JSON.stringify([current.title, current.role, current.purpose, current.key_events, JSON.parse(current.characters), current.suspense_hook, current.user_guidance])
-        !== JSON.stringify([blueprint.title, blueprint.role, blueprint.purpose, blueprint.keyEvents, blueprint.characters, blueprint.suspenseHook, blueprint.userGuidance])) throw new Error('CHARACTER_PROPOSAL_SOURCE_CHANGED')
+      // `key_events` 列现在存 JSON 数组串，冻结输入里是数组：两侧都过归一化再比，避免形态差异误判为「来源已变」。
+      const keyEventsOf = (value: unknown): unknown =>
+        normalizeKeyEvents(value, { chapterNumber: blueprint.chapterNumber })
+      if (!current || JSON.stringify([current.title, current.role, current.purpose, keyEventsOf(current.key_events), JSON.parse(current.characters), current.suspense_hook, current.user_guidance])
+        !== JSON.stringify([blueprint.title, blueprint.role, blueprint.purpose, keyEventsOf(blueprint.keyEvents), blueprint.characters, blueprint.suspenseHook, blueprint.userGuidance])) throw new Error('CHARACTER_PROPOSAL_SOURCE_CHANGED')
     }
     const items: Omit<CharacterProposalItem, 'resolution'>[] = blueprints.flatMap(blueprint => (blueprint.newCharacterCandidates ?? []).map((candidate, index) => {
       if (!candidate || !candidate.name?.trim() || !['protagonist', 'antagonist', 'supporting', 'minor'].includes(candidate.role)

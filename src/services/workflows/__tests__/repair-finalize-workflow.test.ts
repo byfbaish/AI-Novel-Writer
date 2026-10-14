@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../shared/blueprint-key-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 
@@ -81,7 +82,7 @@ describe('createRepairFinalizeWorkflow', () => {
       role: '发展',
       purpose: '推进冲突',
       characters: [],
-      keyEvents: '冲突升级',
+      keyEvents: normalizeKeyEvents('冲突升级'),
       wordsTarget: 4200,
     }, PROJECT_SESSION)
     const repair = createRepairFinalizeWorkflow(3, PROJECT_PATH, PROJECT_SESSION)

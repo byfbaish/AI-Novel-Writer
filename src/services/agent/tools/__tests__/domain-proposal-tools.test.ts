@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../../shared/blueprint-key-events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useProjectStore } from '../../../../stores/project-store'
@@ -27,7 +28,7 @@ const project = {
 }
 
 const blueprint = {
-  chapterNumber: 2, title: '旧标题', role: '发展', purpose: '推进调查', keyEvents: '找到线索',
+  chapterNumber: 2, title: '旧标题', role: '发展', purpose: '推进调查', keyEvents: normalizeKeyEvents('找到线索'),
   characters: ['林舟'], suspenseHook: '谁在说谎', userGuidance: '', notes: '', notesUpdatedAt: '',
 }
 

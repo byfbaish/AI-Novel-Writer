@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../src/shared/blueprint-key-events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import type BetterSqlite3 from 'better-sqlite3'
@@ -39,7 +40,7 @@ function blueprint(characters: string[]): BlueprintData {
     title: '启程',
     role: '建置',
     purpose: '自由文本中的旧名不应被替换',
-    keyEvents: '旧名做出决定',
+    keyEvents: normalizeKeyEvents('旧名做出决定', { chapterNumber: 1 }),
     characters,
     suspenseHook: '',
     userGuidance: '',
@@ -131,7 +132,7 @@ describe('CharacterRepository transactional rename', () => {
     expect(BlueprintRepository.getByChapter(1)).toMatchObject({
       characters: ['新名', '另一角色'],
       purpose: '自由文本中的旧名不应被替换',
-      keyEvents: '旧名做出决定',
+      keyEvents: normalizeKeyEvents('旧名做出决定', { chapterNumber: 1 }),
       notes: '旧名的章节备注',
     })
   })

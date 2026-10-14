@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../../shared/blueprint-key-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createHash } from 'node:crypto'
 
@@ -444,6 +445,11 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     customDraftTemplate?: typeof BUILTIN_PROMPTS[number]
   }) {
     let recoveryCandidateSequence = 0
+    // 夹具仍以文本声明关键事件；IPC 模拟返回领域形态（结构化清单），与真实 repository 一致。
+    const normalizedBlueprints = () => (options.blueprints ?? []).map(blueprint => ({
+      ...blueprint,
+      keyEvents: normalizeKeyEvents(blueprint.keyEvents, { chapterNumber: blueprint.chapterNumber }),
+    }))
     const invoke = vi.fn(async (channel: string, ...args: unknown[]): Promise<unknown> => {
       if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
       if (channel === 'fs:check-exists' && String(args[0]).endsWith('/.ai-novel/prompts')) return Boolean(options.customDraftTemplate)
@@ -463,9 +469,9 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
           synopsis: options.synopsis ?? '',
         }
       }
-      if (channel === 'db:blueprint-get-all') return options.blueprints ?? []
+      if (channel === 'db:blueprint-get-all') return normalizedBlueprints()
       if (channel === 'db:blueprint-get') {
-        return options.blueprints?.find(blueprint => blueprint.chapterNumber === args[0]) ?? null
+        return normalizedBlueprints().find(blueprint => blueprint.chapterNumber === args[0]) ?? null
       }
       if (channel === 'db:continuity-list-before') return options.continuity ?? []
       if (channel === 'db:continuity-read-source') {
@@ -620,7 +626,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       title: options.chapterNumber === 2 ? 'Chapter Two' : '第一章',
       role: '开端',
       purpose: '建立冲突',
-      keyEvents: options.keyEvents ?? '开端',
+      keyEvents: normalizeKeyEvents(options.keyEvents ?? '开端', { chapterNumber: options.chapterNumber ?? 1 }),
       suspenseHook: options.suspenseHook,
       characters: options.characters ?? [],
       wordsTarget: options.wordsTarget,
@@ -3034,9 +3040,11 @@ ${headingPrefix}第3章：潮门
       const user = task.messages[1]!.content
       expect(user).not.toContain(heading)
       expect(user).toContain(lengthContract)
-      expect(user).toContain('核查遇阻；承担代价')
+      // 阶段 1：`keyEvents` 结构化后，`；` 按既有切分规则归一为两条，进 JSON 载荷时
+      // 以换行连接（`JSON.stringify` 转义为字面 `\n`）—— 条目集合不变，仅分隔符归一。
+      expect(user).toContain('核查遇阻\\n承担代价')
       expect(user).toContain('作者更正：林澄撤回先前核查安排。')
-      expect(task.messages[0]!.content).not.toContain('核查遇阻；承担代价')
+      expect(task.messages[0]!.content).not.toContain('核查遇阻\\n承担代价')
       expect(task.messages[0]!.content).not.toContain('作者更正：林澄撤回先前核查安排。')
     }
     expect(continuationTask!.messages[1]!.content).toContain(continuationContext)
@@ -3229,7 +3237,7 @@ ${headingPrefix}第3章：潮门
       for (const [task] of runtime.complete.mock.calls) {
         const system = task.messages[0]!.content
         const prompt = task.messages[1]!.content
-        for (const text of [source, '铜钥匙始终由林澄保管。', '核查遇阻；承担代价']) {
+        for (const text of [source, '铜钥匙始终由林澄保管。', '核查遇阻\\n承担代价']) {
           expect(prompt).toContain(text)
           expect(system).not.toContain(text)
         }
@@ -3247,7 +3255,7 @@ ${headingPrefix}第3章：潮门
       const outlinePrompt = runtime.outline.mock.calls[0]![0].messages[0]!.content
       const blueprintLabel = writingLanguage === 'en-US' ? '[Current-chapter blueprint]' : '【本章蓝图】'
       const contractLabel = writingLanguage === 'en-US' ? '[Current-chapter execution contract]' : '【本章执行合同】'
-      for (const kept of [blueprintLabel, contractLabel, source, '核查遇阻；承担代价']) {
+      for (const kept of [blueprintLabel, contractLabel, source, '核查遇阻\\n承担代价']) {
         expect(outlinePrompt).toContain(kept)
       }
       // 全书设定（世界设定）、全局写作要求、文风、参考作品一律不进短细纲；
@@ -3298,7 +3306,7 @@ ${headingPrefix}第3章：潮门
         const prompt = task.messages[1]!.content
         expect(system.split(heading)).toHaveLength(2)
         expect(prompt).not.toContain(heading)
-        for (const text of [source, '铜钥匙始终由林澄保管。', '核查遇阻；承担代价']) {
+        for (const text of [source, '铜钥匙始终由林澄保管。', '核查遇阻\\n承担代价']) {
           expect(prompt).toContain(text)
           expect(system).not.toContain(text)
         }

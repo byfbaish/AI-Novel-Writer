@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../src/shared/blueprint-key-events'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -235,13 +236,13 @@ describe('NarrativeThreadRepository', () => {
     expect(NarrativeThreadRepository.listRelevantActive({
       chapterNumber: 3,
       title: '刻痕再现',
-      keyEvents: '林岚发现新的刻痕。',
+      keyEvents: normalizeKeyEvents('林岚发现新的刻痕。'),
       characters: ['林岚'],
     }).map(thread => thread.id)).toEqual([inRange.id, characterRelevant.id])
     expect(NarrativeThreadRepository.listRelevantActive({
       chapterNumber: 3,
       title: '刻痕再现',
-      keyEvents: '林岚发现新的刻痕。',
+      keyEvents: normalizeKeyEvents('林岚发现新的刻痕。'),
       characters: ['林岚'],
     }).map(thread => thread.id)).not.toContain(unrelated.id)
   })

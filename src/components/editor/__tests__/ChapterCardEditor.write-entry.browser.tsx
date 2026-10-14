@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../shared/blueprint-key-events'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -54,7 +55,7 @@ function blueprint(chapterNumber: number): ChapterBlueprint {
     title: '雨夜启程',
     role: '建置',
     purpose: '建立主角的首个目标。',
-    keyEvents: '收到匿名信。',
+    keyEvents: normalizeKeyEvents('收到匿名信。'),
     characters: ['沈砺'],
     suspenseHook: '信封背面出现陌生署名。',
     userGuidance: '',

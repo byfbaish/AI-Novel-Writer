@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../src/shared/blueprint-key-events'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
@@ -25,7 +26,7 @@ const source = {
   title: '第一章',
   role: '开端',
   purpose: '建立冲突',
-  keyEvents: '列车失控',
+  keyEvents: normalizeKeyEvents('列车失控'),
   characters: ['林岚'],
   suspenseHook: '',
   userGuidance: '',

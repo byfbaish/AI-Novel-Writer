@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../shared/blueprint-key-events'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { useLocaleStore } from '../../../stores/locale-store'
@@ -39,7 +40,7 @@ describe('chapter workflow locale', () => {
         role: 'Development',
         purpose: 'Deepen the relationship',
         characters: ['Maya'],
-        keyEvents: 'Maya joins the literature club.',
+        keyEvents: normalizeKeyEvents('Maya joins the literature club.'),
       }, projectSession),
       createReviewOnlyWorkflow({
         projectPath,

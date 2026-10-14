@@ -8,6 +8,7 @@ import {
   type PlotTreeSourceBundle,
 } from './plot-tree'
 import type { LLMFinishReason } from './ipc-channels'
+import { keyEventsText } from './blueprint-key-events'
 import type { WritingLanguage } from './writing-language'
 import { writingLanguageText as promptLanguageText } from './writing-language'
 
@@ -219,7 +220,7 @@ function deterministicPlotTreeSnapshot(
     } as PlotTreeEvent)),
     ...sources.blueprints.filter(blueprint => !finalizedChapterNumbers.has(blueprint.chapterNumber)).map(blueprint => ({
       status: 'planned', chapterNumber: blueprint.chapterNumber,
-      summary: blueprint.keyEvents.trim() || blueprint.purpose.trim() || blueprint.title.trim(),
+      summary: keyEventsText(blueprint.keyEvents).trim() || blueprint.purpose.trim() || blueprint.title.trim(),
       sources: [{ type: 'blueprint', chapterNumber: blueprint.chapterNumber }],
     } as PlotTreeEvent)),
     ...sources.narrativeThreads.flatMap(thread => [{
@@ -283,7 +284,7 @@ function generationFacts(sources: PlotTreeSourceBundle) {
       chapterNumber: blueprint.chapterNumber,
       title: boundedText(blueprint.title, labelCharacters),
       purpose: boundedText(blueprint.purpose, detailCharacters),
-      keyEvents: boundedText(blueprint.keyEvents, detailCharacters),
+      keyEvents: boundedText(keyEventsText(blueprint.keyEvents), detailCharacters),
     })),
     finalizedChapters: sources.finalizedChapters.map(chapter => ({
       draftId: chapter.draftId,

@@ -1,3 +1,5 @@
+import type { BlueprintKeyEvent } from './blueprint-key-events'
+
 export type RecoveryCandidateStatus = 'pending' | 'continued' | 'discarded'
 
 export interface RecoveryChapterSource {
@@ -5,7 +7,7 @@ export interface RecoveryChapterSource {
   title: string
   role: string
   purpose: string
-  keyEvents: string
+  keyEvents: BlueprintKeyEvent[]
   characters: string[]
   suspenseHook?: string
   userGuidance?: string

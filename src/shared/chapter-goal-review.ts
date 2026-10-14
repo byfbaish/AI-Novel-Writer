@@ -1,3 +1,4 @@
+import { normalizeKeyEvents, type BlueprintKeyEvent } from './blueprint-key-events'
 import { writingLanguageText, type WritingLanguage } from './writing-language'
 
 export interface ChapterGoalEvidence { quote: string; start: number; end: number }
@@ -21,11 +22,18 @@ export interface FrozenChapterGoals {
   items: readonly Readonly<{ id: string; text: string }>[]
 }
 
-/** Only explicit current-chapter list boundaries are split; prose is not semantically rewritten. */
-export function freezeChapterGoals(chapterNumber: number, keyEvents: string | null | undefined,
+/**
+ * Only explicit current-chapter list boundaries are split; prose is not semantically rewritten.
+ *
+ * `keyEvents` 接受结构化事件数组（阶段 1 之后的主形态）**或**旧的自由文本字符串；
+ * 两者都过 `normalizeKeyEvents` 走同一条切分规则，因此核对项数与 id 逐字不变
+ * （id 仍是 `ch{N}:keyEvents:{i}`，见 `blueprint-goal-review` 既有账目）。
+ */
+export function freezeChapterGoals(chapterNumber: number,
+  keyEvents: readonly BlueprintKeyEvent[] | string | null | undefined,
   authorSources: readonly string[] = []): FrozenChapterGoals {
-  const items: Array<Readonly<{ id: string; text: string }>> = (keyEvents ?? '').split(/\r?\n|[；;]/u).map(text => text.trim()).filter(Boolean)
-    .map((text, index) => Object.freeze({ id: `ch${chapterNumber}:keyEvents:${index + 1}`, text }))
+  const items: Array<Readonly<{ id: string; text: string }>> = normalizeKeyEvents(keyEvents, { chapterNumber })
+    .map((event, index) => Object.freeze({ id: `ch${chapterNumber}:keyEvents:${index + 1}`, text: event.event }))
   const marker = /^\s*【第(\d+)章必现】\s*(\S(?:.*\S)?)\s*$/u
   const mustShow = authorSources.flatMap(source => source.split(/\r?\n/u).flatMap(line => {
     const match = marker.exec(line)

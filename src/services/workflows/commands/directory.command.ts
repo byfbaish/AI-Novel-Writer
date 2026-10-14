@@ -1,4 +1,5 @@
 import { parsePlanningTargetUnits, planningTargetInstruction, assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../../shared/plot-outline-contract'
+import { keyEventsText } from '../../../shared/blueprint-key-events'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import {
   BaseWorkflowCommand,
@@ -224,7 +225,7 @@ function buildCompactBlueprintTask(input: {
     recentBlueprints: input.previous.slice(-COMPACT_RECENT_BLUEPRINTS).map(chapter => ({
       chapterNumber: chapter.chapterNumber,
       title: chapter.title,
-      keyEvents: chapter.keyEvents,
+      keyEvents: keyEventsText(chapter.keyEvents),
       suspenseHook: chapter.suspenseHook,
     })),
     globalGuidance: input.globalGuidance,
@@ -404,8 +405,8 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
         const chapterList = chapterListWindow
           .map(chapter => promptLanguageText(
             writingLanguage,
-            `第${chapter.chapterNumber}章 ${chapter.title}：${chapter.keyEvents}`,
-            `Chapter ${chapter.chapterNumber} — ${chapter.title}: ${chapter.keyEvents}`,
+            `第${chapter.chapterNumber}章 ${chapter.title}：${keyEventsText(chapter.keyEvents)}`,
+            `Chapter ${chapter.chapterNumber} — ${chapter.title}: ${keyEventsText(chapter.keyEvents)}`,
           ))
           .join('\n')
         // P0-0：大纲章级条目按本批范围三段切分（前序剔 / 本批留 / 后续降级为边界声明）。

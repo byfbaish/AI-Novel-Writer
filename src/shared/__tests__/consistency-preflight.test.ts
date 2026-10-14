@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../blueprint-key-events'
 import { describe, expect, it } from 'vitest'
 
 import { findBlueprintContinuityRisks, mergeConsistencyFindingsIntoReview } from '../consistency-preflight'
@@ -8,7 +9,7 @@ it('本章候选名单超过八人时仍识别后续事实中的角色', () => {
   const facts = buildFinalizedContinuityFacts(1, '顾舟已经死亡。', '顾舟已经死亡。', names)
   expect(facts[0]?.entities).toEqual(['顾舟'])
   expect(findBlueprintContinuityRisks([{ draftId: 1, chapterNumber: 1, chapterTitle: '', chapterNotes: '', sourceStatus: 'current', facts }], {
-    chapterNumber: 2, title: '归来', role: '', purpose: '', keyEvents: '顾舟出现', characters: ['顾舟'], suspenseHook: '', userGuidance: '', notes: '',
+    chapterNumber: 2, title: '归来', role: '', purpose: '', keyEvents: normalizeKeyEvents('顾舟出现'), characters: ['顾舟'], suspenseHook: '', userGuidance: '', notes: '',
   }, [])).toHaveLength(1)
 })
 
@@ -32,7 +33,7 @@ describe('findBlueprintContinuityRisks', () => {
     'does not promote a %s projection to a deterministic finding',
     (sourceStatus) => {
       const findings = findBlueprintContinuityRisks([{ ...projection[0]!, sourceStatus }], {
-        chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: '顾舟敲门',
+        chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: normalizeKeyEvents('顾舟敲门'),
         characters: ['顾舟'], suspenseHook: '', userGuidance: '', notes: '',
       }, [])
       expect(findings).toEqual([])
@@ -45,7 +46,7 @@ describe('findBlueprintContinuityRisks', () => {
       title: '新的清晨',
       role: '发展',
       purpose: '主角拜访证人',
-      keyEvents: '主角前往车站。',
+      keyEvents: normalizeKeyEvents('主角前往车站。'),
       characters: ['林岚', '顾舟'],
       suspenseHook: '证人突然失踪。',
       userGuidance: '',
@@ -84,7 +85,7 @@ describe('findBlueprintContinuityRisks', () => {
       title: '回声中的证人',
       role: '收束',
       purpose: '出席听证会',
-      keyEvents: '林海亲自现身。',
+      keyEvents: normalizeKeyEvents('林海亲自现身。'),
       characters: ['林舟', '苏遥', '林海'],
       suspenseHook: '',
       userGuidance: '',
@@ -106,7 +107,7 @@ describe('findBlueprintContinuityRisks', () => {
       title: '怀表坐标',
       role: '发展',
       purpose: '调查银色怀表',
-      keyEvents: '林岚解读坐标。',
+      keyEvents: normalizeKeyEvents('林岚解读坐标。'),
       characters: ['林岚'],
       suspenseHook: '坐标指向旧码头。',
       userGuidance: '',
@@ -116,10 +117,10 @@ describe('findBlueprintContinuityRisks', () => {
 
     const ignored = findBlueprintContinuityRisks(projection, {
       chapterNumber: 2,
-      title: '新的清晨', role: '发展', purpose: '拜访证人', keyEvents: '前往车站',
+      title: '新的清晨', role: '发展', purpose: '拜访证人', keyEvents: normalizeKeyEvents('前往车站'),
       characters: ['林岚', '顾舟'], suspenseHook: '证人失踪', userGuidance: '', notes: '',
     }, [{ stableFactKey: findBlueprintContinuityRisks(projection, {
-      chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: '顾舟敲门',
+      chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: normalizeKeyEvents('顾舟敲门'),
       characters: ['顾舟'], suspenseHook: '', userGuidance: '', notes: '',
     }, [])[0]!.stableFactKey, reason: '回忆场景', revoked: false }])
     expect(ignored).toEqual([])
@@ -127,7 +128,7 @@ describe('findBlueprintContinuityRisks', () => {
 
   it('maps deterministic findings into the existing review item shape', () => {
     const finding = findBlueprintContinuityRisks(projection, {
-      chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: '顾舟敲门',
+      chapterNumber: 2, title: '重逢', role: '发展', purpose: '顾舟归来', keyEvents: normalizeKeyEvents('顾舟敲门'),
       characters: ['顾舟'], suspenseHook: '他为何归来', userGuidance: '', notes: '',
     }, [])[0]!
     const review = mergeConsistencyFindingsIntoReview({ summary: 'AI summary', items: [] }, [finding], 'en-US')

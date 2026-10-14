@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../src/shared/blueprint-key-events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRequire } from 'node:module'
 import type BetterSqlite3 from 'better-sqlite3'
@@ -20,7 +21,7 @@ const blueprint: BlueprintData = {
   title: '启程',
   role: '建置',
   purpose: '引出主角目标',
-  keyEvents: '主角发现异常',
+  keyEvents: normalizeKeyEvents('主角发现异常', { chapterNumber: 1 }),
   characters: ['主角'],
   suspenseHook: '门外传来敲门声',
   userGuidance: '',
@@ -54,7 +55,7 @@ function blueprintFor(chapterNumber: number): BlueprintData {
     chapterNumber,
     title: `第${chapterNumber}章`,
     purpose: `推进第${chapterNumber}章`,
-    keyEvents: `第${chapterNumber}章发生关键事件`,
+    keyEvents: normalizeKeyEvents(`第${chapterNumber}章发生关键事件`, { chapterNumber }),
   }
 }
 

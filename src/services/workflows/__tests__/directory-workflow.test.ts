@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../shared/blueprint-key-events'
 import type { DirectoryGenerationProgress } from '../../../shared/generation-owner-contract'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -27,7 +28,7 @@ const blueprint: ChapterBlueprint = {
   title: '启程',
   role: '建置',
   purpose: '引出主角目标',
-  keyEvents: '主角发现异常',
+  keyEvents: normalizeKeyEvents('主角发现异常', { chapterNumber: 1 }),
   characters: ['主角'],
   relationshipHints: [],
   suspenseHook: '门外传来敲门声',
@@ -114,7 +115,7 @@ describe('parseTextBlueprints', () => {
             title: '启程',
             role: '建置',
             purpose: '引出主角目标',
-            keyEvents: '主角发现异常',
+            keyEvents: normalizeKeyEvents('主角发现异常', { chapterNumber: 1 }),
             characters: ['主角'],
             relationships: [],
             suspenseHook: '门外传来敲门声',
@@ -131,7 +132,7 @@ describe('parseTextBlueprints', () => {
       title: '启程',
       role: '建置',
       purpose: '引出主角目标',
-      keyEvents: '主角发现异常',
+      keyEvents: normalizeKeyEvents('主角发现异常', { chapterNumber: 1 }),
       characters: ['主角'],
       suspenseHook: '门外传来敲门声',
     })
@@ -160,7 +161,7 @@ describe('parseTextBlueprints', () => {
       chapterNumber: 2,
       title: '暗线',
       role: '铺垫',
-      keyEvents: '反派留下线索',
+      keyEvents: normalizeKeyEvents('反派留下线索', { chapterNumber: 2 }),
       suspenseHook: '线索指向故人',
     })
   })
@@ -182,7 +183,7 @@ describe('parseTextBlueprints', () => {
     expect(result[0]).toMatchObject({
       chapterNumber: 3,
       title: '交锋',
-      keyEvents: '主角正面迎敌',
+      keyEvents: normalizeKeyEvents('主角正面迎敌', { chapterNumber: 3 }),
     })
   })
 

@@ -7,6 +7,7 @@ import {
   validateBlueprintSemanticItem,
 } from '../blueprint-semantic-contract'
 import { StructuredContractDiagnostic } from '../structured-contract-diagnostic'
+import { normalizeKeyEvents } from '../blueprint-key-events'
 
 function validBlueprint(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -32,7 +33,8 @@ describe('blueprint semantic contract', () => {
       title: '雨夜来信',
       role: '开篇建置',
       purpose: '让主角接下无法回避的委托',
-      keyEvents: '主角收到失踪多年的兄长寄来的密信，并在信封夹层发现追踪器。',
+      // 阶段 1：解码后 `keyEvents` 是结构化事件数组（`id` 由代码按序号生成）。
+      keyEvents: normalizeKeyEvents('主角收到失踪多年的兄长寄来的密信，并在信封夹层发现追踪器。', { chapterNumber: 1 }),
       characters: ['林岚', '周砚'],
       newCharacterCandidates: [],
       relationshipHints: [{ from: '林岚', to: '周砚', relation: '临时盟友' }],
@@ -100,6 +102,20 @@ describe('blueprint semantic contract', () => {
       .toContain('code=duplicate_item path=blueprint.characters')
   })
 
+  // ★ 回归（2026-10-14）：`structured-batch-executor.ts` 会对**已解码产出**逐项调
+  // `validateItem`，此时 `keyEvents` 已是数组。若这里只收字符串，二次校验必抛
+  // `invalid_type path=blueprint.keyEvents` ⇒ 整条蓝图生成链路失败（实测 29+ 用例红）。
+  it('accepts the already-decoded array form that validateItem re-checks', () => {
+    const decoded = decodeBlueprintSemanticPayload({ blueprints: [validBlueprint()] }, [1])[0]!
+    expect(validateBlueprintSemanticItem(decoded)).toBeUndefined()
+    expect(validateBlueprintSemanticItem({ ...validBlueprint(), keyEvents: [] })).toBeUndefined()
+    // 非字符串非数组仍按原诊断拒绝。
+    expect(validateBlueprintSemanticItem(validBlueprint({ keyEvents: 42 })))
+      .toContain('code=invalid_type path=blueprint.keyEvents')
+    expect(validateBlueprintSemanticItem(validBlueprint({ keyEvents: ' ' })))
+      .toContain('code=empty_value path=blueprint.keyEvents')
+  })
+
   it('accepts long narrative fields and full names, thirteen characters and candidates, and nine distinct relations', () => {
     const longName = '亚历山德拉'.repeat(7) + '完整姓名尾部'
     const characters = [longName, ...Array.from({ length: 12 }, (_, index) => `角色${index}`)]
@@ -109,7 +125,8 @@ describe('blueprint semantic contract', () => {
       relationships: characters.slice(1, 10).map(to => ({ from: characters[0], to, relation: '同行' })),
     })
     expect(decodeBlueprintSemanticPayload([candidate], [1])[0]).toMatchObject({
-      title: candidate.title, role: candidate.role, purpose: candidate.purpose, keyEvents: candidate.keyEvents,
+      title: candidate.title, role: candidate.role, purpose: candidate.purpose,
+      keyEvents: normalizeKeyEvents(candidate.keyEvents as string, { chapterNumber: 1 }),
       suspenseHook: candidate.suspenseHook, characters, newCharacterCandidates: candidate.newCharacterCandidates,
       relationshipHints: candidate.relationships,
     })

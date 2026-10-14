@@ -1,5 +1,6 @@
 import { formatResourceUri } from '../../shared/project-paths'
 import { canonicalResourceUri, parseResourceUri, resourceWriteAllowed } from '../../shared/project-paths'
+import type { BlueprintKeyEvent } from '../../shared/blueprint-key-events'
 import { workflowResourceKey, type WorkflowDefinition } from '../../stores/workflow-store'
 import type { DraftMeta } from '../draft-index'
 import { requireIpcSuccess } from '../ipc-result'
@@ -26,7 +27,7 @@ export interface ChapterInfo {
   role: string
   purpose: string
   characters: string[]
-  keyEvents: string
+  keyEvents: BlueprintKeyEvent[]
   suspenseHook?: string
   userGuidance?: string
   /** 本次单章创作的用户目标字数；未提供时沿用项目默认值。 */
@@ -313,7 +314,7 @@ export function createRefineOnlyWorkflow(
             draftContent: frozenParams.draftContent,
             sourceDraft: frozenParams.sourceDraft,
             chapterNumber: frozenParams.chapterNumber,
-            chapterInfo: { projectPath: frozenParams.projectPath, chapterNumber: frozenParams.chapterNumber, title: frozenParams.chapterTitle, role: '', purpose: '', characters: [], keyEvents: '' },
+            chapterInfo: { projectPath: frozenParams.projectPath, chapterNumber: frozenParams.chapterNumber, title: frozenParams.chapterTitle, role: '', purpose: '', characters: [], keyEvents: [] },
             userRefinePrompt: frozenParams.userRefinePrompt,
           })
           return cmd.execute({ step, context, callbacks })
@@ -426,7 +427,7 @@ export function createFinalizeWorkflow(
   sourceProjectSession: ProjectSessionContext,
 ): WorkflowDefinition {
   const uiLocale = chapterWorkflowLocale()
-  const chapterInfo: ChapterInfo = { projectPath: params.projectPath, chapterNumber: params.chapterNumber, title: params.chapterTitle, role: '', purpose: '', characters: [], keyEvents: '' }
+  const chapterInfo: ChapterInfo = { projectPath: params.projectPath, chapterNumber: params.chapterNumber, title: params.chapterTitle, role: '', purpose: '', characters: [], keyEvents: [] }
   return {
     type: 'chapter_creation',
     projectPath: params.projectPath,

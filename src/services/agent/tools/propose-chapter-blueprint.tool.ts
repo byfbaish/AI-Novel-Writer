@@ -1,11 +1,12 @@
 import type { BlueprintData } from '../../../../electron/repositories/blueprint-repository'
+import { normalizeKeyEvents } from '../../../../src/shared/blueprint-key-events'
 import { ipc } from '../../ipc-client'
 import { buildAgentTool, type AgentExecutionContext } from '../tool-registry'
 import { agentToolText, assertAgentProjectCurrent, assertAgentToolActive, requireAgentProject } from './project-context'
 import type { ProposalFieldDiff } from './propose-novel-config.tool'
 
 const STRING_FIELDS = new Set<keyof BlueprintData>([
-  'title', 'role', 'purpose', 'keyEvents', 'suspenseHook', 'userGuidance', 'notes',
+  'title', 'role', 'purpose', 'suspenseHook', 'userGuidance', 'notes',
 ])
 const FIELD_ALIASES: Record<string, keyof BlueprintData> = {
   '作者微操指导': 'userGuidance',
@@ -24,11 +25,22 @@ function validateBlueprintChanges(args: Record<string, unknown>, context?: Agent
     return { valid: false, error: agentToolText(context, '缺少章节蓝图变更字段', 'No chapter blueprint changes were provided') }
   }
   const changes: Record<string, unknown> = {}
+  // 章号用于给提案里的事件补 `ch{N}:E{i}` 编号；缺失时由 repository 落库时重算。
+  const chapterNumber = Number.isSafeInteger(args.chapter_number) && Number(args.chapter_number) >= 1
+    ? Number(args.chapter_number)
+    : 0
   for (const [field, proposed] of Object.entries(candidate as Record<string, unknown>)) {
     const canonicalField = FIELD_ALIASES[field] ?? field
     if (Object.hasOwn(changes, canonicalField)) return { valid: false, error: agentToolText(context, `字段 ${canonicalField} 重复`, `Duplicate field: ${canonicalField}`) }
     if (STRING_FIELDS.has(canonicalField as keyof BlueprintData)) {
       if (typeof proposed !== 'string') return { valid: false, error: agentToolText(context, `字段 ${field} 必须是文本`, `Field ${field} must be text`) }
+    } else if (canonicalField === 'keyEvents') {
+      // `keyEvents` 自阶段 1 起是结构化事件数组；agent 仍以文本提案，这里统一归一化。
+      if (typeof proposed !== 'string' && !Array.isArray(proposed)) {
+        return { valid: false, error: agentToolText(context, `字段 ${field} 必须是文本或事件数组`, `Field ${field} must be text or an array of events`) }
+      }
+      changes[canonicalField] = normalizeKeyEvents(proposed, { chapterNumber })
+      continue
     } else if (canonicalField === 'characters') {
       if (!Array.isArray(proposed) || !proposed.every(item => typeof item === 'string')) {
         return { valid: false, error: agentToolText(context, '字段 characters 必须是文本数组', 'Field characters must be an array of text values') }

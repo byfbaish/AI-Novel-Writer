@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../../shared/blueprint-key-events'
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
 import { workflowResourceClaimsConflict } from '../../../shared/workflow-resource-claims'
@@ -57,7 +58,7 @@ function createDraft(chapterNumber: number) {
     role: 'development',
     purpose: 'advance the plot',
     characters: [],
-    keyEvents: 'an event',
+    keyEvents: normalizeKeyEvents('an event'),
   }, PROJECT_SESSION)
 }
 

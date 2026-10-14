@@ -1,3 +1,4 @@
+import { normalizeKeyEvents } from '../../shared/blueprint-key-events'
 import { describe, expect, it, vi } from 'vitest'
 import type { GenerationRuntime } from '../generation/generation-runtime'
 import type { GenerationTask } from '../generation/generation-harness'
@@ -91,7 +92,7 @@ describe('narrative thread AI candidate boundary', () => {
         totalChapters: 4,
         blueprint: {
           chapterNumber: 1, title: 'Opening', role: 'setup', purpose: 'begin',
-          keyEvents: '', characters: [], suspenseHook: '', userGuidance: '',
+          keyEvents: [], characters: [], suspenseHook: '', userGuidance: '',
           notes: '', notesUpdatedAt: '',
         },
         signal,
@@ -228,7 +229,7 @@ describe('narrative thread AI candidate boundary', () => {
       totalChapters: 12,
       blueprint: {
         chapterNumber: 2, title: '日志失踪', role: '发展', purpose: '引出伪造者',
-        keyEvents: '航海日志从保险柜消失。', characters: ['林岚'], suspenseHook: '',
+        keyEvents: normalizeKeyEvents('航海日志从保险柜消失。'), characters: ['林岚'], suspenseHook: '',
         userGuidance: '', notes: '', notesUpdatedAt: '',
       },
       signal: new AbortController().signal,

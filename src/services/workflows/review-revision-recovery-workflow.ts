@@ -25,7 +25,7 @@ export async function createReviewRevisionRecoveryWorkflow(projectSession: Proje
     : frozen.operation === 'refine-from-review' ? new RefineFromReviewCommand(params)
       : new RefineDraftCommand({ ...params, chapterInfo: { projectPath: session.projectPath, chapterNumber: source.chapterNumber,
         title: blueprint?.title ?? '', role: blueprint?.role ?? '', purpose: blueprint?.purpose ?? '',
-        characters: blueprint?.characters ?? [], keyEvents: blueprint?.keyEvents ?? '' } })
+        characters: blueprint?.characters ?? [], keyEvents: blueprint?.keyEvents ?? [] } })
   const requestsReview = frozen.operation === 'review-chapter' && !recovery.saved && !canCommitRecoveredReview(recovery)
   const name = requestsReview
     ? (frozen.uiLocale === 'en-US' ? `Chapter ${source.chapterNumber} · Review again` : `第 ${source.chapterNumber} 章 · 重新审稿`)
