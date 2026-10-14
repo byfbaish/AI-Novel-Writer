@@ -42,7 +42,7 @@ export function blueprintSemanticGenerationContract(writingLanguage: WritingLang
   if (writingLanguage === 'en-US') {
     return `[Immutable blueprint JSON contract]
 Output {"blueprints":[...]} only. Every item must contain all of these fields: ${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.requiredFields.join(', ')}.
-chapterNumber must cover every target chapter exactly once, without duplicates or out-of-range values. title, role, purpose, keyEvents, and suspenseHook must be non-empty strings.
+chapterNumber must cover every target chapter exactly once, without duplicates or out-of-range values. title, role, purpose, and suspenseHook must be non-empty strings. keyEvents must be an ordered array of 2-5 items, each with id (like "1:E1"), event (30-80 characters describing what concretely happens), and estimatedUnits (a positive integer: the manuscript units that event is expected to take). Ids are advisory; the runtime rewrites them from the chapter number.
 suspenseHook is always required; even without a mystery, state one concrete unresolved decision, threat, revelation, or consequence that creates forward pressure.
 characters must be an array containing at least one unique, non-empty full character name.
 newCharacterCandidates is optional. When present, include only important named characters first introduced by this blueprint and expected to recur. Every item must contain name and role, name must exactly copy one entry from characters, and role must be protagonist, antagonist, supporting, or minor. Omit it or use [] when there are no candidates; never include incidental figures.
@@ -52,7 +52,7 @@ Do not omit required fields, combine chapters, rename fields, explain, or output
   }
   return `【不可变蓝图 JSON 合同】
 只输出 {"blueprints":[...]}，每项必须完整包含：${BLUEPRINT_SEMANTIC_CONTRACT_MANIFEST.requiredFields.join('、')}。
-chapterNumber 必须覆盖本批每个目标章节且不得重复或越界；title、role、purpose、keyEvents、suspenseHook 必须是非空字符串。
+chapterNumber 必须覆盖本批每个目标章节且不得重复或越界；title、role、purpose、suspenseHook 必须是非空字符串；keyEvents 必须是有序数组，2-5 条，每条含 id（形如 "1:E1"）、event（30-80 字，写清具体发生了什么）、estimatedUnits（正整数：该事件预计占用的正文单位数）。id 仅供参考，运行时会按章号重写。
 suspenseHook 始终必填；即使本章没有谜团，也要写明一个制造推进压力的具体未决决定、威胁、揭示或后果。
 characters 必须是至少含一个唯一非空角色名的字符串数组。
 newCharacterCandidates 可选；提供时只声明由本章首次引入且预计后续复用的重要具名角色，每项必须包含 name、role，name 必须逐字复制 characters 中的一个完整姓名，role 只能是 protagonist、antagonist、supporting、minor。无候选时可省略或传 []，一次性路人不得声明为候选。

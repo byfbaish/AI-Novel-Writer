@@ -7,6 +7,7 @@ import {
   EN_US_BUILTIN_PROMPTS,
 } from '../prompt-language'
 import { ArchitecturePromptBuilder, DirectoryPromptBuilder } from '../prompts/prompt-builder'
+import { blueprintSemanticGenerationContract } from '../../shared/blueprint-semantic-contract'
 
 it.each(['zh-CN', 'en-US'] as const)('retains each inline action when its custom %s template omits the instruction', language => {
   const template = { ...getBuiltinPromptTemplate('edit_selected_text', language)!, content: '{{selected_text}}' }
@@ -167,4 +168,24 @@ describe('core model prompt language contract', () => {
     expect(prompt).toContain('Chapter 1: Rowan refuses the bargain.')
     expect(prompt).toContain('Never reverse established traits.')
   })
+})
+
+/**
+ * 段一的形状断言（2026-10-15）：产蓝图/补蓝图的模板与运行时的不可变合同都必须声明数组形状。
+ *
+ * 分工：**中文模板自带 JSON 示例**（示例即形态，红线 12）；**英文模板不含示例**（正文只说业务，
+ * 形状由运行时追加的 `blueprintSemanticGenerationContract` 承担）—— 所以断言落点不同。
+ */
+it.each(['zh-CN', 'en-US'] as const)('declares the structured keyEvents shape in blueprint prompts (%s)', language => {
+  if (language === 'zh-CN') {
+    for (const key of ['chapter_blueprint', 'chapter_blueprint_chunk']) {
+      const text = getBuiltinPromptTemplate(key, language)?.content ?? ''
+      expect(text, `${key} 缺少 keyEvents 数组示例`).toContain('"keyEvents": [')
+      expect(text, `${key} 缺少 estimatedUnits`).toContain('estimatedUnits')
+    }
+  }
+  // 运行时合同两侧都必须点名数组 —— 这是英文侧唯一的形状来源。
+  const contract = blueprintSemanticGenerationContract(language)
+  expect(contract).toContain('keyEvents')
+  expect(contract).toContain('estimatedUnits')
 })

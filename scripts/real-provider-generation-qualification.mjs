@@ -848,7 +848,8 @@ export function qualificationBlueprintContractInstruction(manifest, items) {
   return [
     `只生成章节 ${items.join('、')}，根对象必须是 {"blueprints": [...]}。`,
     `每章必须且只能使用这些业务字段：${requiredFields}。`,
-    '字段形状：chapterNumber 为对应正整数；title、role、purpose、keyEvents、suspenseHook 为非空字符串；',
+    '字段形状：chapterNumber 为对应正整数；title、role、purpose、suspenseHook 为非空字符串；',
+    'keyEvents 为有序数组（2-5 条），每条严格为 {"id":"n:E1","event":"30-80字的具体事件","estimatedUnits":正整数}；',
     'characters 为至少一个不重复角色名的字符串数组；relationships 必须是数组，无关系时为 []，',
     '有关系时每项严格为 {"from":"本章角色名","to":"本章另一角色名","relation":"非空关系说明"}，',
     'from/to 必须都出现在同章 characters 中且不能相同。不得输出解释、注释、Markdown 或额外章节。',

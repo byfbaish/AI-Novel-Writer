@@ -876,7 +876,10 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       "purpose": "本章主角最想解决的一件事",
       "characters": ["本章互动的要人A", "要人B"],
       "relationships": [{ "from": "要人A", "to": "要人B", "relation": "本章可确认的关系；无则空数组" }],
-      "keyEvents": "主角做了什么，遭遇了什么反转，金手指怎么用的。100字左右具体说明",
+      "keyEvents": [
+        { "id": "1:E1", "event": "主角做了什么，遭遇了什么反转，金手指怎么用的", "estimatedUnits": 700 },
+        { "id": "1:E2", "event": "第二条具体事件（2-5 条，按发生顺序）", "estimatedUnits": 500 }
+      ],
       "suspenseHook": "一句话说明结尾留了什么悬念"
     },
     {
@@ -886,7 +889,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 }
 
 要求：
-- 每章的 keyEvents 控制在 100-150 字以内，信息密度必须极高。
+- keyEvents 必须是数组（2-5 条，按发生顺序）：每条 event 写 30-80 字、信息密度极高；estimatedUnits 为正整数，表示该事件预计占用的正文单位数。id 由运行时按章号重写，你写的只是参考。
 - 每个对象必须包含完整的 chapterNumber、title、role、purpose、characters、relationships、keyEvents、suspenseHook；relationships 仅写本章可确认的角色关系，无则输出空数组。
 - role 只填一个功能词，不附加括号、破折号或任何说明；"为后文铺垫"一类的节奏意图写进 purpose，且只用本章自身要达到的状态来描述（例如"本章收尾要把某条线索推到临界"），不得提及后续章节号或后续情节。
 - 仅给出最终的 JSON 文本，不要任何客套解释、分析、计划、Markdown 或代码块。
@@ -953,7 +956,10 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       "purpose": "本章主角最想解决的一件事",
       "characters": ["本章互动的要人A", "要人B"],
       "relationships": [{ "from": "要人A", "to": "要人B", "relation": "本章可确认的关系；无则空数组" }],
-      "keyEvents": "具体发生了什么，金手指怎么运作的。100字左右",
+      "keyEvents": [
+        { "id": "n:E1", "event": "具体发生了什么，金手指怎么运作的", "estimatedUnits": 700 },
+        { "id": "n:E2", "event": "第二条具体事件（2-5 条，按发生顺序）", "estimatedUnits": 500 }
+      ],
       "suspenseHook": "结尾留的钩子"
     }
   ]
@@ -1616,12 +1622,15 @@ severity 取值：error=严重的上述客观问题，强烈建议修复；warni
   "role": "本章在全书中的角色（起、承、转、合、伏笔、高潮、过渡 等）",
   "purpose": "本章主角最想解决的核心问题（一句话）",
   "characters": ["本章出场的重要角色名"],
-  "keyEvents": "本章核心事件概述（100-150字，包含因果关系和结果）",
+  "keyEvents": [
+    { "id": "1:E1", "event": "核心事件概述：含因果关系和结果（30-80字）", "estimatedUnits": 700 },
+    { "id": "1:E2", "event": "第二条事件（2-5 条，按发生顺序）", "estimatedUnits": 500 }
+  ],
   "suspenseHook": "章末留下的悬念或钩子（一句话）"
 }
 
 要求：
-1. keyEvents 必须基于正文实际内容提取，不可臆造。
+1. keyEvents 必须是数组（2-5 条，按发生顺序）：event 必须基于正文实际内容提取、不可臆造，estimatedUnits 为正整数（该事件在本章正文中实际占用的单位数，按篇幅估）。id 由运行时重写。
 2. characters 只列主要互动角色名（3-5个），不要列龙套。
 3. role 从正文的叙事功能判断（建置/发展/转折/高潮/结局/过渡等）。
 4. 仅输出 JSON，不要任何额外文字。`,
