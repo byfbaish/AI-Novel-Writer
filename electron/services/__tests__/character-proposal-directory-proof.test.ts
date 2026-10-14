@@ -136,3 +136,16 @@ it('keeps a legacy non-JSON roster cell from crashing the proof', () => {
     if (!(cause instanceof Error) || !cause.message.includes('CHARACTER_PROPOSAL_SOURCE_CHANGED')) throw cause
   }
 })
+
+it('never gates directory candidates on the originating run lineage (assertSources must not fire)', () => {
+  const operationId = commitBlueprintReceipt()
+  // 实机教训：作者在生成目录后正常编辑了世界观/前提，旧运行的谱系必然失配 ——
+  // 但候选是谁只由「本章角色名单」决定。目录证明绝不能调用 assertSources，
+  // 否则任何一次正常的设定编辑都会把待确认批次永久卡死（保存与重提取双炸）。
+  const db = getProjectDb()!
+  const project = projectAccess.probeExistingProject(root)
+  if (project.kind !== 'manifest') throw new Error('test project identity missing')
+  const proof = proveCharacterProposal(db, new GenerationRunRepository(() => db), project.projectId,
+    { kind: 'directory', operationId }, true, () => { throw new Error('GENERATION_SOURCE_CHANGED') })
+  expect(proof.items).toEqual([])
+})

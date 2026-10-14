@@ -83,8 +83,15 @@ export class CharacterProposalService {
       throw error
     }
     if (!isDeepStrictEqual(envelope.proof, currentProof)) {
+      // 目录批次的 provenance 由「目录进度标记」推导，该标记是过渡性的（清蓝图 / 重跑后即消失）。
+      // 但封存在批次里的那份 provenance 记录的是"这批候选由哪次生成产出"这一历史事实，
+      // 标记消失不改事实 —— 其余证据一致时复用封存值，否则旧批次会连读取都失败。
+      const keepsStoredProvenance = envelope.batch.status === 'pending-approval' && envelope.proof.provenance !== null
+        && currentProof.provenance === null
+        && isDeepStrictEqual({ ...envelope.proof, provenance: null }, currentProof)
       if (envelope.batch.source.kind === 'import' && envelope.batch.status === 'pending-approval' && envelope.proof.provenance === null
         && currentProof.provenance && isDeepStrictEqual({ ...envelope.proof, provenance: currentProof.provenance }, currentProof)) envelope.proof = currentProof
+      else if (keepsStoredProvenance) envelope.proof = { ...currentProof, provenance: envelope.proof.provenance }
       else throw new Error('CHARACTER_PROPOSAL_SOURCE_CHANGED')
     }
     this.assertFinalizedSourceCurrent(envelope)
@@ -313,14 +320,16 @@ export class CharacterProposalService {
         throw new Error('CHARACTER_AUTHOR_ROSTER_NOT_READY')
       if (request.expectedRevision !== batch.revision || this.revision() !== batch.revision) throw new Error('CHARACTER_ID_REVISION_CONFLICT')
       const proof = this.sourceProof(batch.source, true, envelope.architectureDerivationVersion ?? 1)
-      if (!proof.provenance || !['generated', 'derived'].includes(proof.provenance.kind)) throw new Error('CHARACTER_PROPOSAL_PROVENANCE_REQUIRED')
+      // 过渡性的目录进度标记消失后重算会拿不到 provenance；此时用封存值（读取时已校验过其余证据一致）。
+      const provenance = proof.provenance ?? envelope.proof.provenance
+      if (!provenance || !['generated', 'derived'].includes(provenance.kind)) throw new Error('CHARACTER_PROPOSAL_PROVENANCE_REQUIRED')
       if (request.selections.length !== byKey.size || new Set(request.selections.map(item => item.selectionKey)).size !== byKey.size) throw new Error('CHARACTER_APPROVAL_SELECTION_INVALID')
       if (edits?.some(edit => !request.selections.some(selection => selection.selectionKey === edit.selectionKey && isAdoptedCharacterDecision(selection.action))))
         throw new Error('CHARACTER_PROPOSAL_EDIT_INVALID')
       if (batch.source.kind === 'legacy-roster-generation' && !request.selections.some(item => item.action === 'create' || item.action === 'map'))
         throw new Error('CHARACTER_APPROVAL_SELECTION_REQUIRED')
       const identityRequest: CharacterIdentityCommitRequest = { approval: { operationId: request.operationId, expectedRevision: request.expectedRevision,
-        source: proof.provenance, action: batch.source.kind === 'legacy-roster-generation' || batch.source.kind === 'generation' && batch.source.inputKind === 'architecture' ? 'adopt-generated' : 'adopt-import' },
+        source: provenance, action: batch.source.kind === 'legacy-roster-generation' || batch.source.kind === 'generation' && batch.source.inputKind === 'architecture' ? 'adopt-generated' : 'adopt-import' },
         changes: [], creations: [], retireIds: [], relationships: [], resolutions: [] }
       const existingCharacters = this.identitySnapshot().characters
       for (const selection of request.selections) {

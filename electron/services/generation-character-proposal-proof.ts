@@ -133,7 +133,9 @@ export function proveCharacterProposal(db: Database.Database, runs: GenerationRu
     }))
     const progress = runs.listDirectoryProgress().find(item => item.operationId === operation.operation_id)
     if (progress && progress.sourceHandle.projectId !== projectId) throw new Error('CHARACTER_PROPOSAL_SOURCE_INVALID')
-    if (forWrite && progress) assertSources(progress.sourceHandle, blueprints.map(blueprint => blueprint.chapterNumber))
+    // 不对目录批次调用 assertSources（整条生成谱系的现行性闸门）：作者在生成后正常编辑
+    // 世界观/前提等来源，与"候选是谁"无关（判据 ⑫）。目录候选的写闸只有上面那份
+    // 「本章角色名单」比对 —— 蓝图被重跑且名单变了，批次自然会死；名单没变，旧决策仍一一对应。
     const model = progress ? runs.get(progress.sourceHandle.runId).binding.sourceManifest.modelReceipt as { modelRevision: string } : undefined
     const sourceHash = textHash(JSON.stringify([operation.payload_hash, operation.character_sync_input]))
     return { items, sourceHash, provenance: progress && model ? { kind: 'generated', modelRevision: model.modelRevision,
