@@ -91,6 +91,16 @@ describe('Step 1 · 来源 D 解析', () => {
     expect(() => parseCharacterBackgroundSynthesis('先说明：{"character":{"name":"X"}}。')).toThrow('CHARACTER_BACKGROUND_CONTRACT_INVALID')
   })
 
+  it('字符串值里混入未转义引号时按语法容错解析（实机原始输出）', () => {
+    // 本地 qwen 的真实输出：background 直接写了 "老陈记" —— 严格 JSON.parse 会失败，
+    // 整条「为指定角色补全背景」流程因此报废（CHARACTER_BACKGROUND_CONTRACT_INVALID）。
+    const raw = '{"character":{"name":"老陈","role":"supporting","background":"在梅林坳巷口经营"老陈记"早餐摊多年。","notes":"关怀全塞进那一勺辣子里。"},"relationships":[{"target":"陈默","relation":"熟客"}]}'
+    const parsed = parseCharacterBackgroundSynthesis(raw)
+    expect(parsed.characterCard.name).toBe('老陈')
+    expect(parsed.characterCard.background).toContain('经营"老陈记"早餐摊多年')
+    expect(parsed.relationships).toEqual([{ targetName: '陈默', relation: '熟客' }])
+  })
+
   it('接受代码围栏包裹的 JSON', () => {
     const parsed = parseCharacterBackgroundSynthesis('```json\n{"character":{"name":"叶临川"}}\n```')
     expect(parsed.characterCard.name).toBe('叶临川')

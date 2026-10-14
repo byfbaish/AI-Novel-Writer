@@ -45,7 +45,8 @@ relationshipCandidates is an array of {"target":"exact name","relation":"relatio
 
 Output contract:
 {"character":{"name":"exact name","role":"protagonist|antagonist|supporting|minor","gender":"...","age":"...","appearance":"...","personality":"...","background":"...","abilities":"...","motivation":"...","arc":"...","notes":"other useful facts"},"relationships":[{"target":"exact name","relation":"relationship"}]}
-Omit optional fields you cannot support; do not emit empty placeholders, explanations, Markdown, or code fences.`,
+Omit optional fields you cannot support; do not emit empty placeholders, explanations, Markdown, or code fences.
+Never use an unescaped double quote inside a string value: to quote a shop name, catchphrase, or title, use single quotes or the corner brackets 「」 instead. Double quotes are only allowed as JSON structure.`,
     }
   }
   return {
@@ -81,6 +82,7 @@ relationshipCandidates 使用 {"target":"精确姓名","relation":"关系"} 数�
 
 输出合同：
 {"character":{"name":"精确姓名","role":"protagonist|antagonist|supporting|minor","gender":"…","age":"…","appearance":"…","personality":"…","background":"…","abilities":"…","motivation":"…","arc":"…","notes":"其他可用事实"},"relationships":[{"target":"精确姓名","relation":"关系"}]}
-无法支撑的可选字段必须省略，不得输出空占位、解释、Markdown 或代码围栏。`,
+无法支撑的可选字段必须省略，不得输出空占位、解释、Markdown 或代码围栏。
+字符串值内部**禁止出现未转义的英文双引号**：需要引用店名、口头禅、称谓等词组时，用中文引号「」或『』（例如 经营「老陈记」早餐摊）。英文双引号只允许作为 JSON 的结构符号出现。`,
   }
 }
