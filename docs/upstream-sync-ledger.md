@@ -225,3 +225,15 @@ git push origin dev_byf                               # 本轮：第 1 次即成
 - **本轮实测**：带代理连试 **20 次全败**；`unset` 后**第 1 次成功**。
 - ⇒ 修正既往经验：**先 `unset` 四个代理变量，再考虑重试**；盲重试只在代理"偶尔活"时有效。
 - `dangerouslyDisableSandbox: true` **不放行网络**（它放开命令本身，子进程仍受沙箱网络策略约束）。
+
+**2026-10-14 三次推送（第二批 diff 收口）**
+
+```
+f228eac1..24bdfb8e  dev_byf -> dev_byf
+bb3c80a0..549522d4  upstream-baseline -> upstream-baseline
+```
+
+- `unset` 四个代理变量后**第 1 次即成功**（连续第三次印证「清代理直连」优于盲重试）。
+- 基线推进仍是 **fast-forward**；校验：`origin/dev_byf` = `dev_byf` = `24bdfb8e`，
+  `origin/upstream-baseline` = `upstream-baseline` = `549522d4`。
+
