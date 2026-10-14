@@ -200,6 +200,7 @@ export function registerGenerationController(options: {
   register('character-proposal:read-pending-finalized', 1, (owner, request) => owner.characterProposals.readPendingFinalized(request.proposalBatchId))
   register('character-proposal:approve', 1, (owner, request) => owner.approveCharacterProposal(request))
   register('character-proposal:cancel', 1, (owner, request) => owner.characterProposals.cancel(request))
+  register('character-proposal:reopen', 1, (owner, request) => owner.characterProposals.reopen(request))
   register('character-identity:read', 0, owner => owner.characterProposals.identitySnapshot())
   register('finalized-character:read-context', 1, (owner, request) => owner.readFinalizedCharacterContext(request.draftId))
   register('finalized-character:commit', 1, (owner, request) => owner.commitFinalizedCharacterStates(request))

@@ -1000,6 +1000,10 @@ export interface DatabaseChannels {
     args: [expectedProjectPath: string]
     return: BlueprintCharacterSyncOperation[]
   }
+  'db:blueprint-character-sync-list-all': {
+    args: [expectedProjectPath: string]
+    return: BlueprintCharacterSyncOperation[]
+  }
   'db:blueprint-character-sync-get': {
     args: [operationId: string, expectedProjectPath: string]
     return: BlueprintCharacterSyncOperation | null

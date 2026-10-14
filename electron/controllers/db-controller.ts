@@ -586,6 +586,14 @@ export function registerDatabaseController() {
     return BlueprintRepository.listPendingCharacterSyncOperations()
   })
 
+  ipcMain.handle('db:blueprint-character-sync-list-all', async (
+    _event,
+    expectedProjectPath: string,
+  ) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return BlueprintRepository.listAllCharacterSyncOperations()
+  })
+
   ipcMain.handle('db:blueprint-character-sync-get', async (
     _event,
     operationId: string,

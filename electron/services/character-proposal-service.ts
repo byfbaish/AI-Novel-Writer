@@ -258,6 +258,29 @@ export class CharacterProposalService {
       return structuredClone(envelope.batch)
     }).immediate()
   }
+
+  /**
+   * 重新打开一个已取消的批次，回到待确认状态。
+   *
+   * 取消是纯状态翻转，不写任何身份效果（无 creation、无 relationship），因此重开不产生
+   * 任何需要回滚的东西 —— 它只是把"作者当时没能做出决定"（常因保存报错而取消）的批次
+   * 放回决策队列。没有这一步，蓝图声明过的候选会在「暂存即完成」的同步操作与「取消即
+   * 终态」的批次之间永远失踪。已批准的批次不可重开：决策已落库且有身份效果。
+   */
+  reopen(request: CancelCharacterProposalRequest): CharacterProposalBatch {
+    if (!request || !nonempty(request.proposalBatchId)
+      || !Number.isSafeInteger(request.expectedRevision)
+      || Object.keys(request).some(key => !['proposalBatchId', 'expectedRevision'].includes(key))) throw new Error('CHARACTER_APPROVAL_INVALID')
+    return this.db.transaction(() => {
+      const envelope = this.readEnvelope(request.proposalBatchId)
+      if (request.expectedRevision !== envelope.batch.revision) throw new Error('CHARACTER_ID_REVISION_CONFLICT')
+      if (envelope.batch.status === 'pending-approval') return structuredClone(envelope.batch)
+      if (envelope.batch.status !== 'cancelled') throw new Error('CHARACTER_PROPOSAL_ALREADY_APPROVED')
+      envelope.batch = { ...envelope.batch, status: 'pending-approval', revision: this.revision() }
+      this.write(envelope)
+      return structuredClone(envelope.batch)
+    }).immediate()
+  }
   approve(request: ApproveCharacterProposalRequest): { batch: CharacterProposalBatch; created: { selectionKey: string; characterId: string }[] } {
     if (!request || !nonempty(request.operationId) || request.operationId.length > 256 || !Array.isArray(request.selections)
       || Object.keys(request).some(key => !['proposalBatchId', 'expectedRevision', 'operationId', 'selections', 'relationships', 'edits'].includes(key))) throw new Error('CHARACTER_APPROVAL_INVALID')

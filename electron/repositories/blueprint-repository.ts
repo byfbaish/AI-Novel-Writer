@@ -751,6 +751,33 @@ export class BlueprintRepository {
         return rows.map(rowToCharacterSyncOperation)
     }
 
+    /**
+     * 全量列举，含已完成的操作。`completion` 只说明"提议已暂存过"，不说明"作者已处理"——
+     * 蓝图冻结输入里声明的候选在作者给出结论（建卡 / 功能配角）之前始终是待办事实，
+     * 「AI 生成角色卡」的提取必须看到它们，否则批次一旦暂存过，该入口就永久失效。
+     */
+    static listAllCharacterSyncOperations(): BlueprintCharacterSyncOperation[] {
+        const db = requireProjectDb()
+        ensureBlueprintCommitSchema(db)
+        const rows = db.prepare(`
+          SELECT
+            operation_id,
+            blueprint_commit_operation_id,
+            blueprint_commit_payload_hash,
+            status,
+            start_chapter,
+            end_chapter,
+            character_sync_input,
+            completion_receipt,
+            created_at,
+            updated_at,
+            completed_at
+          FROM blueprint_character_sync_operations
+          ORDER BY created_at ASC, operation_id ASC
+        `).all() as BlueprintCharacterSyncOperationRow[]
+        return rows.map(rowToCharacterSyncOperation)
+    }
+
     static getCharacterSyncOperation(operationId: string): BlueprintCharacterSyncOperation | null {
         if (!operationId.trim()) throw new Error('蓝图角色同步操作 ID 不能为空')
         const db = requireProjectDb()
