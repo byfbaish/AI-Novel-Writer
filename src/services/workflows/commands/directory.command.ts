@@ -1,5 +1,6 @@
 import { parsePlanningTargetUnits, planningTargetInstruction, assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../../shared/plot-outline-contract'
 import { keyEventsText } from '../../../shared/blueprint-key-events'
+import { withSpaceConstraints } from '../../../shared/space-constraints'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import {
   BaseWorkflowCommand,
@@ -365,14 +366,22 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
         chapterNumber: item,
         targetUnits,
         // 与批量路径同口径：单章兜底同样按本章范围投影大纲章级条目。
-        architecture: architectureParts
-          ? renderBlueprintArchitecture(architectureParts, {
-            from: item,
-            to: item,
-            coveredChapters: coveredForItem,
-            writingLanguage,
-          })
-          : architecture,
+        // ★ 空间约束摘录：世界观里的「空间名 + 关键规则」在投影后仍原样保留（synopsis 之外的
+        //   部件不参与章级投影），但它是 6,000+ 字散文里的一段、与七八个空间并列 —— 实测大纲
+        //   会写出越过时段窗口的事件（老陈案）。这里把它原样摘录成一张短清单，独立成节附在
+        //   架构文本之后。摘录不到时原样返回（fail-open）。必须**在投影之后**套：projectedArchitecture
+        //   由 `architectureParts` 重渲染，源头追加会被投影丢掉。
+        architecture: withSpaceConstraints(
+          architectureParts
+            ? renderBlueprintArchitecture(architectureParts, {
+              from: item,
+              to: item,
+              coveredChapters: coveredForItem,
+              writingLanguage,
+            })
+            : architecture,
+          writingLanguage,
+        ),
         previous: previousForItem,
         totalChapters,
         wordsPerChapter,
@@ -423,7 +432,7 @@ export class GenerateDirectoryCommand extends BaseWorkflowCommand<ChapterBluepri
           })
           : architecture
         const prompt = new DirectoryPromptBuilder(template, writingLanguage)
-          .withNovelArchitecture(projectedArchitecture)
+          .withNovelArchitecture(withSpaceConstraints(projectedArchitecture, writingLanguage))
           .withChapterList(chapterList || promptLanguageText(writingLanguage, '（首批生成，尚无前置章节）', '(first batch; no preceding chapters)'))
           .withNumberOfChapters(totalChapters)
           .withN(batchStart)

@@ -7,6 +7,7 @@ import type { MainGenerationRunHandle } from '../../generation/generation-runtim
 import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
 import { withProjectedArcGuide } from '../../../shared/arc-position'
+import { withSpaceConstraints } from '../../../shared/space-constraints'
 import { projectScopedConfigFields, projectScopedText } from '../../../shared/text-scope-tags'
 import { declareTraceScopeChapterRange } from '../../prompts/trace-scope'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
@@ -2138,7 +2139,10 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     const promptBuilder = new ArchitecturePromptBuilder(template, writingLanguage)
       .withCoreSeed(premise)
       .withCharacterDynamics(char_dyn)
-      .withWorldBuilding(world_b)
+      // ★ 空间约束摘录（老陈案）：世界观里的「空间名 + 关键规则」确实进了大纲请求，
+      //   但埋在 6,000+ 字散文里、与七八个空间并列 —— 是"喂了没看见"而非"没喂"。
+      //   这里把它原样摘录成短清单，紧跟世界观全文独立成节；摘录不到则原样返回。
+      .withWorldBuilding(withSpaceConstraints(world_b, writingLanguage))
       .withGenre(modelFacts.genre)
       .withNumberOfChapters(totalChapters)
       .withWordNumber(config.wordsPerChapter)
@@ -2421,7 +2425,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     const projectedGlobalGuidance = projectScopedText(sourceExpected.globalGuidance || '', 'outline').text
     const { resolveStageStructureGuide, getNarrativePOVLabel } = await import('../architecture-workflow')
     const promptBuilder = new ArchitecturePromptBuilder(template, language)
-      .withCoreSeed(sourceExpected.premise).withCharacterDynamics(sourceExpected.charactersArch).withWorldBuilding(sourceExpected.worldbuilding)
+      .withCoreSeed(sourceExpected.premise).withCharacterDynamics(sourceExpected.charactersArch)
+      // ★ 空间约束摘录（同 :2141，断点续写 / 逐章路径）
+      .withWorldBuilding(withSpaceConstraints(sourceExpected.worldbuilding, language))
       .withGenre(localizeNovelConfigFacts(config, language).genre).withNumberOfChapters(sourceExpected.totalChapters)
       .withWordNumber(sourceExpected.wordsPerChapter)
       // ★ 弧位圈定同 :2135（断点续写路径）：让模型知道本批落在哪个中弧，避免提前执行后续中弧。
