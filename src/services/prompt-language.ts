@@ -309,6 +309,11 @@ Build four connected dimensions. The first three each need a concrete source of 
 - Give each space its key rule or constraint (entry conditions, dangers, mechanics that differ from other spaces).
 - Use the format "Space name: one-line role + key rule"; names must be fixed and unique, because later plot and arc structure will reference them by the same name.
 - Mark which spaces are long-term stages and which are one-off scenes. Do not add decorative geography unrelated to the plot.
+- ★ [Named cast registry] Fixed closing block of this dimension: if a space rule or background line names a **named person** (e.g. "the owner, Old Chen"), that person must also be **registered here on their own line**, four fields separated by a vertical bar:
+  Name｜One-line role｜Fixed verbal tic｜Relationship to the protagonist
+  Example:
+  Old Chen｜breakfast-stall owner at Chen's Corner｜"Same as always, extra chili?"｜the protagonist's regular breakfast vendor
+  A name that appears only inside a space entry and never on its own line here counts as **unregistered**; later layers (arcs / outline / chapter blueprints) cannot reference it.
 
 [Requirements]
 1. Every setting must support the core appeal of {{genre}} and be usable in scenes.
@@ -316,8 +321,9 @@ Build four connected dimensions. The first three each need a concrete source of 
 3. Preserve explicit author facts from the story premise and protagonist profile together with the project-wide guidance. Facts unrelated to world mechanics need not be repeated, but the world must not contradict them.
 4. The World foundation supplied by the author is authoritative and is injected verbatim into every chapter. Do not restate or rewrite entries already present in it — supply only what it does not cover.
 5. The **four-dimension structure must still be complete**: even when part of a dimension already appears in the World foundation, fill in the parts that dimension does not cover — in particular dimension 4 (spatial structure / map and regions) must at least list the main spaces and their entry or restriction rules. **Returning only the first three dimensions is a failure.**
-6. The spatial names fixed in dimension 4 are the single key for later references; do not use multiple aliases for one place.
-7. Return the world-building text only, with no code, analysis, or explanation.
+6. The two kinds of names fixed in dimension 4 are the single key for later references; do not use multiple aliases for one entity: (a) space names; (b) named people listed on their own line in the [Named cast registry]. **A registered person matters as much as a space name** — the arc structure, plot outline, and chapter blueprints will reference them by the same name.
+7. [Named cast registry] Register only anchored supporting roles with a fixed identity who will recur (stall owner, gatekeeper, receptionist, permanent colleague). Do not register one-off passers-by or crowd members. If there are none, write "none".
+8. Return the world-building text only, with no code, analysis, or explanation.
 
 [Reference works — borrow systems/mechanics/tone; obey stated prohibitions]
 {{reference_works}}
