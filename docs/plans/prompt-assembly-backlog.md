@@ -838,6 +838,8 @@ P1 只做**逐字重复**消除。作者明确区分：
 
 ### 状态
 
-**设计稿已出（2026-10-16）**：`docs/design/p7-review-material-dedup-design.md`（v1，**待裁定 D1–D3**）。
-- 关键前置已核实：模板与作者覆盖版**都没有** `requiredContextVariables` ⇒ 无兜底风险；**重复的不止世界观**（`characterStates` 同源，本次为空未显形）；**定稿历史不重复**（按 `category` 互斥分流，勿动）。
-- 推荐方案 **E**（材料块按链参数化 `omit` 已由模板侧注入的字段）；裁定项 D1（方案）/ D2（排除范围 = 世界观 + 角色状态两个）/ D3（后续蓝图 3,417 字**不同批**，需独立裁定）。
+**✅ 已实施（2026-10-16，作者裁定 D1 方案 E / D2 两个字段 / D3 后续蓝图不动）**。设计稿 + 实施记录：`docs/design/p7-review-material-dedup-design.md`（v2）。
+- 落点：`reviewRevisionAuthorMaterial(context, { omit })`（**默认行为逐字不变**）+ `selectFrozenReviewRevisionMaterials` 透传 + **仅审稿链**传 `omitAuthorFields: ['worldbuilding','characterStates']`。
+- 实施中封住一处**静默丢数据**风险：省略 `worldbuilding` 时须同时把它移出「前缀去重」比较基准，否则 `config.worldSetting` 会被换成「见 worldbuilding 原文」而那份原文已不在 prompt 里（已加测试双向锁）。
+- 验证：目标 52/52 · 下游 128/128 · tsc 0。**⏳ 待实机复验**（重启后核审稿 user 32,442 → ~26,200，且 `【世界观设定】` 完整内容只出现一次）。
+- **D3 遗留**（独立议题，作者裁定本项不动）：材料块的 `【后续蓝图/计划｜非既定历史】` **3,417 字 = n+1..n+5 全量 JSON**（与正文链窗口相同、形态不同；正文链已由 P1-1 压到 **729 字**边界清单）。审稿是否也需要边界化，需单独立项评估。
