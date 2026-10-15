@@ -12,6 +12,7 @@ import {
 } from '../chapter-materials'
 import { requireWorkflowProjectSession, workflowUiText } from '../workflow-project-session'
 import { selectFrozenReviewRevisionMaterials } from './review-revision-materials'
+import { refinementFarTermSettingRule } from '../../../shared/review-far-term-setting'
 
 export interface RefineDraftParams extends ReviewRevisionCommandSource {
   chapterInfo: ChapterInfo
@@ -76,7 +77,10 @@ export class RefineDraftCommand extends ReviewRevisionCommand {
       .withWordNumber(frozen.config.wordsPerChapter)
       .withWritingStyle(projectScopedText(frozen.config.writingStyle || '', 'draft').text)
       .withUserRefinePrompt(userPromptBlock)
-    const prompt = [builder.build(), ...admission.admitted.filter(material => material.category !== 'finalized-history').map(material => material.text)].join('\n\n')
+    // 修稿链的「远期设定使用规则」：本 prompt 经材料块含全量世界观（含 §3 终局谜底），
+    // 须限定它不得被当作修稿要求（详见 shared/review-far-term-setting.ts 的 JSDoc）。
+    const prompt = [builder.build(), ...admission.admitted.filter(material => material.category !== 'finalized-history').map(material => material.text),
+      refinementFarTermSettingRule(language)].join('\n\n')
     await this.bindMaterialDecision(params, admission.decision, prompt)
     return this.generateRevision(prepared, params, prompt, builder.getSystemRole())
   }
