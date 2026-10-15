@@ -418,7 +418,7 @@ interface PromptTemplate {
 | ~~**P1-1**~~ ✅ **已完成**（2026-10-15） | 正文/续写把后续计划降级为**本章不可写事件**清单（⚠️ 落点按 §7.0.2-R1 由 `future_blueprints` 修正为既有 **【后续计划边界】块**） | 直接消除"续写越界第2章"；ch2 实机整块 1,656 → 729 字（省 56%） | 已落地：`src/shared/chapter-boundary.ts`（`toBoundaryNotice`）+ 内置说明句改写 |
 | **P1-2a** ✅ **已完成**（2026-10-16） | L2 投影（**按节**）：`architecture` 对正文剥离**整节远期**段（`### 3.【隐喻与深层危机】` → 标题 + 一行声明），并在运行时合同补【远期设定边界】；另给产出侧 `world_building` §3 加生成约束（防未来再犯） | 消除"长线设定进当前章节"的错觉；ch2 实测 6,854 → 5,958（省 896 = user 5.2% / total 4.9%） | 已落地：`src/shared/architecture-projection.ts`（fail-open）。设计稿 `p1-2-architecture-projection-design.md` |
 | **P1-2b** | 产出侧**期次结构**（单条设定标注 `展开期` / `适用章`，见 §3-`:106`）：做到"只给事实源"（判 ~20–50%） | 须改模板 + **存量项目重生成世界观** ⇒ **另立小项** | 高（作者级人工成本） |
-| **P1-3** | L1 变量出口语义化 + `enforceRequiredContext` | ⚠️ **已出实施级设计稿：实测判定为「不立项」建议**（内置 25 模板 / 覆盖版 20 份 / 实机 18 snapshot 的兜底触发面**全部为 0**；`acceptsScopes` 的四个潜在消费者已由 P0-1 / P0-2 / P1-1 / P1-2a 逐一取代）。**待作者裁定 D1–D4**；建议改做「可观测性」（附录 D 投影元数据 + `VELA_PROMPT_SCOPE=off`）。稿：`p1-3-variable-export-scoping-design.md` | 低（若按建议走，零行为变更 ⇒ 不碰契约测试基线） |
+| **P1-3** | L1 变量出口语义化 + `enforceRequiredContext` | ✅ **作者裁定（2026-10-16）：D1/D2 均不立项 · D3 重定义为「可观测性」 · D4【C1】另立小项**。依据：三条独立取证显示兜底**0 触发**（内置 25 / 覆盖版 20 / 实机 18 snapshot）；`acceptsScopes` = **抽象层级错误**（真实需求是"按变量自身结构切"，四个消费者已由 P0-1/P0-2/P1-1/P1-2a 逐一取代）；`enforceRequiredContext` = **语义被混淆**（它作用于兜底通道，附 systemSuffix 适用边界）。**可观测性已落地**：`projection` 元数据（`shared/prompt-projection.ts` + 两个投影函数 detailed 变体 + trace 吸附 + markdown 呈现）。稿：`p1-3-variable-export-scoping-design.md` | 低（零行为变更 ⇒ 不碰契约测试基线） |
 | **P2** | L3-(b) 拆 `draftingRules` 槽位 | 根治"硬指标被降权" | 高（UI + schema + 迁移） |
 | **P2** | 蓝图阶段加**设定时点预检**（"铃铛 from_ch:10"这类约束机器可读化） | 从源头挡住"物品提前出现" | 中（落点 `consistency-preflight.ts`） |
 | **P3** | L3-(c) trace 标注材料作用域 | 让作者看见"这步为什么带/不带这段" | 低 |
@@ -429,7 +429,7 @@ interface PromptTemplate {
 
 - **P1-1** ✅ 已完成 + 实机复验（`chapter-boundary.ts`；ch2 边界块 1,656 → 729 字，省 56%）。
 - **P1-2a** ✅ 已完成 + 作者行动项闭合（`architecture-projection.ts`；ch2 `architecture` 6,854 → 5,958，省 896）。**作者已把「代述禁忌」迁入 §1**、并裁定「现实变薄」**随 §3 移除**（原话「当期不该知道，这个变化由弧光和大纲来安排」）⇒ 见 `p1-2-architecture-projection-design.md` §8/§8.1/§12。**仅剩实机复验**（与 B′ 段二同批待决）。
-- **P1-3** ⚠️ **已出实施级设计稿，判定建议「不立项」** ⇒ `p1-3-variable-export-scoping-design.md`。三条独立取证（内置 25 模板 / 覆盖版 20 份 / 实机 18 snapshot）显示 `enforceRequiredContext` 的兜底**一次都没触发**；`acceptsScopes` 的四个潜在消费者已被 P0-1 / P0-2 / P1-1 / P1-2a 逐一取代，且对 `architecture` 这类 `G+A+D` 混合变量**按主层过滤只有 0/100 两档、无中间态**。**待作者裁定 D1–D4**；建议把 P1-3 重定义为「可观测性」（附录 D 投影元数据 + `VELA_PROMPT_SCOPE=off`），成本最低且不碰契约测试基线。**另发现唯一真候选落点 C1**（审稿链 `review-chapter.command.ts:71` 吃全量 `worldbuilding`、无投影），已作为 D4 单列。
+- **P1-3** ✅ **已结项（2026-10-16 裁定：D1/D2 不立项 · D3 重定义为「可观测性」并**已落地** · D4【C1】另立小项）** ⇒ `p1-3-variable-export-scoping-design.md`。三条独立取证（内置 25 模板 / 覆盖版 20 份 / 实机 18 snapshot）显示 `enforceRequiredContext` 的兜底**一次都没触发**；`acceptsScopes` 的四个潜在消费者已被 P0-1 / P0-2 / P1-1 / P1-2a 逐一取代，且对 `architecture` 这类 `G+A+D` 混合变量**按主层过滤只有 0/100 两档、无中间态**。**可观测性已实施**：`projection` 元数据（零行为变更，不碰契约测试基线）。**唯一真候选落点 C1**（审稿链 `review-chapter.command.ts:71` 吃全量 `worldbuilding`、无投影）已单列为另立小项。
 - **P1-2b**（产出侧期次结构）与 **P2/P3** 未动。
 
 ---
@@ -711,14 +711,14 @@ interface PromptTemplate {
 
 ## 11. 补完后的一致性检查清单（实施前自检）
 
-- [x] ~~附录 A 的映射表与 §5 矩阵不矛盾（每步 ✅ 的变量，其主层必须在 `acceptsScopes` 内）~~ → **本项随 P1-3 判定待裁**：`acceptsScopes` 建议不立项（见 `p1-3-variable-export-scoping-design.md` §4）；附录 A 保留为**参考映射表**（"某变量属哪层"的查证依据），但不再作为实施前置
+- [x] ~~附录 A 的映射表与 §5 矩阵不矛盾（每步 ✅ 的变量，其主层必须在 `acceptsScopes` 内）~~ → **已作废（2026-10-16 裁定：`acceptsScopes` 不立项）**：附录 A 保留为**参考映射表**（"某变量属哪层"的查证依据），不再是实施前置。
 - [ ] 附录 B 的边界清单**只由蓝图章节编号保证归属**，不含任何语义推断
 - [ ] 附录 C/F 的蓝图结构化改造**先于**其它 P0 落地（它是共同前提）
 - [x] 附录 E 的 P0-2 落点**已按作者裁定 ③ 改为「段级标签」**（原"依赖新槽位"的结论已就地标注失效；见附录 E 的取代说明）
 - [x] 段级标签机制**已实施**：`src/shared/text-scope-tags.ts` + 6 处注入点 + `ScopeTagBar`；纯函数 17/17、分区回归 2 例（架构侧 / 正文侧各一）
 - [ ] 附录 D 的投影元数据接进 trace，且 `VELA_PROMPT_SCOPE=off` 可关闭
 - [ ] 所有"账目"由代码计算，无一处要求模型自报（红线）
-- [ ] 改动前后跑 `prompt-language-contract.test.ts` / `prompt-local-qwen-contract.test.ts` 基线对照
+- [x] ~~改动前后跑 `prompt-language-contract.test.ts` / `prompt-local-qwen-contract.test.ts` 基线对照~~ → **无须对照（2026-10-16 裁定：P1-3 不立项 + 可观测性零行为变更，未动任何变量出口）**。
 - [x] 已用第 1 章真实蓝图 + trace **反向回填 §5.5 表**（§7.0.1，2026-10-13 完成），并产出"填不上"的缺口清单 + 4 条修正（§7.0.2）
 - [x] 已补 **上游侧（大纲/蓝图）trace 复验**（§7.0.5，2026-10-13 完成）：否证 R2 落点、定位 `global_guidance` 为真实污染源、实测上游缺章级投影、发现 `role` 无取值域契约
 - [ ] §5.5 契约字段**只含下游有读取点的项**（§8-7 YAGNI），无凑数字段

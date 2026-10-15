@@ -219,6 +219,8 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 
 ⚠️ **同时新记录一处易误判点**：`architecture` 产出侧三处吃全量 `worldbuilding` 是**设计前提**（产出侧需全知才能规划伏笔），**不是遗漏** —— 后人扫描时不应把它与 C1 并列为"未投影缺口"。**判据 =「这一步的产物是给人读的正文，还是给下一步用的规划？」** 前者才需要投影。
 
+> 📌 **C1 登记（2026-10-16 裁定 D4①）**：C1 **不并入本轮**，**另立小项**（入口 = 本稿 §7；若启动，推荐**解法 B**）。
+
 ---
 
 ## 8. 裁定项（作者）
@@ -230,7 +232,20 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 | **D3** | P1-3 是否重定义为「可观测性」（P1-3′，§6） | ① **是**（做附录 D 的 `projection` 元数据 + `VELA_PROMPT_SCOPE=off`，§6 L3-(c) 视情） / ② 否（P1-3 直接结项，主线只剩 P1-2b） | **①** |
 | **D4** | §7 候选落点 C1（审稿链投影 §3） | ① **另立小项**（不进本轮） / ② 现在做（若做，走 **解法 A** 分两次审稿 / **解法 B** 保留完整 §3 + **合同级**声明，见 §7） | **①**（若 ②，推荐 **解法 B**） |
 
-**若 D1/D2 裁 ①、D3 裁 ②** ⇒ 上级稿 §7 表的 P1-3 行标注为「**经实测判定不立项**」并把 §11 清单两条 `acceptsScopes` 项一并作废；**主线 P1 系仅剩 P1-2b（产出侧期次结构，作者级重生成成本）**。
+### 8.1 裁定记录（作者，2026-10-16）
+
+作者裁决「**按建议来**」⇒ D1–D4 **全部按建议执行**：
+
+| # | 裁定 | 落地 |
+|---|---|---|
+| D1 `acceptsScopes` | **不立项** | 上级稿 §7 表 P1-3 行标注；§11 两条 `acceptsScopes` 项作废 |
+| D2 `enforceRequiredContext` | **不立项** | 同上；§3.1 适用边界（systemSuffix）写入本稿 |
+| D3 P1-3 重定义 | **「可观测性」** | ✅ **已实施**（见 §9.1）：`projection` 元数据落地，零行为变更 |
+| D4 C1（审稿链投影 §3） | **另立小项** | 登记为独立小项，不进本轮 |
+
+**同行评审采纳记录**（本轮）：**采纳 4 项**（§3.1 适用边界 / §7 C1 两解法 / §6 可观测性收窄 / §7.1 全量消费点扫描）；**校准 1 项**（评审 §二 把两字段合并表述为"抽象层级错误"—— 对 `acceptsScopes` 成立、对 `enforceRequiredContext` 不成立，已改**分述**）；**证伪 1 项**（评审建议 4 怀疑"C1 之外还有缺口"—— 全仓扫描证明 **C1 唯一**）；**补正 1 项**（评审追问 3 猜 P1-2b 需手工标 **40** 条 —— 实测 **15** 条）。
+
+⇒ **主线 P1 系仅剩 P1-2b**（产出侧期次结构，15 条标注量，三形态待选）。
 
 ---
 
@@ -246,6 +261,21 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 | 需改的文件 | `src/services/prompts/prompt-trace.ts`（snapshot 加 `projection?`）+ `prompt-trace-markdown.ts`（呈现）+ 两个投影函数的返回值 + `prompt-trace-writer.ts`（如序列化需登记） |
 | 新增测试 | trace 元数据 1 文件（正向 + fail-open + 关闭开关三例） |
 | 红线自查 | 零 DDL；未动 `requiredContextVariables`；未改任何**请求内容**（只加诊断元数据）⇒ **不触发红线 16**；不改模板正文 |
+
+---
+
+### 9.1 实施记录（D3 落地，2026-10-16）
+
+| 面 | 实际落地 |
+|---|---|
+| 新增 | `src/shared/prompt-projection.ts`（`PromptProjectionNote` 类型 + kind 枚举 + 口径说明） |
+| 投影函数 | `architecture-projection.ts` 加 `projectArchitectureForDraft(): { text, projection }`（`withArchitectureDraftProjection` 保留为**兼容 wrapper**，零破坏）；`chapter-boundary.ts` 加 `buildBoundaryNotice(): { text, projection }`（`toBoundaryNotice` 保留 wrapper） |
+| trace | `prompt-trace.ts`：`PromptTraceSnapshot.projections?` + `notePromptProjection()` side-channel + `recordFragments` 吸附（消费后清空） + `resetPromptTrace` 清空 |
+| 落盘 / 呈现 | `prompt-trace-writer.ts` payload 带 `projections`（仅非空时，旧文件形状不变）；`prompt-trace-markdown.ts` 新增「变量投影」区块（改写前后字数 + 省下比例 + 被边界化的块） |
+| 调用点 | `generate-draft.command.ts`：`architecture` / `future_blueprints` 两处投影后 `notePromptProjection` |
+| 测试 | 新增 `src/services/__tests__/prompt-projection-trace.test.ts`（10 例：投影元数据 4 + trace 吸附 4 + markdown 2） |
+| 验证读数 | tsc **0**；目标测试 **30/30**；下游 `generate-draft.command` + `chapter-materials` **273/273**；trace 四文件 **53/53** |
+| 红线自查 | 零 DDL；未动 `requiredContextVariables`；**未改任何请求内容**（只加诊断元数据）⇒ 不触发红线 16；未改模板正文 |
 
 ---
 
