@@ -1,6 +1,7 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
 import { keyEventsText } from '../../../shared/blueprint-key-events'
 import { toBoundaryNotice } from '../../../shared/chapter-boundary'
+import { withArchitectureDraftProjection } from '../../../shared/architecture-projection'
 import { appErrorMessage } from '../../../i18n/app-errors'
 import { sanitizeDraftText, composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, DRAFT_VISIBLE_TEXT_VERSION, isDraftVisibleTextVersion, type DraftVisibleTextVersion } from '../../../shared/draft-visible-text'
 import { DRAFT_RECONCILE_PURPOSE, draftReconciliationBlock } from '../../../shared/draft-reconciliation'
@@ -485,7 +486,8 @@ function chapterExecutionContractText(writingLanguage: WritingLanguage, chapterI
     writingLanguage,
     `【本章执行合同】
 【作者本章任务】按作者原文含义遵循：明确要求在本章发生的事件与收束须由正文动作或结果落实；持续状态、知情边界、禁止事项和文风要求是叙述约束，不要仅为证明遵守而新增或反复确认动作、对话或解释。悬念按原文揭示时点处理，留待后文的事不得提前写成已完成；作者明确要求的回顾、回忆、动作、揭示或反复仍按原文执行。后一项动作必须承接正文实际形成的物品持有、人物知情和计划完成状态。
-【本章可推进的事件】可以写与既有事实相容的新行动和结果；普通无代价情节无需增加代价。${hasPredecessor ? `
+【本章可推进的事件】可以写与既有事实相容的新行动和结果；普通无代价情节无需增加代价。
+【远期设定边界】世界设定与故事架构是全书事实源，其中属于后文才展开的内容（尚未揭示的真相、终局谜底、远期阶段才启用的规则）本章不得提前写出其结论或明示；它仍是必须遵守的事实边界，不得写出相反内容。${hasPredecessor ? `
 【前文已定稿事实】本章蓝图、章节计划或必需事件的措辞与已定稿章节中确立的事实（包括作者在定稿中的最新更正）冲突时，以定稿事实为准：按与定稿事实一致的方式落实该条目，不得把已撤回、取消或被取代的计划追溯写成已执行。人物身份、物品持有、人物知情、付款与收回及事件时点应承接前文；付款、收回、失去等状态改变必须按事件先后写清，不能把同一笔钱款或物品同时写成已收回与仍然失去。
 【前文计划与本章决定】人物的等待、暂停或撤回是当时的计划状态，不是作者禁令；本章可以先写出人物基于既有事实作出的新决定、理由及连续性依据，再推进或替换计划，但不能违反作者明确禁令、必需呈现或既成事实。
 【本章事件兑现】作者或本章蓝图要求在本章发生的事件，必须在本章通过具体行动及其实际后果发生；复述、确认或记账前章已发生的结果不能替代本章要求发生的动作或结果。
@@ -494,7 +496,8 @@ ${chapterTimeContinuity('zh-CN')}` : ''}
 【操作边界】本合同不扩大本次请求的操作范围：续写及无进展恢复只接续已有正文，不重写旧文；已达目标篇幅时只补完断句并收束。压缩只删减既有正文，不新增情节或修补缺失事件。`,
     `[Current-chapter execution contract]
 [Author tasks for this chapter] Follow the author text according to its meaning: events and outcomes explicitly required in this chapter must be realized through manuscript action or outcome. Ongoing states, knowledge boundaries, prohibitions, and style requests are narrative constraints; do not add or repeatedly confirm actions, dialogue, or explanations merely to prove compliance. Follow the reveal timing specified by the author; do not present what is reserved for later chapters as already completed. Still carry out explicitly requested recollections, flashbacks, actions, reveals, or repetition. Each later action must continue from the item ownership, character knowledge, and plan-completion state actually established in the prose.
-[Events this chapter may advance] New actions and outcomes consistent with established facts are allowed. Ordinary events need no added cost.${hasPredecessor ? `
+[Events this chapter may advance] New actions and outcomes consistent with established facts are allowed. Ordinary events need no added cost.
+[Later-stage setting boundary] The world setting and story architecture are the book-wide source of truth. Content reserved for later chapters (unrevealed truths, the endgame mystery, rules that only apply in a later phase) must not have its conclusions stated or made explicit in this chapter; it remains a binding factual boundary, so do not write anything contrary to it.${hasPredecessor ? `
 [Established finalized facts] When the chapter blueprint, chapter plans, or the wording of required events conflict with facts established in finalized chapters (including the author's latest corrections in them), the finalized facts prevail: realize the item consistently and never retroactively portray a withdrawn, cancelled, or superseded plan as executed. Preserve identities, item ownership, character knowledge, payments and recoveries, and event times from prior prose. Keep the order and result of paying, recovering, or losing money or property consistent; do not describe the same amount or item as both recovered and still lost.
 [Prior plans and current decisions] Characters' waiting, paused, or withdrawn plans describe their prior intention, not an author prohibition; this chapter may first show a new decision grounded in established facts, the character's reason, and continuity evidence, then advance or replace the plan without violating explicit author prohibitions, required on-page events, or completed facts.
 [Required events in this chapter] Events required by the author or this chapter blueprint to happen in this chapter must happen through concrete action and actual consequence here; merely repeating, confirming, or accounting for an outcome already completed in an earlier chapter cannot replace the action or outcome required in this chapter.
@@ -685,10 +688,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const { coreOutline, worldSetting, goldenFinger, protagonistProfile } = novelConfig
     const authoredConfigFacts = [coreOutline, worldSetting, goldenFinger, protagonistProfile]
       .filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-    const architecture = await this.readArchitecture(
-      expectedProjectPath,
-      projectSession,
-      authoredConfigFacts,
+    // P1-2a：架构里的「整节远期」设定（§3【隐喻与深层危机】）对正文只作边界、不逐字下发。
+    // 否则写第 2 章时请求里已经躺着「终极谜团 / 零号档案 / 终极抉择」（ch2 实机：architecture
+    // 6,854 字 = user 消息的 39.9%，是单块最大的材料）。fail-open：找不到该节则逐字返回。
+    const architecture = withArchitectureDraftProjection(
+      await this.readArchitecture(expectedProjectPath, projectSession, authoredConfigFacts),
+      writingLanguage,
     )
     const projectPrompts = await this.readProjectPrompts(
       expectedProjectPath,

@@ -302,7 +302,9 @@ Build four connected dimensions. The first three each need a concrete source of 
 
 3. Hidden history and deep crisis
 - Define the ultimate disaster or central mystery behind the world.
-- Connect a taboo, historical lie, or suppressed truth directly to the protagonist's fate.
+- Connect a suppressed truth, historical lie, or rumored taboo directly to the protagonist's fate.
+- ★ Write mystery here, not rules: state who is hiding what, what will be overturned when the truth surfaces, and why it intersects the protagonist's fate.
+- ★ Every hard rule of how the world operates — ability mechanics, use taboos, cost clauses, entry and resource-allocation laws — belongs in dimension 1, "Core rules and exploitable asymmetry". Keep only the riddle side here ("why is it forbidden", "who is covering it up"), never the executable ruling in force for the current chapter — a rule the current chapter needs, written here, leaks the ending early.
 
 4. Spatial structure (map and regions)
 - List the main spaces, regions, or strongholds where the story takes place and how they relate (adjacent, nested, connected, gated).
