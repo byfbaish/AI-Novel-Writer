@@ -8,13 +8,14 @@ import { applyM04ImportEffectLedger, createM04Migration } from './m04-import-eff
 import { applyM05CharacterAssets, createM05Migration } from './m05-character-assets'
 import { createM00Migration } from './m00-baseline'
 import { applyM07PlotStructurePlan, createM07Migration, verifyM07PlotStructurePlan } from './m07-plot-structure-plan'
+import { applyM08StructuredRefsAndCastDecisions, createM08Migration, verifyM08StructuredRefsAndCastDecisions } from './m08-structured-refs-and-cast-decisions'
 import { initializeLegacyBaselineSchema, applyBaselineTables } from './baseline-schema'
 import { ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
 import { SqliteSchemaAdapter, sqliteSchemaFingerprint } from './sqlite-schema-adapter'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-export const CURRENT_DESKTOP_SCHEMA_VERSION = 8
+export const CURRENT_DESKTOP_SCHEMA_VERSION = 9
 let installed: MigrationRegistry | undefined
 
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -84,13 +85,18 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
     const m07 = createM07Migration({ database: native,
       verifyKnownSchema: db => plotPlanFingerprints.has(sqliteSchemaFingerprint(native(db)))
         && verifyM07PlotStructurePlan(native(db)) })
-    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07], [
+    for (const db of references) db.transaction(() => applyM08StructuredRefsAndCastDecisions(db))()
+    const structuredRefsSchemas = schemas(9), structuredRefsFingerprints = new Set(structuredRefsSchemas.map(item => item.fingerprint))
+    const m08 = createM08Migration({ database: native,
+      verifyKnownSchema: db => structuredRefsFingerprints.has(sqliteSchemaFingerprint(native(db)))
+        && verifyM08StructuredRefsAndCastDecisions(native(db)) })
+    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),
       ...baselineSchemas, ...generationSchemas, ...identitySchemas,
       ...reviewCycleSchemas, ...importEffectSchemas, ...characterAssetSchemas, ...mergeSnapshotSchemas,
-      // 基线保持冻结态，v0~v7 的指纹与历史库天然一致，旧项目无需额外登记即可被
-      // probeSchema 识别，再由 M07 升到 v8。
-      ...plotPlanSchemas,
+      // 基线保持冻结态，v0~v8 的指纹与历史库天然一致，旧项目无需额外登记即可被
+      // probeSchema 识别，再由 M08 升到 v9。
+      ...plotPlanSchemas, ...structuredRefsSchemas,
     ])
     return installed
   } finally { reference.close(); donor.close() }

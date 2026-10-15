@@ -67,22 +67,22 @@ afterEach(() => {
 })
 
 describe('portable v7 field policy', () => {
-  it('与实际当前registry双向精确匹配51表481字段，并包含两个lazy表', () => {
+  it('与实际当前registry双向精确匹配52表492字段，并包含两个lazy表', () => {
     const { database } = openCurrent()
-    expect(database.pragma('user_version', { simple: true })).toBe(8)
+    expect(database.pragma('user_version', { simple: true })).toBe(9)
     const tables = database.prepare("SELECT name FROM pragma_table_list WHERE schema='main' AND type='table' AND name NOT LIKE 'sqlite_%'")
       .all() as Array<{ name: string }>
     const fieldCount = tables.reduce((count, table) => count
       + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 51, fields: 481 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 51, fields: 481 })
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 52, fields: 492 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 52, fields: 492 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_character_sync_operations.operation_id')
   })
 
-  it('把签署S01基线35表356字段逐项投影，并精确增加M01-M05的15表/123字段及M06的1表/2字段', () => {
+  it('把签署S01基线35表356字段逐项投影，并精确增加M01-M05的15表/123字段、M06的1表/2字段及M08的1表/10字段', () => {
     const signed = JSON.parse(fs.readFileSync(path.resolve(
       'docs/research/novel-quality-modernization/s01-storage-contract.json'), 'utf8')) as {
       fieldDispositions: Array<{ table: string; field: string; portableDisposition: string }>
@@ -104,7 +104,9 @@ describe('portable v7 field policy', () => {
     const baseline = new Set(signed.fieldDispositions.map(field => `${field.table}.${field.field}`))
     const baselineTables = new Set(signed.fieldDispositions.map(field => field.table))
     const added = listPortableFieldPolicyKeys().filter(key => !baseline.has(key))
-    expect(added).toHaveLength(126)
+    // 126（M01-M05 + 头像 + M06）+ M07 漏登记的 project_core.plot_structure_plan
+    // + M08 的 1 列（blueprints.structured_refs）+ 1 表 9 列
+    expect(added).toHaveLength(137)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -118,6 +120,15 @@ describe('portable v7 field policy', () => {
     expect(listPortableFieldPolicyKeys().filter(key => getPortableFieldPolicy(
       ...key.split('.') as [string, string]).origin === 'm06-delta')).toEqual([
       'review_cycle_merges.body', 'review_cycle_merges.cycle_id',
+    ])
+    // M08 走独立标签（照 M06 先例），不混进 m01-m05 delta 桶。
+    expect(listPortableFieldPolicyKeys().filter(key => getPortableFieldPolicy(
+      ...key.split('.') as [string, string]).origin === 'm08-delta')).toEqual([
+      'character_cast_decisions.action', 'character_cast_decisions.anchor_role',
+      'character_cast_decisions.catchphrase', 'character_cast_decisions.created_at',
+      'character_cast_decisions.decision_id', 'character_cast_decisions.name',
+      'character_cast_decisions.operation_id', 'character_cast_decisions.relation_to_protagonist',
+      'character_cast_decisions.source_revision',
     ])
   })
 
@@ -171,7 +182,7 @@ describe('portable v7 field policy', () => {
         .all() as Array<{ name: string }>
       const fields = tables.reduce((count, table) => count
         + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-      expect({ tables: tables.length, fields }).toEqual({ tables: 51, fields: 481 })
+      expect({ tables: tables.length, fields }).toEqual({ tables: 52, fields: 492 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)
