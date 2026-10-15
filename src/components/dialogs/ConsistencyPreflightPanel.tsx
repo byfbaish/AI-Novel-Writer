@@ -37,6 +37,11 @@ export default function ConsistencyPreflightPanel({
         <div key={finding.stableFactKey} className="rounded-md px-2 py-2 text-xs space-y-2" style={{ backgroundColor: 'var(--color-hover)' }}>
           <p>{locale === 'en-US' ? finding.issue.enUS : finding.issue.zhCN}</p>
           <p style={{ color: 'var(--color-text-muted)' }}>{text(`来源：第${finding.sourceChapter}章 · ${finding.evidence}`, `Source: Chapter ${finding.sourceChapter} · ${finding.evidence}`)}</p>
+          {/* 冲突源层级：告诉作者该去改哪一层，否则他会一直在当前章里改一个改不动的东西。 */}
+          {finding.sourceLayer && <p style={{ color: 'var(--color-text-muted)' }}>{text(
+            `冲突源：${finding.sourceLayer === 'world-building' ? '世界观设定（改本章无效）' : '本章蓝图 / 空间规则'}`,
+            `Conflict source: ${finding.sourceLayer === 'world-building' ? 'world setting (editing this chapter will not help)' : 'this chapter’s blueprint / the space rule'}`,
+          )}</p>}
           <p>{locale === 'en-US' ? finding.suggestion.enUS : finding.suggestion.zhCN}</p>
           <div className="flex gap-2">
             <Input

@@ -1,5 +1,6 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
 import type { BlueprintKeyEvent } from './blueprint-key-events'
+import { findSpaceTimeConflicts, type ConsistencySourceLayer, type SpaceTimeFinding } from './space-time-consistency'
 
 export interface ConsistencyExemption {
   stableFactKey: string
@@ -14,6 +15,14 @@ export interface ConsistencyFinding {
   evidence: string
   issue: { zhCN: string; enUS: string }
   suggestion: { zhCN: string; enUS: string }
+  /**
+   * 冲突**源层级**：这一条该去哪一层改。
+   *
+   * 存在的理由：同一条 finding 可能源于世界观设定、也可能是本章蓝图的写法。不写清楚，
+   * 作者会一直在当前章里改，而改动根本不可能生效（实施清单 T11：finding 必须带「冲突源层级」）。
+   * 老的连续性规则在设定侧与蓝图侧都可能触发，因此该字段对它们是可选的。
+   */
+  sourceLayer?: ConsistencySourceLayer
 }
 
 export interface ReviewLike {
@@ -28,6 +37,11 @@ export interface BlueprintForPreflight {
   role: string
   purpose: string
   keyEvents: BlueprintKeyEvent[]
+  /**
+   * B′ 的蓝图侧结构化空间引用（`spaceRefs` / 存储列 `structured_refs`）。
+   * 可选：调用方拿不到时留空，校验器按 fail-open 不判（判据 ⑫）。
+   */
+  structuredRefs?: unknown
   characters: string[]
   suspenseHook: string
   userGuidance: string
@@ -117,6 +131,43 @@ export function findBlueprintContinuityRisks(
       },
     }]
   }))
+}
+
+/**
+ * 新增的 B′ 规则（实施清单 T10/T11）：**设定层的空间登记 vs 蓝图侧的空间引用**。
+ *
+ * 与上面那条规则同源（都是「设定声明 vs 蓝图使用」），差别只在主体是空间/钟点而不是角色死亡终态。
+ * 计算全部在 `space-time-consistency.ts`（纯结构比较、零语义解析、缺字段 fail-open）；
+ * 这里只做两件事：**接豁免**与**译成 `ConsistencyFinding`**。
+ *
+ * `worldBuildingText` 取的是**架构产出的 `project_core.worldbuilding`**（AI 写的那份，
+ * 机读行由 T8 的模板要求它输出），不是作者手写的 `worldSetting` —— 后者没有机读行。
+ */
+export function findBlueprintSpaceTimeRisks(
+  worldBuildingText: string | null | undefined,
+  blueprint: Pick<BlueprintForPreflight, 'chapterNumber' | 'structuredRefs'>,
+  exemptions: readonly ConsistencyExemption[] = [],
+): ConsistencyFinding[] {
+  const activeExemptions = new Set(
+    exemptions.filter(exemption => !exemption.revoked).map(exemption => exemption.stableFactKey),
+  )
+  return findSpaceTimeConflicts({
+    chapterNumber: blueprint.chapterNumber,
+    worldBuildingText,
+    spaceRefs: blueprint.structuredRefs,
+  })
+    .filter(finding => !activeExemptions.has(finding.stableFactKey))
+    // `info` 级不进审稿 items：它不是冲突，只是「没有可判定形式」的说明，落进报告只会变噪声。
+    .filter((finding): finding is SpaceTimeFinding & { severity: 'warning' } => finding.severity === 'warning')
+    .map(finding => ({
+      stableFactKey: finding.stableFactKey,
+      severity: finding.severity,
+      sourceChapter: finding.sourceChapter,
+      evidence: finding.evidence,
+      issue: finding.issue,
+      suggestion: finding.suggestion,
+      sourceLayer: finding.sourceLayer,
+    }))
 }
 
 export function mergeConsistencyFindingsIntoReview(

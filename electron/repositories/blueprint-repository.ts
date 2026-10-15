@@ -14,6 +14,7 @@ import { proveCharacterProposal } from '../services/generation-character-proposa
 import { GenerationRunRepository } from './generation-run-repository'
 import { blueprintCharacterSyncFactError } from '../../src/shared/blueprint-character-sync-evidence'
 import { normalizeKeyEvents, type BlueprintKeyEvent } from '../../src/shared/blueprint-key-events'
+import { normalizeBlueprintSpaceRefs, type BlueprintSpaceRefRaw } from '../../src/shared/space-time-consistency'
 import type { BlueprintNewCharacterCandidate } from '../../src/shared/blueprint-semantic-contract'
 
 /** 蓝图行类型（DB 蛇形命名） */
@@ -23,6 +24,11 @@ export interface BlueprintRow {
     role: string
     purpose: string
     key_events: string
+    /**
+     * B′ 双写的机读伴随字段（M08 新增列，默认空串）。
+     * 未升级到 v9 的库没有这一列，`SELECT *` 下取到 `undefined` —— 读路径按空处理。
+     */
+    structured_refs?: string
     characters: string
     suspense_hook: string
     user_guidance: string
@@ -44,6 +50,14 @@ export interface BlueprintData {
      * 因此旧库的自由文本会被按原规则切成多条，且**永不出现两种格式混存**。
      */
     keyEvents: BlueprintKeyEvent[]
+    /**
+     * B′ 双写的空间引用清单（`blueprints.structured_refs`，M08 新增列）。
+     *
+     * 与 `keyEvents` 同一惯用法：库中 `TEXT` 存 `JSON.stringify` 后的数组，读写两侧都过
+     * `normalizeBlueprintSpaceRefs`。**可选伴随字段**：没有空间/钟点时为 `[]`，
+     * 旧库（无该列）读回也是 `[]` —— 绝不因为缺这个字段而让蓝图不可用（fail-open）。
+     */
+    structuredRefs?: BlueprintSpaceRefRaw[]
     characters: string[]
     /** Important recurring characters first introduced by this blueprint. */
     newCharacterCandidates?: BlueprintNewCharacterCandidate[]
@@ -153,12 +167,17 @@ const SHA256_HEX = /^[a-f0-9]{64}$/u
 function rowToData(row: BlueprintRow): BlueprintData {
     let chars: string[] = []
     try { chars = JSON.parse(row.characters) } catch { /* 容错 */ }
+    const structuredRefs = normalizeBlueprintSpaceRefs(row.structured_refs)
     return {
         chapterNumber: row.chapter_number,
         title: row.title,
         role: row.role,
         purpose: row.purpose,
         keyEvents: normalizeKeyEvents(row.key_events, { chapterNumber: row.chapter_number }),
+        // 空则**不出现**这个键：既保持既有蓝图对象的逐键形状不变（回读比对、payload 哈希、
+        // character_sync_input 全部照旧），也与同接口 newCharacterCandidates /
+        // relationshipHints 的「可选伴随字段」惯例一致。
+        ...(structuredRefs.length ? { structuredRefs } : {}),
         characters: chars,
         suspenseHook: row.suspense_hook,
         userGuidance: row.user_guidance,
@@ -468,6 +487,7 @@ function samePersistedBlueprint(left: BlueprintData, right: BlueprintData): bool
         && left.role === right.role
         && left.purpose === right.purpose
         && JSON.stringify(left.keyEvents) === JSON.stringify(right.keyEvents)
+        && JSON.stringify(left.structuredRefs ?? []) === JSON.stringify(right.structuredRefs ?? [])
         && JSON.stringify(left.characters) === JSON.stringify(right.characters)
         && left.suspenseHook === right.suspenseHook
         && left.userGuidance === right.userGuidance
@@ -477,13 +497,35 @@ function samePersistedBlueprint(left: BlueprintData, right: BlueprintData): bool
 
 /**
  * 唯一的写入归一化点：任何来源（模型 / 编辑器 Textarea / agent 提案 / 导入）都先过
- * `normalizeKeyEvents` 再落库，因此 `key_events` 列里永远只有 JSON 数组一种形态。
+ * `normalizeKeyEvents` / `normalizeBlueprintSpaceRefs` 再落库，因此这两列里永远只有
+ * JSON 数组一种形态。
  */
-function normalizeBlueprintKeyEvents(blueprint: BlueprintData): BlueprintData {
+function normalizeBlueprintForWrite(blueprint: BlueprintData): BlueprintData {
+    // 语义项的字段名是模型侧的 `spaceRefs`（与提示词同字），存储列叫 `structured_refs`。
+    // `ChapterBlueprint = BlueprintData` 的别名 + `persistedBlueprint` 的展开会让语义项
+    // 带 `spaceRefs` 抵达这里（例如 `commitBlueprintAuthorEdit` 的 author 路径），因此在这个
+    // **唯一写入归一化点**上同时接受两个名字 —— 否则就得在每个调用点各写一次换名。
+    const { structuredRefs: stored, spaceRefs: alias, ...rest } =
+        blueprint as BlueprintData & { spaceRefs?: unknown }
+    const fromStored = normalizeBlueprintSpaceRefs(stored)
+    const structuredRefs = fromStored.length ? fromStored : normalizeBlueprintSpaceRefs(alias)
     return {
-        ...blueprint,
+        ...rest,
         keyEvents: normalizeKeyEvents(blueprint.keyEvents, { chapterNumber: blueprint.chapterNumber }),
+        // 稀疏：没有空间引用时**不写这个键**，否则每个既有蓝图都会多出一个 `structuredRefs: []`，
+        // 从而改变 commitPayloadHash / character_sync_input 的字节形态（幂等重放与冻结事实的基准）。
+        ...(structuredRefs.length ? { structuredRefs } : {}),
     }
+}
+
+/**
+ * `structured_refs` 是 M08 新增列。**未升级到 v9 的库（以及只建基线表的测试夹具）没有它**，
+ * 此时不能写这一列 —— 否则整个蓝图提交会因 `no such column` 而失败。
+ * 用一次 `PRAGMA` 探测，缺列即退回"不写伴随字段"（fail-open，与读路径同一策略）。
+ */
+function hasStructuredRefsColumn(db: NonNullable<ReturnType<typeof getProjectDb>>): boolean {
+    return (db.prepare('PRAGMA table_info(blueprints)').all() as Array<{ name: string }>)
+        .some(column => column.name === 'structured_refs')
 }
 
 export class BlueprintRepository {
@@ -522,35 +564,33 @@ export class BlueprintRepository {
     /** 插入或更新蓝图 */
     static upsert(data: BlueprintData, db = requireProjectDb()): void {
 
-        const blueprint = normalizeBlueprintKeyEvents(data)
-        db.prepare(`
-      INSERT INTO blueprints (
-        chapter_number, title, role, purpose, key_events, characters,
-        suspense_hook, user_guidance, notes, notes_updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(chapter_number) DO UPDATE SET
-        title = excluded.title,
-        role = excluded.role,
-        purpose = excluded.purpose,
-        key_events = excluded.key_events,
-        characters = excluded.characters,
-        suspense_hook = excluded.suspense_hook,
-        user_guidance = excluded.user_guidance,
-        notes = excluded.notes,
-        notes_updated_at = excluded.notes_updated_at,
-        updated_at = datetime('now')
-    `).run(
+        const blueprint = normalizeBlueprintForWrite(data)
+        // 列集在一处生成，避免"INSERT 有这列、UPDATE SET 漏了它"的静默不同步。
+        const withStructuredRefs = hasStructuredRefsColumn(db)
+        const columns = ['chapter_number', 'title', 'role', 'purpose', 'key_events',
+            ...(withStructuredRefs ? ['structured_refs'] : []), 'characters',
+            'suspense_hook', 'user_guidance', 'notes', 'notes_updated_at']
+        const values = [
             blueprint.chapterNumber,
             blueprint.title,
             blueprint.role,
             blueprint.purpose,
             JSON.stringify(blueprint.keyEvents),
+            ...(withStructuredRefs ? [JSON.stringify(blueprint.structuredRefs ?? [])] : []),
             JSON.stringify(blueprint.characters),
             blueprint.suspenseHook,
             blueprint.userGuidance,
             blueprint.notes,
             blueprint.notesUpdatedAt,
-        )
+        ]
+        db.prepare(`
+      INSERT INTO blueprints (${columns.join(', ')})
+      VALUES (${columns.map(() => '?').join(', ')})
+      ON CONFLICT(chapter_number) DO UPDATE SET
+        ${columns.filter(column => column !== 'chapter_number')
+            .map(column => `${column} = excluded.${column}`).join(',\n        ')},
+        updated_at = datetime('now')
+    `).run(...values)
     }
 
     /** 批量插入/更新蓝图（事务） */
@@ -609,7 +649,7 @@ export class BlueprintRepository {
         // 全部基于同一形态，否则旧调用方传入的字符串 keyEvents 会与回读的数组不等。
         const normalizedRequest: BlueprintRangeCommitRequest = {
             ...request,
-            blueprints: request.blueprints.map(normalizeBlueprintKeyEvents),
+            blueprints: request.blueprints.map(normalizeBlueprintForWrite),
         }
         assertExactRange(normalizedRequest)
         ensureBlueprintCommitSchema(db)
