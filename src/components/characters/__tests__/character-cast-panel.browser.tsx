@@ -68,6 +68,17 @@ describe('锚点人物（不建卡）管理面', () => {
     expect(host.textContent).not.toContain('锚点人物')
   })
 
+  it('列表通道返回非数组（如 null）时不崩、整块不出现（防单通道异常打挂整个人物面板）', async () => {
+    const host = await mount([registered])
+    expect(host.textContent).toContain('锚点人物')
+    // 模拟桩未声明该通道 / 契约违约：返回 null 而非数组。
+    invoke.mockImplementation(async () => null)
+    await act(async () => { useCharacterStore.setState({ rosterRevision: 1 } as never) })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
+    expect(invoke.mock.calls.some(([channel]) => channel === 'character-cast:list')).toBe(true)
+    expect(host.textContent).not.toContain('锚点人物')
+  })
+
   it('列出已登记的定位、口吻、与主角关系及来源', async () => {
     const host = await mount([registered])
     // 默认折叠，先展开。

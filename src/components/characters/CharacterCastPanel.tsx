@@ -48,7 +48,9 @@ function SessionPanel({ session }: { session: ProjectSessionContext }) {
     try {
       const next = await ipc.invokeWithProjectSession(session, 'character-cast:list')
       if (!isProjectSessionCurrent(session)) return
-      setDecisions(next)
+      // 防御：该面板挂在 CharactersView 里，一旦某个通道返回非数组（桩未声明、契约违约），
+      // 不加固会让 decisions=null 直接在第 105 行抛错、把整个人物侧栏打挂。
+      setDecisions(Array.isArray(next) ? next : [])
       setError(failure)
     } catch (cause) {
       if (isProjectSessionCurrent(session)) setError(cause instanceof Error ? cause.message : String(cause))
