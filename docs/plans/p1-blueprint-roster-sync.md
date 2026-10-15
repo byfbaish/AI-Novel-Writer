@@ -1,6 +1,14 @@
 # P1 设计稿 · 蓝图角色 ↔ 角色卡 roster 同步
 
-> 状态：**设计待审**（未动代码）。日期：2026-10-10。分支：`dev_byf`。
+> 状态：**✅ 已实施**（本文件写于 2026-10-10「设计待审」，**该状态行已过期**——机制早已落地并在实机中持续迭代）。
+> 实施落点：`blueprint-character-sync.ts`（同步操作）· `character-proposal-service.ts`（候选/暂存/批准/关系校验/锚点人物）
+> · `CharacterProposalSelectionPanel.tsx` / `CharacterProposalInbox.tsx`（UI 入口）· `character-card-generation.command.ts`（列表/确认步）。
+> 实战迭代（2026-10-15 台账，见 `docs/handoffs/2026-10-15-keyevents-bprime-pause-handoff.md` §1.1）：
+> `1a7b230d` 写前证明收紧 / `6e737bb0` 面板滚动 / `f8ac0571` 暂存≠完成 + 取消≠终态 / `159aac8f` 列出步断链
+> / `01f891b3` 目录批次二次卡死 / `57173786`+`abf0a933` 关系端点 / `503943b8` 补背景 stage 从未成功
+> / `bcec0367` 未转义引号 / `76e65473` 0 项批次 + 撤销半闭环。
+> **剩余（见 AC 计划 §8）**：「候选复审批次」（撤销/`keep-unresolved` 的名字能回榜但不能再决策，判据 ⑰）。
+> 日期：2026-10-10 立稿 · 2026-10-15 补实施状态。分支：`dev_byf`。
 > 关联：`docs/plans/prompt-assembly-backlog.md`（P1 条目）、`p1-literal-dedup.md`（同族工作）。
 
 ---

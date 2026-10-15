@@ -70,6 +70,9 @@ tailwind.config.js.bak
 /public/logos/
 *.tsbuildinfo
 
+# 浏览器测试（vitest browser mode）产出的视觉基线截图，非源码，不入库。
+**/__screenshots__/
+
 # pnpm is the package manager of record (see packageManager in package.json).
 # A stray npm package-lock.json is never authoritative here.
 /package-lock.json
