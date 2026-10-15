@@ -11,7 +11,22 @@ import { useEditorStore } from '../../../../stores/editor-store'
 import { useLLMStore } from '../../../../stores/llm-store'
 import type { WorkflowContext } from '../../../../stores/workflow-store'
 import type { LLMFinishReason } from '../../../../shared/ipc-channels'
-import { reviewRevisionAiBrief, reviewRevisionAuthorMaterial, type ReviewRevisionOperation } from '../../../../shared/review-revision-generation'
+import { reviewRevisionAiBrief, reviewRevisionAuthorMaterial, type ReviewRevisionContext, type ReviewRevisionOperation } from '../../../../shared/review-revision-generation'
+
+/**
+ * P7（2026-10-16）：审稿链的作者材料块**省略已由模板变量单独注入的字段**
+ * （`worldbuilding` / `characterStates`），避免同一份材料进请求两遍。
+ * 修稿链（`refine-draft` / `refine-from-review`）的 builder 不注入这两项，
+ * 材料块是它们唯一来源 ⇒ **不省略**。
+ *
+ * 测试须按同一契约取期望值，否则会拿「完整版」去比对「省略版」的 prompt。
+ */
+function authorMaterialFor(operation: string, context: ReviewRevisionContext): string {
+  return reviewRevisionAuthorMaterial(context,
+    operation === 'refine-draft' || operation === 'refine-from-review'
+      ? undefined
+      : { omit: ['worldbuilding', 'characterStates'] })
+}
 import { MATERIAL_DECISION_MAX_INPUT_UNITS } from '../../../../shared/generation-owner-contract'
 import type { ReviewRevisionCommandSource } from '../review-revision-command'
 import { createHumanConfirmedReviewSnapshot, serializeHumanConfirmedReviewSnapshot } from '../../../../shared/human-confirmed-review'
@@ -262,7 +277,7 @@ describe('review/revision consumers using the main contract (synthetic transport
       expect(prompt).toContain(language === 'zh-CN' ? '正文自身明确写出的跨日或时间间隔优先于同日默认' : 'An explicit day change or time gap in the manuscript takes priority over the same-day default')
       expect(prompt).toContain(language === 'zh-CN' ? '前面最近的明确时点' : 'nearest preceding explicit time')
       expect(prompt).toContain(language === 'zh-CN' ? 'AI 建议中的具体时点不构成来源依据' : 'A specific time proposed by AI is not source evidence')
-      const author = reviewRevisionAuthorMaterial(f.fixture.prepared!.context)
+      const author = authorMaterialFor(operation, f.fixture.prepared!.context)
       const boundary = language === 'zh-CN' ? '【后续蓝图/计划｜非既定历史】' : '[Future blueprints/plans | not established history]'
       expect(author.split(boundary)[0]).toContain('CURRENT_AUTHOR_TIME')
       expect(author.split(boundary)[0]).not.toContain('FUTURE_PLAN')
@@ -302,7 +317,7 @@ describe('review/revision consumers using the main contract (synthetic transport
     await f.command(operation).execute(f.args)
     expect(JSON.stringify(f.fixture.prepared!.context)).toBe(frozenBytes)
     const prompt = f.provider.mock.calls[0]![0].find(message => message.role === 'user')!.content
-    const author = reviewRevisionAuthorMaterial(f.fixture.prepared!.context)
+    const author = authorMaterialFor(operation, f.fixture.prepared!.context)
     expect(prompt).toContain(author)
     expect(prompt).toContain(predecessor)
     if (operation === 'refine-from-review') expect(prompt).toContain(reviewRevisionAiBrief(f.fixture.prepared!.context))

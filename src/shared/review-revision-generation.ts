@@ -92,16 +92,39 @@ export function reviewRevisionAiBrief(context: ReviewRevisionContext): string {
     items: snapshot.items.filter(item => item.origin === 'ai') }, context.writingLanguage) : ''
 }
 
+/**
+ * 审稿链可从作者材料块中**省略**的字段（P7，2026-10-16）。
+ *
+ * 存在的理由：审稿链的模板（`consistency_check`）已用 `builder.withWorldBuilding` /
+ * `withCharacterStates` 单独注入了这两项，而作者材料块**也含同名内容** ⇒ 同一份材料
+ * 在一个请求里出现两遍（实机 ch2：世界观 6,220 + 6,221 = user 的 38.3%）。
+ *
+ * **只删材料侧一份**：精修（`refine-from-review`）与改写（`refine-draft`）的 builder
+ * **不注入**这两项，材料块是它们**唯一**来源 ⇒ 绝不能无条件删字段（否则毁掉另两链）。
+ * 故用**可选参数**实现，默认行为逐字不变。
+ */
+export type ReviewAuthorMaterialOmittable = 'worldbuilding' | 'characterStates'
+
 /** One immutable author-material block shared by renderer admission and main hash validation. */
-export function reviewRevisionAuthorMaterial(context: ReviewRevisionContext): string {
+export function reviewRevisionAuthorMaterial(
+  context: ReviewRevisionContext,
+  options?: { omit?: readonly ReviewAuthorMaterialOmittable[] },
+): string {
   const text = (zh: string, en: string) => writingLanguageText(context.writingLanguage, zh, en)
   const snapshot = context.confirmation?.snapshot
+  const omit = new Set<ReviewAuthorMaterialOmittable>(options?.omit ?? [])
   // Keep each source label, but emit an identical text/prefix only at its longest source.
   // The frozen originals stay intact for recovery and source validation.
+  //
+  // ⚠️ P7：省略 `worldbuilding` 后**必须**把它从比较基准中一并移除。否则若
+  // `config.worldSetting` 恰是 `worldbuilding` 的完整前缀，`authorText` 会把它换成
+  // 「见 worldbuilding 原文」，而被引用的那一份并不在 prompt 里 ⇒ **作者设定静默丢失**。
   const sources: [string, string | undefined][] = [
     ['config.worldSetting', context.config.worldSetting],
     ['config.coreOutline', context.config.coreOutline],
-    ['worldbuilding', context.worldbuilding],
+    ...(omit.has('worldbuilding')
+      ? []
+      : [['worldbuilding', context.worldbuilding] as [string, string | undefined]]),
   ]
   sources.sort((a, b) => (b[1]?.length ?? 0) - (a[1]?.length ?? 0))
   const authorText = (source: string, value: string | undefined) => {
@@ -118,8 +141,12 @@ export function reviewRevisionAuthorMaterial(context: ReviewRevisionContext): st
       worldSetting: authorText('config.worldSetting', context.config.worldSetting) }, null, 2),
     text('【作者全局创作指导｜约束而非已发生事实】', '[Author global creative guidance | constraints, not established history]'),
     context.config.globalGuidance,
-    text('【世界观设定】', '[Worldbuilding]'), authorText('worldbuilding', context.worldbuilding),
-    text('【作者角色状态｜以标注时点为准】', '[Author character state | scoped to its annotated time]'), context.characterStates,
+    ...(omit.has('worldbuilding')
+      ? []
+      : [text('【世界观设定】', '[Worldbuilding]'), authorText('worldbuilding', context.worldbuilding)]),
+    ...(omit.has('characterStates')
+      ? []
+      : [text('【作者角色状态｜以标注时点为准】', '[Author character state | scoped to its annotated time]'), context.characterStates]),
     text('【本章作者指导｜约束】', '[Current chapter author guidance | constraints]'),
     // `keyEvents` 是结构化事件清单，但**进 prompt 必须收敛为文本**：否则会把代码账目
     // （`id` / `estimatedUnits`）暴露给模型，且与正文路径（`keyEventsText`）不一致。

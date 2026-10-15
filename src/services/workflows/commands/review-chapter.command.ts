@@ -51,7 +51,12 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
     // 与写稿路径同一套准入：材料成员由合同判定，绝不按「最近/相关」自行拼凑。
     let admission: ReviewRevisionMaterialAdmission
     try {
-      admission = await selectFrozenReviewRevisionMaterials(frozen, { projectId: projectSession.projectId, epoch: projectSession.leaseId })
+      // P7（2026-10-16）：世界观与角色状态**已由下面的 `builder.withWorldBuilding` /
+      // `withCharacterStates` 注入模板侧**，材料块不再重复下发同一份内容。
+      // 实机 ch2：世界观曾出现两份（模板侧 6,220 + 材料侧 6,221）= user 的 38.3%。
+      // 只在这里传 omit —— 精修/改写的 builder 不注入这两项，材料块是它们唯一来源。
+      admission = await selectFrozenReviewRevisionMaterials(frozen, { projectId: projectSession.projectId, epoch: projectSession.leaseId },
+        { omitAuthorFields: ['worldbuilding', 'characterStates'] })
     } catch (error) {
       // 必需材料装不下：显式失败，绝不静默省略必需事实。
       if (!(error instanceof ChapterMaterialCapacityError)) throw error
