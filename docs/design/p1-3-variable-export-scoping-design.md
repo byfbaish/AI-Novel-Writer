@@ -187,7 +187,7 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 
 | 候选 | 现状 | 设想 | 风险 / 需裁定 |
 |---|---|---|---|
-| **C1. 审稿链的 `worldbuilding` 投影** | `review-chapter.command.ts:71` 全量 `frozen.worldbuilding`（作者项目 6,210 字，**含 §3 终局谜底**）；`refine-from-review` 无 `worldbuilding`（符合 §5 第 11c 行） | 把 `withArchitectureDraftProjection` 接到审稿链（剥 §3 远期节），与 P1-2a 同形 | ⚠️ **两面性**：剥掉 §3 可避免"拿终局当事实要求正文兑现"；但不剥才能判"是否提前剧透了远期真相"。**必须作者裁定**，不属显而易见 |
+| **C1. 审稿链的 `worldbuilding` 声明** ✅ **已实施（2026-10-16，路子 B）** | `review-chapter.command.ts:71` 全量 `frozen.worldbuilding`（**实机 ch1 审稿：世界观块 6,195 字 = built 的 56.9% / user 的 23.2%**，含 §3 终局谜底）；`refine-from-review` 无 `worldbuilding`（符合 §5 第 11c 行） | **保留完整 §3 + 合同级声明**（`shared/review-far-term-setting.ts` 的 `reviewFarTermSettingRule`）——**不做投影** | ⚠️ **两面性已破**：投影会毁掉实测收益（同次审稿用 §4 正确抓到「下午两点买早饭」），故只加声明。**实测审稿输出未显示「拿终局当事实」⇒ 本条属预防性加固**（成本 ≈0）。稿 `docs/design/c1-review-architecture-declaration-design.md` |
 
 **C1 的两面性有两个解法**（评审追问 2 补充，2026-10-16）：
 
@@ -219,7 +219,7 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 
 ⚠️ **同时新记录一处易误判点**：`architecture` 产出侧三处吃全量 `worldbuilding` 是**设计前提**（产出侧需全知才能规划伏笔），**不是遗漏** —— 后人扫描时不应把它与 C1 并列为"未投影缺口"。**判据 =「这一步的产物是给人读的正文，还是给下一步用的规划？」** 前者才需要投影。
 
-> 📌 **C1 登记（2026-10-16 裁定 D4①）**：C1 **不并入本轮**，**另立小项**（入口 = 本稿 §7；若启动，推荐**解法 B**）。
+> 📌 **C1 登记（2026-10-16 裁定 D4①）**：C1 **不并入本轮**，**另立小项**（入口 = 本稿 §7）。→ **✅ 已实施（2026-10-16，作者「全按建议来」⇒ 走解法 B）**：新增 `shared/review-far-term-setting.ts`，注入 `review-chapter.command.ts` 的 `ordinaryReviewPrompt`；设计稿 `docs/design/c1-review-architecture-declaration-design.md`。
 
 ---
 
