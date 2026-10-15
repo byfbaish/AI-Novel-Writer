@@ -54,18 +54,24 @@ describe('chapter materials', () => {
     {
       writingLanguage: 'zh-CN' as const,
       expectedBoundary: '后续计划边界（只约束当前章，不是当前章任务）',
+      expectedBoundaryRole: '以下只列后续章节的事件要点，用于防止本章提前执行；它是禁写边界，不是本章任务，也不是事件全文。',
+      expectedStalePromise: '保留作者后续计划原文',
       expectedTiming: '明确安排在后续章节的知情变化、物品转交、行动和完成状态不得前移',
       expectedForeshadowing: '允许不改变这些时点的铺垫',
     },
     {
       writingLanguage: 'en-US' as const,
       expectedBoundary: 'Future-plan boundary (constrains the current chapter; not a current-chapter task)',
+      expectedBoundaryRole: 'Only the key points of later chapters\' events are listed below, to prevent premature execution in this chapter; this is a boundary on what not to write, not a task list for this chapter, and not the full events.',
+      expectedStalePromise: 'preserved verbatim below',
       expectedTiming: 'Knowledge changes, item transfers, actions, and completed states explicitly assigned to later chapters must not be moved earlier',
       expectedForeshadowing: 'foreshadowing that does not change those timings is allowed',
     },
-  ])('keeps $writingLanguage future plans verbatim while making their timing role explicit', async ({
+  ])('marks $writingLanguage future plans as a not-yet-written boundary (not verbatim material) while keeping their timing role explicit', async ({
     writingLanguage,
     expectedBoundary,
+    expectedBoundaryRole,
+    expectedStalePromise,
     expectedTiming,
     expectedForeshadowing,
   }) => {
@@ -82,8 +88,12 @@ describe('chapter materials', () => {
     })
 
     expect(bundle.text).toContain(expectedBoundary)
+    expect(bundle.text).toContain(expectedBoundaryRole)
+    // P1-1：说明不再承诺「保留原文」——降级后逐字保留是虚假承诺。
+    expect(bundle.text).not.toContain(expectedStalePromise)
     expect(bundle.text).toContain(expectedTiming)
     expect(bundle.text).toContain(expectedForeshadowing)
+    // chapter-materials 只负责承载；压缩（分组 / 首句截断）由上层 generate-draft 完成后传入。
     expect(bundle.text.split(futurePlans)).toHaveLength(2)
   })
 

@@ -2268,17 +2268,20 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     )
   })
 
-  it.each([1, 2])('dispatches all five long future plans and global facts above the optional target for chapter %i', async chapterNumber => {
+  it.each([1, 2])('compresses five long future plans into per-chapter boundary labels and still prefers required material over the optional target for chapter %i', async chapterNumber => {
     const blueprints = Array.from({ length: 5 }, (_, index) => ({
       chapterNumber: chapterNumber + index + 1,
       title: `后续计划${index + 1}`,
       keyEvents: '后续事件说明。'.repeat(260) + `TAIL_TIMING_${index}_只能在第${chapterNumber + index + 1}章交出钥匙。`,
     }))
     const worldSetting = 'GLOBAL_FACT_铜钥匙只有一把。'
+    // P1-1 之后后续计划已被压成边界标签，必需材料的体量改由作者资料承担：
+    // 本用例要验的仍是「必需材料永远完整下发，超出可选上限时先裁可选来源」。
+    const coreOutline = 'AUTHOR_FACT_铜钥匙只有一把。'.repeat(1_500)
     const previousFinalizedContent = '上一章仍在港口。'.repeat(100) + 'PREVIOUS_TAIL_钥匙仍由林舟保管。'
     const runtime = fakeRuntime(() => outcome('港口发生新的行动。'.repeat(60), 'stop'))
     const { context, callbacks, command } = setup({
-      runtime, chapterNumber, wordsTarget: 500, blueprints, worldSetting,
+      runtime, chapterNumber, wordsTarget: 500, blueprints, worldSetting, coreOutline,
       ...(chapterNumber === 2 ? { previousFinalizedContent } : {}),
       knowledgeResults: [{ text: 'OPTIONAL_REFERENCE_港口背景。', score: 0.9, fileName: 'port.txt' }],
     })
@@ -2286,11 +2289,19 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     await command.execute({ step: {}, context, callbacks })
 
     const materialInput = vi.mocked(assembleChapterMaterials).mock.calls.at(-1)?.[0]
-    expect(new TextEncoder().encode(materialInput?.futurePlans).length).toBeGreaterThan(24_000)
+    // P1-1：后续计划不再逐字下发 —— 压成「依章分组的事件要点」（首句 + 80 字上限）。
+    const futurePlans = materialInput?.futurePlans ?? ''
+    expect(new TextEncoder().encode(futurePlans).length).toBeLessThan(2_000)
+    expect(futurePlans).not.toContain('TAIL_TIMING_')
+    for (const blueprint of blueprints) {
+      expect(futurePlans).toContain(`第${blueprint.chapterNumber}章《${blueprint.title}》`)
+      expect(futurePlans).toContain('后续事件说明。')
+    }
     expect(runtime.complete).toHaveBeenCalledTimes(1)
     const prompt = runtime.complete.mock.calls[0]?.[0].messages.find(message => message.role === 'user')?.content ?? ''
-    for (const blueprint of blueprints) expect(prompt).toContain(blueprint.keyEvents)
+    for (const blueprint of blueprints) expect(prompt).not.toContain(blueprint.keyEvents)
     expect(prompt).toContain(worldSetting)
+    expect(prompt).toContain(coreOutline)
     expect(prompt).not.toContain('OPTIONAL_REFERENCE_')
     const decision = runtime.createRuntime.mock.calls[0]?.[1]?.selection.materialDecision
     expect(decision?.included.filter(item => !item.required)).toHaveLength(0)
@@ -4613,7 +4624,7 @@ ${headingPrefix}第3章：潮门
     expect(prompt).toContain('用具体动作推进因果变化。')
     expect(task.messages[0]!.content).not.toContain('用具体动作推进因果变化。')
     expect(prompt).not.toMatch(/\{\{(?:chapter_info|future_blueprints|user_guidance)\}\}/u)
-    expect(prompt).toContain('第2章 蓝门回声：追查蓝色漆屑与撞击声')
+    expect(prompt).toContain('- 第2章《蓝门回声》：追查蓝色漆屑与撞击声')
     expect(prompt).toContain('第一章必须以潮湿灯塔开场')
   })
 

@@ -1,5 +1,6 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
 import { keyEventsText } from '../../../shared/blueprint-key-events'
+import { toBoundaryNotice } from '../../../shared/chapter-boundary'
 import { appErrorMessage } from '../../../i18n/app-errors'
 import { sanitizeDraftText, composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, DRAFT_VISIBLE_TEXT_VERSION, isDraftVisibleTextVersion, type DraftVisibleTextVersion } from '../../../shared/draft-visible-text'
 import { DRAFT_RECONCILE_PURPOSE, draftReconciliationBlock } from '../../../shared/draft-reconciliation'
@@ -720,6 +721,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           + 'Create a character card for them if their settings should inform this chapter.',
       ))
     }
+    // P1-1：后续计划只作为「禁写边界」下发 —— 压成按章分组的事件要点，不再逐字搬全文。
+    // 逐个后续章只给首句要点（上限 80 字），模型因此看不出「这件事长什么样」，只看到「别在本章做」。
+    // 若一个后续蓝图都没有（或都无事件），保留兜底文案，块本身恒在（核心合同按名引用了它的标题）。
     let futureBlueprintsStr = promptLanguageText(
       writingLanguage,
       '（无后续蓝图）',
@@ -732,11 +736,14 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         b => b.chapterNumber > this.chapterInfo.chapterNumber && b.chapterNumber <= this.chapterInfo.chapterNumber + 5
       )
       if (futureBlueprintsArr.length > 0) {
-        futureBlueprintsStr = futureBlueprintsArr.map(b => promptLanguageText(
-          writingLanguage,
-          `第${b.chapterNumber}章 ${b.title}：${keyEventsText(b.keyEvents)}`,
-          `Chapter ${b.chapterNumber}: ${b.title} — ${keyEventsText(b.keyEvents)}`,
-        )).join('\n')
+        const notice = toBoundaryNotice(writingLanguage, {
+          chapters: futureBlueprintsArr.map(b => ({
+            chapterNumber: b.chapterNumber,
+            title: b.title,
+            keyEvents: b.keyEvents,
+          })),
+        })
+        if (notice) futureBlueprintsStr = notice
       }
     } catch { /* 忽略 */ }
 

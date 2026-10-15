@@ -519,8 +519,8 @@ export async function assembleChapterMaterials(input: {
   const authorFacts = [...new Set(input.authorProjectFacts.map(value => value.trim()).filter(Boolean))]
   const required = promptLanguageText(
     writingLanguage,
-    `【作者资料（保留原文；人物状态具有时点，不是永久约束）】\n${[...authorFacts, input.characterProfiles].filter(Boolean).join('\n\n') || '（无补充作者资料）'}\n\n【后续计划边界（只约束当前章，不是当前章任务）】\n以下保留作者后续计划原文，只用于防止本章提前执行。明确安排在后续章节的知情变化、物品转交、行动和完成状态不得前移；允许不改变这些时点的铺垫。\n${input.futurePlans}`,
-    `[Author material (verbatim; character state is time-bound, not permanent)]\n${[...authorFacts, input.characterProfiles].filter(Boolean).join('\n\n') || '(no additional author material)'}\n\n[Future-plan boundary (constrains the current chapter; not a current-chapter task)]\nThe author's future plans are preserved verbatim below and only prevent premature execution in this chapter. Knowledge changes, item transfers, actions, and completed states explicitly assigned to later chapters must not be moved earlier; foreshadowing that does not change those timings is allowed.\n${input.futurePlans}`,
+    `【作者资料（保留原文；人物状态具有时点，不是永久约束）】\n${[...authorFacts, input.characterProfiles].filter(Boolean).join('\n\n') || '（无补充作者资料）'}\n\n【后续计划边界（只约束当前章，不是当前章任务）】\n以下只列后续章节的事件要点，用于防止本章提前执行；它是禁写边界，不是本章任务，也不是事件全文。明确安排在后续章节的知情变化、物品转交、行动和完成状态不得前移；允许不改变这些时点的铺垫。\n${input.futurePlans}`,
+    `[Author material (verbatim; character state is time-bound, not permanent)]\n${[...authorFacts, input.characterProfiles].filter(Boolean).join('\n\n') || '(no additional author material)'}\n\n[Future-plan boundary (constrains the current chapter; not a current-chapter task)]\nOnly the key points of later chapters' events are listed below, to prevent premature execution in this chapter; this is a boundary on what not to write, not a task list for this chapter, and not the full events. Knowledge changes, item transfers, actions, and completed states explicitly assigned to later chapters must not be moved earlier; foreshadowing that does not change those timings is allowed.\n${input.futurePlans}`,
   )
   const sourced = promptLanguageText(
     writingLanguage,
