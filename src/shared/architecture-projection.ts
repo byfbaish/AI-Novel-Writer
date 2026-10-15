@@ -1,3 +1,4 @@
+import type { PromptProjectionNote } from './prompt-projection'
 import { writingLanguageText, type WritingLanguage } from './writing-language'
 
 /**
@@ -72,23 +73,34 @@ function farTermNotice(language: WritingLanguage): string {
 }
 
 /**
- * 把整节远期的设定段压成「标题 + 一行声明」。
+ * 投影结果 + 元数据（P1-3′ 可观测性）。
  *
- * 找不到该节、该节正文为空、或已经投影过时，**逐字返回原文**（fail-open）。
+ * `projection` 只在**真的发生了整节边界化**时给出；任何 fail-open（逐字返回原文）时为 `null`
+ * —— 这样 trace 能区分「这一步投影生效了」与「这一步没动」。
  */
-export function withArchitectureDraftProjection(
+export interface ArchitectureProjectionResult {
+  text: string
+  projection: PromptProjectionNote | null
+}
+
+/**
+ * 把整节远期的设定段压成「标题 + 一行声明」，并附带投影元数据。
+ *
+ * 找不到该节、该节正文为空、或已经投影过时，**逐字返回原文**且 `projection` 为 `null`（fail-open）。
+ */
+export function projectArchitectureForDraft(
   architecture: string | null | undefined,
   language: WritingLanguage,
-): string {
+): ArchitectureProjectionResult {
   const source = architecture ?? ''
-  if (!source.trim()) return source
-  if (NOTICE_MARKERS.some(marker => source.includes(marker))) return source
+  if (!source.trim()) return { text: source, projection: null }
+  if (NOTICE_MARKERS.some(marker => source.includes(marker))) return { text: source, projection: null }
 
   const lines = source.replace(/\r\n?/gu, '\n').split('\n')
   const start = lines.findIndex(line => (
     FAR_TERM_SECTION_PATTERNS.some(pattern => pattern.test(line.trim()))
   ))
-  if (start < 0) return source
+  if (start < 0) return { text: source, projection: null }
 
   let end = lines.length
   for (let index = start + 1; index < lines.length; index += 1) {
@@ -107,12 +119,34 @@ export function withArchitectureDraftProjection(
   trimTail()
 
   const body = lines.slice(start + 1, bodyEnd)
-  if (!body.some(line => line.trim())) return source
+  if (!body.some(line => line.trim())) return { text: source, projection: null }
 
   const projected = [
     ...lines.slice(0, start + 1),
     farTermNotice(language),
     ...lines.slice(bodyEnd),
   ]
-  return projected.join('\n')
+  const text = projected.join('\n')
+  return {
+    text,
+    projection: {
+      variable: 'architecture',
+      kind: 'far-term-section-collapse',
+      beforeChars: source.length,
+      afterChars: text.length,
+      droppedSections: [lines[start]!.trim()],
+    },
+  }
+}
+
+/**
+ * 兼容入口：只要投影后的文本（既有调用点与测试继续可用）。
+ *
+ * 需要投影元数据的调用点请改用 `projectArchitectureForDraft`。
+ */
+export function withArchitectureDraftProjection(
+  architecture: string | null | undefined,
+  language: WritingLanguage,
+): string {
+  return projectArchitectureForDraft(architecture, language).text
 }

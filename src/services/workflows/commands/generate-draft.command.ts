@@ -1,7 +1,8 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
 import { keyEventsText } from '../../../shared/blueprint-key-events'
-import { toBoundaryNotice } from '../../../shared/chapter-boundary'
-import { withArchitectureDraftProjection } from '../../../shared/architecture-projection'
+import { buildBoundaryNotice } from '../../../shared/chapter-boundary'
+import { projectArchitectureForDraft } from '../../../shared/architecture-projection'
+import { notePromptProjection } from '../../prompts/prompt-trace'
 import { appErrorMessage } from '../../../i18n/app-errors'
 import { sanitizeDraftText, composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, DRAFT_VISIBLE_TEXT_VERSION, isDraftVisibleTextVersion, type DraftVisibleTextVersion } from '../../../shared/draft-visible-text'
 import { DRAFT_RECONCILE_PURPOSE, draftReconciliationBlock } from '../../../shared/draft-reconciliation'
@@ -691,10 +692,13 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // P1-2a：架构里的「整节远期」设定（§3【隐喻与深层危机】）对正文只作边界、不逐字下发。
     // 否则写第 2 章时请求里已经躺着「终极谜团 / 零号档案 / 终极抉择」（ch2 实机：architecture
     // 6,854 字 = user 消息的 39.9%，是单块最大的材料）。fail-open：找不到该节则逐字返回。
-    const architecture = withArchitectureDraftProjection(
+    const architectureProjection = projectArchitectureForDraft(
       await this.readArchitecture(expectedProjectPath, projectSession, authoredConfigFacts),
       writingLanguage,
     )
+    const architecture = architectureProjection.text
+    // P1-3′ 可观测性：把这次投影（剥了哪节、省了多少字）登记给 trace，供事后核对。
+    if (architectureProjection.projection) notePromptProjection(architectureProjection.projection)
     const projectPrompts = await this.readProjectPrompts(
       expectedProjectPath,
       projectSession,
@@ -741,14 +745,15 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         b => b.chapterNumber > this.chapterInfo.chapterNumber && b.chapterNumber <= this.chapterInfo.chapterNumber + 5
       )
       if (futureBlueprintsArr.length > 0) {
-        const notice = toBoundaryNotice(writingLanguage, {
+        const notice = buildBoundaryNotice(writingLanguage, {
           chapters: futureBlueprintsArr.map(b => ({
             chapterNumber: b.chapterNumber,
             title: b.title,
             keyEvents: b.keyEvents,
           })),
         })
-        if (notice) futureBlueprintsStr = notice
+        if (notice.text) futureBlueprintsStr = notice.text
+        if (notice.projection) notePromptProjection(notice.projection)
       }
     } catch { /* 忽略 */ }
 

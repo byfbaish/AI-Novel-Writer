@@ -349,6 +349,7 @@ async function flushTraceFile(scope: TraceScope): Promise<void> {
       fragments: snapshot.fragments,
       built: snapshot.built,
       systemMessage: snapshot.systemMessage,
+      ...(snapshot.projections && snapshot.projections.length > 0 ? { projections: snapshot.projections } : {}),
     })),
     ...(ioCalls && ioCalls.length > 0 ? { ioCalls } : {}),
   }
