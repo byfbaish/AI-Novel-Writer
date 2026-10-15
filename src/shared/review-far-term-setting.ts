@@ -42,3 +42,35 @@ export function reviewFarTermSettingRule(language: WritingLanguage): string {
     '[Rule for far-term settings] Settings in [Worldbuilding] that are long-term mysteries, endgame truths, or later-stage developments are story direction, not established facts of this chapter: they serve only to judge whether the draft leaks, misreads, or misuses a far-term truth too early. Do not report a missing item merely because the draft omits them, and do not demand that the draft pay them off in advance. What this chapter must follow are the rules, spaces and character settings that apply at the same time as the draft.',
   )
 }
+
+/**
+ * **修稿链**（`refine-from-review` / `refine-draft`）的「远期设定使用规则」（2026-10-16 追加）。
+ *
+ * ## 为什么修稿链也要（原判断被证伪）
+ *
+ * C1 初稿 §7.1 原判「精修链不吃世界观」——**实测证伪**：`refine-from-review` 与 `refine-draft`
+ * 的 prompt 都经 `[builder.build(), ...admission.admitted.filter(m => m.category !== 'finalized-history')
+ * .map(m => m.text)].join('\n\n')` 拼装，而 `admission` 的 author 材料块来自
+ * `reviewRevisionAuthorMaterial()`（`review-revision-generation.ts:121` 的 `【世界观设定】` +
+ * `context.worldbuilding`）⇒ **两条修稿链都吃全量世界观（含 §3 终局谜底）**。
+ * 实机 ch2 精修：user 21,685 字含「终极谜团：能力不是天降的，是被「写」进来的」原文。
+ *
+ * ## 与审稿版的语义差别
+ *
+ * 审稿链是**判断**方（不得报缺失、不得要求兑现）；修稿链是**执行**方（不得**据远期设定**
+ * 把正文改成提前兑现）。故措辞改为「不得据其要求修稿后的正文提前写出结论…」。
+ *
+ * 末句保留余地：**作者明确提出的修改要求**仍优先（对应 `refine-draft` 的
+ * 「【用户额外修稿指导（最高优先级）】」与本条不冲突）。
+ *
+ * ## 作用域
+ *
+ * 修稿链的**全部** prompt（两条链都只有一条路径）。审稿链请用 `reviewFarTermSettingRule`。
+ */
+export function refinementFarTermSettingRule(language: WritingLanguage): string {
+  return writingLanguageText(
+    language,
+    '【远期设定使用规则】【世界观设定】中属于长期谜团、终局真相或后文才展开的设定，是故事走向而非本章既定事实：不得据其要求修稿后的正文提前写出结论、兑现远期结果或补齐尚未揭示的真相。修稿的依据是与正文同时段的规则、空间与人物设定，以及作者明确提出的修改要求本身。',
+    '[Rule for far-term settings] Settings in [Worldbuilding] that are long-term mysteries, endgame truths, or later-stage developments are story direction, not established facts of this chapter: do not use them to require the revised manuscript to state those conclusions early, pay off far-term outcomes, or fill in truths not yet revealed. Base the revision on the rules, spaces and character settings that apply at the same time as the manuscript, together with the author\'s explicit revision requests themselves.',
+  )
+}

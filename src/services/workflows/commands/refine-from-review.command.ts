@@ -14,6 +14,7 @@ import { countDraftUnits, draftTargetUnitRange } from '../../../shared/draft-uni
 import { selectFrozenReviewRevisionMaterials } from './review-revision-materials'
 import { promptLanguageText } from '../../prompt-language'
 import { reviewTimeContinuity } from '../../../shared/chapter-time-continuity'
+import { refinementFarTermSettingRule } from '../../../shared/review-far-term-setting'
 
 function appendCompleteRevisionContract(prompt: string, source: string, writingLanguage: 'zh-CN' | 'en-US'): string {
   const sourceUnits = countDraftUnits(source)
@@ -31,7 +32,7 @@ Output the complete revised chapter as plain prose only, without a preface, expl
 冻结源稿共 ${sourceUnits} 个正文单位。必须输出修订后的完整章节，建议保持 ${range.minimum}-${range.maximum} 个正文单位（源稿的 70%-130%），其中上限仅作指导。完整性和作者事实优先，完整修稿仍超长时保存全文并提示。所有未受影响的段落或行必须完整保留；不得摘要、节选、合并重复段落或使用占位符。若成立的问题或作者明确要求当章发生动作或结果，新增动作或结果本身必须满足该要求的目标语义，并且已经在正文中发生。对于代价或损失，必须写出已经失去、消耗或承受的具体后果；签字、认责或声称以后负责仍只是承诺，不是代价本身。简单否定翻转，或抽象的决定、计划、承诺、保证，均不算完成。必须同步修正后文，不得保留与新增事件相反的状态。
 
 最终只输出修订后完整正文，使用纯文本，不得包含开场白、解释、Markdown、分析或剧本式格式。段落之间保留一个空行。`
-  return `${prompt}\n\n${reviewTimeContinuity(writingLanguage)}\n\n${contract}`
+  return `${prompt}\n\n${reviewTimeContinuity(writingLanguage)}\n\n${refinementFarTermSettingRule(writingLanguage)}\n\n${contract}`
 }
 
 export interface RefineFromReviewParams extends ReviewRevisionCommandSource {
