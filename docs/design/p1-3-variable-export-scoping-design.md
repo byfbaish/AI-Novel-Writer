@@ -187,7 +187,7 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 
 | 候选 | 现状 | 设想 | 风险 / 需裁定 |
 |---|---|---|---|
-| **C1. 审稿链的 `worldbuilding` 声明** ✅ **已实施（2026-10-16，路子 B）** | `review-chapter.command.ts:71` 全量 `frozen.worldbuilding`（**实机 ch1 审稿：世界观块 6,195 字 = built 的 56.9% / user 的 23.2%**，含 §3 终局谜底）；`refine-from-review` 无 `worldbuilding`（符合 §5 第 11c 行） | **保留完整 §3 + 合同级声明**（`shared/review-far-term-setting.ts` 的 `reviewFarTermSettingRule`）——**不做投影** | ⚠️ **两面性已破**：投影会毁掉实测收益（同次审稿用 §4 正确抓到「下午两点买早饭」），故只加声明。**实测审稿输出未显示「拿终局当事实」⇒ 本条属预防性加固**（成本 ≈0）。稿 `docs/design/c1-review-architecture-declaration-design.md` |
+| **C1. 审稿链的 `worldbuilding` 声明** ✅ **已实施（2026-10-16，路子 B）** | `review-chapter.command.ts:71` 全量 `frozen.worldbuilding`（**实机 ch1 审稿：世界观块 6,195 字 = built 的 56.9% / user 的 23.2%**，含 §3 终局谜底）；~~`refine-from-review` 无 `worldbuilding`（符合 §5 第 11c 行）~~ → ⚠️ **2026-10-16 实机证伪：精修链亦吃全量世界观（含 §3 原文）**，见 §7.1 修正 | **保留完整 §3 + 合同级声明**（`shared/review-far-term-setting.ts` 的 `reviewFarTermSettingRule`）——**不做投影** | ⚠️ **两面性已破**：投影会毁掉实测收益（同次审稿用 §4 正确抓到「下午两点买早饭」），故只加声明。**实测审稿输出未显示「拿终局当事实」⇒ 本条属预防性加固**（成本 ≈0）。稿 `docs/design/c1-review-architecture-declaration-design.md`。**新缺口**：精修链（`refine-from-review`）吃全量 §3 但无该声明 ⇒ 待裁定 |
 
 **C1 的两面性有两个解法**（评审追问 2 补充，2026-10-16）：
 
@@ -206,7 +206,7 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 
 | 链 | 是否吃全量 `architecture` / `worldbuilding` | 落点 / 证据 | 结论 |
 |---|---|---|---|
-| `refine-from-review.command.ts:95-100` | **否** | 只注入 `reviewReport + globalGuidance + userRefinePrompt` | 非缺口 |
+| `refine-from-review.command.ts:93-104` | ⚠️ **是（2026-10-16 实机复验证伪原结论）** | 原判「只注入 `reviewReport + globalGuidance + userRefinePrompt`」**漏读了 `:93` 的 `basis` 与 `:101-104` 的拼装**：`basis = admission.admitted.filter(...).map(m => m.text)` ← `review-revision-materials.ts:25` 的 `reviewRevisionAuthorMaterial(frozen)` ⇒ 含 `【世界观设定】` + **全量 `context.worldbuilding`**。**实机 ch2 精修：user 21,685 字，含 `【隐喻与深层危机】` 与「终极谜团：能力不是天降的，是被「写」进来的」原文** | ⚠️ **新缺口，待裁定**：精修链也吃全量 §3，但**无 C1 声明**（声明只加在审稿链 `ordinaryReviewPrompt`）⇒ 是否一并加 |
 | `refine-draft.command.ts:68-79` | **否** | `globalGuidance + writingStyle + userRefinePrompt` | 非缺口 |
 | `finalize-chapter.command.ts:287-292` | **否** | `PostProcessPromptBuilder`：`chapterContent + chapterNumber + existingCards` | 非缺口 |
 | `review-revision-command.ts` / `-materials.ts` | **否** | 不走 `PromptBuilder`（是数据/材料选择层，落 `review-revision-materials`） | 非缺口 |
@@ -297,6 +297,8 @@ node -e "…遍历 debug/prompt-trace/*.json，按 snapshot.fragments[].sourceKi
 
 **读数汇总**：内置 25 模板兜底 0 · 覆盖版 20 份兜底 0 · 实机 18 snapshot 兜底 0 · 正文模板 `required` 4 项全部由**内置 systemSuffix** 引用（`builtin-prompt-templates.ts:1036` / `:1113`）⇒ `enforceRequiredContext` 在正文链上**无对象**。
 
-**全量消费点扫描（§7.1，2026-10-16 补）**：`grep -rn "withWorldBuilding(\|withArchitecture(" src` ⇒ 全仓调用点共 **5 处**：`architecture.command.ts:1813/2154/2439`（产出侧·设计必要）+ `review-chapter.command.ts:71`（**C1 唯一缺口**）+ `generate-draft.command.ts:825`（**已投影**）。`refine-from-review` / `refine-draft` / `finalize-chapter` / `review-revision` / `import-*` 逐文件读 prompt 装配 ⇒ **均不吃全量设定**。
+**全量消费点扫描（§7.1，2026-10-16 补）**：`grep -rn "withWorldBuilding(\|withArchitecture(" src` ⇒ 全仓调用点共 **5 处**：`architecture.command.ts:1813/2154/2439`（产出侧·设计必要）+ `review-chapter.command.ts:71`（**C1 唯一缺口**）+ `generate-draft.command.ts:825`（**已投影**）。`refine-draft` / `finalize-chapter` / `review-revision` / `import-*` 逐文件读 prompt 装配 ⇒ **均不吃全量设定**。
+
+> ⚠️ **修正（2026-10-16 实机复验）**：上表的扫描**只覆盖了 builder 式注入**（`withWorldBuilding(...)`），**漏了「作者材料块拼接」式注入** —— `refine-from-review` 的世界观来自 `:93` 的 `basis`（← `reviewRevisionAuthorMaterial(frozen)`），**不含 `withWorldBuilding` 字样** ⇒ grep 不到。实测该链**吃全量世界观（含 §3 终局谜底）**。**教训：注入不止 builder 一种形态**，扫描必须同时覆盖 `withXxx(...)` 与「材料块 join」两类；见 C1 稿 §8.1。
 
 **P1-2b 动作量（追问 3 参考，只读核对）**：作者项目 `worldbuilding` 6,210 字 / 180 行；**需标期次的条目 = 15 个**（§1 四条 / §3 七条 / §4 四条；§2 为 983 字无条目散文）—— **非评审估的 40 条**。（形态与成本见交接文档 P1-2b 节。）
