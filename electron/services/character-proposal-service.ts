@@ -166,7 +166,9 @@ export class CharacterProposalService {
     const derived: { name: string; anchorRole: string; proposalBatchId: string; selectionKey: string; revision: number }[] = []
     for (const { proposal_id } of rows) {
       try {
-        const envelope = this.readEnvelope(proposal_id)
+        // 只读封存决定，不重算来源证明（见 storedDecisionEnvelope 的分工说明）。
+        const envelope = this.storedDecisionEnvelope(proposal_id)
+        if (!envelope) continue
         const functional = new Set((envelope.decision?.selections ?? [])
           .filter(selection => selection.action === 'functional').map(selection => selection.selectionKey))
         if (!functional.size) continue
@@ -176,10 +178,31 @@ export class CharacterProposalService {
           if (name) derived.push({ name, anchorRole: item.fields.role ?? '', proposalBatchId: proposal_id,
             selectionKey: item.selectionKey, revision: envelope.batch.revision })
         }
-      } catch { /* An unreadable batch contributes nothing; it is never silently repaired. */ }
+      } catch { /* 结构不可解的信封不贡献任何东西；篡改由 storedDecisionEnvelope 的哈希校验挡掉。 */ }
     }
     return derived
   }
+  /**
+   * 读**封存的作者决定**，但**不重算来源证明**。
+   *
+   * 与 `readEnvelope` 的分工：后者的用途是"还要不要继续对这批候选动手"，所以要求来源仍可证；
+   * 而回填要回答的是"作者当初决定了什么" —— 那个事实只由信封自己承载，行内 `source_hash`
+   * 已经保证它没被篡改（篡改仍会被上面的哈希校验挡掉）。
+   *
+   * 若在这里也要求重算证明，任何一次来源漂移（旧运行谱系失配 / 目录进度标记消失 / 名单被改）
+   * 都会让**已定稿的登记静默消失**，名字随即回到候选集 —— 那正是本项目今天刚定下的
+   * 判据 ⑮：重算取不到 ≠ 从未存在。
+   */
+  private storedDecisionEnvelope(proposalBatchId: string): Envelope | undefined {
+    const row = this.db.prepare('SELECT source_key,source_hash,raw_value FROM character_identity_proposals WHERE proposal_id=?')
+      .get(proposalBatchId) as { source_key: string; source_hash: string; raw_value: string } | undefined
+    if (!row || row.source_key !== `character-proposal-v1:${this.projectId}` || textHash(row.raw_value) !== row.source_hash) return undefined
+    try {
+      const envelope = JSON.parse(row.raw_value) as Envelope
+      return envelope?.batch && Array.isArray(envelope.batch.items) ? envelope : undefined
+    } catch { return undefined }
+  }
+
   /**
    * 把历史 functional 登记补进决定日志。
    *
