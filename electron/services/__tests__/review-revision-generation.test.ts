@@ -293,7 +293,9 @@ describe('review and revision generation through the actual owner and SQLite', (
   })
   it('admits the renderer author-material receipt through main and retains the frozen recovery context', async () => {
     const f = fixture(), prepared = f.prepare(), selection = f.selection(prepared)
-    const admission = await selectFrozenReviewRevisionMaterials(prepared.context, { projectId: 'project', epoch: 'epoch-1' })
+    // P7：材料决策必须与主进程用**同一判定函数**（审稿链省略已由模板注入的字段），否则哈希核对必红。
+    const admission = await selectFrozenReviewRevisionMaterials(prepared.context, { projectId: 'project', epoch: 'epoch-1' },
+      reviewRevisionMaterials.authorMaterialOmitForOperation(prepared.context.operation))
     const prompt = admission.admitted.map(material => material.text).join('\n\n')
     const view = f.owner.begin(selection)
     f.owner.bindMaterialDecision(view.handle, { ...admission.decision, promptHash: textHash(prompt) })

@@ -3,6 +3,7 @@ import { reviewTimeContinuity } from '../../../shared/chapter-time-continuity'
 import { reviewFarTermSettingRule } from '../../../shared/review-far-term-setting'
 import type { CommandExecuteParams, WorkflowGenerationRuntimeDependencies } from './base-command'
 import type { PreparedReviewRevisionContext, ReviewRevisionRecovery } from '../../../shared/review-revision-generation'
+import { authorMaterialOmitForOperation } from '../../../shared/review-revision-generation'
 import { ReviewRevisionCommand, type ReviewRevisionCommandSource } from './review-revision-command'
 import { parseReviewGenerationResult } from '../../../shared/review-generation-report'
 import { buildChapterGoalReviewPrompt } from '../../../shared/chapter-goal-review'
@@ -54,9 +55,10 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
       // P7（2026-10-16）：世界观与角色状态**已由下面的 `builder.withWorldBuilding` /
       // `withCharacterStates` 注入模板侧**，材料块不再重复下发同一份内容。
       // 实机 ch2：世界观曾出现两份（模板侧 6,220 + 材料侧 6,221）= user 的 38.3%。
-      // 只在这里传 omit —— 精修/改写的 builder 不注入这两项，材料块是它们唯一来源。
+      // ⚠️ 必须用 `authorMaterialOmitForOperation` 单点判定 —— 主进程会用**同一函数**
+      // 重算 author 材料哈希来核对，两边各写一份判断会撞 `GENERATION_MATERIAL_DECISION_INVALID`。
       admission = await selectFrozenReviewRevisionMaterials(frozen, { projectId: projectSession.projectId, epoch: projectSession.leaseId },
-        { omitAuthorFields: ['worldbuilding', 'characterStates'] })
+        authorMaterialOmitForOperation('review-chapter'))
     } catch (error) {
       // 必需材料装不下：显式失败，绝不静默省略必需事实。
       if (!(error instanceof ChapterMaterialCapacityError)) throw error
