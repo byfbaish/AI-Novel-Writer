@@ -2,19 +2,19 @@
 
 > 上级稿：`docs/design/prompt-payload-scoping-design.md`（§6 L1 / §7 表 P1-3 行 / 附录 A / 附录 D / §11 清单两项）。  
 > 状态：**待作者裁定**（D1–D4 见 §8）。本稿只取证 + 判定 + 提替代，**未动一行代码**。  
-> 版本：**v1**（2026-10-16）。  
+> 版本：**v2**（2026-10-16。采纳同行评审：① 结论**分述**（`acceptsScopes`=抽象层级错 / `enforceRequiredContext`=语义混淆+适用边界），不合并；② 新增 §3.1 适用边界；③ 新增 §7.1 全量消费点扫描；④ C1 补 A/B 两解法；⑤ 可观测性收窄为"先做 `projection` 元数据"）。  
 > 取证源：① 内置模板静态审计（esbuild 打包 `builtin-prompt-templates.ts` 后跑，见 §10）；② 作者项目 20 份全局覆盖版；③ 实机 trace 21 份 / 18 个 snapshot（`C:\develop\workspace\AI-writer\每天第一句谎话都会成真\debug\prompt-trace\`）。
 
 ---
 
 ## 0. 一句话结论
 
-上级稿 P1-3 要「让白名单真正生效」，落给两个字段：`acceptsScopes`（按作用域层过滤变量）与 `enforceRequiredContext`（关掉 required 兜底注入）。**三条独立取证一致指向：两者在当前变量集合下都没有消费者。**
+上级稿 P1-3 要「让白名单真正生效」，落给两个字段：`acceptsScopes`（按作用域层过滤变量）与 `enforceRequiredContext`（关掉 required 兜底注入）。**三条独立取证一致指向：两者都不该按原设计实施 —— 但"不该实施"的原因不同，不可合并成一句。**
 
-- `enforceRequiredContext`：兜底机制在本项目 **一次都没触发**（内置 25 模板 0 次 / 覆盖版 20 个 0 次 / 实机 18 个 snapshot 0 次）。关掉它 = **拆掉"作者覆盖版漏引用时补回权威设定"的安全网**，是负价值。
-- `acceptsScopes`：所有"某步骤不该吃某层"的真实场景，**已由四个具体投影函数逐一落地**（P0-1 / P0-2 / P1-1 / P1-2a）。通用的"层过滤"没有消费者，且对 `architecture` 这种 `G+A+D` 混合变量**按主层过滤 = 全给 = 零效果**。踩上级稿 §8-7（YAGNI）。
+- **`acceptsScopes`：抽象层级错误**。真实需求是"按变量自身结构切"（P1-2a 按 `### 3` 标题切 `architecture`），而它设计的是"按作用域层切"（G/A/D/C/S）。**两者层级不同 ⇒ 无论项目跑到哪一步都不会有消费者**（所有"某步骤不该吃某层"的场景，已由 P0-1 / P0-2 / P1-1 / P1-2a 四个具体投影函数逐一落地）。且对 `architecture` 这种 `G+A+D` 混合变量，按主层过滤**只有 0/100 两档**（剥则违红线 8-1、留则与现状一模一样），而 P1-2a 证明有价值的恰是**中间态**（按节 13.1%）。踩上级稿 §8-7（YAGNI）。
+- **`enforceRequiredContext`：语义被上级稿混淆 + 适用边界未标注**。它**不是**抽象层级错 —— 相反，它是有明确功能的机制（§2.4：覆盖版漏引用时把权威设定补回正文末尾的**位置纠错器**），只是**作用于兜底通道、不作用于模板引用通道** ⇒ "关掉它让白名单生效"属错配。当前兜底 **0 触发**（内置 25 / 覆盖版 20 / 实机 18 snapshot），关掉 = 拆安全网（负价值）。⚠️ **结论有适用边界**：0 触发的前提是**内置 `systemSuffix` 恒引用 `{{architecture}}`/`{{novel_config}}`**（`:1036`/`:1113`；`render-prompt.ts:11` 恒取内置、不可覆盖）⇒ **若未来修改 `systemSuffix` 引用策略，须重新评估本判定**（§3.1）。
 
-**建议**：D1/D2 均**不立项**（保留设计待触发），**P1-3 重定义为「可观测性」**（附录 D 投影元数据 + §6 L3-(c) trace 作用域标注）—— 它是 L1 设计里**唯一有真实消费者（作者本人）**的部分，且成本最低。
+**建议**：D1/D2 均**不立项**（保留设计待触发），**P1-3 重定义为「可观测性」**（附录 D 的 `projection` 元数据；`VELA_PROMPT_SCOPE=off` 与 §6 L3-(c) 按需再补，见 §6）—— 它是 L1 设计里**唯一有真实消费者（作者本人）**的部分，且成本最低。
 
 ---
 
@@ -105,6 +105,15 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 
 > ⚠️ **一个容易被误读的点**：`enforceRequiredContext` 听起来像"把不想要的层拒掉"，但它作用于**兜底通道**而非**模板引用通道**。模板里写着 `{{architecture}}` 的步骤，无论开关怎么设，`architecture` 照样进请求。所以它**根本不是"让白名单生效"的工具**。上级稿把两者并列（§6 L1 同一段），是本项立项依据的最大混淆源。
 
+### 3.1 结论的适用边界（评审追问 1 采纳）
+
+上述判定基于**当前 `systemSuffix` 结构**：兜底 0 触发，是因为内置 `systemSuffix` 恒引用正文链的 required 变量。**这一结构是判定的前提，不是偶然**：
+
+- `render-prompt.ts:5-18` 的 `referencedSources = [覆盖版 content, 覆盖版 taskGuidance, **内置 systemSuffix**]`；`systemSuffix` 由 `builtinTemplate?.systemSuffix ?? ''` 取得（`:11`）⇒ **恒取内置、不可被覆盖版改写**（`editable:false`）。
+- ⇒ 若把 `builtin-prompt-templates.ts:1036`/`:1113` 的 `- 故事架构：{{architecture}}` / `- 小说配置：{{novel_config}}` **改为不引用**，而覆盖版 content 也不引用 ⇒ 兜底**会被立即激活**（红线 16 的"穿透"场景复活）。
+
+**故"不立项"必须附明确限定**：*「本判定基于当前 `systemSuffix` 引用结构（内置恒引用正文 required 变量）。若未来调整 `systemSuffix` 的引用策略，须重新评估 `enforceRequiredContext` 的语义与必要性。」* —— 这不是推翻结论，是**把适用边界画清**。⚠️ 注意此限定**只适用于 `enforceRequiredContext`**，与 §4 的 `acceptsScopes`（抽象层级错）**无关** —— 后者是方向性错误，不存在"未来翻转"。
+
 ---
 
 ## 4. 判定 B：`acceptsScopes` **不立项**
@@ -161,6 +170,8 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 | **附录 D 附** | 开关 `VELA_PROMPT_SCOPE=off`（关投影、全量注入），用于同章 A/B 对照 | 作者 + 回归测试 | 低 |
 | **§6 L3-(c)** | trace 里标注「这段材料属于哪层、本步是否需要」——**让作者自己看见**，不自动改 | 作者（上级稿原话：「测试期间很多时候过了一天都迷茫」） | 低 |
 
+> **范围收窄（评审建议 3 采纳）**：三项中**先只做附录 D 的 `projection` 元数据** —— 它最直接回答"这一步为什么带/不带这段"。`VELA_PROMPT_SCOPE=off` 与 §6 L3-(c) 的 trace 作用域标注**按实际需要再补**（甚至可分批）。理由：后两者是**附加能力**，且 `VELA_PROMPT_SCOPE=off` 会让"同一项目存在两种行为"（对照复杂度），先不做可把**行为变更面收到最小**（= 纯诊断元数据，零行为变更）。
+
 **为什么它是 `acceptsScopes` 的正确替代**：`acceptsScopes` 想给的"让白名单生效"，作者其实需要的是**"看得见为什么带/不带"**。可观测性以 1/10 的成本给到同一份认知，且**零行为变更**（不改任何请求内容 ⇒ 不碰契约测试基线 ⇒ P1-3 原先唯一的"高风险"标签消失）。
 
 **已具备的地基**（本项不是从零开始）：
@@ -178,7 +189,35 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 |---|---|---|---|
 | **C1. 审稿链的 `worldbuilding` 投影** | `review-chapter.command.ts:71` 全量 `frozen.worldbuilding`（作者项目 6,210 字，**含 §3 终局谜底**）；`refine-from-review` 无 `worldbuilding`（符合 §5 第 11c 行） | 把 `withArchitectureDraftProjection` 接到审稿链（剥 §3 远期节），与 P1-2a 同形 | ⚠️ **两面性**：剥掉 §3 可避免"拿终局当事实要求正文兑现"；但不剥才能判"是否提前剧透了远期真相"。**必须作者裁定**，不属显而易见 |
 
+**C1 的两面性有两个解法**（评审追问 2 补充，2026-10-16）：
+
+| 解法 | 形态 | 代价 | 与项目范式的契合 |
+|---|---|---|---|
+| **A. 审稿分两次** | 第一次用**投影版 §3**（只留 §1 当期规则）判"正文是否违反规则"；第二次用**完整 §3** 判"是否提前剧透远期真相" | **2× LLM 调用**（审稿成本翻倍），职责最清晰 | 需新增一次调用编排 |
+| **B. 保留完整 §3 + 合同声明** | 审稿仍吃完整 §3，但在**执行合同**（非 prompt 措辞）里写明"以下内容含远期设定，**用于判断是否提前剧透，不得作为事实要求正文兑现**" | 低（只改合同文本） | **与 P1-2a 同形**（保留材料 + 合同声明），而 P1-2a 的【远期设定边界】已实机验证该组合有效 |
+
+> 判定依据：P1-2a 的 `030b8be7`（审稿"拿断言当事实"）证明**模型确实会把材料当事实要求**，所以解法 B 必须是**合同级**约束（软措辞不够）；但同一批修复也证明"保留材料 + 合同声明"的组合**有效**。故 **B 的可行性与范式契合度均高于 A**，代价低一个数量级。
+
 > 📌 其余 §5 矩阵标 ❌ 的行（正文/续写仍带 worldview/文风/参考）**不是缺口** —— 那正是红线 8-1「投影≠裁剪」明确保留的（正文需事实源可查）。C1 之外，我未找到第二个有真实收益的落点。
+
+### 7.1 全量消费点扫描（评审建议 4 的验证，2026-10-16 补）
+
+评审建议"C1 之外再扫一遍其他消费点"（`refine` / `finalize` / 导入反向提取链是否吃全量 `architecture`）。逐链核验（`grep` + 逐文件读 prompt 装配）结果：
+
+| 链 | 是否吃全量 `architecture` / `worldbuilding` | 落点 / 证据 | 结论 |
+|---|---|---|---|
+| `refine-from-review.command.ts:95-100` | **否** | 只注入 `reviewReport + globalGuidance + userRefinePrompt` | 非缺口 |
+| `refine-draft.command.ts:68-79` | **否** | `globalGuidance + writingStyle + userRefinePrompt` | 非缺口 |
+| `finalize-chapter.command.ts:287-292` | **否** | `PostProcessPromptBuilder`：`chapterContent + chapterNumber + existingCards` | 非缺口 |
+| `review-revision-command.ts` / `-materials.ts` | **否** | 不走 `PromptBuilder`（是数据/材料选择层，落 `review-revision-materials`） | 非缺口 |
+| `import-novel.command.ts` / `import-inference-contract.ts` | **否** | 反向提取**产出方**（写库）+ schema 校验，不作材料注入 | 非缺口 |
+| `directory.command.ts:374`（章节蓝图链） | 吃，**但已投影** | `renderBlueprintArchitecture(按章范围)` + `withSpaceConstraints`（注释明写"必须在投影之后套"） | 已覆盖 |
+| `architecture.command.ts:1813 / 2154 / 2439`（弧光 / 大纲 / 章纲） | 吃全量，**属设计必要** | 规划须**全知**设定（埋线不能不知道终局），故**不应投影**；已套 `withSpaceConstraints` | 非缺口（**勿当 C1 同类**） |
+| **`review-chapter.command.ts:71`** | **吃全量、无投影** | `.withWorldBuilding(frozen.worldbuilding)` | **C1 = 唯一缺口** |
+
+⇒ **建议 4 的怀疑被证伪**：C1 之外**无第二处缺口** ⇒ 支撑"C1 另立小项"（只一处，不值得立通用机制）。
+
+⚠️ **同时新记录一处易误判点**：`architecture` 产出侧三处吃全量 `worldbuilding` 是**设计前提**（产出侧需全知才能规划伏笔），**不是遗漏** —— 后人扫描时不应把它与 C1 并列为"未投影缺口"。**判据 =「这一步的产物是给人读的正文，还是给下一步用的规划？」** 前者才需要投影。
 
 ---
 
@@ -189,7 +228,7 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 | **D1** | `acceptsScopes` | ① **不立项**（保留设计、标注"待新增变量时再触发"） / ② 实施 | **①** |
 | **D2** | `enforceRequiredContext` | ① **不立项**（兜底 0 触发，关掉=拆安全网） / ② 实施 | **①** |
 | **D3** | P1-3 是否重定义为「可观测性」（P1-3′，§6） | ① **是**（做附录 D 的 `projection` 元数据 + `VELA_PROMPT_SCOPE=off`，§6 L3-(c) 视情） / ② 否（P1-3 直接结项，主线只剩 P1-2b） | **①** |
-| **D4** | §7 候选落点 C1（审稿链投影 §3） | ① **另立小项**（不进本轮） / ② 现在做 | **①** |
+| **D4** | §7 候选落点 C1（审稿链投影 §3） | ① **另立小项**（不进本轮） / ② 现在做（若做，走 **解法 A** 分两次审稿 / **解法 B** 保留完整 §3 + **合同级**声明，见 §7） | **①**（若 ②，推荐 **解法 B**） |
 
 **若 D1/D2 裁 ①、D3 裁 ②** ⇒ 上级稿 §7 表的 P1-3 行标注为「**经实测判定不立项**」并把 §11 清单两条 `acceptsScopes` 项一并作废；**主线 P1 系仅剩 P1-2b（产出侧期次结构，作者级重生成成本）**。
 
@@ -227,3 +266,7 @@ node -e "…遍历 debug/prompt-trace/*.json，按 snapshot.fragments[].sourceKi
 ```
 
 **读数汇总**：内置 25 模板兜底 0 · 覆盖版 20 份兜底 0 · 实机 18 snapshot 兜底 0 · 正文模板 `required` 4 项全部由**内置 systemSuffix** 引用（`builtin-prompt-templates.ts:1036` / `:1113`）⇒ `enforceRequiredContext` 在正文链上**无对象**。
+
+**全量消费点扫描（§7.1，2026-10-16 补）**：`grep -rn "withWorldBuilding(\|withArchitecture(" src` ⇒ 全仓调用点共 **5 处**：`architecture.command.ts:1813/2154/2439`（产出侧·设计必要）+ `review-chapter.command.ts:71`（**C1 唯一缺口**）+ `generate-draft.command.ts:825`（**已投影**）。`refine-from-review` / `refine-draft` / `finalize-chapter` / `review-revision` / `import-*` 逐文件读 prompt 装配 ⇒ **均不吃全量设定**。
+
+**P1-2b 动作量（追问 3 参考，只读核对）**：作者项目 `worldbuilding` 6,210 字 / 180 行；**需标期次的条目 = 15 个**（§1 四条 / §3 七条 / §4 四条；§2 为 983 字无条目散文）—— **非评审估的 40 条**。（形态与成本见交接文档 P1-2b 节。）
