@@ -528,6 +528,9 @@ describe('review/revision consumers using the main contract (synthetic transport
     expect(prompt).toContain('即使蓝图、章节计划或冻结目标写法相反，也不得因此放过。')
     expect(prompt).toContain('在 description 中逐个简述子动作要求、前章同一事件的终态、本章动作与实际后果')
     expect(prompt).toContain('明确要求回顾或维持状态时，不另造动作或代价')
+    // C1 路子 B：审稿保留完整世界观（判「是否提前剧透」需要），但远期设定不得被当成本章必须兑现的事实。
+    expect(prompt).toContain('【远期设定使用规则】')
+    expect(prompt).toContain('不得因正文未写出这些内容而报缺失，也不得要求正文提前兑现这些结论')
   })
 
   it('renders the unique contiguous evidence-anchor constraint for an English ordinary review', async () => {
@@ -544,6 +547,8 @@ describe('review/revision consumers using the main contract (synthetic transport
     expect(prompt).toContain('use separate evidence entries')
     expect(prompt).toContain('[Author settings take priority] The author-confirmed project configuration and the worldbuilding settings are authoritative facts; author character states apply at their annotated time; historical derived summaries cannot override author facts.')
     expect(prompt).toContain('even when a blueprint, chapter plan or frozen goal says otherwise.')
+    expect(prompt).toContain('[Rule for far-term settings]')
+    expect(prompt).toContain('Do not report a missing item merely because the draft omits them')
   })
 
   it('prepares source hashes, binds only the main context and commits the verified composition reference', async () => {
