@@ -64,8 +64,13 @@ function SessionInbox({ session }: { session: ProjectSessionContext }) {
       if (!isProjectSessionCurrent(session)) return
       // 取消 = 纯状态翻转、无任何身份效果；若就此消失，作者（常因保存报错而取消）
       // 会永远失去这批候选 —— 把它们留在收件箱里给一个「重新打开」的出路。
+      //
+      // 但 **0 项批次不是「待处理」**：它只说明「该目录操作没有声明任何新角色」
+      // （每个蓝图提交都会无条件 stage 一个批次作完成回执的证据，见目录工作流）。
+      // 没有任何东西可以决定，却会永久占据「待处理 N」的计数，点开是一个空面板 ——
+      // 它仍留在历史里，只是不进这个入口。
       setEntries(history.filter(entry => !FINALIZED_GROUPS.includes(entry.sourceGroup)
-        && ['pending-approval', 'cancelled'].includes(entry.status)))
+        && entry.itemCount > 0 && ['pending-approval', 'cancelled'].includes(entry.status)))
       setError(failure)
     } catch (cause) {
       if (isProjectSessionCurrent(session)) setError(cause instanceof Error ? cause.message : String(cause))

@@ -153,7 +153,14 @@ export class ListPendingBlueprintCandidatesCommand extends BaseWorkflowCommand<s
     ))
     // 把候选接上确认闸门：对仍含未决定候选的操作幂等 stage（stage 对 proposalBatchId 幂等）。
     // 取消过的批次在这里重开 —— 取消不落任何身份效果，作者常因保存报错而取消，应能重来。
+    //
+    // ⚠️ **已批准（approved）的批次不可重开**：决策已落库、有身份效果。而候选清单是从
+    // **蓝图**派生的（与本批次决策无关）⇒ 一个名字可能是「已登记为锚点人物、后来被撤销」，
+    // 于是它重新出现在清单里，却**没有任何可确认的批次**。这种「有待决 ≠ 可决策」必须
+    // 与「提取步没跑」区分开：否则确认步只会抛一句「缺少已预览的角色卡候选」，作者
+    // 完全看不出该去哪（实机：老陈/老周）。
     let confirmed: CharacterProposalBatch | undefined
+    let alreadyDecided = false
     for (const operation of operations) {
       const opNames = new Set(pendingBlueprintCandidates([operation], cards.map(card => card.name), declined).map(item => characterRosterIdentityKey(item.name)))
       if (!opNames.size) continue
@@ -164,16 +171,31 @@ export class ListPendingBlueprintCandidatesCommand extends BaseWorkflowCommand<s
           { proposalBatchId: batch.proposalBatchId, expectedRevision: batch.revision }) as CharacterProposalBatch
         callbacks.log(text('此前的候选批次曾被取消，已重新打开供确认。', 'An earlier cancelled batch was reopened for confirmation.'))
       }
-      if (batch.status === 'pending-approval' && !confirmed) confirmed = batch
+      if (batch.status === 'pending-approval') { if (!confirmed) confirmed = batch }
+      else if (batch.status === 'approved') alreadyDecided = true
     }
+    const decidedNotice = alreadyDecided
+      ? [text(
+        '注：其中部分名字的来源批次此前已作出过决定（例如登记为锚点人物后又被撤销）。已批准的批次不可重新打开，本入口只确认尚未处理的新候选。',
+        'Note: some of these names already went through a decided batch (for example, registered as anchored supporting roles and later revoked). An approved batch cannot be reopened, so this entry point only confirms fresh candidates.',
+      )]
+      : []
     if (confirmed) {
       context.data.characterProposalBatch = confirmed
       // 确认步以该键区分"没得确认"与"提取步没跑"；写入路径只消费批次，条目仅作闸门。
       context.data.planningMaterialCharacterCandidates = confirmed.items.map(item => ({
         name: item.fields.name, role: item.fields.role || 'supporting',
       })) as unknown as CharacterRosterEntry[]
+    } else if (alreadyDecided) {
+      // 提取步确实跑了，只是它的候选全部已有结论 ⇒ 落**空数组**（"没得确认"，优雅收场），
+      // 而不是什么都不留（那会被确认步当成配置错误）。
+      context.data.planningMaterialCharacterCandidates = []
+      callbacks.log(text(
+        '这些名字的来源批次已作出过决定，没有可在此确认的新候选。',
+        'These names already went through a decided batch; there are no fresh candidates to confirm here.',
+      ))
     }
-    return [text('## 待建卡角色', '## Pending character candidates'), ...lines].join('\n')
+    return [text('## 待建卡角色', '## Pending character candidates'), ...lines, ...decidedNotice].join('\n')
   }
 }
 

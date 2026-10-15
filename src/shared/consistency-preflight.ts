@@ -185,3 +185,61 @@ export function mergeConsistencyFindingsIntoReview(
   }))
   return { ...review, items: [...(Array.isArray(review.items) ? review.items : []), ...mapped] }
 }
+
+/**
+ * 本次预检**实际参与判定**的范围。
+ *
+ * 存在的理由（实机缺陷 2026-10-15）：B′ 的空间—钟点规则是 fail-open 的 ——
+ * 设定层没有机读行时，`findSpaceTimeConflicts` 在 `parseSpaceRules(...).length === 0`
+ * 处**直接返回 `[]`**，连一条 `info` 都产生不了。于是「本次根本没判」与
+ * 「判过了、没冲突」在界面上**完全同形**（都是安静地继续写），作者会以为机制失灵。
+ * 把「有没有可判定形式」显式带出来，静默才不再等于通过。
+ */
+export interface ConsistencyPreflightCoverage {
+  /** 设定层（架构产出的 `worldbuilding`）里已登记的**可判定空间**条数。`null` = 设定层读取失败。 */
+  registeredSpaces: number | null
+  /** 本次涉及的蓝图里带结构化空间引用（`spaceRefs`）的总条数。 */
+  blueprintSpaceRefs: number
+}
+
+/**
+ * 把覆盖度译成一条给作者看的说明（不判冲突时也要让他知道**为什么没判**）。
+ *
+ * 这是缺陷 2「维持纯结构、补引导」的落点：不动 Q4 的「零语义解析」边界（不去解析
+ * 「下午两点」这类散文），只把「两侧缺机读形式 ⇒ 不判」这个前提与补救方式说清楚。
+ */
+export function describeSpaceTimeCoverage(
+  coverage: ConsistencyPreflightCoverage | undefined,
+): { zhCN: string; enUS: string } | undefined {
+  if (!coverage) return undefined
+  if (coverage.registeredSpaces === null) {
+    return {
+      zhCN: '空间—钟点一致性核对本次未参与判定：读取设定层失败。',
+      enUS: 'The space/time consistency check did not run: the world setting could not be read.',
+    }
+  }
+  if (coverage.registeredSpaces === 0) {
+    return {
+      zhCN: '空间—钟点一致性核对本次未参与判定：世界观里还没有可判定的机读行。要启用该核对，请重新生成世界观，'
+        + '或在世界观第 4 维【空间结构】手工补登记形如「老陈记｜hours=07:00-10:00｜entry=…」的行。'
+        + '（手工编辑的蓝图不产生结构化空间引用，同样不参与判定。）',
+      enUS: 'The space/time consistency check did not run: the world setting has no machine-readable lines yet. '
+        + 'To enable it, regenerate the world setting, or add a line such as "老陈记｜hours=07:00-10:00｜entry=…" '
+        + 'by hand under dimension 4 (spatial structure). (A hand-edited blueprint produces no structured space '
+        + 'references and likewise does not take part.)',
+    }
+  }
+  if (coverage.blueprintSpaceRefs === 0) {
+    return {
+      zhCN: `空间—钟点一致性核对本次未参与判定：设定层已登记 ${coverage.registeredSpaces} 个空间，但本章蓝图没有结构化空间引用`
+        + '（手工编辑的蓝图不产生该字段）。',
+      enUS: `The space/time consistency check did not run: the world setting registers ${coverage.registeredSpaces} `
+        + 'space(s), but this blueprint has no structured space references (a hand-edited blueprint produces none).',
+    }
+  }
+  return {
+    zhCN: `空间—钟点一致性核对已完成（已登记 ${coverage.registeredSpaces} 个空间 × ${coverage.blueprintSpaceRefs} 条蓝图引用），未发现冲突。`,
+    enUS: `Space/time consistency check completed (${coverage.registeredSpaces} registered space(s) × `
+      + `${coverage.blueprintSpaceRefs} blueprint reference(s)); no conflicts found.`,
+  }
+}

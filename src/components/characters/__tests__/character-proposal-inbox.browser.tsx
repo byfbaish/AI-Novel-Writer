@@ -70,3 +70,31 @@ describe('候选收件箱对已取消批次', () => {
     expect(host!.textContent).not.toContain('待处理角色候选')
   })
 })
+
+/**
+ * 缺陷 1a（实机 2026-10-15）：每个蓝图提交都会无条件 stage 一个批次作完成回执的证据；
+ * 若该操作声明的 `newCharacterCandidates` 为空，批次就有 `itemCount: 0`。
+ * 它没有任何可决定的东西，却会永久占据「待处理 N」的计数，点开是一个空面板。
+ */
+describe('候选收件箱对 0 项批次', () => {
+  it('★ 0 项待批批次不计入「待处理」，且不出现空面板', async () => {
+    const host = await mount([{ ...cancelledEntry, status: 'pending-approval', itemCount: 0, proposalBatchId: 'cpb:空批' }])
+    expect(host.textContent).not.toContain('待处理角色候选')
+    expect(host.textContent).not.toContain('检查角色候选')
+  })
+
+  it('0 项取消批次同样不进（与待批同理）', async () => {
+    const host = await mount([{ ...cancelledEntry, itemCount: 0, proposalBatchId: 'cpb:空批取消' }])
+    expect(host.textContent).not.toContain('待处理角色候选')
+  })
+
+  it('★ 回归：有内容的批次仍照常进收件箱（0 项过滤不得误伤真候选）', async () => {
+    const host = await mount([
+      { ...cancelledEntry, status: 'pending-approval', itemCount: 0, proposalBatchId: 'cpb:空批' },
+      { ...cancelledEntry, status: 'pending-approval', itemCount: 2, proposalBatchId: 'cpb:真候选', label: '章节蓝图 · 2 个角色' },
+    ])
+    expect(host.textContent).toContain('待处理角色候选（1）')
+    expect(host.textContent).toContain('章节蓝图 · 2 个角色')
+    expect(host.textContent).not.toContain('待处理角色候选（2）')
+  })
+})

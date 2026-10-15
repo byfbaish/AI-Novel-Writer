@@ -18,7 +18,7 @@ import { guardChapterWriting } from '../../services/workflow-guards'
 import { ipc } from '../../services/ipc-client'
 import { requireIpcSuccess } from '../../services/ipc-result'
 import { readAuthoritativeNextChapter } from '../../services/authoritative-chapter-sequence'
-import { readConsistencyPreflight, type ConsistencyPreflightResult } from '../../services/consistency-preflight'
+import { readConsistencyPreflight, describeSpaceTimeCoverage, type ConsistencyPreflightResult } from '../../services/consistency-preflight'
 import {
   Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
@@ -342,6 +342,10 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
         if (!isProjectSessionCurrent(projectSession)) return
         setConsistencyPreflight(preflight)
         if (preflight.findings.length > 0) return
+        // 0 条 finding 也会继续写。必须交代「本次到底判没判」——
+        // 否则「没判」与「判过、无冲突」在界面上完全同形，作者会以为机制失灵。
+        const coverageNote = describeSpaceTimeCoverage(preflight.coverage)
+        if (coverageNote) addLog('info', text(coverageNote.zhCN, coverageNote.enUS))
       } catch {
         if (!isProjectSessionCurrent(projectSession)) return
         addLog('info', text(
