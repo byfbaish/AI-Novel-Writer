@@ -44,6 +44,7 @@ function insertBatch(
   names: readonly string[],
   selections?: CharacterProposalDecision[],
   tamper = false,
+  proofSourceHash = 'stable',
 ) {
   const batch = {
     proposalBatchId: proposalId, revision: 0, status: 'pending-approval',
@@ -55,7 +56,7 @@ function insertBatch(
   }
   const envelope = {
     version: 1, projectId: 'project',
-    proof: { items: [], sourceHash: 'stable', provenance: null },
+    proof: { items: [], sourceHash: proofSourceHash, provenance: null },
     batch,
     ...(selections ? { decision: { proposalBatchId: proposalId, expectedRevision: 0, operationId: `op:${proposalId}`, selections } } : {}),
   }
@@ -180,6 +181,20 @@ describe('段三 · 锚点人物决定日志', () => {
     insertBatch(db, 'cpb:4', ['老陈'], [{ selectionKey: '1:0', action: 'functional' }], true)
     insertBatch(db, 'cpb:5', ['赵启明'], [{ selectionKey: '1:0', action: 'functional' }])
     expect(service.declinedCandidateNames()).toEqual(['赵启明'])
+  })
+
+  it('来源已不可证但封存决定完好时，登记仍然回填（判据 ⑮）', () => {
+    const { db, service } = fixture()
+    // 信封自身完好（哈希对得上），但重算证明与封存证明不一致 —— readEnvelope 在此必抛
+    // SOURCE_CHANGED。回填问的是"作者当初决定了什么"，不该被"来源还能不能重算"否定：
+    // 否则任何一次来源漂移都会让已定稿的登记静默消失，名字随即回到候选集。
+    insertBatch(db, 'cpb:9', ['老陈'], [{ selectionKey: '1:0', action: 'functional' }], false, 'drifted')
+    expect(() => service.read('cpb:9')).toThrow('CHARACTER_PROPOSAL_SOURCE_CHANGED')
+    expect(service.declinedCandidateNames()).toEqual(['老陈'])
+    expect(service.listCastDecisions().map(decision => decision.name)).toEqual(['老陈'])
+    // 篡改（行哈希对不上）仍然一律跳过 —— 放行不是后门。
+    insertBatch(db, 'cpb:10', ['伪造者'], [{ selectionKey: '1:0', action: 'functional' }], true)
+    expect(service.declinedCandidateNames()).toEqual(['老陈'])
   })
 
   it('未升级到 M08 的库（无新表）回退到旧派生，不抛错', () => {
