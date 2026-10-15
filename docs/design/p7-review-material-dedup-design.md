@@ -185,6 +185,35 @@ text('【世界观设定】', '[Worldbuilding]'), authorText('worldbuilding', co
 - `review-revision-runtime.test.ts`：新增 `authorMaterialFor(operation, context)` helper —— 测试须按同一契约取值（审稿链含 `recheck` 走 omit 版；修稿链不 omit），否则会拿「完整版」比对「省略版」的 prompt（这正是本次先红 3 例的原因）。
 - **验证读数**：目标 2 文件 **52/52** · 其余下游 4 文件 **128/128** · `tsc --noEmit` **0**。
 
+### ⚠️ 实施后修复（同日）：`GENERATION_MATERIAL_DECISION_INVALID`
+
+**实机报错**：`[第 2 章 · 审稿] generation:bind-material-decision → Error: GENERATION_MATERIAL_DECISION_INVALID`。
+
+**根因**：本项改动**只落了一处消费点**。`reviewRevisionAuthorMaterial` 的生产调用点有**两处**：
+
+| # | 位置 | 作用 |
+|---|---|---|
+| 1 | `src/services/workflows/commands/review-revision-materials.ts:25` | 渲染层构造 prompt 与 `materialDecision.contentHash` |
+| 2 | **`electron/services/generation-source-binding.ts:330`** | **主进程**校验时**重算同一文本**比对哈希 |
+
+⇒ 渲染层按 omit 版算 hash、主进程按**完整版**重算 ⇒ 必然不等 ⇒ 校验失败（`:335 fail`）。
+
+**修法 —— 单点判定，两侧共用同一函数**（杜绝再次漂移）：
+
+```ts
+// src/shared/review-revision-generation.ts
+export function authorMaterialOmitForOperation(operation: string) {
+  return operation === 'review-chapter'   // 白名单式：只有审稿链省略
+    ? { omit: ['worldbuilding', 'characterStates'] }
+    : undefined                            // 新增 operation 默认不省略（宁可重复，不可丢材料）
+}
+```
+
+- 渲染层（`review-chapter.command.ts`）与**主进程**（`generation-source-binding.ts:330`）都调它。
+- 测试同样调它 ⇒ 契约漂移会被用例直接抓住。
+
+**★ 教训（已入 notes 判据 E）**：**改「某函数在某个调用点的行为」时，必须先枚举该函数的全部生产调用点**——本函数的第二处调用点在**另一个进程**（`electron/`），且其作用恰是"重算以核对"，最容易漏。
+
 ### ⏳ 待实机复验
 
 重启 `pnpm dev` 后跑一次审稿，核对：审稿 user 由 **32,442 → ~26,200**（-19.2%）；且请求里 `【世界观设定】` 的**完整内容只出现一次**（模板侧），材料侧不再重复。
