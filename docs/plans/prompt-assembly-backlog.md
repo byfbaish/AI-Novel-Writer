@@ -787,3 +787,55 @@ P1 只做**逐字重复**消除。作者明确区分：
 | 候选泛滥 | 逐章 N 条 × 10 章 = 作者审不动；需要"只提新增伏笔、且必须绑定证据"的过滤 |
 | 与既有契约冲突 | `assertPlanningActionRange` 是双端硬契约（`plot-outline-contract.ts:8`），范围化要按它来做，不要新造一套 |
 | 不要碰的 | 候选 → 计划写入必须保持"人工确认"闸门（同 R2 关卡原则） |
+
+---
+
+## P7（中高）· 审稿链**世界观重复注入**去重（2026-10-16 实机发现）
+
+### 缘起
+
+作者 2026-10-16 实测：「审稿的负荷比写正文还大」+ 某供应商模型上下文有限、**第一次审稿失败**（`finishReason: 'length'`、输出为空），换模型才成功。
+
+实测读数（作者项目 ch2 审稿 trace `20261016-032228-330`，按红线 15 读 `ioCalls[].messages[].content`）：
+
+| 项 | 读数 |
+|---|---|
+| 审稿 user | **32,442 字** |
+| 正文 user（同章） | **16,388 字** |
+| 比例 | 审稿 = 正文的 **1.98 倍** |
+| 其中 `【世界观设定】` 块 | **出现两次**，各约 6,220 / 6,221 字 |
+| 世界观合计 | **12,441 字 = user 的 38.3%** |
+
+### 根因（两条正交机制叠加）
+
+`review-chapter.command.ts` 的 `ordinaryReviewPrompt` 同时：
+
+1. **模板侧**：`builder.withWorldBuilding(frozen.worldbuilding)`（`:72`）→ 模板 `consistency_check` 的 `{{world_building}}`；
+2. **材料侧**：`...admission.admitted.filter(m => m.category !== 'finalized-history').map(m => m.text)`（`:76`）→ 其中 author 材料块 = `reviewRevisionAuthorMaterial()`，**也含完整 `【世界观设定】`**（`review-revision-generation.ts:121`）。
+
+⇒ 同一份世界观进了请求**两遍**。**去重不损失任何信息**，可直接省 **~6,221 字（-19.2%）**。
+
+### 目标
+
+审稿 prompt 中世界观只保留一份（预计 user 32,442 → ~26,200）。
+
+### 需先定的问题（设计稿前置）
+
+| # | 问题 | 备注 |
+|---|---|---|
+| 1 | 保留哪一份 | 材料块是**准入单元**（`materialDecisions` 的 `promptHash` 依赖它）⇒ 倾向**保留材料块、模板侧留空**；但模板 `consistency_check` 的 `requiredContextVariables` 若含 `world_building`，留空会触发**兜底注入**（红线 16）到正文末尾 ⇒ 两者须一起处理 |
+| 2 | 是否同批处理**角色状态**重复 | 模板 `{{character_states}}` 与材料块 `【作者角色状态｜以标注时点为准】` 是否同源（需核实） |
+| 3 | 是否同批处理**后续蓝图全量** | 审稿/精修的材料块含 `【后续蓝图/计划】` **3,417 字**（全量）；正文链已由 P1-1 边界化到 **729 字**。审稿判「是否越界」是否只需边界清单（而非逐字蓝图）？**需裁定**（审稿职责是判断、不是写作，可能仍需全量） |
+
+### 风险与边界
+
+| 风险 | 说明 |
+|---|---|
+| 碰准入哈希 | `materialDecisions` 的 `promptHash` 记录实际 prompt ⇒ 结构一变须同步（`context-entry-parity` 类测试） |
+| 模板契约 | `requiredContextVariables` 若含被去掉的变量，兜底会把内容**换个位置**塞回来（红线 16）⇒ 必须同时核 |
+| 作者覆盖版 | 作者可覆盖 `consistency_check` 模板 ⇒ 若其 content 引用了 `{{world_building}}`，模板侧不能简单留空 |
+| 不要碰的 | 材料准入的「必需材料装不下就显式失败」语义（`ChapterMaterialCapacityError`）必须保留 |
+
+### 状态
+
+**未实施**（需设计稿 + 作者裁定）。与 C1 同批取证发现，登记于此；C1 稿 §8.1.3 有对应记录。
