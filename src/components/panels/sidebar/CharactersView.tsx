@@ -2,10 +2,10 @@
  * CharactersView — 角色管理列表视图
  */
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ChevronLeft, ChevronRight, Users, RefreshCw, Plus, Search, Trash2, CheckSquare, X } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
-import { characterSelectionKey, useCharacterStore } from '../../../stores/character-store'
+import { characterSelectionKey, characterRevivalEvents, useCharacterStore } from '../../../stores/character-store'
 import { Button } from '../../ui/Button'
 import { Input } from '../../ui/Input'
 import { EmptyState } from '../../ui/EmptyState'
@@ -14,6 +14,7 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { getCharacterRoleLabels } from '../../../shared/character-role'
 import { CharacterCardImportButton } from '../../characters/CharacterCardImportButton'
 import { CharacterProposalInbox } from '../../characters/CharacterProposalInbox'
+import { CharacterCastPanel } from '../../characters/CharacterCastPanel'
 import { CharacterCardGenerateButton } from '../../characters/CharacterCardGenerateButton'
 import { FinalizedCharacterProposalPanel } from '../../characters/FinalizedCharacterProposalPanel'
 import { FinalizedCharacterStateCandidatePanel } from '../../characters/FinalizedCharacterStateCandidatePanel'
@@ -72,6 +73,24 @@ export default function CharactersView() {
     character.characterId ? [character.characterId] : []
   )), [pageCharacters])
   const { avatarUrls } = useCharacterAvatars(pageIds, dataReady)
+
+  /**
+   * 复活提示（R6 验收点 5）：手动建卡命中已退休的同名身份时，主进程复用原 `character_id`
+   * 而不是新建孪生身份。作者必须知道唤回的是旧身份（带着它的历史字段），否则会以为
+   * 新建了一张干净的卡。
+   */
+  useEffect(() => {
+    const onRevived = (event: Event) => {
+      const detail = (event as CustomEvent<{ names: string[] }>).detail
+      if (!detail?.names?.length) return
+      toast.info(text(
+        `「${detail.names.join('、')}」是已退场的同名身份，已复活原角色（保留其历史资料），而不是新建一张卡。`,
+        `“${detail.names.join(', ')}” is a retired identity with the same name; the original character was revived (its history is kept) instead of creating a new card.`,
+      ))
+    }
+    characterRevivalEvents.addEventListener('revived', onRevived)
+    return () => characterRevivalEvents.removeEventListener('revived', onRevived)
+  }, [text])
 
   const keyOf = (card: (typeof characters)[number]) => characterSelectionKey(card, characters.indexOf(card))
   /** 全选/反选针对**当前筛选结果**（含未显示的页），否则"全选"的语义会随分页漂移。 */
@@ -171,6 +190,7 @@ export default function CharactersView() {
         </div>
       )}
       <CharacterProposalInbox />
+      <CharacterCastPanel />
       <FinalizedCharacterProposalPanel />
       <FinalizedCharacterStateCandidatePanel />
       <div className="relative px-2 py-1.5 border-b border-[var(--color-border)]">

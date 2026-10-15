@@ -1162,7 +1162,35 @@ export interface CharacterIdentityCommitReceipt {
   operationId: string
   revision: number
   created: { selectionKey: string; characterId: string }[]
+  /**
+   * 本次提交里「复活」的身份：新建的候选名命中了一个**已退休**的同名身份，于是复用原
+   * `character_id`（重开别名窗口）而不是新建孪生身份。作者侧据此给出提示。
+   */
+  revived: { selectionKey: string; characterId: string; name: string }[]
   idempotent: boolean
+}
+/**
+ * 已退休的同名身份 —— 复活时复用它，而不是新建孪生身份（R6 验收点 5，作者 2026-10-15 裁定）。
+ *
+ * 背景：`character_aliases` 主键含 `character_id`，没有全局同名约束，因此「对已退休身份
+ * 同名建卡」会造出 `老陈(retired=1) + 老陈(retired=0)` 两条并存。行为上无害（别名带
+ * `valid_through`，解析/关系/候选三处都过滤 retired），但语义上应明确为**复活 = 复用原
+ * `character_id`（重开别名窗口）**。
+ *
+ * 匹配既看当前 `name` 列也看别名历史：改名后退场的身份，作者记得的是他最后的名字。
+ * **同名退休身份不止一个时不猜** —— 宁可新建，也不把候选挂到可能错误的那一个上。
+ */
+function retiredIdentityByName(db: BetterSqlite3.Database, name: string): string | undefined {
+  const key = characterRosterIdentityKey(name)
+  if (!key) return undefined
+  const retired = db.prepare('SELECT character_id AS characterId, name FROM characters WHERE retired=1')
+    .all() as { characterId: string; name: string }[]
+  if (!retired.length) return undefined
+  const retiredIds = new Set(retired.map(row => row.characterId))
+  const matches = new Set(retired.filter(row => characterRosterIdentityKey(row.name) === key).map(row => row.characterId))
+  const aliases = db.prepare('SELECT character_id AS characterId, name FROM character_aliases').all() as { characterId: string; name: string }[]
+  for (const alias of aliases) if (retiredIds.has(alias.characterId) && characterRosterIdentityKey(alias.name) === key) matches.add(alias.characterId)
+  return matches.size === 1 ? [...matches][0] : undefined
 }
 /** Only the main approval boundary supplies authorize. Legacy name-only commits never reach this API. */
 export function commitCharacterIdentities(
@@ -1200,6 +1228,7 @@ export function commitCharacterIdentities(
     const source = JSON.stringify(attributedSource)
     if (request.resolutions.length && request.approval.action !== 'confirm-identity') throw new Error('CHARACTER_ID_CONFIRMATION_REQUIRED')
     const created: CharacterIdentityCommitReceipt['created'] = []
+    const revived: CharacterIdentityCommitReceipt['revived'] = []
     const allowed = new Set(['name', 'role', 'gender', 'age', 'appearance', 'personality', 'background', 'abilities', 'motivation', 'arc', 'notes'])
     const validateFields = (fields: CharacterIdentityChange['fields']) => {
       for (const [key, value] of Object.entries(fields)) if (!allowed.has(key) || typeof value !== 'string' || key === 'name' && !value.trim()) throw new Error('CHARACTER_FIELDS_INVALID')
@@ -1215,7 +1244,25 @@ export function commitCharacterIdentities(
     for (const creation of request.creations) {
       validateFields(creation.fields)
       if (typeof creation.fields.name !== 'string' || !creation.fields.name.trim()) throw new Error('CHARACTER_FIELDS_INVALID')
-      const id = randomUUIDForIdentity(), keys = Object.keys(creation.fields)
+      const keys = Object.keys(creation.fields)
+      // 复活优先于新建：同名退休身份唯一命中时复用它的 character_id（重开别名窗口），
+      // 避免库里长期并存「老陈(retired=1) + 老陈(retired=0)」两个孪生身份。
+      const reviveId = retiredIdentityByName(db, creation.fields.name)
+      if (reviveId) {
+        const prior = JSON.parse((db.prepare('SELECT static_provenance FROM characters WHERE character_id=?').pluck().get(reviveId) as string) ?? '{}') as Record<string, unknown>
+        // 只覆盖作者这次明确给出的字段并为其盖 provenance，历史字段与既有 provenance 原样保留
+        // （与 changes 路径同一纪律：采用生成文本绝不改写作者没碰过的字段）。
+        const provenance = { ...prior, fields: { ...(prior.fields as Record<string, unknown> | undefined),
+          ...Object.fromEntries(keys.map(key => [key, attributedSource])) } }
+        db.prepare(`UPDATE characters SET retired=0,identity_revision=?,static_provenance=?${keys.length ? `,${keys.map(key => `${key}=?`).join(',')}` : ''} WHERE character_id=?`)
+          .run(revision, JSON.stringify(provenance), ...Object.values(creation.fields), reviveId)
+        // 重开别名窗口：退休时被写上了 valid_through，这里追加一条当前生效的别名。
+        db.prepare('INSERT INTO character_aliases VALUES(?,?,?,?,NULL)').run(reviveId, creation.fields.name, request.approval.operationId, revision)
+        created.push({ selectionKey: creation.selectionKey, characterId: reviveId })
+        revived.push({ selectionKey: creation.selectionKey, characterId: reviveId, name: creation.fields.name })
+        continue
+      }
+      const id = randomUUIDForIdentity()
       db.prepare(`INSERT INTO characters(character_id,static_provenance,identity_revision,${keys.join(',')}) VALUES(?,?,?,${keys.map(() => '?').join(',')})`).run(id, source, revision, ...Object.values(creation.fields))
       db.prepare('INSERT INTO character_aliases VALUES(?,?,?,?,NULL)').run(id, creation.fields.name, request.approval.operationId, revision)
       created.push({ selectionKey: creation.selectionKey, characterId: id })
@@ -1235,7 +1282,7 @@ export function commitCharacterIdentities(
       }
     }
     for (const id of request.retireIds) { active(id); db.prepare('UPDATE characters SET retired=1,identity_revision=? WHERE character_id=?').run(revision, id); db.prepare('UPDATE character_aliases SET valid_through=? WHERE character_id=? AND valid_through IS NULL').run(current, id) }
-    const receipt: CharacterIdentityCommitReceipt = { approval: structuredClone(request.approval), operationId: request.approval.operationId, revision, created, idempotent: false }
+    const receipt: CharacterIdentityCommitReceipt = { approval: structuredClone(request.approval), operationId: request.approval.operationId, revision, created, revived, idempotent: false }
     db.prepare('INSERT INTO character_identity_approvals VALUES(?,?,?)').run(request.approval.operationId, digest, JSON.stringify(receipt))
     const endpoint = (id: string | undefined, selectionKey: string | undefined) => {
       if (Boolean(id) === Boolean(selectionKey)) throw new Error('CHARACTER_RELATIONSHIP_ID_REQUIRED')

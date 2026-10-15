@@ -41,6 +41,13 @@ export type CharacterCard = CharacterData
 export type CharacterAvatarDraft = { kind: 'image'; base64: string; mime: string } | { kind: 'remove' }
 export const characterAvatarChanges = new EventTarget()
 
+/**
+ * 复活通知（R6 验收点 5）：手动建卡命中一个**已退休的同名身份**时，主进程复用原
+ * `character_id` 而不是新建孪生身份。作者必须被告知这件事 —— 否则他会以为新建了一张卡，
+ * 而实际上唤回的是旧身份（带着旧的历史字段）。订阅方负责提示。
+ */
+export const characterRevivalEvents = new EventTarget()
+
 /** Unbound draft selection keys are local UI addresses, never persisted character identities. */
 export function characterSelectionKey(card: CharacterCard, index: number): string {
   return card.characterId ?? `unbound:${index}`
@@ -794,6 +801,12 @@ export const useCharacterStore = create<CharacterState>()((set, get) => ({
         throw new Error(result.error ?? '角色卡保存失败')
       }
       if (!isCharacterProjectSessionCurrent(projectSession)) return
+      const revived = result.receipt.revived ?? []
+      if (revived.length) {
+        characterRevivalEvents.dispatchEvent(new CustomEvent('revived', {
+          detail: { context: projectSession, names: [...new Set(revived.map(item => item.name))] },
+        }))
+      }
       const savedRosterCards = result.receipt.snapshot.entries.map(characterCardFromRosterEntry)
       const ledger = readCharacterDraftLedger(projectKey)
       const currentProjectDraft = getProjectEditorDraft(ledger, projectKey)

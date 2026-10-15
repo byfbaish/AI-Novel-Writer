@@ -176,6 +176,11 @@ export interface CharacterRosterCommitRequest {
 
 export interface CharacterRosterCommitReceipt {
   created?: { selectionKey: string; characterId: string }[]
+  /**
+   * 本次提交里「复活」的身份：新建的名字命中了一个**已退休**的同名身份，于是复用原
+   * `character_id`（重开别名窗口）而不是新建孪生身份。作者侧据此给出提示。
+   */
+  revived?: { selectionKey: string; characterId: string; name: string }[]
   operationId: string
   payloadHash: string
   /** 始终等于 snapshot.revision；幂等 replay 返回当前无写入观察，不重放历史 payload。 */

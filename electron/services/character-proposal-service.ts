@@ -1,9 +1,10 @@
 import type Database from 'better-sqlite3'
 import { isDeepStrictEqual } from 'node:util'
-import type { ApproveCharacterProposalRequest, CancelCharacterProposalRequest, CharacterIdentitySnapshot, CharacterProposalBatch, CharacterProposalHistoryEntry, CharacterProposalItem, CharacterProposalSource, CharacterStaticFields, PendingFinalizedCharacterProposalSummary } from '../../src/shared/character-proposal'
+import type { ApproveCharacterProposalRequest, CancelCharacterProposalRequest, CharacterCastDecisionView, CharacterIdentitySnapshot, CharacterProposalBatch, CharacterProposalHistoryEntry, CharacterProposalItem, CharacterProposalSource, CharacterStaticFields, PendingFinalizedCharacterProposalSummary, RegisterCharacterCastRequest, RevokeCharacterCastRequest } from '../../src/shared/character-proposal'
 import { isAdoptedCharacterDecision } from '../../src/shared/character-proposal'
 import { resolveScopedCharacterIdentity, type CharacterStaticProvenance } from '../../src/shared/character-identity'
 import { CHARACTER_ROLES } from '../../src/shared/character-role'
+import { CharacterCastDecisionRepository, hasCharacterCastDecisionSchema } from '../repositories/character-cast-decision-repository'
 import { CharacterRosterRepository, commitCharacterIdentities, refreshCharacterIdentityProjection, type CharacterIdentityCommitRequest } from '../repositories/character-roster-repository'
 import { GenerationRunRepository, textHash } from '../repositories/generation-run-repository'
 import { SummaryRepository } from '../repositories/summary-repository'
@@ -154,18 +155,15 @@ export class CharacterProposalService {
     })
   }
   /**
-   * Names the author explicitly registered as anchored supporting roles (no card).
+   * 从**既有已批准批次**派生出的 functional 名字 —— 段三切换读取源之前的历史登记。
    *
-   * These are settled decisions, not pending ones: a name listed here must stop
-   * appearing in the derived "declared by a blueprint but not yet built" candidate
-   * set, otherwise that set can never be emptied. Batches whose durable proof no
-   * longer verifies are skipped rather than repaired — the record stays readable
-   * in the inbox, where the author can still read or cancel it.
+   * 批次收据里只有名字与角色值：口吻/关系从未被结构化保存过，因此回填时留空，
+   * 由作者在管理面里补写，而不是编一个假值。
    */
-  declinedCandidateNames(): string[] {
+  private legacyFunctionalNames(): { name: string; anchorRole: string; proposalBatchId: string; selectionKey: string; revision: number }[] {
     const rows = this.db.prepare('SELECT proposal_id FROM character_identity_proposals WHERE source_key=? ORDER BY proposal_id')
       .all(`character-proposal-v1:${this.projectId}`) as { proposal_id: string }[]
-    const names = new Set<string>()
+    const derived: { name: string; anchorRole: string; proposalBatchId: string; selectionKey: string; revision: number }[] = []
     for (const { proposal_id } of rows) {
       try {
         const envelope = this.readEnvelope(proposal_id)
@@ -173,12 +171,111 @@ export class CharacterProposalService {
           .filter(selection => selection.action === 'functional').map(selection => selection.selectionKey))
         if (!functional.size) continue
         for (const item of envelope.batch.items) {
-          const name = functional.has(item.selectionKey) ? item.fields.name?.trim() : ''
-          if (name) names.add(name)
+          if (!functional.has(item.selectionKey)) continue
+          const name = item.fields.name?.trim()
+          if (name) derived.push({ name, anchorRole: item.fields.role ?? '', proposalBatchId: proposal_id,
+            selectionKey: item.selectionKey, revision: envelope.batch.revision })
         }
       } catch { /* An unreadable batch contributes nothing; it is never silently repaired. */ }
     }
-    return [...names]
+    return derived
+  }
+  /**
+   * 把历史 functional 登记补进决定日志。
+   *
+   * **按「这个名字在日志里一条记录都没有」判断**，而不是按「表为空」：这样即便作者先登记了
+   * 一个新名字（表已非空），老陈这类历史登记仍然会被补上；而一旦某名字有了任何记录
+   * （包括一条 `revoke`），就永不回填 —— 撤销过的名字不会因为一次读取而"复活"。
+   * 因此本方法幂等，且可与作者操作任意交错。
+   */
+  private backfillLegacyCastDecisions(): void {
+    for (const derived of this.legacyFunctionalNames()) {
+      if (CharacterCastDecisionRepository.currentForName(this.db, derived.name)) continue
+      CharacterCastDecisionRepository.append(this.db, {
+        name: derived.name, anchorRole: derived.anchorRole, action: 'register',
+        sourceRevision: derived.revision,
+        // 回填没有真实时间可用（批次表无时间列），记的是"我们把它固化下来的时刻"。
+        createdAt: new Date().toISOString(),
+        operationId: `cast-backfill:${derived.proposalBatchId}:${derived.selectionKey}`,
+      })
+    }
+  }
+  /**
+   * Names the author explicitly registered as anchored supporting roles (no card).
+   *
+   * These are settled decisions, not pending ones: a name listed here must stop
+   * appearing in the derived "declared by a blueprint but not yet built" candidate
+   * set, otherwise that set can never be emptied.
+   *
+   * 段三起读取源改为 append-only 决定日志 `character_cast_decisions`（撤销因此成为可能：
+   * 撤销 = 追加一条 `revoke`，该名字随即回到候选集）。未升级到 M08 的库没有这张表，
+   * 此时回退到旧的「扫已批准批次」派生，保证未升级项目不受影响。
+   */
+  declinedCandidateNames(): string[] {
+    if (!hasCharacterCastDecisionSchema(this.db)) {
+      return [...new Set(this.legacyFunctionalNames().map(item => item.name))]
+    }
+    return this.db.transaction(() => {
+      this.backfillLegacyCastDecisions()
+      return CharacterCastDecisionRepository.declinedNames(this.db)
+    }).immediate()
+  }
+  /** 锚点人物管理面：当前仍有效的登记（已撤销的名字不在其中）。 */
+  listCastDecisions(): CharacterCastDecisionView[] {
+    if (!hasCharacterCastDecisionSchema(this.db)) return []
+    return this.db.transaction(() => {
+      this.backfillLegacyCastDecisions()
+      return CharacterCastDecisionRepository.current(this.db).filter(decision => decision.action === 'register')
+    }).immediate()
+  }
+  /** 登记 / 改口吻定位。两者都是「追加一条 register」，当前态按名字取最后一条。 */
+  registerCastDecision(request: RegisterCharacterCastRequest): CharacterCastDecisionView[] {
+    if (!request || typeof request.name !== 'string' || !request.name.trim() || request.name.trim().length > 200
+      || typeof request.anchorRole !== 'string' || !request.anchorRole.trim() || request.anchorRole.trim().length > 500
+      || typeof request.operationId !== 'string' || !request.operationId.trim() || request.operationId.length > 256
+      || Object.keys(request).some(key => !['name', 'anchorRole', 'catchphrase', 'relationToProtagonist', 'operationId'].includes(key))
+      || request.catchphrase !== undefined && (typeof request.catchphrase !== 'string' || request.catchphrase.length > 500)
+      || request.relationToProtagonist !== undefined && (typeof request.relationToProtagonist !== 'string' || request.relationToProtagonist.length > 500))
+      throw new Error('CAST_DECISION_INVALID')
+    if (!hasCharacterCastDecisionSchema(this.db)) throw new Error('CAST_DECISION_SCHEMA_REQUIRED')
+    return this.db.transaction(() => {
+      this.backfillLegacyCastDecisions()
+      CharacterCastDecisionRepository.append(this.db, {
+        name: request.name.trim(), anchorRole: request.anchorRole.trim(),
+        catchphrase: request.catchphrase, relationToProtagonist: request.relationToProtagonist,
+        action: 'register', sourceRevision: this.revision(), operationId: request.operationId.trim(),
+        createdAt: new Date().toISOString(),
+      })
+      return CharacterCastDecisionRepository.current(this.db).filter(decision => decision.action === 'register')
+    }).immediate()
+  }
+  /**
+   * 撤销登记：该名字回到待建卡候选集。
+   *
+   * 撤销是**新决定**，不改写任何已批准批次收据（与 `reopen` 同一原则）。撤销行沿用当前
+   * 登记的定位与口吻，因此「引用键」与「卡槽」在数据形状上分开 —— 撤销卡槽不连带丢失
+   * 已声明的口吻与定位（判据 ④）。对未登记或已撤销的名字是幂等空操作。
+   */
+  revokeCastDecision(request: RevokeCharacterCastRequest): CharacterCastDecisionView[] {
+    if (!request || typeof request.name !== 'string' || !request.name.trim() || request.name.trim().length > 200
+      || typeof request.operationId !== 'string' || !request.operationId.trim() || request.operationId.length > 256
+      || Object.keys(request).some(key => !['name', 'operationId'].includes(key)))
+      throw new Error('CAST_DECISION_INVALID')
+    if (!hasCharacterCastDecisionSchema(this.db)) throw new Error('CAST_DECISION_SCHEMA_REQUIRED')
+    return this.db.transaction(() => {
+      this.backfillLegacyCastDecisions()
+      const name = request.name.trim()
+      const current = CharacterCastDecisionRepository.currentForName(this.db, name)
+      if (current && current.action === 'register') {
+        CharacterCastDecisionRepository.append(this.db, {
+          name, anchorRole: current.anchorRole, catchphrase: current.catchphrase,
+          relationToProtagonist: current.relationToProtagonist, action: 'revoke',
+          sourceRevision: this.revision(), operationId: request.operationId.trim(),
+          createdAt: new Date().toISOString(),
+        })
+      }
+      return CharacterCastDecisionRepository.current(this.db).filter(decision => decision.action === 'register')
+    }).immediate()
   }
   /**
    * Read-only generation history. The table stores no timestamp, so entries are
@@ -412,6 +509,22 @@ export class CharacterProposalService {
         envelope.authorEditProof = { payloadHash: authorReceipt.payload_hash, receiptHash: textHash(authorReceipt.receipt_json) }
       }
       refreshCharacterIdentityProjection(this.db)
+      // 段三起：`functional` 决定在**确认时**就写入决定日志，日志因此成为唯一事实源
+      // （读取侧的 backfill 只负责段三之前的历史批次）。这样撤销之后再登记同一个名字
+      // 也能生效 —— 若只靠读取时派生，一个已被撤销过的名字会因"日志里已有记录"而永不更新。
+      if (hasCharacterCastDecisionSchema(this.db)) {
+        for (const selection of request.selections) {
+          if (selection.action !== 'functional') continue
+          const name = byKey.get(selection.selectionKey)?.fields.name?.trim()
+          if (!name) continue
+          CharacterCastDecisionRepository.append(this.db, {
+            name, anchorRole: byKey.get(selection.selectionKey)?.fields.role ?? '', action: 'register',
+            sourceRevision: finalRevision,
+            operationId: `cast-approve:${request.operationId}:${selection.selectionKey}`,
+            createdAt: new Date().toISOString(),
+          })
+        }
+      }
       envelope.batch = { ...batch, status: 'approved', revision: finalRevision, approvalOperationId: request.operationId }
       envelope.decision = structuredClone(decision); envelope.created = receipt.created
       if (batch.source.kind === 'legacy-roster-generation') {

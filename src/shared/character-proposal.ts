@@ -92,6 +92,36 @@ export type PendingFinalizedCharacterProposalSummary = {
   proposalBatchId: string
   revision: number
 } & ({ finalizationId: string; importOperationId?: never } | { importOperationId: string; finalizationId?: never })
+/**
+ * 锚点人物（功能配角）的一条决定记录 —— append-only 日志的只读视图。
+ *
+ * `revoke` 行仍然带着登记时的定位与口吻：撤销的是**卡槽**，不是引用键，
+ * 所以已声明的口吻/定位不因撤销而丢失（判据 ④）。
+ */
+export interface CharacterCastDecisionView {
+  decisionId: string
+  name: string
+  anchorRole: string
+  catchphrase: string
+  relationToProtagonist: string
+  action: 'register' | 'revoke'
+  sourceRevision: number
+  operationId: string
+  createdAt: string
+}
+/** 登记（或改口吻/定位后重新登记）一个锚点人物。 */
+export interface RegisterCharacterCastRequest {
+  name: string
+  anchorRole: string
+  catchphrase?: string
+  relationToProtagonist?: string
+  operationId: string
+}
+/** 撤销登记：该名字重新回到待建卡候选集。 */
+export interface RevokeCharacterCastRequest {
+  name: string
+  operationId: string
+}
 export interface CharacterIdentitySnapshot {
   revision: number
   characters: { characterId: string; fields: CharacterStaticFields; retired: boolean; revision: number;
@@ -103,8 +133,12 @@ export interface CharacterProposalChannels {
   'character-proposal:stage': { args: [{ source: CharacterProposalSource }]; return: CharacterProposalBatch }
   'character-proposal:read': { args: [{ proposalBatchId: string }]; return: CharacterProposalBatch }
   'character-proposal:list-history': { args: []; return: CharacterProposalHistoryEntry[] }
-  /** 作者已确认「登记为功能配角、不建卡」的名字；用于从待建卡候选集里排除。 */
+  /** 作者已确认「登记为锚点人物、不建卡」的名字；用于从待建卡候选集里排除。 */
   'character-proposal:list-declined': { args: []; return: string[] }
+  /** 锚点人物管理面：列出当前仍有效的登记（不含已撤销的名字）。 */
+  'character-cast:list': { args: []; return: CharacterCastDecisionView[] }
+  'character-cast:register': { args: [RegisterCharacterCastRequest]; return: CharacterCastDecisionView[] }
+  'character-cast:revoke': { args: [RevokeCharacterCastRequest]; return: CharacterCastDecisionView[] }
   'character-proposal:list-pending-finalized': { args: []; return: PendingFinalizedCharacterProposalSummary[] }
   'character-proposal:read-pending-finalized': { args: [{ proposalBatchId: string }]; return: CharacterProposalBatch }
   'character-proposal:approve': { args: [ApproveCharacterProposalRequest]; return: { batch: CharacterProposalBatch; created: { selectionKey: string; characterId: string }[] } }

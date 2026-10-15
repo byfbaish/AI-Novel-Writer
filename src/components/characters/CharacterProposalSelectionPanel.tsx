@@ -115,7 +115,7 @@ function CandidateItem({ batch, item, identities, choices, onChange, disabled }:
       }}>
       <option value="keep-unresolved">{text('暂不采用，保留候选', 'Keep unresolved')}</option>
       <option value="create">{text('新建独立角色', 'Create a separate character')}</option>
-      <option value="functional">{text('登记为功能配角，不建卡', 'Register as anchored supporting role (no card)')}</option>
+      <option value="functional">{text('登记为锚点人物，不建卡', 'Register as anchored supporting role (no card)')}</option>
       {identities.map(identity => <option key={identity.characterId} value={`map:${identity.characterId}`}>{identity.name} · {roleLabel(identity.role) ?? ''} · {identity.characterId.slice(-8)}</option>)}
     </NativeSelect>
     {editable && isAdoptedCharacterDecision(choice?.action ?? 'keep-unresolved') && <details className="text-xs" onClick={event => event.stopPropagation()}>

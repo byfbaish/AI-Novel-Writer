@@ -146,7 +146,7 @@ export function commitAuthorCharacterRoster(db: Database.Database, candidate: Ch
       if (expectedState && (!observed.currentState || CHARACTER_STATE_TEXT_FIELDS.some(field => observed.currentState![field] !== expectedState[field]))) throw new Error('CHARACTER_AUTHOR_READBACK_FAILED')
     }
     const receipt: CharacterRosterCommitReceipt = JSON.parse(JSON.stringify({ operationId: request.operationId, payloadHash: requestHash,
-      revision: snapshot.revision, idempotent: false, snapshot, created: committed.created }))
+      revision: snapshot.revision, idempotent: false, snapshot, created: committed.created, revived: committed.revived }))
     const approval = db.prepare('SELECT payload_hash,receipt_json FROM character_identity_approvals WHERE operation_id=?').get(approvalId) as { payload_hash: string; receipt_json: string }
     const saved: Envelope = { version: 1, kind: 'author-roster', requestHash, receipt, receiptHash: hash(JSON.stringify(receipt)),
       approvalId, approvalPayloadHash: approval.payload_hash, approvalReceiptHash: hash(approval.receipt_json) }
