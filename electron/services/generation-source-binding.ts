@@ -15,7 +15,7 @@ import { MATERIAL_DECISION_CATEGORIES, MATERIAL_DECISION_MAX_INPUT_UNITS, MATERI
     MATERIAL_DECISION_UNIT_METHOD_VERSION } from '../../src/shared/generation-owner-contract';
 import type { GenerationKnowledgeSnapshot } from '../../src/shared/generation-knowledge';
 import type { ReviewRevisionContext } from '../../src/shared/review-revision-generation';
-import { reviewRevisionAuthorMaterial, reviewRevisionAiBrief } from '../../src/shared/review-revision-generation';
+import { reviewRevisionAuthorMaterial, reviewRevisionAiBrief, authorMaterialOmitForOperation } from '../../src/shared/review-revision-generation';
 import { captureReviewRevisionContext, reviewRevisionRequest } from './review-revision-context';
 import type { AgentGenerationInput } from '../../src/shared/agent-generation';
 import { buildAgentGenerationContext, validateAgentGenerationInput } from './agent-generation-context';
@@ -327,7 +327,7 @@ export function buildGenerationSourceBinding(deps: GenerationSourceBindingDepend
         const admitted = new Set([...(context?.history ?? []), ...(context?.predecessor ? [context.predecessor] : [])]
             .flatMap(item => item.identity ? [decisionIdentity(item.identity)] : []));
         if (!legacyConfirmation && [...materialDecision.included, ...materialDecision.omitted].some(item => {
-            if (item.sourceId === 'author:required') return !context || item.contentHash !== hash(reviewRevisionAuthorMaterial(context));
+            if (item.sourceId === 'author:required') return !context || item.contentHash !== hash(reviewRevisionAuthorMaterial(context, authorMaterialOmitForOperation(input.operation)));
             if (item.sourceId.startsWith('review:confirmed:')) return input.operation !== 'refine-from-review' || !context?.confirmation
                 || item.sourceId !== `review:confirmed:${reviewSourceId}` || item.category !== 'future-plan'
                 || item.contentHash !== hash(reviewRevisionAiBrief(context));

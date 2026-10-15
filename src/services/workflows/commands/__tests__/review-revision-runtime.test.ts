@@ -11,21 +11,21 @@ import { useEditorStore } from '../../../../stores/editor-store'
 import { useLLMStore } from '../../../../stores/llm-store'
 import type { WorkflowContext } from '../../../../stores/workflow-store'
 import type { LLMFinishReason } from '../../../../shared/ipc-channels'
-import { reviewRevisionAiBrief, reviewRevisionAuthorMaterial, type ReviewRevisionContext, type ReviewRevisionOperation } from '../../../../shared/review-revision-generation'
+import { authorMaterialOmitForOperation, reviewRevisionAiBrief, reviewRevisionAuthorMaterial, type ReviewRevisionContext, type ReviewRevisionOperation } from '../../../../shared/review-revision-generation'
 
 /**
  * P7（2026-10-16）：审稿链的作者材料块**省略已由模板变量单独注入的字段**
  * （`worldbuilding` / `characterStates`），避免同一份材料进请求两遍。
- * 修稿链（`refine-draft` / `refine-from-review`）的 builder 不注入这两项，
- * 材料块是它们唯一来源 ⇒ **不省略**。
+ * 修稿链（`refine-draft` / `refine-from-review`）不省略 —— 材料块是它们唯一来源。
  *
- * 测试须按同一契约取期望值，否则会拿「完整版」去比对「省略版」的 prompt。
+ * 测试与实现**共用同一个判定函数**（`authorMaterialOmitForOperation`）⇒ 契约漂移会被
+ * 这些用例直接抓住；此前 3 例先红正是"拿完整版比对省略版"。
  */
 function authorMaterialFor(operation: string, context: ReviewRevisionContext): string {
+  // `recheck` 由**同一个** `ReviewChapterCommand` 执行 ⇒ 主进程侧看到的 operation 仍是
+  // `review-chapter`，材料契约也相同。测试里把循环变量映射过去，避免契约漂移。
   return reviewRevisionAuthorMaterial(context,
-    operation === 'refine-draft' || operation === 'refine-from-review'
-      ? undefined
-      : { omit: ['worldbuilding', 'characterStates'] })
+    authorMaterialOmitForOperation(operation === 'recheck' ? 'review-chapter' : operation))
 }
 import { MATERIAL_DECISION_MAX_INPUT_UNITS } from '../../../../shared/generation-owner-contract'
 import type { ReviewRevisionCommandSource } from '../review-revision-command'

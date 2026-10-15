@@ -105,6 +105,30 @@ export function reviewRevisionAiBrief(context: ReviewRevisionContext): string {
  */
 export type ReviewAuthorMaterialOmittable = 'worldbuilding' | 'characterStates'
 
+/**
+ * **单点判定**：某个审稿/修稿操作是否省略作者材料块中「已由模板变量注入」的字段。
+ *
+ * ⚠️ **渲染层与主进程必须调用同一个函数**。渲染层用它构造 prompt 与 `materialDecision`
+ * 的 `contentHash`；主进程 `electron/services/generation-source-binding.ts` 会**重算同一
+ * 文本**来核对哈希。两边各写一份判断 ⇒ 一旦漂移就是
+ * 「渲染层按省略版算 hash、主进程按完整版核对」⇒ `GENERATION_MATERIAL_DECISION_INVALID`
+ * —— **2026-10-16 P7 实施时实际踩过**（只改了渲染层，主进程没跟上）。
+ *
+ * - **审稿链**（`review-chapter`，含其 `recheck`）：**省略** —— 模板 `consistency_check`
+ *   已用 `withWorldBuilding` / `withCharacterStates` 单独注入这两项，材料块再给一份就是重复。
+ * - **修稿链**（`refine-draft` / `refine-from-review`）：**不省略** —— 它们的 builder 不注入
+ *   这两项，材料块是**唯一**来源。
+ */
+export function authorMaterialOmitForOperation(
+  operation: string,
+): { omit: readonly ReviewAuthorMaterialOmittable[] } | undefined {
+  // **白名单式**：只有审稿链省略。新增 operation 时默认**不省略** —— 宁可重复下发，
+  // 不可静默丢材料（`generation-source-binding.ts` 已把 operation 限定在四个之内）。
+  return operation === 'review-chapter'
+    ? { omit: ['worldbuilding', 'characterStates'] }
+    : undefined
+}
+
 /** One immutable author-material block shared by renderer admission and main hash validation. */
 export function reviewRevisionAuthorMaterial(
   context: ReviewRevisionContext,

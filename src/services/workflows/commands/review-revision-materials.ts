@@ -25,12 +25,13 @@ export async function selectFrozenReviewRevisionMaterials(
   frozen: ReviewRevisionContext,
   current: ChapterMaterialIdentity,
   /**
-   * P7：审稿链可省略「已由模板变量单独注入」的作者材料字段（世界观 / 角色状态），
-   * 避免同一份材料在请求里出现两遍。**精修与改写链不传此参数**（材料块是它们唯一来源）。
+   * P7：省略「已由模板变量单独注入」的作者材料字段（世界观 / 角色状态），避免同一份材料
+   * 进请求两遍。调用方**必须**用 `authorMaterialOmitForOperation(operation)` 单点判定
+   * （主进程会用同一函数重算 contentHash 核对）。
    */
-  options?: { omitAuthorFields?: readonly ReviewAuthorMaterialOmittable[] },
+  options?: { omit?: readonly ReviewAuthorMaterialOmittable[] },
 ) {
-  const author = reviewRevisionAuthorMaterial(frozen, { omit: options?.omitAuthorFields })
+  const author = reviewRevisionAuthorMaterial(frozen, options)
   const ai = reviewRevisionAiBrief(frozen)
   const materials: ReviewRevisionMaterial[] = [{ identity: { projectId: current.projectId,
     sourceId: 'author:required', revision: 1, contentHash: await hashAuthorText(author), provenance: 'author' },

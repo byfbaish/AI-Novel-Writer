@@ -17,6 +17,7 @@ import { MATERIAL_DECISION_MAX_INPUT_UNITS, MATERIAL_DECISION_RECEIPT_VERSION, t
 import { captureReviewRevisionContext } from '../review-revision-context';
 import { textHash } from '../../repositories/generation-run-repository';
 import type { PrepareReviewRevisionRequest } from '../../../src/shared/review-revision-generation';
+import { authorMaterialOmitForOperation } from '../../../src/shared/review-revision-generation';
 import { selectFrozenReviewRevisionMaterials } from '../../../src/services/workflows/commands/review-revision-materials';
 import { FinalizationRepository } from '../../repositories/finalization-repository';
 import { createProjectArchiveRoundtripFixture } from '../../../test/desktop/project-archive.fixture';
@@ -554,7 +555,9 @@ describe('material decision receipt binding (S10B step 3)', () => {
         const context = captureReviewRevisionContext(f.db, { operation: 'review-chapter', draftId: 1,
             expectedDraft: { chapterNumber: 2, version: 1, status: 'draft', contentHash: textHash('原文\r\n汉字。') },
             authorInputs: [], uiLocale: 'zh-CN' }, f.input.projectId);
-        const admission = await selectFrozenReviewRevisionMaterials(context, { projectId: f.input.projectId, epoch: f.input.epoch });
+        // P7：材料决策必须与主进程用**同一判定函数**（审稿链省略已由模板注入的字段），否则哈希核对必红。
+        const admission = await selectFrozenReviewRevisionMaterials(context, { projectId: f.input.projectId, epoch: f.input.epoch },
+            authorMaterialOmitForOperation('review-chapter'));
         expect(admission.decision.capacity.admittedUnits).toBeGreaterThan(24_000);
         expect(admission.decision.capacity.maxInputUnits).toBe(MATERIAL_DECISION_MAX_INPUT_UNITS);
         expect(admission.decision.coverage.complete).toBe(true);
