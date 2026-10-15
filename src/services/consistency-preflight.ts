@@ -1,11 +1,24 @@
 import type { ProjectSessionContext } from '../shared/ipc-channels'
-import type { BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding } from '../shared/consistency-preflight'
-import { findBlueprintContinuityRisks, findBlueprintSpaceTimeRisks } from '../shared/consistency-preflight'
+import type {
+  BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding, ConsistencyPreflightCoverage,
+} from '../shared/consistency-preflight'
+import {
+  describeSpaceTimeCoverage, findBlueprintContinuityRisks, findBlueprintSpaceTimeRisks,
+} from '../shared/consistency-preflight'
+import { normalizeSpaceRefs, parseSpaceRules } from '../shared/space-time-consistency'
 import { ipc } from './ipc-client'
+
+// 覆盖度的类型与格式化器在 shared（纯函数、可单测）；这里再导出，调用方只认一处入口。
+export { describeSpaceTimeCoverage, type ConsistencyPreflightCoverage }
 
 export interface ConsistencyPreflightResult {
   findings: ConsistencyFinding[]
   exemptions: ConsistencyExemption[]
+  /**
+   * 覆盖度。**可选** —— 「仅回填已保存豁免」的初始化路径（不判任何东西）不带它；
+   * 只有真正跑过 `readConsistencyPreflight` 的结果才有。
+   */
+  coverage?: ConsistencyPreflightCoverage
 }
 
 export async function readConsistencyPreflight(
@@ -35,5 +48,11 @@ export async function readConsistencyPreflight(
       ...findBlueprintSpaceTimeRisks(worldBuildingText, blueprint, exemptions),
     ]
   }))).flat()
-  return { findings, exemptions }
+  const coverage: ConsistencyPreflightCoverage = {
+    registeredSpaces: worldBuildingText === undefined ? null : parseSpaceRules(worldBuildingText).length,
+    blueprintSpaceRefs: blueprints.reduce(
+      (total, blueprint) => total + normalizeSpaceRefs(blueprint.structuredRefs).length, 0,
+    ),
+  }
+  return { findings, exemptions, coverage }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findBlueprintSpaceTimeRisks } from '../consistency-preflight'
+import { describeSpaceTimeCoverage, findBlueprintSpaceTimeRisks } from '../consistency-preflight'
 import { findSpaceTimeConflicts } from '../space-time-consistency'
 
 /**
@@ -90,5 +90,59 @@ describe('findBlueprintSpaceTimeRisks', () => {
     const direct = findSpaceTimeConflicts({ chapterNumber: 8, worldBuildingText: WORLD, spaceRefs: refs })
       .filter(finding => finding.severity === 'warning')
     expect(findBlueprintSpaceTimeRisks(WORLD, { chapterNumber: 8, structuredRefs: refs })).toHaveLength(direct.length)
+  })
+})
+
+/**
+ * 缺陷 2 的补丁（2026-10-15）：静默 ≠ 通过。
+ *
+ * 实机场景：「世界观有机读行」与「本次根本没判」在界面上完全同形 —— 都是安静地继续写。
+ * `describeSpaceTimeCoverage` 负责让前者说「已完成」、后者说「未参与判定 + 补救」。
+ */
+describe('describeSpaceTimeCoverage', () => {
+  it('不带覆盖度 ⇒ 什么都不说（初始化路径不谎报）', () => {
+    expect(describeSpaceTimeCoverage(undefined)).toBeUndefined()
+  })
+
+  it('★ 实机复现：世界观无机读行 ⇒ 明说「未参与判定」并给出补救', () => {
+    const note = describeSpaceTimeCoverage({ registeredSpaces: 0, blueprintSpaceRefs: 0 })!
+    expect(note.zhCN).toContain('未参与判定')
+    expect(note.zhCN).toContain('hours=')
+    expect(note.zhCN).toContain('重新生成世界观')
+    expect(note.enUS).toContain('did not run')
+  })
+
+  it('设定层已登记、蓝图无结构化引用 ⇒ 指名是蓝图侧缺字段', () => {
+    const note = describeSpaceTimeCoverage({ registeredSpaces: 2, blueprintSpaceRefs: 0 })!
+    expect(note.zhCN).toContain('未参与判定')
+    expect(note.zhCN).toContain('2 个空间')
+    expect(note.zhCN).toContain('蓝图')
+  })
+
+  it('两侧都有 ⇒ 报「已完成」并带出覆盖量（作者能确证它真跑过）', () => {
+    const note = describeSpaceTimeCoverage({ registeredSpaces: 3, blueprintSpaceRefs: 5 })!
+    expect(note.zhCN).toContain('已完成')
+    expect(note.zhCN).toContain('3 个空间')
+    expect(note.zhCN).toContain('5 条蓝图引用')
+    expect(note.zhCN).not.toContain('未参与判定')
+  })
+
+  it('设定层读取失败（null）与「一条都没登记」区分开', () => {
+    const note = describeSpaceTimeCoverage({ registeredSpaces: null, blueprintSpaceRefs: 1 })!
+    expect(note.zhCN).toContain('读取设定层失败')
+    expect(note.zhCN).not.toContain('还没有可判定的机读行')
+  })
+
+  it('每条说明都有中英两版且非空', () => {
+    for (const coverage of [
+      { registeredSpaces: null, blueprintSpaceRefs: 0 },
+      { registeredSpaces: 0, blueprintSpaceRefs: 0 },
+      { registeredSpaces: 2, blueprintSpaceRefs: 0 },
+      { registeredSpaces: 2, blueprintSpaceRefs: 3 },
+    ]) {
+      const note = describeSpaceTimeCoverage(coverage)!
+      expect(note.zhCN.trim().length, JSON.stringify(coverage)).toBeGreaterThan(0)
+      expect(note.enUS.trim().length, JSON.stringify(coverage)).toBeGreaterThan(0)
+    }
   })
 })

@@ -25,7 +25,7 @@ import {
 } from '../project-session-gate'
 import type { ModelProfile } from '../../shared/ipc-channels'
 import { readAuthoritativeNextChapter } from '../../services/authoritative-chapter-sequence'
-import { readConsistencyPreflight, type ConsistencyPreflightResult } from '../../services/consistency-preflight'
+import { readConsistencyPreflight, describeSpaceTimeCoverage, type ConsistencyPreflightResult } from '../../services/consistency-preflight'
 import { requireIpcSuccess } from '../../services/ipc-result'
 import ConsistencyPreflightPanel from './ConsistencyPreflightPanel'
 import {
@@ -211,6 +211,9 @@ function BatchChapterCreationDialogSession({ isOpen, startChapterNumber, onClose
           if (!isProjectSessionCurrent(projectSession)) return
           setConsistencyPreflight(preflight)
           if (preflight.findings.length > 0) return
+          // 与单章对话框同一纪律：静默 ≠ 通过，必须交代本次覆盖范围。
+          const coverageNote = describeSpaceTimeCoverage(preflight.coverage)
+          if (coverageNote) addLog('info', text(coverageNote.zhCN, coverageNote.enUS))
         } catch {
           if (!isProjectSessionCurrent(projectSession)) return
           addLog('info', text(

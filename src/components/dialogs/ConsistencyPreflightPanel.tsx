@@ -73,6 +73,12 @@ export default function ConsistencyPreflightPanel({
         <Button variant="outline" disabled={disabled} onClick={onFixAndRerun}>{text('修改后重检', 'Fix and rerun')}</Button>
         <Button variant="ai" disabled={disabled} onClick={onIgnoreOnce}>{text('仅本次忽略并继续', 'Ignore once and continue')}</Button>
       </div>}
+      {/* 判定前提：空间—钟点核对是**纯结构**的（Q4 边界），只看已登记的机读行。
+          不写清楚，作者手写的「下午两点」这类散文不参与判定时，会以为机制失灵。 */}
+      <p className="text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>{text(
+        '空间—钟点核对只比结构（形如「老陈记｜hours=07:00-10:00」），不解析「下午两点」这类散文；设定层未登记机读行、或蓝图经手工编辑时，该项不做判定。',
+        'The space/time check compares structure only (e.g. "老陈记｜hours=07:00-10:00"), never prose such as "two in the afternoon". If the world setting registers no machine-readable lines, or the blueprint was hand-edited, that check does not run.',
+      )}</p>
     </section>
   )
 }
