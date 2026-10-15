@@ -517,13 +517,15 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
           >
             <Textarea
               ref={globalGuidanceRef}
-              value={config.globalGuidance}
+              value={config.globalGuidance || ''}
               onChange={(e) => update('globalGuidance', e.target.value)}
               placeholder={text('全局的写作风格要求、禁忌事项、特殊规则...', 'Global style requirements, restrictions, and special rules...')}
               rows={6}
             />
             <ScopeTagBar
-              value={config.globalGuidance}
+              // 与下方 `referenceWorks || ''` 同款兜底：旧项目/未填时该字段为 undefined，
+              // 直接透传会让统计栏在渲染期崩掉（2026-10-15 实测）。
+              value={config.globalGuidance || ''}
               onChange={(next) => update('globalGuidance', next)}
               textareaRef={globalGuidanceRef}
             />

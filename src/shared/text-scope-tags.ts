@@ -91,12 +91,18 @@ interface ParsedSegment {
   lines: string[]
 }
 
-function parseSegments(raw: string): {
+/**
+ * 切段。⚠️ **接受 `undefined`**：本函数是 UI 组件（`ScopeTagBar`）的渲染路径，
+ * 而配置字段在旧项目/未填时为 undefined（类型写 `string` 也挡不住运行时）。若不防御，
+ * `undefined.split` 会在渲染期抛错、把整棵编辑器树打挂（2026-10-15 实测 f05 旅程 5 例）。
+ * 语义：`undefined` 等价空串（空文本 → 0 段 + 0 标签）。
+ */
+function parseSegments(raw: string | undefined): {
   segments: ParsedSegment[]
   unknownTags: string[]
   hasTag: boolean
 } {
-  const lines = raw.split(/\r?\n/)
+  const lines = (raw ?? '').split(/\r?\n/)
   const segments: ParsedSegment[] = []
   const unknownTags: string[] = []
   let current: ParsedSegment = { values: 'all', lines: [] }
@@ -163,10 +169,10 @@ function buildStats(segments: readonly ParsedSegment[], unknownTags: string[]): 
  * 无标签输入 → **逐字返回原文**（快路径）：这是"旧数据零改动"的第一保证，
  * 也避免纯文本被换行规范化碰到。
  */
-export function projectScopedText(raw: string, step: TextScopeChoice): ScopedTextResult {
+export function projectScopedText(raw: string | undefined, step: TextScopeChoice): ScopedTextResult {
   const { segments, unknownTags, hasTag } = parseSegments(raw)
   const stats = buildStats(segments, unknownTags)
-  if (!hasTag) return { text: raw, kept: segments.length, dropped: 0, stats }
+  if (!hasTag) return { text: raw ?? '', kept: segments.length, dropped: 0, stats }
 
   const kept: ParsedSegment[] = []
   let dropped = 0
@@ -184,7 +190,7 @@ export function projectScopedText(raw: string, step: TextScopeChoice): ScopedTex
 }
 
 /** 段归属统计（不过滤内容），供 UI 常驻提示。 */
-export function summarizeScopedText(raw: string): TextScopeStats {
+export function summarizeScopedText(raw: string | undefined): TextScopeStats {
   return projectScopedText(raw, 'all').stats
 }
 
