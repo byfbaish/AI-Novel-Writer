@@ -1,8 +1,14 @@
 # P7 · 审稿链材料去重（世界观 / 角色状态重复注入）
 
-> 版本：**v1**（2026-10-16）。**待作者裁定 D1–D3**。
+> 版本：**v2**（2026-10-16）。**已实施**。裁定见 §9；实施记录见 §10。
 > 登记来源：`docs/plans/prompt-assembly-backlog.md` P7；同批取证见 `docs/design/c1-review-architecture-declaration-design.md` §8.1.3。
 > 触发：作者实测「审稿的负荷比写正文还大」+ 某供应商模型上下文有限、**第一次审稿失败**（`finishReason: 'length'`、输出为空，两次调用均失败）。
+>
+> ## 裁定（2026-10-16，作者）
+>
+> - **D1**：走**方案 E**（材料块按链参数化省略）。
+> - **D2**：排除范围 = **`worldbuilding` + `characterStates` 两个**。
+> - **D3**：**后续蓝图不动**（作者：「你的理由很充分，不动」）—— 它不重复，是否边界化属独立议题（§7）。
 
 ---
 
@@ -149,11 +155,39 @@ text('【世界观设定】', '[Worldbuilding]'), authorText('worldbuilding', co
 
 ## 8. 裁定项
 
-| # | 事项 | 建议 |
-|---|---|---|
-| **D1** | 走哪个方案 | **E**（参数化省略）。A 会留两个空节；C 不省 |
-| **D2** | 排除范围 | **`worldbuilding` + `characterStates` 两个**（不只世界观；角色状态同源，见 §2.2） |
-| **D3** | 后续蓝图全量（3,417 字）是否同批处理 | **不同批**（需独立裁定，见 §7）；本项只去重 |
+| # | 事项 | 裁定 | 结果 |
+|---|---|---|---|
+| **D1** | 走哪个方案 | **E**（参数化省略） | ✅ 已实施 |
+| **D2** | 排除范围 | **`worldbuilding` + `characterStates`**（不止世界观） | ✅ 已实施 |
+| **D3** | 后续蓝图全量（3,417 字）是否同批处理 | **不同批**（作者：理由充分，不动） | ⏸ 仍登记于 §7 |
+
+---
+
+## 9. 实施记录（2026-10-16）
+
+| 文件 | 改动 |
+|---|---|
+| `src/shared/review-revision-generation.ts` | 新增 `ReviewAuthorMaterialOmittable` 类型；`reviewRevisionAuthorMaterial(context, options?)` 支持 `omit`。**默认（不传）行为逐字不变** |
+| `src/services/workflows/commands/review-revision-materials.ts` | `selectFrozenReviewRevisionMaterials(frozen, current, options?)` 第三参透传 `omitAuthorFields` |
+| `src/services/workflows/commands/review-chapter.command.ts` | `:54` 传 `{ omitAuthorFields: ['worldbuilding', 'characterStates'] }`。**`:70`/`:72` 模板侧注入保持不动** |
+
+### ★ 实施时发现的一个**静默丢数据**风险（已在代码中封住）
+
+`reviewRevisionAuthorMaterial` 里有一段**前缀去重**：若某来源原文与另一来源的**完整前缀**相同，就把它替换成「（本来源原文与 X 的完整前缀相同，见该来源原文。）」。
+
+⇒ 若照搬省略 `worldbuilding`、却**留着它当比较基准**：当 `config.worldSetting` 恰是 `worldbuilding` 的完整前缀时，`worldSetting` 会被换成「见 worldbuilding 原文」——**而那份原文并不在 prompt 里** ⇒ **作者设定静默丢失**。
+
+**修法**：省略 `worldbuilding` 时，**同时把它从 `sources` 比较基准数组中移除**（`review-revision-generation.ts` 内已加注释说明）。测试 §`★ 边界` 用「不 omit 会替换 / omit 后必须保留原文」**双向**锁住该行为。
+
+### 测试
+
+- 新增 `src/shared/__tests__/review-revision-author-material.test.ts`（**6 例**）：默认不变（回归锁）/ 单省 / 双省 / 其余材料完整 / ★ 前缀边界双向 / authorInputs 不受影响。
+- `review-revision-runtime.test.ts`：新增 `authorMaterialFor(operation, context)` helper —— 测试须按同一契约取值（审稿链含 `recheck` 走 omit 版；修稿链不 omit），否则会拿「完整版」比对「省略版」的 prompt（这正是本次先红 3 例的原因）。
+- **验证读数**：目标 2 文件 **52/52** · 其余下游 4 文件 **128/128** · `tsc --noEmit` **0**。
+
+### ⏳ 待实机复验
+
+重启 `pnpm dev` 后跑一次审稿，核对：审稿 user 由 **32,442 → ~26,200**（-19.2%）；且请求里 `【世界观设定】` 的**完整内容只出现一次**（模板侧），材料侧不再重复。
 
 ---
 
