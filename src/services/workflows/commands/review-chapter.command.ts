@@ -1,5 +1,6 @@
 import { redactVisibleCompletionText } from '../bounded-completion'
 import { reviewTimeContinuity } from '../../../shared/chapter-time-continuity'
+import { reviewFarTermSettingRule } from '../../../shared/review-far-term-setting'
 import type { CommandExecuteParams, WorkflowGenerationRuntimeDependencies } from './base-command'
 import type { PreparedReviewRevisionContext, ReviewRevisionRecovery } from '../../../shared/review-revision-generation'
 import { ReviewRevisionCommand, type ReviewRevisionCommandSource } from './review-revision-command'
@@ -76,6 +77,8 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
       promptLanguageText(language,
         '【作者设定优先】【作者确认项目配置】与【世界观设定】是权威事实；作者角色状态按标注时点理解；历史派生摘要不能覆盖作者事实。报告矛盾前，须说明作者设定或其必然前提与正文对同一对象、时点及条件的陈述为何不能同时成立，并纳入正文已有的兼容描述。正文未再次说明、未触碰或未明确位置，不证明权威状态已改变；存在合理兼容解释时，不得将推断当作事实矛盾要求修稿。新进展可以发生在同一时段或地点；作者未明确要求更换时点或场景时，不得强加，也不能因未更换就断言没有推进。若正文确实与作者事实或由其必然推出的前提矛盾，必须报告为 error 或 warning；即使蓝图、章节计划或冻结目标写法相反，也不得因此放过。',
         '[Author settings take priority] The author-confirmed project configuration and the worldbuilding settings are authoritative facts; author character states apply at their annotated time; historical derived summaries cannot override author facts. Before reporting a contradiction, explain why the author setting or its necessary premise and the draft cannot both be true for the same subject, time and conditions, considering compatible descriptions already present in the draft. Mere omission, lack of contact or an unstated location does not establish that an authoritative state has changed. Where a reasonable compatible interpretation exists, do not demand revision based on an inferred factual contradiction. New progress can occur within the same time period or location; do not require a time or scene change that the author has not specified, or infer no progress merely because neither changed. If the draft truly contradicts an author fact or a premise that necessarily follows from it, report it as an error or warning, even when a blueprint, chapter plan or frozen goal says otherwise.'),
+      // C1 路子 B：审稿保留完整世界观（判剧透需要），但限定远期设定不得被当成本章必须兑现的事实。
+      reviewFarTermSettingRule(language),
       promptLanguageText(language,
         '【证据锚点硬约束】每个 error/warning 的 items[].quote 必须是待审正文中逐字连续、且全文仅出现一次的单一摘录；不得拼接多个位置、改写原文或包含省略号。优先选择足以证明问题的最短完整句。goalReviews[].evidence 中的每个 quote 也必须分别满足上述约束；需要多处证据时拆成多个 evidence 项，绝不可在一个 quote 中拼接。',
         '[Strict evidence-anchor constraint] Each items[].quote for an error/warning must be one verbatim, contiguous excerpt that occurs exactly once in the draft under review. Do not combine multiple locations, rewrite the text, or include ellipses. Prefer the shortest complete sentence that proves the issue. Every quote in goalReviews[].evidence must independently satisfy the same constraint; when multiple excerpts are needed, use separate evidence entries and never combine them in one quote.'),
