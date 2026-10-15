@@ -429,7 +429,7 @@ interface PromptTemplate {
 
 - **P1-1** ✅ 已完成 + 实机复验（`chapter-boundary.ts`；ch2 边界块 1,656 → 729 字，省 56%）。
 - **P1-2a** ✅ 已完成 + 作者行动项闭合（`architecture-projection.ts`；ch2 `architecture` 6,854 → 5,958，省 896）。**作者已把「代述禁忌」迁入 §1**、并裁定「现实变薄」**随 §3 移除**（原话「当期不该知道，这个变化由弧光和大纲来安排」）⇒ 见 `p1-2-architecture-projection-design.md` §8/§8.1/§12。**仅剩实机复验**（与 B′ 段二同批待决）。
-- **P1-3** ✅ **已结项（2026-10-16 裁定：D1/D2 不立项 · D3 重定义为「可观测性」并**已落地** · D4【C1】另立小项）** ⇒ `p1-3-variable-export-scoping-design.md`。三条独立取证（内置 25 模板 / 覆盖版 20 份 / 实机 18 snapshot）显示 `enforceRequiredContext` 的兜底**一次都没触发**；`acceptsScopes` 的四个潜在消费者已被 P0-1 / P0-2 / P1-1 / P1-2a 逐一取代，且对 `architecture` 这类 `G+A+D` 混合变量**按主层过滤只有 0/100 两档、无中间态**。**可观测性已实施**：`projection` 元数据（零行为变更，不碰契约测试基线）。**唯一真候选落点 C1**（审稿链 `review-chapter.command.ts:71` 吃全量 `worldbuilding`、无投影）已单列为另立小项。
+- **P1-3** ✅ **已结项（2026-10-16 裁定：D1/D2 不立项 · D3 重定义为「可观测性」并**已落地** · D4【C1】另立小项）** ⇒ `p1-3-variable-export-scoping-design.md`。三条独立取证（内置 25 模板 / 覆盖版 20 份 / 实机 18 snapshot）显示 `enforceRequiredContext` 的兜底**一次都没触发**；`acceptsScopes` 的四个潜在消费者已被 P0-1 / P0-2 / P1-1 / P1-2a 逐一取代，且对 `architecture` 这类 `G+A+D` 混合变量**按主层过滤只有 0/100 两档、无中间态**。**可观测性已实施**：`projection` 元数据（零行为变更，不碰契约测试基线）。**唯一真候选落点 C1**（审稿链 `review-chapter.command.ts:71` 吃全量 `worldbuilding`、无投影）已单列为另立小项；**✅ 已实施（2026-10-16，路子 B 保留完整 §3 + 合同级声明）** ⇒ `shared/review-far-term-setting.ts` + `docs/design/c1-review-architecture-declaration-design.md`。
 - **P1-2b**（产出侧期次结构）与 **P2/P3** 未动。
 
 ---
