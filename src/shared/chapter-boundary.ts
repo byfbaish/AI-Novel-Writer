@@ -13,6 +13,7 @@
  */
 
 import { normalizeKeyEvents, type BlueprintKeyEvent } from './blueprint-key-events'
+import type { PromptProjectionNote } from './prompt-projection'
 import { writingLanguageText, type WritingLanguage } from './writing-language'
 
 /**
@@ -54,8 +55,14 @@ function boundaryLabel(event: string): string {
     : firstSentence
 }
 
+/** 投影结果 + 元数据（P1-3′ 可观测性）。空串（无可列事件）时 `projection` 为 `null`。 */
+export interface BoundaryNoticeResult {
+  text: string
+  projection: PromptProjectionNote | null
+}
+
 /**
- * 生成边界清单正文（**不含**标题与说明——那两块留在 `chapter-materials.ts`）。
+ * 生成边界清单正文（**不含**标题与说明——那两块留在 `chapter-materials.ts`），并附带投影元数据。
  *
  * 输出形态（中文；英文对称，`第N章《title》` ⇄ `Chapter N — title`）：
  *
@@ -69,12 +76,14 @@ function boundaryLabel(event: string): string {
  * 单条事件并入章标题行；多条事件改为章标题行 + 缩进子项。
  * 无事件的章整章略去（「什么都别写」的章贡献不了边界）。
  */
-export function toBoundaryNotice(language: WritingLanguage, input: BoundaryNoticeInput): string {
+export function buildBoundaryNotice(language: WritingLanguage, input: BoundaryNoticeInput): BoundaryNoticeResult {
   const lines: string[] = []
+  // 输入口径：逐字事件文本总长（不含章标题行）—— 用于让 trace 展示「收敛了多少」。
+  let beforeChars = 0
   for (const chapter of input.chapters ?? []) {
-    const events = normalizeKeyEvents(chapter.keyEvents, { chapterNumber: chapter.chapterNumber })
-      .map(item => boundaryLabel(item.event))
-      .filter(Boolean)
+    const normalized = normalizeKeyEvents(chapter.keyEvents, { chapterNumber: chapter.chapterNumber })
+    for (const item of normalized) beforeChars += item.event.trim().length
+    const events = normalized.map(item => boundaryLabel(item.event)).filter(Boolean)
     if (events.length === 0) continue
     const head = writingLanguageText(
       language,
@@ -90,5 +99,25 @@ export function toBoundaryNotice(language: WritingLanguage, input: BoundaryNotic
     lines.push(`- ${head}${writingLanguageText(language, '：', ':')}`)
     for (const event of events) lines.push(`  - ${event}`)
   }
-  return lines.join('\n')
+  const text = lines.join('\n')
+  if (!text) return { text: '', projection: null }
+  return {
+    text,
+    projection: {
+      variable: 'future_blueprints',
+      kind: 'future-plan-boundary-notice',
+      beforeChars,
+      afterChars: text.length,
+      droppedSections: [],
+    },
+  }
+}
+
+/**
+ * 兼容入口：只要边界清单正文（既有调用点与测试继续可用）。
+ *
+ * 需要投影元数据的调用点请改用 `buildBoundaryNotice`。
+ */
+export function toBoundaryNotice(language: WritingLanguage, input: BoundaryNoticeInput): string {
+  return buildBoundaryNotice(language, input).text
 }

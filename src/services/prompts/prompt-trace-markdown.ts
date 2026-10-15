@@ -21,6 +21,15 @@ export interface PromptTraceMarkdownFragment {
   note?: string
 }
 
+/** 变量投影记录（与 `PromptProjectionNote` 结构兼容，此处内联以免反向依赖）。 */
+export interface PromptTraceMarkdownProjection {
+  variable: string
+  kind: string
+  beforeChars: number
+  afterChars: number
+  droppedSections: ReadonlyArray<string>
+}
+
 export interface PromptTraceMarkdownSnapshot {
   promptKey: string
   writingLanguage: string
@@ -31,6 +40,8 @@ export interface PromptTraceMarkdownSnapshot {
   built: string
   /** 实际作为 system message 发送的内容；旧数据可能缺失。 */
   systemMessage?: string
+  /** 进入请求前发生过的变量投影（P1-3′ 可观测性）；旧数据可能缺失。 */
+  projections?: ReadonlyArray<PromptTraceMarkdownProjection>
 }
 
 /** 一次真实请求（一轮生成可能有多次：短纲 → 正文 → 续写）。 */
@@ -129,6 +140,22 @@ export function buildTraceMarkdown(payload: PromptTraceMarkdownPayload): string 
     lines.push('---', '')
     lines.push(`## ${index + 1}. \`${snapshot.promptKey}\``, '')
     lines.push(`组装后长度：${snapshot.builtLength} 字 · 共 ${snapshot.fragments.length} 块`, '')
+
+    // ⓪ 变量投影：这一段回答"某变量在进入请求前被改写了多少、剥了什么"（P1-3′）
+    if (snapshot.projections && snapshot.projections.length > 0) {
+      lines.push('### 变量投影（进入请求前已改写）', '')
+      for (const projection of snapshot.projections) {
+        const saved = projection.beforeChars - projection.afterChars
+        const ratio = projection.beforeChars > 0
+          ? ((saved / projection.beforeChars) * 100).toFixed(1)
+          : '0.0'
+        lines.push(`- \`${projection.variable}\` · 投影 \`${projection.kind}\`：${projection.beforeChars} → ${projection.afterChars} 字（省 ${saved}，${ratio}%）`)
+        if (projection.droppedSections.length > 0) {
+          lines.push(`  - 被边界化的块：${projection.droppedSections.map(section => `\`${section}\``).join('、')}`)
+        }
+      }
+      lines.push('')
+    }
 
     // ① 首屏：拼装后的完整提示词
     lines.push('### 拼装后的完整提示词（发送给模型前）', '')

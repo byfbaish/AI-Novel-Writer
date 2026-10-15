@@ -6,6 +6,7 @@ import {
   getBuiltinPromptTemplate,
 } from '../builtin-prompt-templates'
 import type { WritingLanguage } from '../../shared/writing-language'
+import type { PromptProjectionNote } from '../../shared/prompt-projection'
 
 /**
  * Prompt 片段追踪记录器（P1：片段层）。
@@ -70,6 +71,13 @@ export interface PromptTraceSnapshot {
    */
   systemMessage: string
   fragments: PromptFragment[]
+  /**
+   * 本快照涉及、且**真的发生了**的变量投影（P1-3′ 可观测性）。
+   *
+   * 由调用方在投影处通过 `notePromptProjection` 登记，`recordFragments` 时吸附到紧随其后的快照。
+   * 无投影时**字段省略**（旧 trace 文件无此键，向后兼容）。
+   */
+  projections?: PromptProjectionNote[]
   /** 捕获时刻（毫秒时间戳）。 */
   capturedAt: number
   /**
@@ -107,6 +115,23 @@ export function configurePromptTrace(sink: PromptTraceSink): void {
 
 const MAX_SNAPSHOTS = 32
 const snapshots: PromptTraceSnapshot[] = []
+
+/**
+ * 待吸附的投影记录（P1-3′）。调用方在**投影发生处**登记，`recordFragments` 时消费并清空。
+ */
+const pendingProjections: PromptProjectionNote[] = []
+
+/**
+ * 登记一次变量投影（P1-3′ 可观测性）。
+ *
+ * 由调用方在 `projectArchitectureForDraft` / `buildBoundaryNotice` 之后调用；记录会被吸附到
+ * **下一次** `recordFragments` 产生的快照上（通常是紧随其后的那一次 `build()`）。
+ * 追踪关闭时静默丢弃（零开销、零副作用）；绝不抛出。
+ */
+export function notePromptProjection(note: PromptProjectionNote): void {
+  if (!isPromptTraceEnabled()) return
+  pendingProjections.push(note)
+}
 
 /** 是否开启追踪（供 `build()` 快速短路）。 */
 export function isPromptTraceEnabled(): boolean {
@@ -259,6 +284,11 @@ export function recordFragments(input: RecordFragmentsInput): PromptTraceSnapsho
   const handle = safeRunHandle()
   if (handle) snapshot.runHandle = handle
 
+  // 吸附调用方登记过、尚未消费的投影记录（P1-3′）。空则不设字段，保持旧文件形状。
+  if (pendingProjections.length > 0) {
+    snapshot.projections = pendingProjections.splice(0, pendingProjections.length)
+  }
+
   logScopeDiagnostic(input.template.key, handle, safeHasProjectSession())
 
   snapshots.push(snapshot)
@@ -352,6 +382,7 @@ export function promptTraceSnapshots(): readonly PromptTraceSnapshot[] {
 /** 清空快照（测试/会话切换用）。 */
 export function resetPromptTrace(): void {
   snapshots.length = 0
+  pendingProjections.length = 0
 }
 
 /** 架构链标记（供日志/将来落盘展示）。 */
