@@ -1,6 +1,6 @@
 # 交接：keyEvents 阶段 2 + M08 迁移已落地 / 下一步 = 段三（2026-10-15 · 15:56 更新）
 
-> **一句话**：阶段 1 → 段一（阶段 2）→ 阶段 2.5 实测 → **M08 迁移（v8→v9）全部通过**；下一步 = **段三**（R6 锚点人物管理面），随后段二（B′ 双写 + 同章内校验器）。
+> **一句话**：阶段 1 → 段一（阶段 2）→ 阶段 2.5 实测 → **M08 迁移（v8→v9）全部通过** → **段三（R6 锚点人物管理面）** → **段二（B′ 双写）** —— **四段全部落地并提交**；只剩「段二实机验证」这一个收尾动作。
 > ⚠️ 本文件 03:15 首次写就时迁移段尚未开始；15:56 已按实施结果更新（迁移段已完成）。
 > 本会话起点 = 上一份交接（P0 主线已完成、R5 结案）；本会话主要在处理**作者实机连续暴露的候选/角色链路缺陷**，并把 `keyEvents` 阶段 2 落地。
 
@@ -62,7 +62,18 @@
 
 ---
 
-## 2.5 ✅ 段三（R6 锚点人物管理面）已完成（2026-10-15 18:20）；下一步 = 段二（B′）
+## 2.5 ✅ 段三（R6）与段二（B′ 双写）均已完成（2026-10-15 19:55）；本计划四段全部落地
+
+**段二（B′）实施要点**（详见 `phase2-keyevents-bprime-implementation-plan.md` §9.6）：
+- **T8** 世界观第 4 维加机读行 `老陈记｜hours=07:00-09:00｜entry=直接进入`；三处同步（zh 内置 / en 内置 / **作者覆盖版**）。覆盖版用**逐字抽取**同步（不手抄），并写回新 `builtinRevision=50f6770002f6c9b6`，备份 `world_building.zh-CN.json.bak-20261015115412`。⚠️ 模板是 JS 模板字符串，机读行里不能出现反引号（本轮踩过 TS1005）。
+- **T9** 蓝图侧 `spaceRefs` → `blueprints.structured_refs`。换名只在 `normalizeBlueprintForWrite` 一处；**稀疏**（空则不写该键，否则改掉 payload 哈希/`character_sync_input` 字节形态、打红回读比对）；**fail-open**（缺列即不写，未升级 v9 的库照常工作）。
+- **T10** 新校验器 `src/shared/space-time-consistency.ts`：空间名逐字命中 + 钟点纯数字包含判定；**零语义解析**（只认 `14:00`，不认「下午两点」）；**两侧缺字段只记 info、不判**；设定层一条机读行都没有时直接返回 `[]`（否则旧项目全量误报）。
+- **T11** 接**既有**预检关卡（未新增流程）：`findBlueprintSpaceTimeRisks` 只接豁免 + 译成 `ConsistencyFinding`；`ConsistencyFinding` 加可选 `sourceLayer`，面板显示「冲突源：世界观设定（改本章无效）/ 本章蓝图」；设定侧取**架构产出的 `worldbuilding`**（不是作者手写的 `worldSetting`），读取失败 fail-open。
+- **读数**：`tsc` 0 错；新增 56 例（校验器 35 + 预检接线 11 + structured_refs 10）；受影响面全绿（blueprint-repository 21 / semantic-contract 25 / directory-workflow 30 / review-revision-context 20 / prompt-local-qwen-contract 21）。
+
+**下一步**：本计划（阶段 1 / 段一 / 阶段 2.5 / 段三 / 段二）已全部完成。段二**尚未实机验证**（跑一次带 `spaceRefs` 的蓝图，确认 trace/库内出现 `structured_refs` 且预检能报 finding）——这是唯一建议的收尾动作。
+
+**历史记录——段三（R6 锚点人物管理面，2026-10-15 18:20 完成）**：
 
 **T13 读取源切换**：`declinedCandidateNames()` 改读 append-only 决定日志 `character_cast_decisions`。
 - **回填判据（关键）**：按「**该名字在日志里一条记录都没有**」回填，而**不是**按「表为空」—— ① 作者若先登记新名字（表已非空），老陈这类历史登记仍须补上；② 一旦某名字有了任何记录（含一条 `revoke`）就永不回填，**撤销过的名字不会因一次读取而「复活」**。老陈那条已保住。
