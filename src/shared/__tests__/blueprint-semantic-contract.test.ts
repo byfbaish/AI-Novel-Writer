@@ -38,6 +38,8 @@ describe('blueprint semantic contract', () => {
       characters: ['林岚', '周砚'],
       newCharacterCandidates: [],
       relationshipHints: [{ from: '林岚', to: '周砚', relation: '临时盟友' }],
+      // B′：与 newCharacterCandidates / relationshipHints 同为「归一化后总在」的可选伴随字段。
+      spaceRefs: [],
       suspenseHook: '追踪器忽然亮起，显示信件刚从屋内发出。',
     }])
   })

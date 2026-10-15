@@ -111,9 +111,18 @@ function extractJsonPayload(content: string): string | null {
   return lastBrace === -1 ? null : jsonStr.substring(firstBrace, lastBrace + 1)
 }
 
+/**
+ * 语义项 ⇒ 落库形态。
+ *
+ * B′ 的模型输出字段叫 `spaceRefs`（与提示词同字），存储列叫 `structured_refs`
+ * （M08 起的机读伴随列），这里做**唯一的换名点**；为空时不写该键（稀疏，见
+ * `blueprint-repository.ts` 的 `normalizeBlueprintForWrite` 注释）。
+ */
 function persistedBlueprint(item: BlueprintSemanticItem): ChapterBlueprint {
+  const { spaceRefs, ...rest } = item
   return {
-    ...item,
+    ...rest,
+    ...(spaceRefs.length ? { structuredRefs: spaceRefs } : {}),
     userGuidance: '',
     notes: '',
     notesUpdatedAt: '',

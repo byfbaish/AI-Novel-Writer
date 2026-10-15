@@ -1,6 +1,7 @@
 import { StructuredContractDiagnostic } from './structured-contract-diagnostic'
 import { CHARACTER_ROLES, type CharacterRole } from './character-role'
 import { normalizeKeyEvents, type BlueprintKeyEvent } from './blueprint-key-events'
+import { normalizeBlueprintSpaceRefs, type BlueprintSpaceRefRaw } from './space-time-consistency'
 import type { WritingLanguage } from './writing-language'
 
 export interface BlueprintRelationshipFact {
@@ -46,6 +47,7 @@ chapterNumber must cover every target chapter exactly once, without duplicates o
 suspenseHook is always required; even without a mystery, state one concrete unresolved decision, threat, revelation, or consequence that creates forward pressure.
 characters must be an array containing at least one unique, non-empty full character name.
 newCharacterCandidates is optional. When present, include only important named characters first introduced by this blueprint and expected to recur. Every item must contain name and role, name must exactly copy one entry from characters, and role must be protagonist, antagonist, supporting, or minor. Omit it or use [] when there are no candidates; never include incidental figures.
+spaceRefs is optional and may be []. When present, each item must contain space (a space name copied verbatim from dimension 4 of the world setting) and may contain timeRef (24-hour HH:MM or HH:MM-HH:MM) and beat (what happens there). Only emit it when the chapter genuinely has a place and, if stated, a time; omit the field or use [] otherwise. Never invent a space that the world setting does not register.
 relationships is required and may be []; every item must contain non-empty from, to, and relation fields. from and to must exactly copy full names from the same item's characters array and may not self-reference.
 Preserve complete narrative content.
 Do not omit required fields, combine chapters, rename fields, explain, or output Markdown or code fences.`
@@ -56,6 +58,7 @@ chapterNumber 必须覆盖本批每个目标章节且不得重复或越界；tit
 suspenseHook 始终必填；即使本章没有谜团，也要写明一个制造推进压力的具体未决决定、威胁、揭示或后果。
 characters 必须是至少含一个唯一非空角色名的字符串数组。
 newCharacterCandidates 可选；提供时只声明由本章首次引入且预计后续复用的重要具名角色，每项必须包含 name、role，name 必须逐字复制 characters 中的一个完整姓名，role 只能是 protagonist、antagonist、supporting、minor。无候选时可省略或传 []，一次性路人不得声明为候选。
+spaceRefs 可选，无空间/钟点时传 [] 或省略；提供时每项必须含 space（逐字复制世界观第 4 维登记的空间名），可含 timeRef（24 小时制 HH:MM 或 HH:MM-HH:MM）与 beat（在那里发生了什么）。只在**确有**空间时输出；不得发明世界观未登记的空间名。
 relationships 必须是数组，无关系时传 []；每项必须含非空 from、to、relation，from/to 必须精确出现在同项 characters 中且不能自指。
 from/to 必须逐字复制同一项 characters 中的完整字符串；任一端点不在 characters 时，删除该关系或使用 []，不得发明别名、简称或补写角色。
 叙述内容须保持完整。
@@ -73,6 +76,13 @@ export interface BlueprintSemanticItem {
   purpose: string
   /** 结构化事件清单（归一化入口见 `blueprint-key-events.ts`）。 */
   keyEvents: BlueprintKeyEvent[]
+  /**
+   * B′ 空间引用（可选伴随字段，归一化入口见 `space-time-consistency.ts`）。
+   *
+   * `space` 必须**逐字**命中世界观第 4 维登记的空间名；`timeRef` 为 24 小时制单点或区间。
+   * 只在确有空间/钟点时输出，没有就空数组（fail-open，不逼模型编）。
+   */
+  spaceRefs: BlueprintSpaceRefRaw[]
   characters: string[]
   newCharacterCandidates: BlueprintNewCharacterCandidate[]
   relationshipHints: BlueprintRelationshipFact[]
@@ -235,6 +245,10 @@ export function normalizeBlueprintSemanticItem(value: unknown, path = 'blueprint
     keyEvents: normalizeKeyEvents(
       requiredKeyEvents(fieldValue(value, 'keyEvents', ['key_events']), `${path}.keyEvents`),
       { chapterNumber },
+    ),
+    // B′：可选伴随字段。缺失 / 非法一律收敛为 [] —— 它坏了不该废掉整条蓝图提交。
+    spaceRefs: normalizeBlueprintSpaceRefs(
+      fieldValue(value, 'spaceRefs', ['space_refs', 'structuredRefs']),
     ),
     characters,
     newCharacterCandidates,
