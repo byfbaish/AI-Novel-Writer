@@ -241,6 +241,40 @@
 
 ---
 
+## 9.6 段二实施记录（B′ 双写 · 2026-10-15）
+
+> ✅ **已实施**。T8 / T9 / T10 / T11 四条全部落地；校验器零语义解析、缺字段 fail-open；
+> 蓝图侧伴随字段落进 M08 的 `blueprints.structured_refs`；规则接进**既有**预检关卡（未新增流程）。
+
+**T8 设定侧机读行**
+- 落点三处：`src/services/builtin-prompt-templates.ts`（zh 内置第 4 维）、`src/services/prompt-language.ts`（en 内置）、**作者覆盖版** `~/.ai-novel-writer-dev/generations/88ac198e…/prompts/world_building.zh-CN.json`（红线 3：覆盖版遮蔽内置，漏了等于没改）。
+- 覆盖版走**逐字抽取**而不是手抄：维护脚本从内置正文里截出那一段再插进覆盖版，杜绝转写漂移；流程仍是**备份 → 原子写回 → 写回新的 `builtinRevision`**（本次 `50f6770002f6c9b6`，备份名 `world_building.zh-CN.json.bak-20261015115412`）。
+- 机读行形如 `老陈记｜hours=07:00-09:00｜entry=直接进入`；`hours=` 一律 24 小时制 `HH:MM-HH:MM`（个位补零）、跨零点写 `22:00-02:00`、没有时段就省略该字段；**写不出可判定的值就不写这行**（宁缺勿编）。
+- ⚠️ 模板正文是 JS 模板字符串：机读行里的反引号必须避免（用「」），否则整个模板字面量解析失败（本轮踩过，`tsc` 报 `TS1005`）。
+
+**T9 蓝图侧 `spaceRefs` → `blueprints.structured_refs`**
+- 模型侧字段名 `spaceRefs`，存储列名 `structured_refs`；换名只在**唯一写入归一化点** `normalizeBlueprintForWrite` 完成（同时接受两个名字），因为 `ChapterBlueprint = BlueprintData` 的别名 + `persistedBlueprint` 的展开会让语义项带 `spaceRefs` 抵达仓库。
+- **稀疏**：没有空间引用时该键**不出现**。若总是写 `structuredRefs: []`，每个既有蓝图都会多一个键 ⇒ 改变 `commitPayloadHash` / `character_sync_input` 的字节形态，破坏幂等重放的基准（实测会打红 `blueprint-repository` 的回读比对用例）。
+- **fail-open**：`structured_refs` 是 M08 新增列；未升级到 v9 的库（以及只建基线表的测试夹具）没有它 —— 用一次 `PRAGMA table_info` 探测，缺列就不写这一列，否则整个蓝图提交会因 `no such column` 失败。
+- 语义合同（`blueprint-semantic-contract.ts`）：`spaceRefs` 是**可选**字段，与 `newCharacterCandidates` / `relationshipHints` 同为「归一化后总在」的伴随字段；zh/en 合同文字都写明「只在确有空间时输出，不得发明未登记的空间名」。
+
+**T10 校验器** `src/shared/space-time-consistency.ts`（纯函数、无 IO）
+- 三条判据：① 空间名逐字命中登记名（未命中 ⇒ warning「引用了未登记的空间名」）；② `timeRef` 落在该空间 `hours` 区间内（**纯数字比较**，跨零点按「晚段或早段」）；③ 两侧任缺结构化字段 ⇒ 只记 **info**「未提供可判定形式」，**不判、不阻塞**。
+- **★ 关键 fail-open**：设定层**一条机读行都没有**时返回 `[]` —— 否则旧项目（没有机读行）会把每一个空间名都误报成「未登记」。唯一能在缺字段时成立的判据也有这个前提。
+- 时间解析只认 `HH:MM`（严格两位、`0-23`）；`9:00` / `9点` / `下午两点` / `24:00` 一律 `undefined`（Q4 零语义解析）。
+- 机读行解析只收「首段空间名 + 后续段 `key=value` 且 key ∈ {hours, entry}」的行；【具名人物登记】行没有 `=`，不会被误当成空间。
+- `stableFactKey` 用**独立前缀 `space:`**（连续性 finding 用 `fact:`）⇒ 两族豁免互不串扰。
+
+**T11 接既有预检关卡**（新增规则 ≠ 新增流程）
+- `findBlueprintSpaceTimeRisks(worldBuildingText, blueprint, exemptions)` 只做两件事：**接豁免**与**译成 `ConsistencyFinding`**；`info` 级不进审稿 items（它不是冲突，落进报告只是噪声）。
+- `ConsistencyFinding` 新增可选 `sourceLayer`（`'world-building' | 'blueprint'`）；`ConsistencyPreflightPanel` 显示「冲突源：世界观设定（改本章无效）/ 本章蓝图」。
+- 设定侧取的是**架构产出的 `project_core.worldbuilding`**（AI 写的那份，机读行由 T8 要求它输出），**不是**作者手写的 `worldSetting`（后者没有机读行）。读取失败按「没有可判定形式」处理 ⇒ fail-open 不判，绝不让一次读取失败阻断创作。
+- `BlueprintForPreflight` 新增可选 `structuredRefs`；调用方拿不到就留空 ⇒ 不判。
+
+**验收读数**：`tsc` 0 错；新增 **56 例**（校验器 35 + 预检接线 11 + structured_refs 10）；受影响面全绿：`blueprint-repository` 21、`blueprint-semantic-contract` 25、`directory-workflow` 30、`review-revision-context` 20、`prompt-local-qwen-contract` 21。
+
+---
+
 ## 9. 迁移段执行清单（lane 六步 · 已预置，开工即用）
 
 > ✅ **2026-10-15 15:50 已实施（`6dfea726`）**：M08 v8→v9 落地，88/88 迁移测试 + 作者库副本升级实测通过。以下清单保留作实施记录。
