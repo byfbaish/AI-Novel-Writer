@@ -82,7 +82,8 @@ it('V3 rail and masthead open the sibling settings sheet with the same paper and
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="关闭设置"]')!.click())
 
     await act(async () => host.querySelector<HTMLButtonElement>('.writer-topbar button[title="备份"]')!.click())
-    await vi.waitFor(() => expect(host.querySelector('h2')?.textContent).toBe('项目备份'))
+    // 设置面板导航项/标题在 .vela-pack 特性（e01ed5b4）中更名为「备份与迁移」；面板本体 testid 仍是 project-backup-panel。
+    await vi.waitFor(() => expect(host.querySelector('h2')?.textContent).toBe('备份与迁移'))
     expect(host.querySelector('[data-testid="project-backup-panel"]')?.textContent).toContain('WebDAV')
     expect(host.textContent).toContain('从本地存档恢复副本')
     await act(async () => [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes('导出本地存档'))!.click())

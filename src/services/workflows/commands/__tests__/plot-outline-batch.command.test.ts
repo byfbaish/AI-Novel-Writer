@@ -8,6 +8,7 @@ import {
   PLOT_OUTLINE_RESUME_ERROR_CODE,
   PlotOutlineResumeAvailableError,
   synopsisFactsFingerprint,
+  synopsisInputsFingerprint,
 } from '../architecture.command'
 import { createWorkflowRuntimeDependencies } from './workflow-generation-runtime.fixture'
 import { clearProjectCustomPrompts, getBuiltinPromptTemplate } from '../../../prompt-templates'
@@ -55,27 +56,31 @@ const legacyFingerprint = synopsisFactsFingerprint([
   'three_act',
 ])
 
+/**
+ * 「当前源事实」的检查点指纹。
+ *
+ * ⚠️ **必须复用实现的 `synopsisInputsFingerprint`，不得复写算法**：该函数的输入字段
+ * 集会随产品演进（例：第五层自由弧加入 `plotStructurePlan`）。此前这里抄了一份，
+ * 字段分叉后一批与指纹无关的用例被"源事实已变化"这道闸门集体短路（2026-10-15，11 例）。
+ */
 function currentFingerprint(
   range: { from: number; to: number },
   stepGuidance = '',
 ): string {
-  return synopsisFactsFingerprint([
-    JSON.stringify({
-      premise,
-      charactersArch,
-      worldbuilding,
-      genre: novelConfig.genre,
-      totalChapters: novelConfig.totalChapters,
-      wordsPerChapter: novelConfig.wordsPerChapter,
-      writingLanguage: 'zh-CN',
-      plotStructure: novelConfig.plotStructure,
-      narrativePov: novelConfig.narrativePOV,
-      globalGuidance: novelConfig.globalGuidance,
-    }),
-    stepGuidance,
-    `${range.from}:${range.to}`,
-    JSON.stringify(getBuiltinPromptTemplate('synopsis', 'zh-CN')),
-  ])
+  return synopsisInputsFingerprint({
+    synopsis: '',
+    premise,
+    charactersArch,
+    worldbuilding,
+    plotStructurePlan: '',
+    genre: novelConfig.genre,
+    totalChapters: novelConfig.totalChapters,
+    wordsPerChapter: novelConfig.wordsPerChapter,
+    writingLanguage: 'zh-CN',
+    plotStructure: novelConfig.plotStructure,
+    narrativePov: novelConfig.narrativePOV,
+    globalGuidance: novelConfig.globalGuidance,
+  }, stepGuidance, range, getBuiltinPromptTemplate('synopsis', 'zh-CN'))
 }
 
 const coreSeed = { premise, charactersArch, worldbuilding }
@@ -374,6 +379,7 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
       premise,
       charactersArch,
       worldbuilding,
+      plotStructurePlan: '',
       genre: novelConfig.genre,
       totalChapters: novelConfig.totalChapters,
       wordsPerChapter: novelConfig.wordsPerChapter,

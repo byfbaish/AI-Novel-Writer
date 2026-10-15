@@ -448,7 +448,9 @@ it('无ID同名旧草稿仍可单独选择编辑且不伪造持久身份', async
  const second = { ...character('同名'), characterId: undefined, notes: '乙草稿' }
  useCharacterStore.setState({ characters: [first, second], selectedId: null })
  await act(async () => root!.render(<><CharactersView /><CharacterEditor projectKey={PROJECT_PATH} /></>))
- await act(async () => (container!.querySelectorAll('[aria-pressed]')[1] as HTMLElement).click())
+ // 卡片是 `<div role="button" aria-pressed>`；工具栏的「批量删除」是原生 <button>（也有 aria-pressed，
+ // 但无显式 role 属性），用 role 限定可把它排除，索引才对准角色卡。
+ await act(async () => (container!.querySelectorAll('[role="button"][aria-pressed]')[1] as HTMLElement).click())
  await page.getByPlaceholder('输入备注...').fill('仅修改乙草稿')
  expect(useCharacterStore.getState().characters.map(card => card.notes)).toEqual(['甲草稿', '仅修改乙草稿'])
  expect(useCharacterStore.getState().characters.every(card => card.characterId === undefined)).toBe(true)

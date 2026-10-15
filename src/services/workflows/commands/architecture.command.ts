@@ -412,7 +412,16 @@ function renderSynopsisDbText(
   return `# ${heading}\n\n${visibleBody}`.trim()
 }
 
-function synopsisInputsFingerprint(
+/**
+ * 情节大纲检查点的**输入指纹**：把「本步真正依赖的源事实 + 步骤指导 + 批次范围 + 模板」
+ * 绑成一个值，用于判断旧检查点能否续到当前上下文。
+ *
+ * ⚠️ **导出是刻意的**：它的字段集合会随产品演进（例：第五层「自由弧」加入
+ * `plotStructurePlan`）。测试若**复写**一份算法，就会在字段变化时静默错配、
+ * 让一批与指纹无关的用例集体变红（2026-10-15 实测：11 例被短路）。
+ * **测试必须复用本函数**，不得再抄一份。
+ */
+export function synopsisInputsFingerprint(
   expected: ProjectCoreSynopsisExpected,
   stepGuidance: string,
   range: PlotOutlineChapterRange,

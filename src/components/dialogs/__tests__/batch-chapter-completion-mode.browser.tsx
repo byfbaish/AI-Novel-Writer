@@ -703,8 +703,14 @@ describe('batch chapter completion mode browser flow', () => {
       await act(async () => page.getByRole('button', { name: startLabel }).click())
 
       await vi.waitFor(() => expect(pendingDraftCompletions).toHaveLength(1))
+      // ⚠️ 不要把 `taskLog` 断言到 task-panel 的 DOM 文本上：面板只渲染
+      // `step.logs.slice(-6)`（BottomPanel 的固定上限）。P0-1 给正文之前加了
+      // 「短细纲」两条日志后，最早的「开始第N章」就被挤出那 6 条窗口。
+      // 这里要验的是「这条日志确实产生过」，所以读数据源，不读被截断的展示窗口。
       await vi.waitFor(() => {
-        expect(container?.querySelector('[data-testid="task-panel"]')?.textContent).toContain(taskLog)
+        const runningLogs = useWorkflowStore.getState().activeRuns
+          .flatMap(run => run.steps.flatMap(step => step.logs)).join('\n')
+        expect(runningLogs).toContain(taskLog)
       })
 
       await act(async () => pendingDraftCompletions.shift()?.())
