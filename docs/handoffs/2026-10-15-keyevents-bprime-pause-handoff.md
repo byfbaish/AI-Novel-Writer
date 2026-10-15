@@ -129,7 +129,7 @@ AI 重新抽取报「缺少已预览的角色卡候选，未写入角色名单�
 | 8 | **段二实机验证** | ⏸ **已退后待决**（作者 2026-10-15 21:40 裁定）：不排期，**等真遇到空间/钟点冲突再启**；重启入口 = §2.5（含强制前提）。**不要为验证专门造场景** |
 | 9 | 复核修正 `ae56d8f5` 的语义边界 | 回填改为「只读封存决定 + 行哈希防篡改」；**篡改仍一律跳过**（既有测试保留）。日后若有人问"这里为什么不重算证明"，答案在 §2 台账末行与 `storedDecisionEnvelope` 的注释里 |
 | 10 | **「候选复审批次」（深层）** | ⏸ 未做。撤销/`keep-unresolved` 的名字**能回榜但不能再决策**（判据 ⑰）。已登记 `architecture-consistency-design.md` §8（建议归属 AC1 新增 S1.4），**动批次身份与证明，需独立设计小节** |
-| 11 | 两个已知红灯 | ① node 面 29 failed（`finalize-postprocess-character.integration` 16 / `planning-material-binding` 2 / `plot-outline-batch` 11）② 浏览器 11 failed（`batch-chapter-completion-mode` / `workflow-language-seam` / `workflow-launch-dialogs`）。**均已基线对照确认与本次改动无关**，但**尚未修**——下次接手可优先清 |
+| 11 | ~~两个已知红灯~~ | ✅ **已全部清零（2026-10-15 22:5x）**。① node 面 29 failed（`finalize-postprocess-character.integration` / `planning-material-binding` / `plot-outline-batch`）② 浏览器 11 failed（`batch-chapter-completion-mode` / `workflow-language-seam` / `workflow-launch-dialogs`）。清的过程中**又发现并修 5 文件 / 12 例**（台账原来漏记：`backup-entry` / `v3-settings-backup` / `f05-writer-graph` / `AIOutputPanel.main-recovery` / `CharactersView.finalized-proposal`）。提交 `b7c65554`（边界加固）+ `b017c8d7`（陈旧断言同步）。现值：浏览器全量 **635/635**、node workflows **1121/1121**、shared **613/613**、`tsc` **0** |
 
 ---
 
@@ -216,9 +216,9 @@ AI 重新抽取报「缺少已预览的角色卡候选，未写入角色名单�
 
 | 项 | 状态 |
 |---|---|
-| **两个已知红灯**（§3 #11） | node 面 29 failed + 浏览器 11 failed。**已基线对照确认与近期改动无关**，但**尚未修** —— 下次接手**建议优先清**（干净基线才敢继续改） |
+| **~~两个已知红灯~~**（§3 #11） | ✅ **已清零（2026-10-15 22:5x）**：node workflows `1121/1121`、shared `613/613`、浏览器全量 `635/635`、`tsc` `0`。提交 `b7c65554` + `b017c8d7`。清的过程中还发现台账漏记的 **5 文件 / 12 例**（同为陈旧断言，含 1 处真实生产崩溃 → 已在组件层加固）。**基线已干净，可继续改** |
 | 阶段 2.5 严格闭环 | ch6 估算 2550 vs **其真实正文**——写 ch6 时回填对比。**与段二验证同批**，一并待决 |
 | `legacySourceHashMatches` 是否收紧 | 阶段 2.5 之后的标定项，未动 |
 
-**→ 若要立刻开工，建议顺序：① 两个红灯（清基线）→ ② P1-1（主线唯一未动项，落点明确）→ ③ 用户级设置包（独立主线，作者长期关注）。**
+**→ 立刻可开工的顺序：① ~~两个红灯~~（✅ 已清）→ ② P1-1（主线唯一未动项，落点 = `generate-draft.command.ts:784-802`）→ ③ 用户级设置包（独立主线，作者长期关注）。**
 
