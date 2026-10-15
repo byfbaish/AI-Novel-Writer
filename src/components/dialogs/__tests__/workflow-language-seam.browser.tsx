@@ -159,10 +159,10 @@ describe('workflow launch language seams', () => {
   })
 
   it.each([
-    { uiLocale: 'zh-CN', writingLanguage: 'zh-CN', heading: '故事架构', status: '3/5 已生成', refresh: '刷新状态', generate: 'AI 生成架构', generateTitle: 'AI 生成故事架构（选择要生成的步骤）', title: 'AI 生成故事架构', button: /确认生成/, expectedLog: '生成故事前提...', expectedPrompt: '你是一位经验丰富的故事架构师', unexpectedPrompt: 'Build a compact story premise' },
-    { uiLocale: 'zh-CN', writingLanguage: 'en-US', heading: '故事架构', status: '3/5 已生成', refresh: '刷新状态', generate: 'AI 生成架构', generateTitle: 'AI 生成故事架构（选择要生成的步骤）', title: 'AI 生成故事架构', button: /确认生成/, expectedLog: '生成故事前提...', expectedPrompt: 'Build a compact story premise', unexpectedPrompt: '你是一位经验丰富的故事架构师' },
-    { uiLocale: 'en-US', writingLanguage: 'zh-CN', heading: 'Story architecture', status: '3/5 generated', refresh: 'Refresh status', generate: 'Generate story architecture', generateTitle: 'Generate story architecture (choose steps to generate)', title: 'Generate story architecture with AI', button: /Generate \(/, expectedLog: 'Generating story premise...', expectedPrompt: '你是一位经验丰富的故事架构师', unexpectedPrompt: 'Build a compact story premise' },
-    { uiLocale: 'en-US', writingLanguage: 'en-US', heading: 'Story architecture', status: '3/5 generated', refresh: 'Refresh status', generate: 'Generate story architecture', generateTitle: 'Generate story architecture (choose steps to generate)', title: 'Generate story architecture with AI', button: /Generate \(/, expectedLog: 'Generating story premise...', expectedPrompt: 'Build a compact story premise', unexpectedPrompt: '你是一位经验丰富的故事架构师' },
+    { uiLocale: 'zh-CN', writingLanguage: 'zh-CN', heading: '故事架构', status: '4/5 已生成', refresh: '刷新状态', generate: 'AI 生成架构', generateTitle: 'AI 生成故事架构（选择要生成的步骤）', title: 'AI 生成故事架构', button: /确认生成/, expectedLog: '生成故事前提...', expectedPrompt: '你是一位经验丰富的故事架构师', unexpectedPrompt: 'Build a compact story premise' },
+    { uiLocale: 'zh-CN', writingLanguage: 'en-US', heading: '故事架构', status: '4/5 已生成', refresh: '刷新状态', generate: 'AI 生成架构', generateTitle: 'AI 生成故事架构（选择要生成的步骤）', title: 'AI 生成故事架构', button: /确认生成/, expectedLog: '生成故事前提...', expectedPrompt: 'Build a compact story premise', unexpectedPrompt: '你是一位经验丰富的故事架构师' },
+    { uiLocale: 'en-US', writingLanguage: 'zh-CN', heading: 'Story architecture', status: '4/5 generated', refresh: 'Refresh status', generate: 'Generate story architecture', generateTitle: 'Generate story architecture (choose steps to generate)', title: 'Generate story architecture with AI', button: /Generate \(/, expectedLog: 'Generating story premise...', expectedPrompt: '你是一位经验丰富的故事架构师', unexpectedPrompt: 'Build a compact story premise' },
+    { uiLocale: 'en-US', writingLanguage: 'en-US', heading: 'Story architecture', status: '4/5 generated', refresh: 'Refresh status', generate: 'Generate story architecture', generateTitle: 'Generate story architecture (choose steps to generate)', title: 'Generate story architecture with AI', button: /Generate \(/, expectedLog: 'Generating story premise...', expectedPrompt: 'Build a compact story premise', unexpectedPrompt: '你是一位经验丰富的故事架构师' },
   ] as const)(
     'launches the production architecture workflow with UI $uiLocale and writing $writingLanguage independent',
     async ({ uiLocale, writingLanguage, heading, status, refresh, generate, generateTitle, title, button, expectedLog, expectedPrompt, unexpectedPrompt }) => {
@@ -201,6 +201,9 @@ describe('workflow launch language seams', () => {
                 return {
                   premise: persistedPremise,
                   worldbuilding: 'Existing English worldbuilding. '.repeat(3),
+                  // 第五步「弧光结构」是否已生成 = 自由弧正文非空（见 WorldBuildingEditor 的 archStatus）。
+                  // 不提供它会被判「待生成」⇒ 对话框默认多勾一步 ⇒ 本用例期望的「只生成前提」变成两次调用。
+                  plotStructurePlan: 'Existing English arc structure. '.repeat(3),
                   synopsis: 'Existing English plot outline. '.repeat(3),
                 }
               case 'db:character-roster-read':

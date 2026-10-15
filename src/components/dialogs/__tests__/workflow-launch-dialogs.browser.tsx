@@ -219,7 +219,7 @@ describe('workflow launch dialogs', () => {
       <ArchitectureConfirmDialog
         isOpen
         onClose={onClose}
-        archStatus={{ premise: false, characters: false, worldbuilding: false, synopsis: false }}
+        archStatus={{ premise: false, characters: false, worldbuilding: false, plotStructure: false, synopsis: false }}
         initialSelectedSteps={['premise']}
         onConfirm={vi.fn().mockRejectedValue(new Error('架构启动被领域门禁拒绝'))}
       />,
@@ -244,7 +244,7 @@ describe('workflow launch dialogs', () => {
       <ArchitectureConfirmDialog
         isOpen
         onClose={vi.fn()}
-        archStatus={{ premise: true, characters: true, worldbuilding: true, synopsis: false }}
+        archStatus={{ premise: true, characters: true, worldbuilding: true, plotStructure: true, synopsis: false }}
         initialSelectedSteps={['synopsis']}
         onConfirm={onConfirm}
       />,
@@ -275,7 +275,7 @@ describe('workflow launch dialogs', () => {
       <ArchitectureConfirmDialog
         isOpen
         onClose={vi.fn()}
-        archStatus={{ premise: true, characters: true, worldbuilding: true, synopsis: true }}
+        archStatus={{ premise: true, characters: true, worldbuilding: true, plotStructure: true, synopsis: true }}
         initialSelectedSteps={['synopsis']}
         initialSynopsisRange={{ from: 21, to: 40 }}
         onConfirm={onConfirm}
@@ -300,7 +300,7 @@ describe('workflow launch dialogs', () => {
       <ArchitectureConfirmDialog
         isOpen
         onClose={vi.fn()}
-        archStatus={{ premise: true, characters: true, worldbuilding: true, synopsis: false }}
+        archStatus={{ premise: true, characters: true, worldbuilding: true, plotStructure: true, synopsis: false }}
         initialSelectedSteps={['synopsis']}
         onConfirm={onConfirm}
       />,
@@ -320,7 +320,7 @@ describe('workflow launch dialogs', () => {
       <ArchitectureConfirmDialog
         isOpen={isOpen}
         onClose={onClose}
-        archStatus={{ premise: false, characters: false, worldbuilding: false, synopsis: false }}
+        archStatus={{ premise: false, characters: false, worldbuilding: false, plotStructure: false, synopsis: false }}
         onConfirm={onConfirm}
       />,
     ))
@@ -462,7 +462,7 @@ it.each(['outline', 'blueprint'] as const)('persists the %s target independently
   useProjectStore.setState({ currentProject: { ...project, novelConfig: { ...project.novelConfig, totalChapters: 20 } } as never })
   const onConfirm = vi.fn(async () => {})
   const renderDialog = async (isOpen: boolean) => act(async () => root.render(kind === 'outline'
-    ? <ArchitectureConfirmDialog isOpen={isOpen} onClose={() => {}} archStatus={{ premise: true, characters: true, worldbuilding: true }} initialSelectedSteps={['synopsis']} onConfirm={onConfirm} />
+    ? <ArchitectureConfirmDialog isOpen={isOpen} onClose={() => {}} archStatus={{ premise: true, characters: true, worldbuilding: true, plotStructure: true }} initialSelectedSteps={['synopsis']} onConfirm={onConfirm} />
     : <DirectoryConfigDialog isOpen={isOpen} onClose={() => {}} existingCount={0} onConfirm={onConfirm} />))
   await renderDialog(true)
   const target = page.getByRole('spinbutton', { name: kind === 'outline' ? '每章大纲目标字数' : '每章蓝图目标字数' })

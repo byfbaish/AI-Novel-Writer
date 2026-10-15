@@ -33,7 +33,31 @@ import { useLLMStore } from '../../../../stores/llm-store'
 import { useProjectStore } from '../../../../stores/project-store'
 import { RunFinalizePostProcessCommand } from '../finalize-chapter.command'
 import { GenerateDraftCommand } from '../generate-draft.command'
+import { DRAFT_SHORT_OUTLINE_PURPOSE } from '../../../../shared/draft-short-outline'
 type ModelMessages = Parameters<ReturnType<typeof useLLMStore.getState>['generateStream']>[0]
+
+/**
+ * 短细纲（P0-1）成功后正文才会开始；它和正文共用同一个 `session.complete`，
+ * 所以捕获正文请求的 stub 必须按 `purpose` 分流、让短细纲先成功。
+ * 只填 `logDraftAttempt` 会读到的 `receipt.budget`，其余字段与本例无关。
+ */
+function shortOutlineOutcome(content = '目标：推进主线；前驱：上一章已完成交接；行动与结果：本章推进一格；结尾：保留原约束。') {
+  return {
+    status: 'completed' as const,
+    content,
+    finishReason: 'stop' as const,
+    receipt: {
+      budget: {
+        attempt: 1,
+        maxAttempts: 4,
+        requestedOutputTokens: 4096,
+        cumulativeRequestedOutputTokens: 4096,
+        maxRequestedOutputTokens: 32768,
+        maxRequestedOutputTokensPerAttempt: 8192,
+      },
+    },
+  }
+}
 
 let projectPath = ''
 let cardResponse = '{"updates":[]}'
@@ -536,7 +560,10 @@ describe('RunFinalizePostProcessCommand character-state persistence', () => {
         execute: async (operation: (scope: { session: unknown }) => Promise<unknown>) => operation({
           session: {
             budget: {},
-            complete: async (task: { messages: Array<{ role: string; content: string }> }) => {
+            complete: async (task: { purpose?: string; messages: Array<{ role: string; content: string }> }) => {
+              // P0-1 之后，「短细纲」是正文之前的一次独立模型调用，且与正文共用同一个
+              // session.complete。必须让它成功返回，否则流程停在短细纲、永远捕获不到正文请求。
+              if (task.purpose === DRAFT_SHORT_OUTLINE_PURPOSE) return shortOutlineOutcome()
               nextChapterPrompt = task.messages.find(message => message.role === 'user')?.content ?? ''
               throw new Error('next-chapter-prompt-captured')
             },
@@ -617,7 +644,9 @@ describe('RunFinalizePostProcessCommand character-state persistence', () => {
         execute: async (operation: (scope: { session: unknown }) => Promise<unknown>) => operation({
           session: {
             budget: {},
-            complete: async (task: { messages: Array<{ role: string; content: string }> }) => {
+            complete: async (task: { purpose?: string; messages: Array<{ role: string; content: string }> }) => {
+              // 同上一例：短细纲必须先成功，正文请求才会被发出。
+              if (task.purpose === DRAFT_SHORT_OUTLINE_PURPOSE) return shortOutlineOutcome()
               nextChapterPrompt = task.messages.find(message => message.role === 'user')?.content ?? ''
               throw new Error('candidate-source-prompt-captured')
             },

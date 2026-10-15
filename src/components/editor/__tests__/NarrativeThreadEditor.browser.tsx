@@ -705,7 +705,10 @@ describe('NarrativeThreadEditor', () => {
     await act(async () => Array.from(container!.querySelectorAll('button')).find(button => button.textContent?.includes('保存计划'))?.click())
     await vi.waitFor(() => expect(container?.textContent).toContain('门上的三道刻痕'))
 
-    await act(async () => Array.from(container!.querySelectorAll('button')).find(button => button.textContent?.includes('删除'))?.click())
+    // 精确匹配单条「删除」：`includes('删除')` 会先命中工具栏的「批量删除」按钮，
+    // 那会把界面切进多选模式（单条按钮随即消失），列表当然没被删。
+    await act(async () => Array.from(container!.querySelectorAll('button'))
+      .find(button => button.textContent?.trim() === '删除')?.click())
     await vi.waitFor(() => expect(container?.textContent).toContain('暂无伏笔或叙事线索'))
   })
 

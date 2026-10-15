@@ -351,7 +351,7 @@ describe('planning recovery editors', () => {
       await edit(later); rejectSave = undefined
       await act(async () => button(kind === 'outline' ? '保存' : '保存恢复蓝图').click())
       expect(invoke.mock.calls.filter(([name]) => name === channel)).toHaveLength(2)
-      expect(savedPayload).toMatchObject(kind === 'outline' ? { synopsis: later } : { blueprints: [{ keyEvents: '找到新的信件' }] })
+      expect(savedPayload).toMatchObject(kind === 'outline' ? { synopsis: later } : { blueprints: [{ keyEvents: [{ event: '找到新的信件' }] }] })
       expect(useEditorStore.getState().tabs[0]).toMatchObject({ savedContent: later, dirty: false }); noModel()
     })
     it(`${kind} a rejected replay cannot release an earlier unknown submission`, async () => {
@@ -377,7 +377,7 @@ describe('planning recovery editors', () => {
       expect(invoke.mock.calls.filter(([name]) => name === channel)).toHaveLength(1)
       expect(savedPayload).toMatchObject({ authorRecovery: { sourceHandle: handle, leaseEpoch: session.leaseId } })
       expect(savedPayload).toMatchObject(kind === 'outline' ? { expected: sourceExpected, synopsis: validText(), authorRecovery: { operationId, committedRange: { from: 1, to: 1 } } }
-        : { operationId, mode: 'replace-range', startChapter: 1, endChapter: 1, blueprints: [{ chapterNumber: 1, keyEvents: '找到信件', userGuidance: '保留作者指示', notes: '作者笔记', notesUpdatedAt: '2026-10-04T00:00:00Z' }] })
+        : { operationId, mode: 'replace-range', startChapter: 1, endChapter: 1, blueprints: [{ chapterNumber: 1, keyEvents: [{ event: '找到信件' }], userGuidance: '保留作者指示', notes: '作者笔记', notesUpdatedAt: '2026-10-04T00:00:00Z' }] })
       expect(useEditorStore.getState().tabs[0].dirty).toBe(false)
       expect(invoke.mock.calls.some(([name]) => /upsert|project-core-update/.test(name))).toBe(false); noModel()
     })

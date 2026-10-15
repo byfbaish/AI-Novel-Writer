@@ -130,6 +130,8 @@ it.each(['review-chapter', 'refine-draft', 'refine-from-review'] as const)('中�
     if (channel === 'generation:list-batches' || channel === 'db:recovery-candidate-list') return []
     if (channel === 'generation:read-context') return { draftSave: { kind: 'absent' }, handle, operation }
     if (channel === 'review-revision:probe-recovery') return recovery()
+    // 面板批量探测走 probe-recovery；本用例还会直接构造恢复工作流，该工作流走 read-recovery。
+    if (channel === 'review-revision:read-recovery') return recovery()
     throw new Error(`Unexpected action: ${channel}`)
   })
   Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: () => () => {} } })

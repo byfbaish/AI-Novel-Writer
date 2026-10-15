@@ -259,8 +259,10 @@ it('U11.A03/A04/A05/A06: Writer 图谱拖动、平移、缩放、适应和复位
   assertWriter('U11.A06-reset')
   await act(async () => page.getByRole('button', { name: '重置图谱布局' }).click())
   expect(textCalls.filter(call => call.text === '角色000').at(-1)).toMatchObject(before) // U11.A06
+  // CharactersView 的 R6 子面板还会读：锚点人物登记（character-cast:list）与候选历史（character-proposal:list-history）。
   expect(new Set(invoke.mock.calls.map(([channel]) => channel))).toEqual(new Set([
-    'character-avatar:read-batch', 'character-proposal:list-pending-finalized', 'finalized-character:list-state-candidates',
+    'character-avatar:read-batch', 'character-cast:list', 'character-proposal:list-history',
+    'character-proposal:list-pending-finalized', 'finalized-character:list-state-candidates',
   ]))
 })
 
@@ -282,7 +284,9 @@ it('U11.A13: Writer 的 1000 人图谱全部页面和搜索可达，绘制与头
   const reads = invoke.mock.calls.filter(([channel]) => channel === 'character-avatar:read-batch')
   expect(reads.length).toBeGreaterThan(0)
   expect(reads.every(([, ids]) => Array.isArray(ids) && ids.length <= GRAPH_NODE_LIMIT)).toBe(true)
+  // CharactersView 的 R6 子面板还会读：锚点人物登记（character-cast:list）与候选历史（character-proposal:list-history）。
   expect(new Set(invoke.mock.calls.map(([channel]) => channel))).toEqual(new Set([
-    'character-avatar:read-batch', 'character-proposal:list-pending-finalized', 'finalized-character:list-state-candidates',
+    'character-avatar:read-batch', 'character-cast:list', 'character-proposal:list-history',
+    'character-proposal:list-pending-finalized', 'finalized-character:list-state-candidates',
   ]))
 })

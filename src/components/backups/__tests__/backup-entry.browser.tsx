@@ -110,7 +110,8 @@ describe('backup production entries', () => {
     await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="关闭设置"]')?.click())
 
     await act(async () => useLayoutStore.getState().openSettings('backup'))
-    await vi.waitFor(() => expect(container.querySelector('h2')?.textContent).toBe('项目备份'))
+    // 设置面板的导航项/标题在 .vela-pack 特性（e01ed5b4）中更名为「备份与迁移」。
+    await vi.waitFor(() => expect(container.querySelector('h2')?.textContent).toBe('备份与迁移'))
     expect(container.textContent).toContain('请先打开一个项目')
   })
 })
