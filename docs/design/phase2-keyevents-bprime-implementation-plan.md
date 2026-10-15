@@ -216,6 +216,31 @@
 
 ---
 
+## 9.5 段三实施记录（R6 锚点人物管理面 · 2026-10-15）
+
+> ✅ **已实施**。T13 / T14 / T15 三条全部落地，读取源已从「扫已批准批次派生」切到
+> append-only 决定日志；未升级到 M08 的库自动回退旧派生（零破坏）。
+
+**新增文件**
+- `electron/repositories/character-cast-decision-repository.ts` —— 决定日志读写。`append()` 的幂等判据有两条：`operation_id` 已是主键一部分（同操作重放不写行），以及**结果态未变**（对已撤销的名字再撤一次、或把口吻改成相同值）。当前态用 `rowid` 而非 `created_at` 排序 —— 同毫秒的登记+撤销也必须分得出先后。
+- `src/components/characters/CharacterCastPanel.tsx` —— 「锚点人物（不建卡）」管理面（列出/撤销/改口吻定位/显示来源）。
+- `electron/services/__tests__/character-cast-decision.test.ts`（14 例）、`electron/repositories/__tests__/character-revive.test.ts`（9 例）、`src/components/characters/__tests__/character-cast-panel.browser.tsx`（4 例）。
+
+**T13 回填判据（关键）**：按「**该名字在日志里一条记录都没有**」回填，而**不是**按「表为空」。理由有二：① 作者若先登记一个新名字（表已非空），老陈这类历史登记仍须补上；② 一旦某名字有了任何记录（包括一条 `revoke`），就永不回填 —— **撤销过的名字不会因为一次读取而「复活」**。因此回填幂等，且可与作者操作任意交错。
+
+**决定日志成为唯一事实源**：`approve` 路径在**确认时**就把 `functional` 写进日志（`cast-approve:<operationId>:<selectionKey>`），读取侧的 backfill 只负责段三之前的历史批次。若只靠读取时派生，一个已被撤销过的名字会因「日志里已有记录」而永不更新。
+
+**T15 复活语义（作者 2026-10-15 裁定：复用原 `character_id`）**
+- 落点在 `commitCharacterIdentities` 的 creations 循环 —— 两条建卡路径（手动保存 → `commitAuthorCharacterRoster`；候选 `create` → `approve`）都汇聚于此，只在 UI/ store 加守卫会漏掉候选路径。
+- 匹配同时看 `characters.name` 与 `character_aliases.name`（改名后退场的身份，作者记得的是他最后的名字）。
+- **同名退休身份不止一个时不猜** —— 宁可新建，也不把候选挂到可能错误的那一个上。
+- 复活保留历史静态字段与既有 provenance，只覆盖作者这次给的字段（与 `changes` 路径同一纪律）；别名窗口重开 = 追加一条 `valid_through IS NULL` 的别名，旧别名不动。
+- 收据新增 `revived: { selectionKey, characterId, name }[]`；store 经 `characterRevivalEvents` 通知 UI，`CharactersView` 提示作者「这是已退场的同名身份，已复活原角色」。
+
+**顺带修掉的真缺陷**：新通道 `character-cast:*` 必须登记进 `src/services/ipc-client.ts` 的 `isProjectScopedChannel` 前缀白名单，否则渲染层调用会被 `通道不属于项目会话范围` 拒绝（浏览器测试当场抓到）。
+
+---
+
 ## 9. 迁移段执行清单（lane 六步 · 已预置，开工即用）
 
 > ✅ **2026-10-15 15:50 已实施（`6dfea726`）**：M08 v8→v9 落地，88/88 迁移测试 + 作者库副本升级实测通过。以下清单保留作实施记录。
@@ -271,6 +296,8 @@ CREATE TABLE character_cast_decisions (
 5. 附带：`portable-project-field-policy.json` 为新列登记策略（`blueprints.key_events` 现标 "D"）。
 
 ### 9.4 迁移后的两段代码（各自独立提交）
+
+> ✅ **段三已实施（2026-10-15）**，见 §9.5。段二仍待做。
 
 - **段三（先做）**：`declinedCandidateNames()` 改读 `character_cast_decisions`（空表时一次性回填：从既有已批准批次的 `functional` 决策派生）+ 「锚点人物（不建卡）」管理面（列表 / 撤销 / 改口吻定位）。
 - **段二（后做）**：世界观产出加机读行（`hours=`/`entry=`）+ 蓝图产出加 `spaceRefs` 写入 `structured_refs` + 新校验器 `space-time-consistency.ts`（**同章内**单点比较，零语义解析，两侧缺字段 fail-open）+ 接既有预检关卡（finding 带「冲突源层级」）。
