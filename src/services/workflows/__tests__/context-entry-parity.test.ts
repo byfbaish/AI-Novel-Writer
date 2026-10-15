@@ -24,6 +24,9 @@ import { refineHistoryMaterials } from '../commands/refine-draft.command'
  * 之后又变过一次：定稿原文标题不再印出内部定位状态（`· 定位索引<status>`），其余字节不变。
  * 再变一次：`includeEnding` 的上一章定稿必带 `previousChapterEnding`，不再只靠证据窗口与末两段；
  * 基线第 1 章不足一个结尾上限，于是整章进入，定稿块前多出 `第一章正文。` 一段，其余字节不变。
+ * 再变一次（P1-1）：【后续计划边界】从「保留作者后续计划原文」改为「只列后续章节事件要点」的
+ * 禁写边界，说明句的中段被重写（不再承诺逐字保留）；下方固定输入的 `futurePlans` 本身未变，
+ * 因此哈希只差这一句说明。压缩（按章分组 / 首句截断）发生在上层 `generate-draft`，本层只管承载。
  */
 const sha = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex')
 
@@ -59,7 +62,7 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.previousEnding).toBe('第三章草稿。\n\n她走向北塔。')
     expect(bundle.omissions).toEqual([])
     expect(bundle.consumedFinalizedSources.map(source => source.draftId)).toEqual([1])
-    expect(sha(bundle.text)).toBe('b5e96e08e0ca6887b8056d84bc69a9152c27e0369200c36ecf382eae7c141b3e')
+    expect(sha(bundle.text)).toBe('dcca9697eb84a99d24b9939aa19f1c80ce24f19bb1e7d1b969331119dd888a1e')
   })
 
   it('fails explicitly when required author material alone exceeds the capacity', async () => {
@@ -81,7 +84,7 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.omissions).toEqual([{ source: 'reference', reason: 'budget' }])
     expect(bundle.text).not.toContain('参'.repeat(7_000))
     expect(bundle.text).toContain('主角：林岚')
-    expect(sha(bundle.text)).toBe('d1e119aa20fb63581a355af0df7d1107171d10c963d9facc248dbe5a7d3a4fb6')
+    expect(sha(bundle.text)).toBe('bddf8727fcdf5cf5b3b4bcf10ef10c096ad3e105084db191f66de49445427e29')
   })
 
   it('reports an unlocatable evidence index and still recovers nearby prose', async () => {
