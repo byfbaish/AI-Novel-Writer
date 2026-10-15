@@ -135,7 +135,7 @@ function SessionInbox({ session }: { session: ProjectSessionContext }) {
   return <section className="border-b border-[var(--color-border)] p-2 space-y-2" aria-label={text('待处理角色候选', 'Pending character candidates')}>
     {entries.length > 0 && <>
       <div className="text-xs font-medium">{text(`待处理角色候选（${entries.length}）`, `Pending character candidates (${entries.length})`)}</div>
-      <p className="text-xs text-[var(--color-text-secondary)]">{text('这些候选还没有结论。可以新建角色、采用到已有角色、登记为功能配角（不建卡），或暂不采用。', 'These candidates have no decision yet. Create a character, adopt into an existing one, register an anchored supporting role without a card, or keep unresolved.')}</p>
+      <p className="text-xs text-[var(--color-text-secondary)]">{text('这些候选还没有结论。可以新建角色、采用到已有角色、登记为锚点人物（不建卡），或暂不采用。', 'These candidates have no decision yet. Create a character, adopt into an existing one, register an anchored supporting role without a card, or keep unresolved.')}</p>
       {!batch && entries.map(entry => <div key={entry.proposalBatchId} className="flex items-center gap-2">
         <Button variant={entry.status === 'pending-approval' ? 'outline' : 'ghost'} size="sm" disabled={busy}
           aria-label={text(`检查角色候选：${entry.label}`, `Review character candidates: ${entry.label}`)} onClick={() => void read(entry)}>
