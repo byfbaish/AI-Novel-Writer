@@ -103,7 +103,7 @@ requiredContextVariables: ['architecture', 'novel_config', 'global_guidance', 'w
 | "续写不需要短细纲 / 本章信息 / 全书设定池" | 🟧 部分成立 | 短细纲确实已执行完，但它当前**并入 `chapterMaterials`**——剥离需改 `draftAuthorMaterialBlock`。本章信息（蓝图）**必须留**，因为续写要知道停止点与本章任务。 |
 | "文风要求 30 多条应精简到 5–7 条" | ⚠️ **这是作者侧动作，不是框架能力** | 框架无法从自由文本里判断"哪 5 条属于本步"。**框架能做的是"把硬指标从文风槽位移出"**（triage 稿 §2.1）。 |
 | "判据：删掉这段材料，模型会不会写错？" | 🟧 **需要加两个限定才可用** | ① 判据只适用于**内容型材料**（设定/计划/参考），不适用于**指令型合同**（格式/红线/停止点——这些删了就真错）。② 判据必须由**步骤职责**定义，**不能由"本章是否涉及"定义**——后者需要语义理解，框架做不到（这正是报告最理想化、最不可落地的一点）。 |
-| "长线设定放独立知识库，需要时才注入" | ✅ **方向对，机制要换** | "按需注入"需机器可读标记。落点应是**架构产出时的结构**（每个设定标注 `展开期: G2-G10` / `适用章: 20+`），不是正文侧的事后过滤。 |
+| "长线设定放独立知识库，需要时才注入" | ✅ **方向对，机制要换** | "按需注入"需机器可读标记。落点应是**架构产出时的结构**（每个设定标注 `展开期: G2-G10` / `适用章: 20+`），不是正文侧的事后过滤。⚠️ **与 P1-2 不是互斥选项、是同一目标的两级颗粒度**：本行 = **P1-2b**（单条设定颗粒度，有存量重生成成本，另立小项）；**P1-2a** = 正文侧**按节**投影（本阶段，`p1-2-architecture-projection-design.md`）。 |
 | "让初始生成在输出末尾自报『已完成/待完成事件』"（源自上一份报告） | ⬛ **不可做** | 碰本项目已两踩的红线（要求"交代"的内容会被当输出字段）。**必须由代码算**（见 §5 步骤 9→10 的契约）。 |
 
 ---
@@ -189,7 +189,7 @@ requiredContextVariables: ['architecture', 'novel_config', 'global_guidance', 'w
 | 蓝图 → 短细纲 | `OutlineContract` | 本段分配表（写第 N–M 点） | ❌ 现喂"整份初始生成 prompt"→ 输出散文 | `draft-short-outline.ts` + `generate-draft.command.ts:1012` |
 | 短细纲 → 正文 | 同 `OutlineContract` | 本段编号清单 + 停止点 | ❌ 无编号 | 同上 |
 | 正文 → 续写 | `DraftState` | 已写正文、**已覆盖编号 / 剩余编号（代码算）**、当前字数 | ❌ 纯字数驱动、无事件边界 | `generate-draft.command.ts:1535-1548` |
-| 设定 → 正文 | `SettingContract`（**投影**） | 总纲/术语表/禁则/基调 + 本副本规则；**剥 `## 第N章` 剧情与远期设定** | 🔶 只有章级投影（`synopsisSettingSectionsForDraft`） | `projectArchitectureForDraft`（§6 L2） |
+| 设定 → 正文 | `SettingContract`（**投影**） | 总纲/术语表/禁则/基调 + 本副本规则；**剥 `## 第N章` 剧情与远期设定** | 🔶 章级投影已有（`synopsisSettingSectionsForDraft`）；远期节投影 = **P1-2a 已落地** | `projectArchitectureForDraft`（§6 L2）——**按节**粒度（单条设定期次见 §3-`:106` 的 P1-2b）；实现名 `withArchitectureDraftProjection` |
 
 **读法**：§5 矩阵决定"**要不要给**"，本表决定"**给的必须是这个形状**"。
 
@@ -225,7 +225,7 @@ interface PromptTemplate {
 
 | 变量 | 投影函数 | 正文步骤得到 |
 |---|---|---|
-| `architecture` | `projectArchitectureForDraft(arch, scope)` | 总纲（主题/基调/视角）+ 术语表 + 禁则 + **本副本规则**；剥离 `## 第N章` 剧情段 + 远期设定段 |
+| `architecture` | `projectArchitectureForDraft(arch, scope)` | 总纲（主题/基调/视角）+ 术语表 + 禁则 + **本副本规则**；剥离 `## 第N章` 剧情段 + 远期设定段（**按节**：远期节由模板固定标题识别，见 §3-`:106`；单条设定期次 = P1-2b） |
 | `chapter_info` | 已有 `toBlueprintProjection` | 保持 |
 | `future_blueprints` | `toBoundaryNotice(blueprints)` | 由"第2–5章全文"降级为"**本章不可写事件**清单"（每条 ≤1 行） |
 | `character_states` | 已有 | 保持 |
@@ -415,8 +415,9 @@ interface PromptTemplate {
 | **P0-2b** ✅ **已完成**（2026-10-13） | `referenceWorks` 落点错位：该看它的看不到（世界观/弧光零注入）、不该每章吃的每章吃（正文每章 2,301 字） | 体系/机制终于能进设定层；正文可只保留禁则与调性 | 作者裁定 ②「需要」→ `world_building` / `plot_structure` 新增 `reference_works`（zh+en 对称）；⚠️ 这是**唯一碰模板契约基线**的动作，已同步期望表 |
 | ~~**P0-3**~~ ✅ **已完成**（2026-10-13） | `role` 字段加**枚举取值域契约**（模板由"例如…"改硬枚举；节奏意图改走 `purpose`） | 消除 `role` 长文本进 prompt 的"同信息两遍 + 跨章指涉"（§7.0.5-C5） | 已落地：内置 `chapter_blueprint`/`chapter_blueprint_chunk` + **作者全局覆盖版** + trace 测试；**ch6/ch7 旧值未自动改写**（守"不自动执行副作用"） |
 | ~~P0-3~~ → **移至 §10-F** | 蓝图容量合同带上本章 `wordsTarget` | **性质不同**：它修的是"字数链路不一致"，不是"乱炖"。混在 P0 里会让两个问题域的验收标准互相干扰 | 低 |
-| **P1-1** | 正文/续写把后续计划降级为**本章不可写事件**清单（⚠️ 落点按 §7.0.2-R1 由 `future_blueprints` 修正为既有 **【后续计划边界】块**，`generate-draft.command.ts:784-802`） | 直接消除"续写越界第2章" | 中（`toBoundaryNotice` 需新写） |
-| **P1-2** | L2 投影：`architecture` 对正文只给事实源 | 消除"长线设定进当前章节"的错觉 | 中（须守住事实源语义） |
+| ~~**P1-1**~~ ✅ **已完成**（2026-10-15） | 正文/续写把后续计划降级为**本章不可写事件**清单（⚠️ 落点按 §7.0.2-R1 由 `future_blueprints` 修正为既有 **【后续计划边界】块**） | 直接消除"续写越界第2章"；ch2 实机整块 1,656 → 729 字（省 56%） | 已落地：`src/shared/chapter-boundary.ts`（`toBoundaryNotice`）+ 内置说明句改写 |
+| **P1-2a** ✅ **已完成**（2026-10-16） | L2 投影（**按节**）：`architecture` 对正文剥离**整节远期**段（`### 3.【隐喻与深层危机】` → 标题 + 一行声明），并在运行时合同补【远期设定边界】；另给产出侧 `world_building` §3 加生成约束（防未来再犯） | 消除"长线设定进当前章节"的错觉；ch2 实测 6,854 → 5,958（省 896 = user 5.2% / total 4.9%） | 已落地：`src/shared/architecture-projection.ts`（fail-open）。设计稿 `p1-2-architecture-projection-design.md` |
+| **P1-2b** | 产出侧**期次结构**（单条设定标注 `展开期` / `适用章`，见 §3-`:106`）：做到"只给事实源"（判 ~20–50%） | 须改模板 + **存量项目重生成世界观** ⇒ **另立小项** | 高（作者级人工成本） |
 | **P1-3** | L1 变量出口语义化 + `enforceRequiredContext` | 让"白名单"真正生效 | 中（碰模板契约测试基线） |
 | **P2** | L3-(b) 拆 `draftingRules` 槽位 | 根治"硬指标被降权" | 高（UI + schema + 迁移） |
 | **P2** | 蓝图阶段加**设定时点预检**（"铃铛 from_ch:10"这类约束机器可读化） | 从源头挡住"物品提前出现" | 中（落点 `consistency-preflight.ts`） |
