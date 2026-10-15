@@ -1,4 +1,4 @@
-import { reviewRevisionAiBrief, reviewRevisionAuthorMaterial, type ReviewRevisionContext } from '../../../shared/review-revision-generation'
+import { reviewRevisionAiBrief, reviewRevisionAuthorMaterial, type ReviewAuthorMaterialOmittable, type ReviewRevisionContext } from '../../../shared/review-revision-generation'
 import { keyEventsText } from '../../../shared/blueprint-key-events'
 import { hashAuthorText } from '../../../shared/source-ref'
 import { promptLanguageText } from '../../prompt-language'
@@ -21,8 +21,16 @@ export function reviewHistoryMaterials(frozen: ReviewRevisionContext, current: C
   }))
 }
 
-export async function selectFrozenReviewRevisionMaterials(frozen: ReviewRevisionContext, current: ChapterMaterialIdentity) {
-  const author = reviewRevisionAuthorMaterial(frozen)
+export async function selectFrozenReviewRevisionMaterials(
+  frozen: ReviewRevisionContext,
+  current: ChapterMaterialIdentity,
+  /**
+   * P7：审稿链可省略「已由模板变量单独注入」的作者材料字段（世界观 / 角色状态），
+   * 避免同一份材料在请求里出现两遍。**精修与改写链不传此参数**（材料块是它们唯一来源）。
+   */
+  options?: { omitAuthorFields?: readonly ReviewAuthorMaterialOmittable[] },
+) {
+  const author = reviewRevisionAuthorMaterial(frozen, { omit: options?.omitAuthorFields })
   const ai = reviewRevisionAiBrief(frozen)
   const materials: ReviewRevisionMaterial[] = [{ identity: { projectId: current.projectId,
     sourceId: 'author:required', revision: 1, contentHash: await hashAuthorText(author), provenance: 'author' },
