@@ -10,6 +10,7 @@ import type { CreativeStrategy, GenerationReasoningStage } from '../../src/share
 import { CREATIVE_STRATEGIES } from '../../src/shared/reasoning-types'
 import { isDeepStrictEqual } from 'node:util'
 import type { ArchitecturePlanningIntent, BeginGenerationRequest, PlanningGenerationScope } from '../../src/shared/generation-owner-contract'
+import { ARCHITECTURE_PRIOR_STEPS, type ArchitecturePriorStep } from '../../src/shared/generation-owner-contract'
 import { planBlueprintGenerationCost } from '../../src/services/workflows/blueprint-batch-policy'
 import { PLOT_OUTLINE_CONTENT, PLOT_OUTLINE_PROTOCOL, assertPlanningActionRange, parsePlanningTargetUnits, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../src/shared/plot-outline-contract'
 
@@ -62,7 +63,7 @@ function planningRange(from: unknown, to: unknown): { from: number; to: number }
 
 function architectureIntent(value: unknown): ArchitecturePlanningIntent {
   const record = planningRecord(value)
-  const order = ['premise', 'characters', 'worldbuilding'] as const
+  const order = ARCHITECTURE_PRIOR_STEPS
   const steps = record.priorSteps
   if (record.version !== 'architecture-action-v1' || !Array.isArray(steps)
     || !isDeepStrictEqual(steps, order.filter(step => steps.includes(step))))
@@ -105,6 +106,23 @@ export function planningGenerationScope(selection: Pick<BeginGenerationRequest, 
   return Object.freeze({ kind: 'architecture', intent, outlineProtocol: PLOT_OUTLINE_PROTOCOL, outlineContent: PLOT_OUTLINE_CONTENT })
 }
 
+/**
+ * 架构各步在**根预算**里预留的物理请求数（与对应 `generate-*` 命令的实际调用量对齐）。
+ *
+ * `switch` 覆盖联合全部分支、**不写 `default`** ⇒ 往 `ARCHITECTURE_PRIOR_STEPS` 加步骤时
+ * TS 会直接报"函数没有返回值"，强制在这里给出预留值（不再允许静默漏改）。
+ *
+ * 实机读数（`generate-plot-structure` 为**单次** text 调用）⇒ 弧光结构与故事前提同为 1。
+ */
+function architecturePriorStepRequests(step: ArchitecturePriorStep): number {
+  switch (step) {
+    case 'premise': return 1
+    case 'plotStructure': return 1
+    case 'worldbuilding': return 2
+    case 'characters': return 3 + (2 * 8 - Math.ceil(8 / 3)) + 1
+  }
+}
+
 export function newMainGenerationPolicy(selection: BeginGenerationRequest, model: ModelProfile): MainGenerationPolicy {
   const planning = planningGenerationScope(selection)
   if (planning) {
@@ -118,8 +136,7 @@ export function newMainGenerationPolicy(selection: BeginGenerationRequest, model
   const requests = selection.batchIntent ? selection.batchIntent.range.endChapter - selection.batchIntent.range.startChapter + 1
     : planning?.kind === 'directory'
     ? planBlueprintGenerationCost(planning.requestedRange.endChapter - planning.requestedRange.startChapter + 1).recoveryCallBound
-    : planning?.kind === 'architecture' ? planning.intent.priorSteps.reduce((sum, step) => sum + (step === 'premise' ? 1 : step === 'worldbuilding' ? 2
-      : 3 + (2 * 8 - Math.ceil(8 / 3)) + 1), 0)
+    : planning?.kind === 'architecture' ? planning.intent.priorSteps.reduce((sum, step) => sum + architecturePriorStepRequests(step), 0)
       + (planning.intent.synopsisRange ? 2 * (planning.intent.synopsisRange.to - planning.intent.synopsisRange.from + 1) : 0)
     : MAIN_GENERATION_POLICY.budget.maxPhysicalRequests
   const liability = Math.max(...(['drafting', 'planning', 'review', 'general'] as const).flatMap(stage =>

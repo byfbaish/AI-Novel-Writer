@@ -2,7 +2,7 @@ import { parsePlanningTargetUnits, assertPlanningActionRange, DEFAULT_PLANNING_A
 import { globalEventBus } from '../../shared/event-bus'
 import type { WorkflowGenerationRuntimeDependencies } from './commands/base-command'
 import type { MainGenerationRunHandle } from '../generation/generation-runtime'
-import type { ArchitecturePlanningIntent } from '../../shared/generation-owner-contract'
+import { ARCHITECTURE_PRIOR_STEPS, type ArchitecturePlanningIntent } from '../../shared/generation-owner-contract'
 import { workflowResourceKey, type WorkflowDefinition, type WorkflowContext, type StepCallbacks } from '../../stores/workflow-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
@@ -113,7 +113,7 @@ export function createArchitectureWorkflow(
   const targetUnits = parsePlanningTargetUnits(params.targetUnits)
   const planningIntent: ArchitecturePlanningIntent | undefined = resumingSynopsis || resumingWorldBuilding ? undefined : Object.freeze({
     version: 'architecture-action-v1',
-    priorSteps: Object.freeze((['premise', 'characters', 'worldbuilding', 'plotStructure'] as const).filter(step => sel.includes(step))),
+    priorSteps: Object.freeze(ARCHITECTURE_PRIOR_STEPS.filter(step => sel.includes(step))),
     synopsisRange,
   })
   const projectSnapshot: ArchitectureProjectSnapshot = Object.freeze({

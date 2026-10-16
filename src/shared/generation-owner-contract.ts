@@ -7,9 +7,25 @@ import type { ImportRunExecutionAuthority } from './import-run'
 
 /** Raw text explicitly supplied for this author action, never inferred candidate text. */
 export interface GenerationAuthorInput { id: string; text: string }
+
+/**
+ * 架构规划意图里「本次运行包含哪些**前置步骤**」的允许集合与**规范顺序**（唯一真源）。
+ *
+ * `synopsis` 不在其中：它由 `synopsisRange` 单独表达。
+ *
+ * ⚠️ 这份集合此前在**三个进程各手抄了一份字面量**（类型 / 渲染层工作流 / 主进程校验器），
+ * 2026-10-11 加第五步 `plotStructure` 时只改了两处 ⇒ 主进程 `order` 仍是三步 ⇒
+ * 任何「勾了弧光结构 + 任一被校验步骤」的架构运行都在 `generation:begin` 抛
+ * `GENERATION_PLANNING_INTENT_INVALID`。**改这里必须同步** `architecture-workflow.ts` 的
+ * `sel` 与 `main-generation-plan.ts` 的「每步物理请求预留」。
+ */
+export const ARCHITECTURE_PRIOR_STEPS = ['premise', 'characters', 'worldbuilding', 'plotStructure'] as const
+
+export type ArchitecturePriorStep = (typeof ARCHITECTURE_PRIOR_STEPS)[number]
+
 export type ArchitecturePlanningIntent = Readonly<{
   version: 'architecture-action-v1'
-  priorSteps: readonly ('premise' | 'characters' | 'worldbuilding' | 'plotStructure')[]
+  priorSteps: readonly ArchitecturePriorStep[]
   synopsisRange: Readonly<{ from: number; to: number }> | null
 }>
 export type PlanningGenerationScope =

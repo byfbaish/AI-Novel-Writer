@@ -772,6 +772,19 @@ describe('frozen planning roots', () => {
     expect(new GenerationRunRepository(() => f.db).get(child.handle.runId).binding.sourceManifest.policy).toEqual(MAIN_GENERATION_POLICY)
     expect(restored.ledger!.policy).toEqual(MAIN_GENERATION_POLICY.budget)
   })
+
+  it('accepts the fifth architecture step and reserves exactly one request for it', () => {
+    const f = planningFixture()
+    const intent: ArchitecturePlanningIntent = { version: 'architecture-action-v1',
+      priorSteps: ['premise', 'characters', 'worldbuilding', 'plotStructure'], synopsisRange: { from: 1, to: 10 } }
+    // 回归：第五步「弧光结构」曾只在类型与工作流里登记，主进程 order 仍是三步 ⇒ 送含
+    // plotStructure 的意图必抛 GENERATION_PLANNING_INTENT_INVALID（勾了弧光结构 + 任一被校验步骤就炸）。
+    const root = f.owner.begin(architectureSelection(f, intent))
+    // 20（前提 1 + 角色 17 + 世界观 2）+ 20（大纲 1–10 章 × 2）+ 1（弧光结构）= 41
+    expect(root.ledger!.policy.maxPhysicalRequests).toBe(41)
+    expect(new GenerationRunRepository(() => f.db).get(root.handle.runId).binding.sourceManifest.policy)
+      .toMatchObject({ version: 's07-capacity-v2', planning: { kind: 'architecture', intent } })
+  })
 })
 
 describe('automatic short outline binding', () => {
