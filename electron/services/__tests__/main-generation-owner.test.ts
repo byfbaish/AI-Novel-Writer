@@ -9,14 +9,14 @@ import { getDesktopMigrationRegistry, CURRENT_DESKTOP_SCHEMA_VERSION } from '../
 import { SqliteSchemaAdapter } from '../../migrations/sqlite-schema-adapter'
 import { migrateSchema } from '../../migrations/runner'
 import { createMainGenerationOwner, safeGenerationModelReceipt } from '../main-generation-owner'
-import { batchRootBudget, buildMainGenerationPlan, MAIN_GENERATION_POLICY, newMainGenerationPolicy, readMainGenerationPolicy } from '../main-generation-plan'
+import { batchRootBudget, buildMainGenerationPlan, MAIN_GENERATION_POLICY, newMainGenerationPolicy, planningGenerationScope, readMainGenerationPolicy } from '../main-generation-plan'
 import { createModelExecutionLeaseReceipt, ModelExecutionLeaseRegistry } from '../model-execution-lease'
 import * as providerPresets from '../../../src/shared/provider-presets'
 import { buildGenerationSourceBinding, rebuildGenerationSourceBinding } from '../generation-source-binding'
 import { getBuiltinPromptTemplate } from '../../../src/services/builtin-prompt-templates'
 import { readBuiltinWritingSkill } from '../../../src/shared/builtin-writing-skills'
 import type { ArchitecturePlanningIntent, BeginGenerationRequest } from '../../../src/shared/generation-owner-contract'
-import { generationOutputContract, MAX_BATCH_CHAPTERS } from '../../../src/shared/generation-owner-contract'
+import { ARCHITECTURE_PRIOR_STEPS, ARCHITECTURE_STEP_OPERATIONS, generationOutputContract, MAX_BATCH_CHAPTERS } from '../../../src/shared/generation-owner-contract'
 import { GenerationRunRepository, textHash } from '../../repositories/generation-run-repository'
 import type { GenerationTask } from '../../../src/services/generation/generation-harness'
 import { formatGenerationBudgetDiagnostic } from '../../../src/services/generation/prompt-budget-failure'
@@ -620,7 +620,8 @@ describe('frozen planning roots', () => {
   }
   const architectureSelection = (f: ReturnType<typeof fixture>, intent: ArchitecturePlanningIntent, operation = 'generate-core-seed'): BeginGenerationRequest => ({
     operation, uiActionNonce: operation, modelId: f.model.id, selectedDraftIds: [], selectedFinalizedDraftIds: [],
-    promptKeys: [operation === 'generate-plot-outline' ? 'synopsis' : 'premise'], skillStages: ['planning'], output: 'visible-text',
+    promptKeys: [operation === 'generate-plot-outline' ? 'synopsis' : operation === 'generate-plot-structure' ? 'plot_structure' : 'premise'],
+    skillStages: ['planning'], output: 'visible-text',
     authorInputs: [{ id: 'architecture:author-config', text: '{"totalChapters":200}' },
       { id: 'architecture:planning-intent', text: JSON.stringify(intent) }],
   })
@@ -784,6 +785,41 @@ describe('frozen planning roots', () => {
     expect(root.ledger!.policy.maxPhysicalRequests).toBe(41)
     expect(new GenerationRunRepository(() => f.db).get(root.handle.runId).binding.sourceManifest.policy)
       .toMatchObject({ version: 's07-capacity-v2', planning: { kind: 'architecture', intent } })
+  })
+
+  it('admits the arc-structure child of a continuous run under the root intent', () => {
+    const f = planningFixture()
+    const intent: ArchitecturePlanningIntent = { version: 'architecture-action-v1',
+      priorSteps: ['premise', 'characters', 'worldbuilding', 'plotStructure'], synopsisRange: { from: 1, to: 10 } }
+    const root = f.owner.begin(architectureSelection(f, intent))
+    // 同一「第五步未登记」家族的第二处：连续模式跑到第 4 步「弧光结构」时，operation 是
+    // generate-plot-structure，而它不在 planningGenerationScope 的 operation→step 映射里 ⇒
+    // scope 返回 null ⇒ 主进程把「这一步没有 planning scope」误读成「意图变了」⇒
+    // 抛 GENERATION_PLANNING_INTENT_CHANGED。子运行必须沿用根运行冻结的 policy。
+    const child = f.owner.begin({ ...architectureSelection(f, intent, 'generate-plot-structure'),
+      parentRootActionId: root.handle.rootActionId })
+    const repository = new GenerationRunRepository(() => f.db)
+    expect(child.handle.rootActionId).toBe(root.handle.rootActionId)
+    // 子运行必须逐字沿用根运行冻结的 policy（含 architecture planning 意图），且只占 1 个请求位。
+    expect(repository.get(child.handle.runId).binding.sourceManifest.policy)
+      .toEqual(repository.get(root.handle.runId).binding.sourceManifest.policy)
+    expect(repository.get(child.handle.runId).binding.sourceManifest.policy)
+      .toMatchObject({ planning: { kind: 'architecture', intent } })
+  })
+
+  it('resolves every frozen architecture step to an operation that carries its own planning scope', () => {
+    // 单一真源不变量：ARCHITECTURE_PRIOR_STEPS 里每一步都必须有一个能解析出 planning scope 的
+    // operation。此前 generate-plot-structure 缺失，正是连续运行中途炸掉的根因。
+    for (const step of ARCHITECTURE_PRIOR_STEPS) {
+      const scope = planningGenerationScope({ operation: ARCHITECTURE_STEP_OPERATIONS[step], authorInputs: [
+        { id: 'architecture:author-config', text: '{"totalChapters":200}' },
+        { id: 'architecture:planning-intent', text: JSON.stringify({ version: 'architecture-action-v1',
+          priorSteps: [...ARCHITECTURE_PRIOR_STEPS], synopsisRange: { from: 1, to: 10 } }) },
+      ] })
+      expect([step, scope?.kind]).toEqual([step, 'architecture'])
+      if (scope?.kind !== 'architecture') throw new Error(`步骤 ${step} 未解析出架构 planning scope`)
+      expect(scope.intent.priorSteps).toContain(step)
+    }
   })
 })
 

@@ -23,6 +23,38 @@ export const ARCHITECTURE_PRIOR_STEPS = ['premise', 'characters', 'worldbuilding
 
 export type ArchitecturePriorStep = (typeof ARCHITECTURE_PRIOR_STEPS)[number]
 
+/**
+ * 架构各步 ↔ 生成操作名 的**唯一真源**（`operation` 是 `BeginGenerationRequest` 上参与
+ * 主进程规划校验的字段）。
+ *
+ * 与 `ARCHITECTURE_PRIOR_STEPS` 同源的教训：这份对应关系此前也被抄在**多处**，2026-10-11
+ * 加第五步 `plotStructure` 时漏了两处 ⇒
+ * ① `main-generation-plan.ts` 的 `operation → step` 映射没有 `generate-plot-structure`
+ * ⇒ `planningGenerationScope()` 对它返回 `null` ⇒ 连续运行推进到「弧光结构」那一步时，
+ * 主进程把「这一步没有 planning scope」误读成「意图变了」，抛
+ * `GENERATION_PLANNING_INTENT_CHANGED`；
+ * ② `agent-generation.ts` 的 `expectedOperations` 同样没有它，智能体工作流会拒绝该子运行。
+ *
+ * ⚠️ 加步骤时必须**同时**在 `ARCHITECTURE_PRIOR_STEPS` 与这里登记；`synopsis` 只在此处
+ * （它不进 `priorSteps`，由 `synopsisRange` 单独表达，但同样是一个步骤键、有自己的操作名）。
+ */
+export const ARCHITECTURE_STEP_OPERATIONS = Object.freeze({
+  premise: 'generate-core-seed',
+  characters: 'character-architecture',
+  worldbuilding: 'generate-world-building',
+  plotStructure: 'generate-plot-structure',
+  synopsis: 'generate-plot-outline',
+} as const)
+
+export type ArchitectureStepKey = keyof typeof ARCHITECTURE_STEP_OPERATIONS
+
+/** 由操作名反查架构步骤键；非架构步骤的操作返回 `null`。 */
+export function architectureStepForOperation(operation: string): ArchitectureStepKey | null {
+  const match = (Object.keys(ARCHITECTURE_STEP_OPERATIONS) as ArchitectureStepKey[])
+    .find(step => ARCHITECTURE_STEP_OPERATIONS[step] === operation)
+  return match ?? null
+}
+
 export type ArchitecturePlanningIntent = Readonly<{
   version: 'architecture-action-v1'
   priorSteps: readonly ArchitecturePriorStep[]
