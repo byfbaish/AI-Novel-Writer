@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util'
 import type Database from 'better-sqlite3'
 import type { AgentGenerationContext, AgentGenerationInput, AgentGenerationRecovery, AgentGenerationRound, AgentToolAction, AgentToolActionRef, AgentWorkflowRegistration, AgentAuthorBlueprintProposal, AgentToolClaim, AgentDomainToolReceipt } from '../../src/shared/agent-generation'
-import type { BeginGenerationRequest } from '../../src/shared/generation-owner-contract'
+import { ARCHITECTURE_STEP_OPERATIONS, type BeginGenerationRequest } from '../../src/shared/generation-owner-contract'
 import type { MainGenerationExecuteReceipt, MainGenerationRunHandle, MainGenerationRunView } from '../../src/services/generation/generation-runtime'
 import type { GenerationTask } from '../../src/services/generation/generation-harness'
 import { GenerationRunRepository, textHash, type DurableGenerationRun, type RunBinding } from '../repositories/generation-run-repository'
@@ -312,9 +312,11 @@ export class AgentGeneration {
       return undefined
     }
     const { action, run, registration } = this.workflowRegistration(id)
-    const expectedOperations = registration.workflow === 'generate_draft' ? ['chapter-draft']
+    const expectedOperations: string[] = registration.workflow === 'generate_draft' ? ['chapter-draft']
       : registration.workflow === 'generate_blueprint' ? ['chapter-blueprint-directory']
-        : ['generate-global-config', 'generate-core-seed', 'character-architecture', 'generate-world-building', 'generate-plot-outline']
+        // 架构工作流的允许操作从**唯一真源**派生：此前这里是手抄的一份字面量，加第五步
+        // plotStructure 时漏了 generate-plot-structure，智能体工作流会拒绝该子运行。
+        : ['generate-global-config', ...Object.values(ARCHITECTURE_STEP_OPERATIONS)]
     if (!['running', 'completed'].includes(action.status) || selection.modelId !== registration.modelId
       || selection.parentRootActionId !== run.rootActionId || !expectedOperations.includes(selection.operation)
       || registration.workflow === 'generate_draft' && selection.chapterNumber !== registration.chapterNumber

@@ -10,7 +10,7 @@ import type { CreativeStrategy, GenerationReasoningStage } from '../../src/share
 import { CREATIVE_STRATEGIES } from '../../src/shared/reasoning-types'
 import { isDeepStrictEqual } from 'node:util'
 import type { ArchitecturePlanningIntent, BeginGenerationRequest, PlanningGenerationScope } from '../../src/shared/generation-owner-contract'
-import { ARCHITECTURE_PRIOR_STEPS, type ArchitecturePriorStep } from '../../src/shared/generation-owner-contract'
+import { ARCHITECTURE_PRIOR_STEPS, architectureStepForOperation, type ArchitecturePriorStep } from '../../src/shared/generation-owner-contract'
 import { planBlueprintGenerationCost } from '../../src/services/workflows/blueprint-batch-policy'
 import { PLOT_OUTLINE_CONTENT, PLOT_OUTLINE_PROTOCOL, assertPlanningActionRange, parsePlanningTargetUnits, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../src/shared/plot-outline-contract'
 
@@ -88,10 +88,10 @@ export function planningGenerationScope(selection: Pick<BeginGenerationRequest, 
     if (!isDeepStrictEqual(range, requestedRange)) throw new Error('GENERATION_PLANNING_INTENT_INVALID')
     return Object.freeze({ kind: 'directory', requestedRange: Object.freeze(requestedRange) })
   }
-  const step = selection.operation === 'generate-core-seed' ? 'premise'
-    : selection.operation === 'character-architecture' ? 'characters'
-      : selection.operation === 'generate-world-building' ? 'worldbuilding'
-        : selection.operation === 'generate-plot-outline' ? 'synopsis' : null
+  // operation → 步骤键走**唯一真源**（ARCHITECTURE_STEP_OPERATIONS）。此前这里是手写的
+  // 四分支三元，漏了 generate-plot-structure ⇒ 该步 scope 返回 null ⇒ 连续运行中途抛
+  // GENERATION_PLANNING_INTENT_CHANGED。
+  const step = architectureStepForOperation(selection.operation)
   if (!step) return null
   const provided = planningInput(selection, 'architecture:planning-intent')
   const config = planningInput(selection, 'architecture:author-config')
