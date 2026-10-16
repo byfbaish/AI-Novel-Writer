@@ -180,6 +180,18 @@ export class ChapterPromptBuilder extends BasePromptBuilder {
     return this;
   }
 
+  /**
+   * 本章结尾钩子（悬置点）。
+   *
+   * 与 `chapter_info` JSON 内的同名字段**并存**，不是重复：JSON 里的是结构化投影，
+   * 单独成块是为了给它一个显眼位置 —— 钩子排在 `keyEvents` 之后，埋进 JSON 里
+   * 容易被当作元数据忽略，而它恰恰决定结尾的悬念感。
+   */
+  withSuspenseHook(hook: string) {
+    this.variables.suspense_hook = hook;
+    return this;
+  }
+
   /** 用户指定的知识库检索关键词（追加到向量搜索 query） */
   withKnowledgeQueryHint(hint: string) {
     this.variables.knowledge_query_hint = hint;

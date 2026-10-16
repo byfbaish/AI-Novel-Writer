@@ -103,6 +103,7 @@ export const PROMPT_VARIABLE_DESCRIPTIONS_EN: Readonly<Record<string, string>> =
   global_guidance: 'Global writing guidance',
   step_guidance: 'Additional guidance for this step (optional)',
   reference_works: 'Reference works (optional)',
+  suspense_hook: 'Ending hook for this chapter (optional)',
   novel_config: 'Author-confirmed novel configuration',
   premise: 'Story premise',
   world_building: 'World setting',
@@ -190,6 +191,8 @@ const OPTIONAL_PROMPT_LABEL_PATTERN = [
   // 英文侧参考作品段：此前只有中文表头进了这张表，英文项目在"本步无参考作品"时会
   // 留一个空标题（自由文本按步骤分区后，"本步为空"成了常见态，必须两边对称裁剪）。
   '\\[Reference works[^\\]\\r\\n]*\\]',
+  // 结尾钩子段：与中文侧「【本章结尾钩子（如有）】」对称，空值时整段连同标题裁掉。
+  '\\[Ending hook[^\\]\\r\\n]*\\]',
 ].join('|')
 
 /**
@@ -903,6 +906,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 要求：
 - keyEvents 必须是数组（2-5 条，按发生顺序）：每条 event 写 30-80 字、信息密度极高；estimatedUnits 为正整数，表示该事件预计占用的正文单位数。id 由运行时按章号重写，你写的只是参考。
 - 每个对象必须包含完整的 chapterNumber、title、role、purpose、characters、relationships、keyEvents、suspenseHook；relationships 仅写本章可确认的角色关系，无则输出空数组。
+- keyEvents 与 suspenseHook 严格分工、不得重叠：keyEvents 每一条都必须是本章内发生并写出结果的事件；suspenseHook 只写「本章结束时仍未决的那个问题/威胁/代价」，它不是事件，不得复述、摘要或改写 keyEvents 的任何一条（含最后一条），也不得把 suspenseHook 的内容再写一遍当作 keyEvents 的最后一条。
 - role 只填一个功能词，不附加括号、破折号或任何说明；"为后文铺垫"一类的节奏意图写进 purpose，且只用本章自身要达到的状态来描述（例如"本章收尾要把某条线索推到临界"），不得提及后续章节号或后续情节。
 - 仅给出最终的 JSON 文本，不要任何客套解释、分析、计划、Markdown 或代码块。
 
@@ -980,6 +984,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 要求：
 - 严格遵循上下文连贯，不要前后矛盾。
 - 每个对象必须包含完整的 chapterNumber、title、role、purpose、characters、relationships、keyEvents、suspenseHook；relationships 仅写本章可确认的角色关系，无则输出空数组。
+- keyEvents 与 suspenseHook 严格分工、不得重叠：keyEvents 每一条都必须是本章内发生并写出结果的事件；suspenseHook 只写「本章结束时仍未决的那个问题/威胁/代价」，它不是事件，不得复述、摘要或改写 keyEvents 的任何一条（含最后一条），也不得把 suspenseHook 的内容再写一遍当作 keyEvents 的最后一条。
 - role 只填一个功能词，不附加括号、破折号或任何说明；"为后文铺垫"一类的节奏意图写进 purpose，且只用本章自身要达到的状态来描述（例如"本章收尾要把某条线索推到临界"），不得提及后续章节号或后续情节。
 - 仅给出最终的 JSON 文本，不要解释、分析、计划、Markdown 或代码块。
 
@@ -1005,9 +1010,10 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       word_number: '目标字数',
       writing_style: '文风描述（可选）',
       reference_works: '参考作品（可选）',
+      suspense_hook: '本章结尾钩子（可选）',
       user_guidance: '作者本章微操指导（可选）',
     },
-    requiredContextVariables: ['architecture', 'novel_config', 'global_guidance', 'writing_style'],
+    requiredContextVariables: ['architecture', 'novel_config', 'global_guidance', 'writing_style', 'suspense_hook'],
     content: `请开始创作这本小说的第一章（破冰章）。
 
 【全书设定池】
@@ -1015,6 +1021,9 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 
 【本章信息】
 {{chapter_info}}
+
+【本章结尾钩子（如有）】
+{{suspense_hook}}
 
 【后续章节大纲预告】（仅供了解后续剧情发力点，请绝对不要在本章提前写出后续内容！）
 {{future_blueprints}}
@@ -1048,7 +1057,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 - 体量与节奏控制：大约 {{word_number}} 字左右。本章仅推演【本章信息】中规定的核心剧情，切忌注水！不要为了凑字数而撰写冗余的旁白科普或无意义的日常对话。按【本章信息】约定的结束状态或悬念收束；未明确要求时自然断章，绝不可提前泄露后续情节。
 - 格式要求：直接输出纯文本正文。禁止使用任何 Markdown 语法符号（如不要用 * 或 ** 或 # 等）。所有对话必须使用标准中文双引号，严禁使用剧本式的对话格式。
 - **强制排版要求：【段落与段落之间必须保留一个空行作为分隔】。绝对不允许连续多行不留空行！**
-- 结尾法则：仅落实【本章信息】明确要求的钩子；不得为制造悬念擅自新增高潮、突发变故或后续事件。
+- 结尾法则：仅落实【本章信息】与【本章结尾钩子】明确要求的钩子；不得为制造悬念擅自新增高潮、突发变故或后续事件。给出的钩子是「读者读完还在想的问题」，不是本章要完成的事件——不要在本章内解决、揭晓或收尾，也不要把它写成一个已完成的事件。
 - 接近目标篇幅时按本章结束状态收束，不要超过目标；不要写“继续生成”“点我继续”之类的界面提示。
 
 【AI 味反制——以下模式严禁出现】
@@ -1078,8 +1087,9 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       word_number: '目标字数',
       writing_style: '文风描述（可选）',
       reference_works: '参考作品（可选）',
+      suspense_hook: '本章结尾钩子（可选）',
     },
-    requiredContextVariables: ['architecture', 'novel_config', 'global_guidance', 'writing_style'],
+    requiredContextVariables: ['architecture', 'novel_config', 'global_guidance', 'writing_style', 'suspense_hook'],
     content: `你正在连载写作最新章节。
 
 【剧情记忆库与前置断点上下文】
@@ -1092,6 +1102,9 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 【本章写作方向与核心任务】
 {{chapter_info}}
 
+【本章结尾钩子（如有）】
+{{suspense_hook}}
+
 【后续章节大纲预告】（仅供了解后续剧情发力点，请绝对不要在本章提前写出后续内容！）
 {{future_blueprints}}
 
@@ -1102,7 +1115,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 1. 向前推进：【有来源的历史与候选】中的【定稿原文 · 第N章】（以及作者选入的【未定稿候选 · 第N章】）记录的是本章之前已写成的正文，其中最近一章的结尾就是上一章已完成的最终状态；【本章写作方向与核心任务】和【后续计划边界】不因此成为已发生事件。第一段必须从上一章的最终状态之后推进本章新事件；不得引用、摘要、回放或重演上一章结尾中的句子、动作和意象，也不要场景瞬移或突兀切换视角。
 2. 动作与神态驱动：用动态的描写推动剧情，不要写"他们聊了很久"，用拔剑声、茶水滴落声、瞳孔的骤缩来代替。
 3. 落实本章核心冲突：集中推演完本章目标，避免平淡流水账。
-4. 章节收束：仅落实【本章写作方向与核心任务】明确要求的悬念或结束状态；未明确要求时自然断章，不得擅自新增高潮、突发变故或后续事件。
+4. 章节收束：仅落实【本章写作方向与核心任务】与【本章结尾钩子】明确要求的悬念或结束状态；未明确要求时自然断章，不得擅自新增高潮、突发变故或后续事件。给出的钩子是「读者读完还在想的问题」，不是本章要完成的事件——不要在本章内解决、揭晓或收尾，也不要把它写成一个已完成的事件。
 5. 全局写作要求：{{global_guidance}}。
 
 【文风要求（如有）】

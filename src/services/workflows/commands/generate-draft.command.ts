@@ -306,11 +306,15 @@ function toWriterChapterInfo(chapterInfo: ChapterInfo): WriterChapterInfo {
  */
 function toBlueprintProjection(
   chapterInfo: WriterChapterInfo,
-  options: { dropUserGuidance?: boolean } = {},
+  options: { dropUserGuidance?: boolean; dropSuspenseHook?: boolean } = {},
 ): Record<string, unknown> {
-  if (!options.dropUserGuidance) return { ...chapterInfo }
-  const { userGuidance: _userGuidance, ...rest } = chapterInfo
-  return rest
+  if (!options.dropUserGuidance && !options.dropSuspenseHook) return { ...chapterInfo }
+  const { userGuidance, suspenseHook, ...rest } = chapterInfo
+  return {
+    ...rest,
+    ...(options.dropUserGuidance ? {} : { userGuidance }),
+    ...(options.dropSuspenseHook ? {} : { suspenseHook }),
+  }
 }
 
 function hasSubstantialPreviousChapterReuse(
@@ -837,7 +841,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       // P1 Phase 2：初始请求的 ★额外指导★ 块（build() 追加的 systemSuffix）已承载 user_guidance，
       // 故蓝图 JSON 投影里不再重复携带，避免同一轮内逐字出现 2 次（Phase 0 实测 D6）。
       // 续写 / 压缩请求没有 ★ 块，走 draftAuthorMaterialBlock，那里保留 userGuidance。
-      .withChapterInfo(toBlueprintProjection(writerChapterInfo, { dropUserGuidance: true }))
+      // 结尾钩子改由【本章结尾钩子】块「唯一承载」：它排在 `keyEvents` 之后，埋在 JSON
+      // 末尾容易被当作元数据忽略，而它决定结尾的悬念感。从 JSON 投影里摘掉同名键是必须的
+      // —— 项目去重不变量要求同一轮内作者字段各只出现一次（见本文件的 split 断言）。
+      // 覆盖版模板若不含该块，由 `appendRequiredPromptContext` 兜底追加，仍恰好一次。
+      .withChapterInfo(toBlueprintProjection(writerChapterInfo, { dropUserGuidance: true, dropSuspenseHook: true }))
+      .withSuspenseHook(this.chapterInfo.suspenseHook?.trim() || '')
       .withCharacterStates('')
       .withFutureBlueprints('')
       .withFilteredContext('')
