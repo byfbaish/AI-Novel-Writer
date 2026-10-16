@@ -96,6 +96,7 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
   const [role, setRole] = useState('发展')
   const [purpose, setPurpose] = useState('')
   const [keyEvents, setKeyEvents] = useState('')
+  const [suspenseHook, setSuspenseHook] = useState('')
   const [characters, setCharacters] = useState('')
   const [userGuidance, setUserGuidance] = useState('')
   const [knowledgeHint, setKnowledgeHint] = useState('')
@@ -168,7 +169,7 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
           const log = result.data as {
             lastUsed?: {
               chapterNumber: number; title?: string; role: string
-              purpose?: string; keyEvents?: string; characters?: string
+              purpose?: string; keyEvents?: string; suspenseHook?: string; characters?: string
               userGuidance?: string; wordsTarget?: number
             }
           }
@@ -180,6 +181,7 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
             setRole(last.role ?? '发展')
             setPurpose(last.purpose || '')
             setKeyEvents(last.keyEvents || '')
+            setSuspenseHook(last.suspenseHook || '')
             setCharacters(last.characters || '')
             setUserGuidance(last.userGuidance || '')
             setWordsTarget(normalizeChapterWordsTarget(last.wordsTarget, defaultWordsTarget))
@@ -216,6 +218,9 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
         setPurpose(String(prefill.purpose || ''))
         // 预填可能来自蓝图（结构化事件数组）或自动续写（文本）；统一转成「一行一条」文本。
         setKeyEvents(keyEventsText(normalizeKeyEvents(prefill.keyEvents)))
+        // 蓝图里本就产出了 suspenseHook（`blueprints.suspense_hook`）；此前这里只预填
+        // keyEvents/characters，钩子被留在库里进不了正文请求。
+        setSuspenseHook(String(prefill.suspenseHook || ''))
         setCharacters(String(prefill.characters || ''))
         setUserGuidance(String(prefill.userGuidance || ''))
         setWordsTarget(defaultWordsTarget)
@@ -237,7 +242,7 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
   /** 保存当前参数到持久化文件 */
   const saveParams = async (projectSession: ProjectSessionContext, normalizedWordsTarget: number) => {
     const projectPath = projectSession.projectPath
-    const params = { chapterNumber, title, role, purpose, keyEvents, characters, userGuidance, wordsTarget: normalizedWordsTarget }
+    const params = { chapterNumber, title, role, purpose, keyEvents, suspenseHook, characters, userGuidance, wordsTarget: normalizedWordsTarget }
     try {
       // 读取已有 log
       let log: { lastUsed?: object; history?: object[] } = {}
@@ -335,7 +340,7 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
           purpose,
           keyEvents: normalizeKeyEvents(keyEvents, { chapterNumber: targetChapter }),
           characters: characters.split(/[、,，]/u).map(value => value.trim()).filter(Boolean),
-          suspenseHook: '',
+          suspenseHook,
           userGuidance,
           notes: '',
         }])
@@ -384,6 +389,7 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
       role,
       purpose,
       keyEvents,
+      suspenseHook,
       characters,
       userGuidance,
       knowledgeQueryHint: knowledgeHint,
@@ -525,6 +531,16 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
                   value={keyEvents}
                   onChange={(e) => setKeyEvents(e.target.value)}
                   placeholder={text('本章需要发生的关键事件，每行一条...', 'Events that must happen in this chapter, one per line...')}
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <Label>{text('结尾钩子', 'Ending hook')} <span className="text-[0.7rem] opacity-50">{text('（可选，结尾留下的未决点）', '(optional, unresolved point left at the end)')}</span></Label>
+                <Textarea
+                  value={suspenseHook}
+                  onChange={(e) => setSuspenseHook(e.target.value)}
+                  placeholder={text('结尾要制造的悬念或未决点（不是本章要完成的事件）...', 'The suspense or open question left at the end (not an event to complete here)...')}
                   rows={2}
                 />
               </div>

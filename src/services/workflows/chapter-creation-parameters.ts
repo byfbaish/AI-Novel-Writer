@@ -12,6 +12,14 @@ export interface ChapterCreationDialogInput {
   role: string
   purpose: string
   keyEvents: string
+  /**
+   * 本章结尾钩子（悬置点）。
+   *
+   * ⚠️ 与 `keyEvents` 语义分开：keyEvents 是「本章必须发生并完成的事件」，
+   * 钩子是「结尾要留下的未决点」。此前单章入口漏了该字段 ⇒ 正文链收到的
+   * `chapter_info` 里没有它 ⇒ 蓝图设计的钩子从未进入正文请求。
+   */
+  suspenseHook: string
   characters: string
   userGuidance: string
   knowledgeQueryHint: string
@@ -55,6 +63,8 @@ export function createChapterInfoFromDialogInput(input: ChapterCreationDialogInp
     // 弹窗里的「关键事件」是 Textarea 文本（每行一条）；在这里归一化为事件数组，
     // 使 `ChapterInfo` 之后一律持有结构化清单（阶段 1 不改编辑器形态，见设计稿 D4）。
     keyEvents: normalizeKeyEvents(input.keyEvents, { chapterNumber }),
+    // 结尾钩子：空白收敛为 undefined，避免在 `chapter_info` JSON 里留下空字段。
+    suspenseHook: input.suspenseHook.trim() || undefined,
     userGuidance: input.userGuidance,
     wordsTarget: normalizeChapterWordsTarget(input.wordsTarget, input.defaultWordsTarget),
     knowledgeQueryHint: input.knowledgeQueryHint.trim() || undefined,

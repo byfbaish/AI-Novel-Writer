@@ -89,6 +89,7 @@ const expectedPromptVariables: Record<string, string[]> = {
     'word_number',
     'writing_style',
     'reference_works',
+    'suspense_hook',
     'user_guidance',
   ],
   next_chapter_draft: [
@@ -106,6 +107,7 @@ const expectedPromptVariables: Record<string, string[]> = {
     'word_number',
     'writing_style',
     'reference_works',
+    'suspense_hook',
   ],
   refine_chapter: [
     'draft_content',
@@ -350,6 +352,7 @@ describe('built-in model-neutral prompt contract', () => {
       global_guidance: '唯一全局要求丙',
       word_number: '3000',
       writing_style: '唯一文风要求丁',
+      suspense_hook: '唯一结尾钩子戊',
       user_guidance: '',
     }
 
@@ -370,6 +373,7 @@ describe('built-in model-neutral prompt contract', () => {
           .withGlobalGuidance(variables.global_guidance)
           .withWordNumber(variables.word_number)
           .withWritingStyle(variables.writing_style)
+          .withSuspenseHook(variables.suspense_hook)
           .withUserGuidance(variables.user_guidance)
           .build(),
       ]
@@ -494,6 +498,7 @@ describe('built-in model-neutral prompt contract', () => {
       global_guidance: '全局要求',
       word_number: '3000',
       writing_style: '文风',
+      suspense_hook: '',
       user_guidance: '',
     }, 'zh-CN')
 
@@ -515,6 +520,7 @@ describe('built-in model-neutral prompt contract', () => {
       .withGlobalGuidance('全局要求')
       .withWordNumber('3000')
       .withWritingStyle('文风')
+      .withSuspenseHook('')
       .withUserGuidance('')
       .build()
 
@@ -564,6 +570,7 @@ describe('built-in model-neutral prompt contract', () => {
       .withGlobalGuidance('全局要求')
       .withWordNumber('900')
       .withWritingStyle('文风')
+      .withSuspenseHook('')
       .withUserGuidance('')
       .build()
 
@@ -589,6 +596,7 @@ describe('built-in model-neutral prompt contract', () => {
         .withGlobalGuidance('全局要求')
         .withWordNumber('900')
         .withWritingStyle('文风')
+        .withSuspenseHook('')
         .withUserGuidance('')
         .build()
       expect(rendered).not.toMatch(/【后续章节大纲预告】|\[Upcoming chapter blueprints/u)

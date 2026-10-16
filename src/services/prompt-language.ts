@@ -841,6 +841,9 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 [Chapter brief]
 {{chapter_info}}
 
+[Ending hook (if any)]
+{{suspense_hook}}
+
 [Upcoming chapter blueprints — use only to understand later turning points; do not reveal or advance them in this chapter]
 {{future_blueprints}}
 
@@ -870,7 +873,7 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 {{user_guidance}}
 
 [Output contract]
-- Write approximately {{word_number}} words and cover only the chapter brief. End at the state or hook specified there; when none is specified, end naturally without advancing later blueprints or adding filler.
+- Write approximately {{word_number}} words and cover only the chapter brief. End at the state or hook specified there; when none is specified, end naturally without advancing later blueprints or adding filler. A supplied ending hook is an open question for the reader, not an event to complete: do not resolve, reveal, or close it inside this chapter.
 - Output plain manuscript prose only. Do not use Markdown, headings, analysis, plans, or screenplay formatting.
 - Separate every paragraph with one blank line. Use standard quotation marks consistently for dialogue.
 - As you approach the target length, close at the chapter's specified ending state and do not exceed the target; never ask the user to continue.
@@ -889,6 +892,9 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 [Chapter brief]
 {{chapter_info}}
 
+[Ending hook (if any)]
+{{suspense_hook}}
+
 [Upcoming chapter blueprints — use only to understand later turning points; do not reveal or advance them in this chapter]
 {{future_blueprints}}
 
@@ -899,7 +905,7 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 1. The [Finalized manuscript · Chapter N] passages (and any author-selected [Unfinalized candidate · Chapter N] passages) under [Sourced history and candidates] are prose written before this chapter; the end of the latest one is the previous chapter's completed state. [Chapter brief] and [Future-plan boundary] do not thereby become completed events. Begin after the previous chapter's final state and advance a new event from this chapter brief. Do not quote, summarize, replay, or restage any sentence, action, or image from the previous ending; also avoid teleporting the scene or abruptly changing viewpoint.
 2. Drive the scene through action, expression, sensory detail, and dialogue rather than detached summary.
 3. Complete this chapter's conflict without filler.
-4. Use only the ending state or hook explicitly required by the chapter brief. When none is specified, end naturally without inventing an escalation, interruption, or later event.
+4. Use only the ending state or hook explicitly required by the chapter brief or the [Ending hook] section. When none is specified, end naturally without inventing an escalation, interruption, or later event. A supplied hook is an open question for the reader, not an event to complete: do not resolve, reveal, or close it inside this chapter.
 5. Follow the project-wide guidance: {{global_guidance}}
 
 [Writing style]
