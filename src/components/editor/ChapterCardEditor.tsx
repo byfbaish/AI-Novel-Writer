@@ -776,6 +776,9 @@ function ChapterCardEditorSession({
       role: bp.role,
       purpose: bp.purpose,
       keyEvents: bp.keyEvents,
+      // 结尾钩子是蓝图里的独立字段，必须一起注入 —— 此前这里手工列字段时漏了它，
+      // 导致弹窗「结尾钩子」栏只剩 placeholder（判据 T：手工列字段是漏字段的固定断点）。
+      suspenseHook: bp.suspenseHook || '',
       characters: bp.characters.join('、'),
       userGuidance: bp.userGuidance || '',
     })

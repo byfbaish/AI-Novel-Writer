@@ -8,6 +8,8 @@ export interface NextChapterBlueprint {
   keyEvents: BlueprintKeyEvent[]
   characters: string[]
   userGuidance: string
+  /** 结尾钩子（蓝图独立字段）；缺失时创作弹窗该栏留空。 */
+  suspenseHook?: string
 }
 
 /**
@@ -30,6 +32,7 @@ export function getAutoNextChapterPrefill(
     role: blueprint.role,
     purpose: blueprint.purpose,
     keyEvents: keyEventsText(blueprint.keyEvents),
+    suspenseHook: blueprint.suspenseHook ?? '',
     characters: blueprint.characters.join('、'),
     userGuidance: blueprint.userGuidance || '',
   }
