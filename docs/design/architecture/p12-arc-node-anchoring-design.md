@@ -135,16 +135,17 @@ R3 额度与失控：一天仅一次；第一句被当面揭穿，或出现第�
 - R2 解释了「门牌错位」为什么能成为观察科的证据（旁人只觉得细节对不上）；
 - R3 解释了「第一句被揭穿」为什么不是「失效」而是「现实打架」。
 
-**第二层：模板约束（已实施，防再犯）**
+**第二层：模板约束 —— 已撤回，不做**
 
-`character_dynamics` 与 `plot_structure` 两个模板（含全局覆盖版、中英双语）新增「承重术语只许引用，不许自造」：
+2026-10-18 02:1x 曾给 `character_dynamics` / `plot_structure`（含全局覆盖版、中英双语）加过一条「承重术语只许引用，不许自造」，**作者当场否决并已全部回退**（全局覆盖版由 `*.bak-p12-*` 还原，内置与 en-US 已删净）。
 
-- 上游若给出编号（R1/R2/R3…），必须带编号引用，不得改动；
-- 上游若**没有**编号，**不要使用该术语**，改为一句具体规则描述，把定义权留给上游。
+撤回理由，三条都要记住：
 
-> 为什么选这两个模板：`character_dynamics` 是第一个描述金手指能力的步骤（候选清单来源），`plot_structure` 是大纲的直接上游（第二份清单来源）。两处都是纯正文改动，不改 `requiredContextVariables`（红线 16）、不改输出格式（纯 JSON 合同不受影响）。
+1. **三条铁律是小说设定，不是模板问题。** 它的定义权在 `golden_finger`；模板读不到定义，是因为上游没写，不是因为模板缺一条禁令。
+2. **约束引用方治不了缺定义的源头。** 在上游没有编号时禁止使用该术语，模型只有两个选择：不用（设定退化）或自造（同错）。R1–R3 依然不存在。
+3. **覆盖版是跨项目资产，不能承载单本书的诊断。** 当时的插入段落还带了一行「★ 实测代价（2026-10-18）…」——把内部事故记录永久写进 prompt 正文，既污染提示词，也会污染后续所有新书。
 
-`synopsis` 与 `chapter_blueprint_chunk` 未改——它们已在全局覆盖里，且正文链另有 `global_guidance` 兜底；若后续仍出现自造，再补。
+⇒ **唯一该做的是第一层的数据订正**，模板保持原样。
 
 ### 4.5 角色弧义务载体（分期，最贵）
 
@@ -217,7 +218,7 @@ R3 额度与失控：一天仅一次；第一句被当面揭穿，或出现第�
 | 序 | 项 | 依赖 | 备注 |
 |---|---|---|---|
 | **P12-0a** | `arc-node.ts` 纯函数（`listArcNodes` / `findArcNode` / `arcNodesForChapter` / `validateArcCovers`）+ 11 条单测 | 无 | ✅ **已实施**（`src/shared/arc-node.ts`）；`scaledBoundaries` 改为导出以复用同一份折算，**零数据改动** |
-| **P12-0b** | 「三条铁律」→ `R1/R2/R3` 编号登记 | 无 | ✅ **模板侧已实施**（`character_dynamics` + `plot_structure`，含全局覆盖版与 en-US）；⚠️ **数据侧待作者订正 `golden_finger`**（草稿见 §4.4） |
+| **P12-0b** | 「三条铁律」→ `R1/R2/R3` 编号登记 | 无 | ⚠️ **仅数据订正**（`golden_finger` 加编号，作者执行，草稿见 §4.4）。**模板一律不动**——2026-10-18 曾误加约束，已全部回退 |
 | **P12-1** | 大纲模板产出一行 `覆盖：…` + 解析器 | P12-0a | 改模板正文，不碰 `requiredContextVariables` |
 | **P12-2** | 蓝图 `structured_refs.arcNodes` + 三不变量校验 | P12-1 | INV-1 为 error，INV-3 为 warning |
 | **P12-3** | 报告面（覆盖度 / 越界清单） | P12-2 | 可先只在预检报告显示 |
@@ -243,10 +244,11 @@ R3 额度与失控：一天仅一次；第一句被当面揭穿，或出现第�
 - **实测（真实 150 章弧光）**：29 个节点 = 3 大弧 + 6 中弧 + 20 结构位；ch1–5 全部落 `M1-1`，合法结构位只有 `因果`/`时序`/`转折` 三格；ch2 `M1-2/尝试 2` 提前 25 章、ch3 `M1-2/转折` 提前 24 章、ch4 提前 23 章。
 - `tsc --noEmit` 0；`arc-node` 11 passed；`prompt-language-contract` 31 + `prompt-local-qwen-contract` 21 全绿。
 
-### 2026-10-18 · P12-0b（承重术语）
+### 2026-10-18 · P12-0b（承重术语）—— 实施后即回退
 
 - **源头定位**：`project_core.golden_finger` 自己写了「但三条铁律永不解除」，从未列出内容 ⇒ 三层各造一份。
-- 模板侧：`character_dynamics`（内置 + 全局覆盖版 `character_dynamics.zh-CN.json`，备份 `*.bak-p12-2026101802xx`）与 `plot_structure`（内置）各加一条「承重术语只许引用，不许自造」；`prompt-language.ts` 同步英文。未改 `requiredContextVariables`、未改输出格式。
-- 数据侧：`golden_finger` 的 R1–R3 订正草稿见 §4.4，**待作者确认后粘贴**（不擅自改作者资产）。
+- ⛔ **模板侧改动已全部回退**（作者当场指出「三条铁律是小说的设定」）：全局覆盖版 `character_dynamics.zh-CN.json` 由 `*.bak-p12-202610180212` 还原（1792 字符，无残留）；内置 `character_dynamics` / `plot_structure` 与 `prompt-language.ts` 的 en-US 对应段落已删净。
+- 回退后验证：`tsc --noEmit` 0；`prompt-language-contract` 31 + `prompt-local-qwen-contract` 21 + `arc-node` 11 = **63 passed**。
+- **剩余唯一动作**：`golden_finger` 的 R1–R3 订正草稿见 §4.4，**待作者确认后粘贴**——设定是作者资产，不擅自改。
 
 ---
