@@ -61,7 +61,7 @@ export interface ArcNode {
 }
 
 export interface ArcCoverViolation {
-  code: 'INV-1-OUT_OF_RANGE' | 'UNKNOWN_NODE' | 'COARSE_NODE'
+  code: 'INV-1-OUT_OF_RANGE' | 'INV-2-DUPLICATE' | 'INV-3-UNCOVERED' | 'UNKNOWN_NODE' | 'COARSE_NODE'
   /** 触发违规的结构位 ID。 */
   id: string
   chapterNumber: number
@@ -165,8 +165,7 @@ export function arcNodesForChapter(nodes: readonly ArcNode[], chapterNumber: num
  *
  * 缺失 `covers`（空数组）返回空 —— fail-open，与 `attacks` 一致。
  */
-export function validateArcCovers(
-  nodes: readonly ArcNode[],
+export function validateArcCovers(  nodes: readonly ArcNode[],
   covers: readonly string[],
   chapterNumber: number,
 ): ArcCoverViolation[] {
@@ -209,4 +208,145 @@ export function validateArcCovers(
   }
 
   return violations
+}
+
+// ============================================================
+// P12-1：大纲里的「覆盖：<ID>」声明
+// ============================================================
+
+/** `## 第12章：标题` / `## Chapter 12: Title`（允许 `#`~`####`、全角冒号、无分隔符）。 */
+const CHAPTER_HEADING = /^#{1,4}[\t ]*(?:第[\t ]*([0-9]+)[\t ]*章|Chapter[\t ]+([0-9]+))[\t ]*[：:、.·\-—]?[\t ]*(.*)$/iu
+/** `覆盖：M1-1/转折` / `**Covers:** M1-1/转折`。 */
+const COVER_LINE = /^[*_\s]*(?:覆盖|Covers)[*_\s]*[\t ]*[：:][\t ]*(.+?)[\t ]*$/iu
+/** 声明「本章不兑现任何结构位」的写法。 */
+const COVER_NONE = new Set(['无', '沒有', '没有', 'none', 'n/a', 'na', '—', '-'])
+/** 多 ID 分隔符。**不按 `/` 切** —— `/` 是 ID 内部的层级分隔。 */
+const COVER_SEPARATOR = /[、,，;；]/u
+
+export interface ChapterArcCover {
+  chapterNumber: number
+  /** 大纲里该章的章名（`## 第N章：` 之后的部分，可能为空）。 */
+  title: string
+  /** 声明的结构位 ID；写「无」或未声明时为空数组。 */
+  covers: string[]
+  /** `覆盖：` 行在第几行（1-based），便于报告定位；未找到为 null。 */
+  coverLine: number | null
+}
+
+function splitCoverValue(raw: string): string[] {
+  const value = raw.replace(/\*\*/gu, '').trim()
+  if (!value) return []
+  if (COVER_NONE.has(value.toLowerCase())) return []
+  return value
+    .split(COVER_SEPARATOR)
+    .map(item => item.trim())
+    .filter(item => item.length > 0 && !COVER_NONE.has(item.toLowerCase()))
+}
+
+/**
+ * 从情节大纲文本里解析每章声明的结构位（P12-1）。
+ *
+ * ## 为什么声明要写在标题正下方
+ *
+ * 解析器必须能**确定地**把一行 `覆盖：` 归到某一章。写在章标题正下方是唯一无歧义的
+ * 位置；写在章末会与下一章标题竞争，写在正文中间则无法与叙事里的「覆盖」一词区分。
+ *
+ * 宽容度：章标题与 `覆盖：` 行之间允许空行；同一章出现多行 `覆盖：` 时**只取第一行**
+ * （后续行往往是正文里复述 ID），不合并 —— 合并会让「一章声明两格」这种违约悄无声息。
+ *
+ * 无章标题（例如作者用的是枚举故事结构、或大纲是自由散文）时返回空数组，调用方据此
+ * 跳过校验（fail-open，与 `parseArcStructure` 一致）。
+ */
+export function parseChapterArcCovers(synopsis: string | null | undefined): ChapterArcCover[] {
+  if (!synopsis?.trim()) return []
+  const result: ChapterArcCover[] = []
+  let current: ChapterArcCover | null = null
+
+  const lines = synopsis.split(/\r?\n/u)
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!.trim()
+    const heading = CHAPTER_HEADING.exec(line)
+    if (heading) {
+      const chapterNumber = Number(heading[1] ?? heading[2])
+      if (!Number.isSafeInteger(chapterNumber) || chapterNumber < 1) {
+        current = null
+        continue
+      }
+      current = { chapterNumber, title: (heading[3] ?? '').trim(), covers: [], coverLine: null }
+      result.push(current)
+      continue
+    }
+    if (!current || current.coverLine !== null) continue
+    const cover = COVER_LINE.exec(line)
+    if (!cover) continue
+    current.coverLine = index + 1
+    current.covers = splitCoverValue(cover[1] ?? '')
+  }
+
+  return result
+}
+
+export interface ArcCoverAudit {
+  chapters: readonly ChapterArcCover[]
+  violations: readonly ArcCoverViolation[]
+  /** 本批区间内、从未被任何一章声明的结构位（仅作提示，不拦）。 */
+  uncovered: readonly ArcNode[]
+  /** 声明了 covers 的章节数（用于报告「几章有声明」）。 */
+  declaredChapters: number
+}
+
+/**
+ * 对一份大纲做结构位对账（P12-1 的落点）。
+ *
+ * - **INV-1**：声明了某格但本章不在其区间内 ⇒ error（`INV-1-OUT_OF_RANGE`）。
+ * - **INV-2**：同一格被两章声明 ⇒ error（`INV-2-DUPLICATE`）—— 结构位是一次性额度。
+ * - **INV-3**：本批覆盖到的中弧里，有格子从未被声明 ⇒ warning（`INV-3-UNCOVERED`）。
+ *
+ * `uncovered` 只统计**本批区间内**的结构位（`from`–`to` 覆盖到的中弧），否则全书
+ * 尚未写到的格子会全部报成漏覆盖，等于把信噪比归零。
+ */
+export function auditArcCovers(
+  nodes: readonly ArcNode[],
+  chapters: readonly ChapterArcCover[],
+  options: { from: number; to: number },
+): ArcCoverAudit {
+  const violations: ArcCoverViolation[] = []
+  const seen = new Map<string, number>()
+
+  for (const chapter of chapters) {
+    violations.push(...validateArcCovers(nodes, chapter.covers, chapter.chapterNumber))
+    for (const id of chapter.covers) {
+      const previous = seen.get(id)
+      if (previous !== undefined && previous !== chapter.chapterNumber) {
+        violations.push({
+          code: 'INV-2-DUPLICATE',
+          id,
+          chapterNumber: chapter.chapterNumber,
+          message: `结构位「${id}」在第 ${previous} 章已被声明过 —— 结构位是一次性额度，同一格不能被两章兑现。`,
+        })
+        continue
+      }
+      seen.set(id, chapter.chapterNumber)
+    }
+  }
+
+  const inBatch = nodes.filter(node => node.kind === 'field'
+    && node.range[0] <= options.to && node.range[1] >= options.from)
+  const uncovered = inBatch.filter(node => !seen.has(node.id))
+  for (const node of uncovered) {
+    violations.push({
+      code: 'INV-3-UNCOVERED',
+      id: node.id,
+      chapterNumber: options.from,
+      range: node.range,
+      message: `本批覆盖到的结构位「${node.id}」没有被任何一章声明 —— 要么它不属于本批（可忽略），要么大纲漏了它。`,
+    })
+  }
+
+  return {
+    chapters,
+    violations,
+    uncovered,
+    declaredChapters: chapters.filter(chapter => chapter.covers.length > 0).length,
+  }
 }
