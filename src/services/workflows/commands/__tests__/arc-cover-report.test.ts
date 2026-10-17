@@ -60,6 +60,21 @@ describe('summarizeArcCoverFindings', () => {
     expect(note).toContain('1 章没有写「覆盖：」声明')
   })
 
+  it('「缺声明」与「漏覆盖」是两个独立问题，必须同一条提示里都出现', () => {
+    // 实测形态（2026-10-18 作者库 ch1–5）：第 4 章整行没写「覆盖：」，
+    // 同一批里 M1-1/转折 也从没被任何章声明。旧代码 `if (problems.length === 0)`
+    // 让前一句把后一句整段吞掉 —— 修好一个看得见的，掩盖一个看不见的。
+    const body = [
+      '## 第1章：开篇',
+      '覆盖：无',
+      '## 第2章：沉默',
+    ].join('\n')
+    const note = summarizeArcCoverFindings(body, PLAN, TOTAL, 1, 2, zh)!
+    expect(note).toContain('1 章没有写「覆盖：」声明')
+    expect(note).toContain('结构位没有任何一章声明')
+    expect(note).toContain('M1-1/转折')
+  })
+
   it('弧光不可解析（无结构位）时闭嘴 —— 枚举故事结构不该被这套规则骚扰', () => {
     const body = '## 第1章：开篇\n正文。'
     expect(summarizeArcCoverFindings(body, '(非弧光结构)', TOTAL, 1, 1, zh)).toBeNull()
