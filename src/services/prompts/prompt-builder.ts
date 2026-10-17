@@ -25,35 +25,65 @@ export class BasePromptBuilder {
     return composePromptSystemRole(this.template, this.writingLanguage)
   }
 
-  /** 打包输出最终经过所有合法性替换的字符串 */
-  public build(): string {
-    let result = this.template.content
-    for (const [key, value] of Object.entries(this.variables)) {
+  /** 按当前变量渲染一段模板文本（未知变量原样保留，交由调用方 / 防御性校验处理）。 */
+  private renderVariables(section: string, variables: Record<string, string>): string {
+    let rendered = section
+    for (const [key, value] of Object.entries(variables)) {
       // 使用 replaceAll 避免正则注入风险，安全替换所有匹配项
-      const safeValue = value || ''
-      result = result.replaceAll(`{{${key}}}`, safeValue)
+      rendered = rendered.replaceAll(`{{${key}}}`, value)
     }
+    return rendered
+  }
 
+  /**
+   * 渲染「本步生成规则」：作者的 taskGuidance + 内置 systemSuffix，**不含模板正文**。
+   *
+   * 为什么需要它：模板正文装的是**材料**（设定池 / 本章信息 / 全局要求），
+   * 而 taskGuidance 与 systemSuffix 装的是**规则**（风格、篇幅、去 AI 腔、输出格式）。
+   * 续写 / 压缩这类"从已有正文接着写"的请求不走 build()，历史上只复刻了材料、
+   * 丢了规则 —— 于是任何写在规则区的约束在"首稿失败 → 续写重写"的路径上静默失效。
+   *
+   * `omitVariables` 用于剔除已由别的块承载的变量（目前只有 `user_guidance`：
+   * 续写轮的蓝图 JSON 已含该字段，再渲染一次就违反"同一轮内作者字段各只出现一次"）。
+   */
+  public buildStepRules(options: { omitVariables?: readonly string[] } = {}): string {
+    const variables: Record<string, string> = { ...this.variables }
+    for (const key of options.omitVariables ?? []) variables[key] = ''
+
+    const parts: string[] = []
     if (this.template.taskGuidance?.trim()) {
-      let taskGuidance = this.template.taskGuidance
-      for (const [key, value] of Object.entries(this.variables)) {
-        taskGuidance = taskGuidance.replaceAll(`{{${key}}}`, value || '')
-      }
       const heading = this.writingLanguage === 'en-US'
         ? '[User-defined creative guidance]'
         : '【用户自定义创作指导】'
-      result += `\n\n${heading}\n${taskGuidance.trim()}`
+      parts.push(`${heading}\n${this.renderVariables(this.template.taskGuidance, variables).trim()}`)
+    }
+
+    // 始终从内置模板取 systemSuffix，与 build() 行为对齐（项目覆盖改不到这一段）。
+    const suffix = getBuiltinPromptTemplate(this.template.key, this.writingLanguage)?.systemSuffix
+    if (suffix) parts.push(this.renderVariables(suffix, variables))
+
+    // 与 build() 同一套空变量段落裁剪：被清空的变量连带其标题一起消失。
+    return pruneEmptyOptionalPromptSections(parts.join('\n\n'))
+  }
+
+  /** 打包输出最终经过所有合法性替换的字符串 */
+  public build(): string {
+    const variables: Record<string, string> = {}
+    for (const [key, value] of Object.entries(this.variables)) variables[key] = value || ''
+    let result = this.renderVariables(this.template.content, variables)
+
+    if (this.template.taskGuidance?.trim()) {
+      const heading = this.writingLanguage === 'en-US'
+        ? '[User-defined creative guidance]'
+        : '【用户自定义创作指导】'
+      result += `\n\n${heading}\n${this.renderVariables(this.template.taskGuidance, variables).trim()}`
     }
 
     // 自动追加 systemSuffix（始终从内置模板获取，与 renderPrompt 行为对齐）
     const builtinTemplate = getBuiltinPromptTemplate(this.template.key, this.writingLanguage)
     const suffix = builtinTemplate?.systemSuffix
     if (suffix) {
-      let renderedSuffix = suffix
-      for (const [key, value] of Object.entries(this.variables)) {
-        renderedSuffix = renderedSuffix.replaceAll(`{{${key}}}`, value)
-      }
-      result = result + '\n\n' + renderedSuffix
+      result = result + '\n\n' + this.renderVariables(suffix, variables)
     }
 
     result = appendRequiredPromptContext(result, this.template, this.variables, this.writingLanguage)

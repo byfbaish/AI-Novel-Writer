@@ -55,7 +55,7 @@ import type { WritingLanguage } from '../../../shared/writing-language'
 import type { FinalizedContinuityProjection } from '../../../shared/finalized-continuity'
 import type { NarrativeThreadView } from '../../../shared/narrative-thread'
 import { promptLanguageText } from '../../prompt-language'
-import { countDraftUnits, draftTargetUnitRange } from '../../../shared/draft-units'
+import { countDraftUnits, draftAimLowUnits, draftTargetUnitRange } from '../../../shared/draft-units'
 import type { RecoveryChapterSource } from '../../../shared/recovery-candidate'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../../shared/character-roster'
 import {
@@ -445,7 +445,7 @@ function draftTooShortError(
 
 function chapterLengthContractText(writingLanguage: WritingLanguage, targetUnits: number): string {
   const { minimum, maximum } = draftTargetUnitRange(targetUnits)
-  const aimLow = Math.round(targetUnits * 0.85)
+  const aimLow = draftAimLowUnits(targetUnits)
   return promptLanguageText(
     writingLanguage,
     `【本章篇幅合同】\n目标 ${targetUnits} 字（按汉字计，不含标点）；请写到约 ${aimLow}–${targetUnits} 字。${maximum} 字是参考上限，超出时只提示并保留完整正文；少于 ${minimum} 字会被退回。篇幅紧张时，压缩描写与过渡、减少场景数量，而不是删掉必需事件；本章蓝图中的全部作者任务和必需事件都要落实，不得删除、改写或截断，也不要为凑字数增加无关内容。`,
@@ -530,6 +530,15 @@ function draftAuthorMaterialBlock(writingLanguage: WritingLanguage, material: {
    * 仅当本轮 system / 模板都未呈现这些字段时才需要兜底 → 默认不追加。
    */
   includeAuthorItemsFallback?: boolean
+  /**
+   * 本步「生成规则」文本（BasePromptBuilder.buildStepRules() 的产物）。
+   *
+   * 存在的理由（P8 D6）：本块历史上只复刻**材料**，不复刻**规则**——模板正文 / taskGuidance /
+   * systemSuffix 三段都不进续写请求。于是任何写在规则区的风格与质量约束，在
+   * 「首稿失败 → 续写重写」这条路径上静默失效（2026-10-17 实机就是这种形态）。
+   * 传入后按【本章生成规则】插入，与材料严格分开。
+   */
+  stepRules?: string
 }): string {
   const reconciliation = material.reconciliation ? `${material.reconciliation}\n\n` : ''
   const authorItems = material.includeAuthorItemsFallback
@@ -538,6 +547,13 @@ function draftAuthorMaterialBlock(writingLanguage: WritingLanguage, material: {
   // 续写 / 压缩请求没有 ★ 额外指导★ 块（那只在 promptBuilder.build() 中渲染），
   // 故 blueprint JSON 必须继续承载 userGuidance，否则作者指导会整段丢失。
   const blueprintJson = JSON.stringify(toBlueprintProjection(material.chapterInfo), null, 2)
+  // stepRules 由调用方以 omitVariables: ['user_guidance'] 渲染，★ 块不出现，故不与蓝图 JSON 重复。
+  const rulesBlockZh = material.stepRules?.trim()
+    ? `【本章生成规则（续写与压缩同样适用）】\n${material.stepRules.trim()}\n\n`
+    : ''
+  const rulesBlockEn = material.stepRules?.trim()
+    ? `[Chapter generation rules (also apply to continuations and compression)]\n${material.stepRules.trim()}\n\n`
+    : ''
   return promptLanguageText(
     writingLanguage,
     `【本章蓝图】
@@ -553,7 +569,7 @@ ${material.writingStyle || '（无）'}
 - 文风仅用于选择表达方式，不是新增事实或事件要求；无需逐条强行兑现。
 - 作者明确事实与指导、实际前文、本章关键因果和本章篇幅优先。不得用文风改写这些内容或仅为兑现文风增加场景、动作或事件；不得把作者明确事实或要求降格为推测。
 
-【小说配置事实】
+${rulesBlockZh}【小说配置事实】
 ${material.novelConfigFacts}
 
 ${material.chapterMaterials}
@@ -572,7 +588,7 @@ ${material.writingStyle || '(none)'}
 - Writing style selects expression only; it adds no facts or events, and not every item must be forced into the manuscript.
 - Explicit author facts and guidance, actual prior prose, the chapter's key causality, and its target length take priority. Do not use style guidance to rewrite them, relabel explicit author facts or requirements as guesses, or add scenes, actions, or events merely to satisfy style guidance.
 
-[Novel configuration facts]
+${rulesBlockEn}[Novel configuration facts]
 ${material.novelConfigFacts}
 
 ${material.chapterMaterials}
@@ -1265,6 +1281,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           callbacks.replaceText?.(initialVisibleDraft)
           callbacks.setProgress(90)
           this.assertNotCancelled(context)
+          // 规则块只渲染一次：续写轮不带 ★ user_guidance（蓝图 JSON 已承载该字段）。
+          const stepRules = promptBuilder.buildStepRules({ omitVariables: ['user_guidance'] })
           const completedDraft = await this.extendDraftIfNeeded({
             session: draftingSession,
             compositionVersion,
@@ -1286,6 +1304,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             novelConfigFacts: novelConfigFactsJson,
             chapterMaterials: chapterMaterials.text,
             reconciliation: reconciliationBlock,
+            stepRules,
             writingLanguage,
             reasoning: initialReasoning,
             // 续写的【本章蓝图】JSON 已含作者三字段；仅模板未渲染 chapter_info 时才需兜底。
@@ -1543,7 +1562,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const currentChars = countDraftUnits(currentText)
     if (currentChars > draftTargetUnitRange(targetChars).maximum) return false
     if (finishReason === 'stop') {
-      return currentChars < draftTargetUnitRange(targetChars).minimum
+      // 与退回断言（本章 :1338、:1788）不同：这里判的是「写得够不够」，不是「能不能落库」。
+      // 用 minimum 会把「贴着退回线收手」当成合格，篇幅合同的 2125 一半从此永不生效。
+      return currentChars < draftAimLowUnits(targetChars)
     }
     return finishReason === 'length'
   }
@@ -1569,6 +1590,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     novelConfigFacts: string
     chapterMaterials: string
     reconciliation?: string
+    /**
+     * 本步生成规则（buildStepRules 产物）。续写轮必须携带，否则写在模板正文 /
+     * taskGuidance / systemSuffix 里的风格与质量约束在"首稿失败 → 续写重写"路径上丢失（P8 D6）。
+     */
+    stepRules: string
     writingLanguage: WritingLanguage
     reasoning: boolean
     /** P1 Phase 1：本轮是否需要追加 authorItems 兜底（见 draftAuthorMaterialBlock）。 */
@@ -1626,11 +1652,24 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
               + 'This is the only no-progress recovery attempt: advance directly to the next event, action, or line of dialogue without repeating the existing ending.\n\n',
           )
         : ''
+      // 差额指令：续写轮是整条链上唯一能拿到准确字数的地方，把「还差多少」直接给模型，
+      // 比让它自己数汉字可靠。差额必须靠「推进未落地事件」补，否则会写成注水尾。
+      //
+      // 只给**一个**目标数：到本章目标还差多少（remaining）。
+      // 历史坑：这里曾同时给「距合格线还差 348 字」与「补足约 723 字」两个数，
+      // 模型会取大的那个并自己猜该服从谁 —— 同一段里只能有一个目标。
+      const deficitInstruction = remaining > 0
+        ? promptLanguageText(
+            params.writingLanguage,
+            `- 本章已写约 ${currentChars} 字，目标 ${params.targetChars} 字，还差 ${remaining} 字。请把差额写满：推进本章蓝图内尚未落地的事件、动作或对话，不要用总结句、心理旁白或景物堆砌凑数。\n`,
+            `- About ${currentChars} units are written; the target is ${params.targetChars}, so ${remaining} more are needed. Fill the gap by advancing events, actions, or dialogue still unrealized in the chapter blueprint; do not pad with summary sentences, inner monologue, or scenery.\n`,
+          )
+        : ''
       const lengthInstruction = remaining > 0
         ? promptLanguageText(
             params.writingLanguage,
-            `- 本次续写补足约 ${allowance} 字即可，新增部分绝不超过 ${ceiling} 字；接近时按本章结束状态收束，停在完整句子和自然段落末尾。`,
-            `- Add about ${allowance} words in this continuation and never more than ${ceiling}; as you approach that length, close at the chapter's ending state and stop at the end of a complete sentence and paragraph.`,
+            `${deficitInstruction}- 新增部分绝不超过 ${ceiling} 字；接近目标时按本章结束状态收束，停在完整句子和自然段落末尾。`,
+            `${deficitInstruction}- Never add more than ${ceiling} words in this continuation; as you approach the target, close at the chapter's ending state and stop at the end of a complete sentence and paragraph.`,
           )
         : promptLanguageText(
             params.writingLanguage,
