@@ -23,6 +23,14 @@ import type { WritingLanguage } from './writing-language'
  * 因此绝对章号由**累积求和后按比例折算**得到，并在注入文本里**显式声明**折算事实。
  */
 
+/** 中弧下的小弧（P12-3）：弧光里写成 `小弧：A（约 9 章）；B（约 9 章）`。 */
+export interface ArcMinor {
+  /** 小弧名（已去掉【】） */
+  name: string
+  /** 弧光里的约数章数 */
+  chapters: number
+}
+
 export interface ArcMid {
   /** 弧光里的名称（已去掉【】） */
   name: string
@@ -30,6 +38,11 @@ export interface ArcMid {
   chapters: number
   /** 该中弧的规格字段（类型 / 因果|目标|动机 / 时序|尝试|路径 / 转折 …） */
   fields: readonly (readonly [string, string])[]
+  /**
+   * 小弧（P12-3）。**单独成一项，不混进 `fields`** —— 小弧自带章数，
+   * 能折算成独立区间，而 `fields` 里的每个条目只继承所属中弧的整个区间。
+   */
+  minors: readonly ArcMinor[]
 }
 
 export interface ArcMajor {
@@ -69,6 +82,15 @@ export interface ArcSpan {
    * 拿不到可引用的 ID。未跨界时与 `midFields` 相同。
    */
   endMidFields: readonly (readonly [string, string])[]
+  /**
+   * 本批所在中弧（`midIndex`）的小弧清单（P12-3）。
+   *
+   * 小弧是弧光里唯一天然带章数、因而唯一定能折算成独立区间的层级 —— 中弧的
+   * 因果/时序/目标/动机是整段规格而非一次性节点，真正「用掉一格」的里程碑是小弧。
+   */
+  midMinors: readonly ArcMinor[]
+  /** 本批最后一个覆盖到的中弧（`endMidIndex`）的小弧；未跨界时与 `midMinors` 相同。 */
+  endMidMinors: readonly ArcMinor[]
   /** 同一大弧内、位于**本批之后**的剩余中弧（已进入的中弧不算） */
   remainingMids: readonly { name: string; midIndex: number; range: readonly [number, number]; gist: string }[]
   /** 本批跨越到下一个中弧时的分界章（含该章起属下一个中弧） */
@@ -97,6 +119,38 @@ const MID_HEADING = new RegExp(`^#{3,4}[\\t ]*中弧[\\t ]*[0-9]*[\\t ]*[：:][\
 const FIELD_LINE = /^[-*][\t ]*\*{0,2}([^：:*]{1,12}?)\*{0,2}[\t ]*[：:][\t ]*(.+?)[\t ]*$/u
 /** 只保留能定位内容的字段，忽略纯枚举（类型）与排版字段 */
 const SKIP_FIELDS = new Set(['类型', '接续理由', '核心冲突', '结束状态', '小弧', 'Type', 'Minor arcs'])
+/** 小弧行的字段名（中文 / 英文）。它不进球 `fields`，而是拆成 `minors`。 */
+const MINOR_FIELD_NAMES = new Set(['小弧', 'Minor arcs'])
+/** `【首夜敲门】（约 8 章）` */
+const MINOR_ITEM_ZH = /^(.+?)[\t ]*[（(][\t ]*约?[\t ]*([0-9]+)[\t ]*章[\t ]*[）)]$/u
+/** `Opening Night Knocks (about 8 chapters)` */
+const MINOR_ITEM_EN = /^(.+?)[\t ]*[（(][\t ]*(?:about[\t ]*|~[\t ]*)?([0-9]+)[\t ]*chapters?[\t ]*[）)]$/iu
+
+/**
+ * 拆「小弧：A（约 9 章）；B（约 9 章）；C（约 8 章）　Σ = 9+9+8 = 26（本中弧 26，差额 0）」。
+ *
+ * 尾部那条 `Σ = …（本中弧 26，差额 0）` 不匹配条目正则，会被自然丢弃；
+ * 合计与中弧章数不符是允许的规划弹性（实测 27 vs 26），由 `scaledBoundaries` 折算。
+ * 解析不出任何条目时返回空数组 —— 调用方退化为「本中弧没有小弧」，不报错。
+ */
+function parseMinorArcs(value: string): ArcMinor[] {
+  // 弧光习惯在末尾附一句合计：`Σ = 9+9+8 = 26（本中弧 26，差额 0）`。它**挂在最后
+  // 一个小弧后面**（不是独立行），不先截掉就会把最后一条整个吞掉 —— 实测 16 个小弧
+  // 只能解析出 10 个，缺的全部是各中弧的最后一个小弧。
+  const head = value.split(/[Σ∑]/u)[0] ?? value
+  const result: ArcMinor[] = []
+  for (const raw of head.split(/[;；]/u)) {
+    const item = raw.trim()
+    if (!item) continue
+    const match = MINOR_ITEM_ZH.exec(item) ?? MINOR_ITEM_EN.exec(item)
+    if (!match) continue
+    const name = stripBrackets(toText(match[1]!))
+    const chapters = Number(match[2])
+    if (!name || !Number.isSafeInteger(chapters) || chapters < 1) continue
+    result.push({ name, chapters })
+  }
+  return result
+}
 
 function stripBrackets(value: string): string {
   return value.replace(/^[【\[]/u, '').replace(/[】\]]$/u, '').trim()
@@ -130,8 +184,9 @@ function headingChapterCount(start: string | undefined, end: string | undefined)
 export function parseArcStructure(plan: string | null | undefined): ParsedArcStructure | null {
   if (!plan?.trim()) return null
   const majors: ArcMajor[] = []
-  let major: { name: string; chapters: number; fields: [string, string][]; mids: { name: string; chapters: number; fields: [string, string][] }[] } | null = null
-  let mid: { name: string; chapters: number; fields: [string, string][] } | null = null
+  type MutableMid = { name: string; chapters: number; fields: [string, string][]; minors: ArcMinor[] }
+  let major: { name: string; chapters: number; fields: [string, string][]; mids: MutableMid[] } | null = null
+  let mid: MutableMid | null = null
 
   for (const rawLine of plan.split(/\r?\n/u)) {
     const line = rawLine.trim()
@@ -146,7 +201,7 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
     const midMatch = MID_HEADING.exec(line)
     const midChapters = midMatch ? headingChapterCount(midMatch[2], midMatch[3]) : null
     if (midMatch && midChapters !== null && major) {
-      mid = { name: stripBrackets(midMatch[1]!), chapters: midChapters, fields: [] }
+      mid = { name: stripBrackets(midMatch[1]!), chapters: midChapters, fields: [], minors: [] }
       major.mids.push(mid)
       continue
     }
@@ -154,8 +209,12 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
     if (!fieldMatch) continue
     const [, rawName, rawValue] = fieldMatch
     const name = toText(rawName!)
-    if (SKIP_FIELDS.has(name)) continue
     const value = toText(rawValue!)
+    if (SKIP_FIELDS.has(name)) {
+      // 小弧行不进球内容字段，但它的每一条都是独立的可选声明单位（P12-3）。
+      if (mid && MINOR_FIELD_NAMES.has(name) && value) mid.minors.push(...parseMinorArcs(value))
+      continue
+    }
     if (!value) continue
     if (mid) mid.fields.push([name, value])
     else if (major) major.fields.push([name, value])
@@ -241,6 +300,8 @@ export function arcSpanForChapters(
     endMidIndex: endMidIndex + 1,
     midFields: mid.fields,
     endMidFields: major.mids[endMidIndex]!.fields,
+    midMinors: mid.minors,
+    endMidMinors: major.mids[endMidIndex]!.minors,
     remainingMids: major.mids.slice(endMidIndex + 1).map((item, offset) => Object.freeze({
       name: item.name,
       midIndex: endMidIndex + 2 + offset,
@@ -402,6 +463,19 @@ export function withProjectedArcGuide(
 }
 
 /**
+ * 「转折」是每个中弧都有的**一次性**节点（实测 6/6 个中弧都有），因此是唯一
+ * 能按章声明的字段。中弧的 因果 / 时序 / 目标 / 动机 / 路径 / 尝试 N 是**整段规格**，
+ * 不是额度：把它们也列进可声明清单，模型会拿「本中弧起点」这种早已发生过的格子
+ * 去认领后面的章（实测第 6 章挂 `M1-1/时序`、第 7 章挂 `M1-1/因果`，形式合规、语义空转）。
+ *
+ * 导出是为了让 `arc-node.ts` 的判断与本文件的渲染清单共用同一份定义 —— 两处各写一份
+ * 正则必然漂移，于是「提示词允许声明什么」和「审计认可什么」会对不上。
+ */
+export function isTurnField(name: string): boolean {
+  return /^(转折|turning[\t ]*point)$/iu.test(name)
+}
+
+/**
  * 渲染注入块。`parsed` 为空（例如作者用的是枚举故事结构、没有三层弧光）时返回空串 ——
  * 不注入、不干扰，行为与从前完全一致。
  */
@@ -429,18 +503,30 @@ export function renderArcPositionBlock(
         .join('\n  - ')
     : (en ? '(none — this is the last mid arc of the major arc)' : '（无 —— 这是本大弧的最后一个中弧）')
 
-  // P12-1：本批可声明的结构位 ID。跨中弧边界时，后半批属于 `endMidIndex`，其结构位同样可用。
-  const idOf = (midIndex: number, field: string): string => `M${span.majorIndex}-${midIndex}/${field}`
+  // P12-3：可声明的结构位 = 中弧的「转折」+ 各小弧。中弧的 因果/时序/目标/动机 是
+  // 整段规格而非一次性额度，列进来只会让模型拿已发生过的格子认领新章（见 isTurnField）。
+  // 跨中弧边界时，后半批属于 `endMidIndex`，其结构位同样可用。
+  const claimableIds = (
+    midIndex: number,
+    fields: readonly (readonly [string, string])[],
+    minors: readonly ArcMinor[],
+  ): string[] => {
+    const turn = fields.find(([field]) => isTurnField(field))
+    return [
+      ...(turn ? [`M${span.majorIndex}-${midIndex}/${turn[0]}`] : []),
+      ...minors.map(minor => `M${span.majorIndex}-${midIndex}/小弧:${minor.name}`),
+    ]
+  }
   const batchIds = [...new Set([
-    ...span.midFields.map(([field]) => idOf(span.midIndex, field)),
-    ...(span.endMidIndex > span.midIndex ? span.endMidFields.map(([field]) => idOf(span.endMidIndex, field)) : []),
+    ...claimableIds(span.midIndex, span.midFields, span.midMinors),
+    ...(span.endMidIndex > span.midIndex ? claimableIds(span.endMidIndex, span.endMidFields, span.endMidMinors) : []),
   ])]
   const coverable = batchIds.length
     ? batchIds.join(en ? ', ' : '、')
     : (en ? '(none — this mid arc exposes no citable slots; write "Covers: none")' : '（本中弧没有可引用的结构位 —— 本章写「覆盖：无」）')
   const coverableLabel = en
-    ? `- Slots this batch may claim (a chapter's "Covers:" line may only use one of these IDs): ${coverable}`
-    : `- 本批可声明的结构位（每章「覆盖：」只能取下列 ID 之一）：${coverable}`
+    ? `- Slots this batch may claim (a chapter's "Covers:" line may only use one of these IDs; **most chapters should write "Covers: none"** — a minor arc spans 8-9 chapters and only its closing chapter claims it): ${coverable}`
+    : `- 本批可声明的结构位（每章「覆盖：」只能取下列 ID 之一；**大多数章节应当写「覆盖：无」** —— 一个小弧通常跨 8–9 章，只有它的收束章才声明）：${coverable}`
 
   const crossing = span.nextMidBoundary !== null && span.nextMidName
     ? (en

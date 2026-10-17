@@ -4,6 +4,7 @@ import {
   arcNodesForChapter,
   auditArcCovers,
   findArcNode,
+  isClaimableArcNode,
   listArcNodes,
   parseChapterArcCovers,
   validateArcCovers,
@@ -21,7 +22,9 @@ const PLAN = `# 弧光结构
 
 ### 中弧 1：门牌错位（约 1–26 章）
 - 因果：那句敷衍的"我马上到"落地，门牌与排班单一起错位。
+- 时序：本中弧起点 = 全书开篇的那个清晨。
 - 转折：他以为闭嘴就能躲过去，结果发现不说话比说谎更贵。
+- 小弧：睁眼十秒（约 9 章）；纸门牌（约 9 章）；第一笔登记账（约 8 章）
 
 ### 中弧 2：三方上门（约 27–52 章）
 - 目标：从"靠运气撑过零点"变成"有一套能重复用的拖字诀"。
@@ -253,11 +256,63 @@ describe('auditArcCovers', () => {
   })
 
   it('INV-3：本批覆盖到的格子没被任何一章声明 ⇒ 提示（仅提示，不拦）', () => {
-    const chapters = parseChapterArcCovers('## 第1章：开篇\n覆盖：M1-1/因果')
+    const chapters = parseChapterArcCovers('## 第1章：开篇\n覆盖：M1-1/小弧:睁眼十秒')
     const audit = auditArcCovers(nodes, chapters, { from: 1, to: 5 })
     const uncoveredIds = audit.uncovered.map(node => node.id)
     expect(uncoveredIds).toContain('M1-1/转折')
+    expect(uncoveredIds).not.toContain('M1-1/小弧:睁眼十秒')
     expect(uncoveredIds).not.toContain('M1-2/转折')
     expect(audit.declaredChapters).toBe(1)
+  })
+})
+
+describe('小弧子节点（P12-3）', () => {
+  const nodes = listArcNodes(PLAN, TOTAL)
+
+  it('小弧生成独立节点，区间在本中弧内再折算一次', () => {
+    // 中弧 1 = 第 1–26 章；小弧 9+9+8 = 26 ⇒ 逐段对齐，不留缝不重叠。
+    expect(findArcNode(nodes, 'M1-1/小弧:睁眼十秒')).toMatchObject({
+      kind: 'minor', minorName: '睁眼十秒', range: [1, 9],
+    })
+    expect(findArcNode(nodes, 'M1-1/小弧:纸门牌')).toMatchObject({
+      kind: 'minor', minorName: '纸门牌', range: [10, 18],
+    })
+    expect(findArcNode(nodes, 'M1-1/小弧:第一笔登记账')).toMatchObject({
+      kind: 'minor', minorName: '第一笔登记账', range: [19, 26],
+    })
+  })
+
+  it('只有「转折」与小弧是可声明的一次性额度，整段规格字段不是', () => {
+    expect(isClaimableArcNode(findArcNode(nodes, 'M1-1/转折')!)).toBe(true)
+    expect(isClaimableArcNode(findArcNode(nodes, 'M1-1/小弧:纸门牌')!)).toBe(true)
+    expect(isClaimableArcNode(findArcNode(nodes, 'M1-1/因果')!)).toBe(false)
+    // 实机第 6 章就是拿它认领的：原文是「本中弧起点 = 全书开篇的那个清晨」。
+    expect(isClaimableArcNode(findArcNode(nodes, 'M1-1/时序')!)).toBe(false)
+  })
+
+  it('声明整段规格字段报 NOT_CLAIMABLE —— 它永不越界，等于不产生信息', () => {
+    const violations = validateArcCovers(nodes, ['M1-1/时序'], 6)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ code: 'NOT_CLAIMABLE', id: 'M1-1/时序' })
+    expect(violations[0]!.message).toContain('整段规格')
+  })
+
+  it('小弧可被提前使用检出，且精确到章（中弧粒度做不到）', () => {
+    const violations = validateArcCovers(nodes, ['M1-1/小弧:纸门牌'], 3)
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({
+      code: 'INV-1-OUT_OF_RANGE', range: [10, 18], chapterNumber: 3,
+    })
+    expect(violations[0]!.message).toContain('提前了 7 章')
+  })
+
+  it('漏覆盖只统计可声明节点，不把 因果/时序 报成永远消不掉的噪音', () => {
+    const chapters = parseChapterArcCovers('## 第1章：开篇\n覆盖：M1-1/小弧:睁眼十秒')
+    const audit = auditArcCovers(nodes, chapters, { from: 1, to: 9 })
+    const uncoveredIds = audit.uncovered.map(node => node.id)
+    expect(uncoveredIds).toContain('M1-1/转折')
+    expect(uncoveredIds).not.toContain('M1-1/因果')
+    expect(uncoveredIds).not.toContain('M1-1/时序')
+    expect(uncoveredIds).not.toContain('M1-1/小弧:睁眼十秒')
   })
 })
