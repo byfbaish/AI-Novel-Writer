@@ -1,4 +1,4 @@
-import { isTurnField, parseArcStructure, scaledBoundaries } from './arc-position'
+import { isTurnField, minorRanges, parseArcStructure, scaledBoundaries } from './arc-position'
 
 /**
  * 弧光结构位（P12-0a）。
@@ -26,20 +26,26 @@ import { isTurnField, parseArcStructure, scaledBoundaries } from './arc-position
  * | 结构位 | `M<大弧>-<弧内中弧序号>/<字段名>` | `M1-2/转折` |
  * | 小弧 | `M<大弧>-<弧内中弧序号>/小弧:<小弧名>` | `M1-1/小弧:纸门牌` |
  *
- * ## 为什么小弧是唯一「可声明」的粒度（P12-3）
+ * ## 可声明的两类节点，语义并不相同（P12-3 / P12-4）
  *
- * 中弧的 因果 / 时序 / 目标 / 动机 / 路径 / 尝试 N 都是**整段规格**，覆盖整个中弧区间，
- * 不是一次性额度。把它们列进可声明清单会造成「形式合规、语义空转」：实测第 6 章声明
- * `M1-1/时序`（原文是「本中弧起点 = 全书开篇的那个清晨」）、第 7 章声明 `M1-1/因果`
- * （第 1–2 章就已成立的因果链）—— 两章都在拿已经发生过的东西认领新章额度，而
- * INV-1/INV-2 一条都不会触发。
+ * - **转折** = **一次性额度**。一个中弧只有一个转折，只能被一章声明；两章都声明 ⇒
+ *   超额兑现（INV-2）。
+ * - **小弧** = **归属**。一个小弧天然跨 8–9 章（`M1-1/小弧:错位门牌 [1,8]`），这 8 章里
+ *   每一章都属于它、都该声明它。**重复声明是常态，不是错误** —— 把它当一次性额度，会逼出
+ *   「第 1–7 章写『覆盖：无』、只有第 8 章写 ID」这种结果：5 章里 4 章空白，声明失去信息量，
+ *   而且第 3 章就声明（提前 5 章收束）反而看不出问题。
  *
- * 只有两类节点真正「用掉一次就没了」：
- * 1. **转折**（每个中弧一个，实测 6/6）；
- * 2. **小弧**（自带章数，天然能折算成独立区间，如「纸门牌」约第 10–18 章）。
+ * 归属语义的副产品正是想要的信号：若第 4 章的内容已经推进到下一个小弧，模型会去声明
+ * `M1-1/小弧:第一页报告 [9,16]` ⇒ **INV-1 直接报「提前 5 章」**。不需要另设「进度」规则。
  *
- * 所以 `isClaimableArcNode()` 只认这两类；`auditArcCovers` 的漏覆盖统计也只统计它们，
- * 否则「因果未声明」「时序未声明」会变成永远无法消除的噪音。
+ * ## 与「整段规格」的边界
+ *
+ * 中弧的 因果 / 时序 / 目标 / 动机 / 路径 / 尝试 N 区间等于整个中弧，声明它们永远
+ * 「不越界」，因而完全不产生信息。实测第 6 章用 `M1-1/时序`（= 本中弧起点，第 1 章
+ * 就已发生）认领第 6 章，任何判定都不触发。
+ *
+ * 所以 `isClaimableArcNode()` 只认「转折」与「小弧」；`auditArcCovers` 的漏覆盖统计也只
+ * 统计它们，否则「因果未声明」「时序未声明」会变成永远无法消除的噪音。
  *
  * ⚠️ 中弧用的是**本大弧内**的序号（与 `ArcSpan.midIndex` 同语义），**不是**原文里跨大弧
  * 连续编的「中弧 3」。原文 `### 中弧 3：沉默的报价` 在本表里是 `M2-1`。报告与 UI 必须
@@ -150,16 +156,12 @@ export function listArcNodes(plan: string | null | undefined, totalChapters: num
 
       // 小弧（P12-3）：自带章数，在本中弧区间内**再折算一次** —— 这是整条链上唯一
       // 能落到「第 10–18 章」这种精度的层级，也是唯一能证明「某格被提前了 25 章」的单位。
-      const minorBounds = scaledBoundaries(mid.minors.map(item => item.chapters), midRange[1] - midRange[0] + 1)
-      mid.minors.forEach((minor, minorOffset) => {
-        const minorRange: readonly [number, number] = [
-          midRange[0] + minorBounds[minorOffset]!,
-          midRange[0] + minorBounds[minorOffset + 1]! - 1,
-        ]
+      // 折算走 `minorRanges`（与渲染注入块共用），两处各算一份必然漂移。
+      for (const minor of minorRanges(mid.minors, midRange)) {
         nodes.push(Object.freeze({
           id: `M${majorIndex}-${midIndex}/小弧:${minor.name}`,
           kind: 'minor' as const,
-          range: minorRange,
+          range: minor.range,
           majorIndex,
           midIndex,
           majorName: major.name,
@@ -167,7 +169,7 @@ export function listArcNodes(plan: string | null | undefined, totalChapters: num
           minorName: minor.name,
           text: minor.name,
         }))
-      })
+      }
     })
   })
 
@@ -179,19 +181,29 @@ export function findArcNode(nodes: readonly ArcNode[], id: string): ArcNode | un
 }
 
 /**
- * 该节点是否是**一次性额度** —— 即一章可以声明「覆盖：」它。
+ * 该节点能否出现在一章的「覆盖：」声明里。
  *
  * 只有两类：中弧的「转折」、中弧下的各小弧。
  *
  * 不参与判断的是中弧的 因果 / 时序 / 目标 / 动机 / 路径 / 尝试 N：它们是**整段规格**，
- * 区间等于整个中弧，声明它们永远「不越界、不重复」，因而完全不产生信息。实测第 6 章
- * 用 `M1-1/时序`（= 本中弧起点，第 1 章就已发生）认领第 6 章，INV-1/INV-2 全绿。
+ * 区间等于整个中弧，声明它们永远「不越界」，因而完全不产生信息。实测第 6 章
+ * 用 `M1-1/时序`（= 本中弧起点，第 1 章就已发生）认领第 6 章，任何判定都不触发。
  *
  * 判定的单一真源是 `isTurnField`（与渲染「本批可声明的结构位」清单共用），
  * 两处各写一份正则必然漂移 —— 提示词允许声明什么、审计认可什么，必须同源。
  */
 export function isClaimableArcNode(node: ArcNode): boolean {
   if (node.kind === 'minor') return true
+  return node.kind === 'field' && isTurnField(node.field ?? '')
+}
+
+/**
+ * 该节点是否是**一次性额度** —— 同一格只能被一章声明（INV-2 只对它生效）。
+ *
+ * 只有「转折」：一个中弧只有一个转折，两章都声明就是超额兑现。
+ * **小弧不在此列**：一个小弧天然跨 8–9 章，区间内每章都该声明它（见文件头注释）。
+ */
+export function isOneShotArcNode(node: ArcNode): boolean {
   return node.kind === 'field' && isTurnField(node.field ?? '')
 }
 
@@ -367,7 +379,8 @@ export interface ArcCoverAudit {
  * 对一份大纲做结构位对账（P12-1 的落点）。
  *
  * - **INV-1**：声明了某格但本章不在其区间内 ⇒ error（`INV-1-OUT_OF_RANGE`）。
- * - **INV-2**：同一格被两章声明 ⇒ error（`INV-2-DUPLICATE`）—— 结构位是一次性额度。
+ * - **INV-2**：同一**一次性**节点（转折）被两章声明 ⇒ error（`INV-2-DUPLICATE`）。
+ *   小弧不参与这条 —— 它是**归属**：`M1-1/小弧:错位门牌 [1,8]` 的 8 章都该声明它。
  * - **INV-3**：本批覆盖到的中弧里，有**可声明**格子从未被声明 ⇒ warning（`INV-3-UNCOVERED`）。
  *
  * `uncovered` 只统计**本批区间内的可声明节点**（`from`–`to` 覆盖到的中弧的转折与小弧）：
@@ -381,22 +394,25 @@ export function auditArcCovers(
   options: { from: number; to: number },
 ): ArcCoverAudit {
   const violations: ArcCoverViolation[] = []
+  /** 每个 ID 的**首次**声明章号。小弧会被多次写入，但只记第一次（用于判断是否被认领）。 */
   const seen = new Map<string, number>()
 
   for (const chapter of chapters) {
     violations.push(...validateArcCovers(nodes, chapter.covers, chapter.chapterNumber))
     for (const id of chapter.covers) {
       const previous = seen.get(id)
-      if (previous !== undefined && previous !== chapter.chapterNumber) {
+      const node = findArcNode(nodes, id)
+      // 只有「转折」是一次性额度；小弧跨 8–9 章，区间内每章都该声明它。
+      // 把两者混为一谈会让正常写法（第 1–8 章都写同一个 ID）被报成超额兑现。
+      if (previous !== undefined && previous !== chapter.chapterNumber && node && isOneShotArcNode(node)) {
         violations.push({
           code: 'INV-2-DUPLICATE',
           id,
           chapterNumber: chapter.chapterNumber,
-          message: `结构位「${id}」在第 ${previous} 章已被声明过 —— 结构位是一次性额度，同一格不能被两章兑现。`,
+          message: `结构位「${id}」在第 ${previous} 章已被声明过 —— 转折是一次性额度，同一格不能被两章兑现。`,
         })
-        continue
       }
-      seen.set(id, chapter.chapterNumber)
+      if (previous === undefined) seen.set(id, chapter.chapterNumber)
     }
   }
 

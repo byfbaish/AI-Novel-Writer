@@ -233,7 +233,7 @@ describe('parseChapterArcCovers', () => {
 describe('auditArcCovers', () => {
   const nodes = listArcNodes(PLAN, TOTAL)
 
-  it('INV-2：同一结构位被两章声明 ⇒ 报重复（结构位是一次性额度）', () => {
+  it('INV-2：同一「转折」被两章声明 ⇒ 报重复（转折是一次性额度）', () => {
     const chapters = parseChapterArcCovers([
       '## 第3章：先花一格',
       '覆盖：M1-1/转折',
@@ -245,6 +245,24 @@ describe('auditArcCovers', () => {
     const duplicates = audit.violations.filter(item => item.code === 'INV-2-DUPLICATE')
     expect(duplicates).toHaveLength(1)
     expect(duplicates[0]!.message).toContain('第 3 章已被声明过')
+  })
+
+  it('小弧是「归属」不是额度：连续多章写同一个 ID 不算重复消费（P12-4）', () => {
+    // 一个小弧天然跨 8–9 章，这 8–9 章都属于它。老逻辑把「两章声明同一格」一律判成
+    // 超额兑现，会逼出「只有收束章写 ID、其余写覆盖：无」的写法 —— 5 章里 4 章空白。
+    const chapters = parseChapterArcCovers([
+      '## 第1章：开篇',
+      '覆盖：M1-1/小弧:睁眼十秒',
+      '## 第2章：闭口',
+      '覆盖：M1-1/小弧:睁眼十秒',
+      '## 第3章：还是同一段',
+      '覆盖：M1-1/小弧:睁眼十秒',
+    ].join('\n'))
+
+    const audit = auditArcCovers(nodes, chapters, { from: 1, to: 5 })
+    expect(audit.violations.filter(item => item.code === 'INV-2-DUPLICATE')).toHaveLength(0)
+    // 该小弧已被认领 ⇒ 不该出现在漏覆盖里
+    expect(audit.uncovered.map(node => node.id)).not.toContain('M1-1/小弧:睁眼十秒')
   })
 
   it('INV-1：提前使用后续中弧的结构位当场报错（实机 ch2 的形态）', () => {

@@ -31,6 +31,25 @@ export interface ArcMinor {
   chapters: number
 }
 
+/**
+ * 把一个小弧清单折成**中弧内的**章号区间（闭区间）。
+ *
+ * `listArcNodes`（结构位坐标）与 `renderArcPositionBlock`（告诉模型哪个 ID 覆盖哪几章）
+ * 必须用同一份折算，否则提示词里的区间和审计认的区间会各说各话 —— 这是
+ * `isTurnField` 那次「两处各写一份必然漂移」的同一教训。
+ */
+export function minorRanges(
+  minors: readonly ArcMinor[],
+  midRange: readonly [number, number],
+): Array<{ name: string; range: readonly [number, number] }> {
+  if (minors.length === 0) return []
+  const bounds = scaledBoundaries(minors.map(item => item.chapters), midRange[1] - midRange[0] + 1)
+  return minors.map((minor, offset) => ({
+    name: minor.name,
+    range: [midRange[0] + bounds[offset]!, midRange[0] + bounds[offset + 1]! - 1] as const,
+  }))
+}
+
 export interface ArcMid {
   /** 弧光里的名称（已去掉【】） */
   name: string
@@ -74,6 +93,8 @@ export interface ArcSpan {
    * 未跨界时 `endMidIndex === midIndex`。
    */
   endMidIndex: number
+  /** `endMidIndex` 那个中弧的章号区间（未跨界时与 `midRange` 相同）。 */
+  endMidRange: readonly [number, number]
   midFields: readonly (readonly [string, string])[]
   /**
    * 本批**最后一个覆盖到**的中弧（`endMidIndex`）的字段。
@@ -307,6 +328,10 @@ export function arcSpanForChapters(
     midName: mid.name,
     midRange,
     endMidIndex: endMidIndex + 1,
+    endMidRange: [
+      majorRange[0] + midBounds[endMidIndex]!,
+      majorRange[0] + midBounds[endMidIndex + 1]! - 1,
+    ] as const,
     midFields: mid.fields,
     endMidFields: major.mids[endMidIndex]!.fields,
     midMinors: mid.minors,
@@ -512,30 +537,50 @@ export function renderArcPositionBlock(
         .join('\n  - ')
     : (en ? '(none — this is the last mid arc of the major arc)' : '（无 —— 这是本大弧的最后一个中弧）')
 
-  // P12-3：可声明的结构位 = 中弧的「转折」+ 各小弧。中弧的 因果/时序/目标/动机 是
-  // 整段规格而非一次性额度，列进来只会让模型拿已发生过的格子认领新章（见 isTurnField）。
-  // 跨中弧边界时，后半批属于 `endMidIndex`，其结构位同样可用。
-  const claimableIds = (
+  // P12-4：小弧 = **归属**（一个小弧跨 8–9 章，这 8–9 章都该声明它，重复是常态）；
+  // 转折 = **一次性额度**（一个中弧只有一个，只能在其中一章声明）。
+  // 清单必须带**区间**：只说「可声明这些 ID」而不说「哪个 ID 覆盖哪几章」，模型只能猜 ——
+  // 实测猜测的结果是 5 章里 4 章写「覆盖：无」，声明彻底失去信息量。
+  const slotLines = (
     midIndex: number,
+    range: readonly [number, number],
     fields: readonly (readonly [string, string])[],
     minors: readonly ArcMinor[],
   ): string[] => {
     const turn = fields.find(([field]) => isTurnField(field))
-    return [
-      ...(turn ? [`M${span.majorIndex}-${midIndex}/${turn[0]}`] : []),
-      ...minors.map(minor => `M${span.majorIndex}-${midIndex}/小弧:${minor.name}`),
-    ]
+    const lines: string[] = []
+    const minorItems = minorRanges(minors, range)
+    if (minorItems.length) {
+      lines.push(en
+        ? '  - Minor arcs (claim the one whose range contains this chapter; the same minor arc repeats across every chapter it spans — that is correct, not a duplicate):'
+        : '  - 小弧（**本章章号落在哪个区间就写哪个**；同一小弧会在它覆盖的每一章重复出现，这是对的，不是重复消费）：')
+      for (const item of minorItems) {
+        lines.push(en
+          ? `    - M${span.majorIndex}-${midIndex}/小弧:${item.name} — ch. ${item.range[0]}–${item.range[1]}`
+          : `    - M${span.majorIndex}-${midIndex}/小弧:${item.name} — 第 ${item.range[0]}–${item.range[1]} 章`)
+      }
+    }
+    if (turn) {
+      lines.push(en
+        ? `  - Turning point (one-shot — claim it once, in the chapter where it actually happens): M${span.majorIndex}-${midIndex}/${turn[0]}`
+        : `  - 转折（一次性 —— 只在它真正发生的那一章写一次）：M${span.majorIndex}-${midIndex}/${turn[0]}`)
+    }
+    if (lines.length === 0) {
+      lines.push(en
+        ? '  - This mid arc exposes no claimable slot; write "Covers: none" for every chapter.'
+        : '  - 本中弧没有可声明的结构位 —— 每章都写「覆盖：无」。')
+    }
+    return lines
   }
-  const batchIds = [...new Set([
-    ...claimableIds(span.midIndex, span.midFields, span.midMinors),
-    ...(span.endMidIndex > span.midIndex ? claimableIds(span.endMidIndex, span.endMidFields, span.endMidMinors) : []),
-  ])]
-  const coverable = batchIds.length
-    ? batchIds.join(en ? ', ' : '、')
-    : (en ? '(none — this mid arc exposes no citable slots; write "Covers: none")' : '（本中弧没有可引用的结构位 —— 本章写「覆盖：无」）')
-  const coverableLabel = en
-    ? `- Slots this batch may claim (a chapter's "Covers:" line may only use one of these IDs; **most chapters should write "Covers: none"** — a minor arc spans 8-9 chapters and only its closing chapter claims it): ${coverable}`
-    : `- 本批可声明的结构位（每章「覆盖：」只能取下列 ID 之一；**大多数章节应当写「覆盖：无」** —— 一个小弧通常跨 8–9 章，只有它的收束章才声明）：${coverable}`
+  const coverableLabel = [
+    en
+      ? '- Slots this batch may claim (exactly one ID per chapter\'s "Covers:" line):'
+      : '- 本批可声明的结构位（每章「覆盖：」只写一个 ID）：',
+    ...slotLines(span.midIndex, span.midRange, span.midFields, span.midMinors),
+    ...(span.endMidIndex > span.midIndex
+      ? slotLines(span.endMidIndex, span.endMidRange, span.endMidFields, span.endMidMinors)
+      : []),
+  ].join('\n')
 
   const crossing = span.nextMidBoundary !== null && span.nextMidName
     ? (en
