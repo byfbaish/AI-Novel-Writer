@@ -189,3 +189,57 @@ it.each(['zh-CN', 'en-US'] as const)('declares the structured keyEvents shape in
   expect(contract).toContain('keyEvents')
   expect(contract).toContain('estimatedUnits')
 })
+
+/**
+ * P15：弧光骨料的「四态」+ 层的阻力字段 + 结局条款。
+ *
+ * 背景（2026-10-18 作者实测 150 章弧光）：一条 8 章小弧的 6 条必发事件**全是**
+ * "他顺利拿到了某信息"（戏剧写作里的 plain yes），于是大纲第 1 章就把整条弧写完。
+ * 同时最后一卷的「结束状态」是一张收尾清单（代价全由配角承担、结尾还留了把钥匙），
+ * 读者读完不觉得书结束了。
+ *
+ * 这一组断言只防「单侧改动」：这些条款一旦只在 zh 或只在 en 出现，
+ * 另一种语言下的作者就静默拿不到约束。
+ */
+describe('弧光与大纲的结构条款双侧一致（P15）', () => {
+  const arc = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('plot_structure', language)!.content
+  const synopsisSuffix = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('synopsis', language)!.systemSuffix ?? ''
+
+  it('小弧骨料要求四种结果形态，禁止连续 plain yes', () => {
+    expect(arc('zh-CN')).toContain('顺利拿到（plain yes）')
+    expect(arc('zh-CN')).toContain('不得连续三条都是 plain yes')
+    expect(arc('en-US')).toContain('a clean yes')
+    expect(arc('en-US')).toContain('never three clean yeses in a row')
+  })
+
+  it('A / C 型各自补一条阻力字段（A 型与 C 型原本可以零失败）', () => {
+    expect(arc('zh-CN')).toContain('阻塞：')
+    expect(arc('zh-CN')).toContain('扑空：')
+    expect(arc('en-US')).toContain('Block:')
+    expect(arc('en-US')).toContain('Dead end:')
+  })
+
+  it('大弧写时间跨度，且写明它是唯一一层写时间跨度的地方', () => {
+    expect(arc('zh-CN')).toContain('时间跨度：本卷内的故事时间约')
+    expect(arc('zh-CN')).toContain('唯一')
+    expect(arc('en-US')).toContain('Time span: roughly')
+  })
+
+  it('结局四问：全书问题 / 不可逆代价 / 不开新线 / 最后一击', () => {
+    for (const language of ['zh-CN', 'en-US'] as const) {
+      const text = arc(language)
+      expect(text).toContain(language === 'zh-CN' ? '【全书问题】' : '[Story question]')
+      expect(text).toContain(language === 'zh-CN' ? '拿不回来的代价' : 'cannot get back')
+      expect(text).toContain(language === 'zh-CN' ? '不得在末尾开新线' : 'No new thread at the end')
+      expect(text).toContain(language === 'zh-CN' ? '最后一击' : 'the last blow')
+    }
+  })
+
+  it('大纲侧有收束条款，且只在最后一个小弧内生效', () => {
+    expect(synopsisSuffix('zh-CN')).toContain('⑧ 收束')
+    expect(synopsisSuffix('zh-CN')).toContain('最后一个小弧')
+    expect(synopsisSuffix('zh-CN')).toContain('不得由金手指或外力代办')
+    expect(synopsisSuffix('en-US')).toContain('Settlement')
+    expect(synopsisSuffix('en-US')).toContain('final minor arc')
+  })
+})
