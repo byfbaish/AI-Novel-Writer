@@ -365,16 +365,36 @@ function projectSourceDependencies(value: unknown): unknown[] {
  * 投影一旦改写形态，还原后的 `sha256(source_snapshot)` 就与 `source_hash` 不符，
  * 候选会被判「完整性校验失败」。因此原值必须逐字保留。
  */
+/**
+ * `attacks`（P11-1）也必须安全投影：`object()` 是**严格白名单**，未登记的新键会让
+ * 整个导出直接失败（`PORTABLE_UNSAFE_PROJECTION`）。蓝图一旦开始声明攻击目标，
+ * 这里不登记就等于把「导出项目」这个功能弄坏。
+ */
+function portableAttack(value: unknown): Record<string, unknown> {
+  const attack = object(value, ['kind', 'space', 'hour', 'rationale'])
+  if (attack.kind !== 'slot') fail('PORTABLE_UNSAFE_PROJECTION')
+  const projected: Record<string, unknown> = {
+    kind: 'slot',
+    space: safeString(attack.space),
+    hour: safeString(attack.hour),
+  }
+  if (attack.rationale !== undefined) projected.rationale = safeString(attack.rationale)
+  return projected
+}
+
 function portableKeyEvents(value: unknown): unknown {
   if (typeof value === 'string') return safeString(value)
   if (!Array.isArray(value) || value.length > 10_000) fail('PORTABLE_UNSAFE_PROJECTION')
   return value.map((item) => {
-    const event = object(item, ['id', 'event', 'estimatedUnits'])
-    return {
+    const event = object(item, ['id', 'event', 'estimatedUnits', 'attacks'])
+    const projected: Record<string, unknown> = {
       id: safeString(event.id, 1_024),
       event: safeString(event.event),
       estimatedUnits: safeInteger(event.estimatedUnits),
     }
+    // 只在确有 attacks 时补键：没有该字段的旧数据逐字保持原形。
+    if (event.attacks !== undefined) projected.attacks = portableAttack(event.attacks)
+    return projected
   })
 }
 
@@ -427,9 +447,17 @@ function reviewKeyEventsField(record: Record<string, unknown>): void {
   if (value === undefined) return
   if (typeof value === 'string') { safeString(value); return }
   for (const entry of reviewArray(value)) {
-    const event = object(entry, ['id', 'event', 'estimatedUnits'])
+    // `attacks`（P11-1）：只校验、不重建（审稿上下文按整串算 sha256）。
+    const event = object(entry, ['id', 'event', 'estimatedUnits', 'attacks'])
     reviewTextFields(event, ['id', 'event'])
     reviewIntegerFields(event, ['estimatedUnits'])
+    if (event.attacks !== undefined) {
+      const attack = object(event.attacks, ['kind', 'space', 'hour', 'rationale'])
+      if (attack.kind !== 'slot') fail('PORTABLE_UNSAFE_PROJECTION')
+      safeString(attack.space)
+      safeString(attack.hour)
+      if (attack.rationale !== undefined) safeString(attack.rationale)
+    }
   }
 }
 

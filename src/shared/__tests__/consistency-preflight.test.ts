@@ -1,7 +1,7 @@
 import { normalizeKeyEvents } from '../blueprint-key-events'
 import { describe, expect, it } from 'vitest'
 
-import { findBlueprintContinuityRisks, mergeConsistencyFindingsIntoReview } from '../consistency-preflight'
+import { findBlueprintContinuityRisks, findBlueprintSlotAttackRisks, mergeConsistencyFindingsIntoReview } from '../consistency-preflight'
 import { buildFinalizedContinuityFacts } from '../finalized-continuity-facts'
 
 it('本章候选名单超过八人时仍识别后续事实中的角色', () => {
@@ -137,5 +137,53 @@ describe('findBlueprintContinuityRisks', () => {
       quote: '表盖内侧刻着一组陌生坐标。',
     })])
     expect(review.items[0]?.description).toContain('顾舟')
+  })
+})
+
+// ============================================================
+// P11-1：意图指向某一格但没声明 attacks
+// ============================================================
+
+describe('findBlueprintSlotAttackRisks', () => {
+  const base = {
+    chapterNumber: 3,
+    title: '查不到人，我就在那一格站着',
+    role: '发展',
+    characters: ['程实'],
+    suspenseHook: '零点前他真会打给对面吗？',
+    userGuidance: '',
+    notes: '',
+  }
+
+  it('purpose 里说「废掉某一格」但全章没有 attacks ⇒ 提示，并引用那句原话', () => {
+    const findings = findBlueprintSlotAttackRisks({
+      ...base,
+      purpose: '废掉黑市那版作息表上"晚九点桥格"的定价价值。',
+      keyEvents: normalizeKeyEvents('天亮后他跑到望海桥有摄像头那截站了一会儿'),
+    })
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.evidence).toContain('废掉')
+    expect(findings[0]!.issue.zhCN).toContain('attacks')
+  })
+
+  it('已声明 attacks 时闭嘴（有目标就不提示）', () => {
+    const findings = findBlueprintSlotAttackRisks({
+      ...base,
+      purpose: '废掉晚九点那一格的定价价值。',
+      keyEvents: normalizeKeyEvents([{
+        event: '晚九点他站在有摄像头的地方，且不在望海桥中段',
+        attacks: { kind: 'slot', space: '望海桥中段', hour: '21:00' },
+      }]),
+    })
+    expect(findings).toEqual([])
+  })
+
+  it('没有攻击意图词时闭嘴（不是每个蓝图都在打格子）', () => {
+    const findings = findBlueprintSlotAttackRisks({
+      ...base,
+      purpose: '把当天的报价拖到零点之后。',
+      keyEvents: normalizeKeyEvents('他去面摊吃了碗面'),
+    })
+    expect(findings).toEqual([])
   })
 })

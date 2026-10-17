@@ -49,6 +49,7 @@ suspenseHook and keyEvents must not overlap: every keyEvents item is an event th
 characters must be an array containing at least one unique, non-empty full character name.
 newCharacterCandidates is optional. When present, include only important named characters first introduced by this blueprint and expected to recur. Every item must contain name and role, name must exactly copy one entry from characters, and role must be protagonist, antagonist, supporting, or minor. Omit it or use [] when there are no candidates; never include incidental figures.
 spaceRefs is optional and may be []. When present, each item must contain space (a space name copied verbatim from dimension 4 of the world setting) and may contain timeRef (24-hour HH:MM or HH:MM-HH:MM) and beat (what happens there). Only emit it when the chapter genuinely has a place and, if stated, a time; omit the field or use [] otherwise. Never invent a space that the world setting does not register.
+attacks is optional and is attached to a keyEvents item, not to the blueprint: {"kind":"slot","space":"a registered space name","hour":"21:00","rationale":"why this action breaks that slot"}. kind must be slot; space must copy a space name registered in dimension 4 of the world setting; hour must be the 24-hour clock time of the SLOT BEING ATTACKED — not the time this chapter acts (these often differ); rationale is one optional sentence. Whenever the chapter invalidates, disproves, or scrambles a slot (a space + clock-time pair), it must declare attacks — otherwise the action has no checkable target. Never declare attacks for merely passing through a space, or for prose unrelated to that slot.
 relationships is required and may be []; every item must contain non-empty from, to, and relation fields. from and to must exactly copy full names from the same item's characters array and may not self-reference.
 Preserve complete narrative content.
 Do not omit required fields, combine chapters, rename fields, explain, or output Markdown or code fences.`
@@ -61,6 +62,7 @@ suspenseHook 与 keyEvents 必须严格分工、不得重叠：keyEvents 的每�
 characters 必须是至少含一个唯一非空角色名的字符串数组。
 newCharacterCandidates 可选；提供时只声明由本章首次引入且预计后续复用的重要具名角色，每项必须包含 name、role，name 必须逐字复制 characters 中的一个完整姓名，role 只能是 protagonist、antagonist、supporting、minor。无候选时可省略或传 []，一次性路人不得声明为候选。
 spaceRefs 可选，无空间/钟点时传 [] 或省略；提供时每项必须含 space（逐字复制世界观第 4 维登记的空间名），可含 timeRef（24 小时制 HH:MM 或 HH:MM-HH:MM）与 beat（在那里发生了什么）。只在**确有**空间时输出；不得发明世界观未登记的空间名。
+attacks 可选，挂在 keyEvents 的**条目**上（不是蓝图顶层）：{"kind":"slot","space":"世界观登记的空间名","hour":"21:00","rationale":"为什么这个动作能破坏该格"}。kind 只能是 slot；space 必须逐字复制世界观第 4 维登记的空间名；hour 必须是**被攻击那一格**的 24 小时制钟点，**不是这一章动手的钟点**（两者常常不同：要作废「晚九点」那一格，白天准备也算）；rationale 可选，一句话说明机制。凡本章要作废、证伪或搅乱某一格（某个「空间 + 钟点」组合），必须声明 attacks —— 否则这个动作没有可核对的目标。只是路过该空间、或与该格无关的叙事，不得声明 attacks。
 relationships 必须是数组，无关系时传 []；每项必须含非空 from、to、relation，from/to 必须精确出现在同项 characters 中且不能自指。
 from/to 必须逐字复制同一项 characters 中的完整字符串；任一端点不在 characters 时，删除该关系或使用 []，不得发明别名、简称或补写角色。
 叙述内容须保持完整。
