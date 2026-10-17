@@ -508,7 +508,8 @@ Every chapter has three parts in this exact order: (1) chapter heading, (2) opti
 - Place it immediately after the chapter heading, on its own line, as "Covers: <slot ID>".
 - The ID must be copied verbatim from the "slots this batch may claim" line of that block (including "/" and the field name).
 - Claim exactly one slot per chapter — the one this chapter actually pays off. If a chapter seems to need two, you are consuming later content early: split it into later chapters.
-- When a chapter pays off no slot, write "Covers: none". Never invent an ID, and never put a mid-arc or major-arc ID (such as M1-1) here.
+- **Most chapters should write "Covers: none"**: the claimable list holds only the turning point and the minor arcs, and one minor arc usually spans 8-9 chapters — claim a slot only in the chapter that actually uses it up.
+- When a chapter pays off no slot, write "Covers: none". Never invent an ID, never put a mid-arc or major-arc ID (such as M1-1) here, and never claim a whole-mid-arc spec field (Causality / Ordering / Goal / Motivation / Path / Attempt N) as if it were a one-off slot — it spans the entire mid arc, so claiming it carries no information.
 - The chapter's outline text follows that line; do not repeat the ID in the prose.
 
 (3) "Closes:" line — mandatory for every chapter, no exceptions:

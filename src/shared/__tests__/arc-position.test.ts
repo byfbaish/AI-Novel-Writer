@@ -58,6 +58,13 @@ describe('parseArcStructure', () => {
     // 排版性字段（类型/接续理由）不进内容字段，小弧行也不进
     expect(parsed.majors[0]!.mids[0]!.fields.map(([name]) => name)).toEqual(['因果', '时序', '转折'])
     expect(parsed.majors[0]!.mids[1]!.fields.map(([name]) => name)).toEqual(['目标', '尝试 1', '转折'])
+    // 「小弧」不进球内容字段，而是拆成带章数的独立条目（P12-3）——
+    // 只有它自带章数，能折算成「第 10–18 章」这种精度。
+    expect(parsed.majors[0]!.mids[0]!.minors).toEqual([
+      { name: '首夜敲门', chapters: 8 },
+      { name: '门缝纸条', chapters: 9 },
+    ])
+    expect(parsed.majors[0]!.mids[1]!.minors).toEqual([])
   })
 
   it('returns null for an enum-style structure guide (no three-level arcs)', () => {
@@ -246,6 +253,28 @@ describe('renderArcPositionBlock / withArcPositionGuide', () => {
     expect(block).not.toContain('它们属于第 26 章及以后')
     // 未跨界时与从前一致（下一个中弧起点 = 本中弧末尾 + 1）
     expect(renderArcPositionBlock(parsed, 195, 16, 25, 'zh-CN')).toContain('它们属于第 26 章及以后')
+  })
+
+  it('可声明清单只列「转折」与小弧，不列 因果/时序 这类整段规格（P12-3）', () => {
+    const block = renderArcPositionBlock(parsed, 195, 1, 10, 'zh-CN')
+    expect(block).toContain('M1-1/转折')
+    expect(block).toContain('M1-1/小弧:首夜敲门')
+    expect(block).toContain('M1-1/小弧:门缝纸条')
+    // 因果/时序 覆盖整个中弧区间，声明它们永远不越界 ⇒ 不列进可声明清单
+    expect(block).not.toContain('M1-1/因果')
+    expect(block).not.toContain('M1-1/时序')
+    // 明确告诉模型：大多数章节应当不声明，否则它会为了不空着而乱挑
+    expect(block).toContain('大多数章节应当写「覆盖：无」')
+  })
+
+  it('renderArcPositionBlock 在无小弧时只列「转折」；英文侧用同一套 ID', () => {
+    const zh = renderArcPositionBlock(parsed, 195, 26, 35, 'zh-CN')
+    expect(zh).toContain('M1-2/转折')
+    expect(zh).not.toContain('M1-2/小弧:')
+    const en = renderArcPositionBlock(parsed, 195, 1, 10, 'en-US')
+    // 「小弧:」是固定的命名空间前缀，与写作语言无关 —— ID 只用于对账，不面向读者
+    expect(en).toContain('M1-1/小弧:首夜敲门')
+    expect(en).not.toContain('M1-1/Causality')
   })
 
   it('renders the English block and appends to the guide only when parseable', () => {

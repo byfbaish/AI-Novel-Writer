@@ -1,4 +1,4 @@
-import { parseArcStructure, scaledBoundaries } from './arc-position'
+import { isTurnField, parseArcStructure, scaledBoundaries } from './arc-position'
 
 /**
  * 弧光结构位（P12-0a）。
@@ -23,7 +23,23 @@ import { parseArcStructure, scaledBoundaries } from './arc-position'
  * |---|---|---|
  * | 大弧 | `M<大弧序号>` | `M1` |
  * | 中弧 | `M<大弧>-<弧内中弧序号>` | `M1-2` |
- * | 结构位 | `M<大弧>-<弧内中弧序号>/<字段名>` | `M1-2/转折`、`M1-2/尝试 2` |
+ * | 结构位 | `M<大弧>-<弧内中弧序号>/<字段名>` | `M1-2/转折` |
+ * | 小弧 | `M<大弧>-<弧内中弧序号>/小弧:<小弧名>` | `M1-1/小弧:纸门牌` |
+ *
+ * ## 为什么小弧是唯一「可声明」的粒度（P12-3）
+ *
+ * 中弧的 因果 / 时序 / 目标 / 动机 / 路径 / 尝试 N 都是**整段规格**，覆盖整个中弧区间，
+ * 不是一次性额度。把它们列进可声明清单会造成「形式合规、语义空转」：实测第 6 章声明
+ * `M1-1/时序`（原文是「本中弧起点 = 全书开篇的那个清晨」）、第 7 章声明 `M1-1/因果`
+ * （第 1–2 章就已成立的因果链）—— 两章都在拿已经发生过的东西认领新章额度，而
+ * INV-1/INV-2 一条都不会触发。
+ *
+ * 只有两类节点真正「用掉一次就没了」：
+ * 1. **转折**（每个中弧一个，实测 6/6）；
+ * 2. **小弧**（自带章数，天然能折算成独立区间，如「纸门牌」约第 10–18 章）。
+ *
+ * 所以 `isClaimableArcNode()` 只认这两类；`auditArcCovers` 的漏覆盖统计也只统计它们，
+ * 否则「因果未声明」「时序未声明」会变成永远无法消除的噪音。
  *
  * ⚠️ 中弧用的是**本大弧内**的序号（与 `ArcSpan.midIndex` 同语义），**不是**原文里跨大弧
  * 连续编的「中弧 3」。原文 `### 中弧 3：沉默的报价` 在本表里是 `M2-1`。报告与 UI 必须
@@ -40,10 +56,10 @@ import { parseArcStructure, scaledBoundaries } from './arc-position'
  * @see docs/design/architecture/p12-arc-node-anchoring-design.md
  */
 
-export type ArcNodeKind = 'major' | 'mid' | 'field'
+export type ArcNodeKind = 'major' | 'mid' | 'field' | 'minor'
 
 export interface ArcNode {
-  /** 稳定 ID：`M1` | `M1-2` | `M1-2/转折`。 */
+  /** 稳定 ID：`M1` | `M1-2` | `M1-2/转折` | `M1-1/小弧:纸门牌`。 */
   id: string
   kind: ArcNodeKind
   /** 折算后的章号区间（闭区间，含两端）。 */
@@ -56,12 +72,14 @@ export interface ArcNode {
   midName?: string
   /** 字段名（`kind === 'field'` 时有值），如「转折」「尝试 2」。 */
   field?: string
-  /** 该结构位的原文：大弧/中弧是名称，字段是字段值。 */
+  /** 小弧名（`kind === 'minor'` 时有值），如「纸门牌」。 */
+  minorName?: string
+  /** 该结构位的原文：大弧/中弧是名称，字段是字段值，小弧是小弧名。 */
   text: string
 }
 
 export interface ArcCoverViolation {
-  code: 'INV-1-OUT_OF_RANGE' | 'INV-2-DUPLICATE' | 'INV-3-UNCOVERED' | 'UNKNOWN_NODE' | 'COARSE_NODE'
+  code: 'INV-1-OUT_OF_RANGE' | 'INV-2-DUPLICATE' | 'INV-3-UNCOVERED' | 'UNKNOWN_NODE' | 'COARSE_NODE' | 'NOT_CLAIMABLE'
   /** 触发违规的结构位 ID。 */
   id: string
   chapterNumber: number
@@ -129,6 +147,27 @@ export function listArcNodes(plan: string | null | undefined, totalChapters: num
           text: value,
         }))
       }
+
+      // 小弧（P12-3）：自带章数，在本中弧区间内**再折算一次** —— 这是整条链上唯一
+      // 能落到「第 10–18 章」这种精度的层级，也是唯一能证明「某格被提前了 25 章」的单位。
+      const minorBounds = scaledBoundaries(mid.minors.map(item => item.chapters), midRange[1] - midRange[0] + 1)
+      mid.minors.forEach((minor, minorOffset) => {
+        const minorRange: readonly [number, number] = [
+          midRange[0] + minorBounds[minorOffset]!,
+          midRange[0] + minorBounds[minorOffset + 1]! - 1,
+        ]
+        nodes.push(Object.freeze({
+          id: `M${majorIndex}-${midIndex}/小弧:${minor.name}`,
+          kind: 'minor' as const,
+          range: minorRange,
+          majorIndex,
+          midIndex,
+          majorName: major.name,
+          midName: mid.name,
+          minorName: minor.name,
+          text: minor.name,
+        }))
+      })
     })
   })
 
@@ -137,6 +176,23 @@ export function listArcNodes(plan: string | null | undefined, totalChapters: num
 
 export function findArcNode(nodes: readonly ArcNode[], id: string): ArcNode | undefined {
   return nodes.find(node => node.id === id)
+}
+
+/**
+ * 该节点是否是**一次性额度** —— 即一章可以声明「覆盖：」它。
+ *
+ * 只有两类：中弧的「转折」、中弧下的各小弧。
+ *
+ * 不参与判断的是中弧的 因果 / 时序 / 目标 / 动机 / 路径 / 尝试 N：它们是**整段规格**，
+ * 区间等于整个中弧，声明它们永远「不越界、不重复」，因而完全不产生信息。实测第 6 章
+ * 用 `M1-1/时序`（= 本中弧起点，第 1 章就已发生）认领第 6 章，INV-1/INV-2 全绿。
+ *
+ * 判定的单一真源是 `isTurnField`（与渲染「本批可声明的结构位」清单共用），
+ * 两处各写一份正则必然漂移 —— 提示词允许声明什么、审计认可什么，必须同源。
+ */
+export function isClaimableArcNode(node: ArcNode): boolean {
+  if (node.kind === 'minor') return true
+  return node.kind === 'field' && isTurnField(node.field ?? '')
 }
 
 /**
@@ -153,7 +209,8 @@ export function arcNodesForChapter(nodes: readonly ArcNode[], chapterNumber: num
   return nodes.filter(node => (
     (node.kind === 'major' && node.id === `M${mid.majorIndex}`)
     || (node.kind === 'mid' && node.id === mid.id)
-    || (node.kind === 'field' && node.majorIndex === mid.majorIndex && node.midIndex === mid.midIndex)
+    || ((node.kind === 'field' || node.kind === 'minor')
+      && node.majorIndex === mid.majorIndex && node.midIndex === mid.midIndex)
   ))
 }
 
@@ -196,13 +253,24 @@ export function validateArcCovers(  nodes: readonly ArcNode[],
       continue
     }
     // 中弧/大弧粒度太粗，无法阻止「同一中弧被两章重复兑现」，提示细化但不拦。
-    if (node.kind !== 'field') {
+    if (node.kind === 'major' || node.kind === 'mid') {
       violations.push({
         code: 'COARSE_NODE',
         id,
         chapterNumber,
         range: node.range,
-        message: `第 ${chapterNumber} 章声明的「${id}」是${node.kind === 'major' ? '大弧' : '中弧'}粒度；建议细化到具体结构位（如「${id}/转折」），否则无法检测重复兑现。`,
+        message: `第 ${chapterNumber} 章声明的「${id}」是${node.kind === 'major' ? '大弧' : '中弧'}粒度；建议细化到具体结构位（如「${id}/转折」或「${id}/小弧:<小弧名>」），否则无法检测重复兑现。`,
+      })
+      continue
+    }
+    // 中弧的 因果/时序/目标/动机/路径/尝试 N 是整段规格，声明它们永远「不越界、不重复」。
+    if (!isClaimableArcNode(node)) {
+      violations.push({
+        code: 'NOT_CLAIMABLE',
+        id,
+        chapterNumber,
+        range: node.range,
+        message: `第 ${chapterNumber} 章声明了「${id}」，但它是覆盖整个 ${node.range[0]}–${node.range[1]} 章的**整段规格**，不是一次性节点 —— 声明它既不产生信息，也无法被重复消费检测。请改声明「转折」或一个小弧。`,
       })
     }
   }
@@ -291,7 +359,7 @@ export interface ArcCoverAudit {
   violations: readonly ArcCoverViolation[]
   /** 本批区间内、从未被任何一章声明的结构位（仅作提示，不拦）。 */
   uncovered: readonly ArcNode[]
-  /** 声明了 covers 的章节数（用于报告「几章有声明」）。 */
+  /** 写了「覆盖：」行的章节数（含「覆盖：无」—— 那是明确声明，不是漏写）。 */
   declaredChapters: number
 }
 
@@ -300,10 +368,12 @@ export interface ArcCoverAudit {
  *
  * - **INV-1**：声明了某格但本章不在其区间内 ⇒ error（`INV-1-OUT_OF_RANGE`）。
  * - **INV-2**：同一格被两章声明 ⇒ error（`INV-2-DUPLICATE`）—— 结构位是一次性额度。
- * - **INV-3**：本批覆盖到的中弧里，有格子从未被声明 ⇒ warning（`INV-3-UNCOVERED`）。
+ * - **INV-3**：本批覆盖到的中弧里，有**可声明**格子从未被声明 ⇒ warning（`INV-3-UNCOVERED`）。
  *
- * `uncovered` 只统计**本批区间内**的结构位（`from`–`to` 覆盖到的中弧），否则全书
- * 尚未写到的格子会全部报成漏覆盖，等于把信噪比归零。
+ * `uncovered` 只统计**本批区间内的可声明节点**（`from`–`to` 覆盖到的中弧的转折与小弧）：
+ * ① 不算本批之外，否则全书尚未写到的格子会全部报成漏覆盖，信噪比归零；
+ * ② 不算整段规格字段（因果/时序/目标/动机…），否则「M1-1/因果未声明」这类
+ *    永远无法消除的噪音会淹没真信号（见 `isClaimableArcNode`）。
  */
 export function auditArcCovers(
   nodes: readonly ArcNode[],
@@ -330,7 +400,7 @@ export function auditArcCovers(
     }
   }
 
-  const inBatch = nodes.filter(node => node.kind === 'field'
+  const inBatch = nodes.filter(node => isClaimableArcNode(node)
     && node.range[0] <= options.to && node.range[1] >= options.from)
   const uncovered = inBatch.filter(node => !seen.has(node.id))
   for (const node of uncovered) {
@@ -347,6 +417,9 @@ export function auditArcCovers(
     chapters,
     violations,
     uncovered,
-    declaredChapters: chapters.filter(chapter => chapter.covers.length > 0).length,
+    // 认「写了「覆盖：」行」，不认「写了一个 ID」—— 「覆盖：无」是**明确的声明**
+    // （本章不兑现任何结构位），不是漏写。否则「大多数章节应当写覆盖：无」这条规矩
+    // 一落地，报告立刻开始喊「N 章没有写声明」，自相矛盾。
+    declaredChapters: chapters.filter(chapter => chapter.coverLine !== null).length,
   }
 }

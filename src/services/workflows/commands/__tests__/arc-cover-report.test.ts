@@ -26,15 +26,24 @@ const zh = (_zh: string, _en: string) => _zh
 
 describe('summarizeArcCoverFindings', () => {
   it('全部合规时闭嘴（返回 null）', () => {
+    // 可声明的只有「转折」与小弧：本中弧只有一个转折，其余章应写「覆盖：无」。
+    // 「覆盖：无」是明确声明，不算「没有写声明」—— 否则这条规矩一落地就自相矛盾。
     const body = [
       '## 第1章：开篇',
-      '覆盖：M1-1/因果',
-      '## 第2章：闭嘴',
       '覆盖：M1-1/转折',
+      '## 第2章：闭嘴',
+      '覆盖：无',
       '## 第3章：时序',
-      '覆盖：M1-1/时序',
+      '覆盖：无',
     ].join('\n')
     expect(summarizeArcCoverFindings(body, PLAN, TOTAL, 1, 3, zh)).toBeNull()
+  })
+
+  it('把整段规格字段当额度声明时说人话（实机第 6/7 章的形态）', () => {
+    const body = '## 第1章：时序\n覆盖：M1-1/时序'
+    const note = summarizeArcCoverFindings(body, PLAN, TOTAL, 1, 1, zh)
+    expect(note).toContain('M1-1/时序')
+    expect(note).toContain('整段规格')
   })
 
   it('把「提前消耗后续中弧」说成一句人话，并带上提前了多少章', () => {
