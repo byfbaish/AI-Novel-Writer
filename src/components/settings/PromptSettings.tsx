@@ -403,6 +403,16 @@ function TemplateItem({
     setTimeout(() => setSaveResult(null), 3000)
   }
 
+  // 采纳新版内置正文（保留作者的额外指导）
+  //
+  // 「恢复默认」能拿到新版正文，但它连「补充创作指导」一起清掉；而这个面板里正文是只读的，
+  // 作者没有第三条路。保存流程本身是 `{...builtinTemplate, taskGuidance}` —— 正文取的就是
+  // 当前内置版，所以「在原来那一级再保存一次」正好等于「换正文、留指导」。
+  const handleAdoptBuiltinBody = async () => {
+    if (source === 'project') await handleSaveProject()
+    else await handleSaveGlobal()
+  }
+
   // 恢复默认
   const handleReset = async () => {
     const operationSession = projectSession
@@ -541,6 +551,27 @@ function TemplateItem({
                 '内置模板已更新，但当前生效的是「全局 / 项目」覆盖 —— 它冻结了保存当时的旧版内置正文与说明，新版的改进不会自动生效。下方已同时列出「当前生效的模板正文」与「新版内置正文」，可对照后决定：先留存你的自定义内容，再点「恢复默认」即可让新版生效（注意：该操作会清除你对该模板的全部自定义）。本提示不会自动修改任何内容。',
                 'The built-in template has been updated, but a global/project override is in effect. It froze the older built-in body and description, so improvements in the new version do not apply. Both the effective template body and the new built-in body are listed below so you can compare them; save your customizations first, then use “Restore default” to adopt the new version (this clears all your customizations for this template). Nothing is changed automatically.',
               )}
+              <div className="mt-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAdoptBuiltinBody}
+                  disabled={saving}
+                  title={text(
+                    '把正文换成新版内置正文，保留你在「补充创作指导」里写的内容',
+                    'Replace the body with the new built-in text and keep what you wrote under additional guidance',
+                  )}
+                >
+                  <RotateCcw size={12} />
+                  {text('采纳新版正文（保留我的指导）', 'Adopt new body, keep my guidance')}
+                </Button>
+                <span className="ml-2 text-[0.65rem]" style={{ color: 'var(--color-text-muted)' }}>
+                  {text(
+                    '正文会被替换；「补充创作指导」保留。',
+                    'The body is replaced; your additional guidance is kept.',
+                  )}
+                </span>
+              </div>
             </div>
           )}
           {/* 模板正文只读展示：覆盖版冻结的是「保存当时」的内置正文，
