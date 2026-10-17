@@ -111,3 +111,59 @@ describe('keyEventsText', () => {
     expect(keyEventsText(null)).toBe('')
   })
 })
+
+// ============================================================
+// P11-1：`attacks`（把「作废某一格」写成可对账的目标）
+// ============================================================
+
+describe('normalizeKeyEvents · attacks', () => {
+  it('合法 attacks 挂到对应事件上，钟点规范化为 HH:MM', () => {
+    const events = normalizeKeyEvents([{
+      id: 'x:E1',
+      event: '他站进有摄像头的那截，故意留时间戳',
+      estimatedUnits: 700,
+      attacks: { kind: 'slot', space: '望海桥中段', hour: '9：05', rationale: '同钟点出现在别处才能证伪该格' },
+    }], { chapterNumber: 3 })
+
+    expect(events[0]!.attacks).toEqual({
+      kind: 'slot',
+      space: '望海桥中段',
+      hour: '09:05',
+      rationale: '同钟点出现在别处才能证伪该格',
+    })
+    // 其余字段不受影响
+    expect(events[0]).toMatchObject({ id: 'ch3:E1', event: '他站进有摄像头的那截，故意留时间戳', estimatedUnits: 700 })
+  })
+
+  it('没有 rationale 时仍然合法（它是可选的）', () => {
+    const events = normalizeKeyEvents([{ event: '甲', attacks: { kind: 'slot', space: '望海桥', hour: '21:00' } }])
+    expect(events[0]!.attacks).toEqual({ kind: 'slot', space: '望海桥', hour: '21:00' })
+  })
+
+  it('缺 space / 缺 hour / 非法 kind ⇒ 整条 attacks 丢弃，事件本身保留', () => {
+    const events = normalizeKeyEvents([
+      { event: '缺钟点', attacks: { kind: 'slot', space: '望海桥' } },
+      { event: '缺空间', attacks: { kind: 'slot', hour: '21:00' } },
+      { event: '类型待定', attacks: { kind: 'thread', space: '望海桥', hour: '21:00' } },
+      { event: '钟点越界', attacks: { kind: 'slot', space: '望海桥', hour: '24:00' } },
+    ])
+    expect(events.map(item => item.event)).toEqual(['缺钟点', '缺空间', '类型待定', '钟点越界'])
+    expect(events.every(item => item.attacks === undefined)).toBe(true)
+  })
+
+  it('没有 attacks 时**不产生该键** —— 旧形状逐字不变，不影响既有快照哈希', () => {
+    const events = normalizeKeyEvents([{ id: '1:E1', event: '甲', estimatedUnits: 700 }])
+    expect(Object.keys(events[0]!)).toEqual(['id', 'event', 'estimatedUnits'])
+  })
+
+  it('空事件被丢弃时，后续条目的 estimatedUnits / attacks 不会整体错位（回归 2026-10-18）', () => {
+    const events = normalizeKeyEvents([
+      { event: '', estimatedUnits: 999, attacks: { kind: 'slot', space: '错位空间', hour: '01:00' } },
+      { event: '乙', estimatedUnits: 500, attacks: { kind: 'slot', space: '望海桥', hour: '21:00' } },
+    ], { chapterNumber: 2 })
+
+    expect(events).toHaveLength(1)
+    expect(events[0]).toMatchObject({ id: 'ch2:E1', event: '乙', estimatedUnits: 500 })
+    expect(events[0]!.attacks).toMatchObject({ space: '望海桥' })
+  })
+})

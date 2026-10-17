@@ -170,8 +170,53 @@ export function findBlueprintSpaceTimeRisks(
     }))
 }
 
-export function mergeConsistencyFindingsIntoReview(
-  review: ReviewLike,
+/**
+ * 本章「在打某一格」却没有声明攻击目标（P11-1 的报告侧）。
+ *
+ * ## 为什么需要它
+ *
+ * 实机缺陷（2026-10-18）：第 3 章 `purpose` 是「废掉黑市那版作息表上『晚九点桥格』的定价价值」，
+ * 而那一格在第 2 章 20:45–21:00 已经被主角本人兑付。蓝图没有任何字段记录「我在打哪一格」，
+ * 于是 `timeRef` 被当成动作时间写成 `09:00-10:00`，正文只能照着在早上七点站桥头 ——
+ * 一个与被攻击目标毫无关系的动作。
+ *
+ * ## 边界
+ *
+ * 只用**封闭词表**判断「意图是否指向某一格」，不做语义理解；词表命中且全章无 `attacks`
+ * 才提示。这是「提示」而非禁止：比喻用法（「把这条线废掉」）也会命中，作者可以忽略。
+ */
+const SLOT_ATTACK_INTENT = /废掉|作废|废了|搅乱|搅掉|搅黄|证伪|打乱|破坏|抹掉|拆掉|顶掉|invalidate|disprove|scramble|void\b|wipe|undermine/iu
+
+export function findBlueprintSlotAttackRisks(blueprint: BlueprintForPreflight): ConsistencyFinding[] {
+  const events = blueprint.keyEvents ?? []
+  const declared = events.filter(event => event.attacks)
+  if (declared.length > 0) return []
+  const haystacks = [blueprint.purpose, ...events.map(event => event.event)].filter(Boolean)
+  const hit = haystacks.find(text => SLOT_ATTACK_INTENT.test(text))
+  if (!hit) return []
+  return [{
+    stableFactKey: `slot-attack-missing:${blueprint.chapterNumber}`,
+    severity: 'warning' as const,
+    sourceChapter: blueprint.chapterNumber,
+    evidence: hit,
+    issue: {
+      zhCN: `本章意图指向某一格（「${hit.slice(0, 40)}」），但没有任何一条 keyEvents 声明 attacks。`
+        + '没有攻击目标，复核时无法判断这一格是否还存在 —— 它可能已在前面章节被兑付掉，此时这个动作机制上不成立。',
+      enUS: `This chapter aims at a specific slot ("${hit.slice(0, 40)}"), but no keyEvents item declares attacks. `
+        + 'Without a target, nothing can check whether that slot still exists — it may already have been paid off '
+        + 'in an earlier chapter, in which case the action has no mechanism.',
+    },
+    suggestion: {
+      zhCN: '若本章确实要作废/证伪某一格，在对应 keyEvents 项加 attacks：{"kind":"slot","space":"…","hour":"HH:MM"}'
+        + '（hour 填**被攻击那一格**的钟点，不是动手的钟点）。若只是比喻用法，可忽略本条。',
+      enUS: 'If the chapter really invalidates or disproves a slot, add attacks to the relevant keyEvents item: '
+        + '{"kind":"slot","space":"…","hour":"HH:MM"} (hour is the clock time of the slot being attacked, not when '
+        + 'the action happens). Ignore this if the wording is only figurative.',
+    },
+  }]
+}
+
+export function mergeConsistencyFindingsIntoReview(  review: ReviewLike,
   findings: readonly ConsistencyFinding[],
   locale: 'zh-CN' | 'en-US',
 ): ReviewLike & { items: Array<Record<string, unknown>> } {

@@ -3,7 +3,8 @@ import type {
   BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding, ConsistencyPreflightCoverage,
 } from '../shared/consistency-preflight'
 import {
-  describeSpaceTimeCoverage, findBlueprintContinuityRisks, findBlueprintSpaceTimeRisks,
+  describeSpaceTimeCoverage, findBlueprintContinuityRisks, findBlueprintSlotAttackRisks,
+  findBlueprintSpaceTimeRisks,
 } from '../shared/consistency-preflight'
 import { normalizeSpaceRefs, parseSpaceRules } from '../shared/space-time-consistency'
 import { ipc } from './ipc-client'
@@ -46,6 +47,8 @@ export async function readConsistencyPreflight(
     return [
       ...findBlueprintContinuityRisks(projections, blueprint, exemptions),
       ...findBlueprintSpaceTimeRisks(worldBuildingText, blueprint, exemptions),
+      // P11-1：「在打某一格」却没声明 attacks ⇒ 提示。不依赖任何外部读取，纯蓝图自身判断。
+      ...findBlueprintSlotAttackRisks(blueprint),
     ]
   }))).flat()
   const coverage: ConsistencyPreflightCoverage = {

@@ -16,6 +16,28 @@ export interface BlueprintKeyEvent {
   event: string
   /** 该事件的篇幅预估（汉字数）。未声明时为 0。 */
   estimatedUnits: number
+  /**
+   * 该事件要**作废/证伪的那一格**（P11-1）。
+   *
+   * 为什么必须有这个字段：`spaceRefs.timeRef` 记录的是**动作发生的时间**，而
+   * 「废掉晚九点那一格」需要的是**被攻击目标的时间**——两者经常不同（第 3 章可以
+   * 在白天准备、晚上动手，也可能反过来）。只有先声明攻击目标，才谈得上判断
+   * 「这个目标是否还存在」（第 2 章已把那一格兑付掉，第 3 章仍当未结算目标在打）。
+   *
+   * 缺失即 fail-open：不是每个事件都在攻击某一格。
+   */
+  attacks?: BlueprintSlotAttack
+}
+
+/** `attacks` 目前只支持「攻击一个作息表格子」。`thread` 等待定，届时扩 `kind`。 */
+export interface BlueprintSlotAttack {
+  kind: 'slot'
+  /** 被攻击的那一格所在空间（逐字复制世界观第 4 维登记的空间名）。 */
+  space: string
+  /** **被攻击那一格**的钟点，24 小时制 `HH:MM` —— 不是动手的钟点。 */
+  hour: string
+  /** 一句话说明为什么这个动作能破坏该格（可选）。 */
+  rationale?: string
 }
 
 /**
@@ -70,6 +92,37 @@ function declaredUnits(value: unknown): number {
   return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? Math.round(raw) : 0
 }
 
+/** `HH:MM` / `H:MM` / `HH：MM`（全角冒号）⇒ `HH:MM`；非法值返回 null。 */
+function normalizedHour(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  const match = /^([0-9]{1,2})[：:]([0-9]{2})$/u.exec(raw.trim())
+  if (!match) return null
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (!Number.isSafeInteger(hour) || hour > 23 || minute > 59) return null
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+/**
+ * 元素自带的 `attacks`（P11-1）。
+ *
+ * 严格归一化：`space` 与 `hour` 缺一不可，`kind` 只认 `slot`。任何一项不合格就整条丢弃
+ * （返回 undefined），**不做部分保留** —— 一个只有 space 没有钟点的攻击目标无法对账，
+ * 留着比丢掉更危险（会让人以为已经声明过了）。
+ */
+function declaredAttack(value: unknown): BlueprintSlotAttack | undefined {
+  if (!isRecord(value)) return undefined
+  const raw = value.attacks
+  if (!isRecord(raw)) return undefined
+  const kind = raw.kind ?? 'slot'
+  if (kind !== 'slot') return undefined
+  const space = typeof raw.space === 'string' ? raw.space.trim() : ''
+  const hour = normalizedHour(raw.hour)
+  if (!space || !hour) return undefined
+  const rationale = typeof raw.rationale === 'string' ? raw.rationale.trim() : ''
+  return rationale ? { kind: 'slot', space, hour, rationale } : { kind: 'slot', space, hour }
+}
+
 export interface NormalizeKeyEventsOptions {
   /** 章号，用于生成 `ch{N}:E{i}`。缺省 0（无章上下文场景）。 */
   chapterNumber?: number
@@ -99,20 +152,31 @@ export function normalizeKeyEvents(raw: unknown, options: NormalizeKeyEventsOpti
     : 0
   const source = storedCell(raw)
   const isArray = Array.isArray(source)
-  const texts = isArray
-    ? (source as unknown[]).map(eventTextOf).filter(Boolean)
+  // ⚠️ 这里必须**先保留条目、再过滤空事件**：旧实现先 map 成字符串数组再 filter，
+  //   一旦某条 event 为空，后面按 index 取 `estimatedUnits` / `attacks` 就会整体错位。
+  const entries: { event: string; units: number; attacks?: BlueprintSlotAttack }[] = isArray
+    ? (source as unknown[]).flatMap(item => {
+        const event = eventTextOf(item)
+        if (!event) return []
+        const attacks = declaredAttack(item)
+        return [{ event, units: declaredUnits(item), ...(attacks ? { attacks } : {}) }]
+      })
     : typeof source === 'string'
-      ? source.split(LEGACY_EVENT_SEPARATOR).map(part => part.trim()).filter(Boolean)
+      ? source.split(LEGACY_EVENT_SEPARATOR)
+          .map(part => part.trim())
+          .filter(Boolean)
+          .map(event => ({ event, units: 0 }))
       : []
   const target = typeof options.targetUnits === 'number'
     && Number.isFinite(options.targetUnits) && options.targetUnits > 0
     ? options.targetUnits
     : 0
-  const fallbackUnits = texts.length > 0 && target > 0 ? Math.round(target / texts.length) : 0
-  return texts.map((event, index) => ({
+  const fallbackUnits = entries.length > 0 && target > 0 ? Math.round(target / entries.length) : 0
+  return entries.map((entry, index) => ({
     id: keyEventId(chapterNumber, index),
-    event,
-    estimatedUnits: (isArray ? declaredUnits((source as unknown[])[index]) : 0) || fallbackUnits,
+    event: entry.event,
+    estimatedUnits: entry.units || fallbackUnits,
+    ...(entry.attacks ? { attacks: entry.attacks } : {}),
   }))
 }
 
