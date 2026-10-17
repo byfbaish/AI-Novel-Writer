@@ -67,6 +67,28 @@ describe('parseArcStructure', () => {
     expect(parsed.majors[0]!.mids[1]!.minors).toEqual([])
   })
 
+  it('最后一条小弧带句读、并且带「小弧数」行时，条目一条都不许丢', () => {
+    // 实测形态（2026-10-18 作者库）：每条中弧的最后一个小弧写成 `…（约9章）。`，
+    // 只认 `$` 的正则会静默吞掉它，剩下的条目再按比例摊满整个中弧 —— 报错为零、
+    // 区间全错。同一份弧光还带一行 `- 小弧数：本中弧25章÷10≈2–3 ⇒ 取3个。`，
+    // 那是规划元数据，不是内容字段。
+    const real = [
+      '## 大弧一：【门牌错位与三方围猎】（约 1–50 章）',
+      '### 中弧 1：【门牌错位与第一页报告】（约 25 章）',
+      '- 转折：他发现漏洞物证同时被三家抢。',
+      '- 小弧数：本中弧25章÷10≈2–3 ⇒ 取3个。',
+      '- 小弧：错位门牌（约8章）；第一页报告（约8章）；三家人抢一张排班表（约9章）。',
+      '- Σ小弧=8+8+9=25章，与本中弧25章差额0（0%）。',
+    ].join('\n')
+    const mid = parseArcStructure(real)!.majors[0]!.mids[0]!
+    expect(mid.minors).toEqual([
+      { name: '错位门牌', chapters: 8 },
+      { name: '第一页报告', chapters: 8 },
+      { name: '三家人抢一张排班表', chapters: 9 },
+    ])
+    expect(mid.fields.map(([name]) => name)).toEqual(['转折'])
+  })
+
   it('returns null for an enum-style structure guide (no three-level arcs)', () => {
     expect(parseArcStructure('# 故事结构\n\n【三幕结构】\n第一幕：建置')).toBeNull()
     expect(parseArcStructure('')).toBeNull()
