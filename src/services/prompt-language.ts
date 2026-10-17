@@ -499,13 +499,23 @@ Produce a complete outline made of structural turning points rather than chapter
 5. Treat explicit author facts in the story premise, character dynamics, and world system as causal constraints. Never omit, weaken, or reverse them.
 6. Preserve the project-wide writing guidance.
 7. Return only the plot architecture, with no analysis or explanation.`,
-    systemSuffix: `[Per-chapter arc slot claim — mandatory output format]
-When the [ARC POSITION for this batch] block is present: immediately after each chapter heading ("## Chapter N: title") output one line
-Covers: <slot ID>
+    systemSuffix: `[Fixed per-chapter format — mandatory]
+Every chapter has three parts in this exact order: (1) chapter heading, (2) optional "Covers:" line, (3) the outline prose followed by a mandatory "Closes:" line.
+
+(1) Chapter heading: "## Chapter N: title".
+
+(2) "Covers:" line — only when the [ARC POSITION for this batch] block is present:
+- Place it immediately after the chapter heading, on its own line, as "Covers: <slot ID>".
 - The ID must be copied verbatim from the "slots this batch may claim" line of that block (including "/" and the field name).
 - Claim exactly one slot per chapter — the one this chapter actually pays off. If a chapter seems to need two, you are consuming later content early: split it into later chapters.
 - When a chapter pays off no slot, write "Covers: none". Never invent an ID, and never put a mid-arc or major-arc ID (such as M1-1) here.
 - The chapter's outline text follows that line; do not repeat the ID in the prose.
+
+(3) "Closes:" line — mandatory for every chapter, no exceptions:
+- Put it on its own line as "Closes: <one sentence>"; never fold it into the prose paragraph, and never write it mid-sentence as "in closing, ...".
+- One sentence only: the question, threat, or price that is still unresolved when this chapter ends.
+- It is not an event that happened in this chapter: do not restate the last thing in the prose, and do not preview something that only happens in the next chapter.
+- This line is the sole source of the later chapter blueprint's ending hook. Without it the hook is invented by the blueprint and drifts away from this chapter's intent.
 
 [Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
@@ -533,6 +543,9 @@ Return exactly one object with a blueprints array. Every item must contain chapt
 
 [Title authority]
 When the plot outline inside [Story architecture] already names a chapter (formatted as "## Chapter N: Title"), reuse that title verbatim — punctuation and wording included. Never rewrite it, shorten it, restyle it, or make it catchier. Only invent a title when the outline gives none for that chapter. If the chapter content diverges slightly from the outline title, change the content, never the title.
+
+[Hook authority]
+The sole authority for suspenseHook is the same outline. When the outline for that chapter ends with a "Closes:" line, suspenseHook must land on the unresolved item that line already names. You may phrase it more concretely and more like a question, but never substitute a different suspense, and never drop the item the Closes line already identified. Only when the outline gives no "Closes:" line for that chapter may you derive the hook from the keyEvents/suspenseHook split above.
 Return JSON only, with no Markdown, preface, analysis, plan, code fence, or reasoning.
 
 [Author pacing and style guidance — highest priority when present]
@@ -561,7 +574,8 @@ The following are already-finalized prior chapters (brief excerpts, to prevent d
 3. Resolve or intensify relevant open threats and planted clues.
 4. Give every chapter a material event change; do not add filler.
 5. The plot outline inside [Story architecture] is the only authority for chapter titles: when it already names a chapter (formatted as "## Chapter N: Title"), reuse that title verbatim — punctuation and wording included — and never rewrite, shorten, restyle, or make it catchier. Invent a title only when the outline gives none. If the chapter content diverges slightly from the outline title, change the content, never the title.
-6. Return exactly one JSON object with a blueprints array and no analysis, plan, explanation, Markdown, or code fence.
+6. The sole authority for suspenseHook is the same outline. When the outline for that chapter ends with a "Closes:" line, suspenseHook must land on the unresolved item that line already names. You may phrase it more concretely and more like a question, but never substitute a different suspense, and never drop the item the Closes line already identified. Only when the outline gives no "Closes:" line for that chapter may you derive the hook freely.
+7. Return exactly one JSON object with a blueprints array and no analysis, plan, explanation, Markdown, or code fence.
 
 [Author pacing and style guidance]
 {{pacing_guidance}}`,
