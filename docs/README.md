@@ -109,7 +109,7 @@ docs/
 
 > 完整索引即本节。**这是查找设计文档的唯一清单**，不要再去翻目录树。
 
-### 4.1 Prompt 流水线 · [`design/prompt/`](design/prompt/)（20 篇）
+### 4.1 Prompt 流水线 · [`design/prompt/`](design/prompt/)（22 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -133,8 +133,10 @@ docs/
 | [`prompt-cache-evaluation.md`](design/prompt/prompt-cache-evaluation.md) | ⏸ 挂起 | 提示词缓存命中率评估 |
 | [`debug-prompt-trace-design.md`](design/prompt/debug-prompt-trace-design.md) | 设计稿 | Debug 开关：Prompt 片段追踪 + 输入输出落盘 |
 | [`prompt-trace-output-sample.md`](design/prompt/prompt-trace-output-sample.md) | 样本 | 真实生成数据的 Prompt 组装快照 |
+| [`p8-fanqie-flavor-draft-quality-design.md`](design/prompt/p8-fanqie-flavor-draft-quality-design.md) | ✅ P1 生效 · ⏳ P2/P3 待复验 | 番茄向正文质量闸门：续写判定接回合格线 / 可判定 AI 味禁令 / 番茄 KPI 落点（§10 复验 #1） |
+| [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（14 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（17 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -152,6 +154,9 @@ docs/
 | [`architecture-consistency-design.md`](design/architecture/architecture-consistency-design.md) | 评估（已进台账） | 五层一致性校验 → AC1/AC2/AC3 三段走 |
 | [`blueprint-key-events-structuring-design.md`](design/architecture/blueprint-key-events-structuring-design.md) | 初稿 v2 · 待裁定 | 蓝图 `keyEvents` 结构化 |
 | [`phase2-keyevents-bprime-implementation-plan.md`](design/architecture/phase2-keyevents-bprime-implementation-plan.md) | 待过目 · 未动代码 | 阶段 2 + B′（含 R6）实施清单 |
+| [`p11-plan-validity-and-fact-registry-design.md`](design/architecture/p11-plan-validity-and-fact-registry-design.md) | 📝 待裁定 | 计划的有效期与事实登记：水位列 / `attacks` / 复核五步 / 章级「前提」 |
+| [`arc-delivery-audit-assessment.md`](design/architecture/arc-delivery-audit-assessment.md) | 📝 待裁定 | 弧光兑现度审计：情节弧被超额消耗、角色弧 3/7 起点、两弧不对齐 |
+| [`p12-arc-node-anchoring-design.md`](design/architecture/p12-arc-node-anchoring-design.md) | 📝 待裁定 | 弧光结构位 ID（`M1-2/转折`，纯函数派生）+ `covers` + 三个不变量 |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
 
@@ -168,12 +173,14 @@ docs/
 | [`p1-blueprint-roster-sync.md`](design/characters/p1-blueprint-roster-sync.md) | ✅ 已实施 | 蓝图角色 ↔ 角色卡 roster 同步 |
 | [`p2-character-card-ai-generation.md`](design/characters/p2-character-card-ai-generation.md) | ✅ 已实施 | 角色卡管理界面的 AI 生成增强 |
 
-### 4.5 功能与设置 · [`design/features/`](design/features/)（2 篇）
+### 4.5 功能与设置 · [`design/features/`](design/features/)（4 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
 | [`user-settings-package-design.md`](design/features/user-settings-package-design.md) | 待审核 · 未编码 | 用户级设置包（创作资产导出/导入） |
 | [`p1-2b-settings-period-authoring-guide.md`](design/features/p1-2b-settings-period-authoring-guide.md) | 草案 v1 | 世界观期次标注的作者操作手册 |
+| [`system-notification-design.md`](design/features/system-notification-design.md) | 待裁定 | 系统级 OS 通知 + 声音提醒（主进程发通知/渲染进程播音/聚焦抑制/注册表热插拔；N1–N3 分期） |
+| [`task-completion-notify-design.md`](design/features/task-completion-notify-design.md) | 已列入待办（顺延） | 应用内 toast 统一宿主 + 热插拔注册表（作者裁先做系统级；将来可合并为双输出） |
 
 ---
 
@@ -188,6 +195,7 @@ docs/
   - [`chapter-goal-review-production.md`](plans/chapter-goal-review-production.md) —— 被 [`donor-delta.json`](research/novel-quality-modernization/donor-delta.json) 按路径引用。
   - [`llm-probe-observation-plan.md`](plans/llm-probe-observation-plan.md) —— 被 `electron/services/llm-probe.ts`、`src/shared/synopsis-projection.ts`、`src/services/workflows/commands/generate-draft.command.ts` 的注释引用。
 - **实施证据索引**：[`research/novel-quality-modernization/evidence-index.md`](research/novel-quality-modernization/evidence-index.md)；质量协议：[`quality-protocol.md`](research/novel-quality-modernization/quality-protocol.md)。
+- **P8 取证（2026-10-17）**：[`research/2026-10-17-fanqie-draft-quality-evidence.md`](research/2026-10-17-fanqie-draft-quality-evidence.md) —— 番茄向草稿的 5 份并行取证 + 独立校验，供 [`p8-fanqie-flavor-draft-quality-design.md`](design/prompt/p8-fanqie-flavor-draft-quality-design.md) 引用。
 
 ---
 
