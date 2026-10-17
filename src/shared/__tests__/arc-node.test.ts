@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import {
   arcNodesForChapter,
+  auditArcCovers,
   findArcNode,
   listArcNodes,
+  parseChapterArcCovers,
   validateArcCovers,
 } from '../arc-node'
 
@@ -165,5 +167,97 @@ describe('validateArcCovers', () => {
   it('缺失 covers 时 fail-open', () => {
     expect(validateArcCovers(nodes, [], 2)).toEqual([])
     expect(validateArcCovers(nodes, ['  '], 2)).toEqual([])
+  })
+})
+
+describe('parseChapterArcCovers', () => {
+  it('解析章标题与紧随其后的覆盖行，含标题、行号与空行容忍', () => {
+    const synopsis = [
+      '## 第1章：睁眼十秒那句"我马上到"',
+      '',
+      '覆盖：M1-1/因果',
+      '他应了一声，门牌错了。',
+      '',
+      '## 第2章：额度用完了',
+      '覆盖：M1-1/转折',
+    ].join('\n')
+
+    const chapters = parseChapterArcCovers(synopsis)
+    expect(chapters).toHaveLength(2)
+    expect(chapters[0]).toMatchObject({
+      chapterNumber: 1,
+      title: '睁眼十秒那句"我马上到"',
+      covers: ['M1-1/因果'],
+      coverLine: 3,
+    })
+    expect(chapters[1]).toMatchObject({ chapterNumber: 2, covers: ['M1-1/转折'], coverLine: 7 })
+  })
+
+  it('写「覆盖：无」视为不声明任何结构位，而不是未知 ID', () => {
+    const chapters = parseChapterArcCovers('## 第3章：过渡\n覆盖：无\n随便写点。')
+    expect(chapters[0]!.covers).toEqual([])
+    expect(chapters[0]!.coverLine).toBe(2)
+  })
+
+  it('一章出现多行覆盖时只取第一行 —— 合并会让「一章声明两格」悄悄通过', () => {
+    const chapters = parseChapterArcCovers([
+      '## 第4章：桥上',
+      '覆盖：M1-1/时序',
+      '正文里又提到覆盖：M1-2/转折',
+    ].join('\n'))
+    expect(chapters[0]!.covers).toEqual(['M1-1/时序'])
+  })
+
+  it('兼容英文标题与 Covers / 加粗写法', () => {
+    const chapters = parseChapterArcCovers([
+      '## Chapter 12: The Bridge',
+      '**Covers:** M1-1/turning point',
+    ].join('\n'))
+    expect(chapters[0]).toMatchObject({ chapterNumber: 12, covers: ['M1-1/turning point'] })
+  })
+
+  it('没有章标题的大纲（枚举故事结构 / 自由散文）返回空数组，fail-open', () => {
+    expect(parseChapterArcCovers('# 故事结构\n第一幕：建置\n覆盖：M1-1/因果')).toEqual([])
+    expect(parseChapterArcCovers('')).toEqual([])
+  })
+
+  it('多 ID 用顿号分隔时全部保留（ID 内的 / 不参与分隔）', () => {
+    const chapters = parseChapterArcCovers('## 第5章：两格\n覆盖：M1-1/时序、M1-1/转折')
+    expect(chapters[0]!.covers).toEqual(['M1-1/时序', 'M1-1/转折'])
+  })
+})
+
+describe('auditArcCovers', () => {
+  const nodes = listArcNodes(PLAN, TOTAL)
+
+  it('INV-2：同一结构位被两章声明 ⇒ 报重复（结构位是一次性额度）', () => {
+    const chapters = parseChapterArcCovers([
+      '## 第3章：先花一格',
+      '覆盖：M1-1/转折',
+      '## 第4章：再花同一格',
+      '覆盖：M1-1/转折',
+    ].join('\n'))
+
+    const audit = auditArcCovers(nodes, chapters, { from: 1, to: 5 })
+    const duplicates = audit.violations.filter(item => item.code === 'INV-2-DUPLICATE')
+    expect(duplicates).toHaveLength(1)
+    expect(duplicates[0]!.message).toContain('第 3 章已被声明过')
+  })
+
+  it('INV-1：提前使用后续中弧的结构位当场报错（实机 ch2 的形态）', () => {
+    const chapters = parseChapterArcCovers('## 第2章：笔谈\n覆盖：M1-2/尝试 2')
+    const audit = auditArcCovers(nodes, chapters, { from: 1, to: 5 })
+    const outOfRange = audit.violations.filter(item => item.code === 'INV-1-OUT_OF_RANGE')
+    expect(outOfRange).toHaveLength(1)
+    expect(outOfRange[0]!.id).toBe('M1-2/尝试 2')
+  })
+
+  it('INV-3：本批覆盖到的格子没被任何一章声明 ⇒ 提示（仅提示，不拦）', () => {
+    const chapters = parseChapterArcCovers('## 第1章：开篇\n覆盖：M1-1/因果')
+    const audit = auditArcCovers(nodes, chapters, { from: 1, to: 5 })
+    const uncoveredIds = audit.uncovered.map(node => node.id)
+    expect(uncoveredIds).toContain('M1-1/转折')
+    expect(uncoveredIds).not.toContain('M1-2/转折')
+    expect(audit.declaredChapters).toBe(1)
   })
 })

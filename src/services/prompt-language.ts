@@ -499,7 +499,15 @@ Produce a complete outline made of structural turning points rather than chapter
 5. Treat explicit author facts in the story premise, character dynamics, and world system as causal constraints. Never omit, weaken, or reverse them.
 6. Preserve the project-wide writing guidance.
 7. Return only the plot architecture, with no analysis or explanation.`,
-    systemSuffix: `[Author guidance for this step — highest priority when present]
+    systemSuffix: `[Per-chapter arc slot claim — mandatory output format]
+When the [ARC POSITION for this batch] block is present: immediately after each chapter heading ("## Chapter N: title") output one line
+Covers: <slot ID>
+- The ID must be copied verbatim from the "slots this batch may claim" line of that block (including "/" and the field name).
+- Claim exactly one slot per chapter — the one this chapter actually pays off. If a chapter seems to need two, you are consuming later content early: split it into later chapters.
+- When a chapter pays off no slot, write "Covers: none". Never invent an ID, and never put a mid-arc or major-arc ID (such as M1-1) here.
+- The chapter's outline text follows that line; do not repeat the ID in the prose.
+
+[Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
   },
   chapter_blueprint: {

@@ -62,8 +62,15 @@ export interface ArcSpan {
    */
   endMidIndex: number
   midFields: readonly (readonly [string, string])[]
+  /**
+   * 本批**最后一个覆盖到**的中弧（`endMidIndex`）的字段。
+   *
+   * 批跨中弧边界时，后半批的结构位属于这个中弧；只列 `midFields` 会让后半批
+   * 拿不到可引用的 ID。未跨界时与 `midFields` 相同。
+   */
+  endMidFields: readonly (readonly [string, string])[]
   /** 同一大弧内、位于**本批之后**的剩余中弧（已进入的中弧不算） */
-  remainingMids: readonly { name: string; range: readonly [number, number]; gist: string }[]
+  remainingMids: readonly { name: string; midIndex: number; range: readonly [number, number]; gist: string }[]
   /** 本批跨越到下一个中弧时的分界章（含该章起属下一个中弧） */
   nextMidBoundary: number | null
   nextMidName: string | null
@@ -233,8 +240,10 @@ export function arcSpanForChapters(
     midRange,
     endMidIndex: endMidIndex + 1,
     midFields: mid.fields,
+    endMidFields: major.mids[endMidIndex]!.fields,
     remainingMids: major.mids.slice(endMidIndex + 1).map((item, offset) => Object.freeze({
       name: item.name,
+      midIndex: endMidIndex + 2 + offset,
       range: [majorRange[0] + midBounds[endMidIndex + 1 + offset]!, majorRange[0] + midBounds[endMidIndex + 2 + offset]! - 1] as const,
       gist: gistOf(item.fields),
     })),
@@ -415,10 +424,23 @@ export function renderArcPositionBlock(
   const remaining = span.remainingMids.length
     ? span.remainingMids
         .map(item => (en
-          ? `mid arc ${item.name} (ch. ${item.range[0]}–${item.range[1]}) — ${item.gist}`
-          : `中弧【${item.name}】（约第 ${item.range[0]}–${item.range[1]} 章）— ${item.gist}`))
+          ? `mid arc ${item.name} (M${span.majorIndex}-${item.midIndex}, ch. ${item.range[0]}–${item.range[1]}) — ${item.gist}`
+          : `中弧【${item.name}】（M${span.majorIndex}-${item.midIndex}，约第 ${item.range[0]}–${item.range[1]} 章）— ${item.gist}`))
         .join('\n  - ')
     : (en ? '(none — this is the last mid arc of the major arc)' : '（无 —— 这是本大弧的最后一个中弧）')
+
+  // P12-1：本批可声明的结构位 ID。跨中弧边界时，后半批属于 `endMidIndex`，其结构位同样可用。
+  const idOf = (midIndex: number, field: string): string => `M${span.majorIndex}-${midIndex}/${field}`
+  const batchIds = [...new Set([
+    ...span.midFields.map(([field]) => idOf(span.midIndex, field)),
+    ...(span.endMidIndex > span.midIndex ? span.endMidFields.map(([field]) => idOf(span.endMidIndex, field)) : []),
+  ])]
+  const coverable = batchIds.length
+    ? batchIds.join(en ? ', ' : '、')
+    : (en ? '(none — this mid arc exposes no citable slots; write "Covers: none")' : '（本中弧没有可引用的结构位 —— 本章写「覆盖：无」）')
+  const coverableLabel = en
+    ? `- Slots this batch may claim (a chapter's "Covers:" line may only use one of these IDs): ${coverable}`
+    : `- 本批可声明的结构位（每章「覆盖：」只能取下列 ID 之一）：${coverable}`
 
   const crossing = span.nextMidBoundary !== null && span.nextMidName
     ? (en
@@ -431,20 +453,22 @@ export function renderArcPositionBlock(
 - This batch: chapters ${from}–${to} of ${totalChapters}${rescale}
 - Major arc ${span.majorIndex} "${span.majorName}" (approx. ch. ${span.majorRange[0]}–${span.majorRange[1]})
 - Mid arc ${span.midIndex} "${span.midName}" (approx. ch. ${span.midRange[0]}–${span.midRange[1]})${spec ? ` | ${spec}` : ''}
-- Remaining mid arcs inside this major arc (do NOT execute them early):
+${coverableLabel}
+- Remaining mid arcs inside this major arc (do NOT execute them early, and never claim their slots):
   - ${remaining}
 [HARD RULE — this failure has actually happened]
 1. Advance only what is still unplayed inside "${span.midName}".
-2. The goal / attempts / turning point of any mid arc AFTER this batch must NOT happen in this batch — they belong to chapter ${span.afterBatchMidBoundary ?? span.midRange[1] + 1} and beyond.
+2. The goal / attempts / turning point of any mid arc AFTER this batch must NOT happen in this batch, and must NOT appear in any chapter's "Covers:" line — they belong to chapter ${span.afterBatchMidBoundary ?? span.midRange[1] + 1} and beyond.
 3. If this batch reaches the turning point of the current mid arc, close it out and ease into the next minor arc; do not jump to the next mid arc's goal.${crossing}`
     : `【本批所处弧位（据「弧光结构」推算，仅用于定位，不改变弧光本身）】
 - 本批范围：第 ${from}–${to} 章（全书 ${totalChapters} 章）${rescale}
 - 所在大弧：大弧${span.majorIndex}【${span.majorName}】（约第 ${span.majorRange[0]}–${span.majorRange[1]} 章）
 - 所在中弧：中弧${span.midIndex}【${span.midName}】（约第 ${span.midRange[0]}–${span.midRange[1]} 章）${spec ? `｜${spec}` : ''}
-- 本大弧内**后续**中弧（★ 本批不得提前执行）：
+${coverableLabel}
+- 本大弧内**后续**中弧（★ 本批不得提前执行，也不得写进覆盖声明）：
   - ${remaining}
 【硬约束·防提前】（实测已发生过，务必遵守）
 1. 本批只推进【${span.midName}】内**尚未发生**的内容；
-2. 本批之后的中弧，「目标 / 尝试 / 转折」**不得在本批提前实现** —— 它们属于第 ${span.afterBatchMidBoundary ?? span.midRange[1] + 1} 章及以后；
+2. 本批之后的中弧，「目标 / 尝试 / 转折」**不得在本批提前实现，也不得出现在任何一章的「覆盖：」声明里** —— 它们属于第 ${span.afterBatchMidBoundary ?? span.midRange[1] + 1} 章及以后；
 3. 若本批已写到当前中弧的转折点，请在此收束并向下一小弧过渡，**不要**跳到下一个中弧的目标。${crossing}`
 }

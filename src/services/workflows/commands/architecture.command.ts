@@ -7,6 +7,7 @@ import type { MainGenerationRunHandle } from '../../generation/generation-runtim
 import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
 import { withProjectedArcGuide } from '../../../shared/arc-position'
+import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../shared/arc-node'
 import { withSpaceConstraints } from '../../../shared/space-constraints'
 import { projectScopedConfigFields, projectScopedText } from '../../../shared/text-scope-tags'
 import { declareTraceScopeChapterRange } from '../../prompts/trace-scope'
@@ -311,6 +312,59 @@ function findPlotOutlineTitleRanges(text: string): PlotOutlineTitleRange[] {
     }
   }
   return ranges.sort((left, right) => left.index - right.index)
+}
+
+/**
+ * 大纲写完后的**结构位对账**（P12-1）：只报告，不阻断。
+ *
+ * 为什么「只报告」：这一层要抓的违规（提前消耗后续中弧、两章争同一格）在现网数据里
+ * 已经存在（实机 ch2 提前 25 章、ch3/ch4 争 M1-2/转折）。一上线就阻断会让「继续生成
+ * 第 6 章起的大纲」直接失败，作者拿不到任何产出。先让它可见，等数据干净了再考虑升级。
+ *
+ * 返回 null 表示无需提示（结构不可解析 / 本批没有章条目 / 全部合规）。
+ */
+/** @internal 导出只为可单测；生产调用点只有 `execute` 内的那一处。 */
+export function summarizeArcCoverFindings(
+  body: string,
+  plan: string | null | undefined,
+  totalChapters: number,
+  from: number,
+  to: number,
+  uiText: UiText,
+): string | null {
+  const nodes = listArcNodes(plan, totalChapters)
+  if (nodes.length === 0) return null
+  const chapters = parseChapterArcCovers(body)
+    .filter(chapter => chapter.chapterNumber >= from && chapter.chapterNumber <= to)
+  if (chapters.length === 0) return null
+
+  const audit = auditArcCovers(nodes, chapters, { from, to })
+  const blocking = audit.violations.filter(item => item.code !== 'INV-3-UNCOVERED')
+  const undeclared = chapters.length - audit.declaredChapters
+  const uncovered = audit.uncovered
+  if (blocking.length === 0 && undeclared === 0 && uncovered.length === 0) return null
+
+  const shown = blocking.slice(0, 3).map(item => item.message.replace(/。$/u, ''))
+  const problems: string[] = [...shown]
+  if (blocking.length > shown.length) problems.push(uiText(`另有 ${blocking.length - shown.length} 处同类问题`, `${blocking.length - shown.length} more of the same kind`))
+  if (undeclared > 0) {
+    problems.push(uiText(
+      `本批有 ${undeclared} 章没有写「覆盖：」声明`,
+      `${undeclared} chapter(s) in this batch carry no "Covers:" line`,
+    ))
+  }
+  if (problems.length === 0) {
+    // 只剩「漏覆盖」：这是提示而非错误，单独成句。
+    problems.push(uiText(
+      `本批有 ${uncovered.length} 个结构位没有任何一章声明（${uncovered.slice(0, 3).map(node => node.id).join('、')}${uncovered.length > 3 ? ' 等' : ''}）—— 该用的格子还没用`,
+      `${uncovered.length} slot(s) in this batch are claimed by no chapter (${uncovered.slice(0, 3).map(node => node.id).join(', ')}${uncovered.length > 3 ? ', …' : ''}) — unused capacity`,
+    ))
+  }
+
+  return uiText(
+    `⚠️ 弧光结构位对账：${problems.join('；')}。（大纲已保存；这是提示，不阻断。）`,
+    `⚠️ Arc slot reconciliation: ${problems.join('; ')}. (The outline was saved; this is advisory only.)`,
+  )
 }
 
 function assertPlotOutlineTitleCoverage(
@@ -2315,6 +2369,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       assertPlotOutlineTitleCoverage(merged, validationSeedText, from, to, text)
       assertPlotOutlineBatchComplete(merged, from, to, totalChapters, text)
       confirmedBody = stripPlotOutlineProgressLine(merged)
+      // P12-1：结构位对账（只报告不阻断）。作者看得到「该用的格子没用完 / 不该用的提前花了」。
+      const arcCoverNote = summarizeArcCoverFindings(confirmedBody, core?.plotStructurePlan, totalChapters, from, to, text)
+      if (arcCoverNote) callbacks.log(arcCoverNote)
     } catch (error) {
       if (error instanceof NonRecoverablePlotOutlineError) {
         if (previousBatchPartial && stagedBatchPartial) {
