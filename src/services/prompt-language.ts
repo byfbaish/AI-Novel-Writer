@@ -522,6 +522,9 @@ Produce a complete outline made of structural turning points rather than chapter
 
 [JSON output contract]
 Return exactly one object with a blueprints array. Every item must contain chapterNumber, title, role, purpose, characters, relationships, keyEvents, and suspenseHook. relationships contains only relationships established in that chapter and is [] when empty. keyEvents must be an ordered array of 2-5 items; each item carries id, event (30-80 characters stating actions, reversals, consequences, and relevant use of the central advantage), and estimatedUnits (a positive integer for the manuscript units that event is expected to take).
+
+[Title authority]
+When the plot outline inside [Story architecture] already names a chapter (formatted as "## Chapter N: Title"), reuse that title verbatim — punctuation and wording included. Never rewrite it, shorten it, restyle it, or make it catchier. Only invent a title when the outline gives none for that chapter. If the chapter content diverges slightly from the outline title, change the content, never the title.
 Return JSON only, with no Markdown, preface, analysis, plan, code fence, or reasoning.
 
 [Author pacing and style guidance — highest priority when present]
@@ -549,7 +552,8 @@ The following are already-finalized prior chapters (brief excerpts, to prevent d
 2. Maintain an escalation or payoff cycle every three to five chapters.
 3. Resolve or intensify relevant open threats and planted clues.
 4. Give every chapter a material event change; do not add filler.
-5. Return exactly one JSON object with a blueprints array and no analysis, plan, explanation, Markdown, or code fence.
+5. The plot outline inside [Story architecture] is the only authority for chapter titles: when it already names a chapter (formatted as "## Chapter N: Title"), reuse that title verbatim — punctuation and wording included — and never rewrite, shorten, restyle, or make it catchier. Invent a title only when the outline gives none. If the chapter content diverges slightly from the outline title, change the content, never the title.
+6. Return exactly one JSON object with a blueprints array and no analysis, plan, explanation, Markdown, or code fence.
 
 [Author pacing and style guidance]
 {{pacing_guidance}}`,
@@ -874,7 +878,7 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 
 [Output contract]
 - Target {{word_number}} words; the qualifying line is 85% of that. Do not close the chapter before reaching the qualifying line. When short of it, keep advancing events, dialogue, and actions that are still unrealized in the chapter brief — fill the events, not the sentences. Padding with exposition, repeated information, or idle small talk is still forbidden. End at the state or hook specified in the chapter brief; when none is specified, end naturally without advancing later blueprints.
-- Output plain manuscript prose only. Do not use Markdown, headings, analysis, plans, or screenplay formatting.
+- Output plain manuscript prose only. Do not use Markdown, headings, analysis, plans, or screenplay formatting. Never open with a chapter title or a line such as "Chapter X: …" — the chapter title is injected by the system, so writing it again duplicates it.
 - Separate every paragraph with one blank line. Use standard quotation marks consistently for dialogue.
 - Only after reaching the qualifying line may you close at the chapter's specified ending state, and never exceed the target ceiling; never ask the user to continue.
 - Keep each character's voice distinct. Avoid paragraph-ending summaries, generic destiny metaphors, and unrelated philosophical conclusions.
