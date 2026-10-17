@@ -149,6 +149,66 @@ describe('createRepairFinalizeWorkflow', () => {
     expect(postProcess.execute).toHaveBeenCalledOnce()
   })
 
+  it('fails the repair workflow when a non-critical step still fails, and explains a terminal conflict', async () => {
+    // 回归护栏：非关键步骤失败不会让 runPostProcessPipeline 抛错，历史上这会让工作流
+    // "成功"结束、UI 提示修复完成，而状态卡仍显示失败（用户看到两个矛盾结论）。
+    useProjectStore.setState({
+      currentProject: {
+        id: PROJECT_SESSION.projectId,
+        name: 'Repair finalize',
+        path: PROJECT_PATH,
+        sessionLease: PROJECT_SESSION.leaseId,
+      } as never,
+    })
+    const invoke = vi.fn(async (channel: string) => {
+      switch (channel) {
+        case 'db:draft-get-finalized':
+          return { id: 17 }
+        case 'db:draft-get-full':
+          return { content: '已定稿正文' }
+        case 'db:continuity-read-source':
+          return finalizedSource('已定稿正文')
+        case 'db:blueprint-get':
+          return { title: '定稿标题', characters: ['林舟'] }
+        default:
+          throw new Error(`unexpected IPC: ${channel}`)
+      }
+    })
+    vi.stubGlobal('window', { aiNovelAPI: { invoke } })
+    postProcess.execute.mockResolvedValueOnce({
+      scope: 'chapter_3_finalize',
+      sourceLabel: '第3章定稿',
+      createdAt: '2026-10-17T00:00:00.000Z',
+      updatedAt: '2026-10-17T00:00:00.000Z',
+      allCriticalPassed: true,
+      steps: {
+        chapter_notes: {
+          label: '章节剧情要点', critical: true, ok: true, lastAttemptAt: '', attemptCount: 1,
+        },
+        character_cards: {
+          label: '角色状态更新', critical: false, ok: false, lastAttemptAt: '', attemptCount: 4,
+          error: "Error invoking remote method 'finalization-generation:commit': Error: FINALIZED_CHARACTER_SOURCE_CONFLICT",
+        },
+      },
+    } as never)
+
+    const workflow = createRepairFinalizeWorkflow(3, PROJECT_PATH, PROJECT_SESSION, 'character_cards')
+    const step = workflow.steps[0]!
+    let failure: Error | undefined
+    await step.executor({
+      ...step,
+      id: 'repair-finalize-step',
+      status: 'running',
+      logs: [],
+    }, context(), callbacks()).catch((error: unknown) => { failure = error as Error })
+
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure!.message).toContain('修复未完成：角色状态更新')
+    expect(failure!.message).toContain('FINALIZED_CHARACTER_SOURCE_CONFLICT')
+    // 顺序冲突是终局的：必须说明"重试不会成功"，否则用户会一直点重试
+    expect(failure!.message).toContain('重复重试不会成功')
+  })
+
   it('freezes English repair copy, fallback metadata, and completion text at creation', async () => {
     useLocaleStore.setState({ locale: 'en-US' })
     useProjectStore.setState({

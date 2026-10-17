@@ -26,6 +26,7 @@ import { currentTraceScope, type TraceScope } from './trace-scope'
 import { promptTraceSnapshots, lastPromptTraceSnapshot } from './prompt-trace'
 import { buildTraceMarkdown, type PromptTraceMarkdownPayload } from './prompt-trace-markdown'
 import { useDebugStore } from '../../stores/debug-store'
+import { markMemory } from '../debug/memory-probe'
 
 /** 项目内落盘目录（相对项目根，用 `/` 分隔，由调用方与项目根拼接）。 */
 export const PROMPT_TRACE_DIR_SEGMENTS = ['debug', 'prompt-trace'] as const
@@ -298,6 +299,9 @@ function shouldWrite(key: string, watermark: string): boolean {
  * 每步都写一份文件会碎片化。这里在微任务里合并同一作用域内的全部快照，一次成文。
  */
 async function flushTraceFile(scope: TraceScope): Promise<void> {
+  // 内存打点：落盘要对全部 messages 做 join + 指纹（读的是完整提示词），
+  // 是渲染层少数会反复触碰大字符串的路径之一。
+  markMemory('trace.flush', scope.operation ?? undefined)
   const session = scope.projectSession
   const store = useDebugStore.getState()
   if (!store.promptTraceEnabled) {

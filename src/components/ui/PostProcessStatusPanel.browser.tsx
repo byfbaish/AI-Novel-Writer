@@ -187,6 +187,37 @@ describe('PostProcessStatusPanel', () => {
     expect(onRetry).toHaveBeenLastCalledWith()
   })
 
+  it('marks a terminal source conflict as not retryable', async () => {
+    // 终局错误（后续章节已提交更新数据）重试必然失败，必须显式标成不可重试，
+    // 否则用户会一直点"重试失败步骤"。
+    installIpc([
+      {
+        id: 1, runId: 'run-1', stepKey: 'chapter_notes', label: '章节剧情要点', critical: true,
+        ok: true, errorMsg: '', attemptCount: 1,
+        completedAt: '2026-08-22T09:59:36.000Z', lastAttemptAt: '2026-08-22T09:59:36.000Z',
+      },
+      {
+        id: 2, runId: 'run-1', stepKey: 'character_cards', label: '角色状态更新', critical: false,
+        ok: false,
+        errorMsg: "Error invoking remote method 'finalization-generation:commit': Error: FINALIZED_CHARACTER_SOURCE_CONFLICT",
+        attemptCount: 4, completedAt: '', lastAttemptAt: '2026-08-22T10:10:00.000Z',
+      },
+    ])
+    const onRetry = vi.fn()
+
+    await renderPanel(vi.fn(), onRetry)
+    await vi.waitFor(() => expect(container?.textContent).toContain('第1章定稿 — 1 个步骤失败'))
+
+    expect(container?.textContent).toContain('不可重试')
+    expect(container?.textContent).toContain('失败步骤已无法通过重试修复')
+    // 单步重试入口必须消失，全局重试按钮必须禁用
+    expect(container?.querySelector('button[title="重试此步骤"]')).toBeNull()
+    const retryAll = Array.from(container?.querySelectorAll('button') ?? [])
+      .find(button => button.textContent?.includes('重试失败步骤'))
+    expect(retryAll?.disabled).toBe(true)
+    expect(onRetry).not.toHaveBeenCalled()
+  })
+
   it('localizes a persisted post-processing failure summary in English', async () => {
     useLocaleStore.setState({ locale: 'en-US' })
     installIpc([
