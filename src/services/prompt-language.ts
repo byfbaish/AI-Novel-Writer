@@ -517,7 +517,11 @@ Every chapter has three parts in this exact order: (1) chapter heading, (2) the 
 (3) "Closes:" line — mandatory for every chapter, no exceptions:
 - Put it on its own line as "Closes: <one sentence>"; never fold it into the prose paragraph, and never write it mid-sentence as "in closing, ...".
 - One sentence only: the question, threat, or price that is still unresolved when this chapter ends.
-- It is not an event that happened in this chapter: do not restate the last thing in the prose, and do not preview something that only happens in the next chapter.
+- **Every element of it must already exist in this chapter's prose**: a person, an object, a question left unanswered, a detail left unexplained. The Closes line may only push something this chapter already established into the unresolved; it must never introduce a new fact, character, event, or piece of information.
+- Test before writing: "which paragraph of this chapter planted this?" If you cannot name one, it is a bolt-on — do not write it.
+- **It must not contradict anything the prose states**: if the prose says he did not answer, the Closes line cannot say he has already filed it; if the old man said he could not tell, it cannot say the old man had seen it before.
+- Do not repeat an action the prose already narrated. Note this is not a ban on mentioning what happened in this chapter — it is a ban on restating it.
+- Do not preview something that only happens in the next chapter: a note handed over in the next chapter, an object removed in the next chapter, must not occur here — and must never be turned into an accomplished fact early.
 - This line is the sole source of the later chapter blueprint's ending hook. Without it the hook is invented by the blueprint and drifts away from this chapter's intent.
 
 (4) Chapter-to-chapter continuity — mandatory from the second chapter onward:
