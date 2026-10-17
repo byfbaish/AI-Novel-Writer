@@ -15,7 +15,7 @@ import { buildBoundaryNotice } from '../../shared/chapter-boundary'
  * P1-3′ 可观测性：变量投影元数据的端到端链路
  * 「投影函数返回元数据 → notePromptProjection 登记 → recordFragments 吸附 → markdown 呈现」。
  *
- * 设计依据：`docs/design/p1-3-variable-export-scoping-design.md` §6（附录 D 的 `projection` 元数据）。
+ * 设计依据：`docs/design/prompt/p1-3-variable-export-scoping-design.md` §6（附录 D 的 `projection` 元数据）。
  * 本测试只验证**诊断元数据**，不改任何请求内容。
  */
 

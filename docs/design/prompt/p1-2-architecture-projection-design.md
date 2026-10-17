@@ -1,6 +1,6 @@
 # P1-2 实施级设计稿：`architecture` 对正文「只给事实源」
 
-> 上级稿：`docs/design/prompt-payload-scoping-design.md`（P1-2 行 / §5.5 契约表 / §6 L2 / 附录 A）。  
+> 上级稿：`docs/design/prompt/prompt-payload-scoping-design.md`（P1-2 行 / §5.5 契约表 / §6 L2 / 附录 A）。  
 > 状态：**已实施**（D1–D4 裁定见 §8；作者另追加「产出侧生成约束」= §4-E，一并落地）。  
 > 版本：**v3**（= v2 + 产出侧约束 §4-E + 影响面 §6 + 实施记录 §11）。v2 = 并入一轮评审与自查修正。  
 > 取证源（实机，非推断）：`C:\develop\workspace\AI-writer\每天第一句谎话都会成真\debug\prompt-trace\20261015-235440-262-正文-ch2-9f41dfbc.json`（ch1 对照：`20261015-204555-979-正文-ch1-9256c6c0.json`）

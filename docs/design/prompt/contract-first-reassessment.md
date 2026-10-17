@@ -2,7 +2,7 @@
 
 > 日期：2026-10-13
 > 对象：外部文档《全链路 Prompt 架构重构评估》（作者提供，主张"先定义契约，再写 prompt"）
-> 基线：`docs/design/prompt-payload-scoping-design.md`（§5 矩阵 / §6 落点 / §7 优先级 / §10 附录 A–G）+ `docs/design/chapter-prompt-pileup-triage.md`
+> 基线：`docs/design/prompt/prompt-payload-scoping-design.md`（§5 矩阵 / §6 落点 / §7 优先级 / §10 附录 A–G）+ `docs/design/prompt/chapter-prompt-pileup-triage.md`
 > 状态：**评估稿，未改任何代码**
 > 处置（2026-10-13）：**结论已并入主稿** — §5.5（层间交付契约清单）、§7.0（Phase 0 反向验证）、§8-7/8（两条风险）、§8-9（事实澄清）、附录 H（吸收与驳回记录）。**本文件自此仅为评审存档，实施以主稿为准。**
 

@@ -105,7 +105,7 @@ const recordedReconciliation = recovery?.draftReconciliation?.completedOutput
 let shortOutline = recovery?.draftShortOutline?.completedOutput ?? ''
 // 首次生成提前到重试分支之前：首次失败会落成 run 里唯一的 attempt，
 // 重试授权随即可用；紧随其后的分支据此自动重试一次。
-// 见 docs/design/short-outline-first-failure-retry-design.md
+// 见 docs/design/prompt/short-outline-first-failure-retry-design.md
 let outlined: GenerationOutcome | undefined
 if (!recovery) {
   callbacks.log(uiText('生成短细纲...', 'Generating a short chapter outline...'))

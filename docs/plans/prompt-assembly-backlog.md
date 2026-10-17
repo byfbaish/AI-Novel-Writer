@@ -1,6 +1,7 @@
 # Prompt 组装 / 角色卡 / 地图 — 待办台账（TODO）
 
-> 🧭 **先读总览**：[`00-OVERVIEW.md`](./00-OVERVIEW.md)（`docs/plans` 导航 + 状态看板 + 下一步）。
+> 🧭 **先读唯一入口**：[`docs/README.md`](../README.md)（决策树 + 目录职责 + 新文档放置规则 + 现行设计索引）。
+> 本文件是**唯一 TODO 台账**；设计稿在 [`docs/design/`](../design/)，历史看板 [`00-OVERVIEW.md`](./00-OVERVIEW.md) 已冻结。
 > 本文件是**跨会话交接文档**，给后续接手的 Agent 看。
 > 每项都写清「**缘起（为什么提这件事）**、**现状（代码在哪、现在什么样）**、**目标**、**验收**、**风险与边界**」。
 > 日期：2026-10-10。分支：`dev_byf`。
@@ -13,7 +14,7 @@
 
 1. **单次请求包体过大 → 工作流失败**（最痛）。
    作者原话：「我用 deepseek 写都失败了，到底发了什么东西能达到租约请求上限 65536 Tokens，这么离谱么」。
-   → 直接引出 **P1（Prompt 逐字去重）**，见 `docs/plans/p1-literal-dedup.md`。
+   → 直接引出 **P1（Prompt 逐字去重）**，见 `docs/design/prompt/p1-literal-dedup.md`。
    **P1 已完成**（Phase 0/1/2 落地），本台账不再重复 P1 细节。
 2. 追查组装逻辑时发现**两类更上游的问题**：
    - **蓝图提到但 roster 里没有的角色**不会进 Prompt（作者在面板看到蓝图设了角色，以为是 bug）。
@@ -40,7 +41,7 @@
 | 3 | **P4（中）** | 任务 #7 · A 类配置整合 | **L0/L1** | AI 建议 → 人工确认 → 替换配置 · ⏸ **作者拍板延后**（可用户自维护，收益低于弧线） |
 | 4 | ~~**P3**~~ | ~~任务 #8 · B 类请求前语义去重~~ | — | 🏁 **已关闭**（2026-10-11）：收益仅占每章 prompt 2.8–4.7%，投入产出比不成立；**替代方案 A（3 处提示词，零运行时成本）已实施** `835b297` |
 | 5 | **P5（评估）** | 地图/区域架构 | **L1 的静态骨架** | ✅ **静态骨架部分已随 S1-空间结构落地**（`796528f`）；「动态地图节点」**不建议做**（会成第三个空间事实源，见 `layered-generation-assessment.md §3` 建议 3） |
-| 5.5 | ~~**G1**~~ | ~~数量按篇幅推算 + 嵌套层级 + 角色分类学~~ | — | ✅ **已实施**（2026-10-11，作者定**三层**）：弧光模板重写为**大弧⊃中弧⊃小弧**（第 0 步强制算式 + 分层区间 + 分层自检 4 条 + 分层示例），角色模板改为**算式**（总章数÷100）+ **分类学硬约束**（规则/机制/化身归世界观）。纯 Prompt、零新字段。见 [`layered-generation-assessment.md §10`](./layered-generation-assessment.md) |
+| 5.5 | ~~**G1**~~ | ~~数量按篇幅推算 + 嵌套层级 + 角色分类学~~ | — | ✅ **已实施**（2026-10-11，作者定**三层**）：弧光模板重写为**大弧⊃中弧⊃小弧**（第 0 步强制算式 + 分层区间 + 分层自检 4 条 + 分层示例），角色模板改为**算式**（总章数÷100）+ **分类学硬约束**（规则/机制/化身归世界观）。纯 Prompt、零新字段。见 [`layered-generation-assessment.md §10`](../design/architecture/layered-generation-assessment.md) |
 | 6 | **S1-空间结构（高）** | ★ **世界观第 4 维度：空间结构** | **L1** | ✅ **已落地** `796528f`（模板加第 4 维 + 6 处文案，见 `builtin-prompt-templates.ts:523`） |
 | 7 | **S1（高）** | ★ **角色知识状态** | **L4 事实层** | 唯一"纯空白 + P0"项；现有机制永远抓不到"他知道了不该知道的事" |
 | 8 | **S2（高）** | ★ **扩大 consistency-preflight 规则集** | **L4 校验层** | 基础设施全齐（分类/证据/豁免/水位线），纯增量 |
@@ -55,13 +56,13 @@
 | 16 | **O1（中高）** | **情节大纲：能否按"弧"而不是按 10 章批** | **L3 生成策略** | 🆕 2026-10-11：`PLANNING_ACTION_CHAPTER_LIMIT = 10` 是**双端硬契约**（`plot-outline-contract.ts:8` + `assertPlanningActionRange`）。作者问"按弧生成"是否更符合人类思路。见下方「O1 详述」 |
 | 17 | ~~**D1**~~ | ~~大纲生成范围的「续写」入口~~ | — | ✅ **已实施**（2026-10-11，作者提案）：范围面板加「续写」勾选项，勾选后自动以**已覆盖章 + 1** 为起点、默认推 10 章；起点由**章级标题**推出（不依赖末尾那句提示行）。落点：`plotOutlineCoveredTo` / `plotOutlineContinuationStart` + `ArchitectureConfirmDialog` + `ArchFileViewer` |
 | 18 | ~~**C3**~~ | ~~伏笔批量删除~~ | — | ✅ **已实施**（2026-10-11，作者反馈）：`db:narrative-thread-plan-delete-many`（**一条带 IN 的 DELETE**：原子 + 外键级联清理已确认事件）+ 计划清单多选 / 全选 / 删除选中。回归测试锁定「一次调用删多条 + 去重 + 空参数报错」 |
-| 19 | **S4（中，需评估）** | ★ **非角色状态的承载**（物品 / 世界 / 空间状态） | **L4 事实层** | 🆕 2026-10-11：外部报告指出的**唯一真缺口**。角色状态已有（`characters.currentState` + `finalized_continuity_facts`），但「走廊门数=4」「楼层少一格」这类**世界 / 空间状态**无处承载。落点在事实层（**不是大纲**），需先评估是否值得建表。见 [`outline-structure-marker-assessment.md`](./outline-structure-marker-assessment.md) §3 |
-| 20 | ~~**A1**~~ | ~~给大纲加「标记行」作为正文硬约束~~ | — | 🏁 **不建议**（2026-10-11）：本项目在「大纲→正文」之间**已有结构化层（章节蓝图 JSON）**，且正文只读**本章那一段**大纲；加标记行＝重复事实源 + 给散文步骤加格式契约（已连踩 4 次）。**替代方案已落地**：把**已存在**的 `【第N章必现】` 标记接入大纲（1 行改动），见 [`outline-structure-marker-assessment.md`](./outline-structure-marker-assessment.md) §5 |
+| 19 | **S4（中，需评估）** | ★ **非角色状态的承载**（物品 / 世界 / 空间状态） | **L4 事实层** | 🆕 2026-10-11：外部报告指出的**唯一真缺口**。角色状态已有（`characters.currentState` + `finalized_continuity_facts`），但「走廊门数=4」「楼层少一格」这类**世界 / 空间状态**无处承载。落点在事实层（**不是大纲**），需先评估是否值得建表。见 [`outline-structure-marker-assessment.md`](../design/prompt/outline-structure-marker-assessment.md) §3 |
+| 20 | ~~**A1**~~ | ~~给大纲加「标记行」作为正文硬约束~~ | — | 🏁 **不建议**（2026-10-11）：本项目在「大纲→正文」之间**已有结构化层（章节蓝图 JSON）**，且正文只读**本章那一段**大纲；加标记行＝重复事实源 + 给散文步骤加格式契约（已连踩 4 次）。**替代方案已落地**：把**已存在**的 `【第N章必现】` 标记接入大纲（1 行改动），见 [`outline-structure-marker-assessment.md`](../design/prompt/outline-structure-marker-assessment.md) §5 |
 | 22 | **P6（中，机制待议）** | ★ **伏笔与叙事线索：一次只能选一章** | **L5 数据层 + L3 生成策略** | 🆕 2026-10-15（作者实机反馈）：AI 对话框只给**单章**下拉（`NarrativeThreadEditor.tsx` 的 `aiBlueprintChapter`），作者原话「这要是八百章还得了」。**不只是 UI 分页问题**：要讨论的是**生成机制与触发方式**（按弧批量？只对有伏笔义务的章？生成后自动建议？）。见下方「P6 详述」 |
 | 21 | ~~**D2**~~ | ~~弧位圈定：把「本批落在哪个中弧」告诉模型~~ | — | ✅ **已实施**（2026-10-11，作者判「时序错位不可接受」）：`shared/arc-position.ts` 解析弧光三层骨架 → 累积求和 + **按全书章数等比折算** → 把「所在大弧 / 中弧 + 其规格 + 同大弧内后续中弧清单」注入大纲提示词，并写明**硬约束：后续中弧的目标 / 尝试不得提前实现**；跨中弧边界时单独提示。弧光不可解析（作者用枚举故事结构）时**不注入**，行为与从前一致 |
 | 22 | ~~**A2**~~ | ~~弧光预算的算术约束~~ | — | ✅ **按作者口径调整为弹性**（2026-10-11）：规划不是契约 —— 允许 Σ 与全书章数相差 **±10%**；**必须逐项写出加法式并声明差额**，但**不得为凑齐总数而增删章节**（作者反对「以目标为导向的凑数」）。Σ 精确相等不再是硬要求 |
 
-> ★ **新增台账（AC 系列）**：[`architecture-consistency-design.md`](./architecture-consistency-design.md)
+> ★ **新增台账（AC 系列）**：[`architecture-consistency-design.md`](../design/architecture/architecture-consistency-design.md)
 > （作者问「可以做故事架构五层一致性校验么」的评估）。
 > **核心结论**：**值得做，但**分三段**推进，不做"五层大一统校验器"。**
 > **难点不在规则，而在**四层是纯文本、无 ID、无 join 键**（蓝图有 JSON 所以能查，架构没有）。**
@@ -70,7 +71,7 @@
 > **AC1 现在可做（低成本）→ AC2 是实质（须防假阳性）→ AC3 依赖第五层。**
 > **守边界：证据非禁令；架构保持散文（不建表）。**
 
-> ★★ **新增台账**：[`state-tracking-assessment.md`](./state-tracking-assessment.md)
+> ★★ **新增台账**：[`state-tracking-assessment.md`](../design/architecture/state-tracking-assessment.md)
 > （外部报告《状态管理的收益/可落地性分析》的本项目评估）。
 > **核心结论**：报告的分层框架正确，但**低估了本项目** —— 本项目早有
 > 「定稿 → 连续性事实（带原文证据）→ 章节投影 → 确定性预检」的成熟链路
@@ -81,7 +82,7 @@
 > ⚠️ **空间/事件两类状态 = 故事弧本身，不得在故事弧之外另立项。**
 > 三处新增均须共用同一「弧 + 章」坐标系，避免两套事实打架。
 
-> ★ **判据补充（第三份报告消化）**：[`causal-vs-state-digestion.md`](./causal-vs-state-digestion.md)
+> ★ **判据补充（第三份报告消化）**：[`causal-vs-state-digestion.md`](../design/architecture/causal-vs-state-digestion.md)
 > （《因果 vs 状态：落地分类判断》的本项目消化）。
 > **核心贡献 = 一条统一判据**：**"这个约束能不能靠上下文推理得出？"**
 > **能推理 → prompt 够用（改模板）；不能推理 → 需显式追踪（写代码）。**
@@ -93,7 +94,7 @@
 > ★ **落地次序（微调后）**：① 弧层 Prompt（零代码）→ ② AC1 层内一致性（低）→
 > ③ 角色知识（挂事实链）→ ④ AC2 层间引用完整性 → ⑤ 物品/场景/空间/时间线合并为一。
 
-> ★ **施工图可行性核查（修订版）**：[`arc-space-causal-state-feasibility.md`](./arc-space-causal-state-feasibility.md)
+> ★ **施工图可行性核查（修订版）**：[`arc-space-causal-state-feasibility.md`](../design/architecture/arc-space-causal-state-feasibility.md)
 > （对方吸收我方纠正后的修订版总结，作者要求核查落地可行性）。
 > **裁决：方向完全一致（已采纳我方全部纠正），且守住了"不建表"底线；
 > 但"零代码/纯增量"在 3 处被低估：**
@@ -107,7 +108,7 @@
 > **★ 两处优化建议**：① 空间结构定位为"索引节"；② 落地次序 **AC1 应早于角色知识**（低垂果实：1 个纯函数即见效，风险低）。
 > **★ 无一项需新建数据表** —— 这是修订版最可贵之处，予以确认。
 
-> ★★ **作者五问拍板（设计闭环）**：[`arc-granularity-and-enum.md`](./arc-granularity-and-enum.md)
+> ★★ **作者五问拍板（设计闭环）**：[`arc-granularity-and-enum.md`](../design/architecture/arc-granularity-and-enum.md)
 > （作者对 `stage-structure-layer.md §5` 的 5 个待确认项逐条作答 + 2 处深水区推演）。
 > **裁决汇总**：
 > 1. **步骤粒度** = **一步出整段 + Prompt 内分节**。分节（Prompt 内）采纳，**拆 DB 步骤拒绝**
@@ -126,7 +127,7 @@
 
 > ★ **新增坐标系**：以上各项现已归位到**七层骨架模型**（L0 故事内核 → L1 世界框架 → L2 人物体系 →
 > **L3 叙事弧** → **L4 事件单元** → L5 章节 → L6 场景）。
-> 详见 `docs/plans/seven-layer-skeleton-assessment.md`（含对 L3/L4 现状的代码级核实）。
+> 详见 `docs/design/architecture/seven-layer-skeleton-assessment.md`（含对 L3/L4 现状的代码级核实）。
 > **该评估的核心结论**：本工具确实缺 L3/L4 的显式实体，但
 > `narrative_thread_plans` 只是**伏笔台账**（埋/收两端点），`draftShortOutlinePrompt` 是 L4 的隐式替代
 > → **L3 弧需新建独立实体**（弧 ⊃ 伏笔，两者语义不同，不可靠扩展字段合并）。
@@ -139,7 +140,7 @@
 > 我的初步设想是，**在世界观里设置 L5 地图空间的信息（也只是大区域和副本的信息），
 > 然后故事弧根据其他信息来生成，情节大纲则是在现有的内容里，受故事弧的约束**」
 
-**→ 提案文档**：[`story-arc-proposal.md`](./story-arc-proposal.md)（**v3**，含数据流、改动点、待确认问题）
+**→ 提案文档**：[`story-arc-proposal.md`](../design/architecture/story-arc-proposal.md)（**v3**，含数据流、改动点、待确认问题）
 
 **要点**：
 - ❌ 我此前把它框架成"声明式 vs 命令式"的范式之争 —— **作者纠正：这不是重点**，弧只是给大纲加**上游依据**，
@@ -181,7 +182,7 @@
 → **`getPlotStructureGuide()` 不是"可选手段"，它本身就是那被硬编码的第五层**
 （无 UI 入口、无数据落点、由 6 个枚举值现算；唯一管理入口是 `NovelConfigEditor.tsx:273` 的下拉框）。
 
-→ **详细显现方案**：[`stage-structure-layer.md`](./stage-structure-layer.md)
+→ **详细显现方案**：[`stage-structure-layer.md`](../design/architecture/stage-structure-layer.md)
   - 数据落点：`project_core` 加一个可空文本字段（**零新表**）
   - 生成：架构阶段新增一步（与 worldbuilding 同构，插在 synopsis 之前）
   - 消费：`architecture.command.ts:2281` **一行三元**（自定义优先、枚举兜底）
@@ -239,7 +240,7 @@
 → **生成 Prompt 必须同时写进两段**：① 篇幅经验表（§2.1，软约束"只描述用多少章"）
   ② 同级弧推进要求（§2.2，硬要求"逐弧交代我为什么接在前一弧之后"：因果 + 时序）。
 
-→ **详细设计**：[`arc-nesting-design.md`](./arc-nesting-design.md)
+→ **详细设计**：[`arc-nesting-design.md`](../design/architecture/arc-nesting-design.md)
   （§0.0 权重校正 / §2 两样必写物 / §4 章级因果已有 vs 弧级空白 / §5.2 推进链不受"不校验"边界约束）
 
 **★★★★ 第二份外部报告评估：「弧生成 Prompt 设计」（2026-10-11）**
@@ -264,7 +265,7 @@
   **这与"弧保持纯文本"不冲突**：只要 Prompt 约定弧的 `- 因果：` 行格式，
   文本即可被正则解析、供 preflight 比对已有表 → **同时满足"可读、可查、无字段"。**
 
-→ **详细评估**：[`arc-prompt-assessment.md`](./arc-prompt-assessment.md)
+→ **详细评估**：[`arc-prompt-assessment.md`](../design/architecture/arc-prompt-assessment.md)
 
 **★ 二稿的三条结构性发现（保留，作用变为"论证为什么不能绑章号"）**：
 
@@ -282,7 +283,7 @@
 
 ## P1（高）· 蓝图角色 ↔ 角色卡 roster 同步
 
-> 📄 **详细设计稿**：[`p1-blueprint-roster-sync.md`](./p1-blueprint-roster-sync.md)（2026-10-10，设计待审）
+> 📄 **详细设计稿**：[`p1-blueprint-roster-sync.md`](../design/characters/p1-blueprint-roster-sync.md)（2026-10-10，设计待审）
 > 关键发现：蓝图→角色的 durability 骨架**已存在**（`blueprint_character_sync_operations` +
 > `newCharacterCandidates` 契约 + `character-proposal:stage` 通道），缺的是**触发时机与 UI 入口**。
 
@@ -350,7 +351,7 @@
 
 ## P2（高）· 角色卡管理界面的 AI 生成增强
 
-> 📄 **详细设计稿**：[`p2-character-card-ai-generation.md`](./p2-character-card-ai-generation.md)（2026-10-10，设计待审）
+> 📄 **详细设计稿**：[`p2-character-card-ai-generation.md`](../design/characters/p2-character-card-ai-generation.md)（2026-10-10，设计待审）
 > 评估结论：**容易**。已有 `CharacterCardImportButton` 是先例，链路/安全/预览 UI 全部可复用，
 > 只差「一个不同的输入来源 + 一个按钮」。**建议与 P1 共用同一 UI 入口。**
 
@@ -423,7 +424,7 @@
 > ⚠️ **以下设计内容仍然有效**，作为未来任何"处理 AI 推演文本"改动的约束：
 > §1.1.1「引用式判定」（别删扩写、只删复述）与 `p4-reassessment.md §2.4.7` 的 16 段逐段比对结论。
 
-> 📄 **详细设计稿**：[`p3-semantic-dedup.md`](./p3-semantic-dedup.md)（**§8 = 收益量化，§9–§10 = 方案 A 与关闭**）
+> 📄 **详细设计稿**：[`p3-semantic-dedup.md`](../design/prompt/p3-semantic-dedup.md)（**§8 = 收益量化，§9–§10 = 方案 A 与关闭**）
 > **作者已定**：① 可以**直接判定并删除**，配"结果可查 log"；② 提出**提示词头缓存**；
 > ③ `promptHash` 收据契约"直接改掉"（理由：还有 P4 的改造在，P4 优化完 P3 价值才真正体现）；
 > ④ 头/尾分层："**如果有一个项目每一章都必变的话，那它就不应该放在共同设定的头部，
@@ -523,7 +524,7 @@ P1 只做**逐字重复**消除。作者明确区分：
 
 ## P4（中）· 任务 #7 · A 类「配置整合」（AI 建议 → 人工确认 → 替换）
 
-> 📄 **详细设计稿**：[`p4-prompt-config-merge.md`](./p4-prompt-config-merge.md)（2026-10-10 v1）
+> 📄 **详细设计稿**：[`p4-prompt-config-merge.md`](../design/prompt/p4-prompt-config-merge.md)（2026-10-10 v1）
 > **作者指定的靶子**：用户级 Prompt 设定（设置 → 提示词模板），因为**全局与项目两级最容易重复**；
 > 作者认为大纲蓝图等"会重复的比较少"（判断正确，但结构上它们同样可两级编辑，设计上不排除）。
 > ★ **必须先读设计稿 §0.0（本项最关键的一条）**：**全局与项目不是叠加，是覆盖**——
@@ -741,8 +742,8 @@ P1 只做**逐字重复**消除。作者明确区分：
   ② `npx tsc --noEmit` EXIT=0；③ 全量扫描的失败集与基线 diff 一致。
 - **硬约束**：ADR 0020（保留作者原始资料与关系）；不得改
   `toWriterChapterInfo` / `writerChapterInfo`（恢复指纹 `GENERATION_DRAFT_RECOVERY_AUTHOR_INPUT_CHANGED`）。
-- **相关文档**：`docs/plans/p1-literal-dedup.md`（P1 完整设计与实测数据）；
-  `docs/plans/p3-semantic-dedup.md`（P3 设计稿）。
+- **相关文档**：`docs/design/prompt/p1-literal-dedup.md`（P1 完整设计与实测数据）；
+  `docs/design/prompt/p3-semantic-dedup.md`（P3 设计稿）。
 
 ---
 
@@ -838,7 +839,7 @@ P1 只做**逐字重复**消除。作者明确区分：
 
 ### 状态
 
-**✅ 已实施（2026-10-16，作者裁定 D1 方案 E / D2 两个字段 / D3 后续蓝图不动）**。设计稿 + 实施记录：`docs/design/p7-review-material-dedup-design.md`（v2）。
+**✅ 已实施（2026-10-16，作者裁定 D1 方案 E / D2 两个字段 / D3 后续蓝图不动）**。设计稿 + 实施记录：`docs/design/review/p7-review-material-dedup-design.md`（v2）。
 - 落点：`reviewRevisionAuthorMaterial(context, { omit })`（**默认行为逐字不变**）+ `selectFrozenReviewRevisionMaterials` 透传 + **仅审稿链**传 `omitAuthorFields: ['worldbuilding','characterStates']`。
 - 实施中封住一处**静默丢数据**风险：省略 `worldbuilding` 时须同时把它移出「前缀去重」比较基准，否则 `config.worldSetting` 会被换成「见 worldbuilding 原文」而那份原文已不在 prompt 里（已加测试双向锁）。
 - 验证：目标 52/52 · 下游 128/128 · tsc 0。**⏳ 待实机复验**（重启后核审稿 user 32,442 → ~26,200，且 `【世界观设定】` 完整内容只出现一次）。

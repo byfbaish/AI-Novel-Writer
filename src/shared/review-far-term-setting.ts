@@ -3,8 +3,8 @@ import { writingLanguageText, type WritingLanguage } from './writing-language'
 /**
  * 审稿链的「远期设定使用规则」声明（C1 · 路子 B，2026-10-16）。
  *
- * 设计依据：`docs/design/c1-review-architecture-declaration-design.md`。
- * 立项来源：`docs/design/p1-3-variable-export-scoping-design.md` §7 候选落点 C1。
+ * 设计依据：`docs/design/review/c1-review-architecture-declaration-design.md`。
+ * 立项来源：`docs/design/prompt/p1-3-variable-export-scoping-design.md` §7 候选落点 C1。
  *
  * ## 与 P1-2a 的关系（同一问题的两条路子）
  *

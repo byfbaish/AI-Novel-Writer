@@ -4,8 +4,8 @@ import { writingLanguageText, type WritingLanguage } from './writing-language'
 /**
  * 故事架构 → 正文的「远期节边界化」投影（P1-2a，2026-10-16）。
  *
- * 设计依据：`docs/design/p1-2-architecture-projection-design.md`（§3 范式 / §4 方案 A / §5 输出形态）。
- * 上级稿：`docs/design/prompt-payload-scoping-design.md`（P1-2 行 / §5.5 契约表 / §6 L2）。
+ * 设计依据：`docs/design/prompt/p1-2-architecture-projection-design.md`（§3 范式 / §4 方案 A / §5 输出形态）。
+ * 上级稿：`docs/design/prompt/prompt-payload-scoping-design.md`（P1-2 行 / §5.5 契约表 / §6 L2）。
  *
  * ## 为什么需要它
  *

@@ -1,6 +1,6 @@
 # P1-3 实施级设计稿：L1 变量出口语义化（`acceptsScopes` / `enforceRequiredContext`）
 
-> 上级稿：`docs/design/prompt-payload-scoping-design.md`（§6 L1 / §7 表 P1-3 行 / 附录 A / 附录 D / §11 清单两项）。  
+> 上级稿：`docs/design/prompt/prompt-payload-scoping-design.md`（§6 L1 / §7 表 P1-3 行 / 附录 A / 附录 D / §11 清单两项）。  
 > 状态：**待作者裁定**（D1–D4 见 §8）。本稿只取证 + 判定 + 提替代，**未动一行代码**。  
 > 版本：**v2**（2026-10-16。采纳同行评审：① 结论**分述**（`acceptsScopes`=抽象层级错 / `enforceRequiredContext`=语义混淆+适用边界），不合并；② 新增 §3.1 适用边界；③ 新增 §7.1 全量消费点扫描；④ C1 补 A/B 两解法；⑤ 可观测性收窄为"先做 `projection` 元数据"）。  
 > 取证源：① 内置模板静态审计（esbuild 打包 `builtin-prompt-templates.ts` 后跑，见 §10）；② 作者项目 20 份全局覆盖版；③ 实机 trace 21 份 / 18 个 snapshot（`C:\develop\workspace\AI-writer\每天第一句谎话都会成真\debug\prompt-trace\`）。
@@ -187,7 +187,7 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 
 | 候选 | 现状 | 设想 | 风险 / 需裁定 |
 |---|---|---|---|
-| **C1. 审稿链的 `worldbuilding` 声明** ✅ **已实施（2026-10-16，路子 B）** | `review-chapter.command.ts:71` 全量 `frozen.worldbuilding`（**实机 ch1 审稿：世界观块 6,195 字 = built 的 56.9% / user 的 23.2%**，含 §3 终局谜底）；~~`refine-from-review` 无 `worldbuilding`（符合 §5 第 11c 行）~~ → ⚠️ **2026-10-16 实机证伪：精修链亦吃全量世界观（含 §3 原文）**，见 §7.1 修正 | **保留完整 §3 + 合同级声明**（`shared/review-far-term-setting.ts` 的 `reviewFarTermSettingRule`）——**不做投影** | ⚠️ **两面性已破**：投影会毁掉实测收益（同次审稿用 §4 正确抓到「下午两点买早饭」），故只加声明。**实测审稿输出未显示「拿终局当事实」⇒ 本条属预防性加固**（成本 ≈0）。稿 `docs/design/c1-review-architecture-declaration-design.md`。**新缺口**：精修链（`refine-from-review`）吃全量 §3 但无该声明 ⇒ 待裁定 |
+| **C1. 审稿链的 `worldbuilding` 声明** ✅ **已实施（2026-10-16，路子 B）** | `review-chapter.command.ts:71` 全量 `frozen.worldbuilding`（**实机 ch1 审稿：世界观块 6,195 字 = built 的 56.9% / user 的 23.2%**，含 §3 终局谜底）；~~`refine-from-review` 无 `worldbuilding`（符合 §5 第 11c 行）~~ → ⚠️ **2026-10-16 实机证伪：精修链亦吃全量世界观（含 §3 原文）**，见 §7.1 修正 | **保留完整 §3 + 合同级声明**（`shared/review-far-term-setting.ts` 的 `reviewFarTermSettingRule`）——**不做投影** | ⚠️ **两面性已破**：投影会毁掉实测收益（同次审稿用 §4 正确抓到「下午两点买早饭」），故只加声明。**实测审稿输出未显示「拿终局当事实」⇒ 本条属预防性加固**（成本 ≈0）。稿 `docs/design/review/c1-review-architecture-declaration-design.md`。**新缺口**：精修链（`refine-from-review`）吃全量 §3 但无该声明 ⇒ 待裁定 |
 
 **C1 的两面性有两个解法**（评审追问 2 补充，2026-10-16）：
 
@@ -219,7 +219,7 @@ P0-2 取证记过一例：`world_building` 的 `reference_works` **原本由兜�
 
 ⚠️ **同时新记录一处易误判点**：`architecture` 产出侧三处吃全量 `worldbuilding` 是**设计前提**（产出侧需全知才能规划伏笔），**不是遗漏** —— 后人扫描时不应把它与 C1 并列为"未投影缺口"。**判据 =「这一步的产物是给人读的正文，还是给下一步用的规划？」** 前者才需要投影。
 
-> 📌 **C1 登记（2026-10-16 裁定 D4①）**：C1 **不并入本轮**，**另立小项**（入口 = 本稿 §7）。→ **✅ 已实施（2026-10-16，作者「全按建议来」⇒ 走解法 B）**：新增 `shared/review-far-term-setting.ts`，注入 `review-chapter.command.ts` 的 `ordinaryReviewPrompt`；设计稿 `docs/design/c1-review-architecture-declaration-design.md`。
+> 📌 **C1 登记（2026-10-16 裁定 D4①）**：C1 **不并入本轮**，**另立小项**（入口 = 本稿 §7）。→ **✅ 已实施（2026-10-16，作者「全按建议来」⇒ 走解法 B）**：新增 `shared/review-far-term-setting.ts`，注入 `review-chapter.command.ts` 的 `ordinaryReviewPrompt`；设计稿 `docs/design/review/c1-review-architecture-declaration-design.md`。
 
 ---
 

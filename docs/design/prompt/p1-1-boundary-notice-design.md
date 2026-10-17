@@ -1,6 +1,6 @@
 # P1-1 实施设计稿：后续计划降级为「本章不可写事件」清单（`toBoundaryNotice`）
 
-> **上级设计**：`docs/design/prompt-payload-scoping-design.md` §7 表（P1-1 行）+ **附录 B**（`toBoundaryNotice` 派生机制）。
+> **上级设计**：`docs/design/prompt/prompt-payload-scoping-design.md` §7 表（P1-1 行）+ **附录 B**（`toBoundaryNotice` 派生机制）。
 > 本文是 P1-1 的**实施级**设计稿（本项目惯例：改模型可见载荷前先出小设计稿，经作者过目再编码）。
 > 状态：**✅ 已实施**（D1 = 方案 A 首句截断 · D2/D3 = 不做 · D4 = 80 字上限）。实施记录见 §10。
 

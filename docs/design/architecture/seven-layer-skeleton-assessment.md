@@ -379,5 +379,5 @@ cs_location TEXT DEFAULT '',   -- 当前位置（baseline-schema.ts:82）
 | 文档 | 内容 |
 |---|---|
 | [`l3-arc-gap-verification.md`](./l3-arc-gap-verification.md) | ★ **本文的二次核实**：逐条验证作者对剧情树/叙事线索/角色弧光的反驳 |
-| [`prompt-assembly-backlog.md`](./prompt-assembly-backlog.md) | P1–P5 待办台账（已加"所属层"列归位到七层模型） |
-| [`p3-semantic-dedup.md`](./p3-semantic-dedup.md) | 收据契约改造的教训来源（P3 §1.3） |
+| [`prompt-assembly-backlog.md`](../../plans/prompt-assembly-backlog.md) | P1–P5 待办台账（已加"所属层"列归位到七层模型） |
+| [`p3-semantic-dedup.md`](../prompt/p3-semantic-dedup.md) | 收据契约改造的教训来源（P3 §1.3） |

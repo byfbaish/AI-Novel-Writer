@@ -2,9 +2,9 @@
 
 > 来源：作者投喂的外部分析（2026-10-11）。
 > 本文只做**核实与裁决**，不改业务代码。结论如需落地，另立实施项。
-> 关联：[`prompt-assembly-backlog.md`](./prompt-assembly-backlog.md)、
+> 关联：[`prompt-assembly-backlog.md`](../../plans/prompt-assembly-backlog.md)、
 > [`arc-nesting-design.md`](./arc-nesting-design.md)、[`arc-granularity-and-enum.md`](./arc-granularity-and-enum.md)、
-> [`00-OVERVIEW.md`](./00-OVERVIEW.md) §5 边界纪律。
+> [`00-OVERVIEW.md`](../../plans/00-OVERVIEW.md) §5 边界纪律。
 
 ---
 
