@@ -162,8 +162,14 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
   })
 }
 
-/** 累积边界（含 0 与总计），必要时按 total/declared 等比折算并保证严格递增。 */
-function scaledBoundaries(counts: readonly number[], total: number): number[] {
+/**
+ * 累积边界（含 0 与总计），必要时按 total/declared 等比折算并保证严格递增。
+ *
+ * ⚠️ 导出是为了让 `arc-node.ts` 复用同一份换算实现。**不要在别处复写这套折算**
+ * ——弧光自报章数与全书章数不等时（实测 880 vs 845），两份实现必然漂移，
+ * 于是「结构位归属哪一章」会出现两个互相矛盾的答案。
+ */
+export function scaledBoundaries(counts: readonly number[], total: number): number[] {
   const declared = counts.reduce((sum, value) => sum + value, 0)
   const factor = declared > 0 && total > 0 ? total / declared : 1
   const bounds: number[] = [0]

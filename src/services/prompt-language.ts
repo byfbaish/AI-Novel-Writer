@@ -266,6 +266,9 @@ State the immediate visible threat and the deeper hidden truth or long-term myst
 [Output contract]
 Return exactly one JSON object whose fields are strictly equal to the field contract supplied by the runtime — never add a field beyond that contract (a single extra field invalidates the entire response), and never add headings, prefaces, or comments. The design dimensions listed in items 1–3 are for internal reasoning only and are not output fields. Do not output Markdown, a preface, a code fence, or reasoning.
 
+[Load-bearing terms: cite, never redefine]
+When you refer to the central advantage or any world rule (for example "the three iron laws", "quota", "the first utterance"), use the exact wording given in the authoritative project settings. If the upstream source numbers them (R1 / R2 / R3…), cite the numbers. Never supply a definition the upstream has not given — the definition belongs to the settings layer; a character card only describes how that character understands, exploits, or misreads the rule. Do not treat the contents of one such term as a specific character's ability.
+
 [Reference works — borrow systems/mechanics/tone; obey stated prohibitions]
 {{reference_works}}`,
     systemSuffix: `[Author guidance for this step — highest priority when present]
@@ -403,6 +406,12 @@ Between mid arcs (within one major arc): classify each mid arc, then write its p
   Motivation: <why explore> (this compensates for the absence of causality)
   Path: <place A> -> discovery <X>; <place B> -> discovery <Y>
 Minor arcs: give **name + chapter count only** (one line of positioning). Their detailed expansion belongs to the plot outline — do not develop plot here.
+
+[Step 3 — load-bearing terms: cite, never redefine]
+Whenever a term for the central advantage or a world rule appears (for example "the three iron laws", "the first utterance", "quota", "coming true"), refer only to the definition already given in the world-building and cast sections:
+- If the upstream source numbers them (R1 / R2 / R3…), cite the numbers and never alter their order or meaning.
+- If the upstream gives **no** numbers, **do not use the term** and do not supply a definition here — replace it with one concrete sentence stating the rule (e.g. "only a statement the protagonist has spoken and knows to be false counts"), leaving the definition to the upstream layer.
+★ Observed cost (2026-10-18): the upstream wrote only "the three iron laws are never lifted" without listing them, so this step and the plot outline each invented a different list, and the prose followed a third one.
 
 [Output format — Markdown only, use headings for levels, no code fences]
 ★ **Do not output a level-1 heading** — “# Arc Structure” is prepended automatically. Your output starts with the “[Length budget]” line.
