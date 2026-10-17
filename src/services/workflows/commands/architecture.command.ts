@@ -6,7 +6,7 @@ import { defaultCharacterProposalRelationships, defaultCharacterProposalSelectio
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
-import { withProjectedArcGuide } from '../../../shared/arc-position'
+import { auditArcDensity, parseArcStructure, withProjectedArcGuide } from '../../../shared/arc-position'
 import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../shared/arc-node'
 import { withSpaceConstraints } from '../../../shared/space-constraints'
 import { projectScopedConfigFields, projectScopedText } from '../../../shared/text-scope-tags'
@@ -312,6 +312,29 @@ function findPlotOutlineTitleRanges(text: string): PlotOutlineTitleRange[] {
     }
   }
   return ranges.sort((left, right) => left.index - right.index)
+}
+
+/**
+ * 弧光生成后的**分层信息量体检**（P13）：只报告，不阻断。
+ *
+ * 与 `summarizeArcCoverFindings`（大纲写完才跑、查「结构位有没有被乱用」）互补：
+ * 这一层在**弧光刚生成时**就跑，查的是「每一层有没有本事展开下一层」。
+ *
+ * 实测反例（2026-10-18）：16 个小弧全部只有名字，三个小弧合计 18 字要撑 25 章大纲，
+ * 密度 0.72 字/章 —— 比大弧的 3.5 字/章还低 5 倍。大纲在本层无料可用，只能向上
+ * 越层取材，于是第 4 章写掉了本属后续中弧的「鲁传福替他挡电话」。
+ * 先让作者看见，再决定是重跑弧光还是接受简写。
+ *
+ * 返回 null 表示结构不可解析或体检全绿。
+ */
+/** @internal 导出只为可单测。 */
+export function summarizeArcDensity(plan: string | null | undefined, uiText: UiText): string | null {
+  const findings = auditArcDensity(parseArcStructure(plan))
+  if (findings.length === 0) return null
+  return [
+    uiText('⚠️ 弧光分层体检（只提示，不影响本次生成）：', '⚠️ Arc structure check (advisory only):'),
+    ...findings.map(finding => `- ${uiText(finding.zh, finding.en)}`),
+  ].join('\n')
 }
 
 /**
@@ -1911,6 +1934,10 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
       '弧光结构（自由弧）已生成并写入数据库',
       'Arc structure generated and saved to the database.',
     ))
+    // P13：分层信息量体检 —— 只提示。小弧只有名字时，后面每一批大纲都会越层取材，
+    // 在这里说一句比让作者去读 40 章大纲之后才返工便宜得多。
+    const densityNote = summarizeArcDensity(content, text)
+    if (densityNote) callbacks.log(densityNote)
     return content
   }
 }

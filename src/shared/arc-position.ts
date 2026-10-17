@@ -23,12 +23,23 @@ import type { WritingLanguage } from './writing-language'
  * 因此绝对章号由**累积求和后按比例折算**得到，并在注入文本里**显式声明**折算事实。
  */
 
-/** 中弧下的小弧（P12-3）：弧光里写成 `小弧：A（约 9 章）；B（约 9 章）`。 */
+/**
+ * 中弧下的小弧（P12-3）：弧光里写成 `小弧：A（约 9 章）；B（约 9 章）`。
+ *
+ * P13（2026-10-18）：小弧从「只有名字」升级为「名字 + 内容」——
+ * `<起点状态> → <必发事件> → … → <落点状态>`。名字只有 4–5 个字，撑不起 8 章大纲，
+ * 模型只能向上越层取材（实测把下一中弧的「鲁传福替他挡电话」写进第 4 章）。
+ */
 export interface ArcMinor {
   /** 小弧名（已去掉【】） */
   name: string
   /** 弧光里的约数章数 */
   chapters: number
+  /**
+   * 小弧内容（`起点 → 事件 → 落点`）。旧版弧光没有这一项时为 undefined ——
+   * 解析与渲染都按「只有名字」退化处理，不报错。
+   */
+  text?: string
 }
 
 /**
@@ -68,6 +79,11 @@ export interface ArcMajor {
   name: string
   chapters: number
   fields: readonly (readonly [string, string])[]
+  /**
+   * 大弧的「结束状态」原文（P13）。它在 `SKIP_FIELDS` 里（不进 `fields`，因为它是
+   * 验收标准而不是推进逻辑），但体检要检查它有没有点名承接它的中弧，所以单独留一份。
+   */
+  endState?: string
   mids: readonly ArcMid[]
 }
 
@@ -146,15 +162,37 @@ const SKIP_FIELDS = new Set([
 /** 小弧行的字段名（中文 / 英文）。它不进球 `fields`，而是拆成 `minors`。 */
 const MINOR_FIELD_NAMES = new Set(['小弧', 'Minor arcs'])
 /**
- * `【首夜敲门】（约 8 章）`
+ * `【首夜敲门】（约 8 章）` / `【首夜敲门】（约 8 章）：起点 → 事件 → 落点`
  *
  * 末尾允许句读 —— 弧光常把最后一条写成 `三家人抢一张排班表（约9章）。`，
  * 只认 `$` 会把**每条中弧的最后一个小弧**静默丢掉（实测 16 个只解析出 10 个），
  * 剩下的条目再按比例摊满整个中弧，区间被前一条吃掉，看不出任何异常。
+ *
+ * P13 起还允许章数后面接「：内容」—— 这是小弧层真正承载剧情的地方（见 `ArcMinor.text`）。
  */
-const MINOR_ITEM_ZH = /^(.+?)[\t ]*[（(][\t ]*约?[\t ]*([0-9]+)[\t ]*章[\t ]*[）)][\t ]*[。．.、,，]?$/u
-/** `Opening Night Knocks (about 8 chapters)` */
-const MINOR_ITEM_EN = /^(.+?)[\t ]*[（(][\t ]*(?:about[\t ]*|~[\t ]*)?([0-9]+)[\t ]*chapters?[\t ]*[）)][\t ]*[.,]?$/iu
+const MINOR_ITEM_ZH = /^(.+?)[\t ]*[（(][\t ]*约?[\t ]*([0-9]+)[\t ]*章[\t ]*[）)][\t ]*(?:[：:][\t ]*(.+?))?[\t ]*[。．.、,，]?$/u
+/** `Opening Night Knocks (about 8 chapters)` 同上，可带 `: content` */
+const MINOR_ITEM_EN = /^(.+?)[\t ]*[（(][\t ]*(?:about[\t ]*|~[\t ]*)?([0-9]+)[\t ]*chapters?[\t ]*[）)][\t ]*(?:[：:][\t ]*(.+?))?[\t ]*[.,]?$/iu
+/** 任何列表项；真正的判定交给 `MINOR_ITEM_ZH/EN`（它们要求带「（约 N 章）」） */
+const BULLET_LINE = /^[-*][\t ]+(.+)$/u
+/**
+ * 小弧**清单表头**行：`小弧：A（约 8 章）；B（约 9 章）`。
+ *
+ * 它必须留给 `FIELD_LINE` → `parseMinorArcs` 处理。若被当成单条小弧，
+ * 贪婪的 `(.+?)` 会一路吃到**最后一个**「（约 N 章）」，得到一个
+ * 「小弧：【首夜敲门】（约 8 章）；【门缝纸条」这样的假条目 —— 实测一次就丢掉了
+ * 整条中弧的全部小弧。
+ */
+const MINOR_LIST_HEADER = /^(?:小弧数|小弧|minor[\t ]*arc[\t ]*count|minor[\t ]*arcs)[\t ]*[：:]/iu
+
+/** 从正则匹配结果造一个 `ArcMinor`；名字/章数非法时返回 null。 */
+function toMinor(match: RegExpExecArray): ArcMinor | null {
+  const name = stripBrackets(toText(match[1]!))
+  const chapters = Number(match[2])
+  if (!name || !Number.isSafeInteger(chapters) || chapters < 1) return null
+  const text = match[3] ? toText(match[3]) : ''
+  return text ? { name, chapters, text } : { name, chapters }
+}
 
 /**
  * 拆「小弧：A（约 9 章）；B（约 9 章）；C（约 8 章）　Σ = 9+9+8 = 26（本中弧 26，差额 0）」。
@@ -174,10 +212,8 @@ function parseMinorArcs(value: string): ArcMinor[] {
     if (!item) continue
     const match = MINOR_ITEM_ZH.exec(item) ?? MINOR_ITEM_EN.exec(item)
     if (!match) continue
-    const name = stripBrackets(toText(match[1]!))
-    const chapters = Number(match[2])
-    if (!name || !Number.isSafeInteger(chapters) || chapters < 1) continue
-    result.push({ name, chapters })
+    const minor = toMinor(match)
+    if (minor) result.push(minor)
   }
   return result
 }
@@ -215,7 +251,7 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
   if (!plan?.trim()) return null
   const majors: ArcMajor[] = []
   type MutableMid = { name: string; chapters: number; fields: [string, string][]; minors: ArcMinor[] }
-  let major: { name: string; chapters: number; fields: [string, string][]; mids: MutableMid[] } | null = null
+  let major: { name: string; chapters: number; fields: [string, string][]; mids: MutableMid[]; endState?: string } | null = null
   let mid: MutableMid | null = null
 
   for (const rawLine of plan.split(/\r?\n/u)) {
@@ -235,6 +271,18 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
       major.mids.push(mid)
       continue
     }
+    // 多行小弧形态（P13）：`- 错位门牌（约 8 章）：起点 → 事件 → 落点`。
+    // 必须在 FIELD_LINE 之前拦下 —— 否则它会被当成一个叫「错位门牌（约8章）」的字段，
+    // 悄悄混进 `fields`，既污染中弧规格，又让 `minors` 为空（区间折算随之全错）。
+    const bullet = BULLET_LINE.exec(line)
+    if (bullet && mid && !MINOR_LIST_HEADER.test(bullet[1]!.trim())) {
+      const item = MINOR_ITEM_ZH.exec(bullet[1]!.trim()) ?? MINOR_ITEM_EN.exec(bullet[1]!.trim())
+      const minor = item ? toMinor(item) : null
+      if (minor) {
+        mid.minors.push(minor)
+        continue
+      }
+    }
     const fieldMatch = FIELD_LINE.exec(line)
     if (!fieldMatch) continue
     const [, rawName, rawValue] = fieldMatch
@@ -243,6 +291,8 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
     if (SKIP_FIELDS.has(name)) {
       // 小弧行不进球内容字段，但它的每一条都是独立的可选声明单位（P12-3）。
       if (mid && MINOR_FIELD_NAMES.has(name) && value) mid.minors.push(...parseMinorArcs(value))
+      // 大弧的「结束状态」单独留档：体检要问「这卷的收尾有几条有中弧承接」（P13）。
+      else if (!mid && major && /^(结束状态|End state)$/iu.test(name) && value) major.endState = value
       continue
     }
     if (!value) continue
@@ -368,6 +418,9 @@ function isContinuationReasonLine(line: string): boolean {
 function pickGistLine(lines: readonly string[]): string | null {
   let first: string | null = null
   for (const rawLine of lines) {
+    // 小弧子项（`- 错位门牌（约8章）：起点 → …`）不是字段，别看错成「一句话定位」。
+    const bullet = BULLET_LINE.exec(rawLine.trim())
+    if (bullet && (MINOR_ITEM_ZH.test(bullet[1]!.trim()) || MINOR_ITEM_EN.test(bullet[1]!.trim()))) continue
     const match = FIELD_LINE.exec(rawLine.trim())
     if (!match) continue
     const name = toText(match[1]!)
@@ -599,7 +652,9 @@ ${coverableLabel}
 [HARD RULE — this failure has actually happened]
 1. Advance only what is still unplayed inside "${span.midName}".
 2. The goal / attempts / turning point of any mid arc AFTER this batch must NOT happen in this batch, and must NOT appear in any chapter's "Covers:" line — they belong to chapter ${span.afterBatchMidBoundary ?? span.midRange[1] + 1} and beyond.
-3. If this batch reaches the turning point of the current mid arc, close it out and ease into the next minor arc; do not jump to the next mid arc's goal.${crossing}`
+3. If this batch reaches the turning point of the current mid arc, close it out and ease into the next minor arc; do not jump to the next mid arc's goal.
+4. The "ending state" of major arc ${span.majorIndex} is the **acceptance criterion for chapter ${span.majorRange[1]}**, not material you may use now. Do not pay off any of its clauses in this batch (e.g. a character taking on their first ledger entry, someone quoting a price for the first time) — those are the business of later mid arcs.
+5. A minor arc spans several chapters. If this batch only covers its opening, write only its start state and first planned events — do **not** cash in its end state early. A minor arc's end state is reached in its last chapters, not its first.${crossing}`
     : `【本批所处弧位（据「弧光结构」推算，仅用于定位，不改变弧光本身）】
 - 本批范围：第 ${from}–${to} 章（全书 ${totalChapters} 章）${rescale}
 - 所在大弧：大弧${span.majorIndex}【${span.majorName}】（约第 ${span.majorRange[0]}–${span.majorRange[1]} 章）
@@ -610,5 +665,95 @@ ${coverableLabel}
 【硬约束·防提前】（实测已发生过，务必遵守）
 1. 本批只推进【${span.midName}】内**尚未发生**的内容；
 2. 本批之后的中弧，「目标 / 尝试 / 转折」**不得在本批提前实现，也不得出现在任何一章的「覆盖：」声明里** —— 它们属于第 ${span.afterBatchMidBoundary ?? span.midRange[1] + 1} 章及以后；
-3. 若本批已写到当前中弧的转折点，请在此收束并向下一小弧过渡，**不要**跳到下一个中弧的目标。${crossing}`
+3. 若本批已写到当前中弧的转折点，请在此收束并向下一小弧过渡，**不要**跳到下一个中弧的目标；
+4. 大弧${span.majorIndex}【${span.majorName}】的「结束状态」是本卷**第 ${span.majorRange[1]} 章才成立的验收标准**，不是本批可用的材料 —— 不得把其中任何一条在本批写掉（实测：第 4 章就把「鲁传福替他挡」写成事实，而那属于后续中弧的尝试 1）；
+5. 一个小弧跨好几章：本批若只落在某个小弧的**前段**，就只写它的「起点状态 + 前几条必发事件」，**不要**把它的「落点状态」提前兑现 —— 落点是它最后几章才到的地方，不是第一章。${crossing}`
+}
+
+/**
+ * 弧光分层**信息量体检**（P13）。
+ *
+ * ## 为什么需要它
+ *
+ * 「剧情提前兑现」不是模型随机跑偏，而是**分层信息量倒置**的必然结果。实测
+ * （2026-10-18 作者 150 章弧光，单位 = 去空白后的字数 / 每章）：
+ *
+ * | 层 | 覆盖 | 信息密度 |
+ * |---|---|---|
+ * | 大弧 | 50 章 | ~3.5 字/章 |
+ * | 中弧 | 25 章 | 5.0–9.0 字/章 |
+ * | 小弧 | 8–13 章 | **0.36–0.72 字/章** |
+ *
+ * 小弧层是唯一**信息量下降**的一层：三个小弧合起来只有 18 字，却要撑 25 章大纲。
+ * 大纲在本层拿不到材料，就只能向上越层取材 —— 于是第 4 章写掉了本属后续中弧的
+ * 「鲁传福替他挡电话」，而它当时唯一的线索是大弧「结束状态」里的
+ * 「鲁传福背上第一笔登记账」。
+ *
+ * **判据 AY**：层级不是空间，是信息。每下一层的对应切片必须**严格多于**上一层；
+ * 某一层若只是上一层的同义改写（甚至更短），它就没有展开能力，下层必然越层取材。
+ *
+ * 体检只报告不拦截（与弧光覆盖对账同策略）：作者可能有意让某层简写。
+ */
+export interface ArcDensityFinding {
+  code: 'MINORS_NAMELESS' | 'MINOR_LAYER_THINNER' | 'MAJOR_NO_MID_PROGRESSION' | 'MAJOR_END_STATE_UNASSIGNED'
+  /** 出问题的层级，如 `大弧1【门牌错位与三方围猎】` */
+  where: string
+  zh: string
+  en: string
+}
+
+const densityLength = (value: string): number => value.replace(/\s+/gu, '').length
+/** 小弧内容少于这个字数就当「只有名字」—— 一个能撑起 8 章的句子里程碑写不满 20 字。 */
+const MINOR_CONTENT_FLOOR = 20
+const MAJOR_PROGRESSION_FIELD = /中弧推进|mid[-\t ]*arc[-\t ]*progression/iu
+const NAMES_A_MID = /中弧[\t ]*[0-9０-９一二三四五六七八九十]|mid[\t ]*arc[\t ]*[0-9]/iu
+
+export function auditArcDensity(parsed: ParsedArcStructure | null): ArcDensityFinding[] {
+  if (!parsed) return []
+  const findings: ArcDensityFinding[] = []
+  parsed.majors.forEach((major, majorOffset) => {
+    const majorIndex = majorOffset + 1
+    const majorWhere = `大弧${majorIndex}【${major.name}】`
+    if (!major.fields.some(([name]) => MAJOR_PROGRESSION_FIELD.test(name))) {
+      findings.push({
+        code: 'MAJOR_NO_MID_PROGRESSION',
+        where: majorWhere,
+        zh: `${majorWhere} 没有「中弧推进」—— 只交代了为什么接在上一大弧之后，没有一个字交代内部几个中弧怎么驱动，这一层的类型是空标签。`,
+        en: `${majorWhere} has no mid-arc progression line — it says why it follows the previous major arc but nothing about how its own mid arcs drive each other, so its type is an empty label.`,
+      })
+    }
+    if (major.endState && !NAMES_A_MID.test(major.endState)) {
+      findings.push({
+        code: 'MAJOR_END_STATE_UNASSIGNED',
+        where: majorWhere,
+        zh: `${majorWhere} 的「结束状态」没有点名任何中弧来承接 —— 这一卷的收尾没有落点。`,
+        en: `${majorWhere}'s end state names no mid arc — nothing in this volume is assigned to pay it off.`,
+      })
+    }
+    major.mids.forEach((mid, midOffset) => {
+      const midWhere = `大弧${majorIndex}/中弧${midOffset + 1}【${mid.name}】`
+      const nameless = mid.minors.filter(item => densityLength(item.text ?? '') < MINOR_CONTENT_FLOOR)
+      if (nameless.length > 0) {
+        findings.push({
+          code: 'MINORS_NAMELESS',
+          where: midWhere,
+          zh: `${midWhere} 有 ${nameless.length}/${mid.minors.length} 个小弧只有名字、没有必然事件 —— 这些小弧覆盖的 ${nameless.reduce((sum, item) => sum + item.chapters, 0)} 章大纲拿不到本层材料，只能向上越层取材。`,
+          en: `${midWhere}: ${nameless.length}/${mid.minors.length} minor arcs carry a name only, with no required events — the ${nameless.reduce((sum, item) => sum + item.chapters, 0)} chapters they cover have no material at this layer and must borrow from a coarser one.`,
+        })
+      }
+      const minorWords = mid.minors.reduce((sum, item) => sum + densityLength(item.name) + densityLength(item.text ?? ''), 0)
+      const fieldWords = mid.fields.reduce((sum, [, value]) => sum + densityLength(value), 0)
+      // 已经有「只有名字」那条时不再报这一条 —— 它说的是同一个病的另一面，两条并列只会
+      // 让报告翻倍（实测 6 个中弧出 18 行），真信号被自己的回声淹没。
+      if (nameless.length === 0 && mid.minors.length > 0 && minorWords <= fieldWords) {
+        findings.push({
+          code: 'MINOR_LAYER_THINNER',
+          where: midWhere,
+          zh: `${midWhere} 的小弧内容合计 ${minorWords} 字，不多于该中弧自身的 ${fieldWords} 字 —— 信息量在这一层没有增加，等于没有真正细分。`,
+          en: `${midWhere}: minor-arc content totals ${minorWords} chars, no more than the mid arc's own ${fieldWords} — information does not grow at this layer, so it was never really subdivided.`,
+        })
+      }
+    })
+  })
+  return findings
 }

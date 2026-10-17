@@ -136,7 +136,7 @@ docs/
 | [`p8-fanqie-flavor-draft-quality-design.md`](design/prompt/p8-fanqie-flavor-draft-quality-design.md) | ✅ P1 生效 · ⏳ P2/P3 待复验 | 番茄向正文质量闸门：续写判定接回合格线 / 可判定 AI 味禁令 / 番茄 KPI 落点（§10 复验 #1） |
 | [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（17 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（19 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -157,6 +157,8 @@ docs/
 | [`p11-plan-validity-and-fact-registry-design.md`](design/architecture/p11-plan-validity-and-fact-registry-design.md) | 📝 待裁定 | 计划的有效期与事实登记：水位列 / `attacks` / 复核五步 / 章级「前提」 |
 | [`arc-delivery-audit-assessment.md`](design/architecture/arc-delivery-audit-assessment.md) | 📝 待裁定 | 弧光兑现度审计：情节弧被超额消耗、角色弧 3/7 起点、两弧不对齐 |
 | [`p12-arc-node-anchoring-design.md`](design/architecture/p12-arc-node-anchoring-design.md) | 📝 待裁定 | 弧光结构位 ID（`M1-2/转折`，纯函数派生）+ `covers` + 三个不变量 |
+| [`p13-arc-layer-expansion-design.md`](design/architecture/p13-arc-layer-expansion-design.md) | ✅ 已实施 | 弧光分层信息量必须递增：小弧从「标签」变「材料」+ 大弧「中弧推进」+ 生成时体检 |
+| [`arc-proportion-calibration.md`](design/architecture/arc-proportion-calibration.md) | 📝 立项 · 待议 | 弧光篇幅比例：30:45:25 / 40:60 / 小弧差 ≤2 倍（现为全层均分） |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
 
