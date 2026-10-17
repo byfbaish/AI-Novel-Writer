@@ -425,6 +425,14 @@ Between mid arcs (within one major arc): classify each mid arc, then write its p
   - ✗ Unacceptable: a name plus chapter count only ("X (approx. 8 chapters)") — zero information; the outline can only
     guess, and guessing means borrowing material from the next mid arc (this has actually happened).
   - ✗ Also unacceptable: chapter-by-chapter beats ("chapter 1 … chapter 2 …") — that belongs to the plot outline.
+  - ★ **Any two adjacent required events must differ in at least one respect**, and after the first one the protagonist
+    must be **unable to return** to the situation the previous one ended in:
+    ① setting (place / time jump); ② goal (what he wants has changed); ③ pressure source (who blocks him: person / world rule / institution / market);
+    ④ magnitude (same situation, but the cost exceeds what he expected).
+    Ask yourself: **after this step, can he still go back to where the previous step left him?** If yes, this step carries no weight.
+    If none of the four differs ⇒ the two are two halves of the same scene: **merge them into one** and spend the slot on something that moves.
+    (This is not a demand for "tone whiplash": one setting and one opponent throughout can work — as long as every link invalidates
+    his expectation once.)
 
 [Step 2.5 — verify that information **increases** layer by layer (structural requirement, mandatory)]
 Each step down must carry more, and more concrete, information — never less:
@@ -497,6 +505,7 @@ Each step down must carry more, and more concrete, information — never less:
 7. No chapters were added or removed merely to make a sum come out equal — a difference is allowed, padding is not
 8. Every major arc states its mid-arc progression, and every clause of its end state names the mid arc that pays it off
 9. **Information increases downward**: every minor arc carries "start -> 3–5 required events -> end", and any mid arc's total minor-arc content is clearly larger than that mid arc's own fields
+10. **Adjacent events differ**: within every minor arc, adjacent required events differ in at least one respect (setting / goal / pressure source / magnitude), and after each step the protagonist cannot return to the previous situation; any pair with none of these differing has been merged
 
 [Requirements]
 1. This is a **three-level progression skeleton**, not a chapter-by-chapter outline — do not write per-chapter content.
@@ -534,7 +543,7 @@ Each step down must carry more, and more concrete, information — never less:
  each stage must justify why it follows the previous one.)
 
 [Deliverable]
-Produce a complete outline made of structural turning points rather than chapter-level summaries. Adapt the pacing to the core appeal of {{genre}}.
+Produce a complete outline in which every chapter states a concrete cause and a concrete cost — not a scene-by-scene shot list (that belongs to chapter blueprints) and not a one-line summary (that belongs to the volume outline). Adapt the pacing to the core appeal of {{genre}}.
 
 [Requirements]
 1. Derive every chapter range from exactly {{number_of_chapters}} chapters.
@@ -575,6 +584,26 @@ Every chapter has three parts in this exact order: (1) chapter heading, (2) the 
 - Never write a chapter wholly unrelated to the previous chapter's Closes line. The commonest broken link is a chapter that opens on a fresh scene while the chapter before it left a concrete offer, threat, or discovery dangling.
 - Then close this chapter with its own "Closes:" line per (3).
 
+(5) Every chapter's prose must realize a **chapter-level situation**, not a summary. Work these out before writing (render them as connected prose, never as a field list):
+- What must he **obtain** in this chapter: something that could plausibly fail that same day. Never write "he needs to find out / understand / realize" — those cannot fail.
+- Who or what **blocks** him: a specific person, rule, deadline, debt, or bodily limit — and never the same kind of blocker as the previous chapter.
+- What he **tries**: a concrete action or line of speech. "He thought about it again", "he now had a plan", "he decided to look around first" are not attempts.
+- What he **pays** when it fails: what he loses, owes, or exposes; whose situation gets worse.
+- What is still unresolved at the end — this is the "Closes:" line from (3); the two must name the same thing.
+  If you cannot answer the first question for a chapter, that chapter has not been given a task — it is not "a chapter with little content".
+
+(6) The chapter range the arc structure assigns to a minor arc is a **given, not an estimate**. A minor arc spanning 8 chapters needs 8 chapters of content; never compress it into 1–2 chapters and fold the free chapters into the next minor arc. When material feels thin, do not cut chapters — expand downward, and the thing you expand is **the next failure of the same goal**, not the next minor arc's events.
+★ Nor may **elapsed story time** justify compression: a single day can carry ten chapters (one per setback, one per boundary crossed), and a century can pass in one chapter. What sets length is **the number of setbacks and the number of boundaries**, not how many days went by.
+★ Sections (5)(6)(7) override any earlier instruction to "write only structural turning points / only the spine / no detailed outline": that instruction is about cross-chapter compression, it does not license writing a whole chapter as one sentence.
+
+(7) A chapter may draw material only from these four places, and all of it must sit **inside the minor arc this chapter belongs to**:
+- **Process** — how the same thing actually gets done: where it jams, how many attempts it takes, who interferes.
+- **Consequence** — whom the previous event **changed**: who got dragged in, when the cost lands, what starts going wrong.
+- **Reaction** — how **others misread it**: what bystanders, rivals, and side characters each conclude, and what they do because of it.
+- **Repetition** — the **same thing he wants**, approached another way, failing again.
+Never draw on: the next minor arc's required events; the next mid arc's Goal / Attempt / Turning point; the major arc's Ending state.
+
+[Author guidance for this step — highest priority when present]
 [Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
   },

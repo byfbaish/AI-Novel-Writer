@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   arcSpanForChapters,
   arcStructureNeedsRescale,
+  minorStepCeiling,
   parseArcStructure,
   projectArcStructureText,
   renderArcPositionBlock,
+  splitMinorSteps,
   withArcPositionGuide,
   withProjectedArcGuide,
 } from '../arc-position'
@@ -415,7 +417,7 @@ describe('withProjectedArcGuide · 投影 + 弧位块', () => {
 
 describe('小弧内容（P13）：从「只有名字」升级为「名字 + 起点→事件→落点」', () => {
   const PLAN_WITH_CONTENT = [
-    '## 大弧一：门牌错位（约 50 章）',
+    '## 大弧一：门牌错位（约 25 章）',
     '- 类型：A 因果驱动型',
     '- 接续理由：开篇起点',
     '### 中弧 1：门牌错位与第一页报告（约 25 章）',
@@ -463,5 +465,78 @@ describe('小弧内容（P13）：从「只有名字」升级为「名字 + 起�
     const text = projectArcStructureText(PLAN_WITH_CONTENT, span)
     expect(text).toContain('17 号换成 71 号')
     expect(text).toContain('三家人抢一张排班表（约 9 章）')
+  })
+})
+
+/**
+ * P14：小弧「事件步数」与逐章进度上限。
+ *
+ * 实测背景（2026-10-18，作者 150 章弧光）：一条 8 章小弧给了 6 段事件，大纲**第 1 章
+ * 就全部写完**，第 2–8 章越弧取材；而旧的硬约束 5 是「本批若只落在小弧前段才收着写」——
+ * 批 1–10 覆盖整条 1–8 章弧时该条件不成立，守卫在最需要它的那一批里静默关掉（判据 BJ）。
+ */
+describe('小弧事件步与逐章进度上限（P14）', () => {
+  const PLAN_WITH_STEPS = [
+    '## 大弧一：门牌错位（约 25 章）',
+    '- 类型：A 因果驱动型',
+    '- 接续理由：开篇起点',
+    '### 中弧 1：门牌错位与第一页报告（约 25 章）',
+    '- 类型：A 因果驱动型',
+    '- 因果：因为"我马上到"成真，所以门牌集体错位。',
+    '- 时序：本中弧起点 = 程实刚醒。',
+    '- 转折：三家同时抢物证。',
+    '- 小弧：',
+    '  - 错位门牌（约 8 章）：被周德胜敲门催租 → 他说"我马上到" → 三户门牌与记忆错位 → 老陈记常客争论谁住几号 → 记事本"今天不说谎"不算数 → 巷里出现第一处对不上的门牌',
+    '  - 第一页报告（约 8 章）：观察科递来登记回执 → 沈砚上门问话 → 回执被拍照 → 被写进第一页报告',
+    '  - 三家人抢一张排班表（约 9 章）：庄家找上门 → 直播围堵 → 物证被三家认领',
+  ].join('\n')
+
+  it('splitMinorSteps 按 → 切成有序步，起点与落点各占一步', () => {
+    expect(splitMinorSteps('起点甲 → 事件乙 → 落点丙')).toEqual(['起点甲', '事件乙', '落点丙'])
+    // 旧弧光没有内容、或没写 →：返回空数组，调用方退化为旧行为（fail-open）
+    expect(splitMinorSteps(undefined)).toEqual([])
+    expect(splitMinorSteps('只有一句没有箭头的描述')).toEqual([])
+    // ASCII 箭头也认
+    expect(splitMinorSteps('A -> B -> C')).toEqual(['A', 'B', 'C'])
+  })
+
+  it('minorStepCeiling 单调不降、首章至少 1 步、末章必须到落点', () => {
+    const ceilings = Array.from({ length: 8 }, (_, i) => minorStepCeiling(i + 1, 6, 8))
+    expect(ceilings).toEqual([1, 2, 3, 3, 4, 5, 6, 6])
+    expect(minorStepCeiling(0, 6, 8)).toBe(1) // 越界入参按首章处理
+    expect(minorStepCeiling(99, 6, 8)).toBe(6) // 越界入参按末章处理
+    expect(minorStepCeiling(3, 0, 8)).toBe(0)
+  })
+
+  it('弧位块给每个小弧印出逐章上限与落点最早出现的章号', () => {
+    const parsed = parseArcStructure(PLAN_WITH_STEPS)!
+    const block = renderArcPositionBlock(parsed, 25, 1, 10, 'zh-CN')
+    expect(block).toContain('本弧共 6 步')
+    expect(block).toContain('第1章→第1步；第2章→第2步；第3章→第3步；第4章→第3步；第5章→第4步；第6章→第5步；第7章→第6步；第8章→第6步')
+    expect(block).toContain('落点最早出现在第 7 章')
+    // 判据 BJ 的修法：约束改成按章表述，不再依赖"本批只落在前段"这个在批≥弧长时失效的条件
+    expect(block).toContain('给定条件，不是估计值')
+    expect(block).toContain('那就是硬数字')
+  })
+
+  it('只印出本批范围内的章（批只覆盖弧中段时不许列出全弧）', () => {
+    const parsed = parseArcStructure(PLAN_WITH_STEPS)!
+    const block = renderArcPositionBlock(parsed, 25, 3, 5, 'zh-CN')
+    expect(block).toContain('第3章→第3步；第4章→第3步；第5章→第4步')
+    expect(block).not.toContain('第1章→第1步')
+  })
+
+  it('英文侧同步输出逐章上限', () => {
+    const parsed = parseArcStructure(PLAN_WITH_STEPS)!
+    const block = renderArcPositionBlock(parsed, 25, 1, 10, 'en-US')
+    expect(block).toContain('This arc has 6 steps')
+    expect(block).toContain('ch.1→step 1; ch.2→step 2')
+    expect(block).toContain('landing state may first appear at ch.7')
+  })
+
+  it('旧弧光（小弧只有名字、没有 →）不出现逐章上限，行为与从前一致', () => {
+    const parsed = parseArcStructure(PLAN)!
+    const block = renderArcPositionBlock(parsed, 195, 1, 10, 'zh-CN')
+    expect(block).not.toContain('本弧共')
   })
 })

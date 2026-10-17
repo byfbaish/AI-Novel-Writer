@@ -52,13 +52,41 @@ export interface ArcMinor {
 export function minorRanges(
   minors: readonly ArcMinor[],
   midRange: readonly [number, number],
-): Array<{ name: string; range: readonly [number, number] }> {
+): Array<{ name: string; range: readonly [number, number]; text?: string }> {
   if (minors.length === 0) return []
   const bounds = scaledBoundaries(minors.map(item => item.chapters), midRange[1] - midRange[0] + 1)
   return minors.map((minor, offset) => ({
     name: minor.name,
     range: [midRange[0] + bounds[offset]!, midRange[0] + bounds[offset + 1]! - 1] as const,
+    ...(minor.text ? { text: minor.text } : {}),
   }))
+}
+
+/**
+ * 把小弧内容按 `→` 切成有序的**事件步**（含首项起点与末项落点）。
+ *
+ * 为什么编号而不是直接交给模型读：`→` 序列是**有序**的，但没有任何东西规定
+ * "第几章该走到第几步"。实测（2026-10-18，作者 150 章弧光）第 1 章就把一条
+ * 8 章小弧的 6 段全部写完，随后 7 章无料可写、越弧取材。
+ * 有了步数，就能算出「弧内第 k 章的进度上限」，把"不得提前兑现落点"变成
+ * **逐章可核对的数字**，而不是一句"不要提前"（判据 BJ：按批表述的约束在批覆盖整弧时失效）。
+ *
+ * 无 `→`、或切出的步数 < 2 时返回空数组 —— 调用方退化为旧行为，不报错（fail-open）。
+ */
+export function splitMinorSteps(text?: string): string[] {
+  if (!text) return []
+  const steps = text
+    .split(/→|->/u)
+    .map(item => item.trim().replace(/^[、,，;；。\s]+|[、,，;；。\s]+$/gu, ''))
+    .filter(item => item.length > 0)
+  return steps.length >= 2 ? steps : []
+}
+
+/** 弧内第 `k` 章（1-based）允许推进到的**步数**（1-based，累计语义）。 */
+export function minorStepCeiling(arcChapter: number, totalSteps: number, totalChapters: number): number {
+  if (totalSteps <= 0 || totalChapters <= 0) return 0
+  const k = Math.min(Math.max(arcChapter, 1), totalChapters)
+  return Math.min(totalSteps, Math.max(1, Math.ceil((k * totalSteps) / totalChapters)))
 }
 
 export interface ArcMid {
@@ -611,6 +639,26 @@ export function renderArcPositionBlock(
         lines.push(en
           ? `    - M${span.majorIndex}-${midIndex}/小弧:${item.name} — ch. ${item.range[0]}–${item.range[1]}`
           : `    - M${span.majorIndex}-${midIndex}/小弧:${item.name} — 第 ${item.range[0]}–${item.range[1]} 章`)
+        // 逐章进度上限（P14）：把"不得提前兑现落点"从一句提醒变成每章一个数字。
+        // 步序 = 该小弧 `→` 序列从左到右编号（第 1 步 = 起点，最后一步 = 落点）。
+        const steps = splitMinorSteps(item.text)
+        const arcLen = item.range[1] - item.range[0] + 1
+        if (steps.length >= 2 && arcLen >= 2) {
+          const caps: string[] = []
+          for (let chapter = Math.max(from, item.range[0]); chapter <= Math.min(to, item.range[1]); chapter += 1) {
+            const arcChapter = chapter - item.range[0] + 1
+            const ceiling = minorStepCeiling(arcChapter, steps.length, arcLen)
+            caps.push(en
+              ? `ch.${chapter}→step ${ceiling}`
+              : `第${chapter}章→第${ceiling}步`)
+          }
+          if (caps.length) {
+            const landingFrom = item.range[0] + Math.floor(((steps.length - 1) * arcLen) / steps.length)
+            lines.push(en
+              ? `      ↳ This arc has ${steps.length} steps (step 1 = start state, step ${steps.length} = landing state; step order = the left-to-right "→" sequence above). Per-chapter ceiling: ${caps.join('; ')}. The landing state may first appear at ch.${landingFrom}.`
+              : `      ↳ 本弧共 ${steps.length} 步（第 1 步=起点，第 ${steps.length} 步=落点；步序即上方该小弧「→」序列从左到右的次序）。逐章上限：${caps.join('；')}。落点最早出现在第 ${landingFrom} 章。`)
+          }
+        }
       }
     }
     if (turn) {
@@ -654,7 +702,9 @@ ${coverableLabel}
 2. The goal / attempts / turning point of any mid arc AFTER this batch must NOT happen in this batch, and must NOT appear in any chapter's "Covers:" line — they belong to chapter ${span.afterBatchMidBoundary ?? span.midRange[1] + 1} and beyond.
 3. If this batch reaches the turning point of the current mid arc, close it out and ease into the next minor arc; do not jump to the next mid arc's goal.
 4. The "ending state" of major arc ${span.majorIndex} is the **acceptance criterion for chapter ${span.majorRange[1]}**, not material you may use now. Do not pay off any of its clauses in this batch (e.g. a character taking on their first ledger entry, someone quoting a price for the first time) — those are the business of later mid arcs.
-5. A minor arc spans several chapters. If this batch only covers its opening, write only its start state and first planned events — do **not** cash in its end state early. A minor arc's end state is reached in its last chapters, not its first.${crossing}`
+5. A minor arc's chapter span is a **given, not an estimate**: 8 chapters means 8 chapters of content — never compress it into 1–2 chapters and fold the free ones into the next minor arc.
+   Its end state belongs to its **last** chapters. When a per-chapter ceiling is printed above, that ceiling is a hard number: a chapter must not walk past the step listed for it; when there is no new event to advance, repeating the same step is allowed (that chapter's job is to unfold the consequences of the previous one).
+   This holds **even when the batch covers the whole arc** — covering the whole arc is not permission to write it in one go, it is an obligation to spread it chapter by chapter.${crossing}`
     : `【本批所处弧位（据「弧光结构」推算，仅用于定位，不改变弧光本身）】
 - 本批范围：第 ${from}–${to} 章（全书 ${totalChapters} 章）${rescale}
 - 所在大弧：大弧${span.majorIndex}【${span.majorName}】（约第 ${span.majorRange[0]}–${span.majorRange[1]} 章）
@@ -667,7 +717,9 @@ ${coverableLabel}
 2. 本批之后的中弧，「目标 / 尝试 / 转折」**不得在本批提前实现，也不得出现在任何一章的「覆盖：」声明里** —— 它们属于第 ${span.afterBatchMidBoundary ?? span.midRange[1] + 1} 章及以后；
 3. 若本批已写到当前中弧的转折点，请在此收束并向下一小弧过渡，**不要**跳到下一个中弧的目标；
 4. 大弧${span.majorIndex}【${span.majorName}】的「结束状态」是本卷**第 ${span.majorRange[1]} 章才成立的验收标准**，不是本批可用的材料 —— 不得把其中任何一条在本批写掉（实测：第 4 章就把「鲁传福替他挡」写成事实，而那属于后续中弧的尝试 1）；
-5. 一个小弧跨好几章：本批若只落在某个小弧的**前段**，就只写它的「起点状态 + 前几条必发事件」，**不要**把它的「落点状态」提前兑现 —— 落点是它最后几章才到的地方，不是第一章。${crossing}`
+5. 一个小弧的章数区间是**给定条件，不是估计值**：跨 8 章就得写出 8 章的内容，**不得**压缩进 1–2 章、再把空出来的章并进下一个小弧。
+   它的「落点状态」是**最后几章**才到的地方 —— 上面若印了「逐章上限」，那就是硬数字：某一章不得越过它对应的步数；没有新事件可推进时，写同一水位是允许的（这一章的任务是展开上一步的后果）。
+   这一条在本批覆盖整条弧时**同样成立** —— 覆盖整弧不是"可以一次写完"的许可，而是"必须逐章分摊"。${crossing}`
 }
 
 /**
