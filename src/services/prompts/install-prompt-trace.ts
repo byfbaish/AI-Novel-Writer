@@ -4,6 +4,7 @@ import { noteTraceCapture, recordTraceIo, scheduleTraceFlush, flushTraceNow, rel
 import { setHarnessIoObserver } from '../generation/generation-harness'
 import { setMainTaskIoObserver } from '../generation/generation-runtime'
 import { useDebugStore } from '../../stores/debug-store'
+import { markMemory } from '../debug/memory-probe'
 import { promptCatalog } from '../prompt-templates'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 
@@ -31,7 +32,10 @@ export function installPromptTraceFromDebugStore(): void {
     },
   })
   // 每捕获一块就安排一次落盘，并累加计数供面板回显「这一轮到底抓到没有」。
+  // 顺带做一次内存打点：提示词装配是渲染层最大的单次字符串构造点（精修 prompt 可达 200KB），
+  // 峰值排查必须能看到"装配完的瞬间堆有多大"。打点关闭时 markMemory 首行短路，零开销。
   setSnapshotSink(() => {
+    markMemory('prompt.build')
     noteTraceCapture()
     scheduleTraceFlush()
   })

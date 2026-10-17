@@ -558,7 +558,7 @@ export function createRepairFinalizeWorkflow(
 
           // 修复运行也冻结一次模型租约，全部 LLM 后处理共享一个预算。
           const { RunFinalizePostProcessCommand } = await import('./commands/finalize-chapter.command')
-          await new RunFinalizePostProcessCommand({
+          const repairStatus = await new RunFinalizePostProcessCommand({
             project,
             chapterNumber,
             chapterTitle,
@@ -581,6 +581,28 @@ export function createRepairFinalizeWorkflow(
             projectPath,
             projectSession,
           })
+
+          // 非关键步骤失败时 runPostProcessPipeline 不会抛错（stopOnFailure=false），
+          // 于是工作流会"成功"结束、UI 提示"修复完成"，而状态卡仍显示失败 —— 用户看到的是自相矛盾的
+          // 两个结论（实测 2026-10-17：角色状态更新第四次失败，toast 仍报已完成）。
+          // 修复工作流的唯一职责就是把这些步骤补上，所以残留失败必须显式失败，不能静默成功。
+          const residualFailures = repairStatus?.steps
+            ? Object.values(repairStatus.steps).filter(step => !step.ok)
+            : []
+          if (residualFailures.length > 0) {
+            const detail = residualFailures
+              .map(step => `${step.label} — ${step.error?.trim() || text('未知错误', 'unknown error')}`)
+              .join('；')
+            // 顺序冲突类错误（后续章节已提交更新的角色状态）是**终局**的：
+            // 反复点"重试失败步骤"不可能成功，必须直接告诉用户原因。
+            const terminal = residualFailures.some(step => /SOURCE_CONFLICT|FIELD_CONFLICT|SOURCE_CHANGED/u.test(step.error ?? ''))
+            throw new Error(text(
+              `修复未完成：${detail}。`
+                + (terminal ? '该步骤已被后续章节提交的角色状态超越，重复重试不会成功；可忽略该步骤，或先回退后续章节再修。' : '可稍后再次重试。'),
+              `Repair incomplete: ${detail}.`
+                + (terminal ? ' A later chapter has already committed newer character state, so retrying cannot succeed; ignore this step or roll back the later chapter first.' : ' You can retry later.'),
+            ))
+          }
         },
       },
     ],

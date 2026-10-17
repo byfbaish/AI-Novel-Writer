@@ -54,6 +54,21 @@ function getStepPresentation(step: PostProcessStatus['steps'][string]): StepPres
   return hasFailureEvidence ? 'failed' : 'pending'
 }
 
+/**
+ * 终局性错误：这些码表示「本步骤引用的来源已被更新的来源超越」，
+ * 例如后续章节已经提交过更新的角色状态（见 src/shared/character-identity.ts 的
+ * decideDerivedPatch 与 electron/repositories/summary-repository.ts 的抛出点）。
+ *
+ * 它们不是偶发失败，重复点「重试」结果完全相同 —— 实测 2026-10-17：角色状态更新
+ * 连试 3 次全部返回 FINALIZED_CHARACTER_SOURCE_CONFLICT。所以这里必须显式标成
+ * 不可重试，否则用户会一直重试一个不可能成功的步骤。
+ */
+const TERMINAL_STEP_ERROR = /SOURCE_CONFLICT|FIELD_CONFLICT|SOURCE_CHANGED/u
+
+function isTerminalFailure(step: PostProcessStatus['steps'][string]): boolean {
+  return !step.ok && TERMINAL_STEP_ERROR.test(step.error ?? '')
+}
+
 export function PostProcessStatusPanel({
   scope,
   onRetry,
@@ -134,6 +149,8 @@ export function PostProcessStatusPanel({
   const totalCount = steps.length
   const hasFailure = failedSteps.length > 0
   const hasCriticalFailure = failedSteps.some(({ step }) => step.critical)
+  const retryableFailures = failedSteps.filter(({ step }) => !isTerminalFailure(step))
+  const allFailuresTerminal = failedSteps.length > 0 && retryableFailures.length === 0
 
   if (!hasFailure && pendingSteps.length > 0) {
     return (
@@ -246,7 +263,17 @@ export function PostProcessStatusPanel({
                     <span className="text-[10px] text-[var(--color-error-text,#8F3020)] max-w-[120px] truncate" title={step.error}>
                       {step.error || text('失败', 'Failed')}
                     </span>
-                    {onRetry && (
+                    {isTerminalFailure(step) ? (
+                      <span
+                        className="shrink-0 px-1 py-0.5 rounded text-[9px] bg-[var(--color-hover)] text-[var(--color-text-muted)]"
+                        title={text(
+                          '该步骤已被后续章节提交的更新数据超越，重试不会成功；可忽略该步骤，或先回退后续章节再修。',
+                          'A later chapter has already committed newer data for this step, so retrying cannot succeed. Ignore the step or roll back the later chapter first.',
+                        )}
+                      >
+                        {text('不可重试', 'Not retryable')}
+                      </span>
+                    ) : onRetry ? (
                       <button
                         onClick={(e) => { e.stopPropagation(); onRetry(key) }}
                         className="p-0.5 rounded hover:bg-[var(--color-hover)] transition-colors cursor-pointer"
@@ -254,7 +281,7 @@ export function PostProcessStatusPanel({
                       >
                         <RefreshCw size={11} className="text-[var(--color-accent)]" />
                       </button>
-                    )}
+                    ) : null}
                   </>
                 ) : (
                   <span className="text-[10px] text-[var(--color-text-muted)]">
@@ -277,15 +304,29 @@ export function PostProcessStatusPanel({
               </span>
             </div>
             {onRetry && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => onRetry()}
-                className="gap-1"
-              >
-                <RefreshCw size={10} />
-                {text('重试失败步骤', 'Retry failed steps')}
-              </Button>
+              <div className="flex items-center gap-2">
+                {allFailuresTerminal && (
+                  <span className="text-[10px] text-[var(--color-text-muted)]">
+                    {text(
+                      '失败步骤已无法通过重试修复',
+                      'Failed steps cannot be fixed by retrying',
+                    )}
+                  </span>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onRetry()}
+                  className="gap-1"
+                  disabled={allFailuresTerminal}
+                  title={allFailuresTerminal
+                    ? text('失败步骤已被后续章节的更新超越，重试不会成功', 'Failed steps were superseded by later chapters, so retrying cannot succeed')
+                    : undefined}
+                >
+                  <RefreshCw size={10} />
+                  {text('重试失败步骤', 'Retry failed steps')}
+                </Button>
+              </div>
             )}
           </div>
         </div>

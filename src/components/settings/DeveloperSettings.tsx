@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Bug, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Bug, FolderOpen, RefreshCw, CheckCircle2, AlertTriangle, Gauge } from 'lucide-react'
 import { useDebugStore } from '../../stores/debug-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { Switch } from '../ui/Switch'
@@ -10,6 +10,17 @@ import { promptTraceRelativeDir, resetTraceCaptureCount } from '../../services/p
 import PromptTraceStatus from './PromptTraceStatus'
 import { useProjectStore } from '../../stores/project-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
+import {
+  isMemoryProbeSupported,
+  memoryProbeReport,
+  resetMemoryProbe,
+  subscribeMemoryProbe,
+  type MemoryProbeReport,
+} from '../../services/debug/memory-probe'
+
+function megabytes(bytes: number): string {
+  return (bytes / 1024 / 1024).toFixed(1)
+}
 
 /**
  * 开发者设置面板。
@@ -27,11 +38,35 @@ export default function DeveloperSettings() {
   const setPromptTraceEnabled = useDebugStore((s) => s.setPromptTraceEnabled)
   const [reloading, setReloading] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const memoryProbeEnabled = useDebugStore((s) => s.memoryProbeEnabled)
+  const setMemoryProbeEnabled = useDebugStore((s) => s.setMemoryProbeEnabled)
+  const [memoryReport, setMemoryReport] = useState<MemoryProbeReport | null>(null)
+
+  // 打点面板只在自己开着时刷新；250ms 足够看清峰值爬升，又不至于自己变成负担。
+  useEffect(() => {
+    if (!memoryProbeEnabled) {
+      setMemoryReport(null)
+      return
+    }
+    setMemoryReport(memoryProbeReport())
+    const timer = window.setInterval(() => setMemoryReport(memoryProbeReport()), 250)
+    const unsubscribe = subscribeMemoryProbe(() => setMemoryReport(memoryProbeReport()))
+    return () => {
+      window.clearInterval(timer)
+      unsubscribe()
+    }
+  }, [memoryProbeEnabled])
 
   /** 每次开启都从零计数，这样面板上的「累计捕获」就等于「这一轮抓到多少」。 */
   const handleToggleTrace = (enabled: boolean) => {
     if (enabled) resetTraceCaptureCount()
     setPromptTraceEnabled(enabled)
+  }
+
+  /** 内存打点开关：开启即清零，让"这一轮峰值"从零开始。 */
+  const handleToggleMemoryProbe = (enabled: boolean) => {
+    if (enabled) resetMemoryProbe()
+    setMemoryProbeEnabled(enabled)
   }
 
   const handleReload = async () => {
@@ -108,6 +143,71 @@ export default function DeveloperSettings() {
 
       {/* 实时状态回显：区分「没跑过」「跑过但没抓到」「抓到了但写失败」 */}
       <PromptTraceStatus />
+
+      {/* 内存打点开关：定位精修这类重活的渲染层内存峰值 */}
+      <div
+        className="rounded-xl p-4 space-y-2"
+        style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-panel)' }}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: 'var(--color-text)' }}>
+              <Gauge size={13} style={{ color: 'var(--color-accent)' }} />
+              {text('内存打点（渲染层峰值诊断）', 'Memory probe (renderer peak diagnosis)')}
+            </p>
+            <p className="text-[0.68rem] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+              {text(
+                '打开后在「提示词装配 / 追踪落盘 / 模型调用面板轮询」三处记录堆用量与峰值。跑一轮精修即可看出内存是随调用次数线性涨，还是某一次调用暴涨。关闭时零开销。',
+                'When on, records heap usage and peaks at prompt assembly, trace flushing, and the model-call panel polling. After one refine run you can tell whether memory grows per call or spikes in a single call. Zero overhead when off.',
+              )}
+            </p>
+          </div>
+          <Switch
+            checked={memoryProbeEnabled}
+            onCheckedChange={handleToggleMemoryProbe}
+            aria-label={text('内存打点', 'Memory probe')}
+          />
+        </div>
+        {memoryProbeEnabled && (
+          <div className="space-y-1.5 pt-1">
+            {!isMemoryProbeSupported() && (
+              <p className="text-[0.68rem]" style={{ color: 'var(--color-text-muted)' }}>
+                {text('当前运行时没有堆读数（仅 Chromium 系支持）。', 'This runtime exposes no heap readings (Chromium only).')}
+              </p>
+            )}
+            {memoryReport && memoryReport.supported && (
+              <>
+                <p className="text-[0.68rem] font-mono" style={{ color: 'var(--color-text)' }}>
+                  {text('当前', 'Now')} {megabytes(memoryReport.current)}MB
+                  {' · '}
+                  {text('峰值', 'Peak')} {megabytes(memoryReport.peak)}MB
+                  {memoryReport.peakLabel ? ` (${memoryReport.peakLabel}${memoryReport.peakDetail ? `/${memoryReport.peakDetail}` : ''})` : ''}
+                  {memoryReport.baseline !== null ? ` · ${text('基线', 'Base')} ${megabytes(memoryReport.baseline)}MB` : ''}
+                  {` · ${memoryReport.samples} ${text('次采样', 'samples')}`}
+                </p>
+                {memoryReport.topLabels.length > 0 && (
+                  <div className="text-[0.66rem] font-mono space-y-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                    {memoryReport.topLabels.slice(0, 4).map((entry) => (
+                      <div key={entry.label} className="flex items-center justify-between gap-3">
+                        <span className="truncate">{entry.label}</span>
+                        <span className="shrink-0">
+                          {`max +${megabytes(entry.maxDelta)}MB · ${entry.count} 次`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[0.66rem]" style={{ color: 'var(--color-text-muted)' }}>
+                  {text(
+                    '也可以在控制台用 __memoryProbe.report() 查看明细。',
+                    'You can also run __memoryProbe.report() in the console for details.',
+                  )}
+                </p>
+              </>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* 提示词热重载 */}
       <div

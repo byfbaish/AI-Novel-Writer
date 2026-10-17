@@ -24,11 +24,17 @@ export interface DebugSettings {
    * 以免破坏已持久化的 localStorage 结构；启用外部目录时再接线。
    */
   traceRoot: string | null
+  /**
+   * 内存打点开关：打开后在提示词装配 / 追踪落盘 / 面板轮询等关键位置记录堆用量，
+   * 用于定位精修这类重活的峰值来源（见 src/services/debug/memory-probe.ts）。
+   */
+  memoryProbeEnabled: boolean
 }
 
 interface DebugState extends DebugSettings {
   setPromptTraceEnabled: (enabled: boolean) => void
   setTraceRoot: (root: string | null) => void
+  setMemoryProbeEnabled: (enabled: boolean) => void
 }
 
 /** 测试可注入的内存存储替身。 */
@@ -46,7 +52,7 @@ function defaultStorage(): DebugStorage | null {
 }
 
 function readSettings(storage: DebugStorage | null): DebugSettings {
-  const fallback: DebugSettings = { promptTraceEnabled: false, traceRoot: null }
+  const fallback: DebugSettings = { promptTraceEnabled: false, traceRoot: null, memoryProbeEnabled: false }
   if (!storage) return fallback
   try {
     const raw = storage.getItem(STORAGE_KEY)
@@ -57,6 +63,7 @@ function readSettings(storage: DebugStorage | null): DebugSettings {
       traceRoot: typeof parsed.traceRoot === 'string' && parsed.traceRoot.trim()
         ? parsed.traceRoot
         : null,
+      memoryProbeEnabled: parsed.memoryProbeEnabled === true,
     }
   } catch {
     return fallback
@@ -85,6 +92,7 @@ export function createDebugStore(storage: DebugStorage | null = defaultStorage()
       writeSettings(storage, {
         promptTraceEnabled: enabled,
         traceRoot: get().traceRoot,
+        memoryProbeEnabled: get().memoryProbeEnabled,
       })
     },
     setTraceRoot: (root) => {
@@ -93,6 +101,15 @@ export function createDebugStore(storage: DebugStorage | null = defaultStorage()
       writeSettings(storage, {
         promptTraceEnabled: get().promptTraceEnabled,
         traceRoot: normalized,
+        memoryProbeEnabled: get().memoryProbeEnabled,
+      })
+    },
+    setMemoryProbeEnabled: (enabled) => {
+      set({ memoryProbeEnabled: enabled })
+      writeSettings(storage, {
+        promptTraceEnabled: get().promptTraceEnabled,
+        traceRoot: get().traceRoot,
+        memoryProbeEnabled: enabled,
       })
     },
   }))

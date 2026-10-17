@@ -19,6 +19,7 @@ import { Button } from '../ui/Button'
 import { toast } from '../ui/Toast'
 import { LLMDataRequestGate } from './llm-data-request-gate'
 import { diagnosticWorkflowForCall, llmCallTime, type LLMCallRecord } from '../../services/stats-service'
+import { markMemory } from '../../services/debug/memory-probe'
 import {
   coarseRuntimePlatform,
   formatSafeCallDiagnostic,
@@ -747,6 +748,9 @@ function ModelsView() {
           )
           if (!requestGate.isCurrent(ticket, currentSession)) return
           setData({ projectSession: ticket.projectSession, stats: loadedStats, history: loadedHistory })
+          // 内存打点：这里每 2 秒把 30 条调用记录（含完整提示词/输出文本）整批换新，
+          // 是渲染层最持续的"大对象churn"来源。峰值排查必须能区分它和提示词装配。
+          markMemory('panel.llm-history', `records=${loadedHistory.length}`)
         })
         .catch(() => {
           // IPC 失败时保持清空状态；旧请求也不能反向写入 UI。
