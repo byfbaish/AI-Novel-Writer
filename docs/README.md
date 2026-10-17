@@ -1,10 +1,197 @@
-# 项目文档导航与治理约定
+# 项目文档 · 唯一入口
 
-本目录保存可随代码审查、发布和长期维护的项目文档。不同 Worktree 是独立快照，提交态文档绑定其实际 SHA；用户授权的工作区规格增量可供本次审查，但须记录来源、内容 hash 和未提交状态。不能把其他 Worktree 的材料或尚未提交的修订说成当前提交/远端已包含的事实。
+> **找文档只看这一页。** 本页给出「想干什么 → 打开哪个文件」的完整索引、每个目录的职责边界，以及**新文档该放哪里**的硬规则。
+> 更新：2026-10-17 · 分支 `dev_byf`
+> 上一版入口是 [`plans/00-OVERVIEW.md`](plans/00-OVERVIEW.md)（2026-10-11 历史看板，已冻结，只作存档）。
 
-[`handoffs/2026-09-05-astra-code-review.md`](handoffs/2026-09-05-astra-code-review.md) 是固定到提交 `7ea4d96` 的历史审查快照，记录当时的比较基线、实现提交、两批开发历史、Bug 台账、真实验收和审查顺序；后续审查必须以当前分支代码和测试为准，不能把该快照或其他 README、ADR、旧 handoff 单独当作当前行为证据。
+---
 
-## 文档权威层级
+## 0. 一句话地图
+
+```
+docs/
+├── design/      ★ 现行设计 + 实施记录（唯一活跃设计区）
+│   ├── prompt/         Prompt 流水线（组装 / 作用域 / 去重 / 缓存 / 追踪）
+│   ├── architecture/   架构五层 / 故事弧 / 阶段结构 / 一致性校验 / 蓝图结构
+│   ├── review/         审稿链
+│   ├── characters/     角色卡、roster 同步
+│   └── features/       设置包、作者操作手册等
+├── plans/       🔒 台账 + 冻结合同（只读：唯一 TODO 台账 + Program v3 冻结包）
+├── research/    🔒 研究、外部材料消化、实施证据（含被脚本引用的冻结证据）
+├── adr/         ✅ 架构决策记录（编号连续，只增不改）
+├── agents/      ✅ 交付与协作规则
+├── handoffs/    ✅ 跨会话交接快照（日期化）
+└── experiments/ ✅ 实验记录
+```
+
+**两句话记住边界**：
+
+1. **要改代码的方案 → `docs/design/`。** 不再往 `docs/plans/` 里写设计稿。
+2. **`docs/plans/` 与 `docs/research/` 里带 `novel-quality-*` 前缀的子树是冻结证据**，被 `scripts/__tests__` 与 `donor-delta.json` 按路径引用，**不得移动、改写、改名**。
+
+---
+
+## 1. 我要找什么 → 打开哪里
+
+| 你想… | 打开 |
+|---|---|
+| 知道某功能**为什么这么设计** | `docs/design/<主题>/…-design.md` |
+| 看某设计**做到哪一步**（实施没 / 卡在哪） | 该设计稿头部的 `> 状态：` 行 —— 状态只改这一行，不新建文件 |
+| 找**接下来做什么**（TODO） | [`plans/prompt-assembly-backlog.md`](plans/prompt-assembly-backlog.md) ← **唯一台账** |
+| 查 **Prompt 组装 / 材料准入 / 去重 / 缓存** | [`design/prompt/`](design/prompt/) |
+| 查 **架构五层 / 故事弧 / 阶段结构 / 一致性校验** | [`design/architecture/`](design/architecture/) |
+| 查 **审稿链**（材料去重、目标准入、序数断言） | [`design/review/`](design/review/) |
+| 查**已定的、不可逆的决定** | [`adr/`](adr/) |
+| 查**为什么没采纳某方案** | `design/<主题>/…-assessment.md`，或 `research/` |
+| 查 **Program v3 原始合同 / 审计证据** | `plans/novel-quality-*/`、[`research/novel-quality-modernization/`](research/novel-quality-modernization/) 🔒 冻结 |
+| 接手别人的会话 | [`handoffs/`](handoffs/) |
+| 发布 / 交付 / 审查流程 | [`DEVELOPMENT.md`](DEVELOPMENT.md) · [`agents/delivery.md`](agents/delivery.md) |
+| 产品术语 / 事实源边界 | [`product-domain.md`](product-domain.md) |
+
+---
+
+## 2. 目录职责（含冻结标记）
+
+| 目录 | 职责 | 状态 | 能新增吗 |
+|---|---|---|---|
+| [`design/`](design/) | 所有**现行**设计稿、评估、实施记录，按主题分子目录 | ★ 活跃 | ✅ 新设计一律放这里 |
+| [`plans/`](plans/) | ① 唯一 TODO 台账 ② Program v3 冻结合同 ③ 历史看板 | 🔒 除台账外冻结 | ⚠️ 只往台账追加；**不新增设计稿** |
+| [`research/`](research/) | 外部材料消化、实施证据、协议与证据索引 | 🔒 冻结（`novel-quality-*` 子树） | ⚠️ 新调研需独立文件名并登记来源 |
+| [`adr/`](adr/) | 难以从代码恢复的架构决定 | ✅ 只增不改 | ✅ 连续编号 |
+| [`agents/`](agents/) | Issue / 领域文档 / Agent 交付规则 | ✅ 活跃 | ✅ |
+| [`handoffs/`](handoffs/) | 指定分支或任务的交接快照 | 按日期过时 | ✅ `YYYY-MM-DD-主题.md` |
+| [`experiments/`](experiments/) | 实验执行说明与回执 | 按日期 | ✅ |
+
+---
+
+## 3. 新文档放置规则（写之前先读这一节）
+
+### 3.1 判定口诀（按顺序问）
+
+1. **它会改代码或改产品行为吗？**
+   → 会：`docs/design/<主题>/<编号>-<主题>-design.md`
+   → 不会、只是看清现状 / 对比外部方案：`docs/design/<主题>/<主题>-assessment.md`
+2. **它只是一条待办？** → 追加到 [`plans/prompt-assembly-backlog.md`](plans/prompt-assembly-backlog.md)，**不要新建台账**。
+3. **它是一个不可逆的架构决定？** → `docs/adr/`（连续编号；进度和待办不写进 ADR）。
+4. **它是外部报告 / 调研回执？** → `docs/research/`（保留来源、采集时间、适用边界）。
+5. **它是一次跨会话交接？** → `docs/handoffs/YYYY-MM-DD-主题.md`（注明分支、基准 SHA、脏状态、未验证事项）。
+
+### 3.2 硬规则
+
+1. **不往 `plans/` 新增设计稿。** 2026-10-17 起 `plans/` 只保留台账与冻结合同；此前散落在 `plans/` 的设计稿已迁到 `design/<主题>`。
+2. **冻结子树不得移动或改写**：`plans/novel-quality-modernization/`、`plans/novel-quality-program-2026-09-13/`、`plans/novel-quality-program-v3-2026-09-13/`、`research/novel-quality-modernization/`。
+   原因：`vite.config.ts:89` 把 `**/docs/plans/**` 从 vitest 排除（冻结规划脚本自行执行），且 [`donor-delta.json`](research/novel-quality-modernization/donor-delta.json) 等证据文件按字面路径引用其中的 `.md`。
+3. **每份设计稿头部必须有状态行与日期**：
+   `> 状态：待裁定 / 已裁定 / 已实施 / 已搁置（原因）/ 已结项` + `> 日期：YYYY-MM-DD`。
+   **状态变化只改这一行**，不新建文件；实施记录写在同一文件的「实施记录」章节。
+4. **上位稿 / 子稿关系写在头部**：`> 上级稿：`docs/design/prompt/xxx-design.md` §…`。设计是树，不是散点。
+5. **相对链接必须能点开**。提交前跑：
+
+   ```bash
+   node scripts/check-doc-links.mjs
+   ```
+
+6. **不复制** API Key、模型凭据、小说正文、用户目录、可再生构建输出。
+
+### 3.3 命名约定
+
+| 类型 | 命名 | 例 |
+|---|---|---|
+| 设计稿 | `<编号>-<主题>-design.md` | `p7-review-material-dedup-design.md` |
+| 评估 / 否决记录 | `<主题>-assessment.md` | `seven-layer-skeleton-assessment.md` |
+| 操作手册 / 草案 | `<编号>b-<主题>-guide.md` | `p1-2b-settings-period-authoring-guide.md` |
+| 交接 | `YYYY-MM-DD-<主题>.md` | `2026-09-05-astra-code-review.md` |
+| ADR | `NNNN-<slug>.md` | `0020-legacy-project-copy-import.md` |
+
+---
+
+## 4. 现行设计索引
+
+> 完整索引即本节。**这是查找设计文档的唯一清单**，不要再去翻目录树。
+
+### 4.1 Prompt 流水线 · [`design/prompt/`](design/prompt/)（20 篇）
+
+| 文档 | 状态 | 一句话 |
+|---|---|---|
+| [`prompt-payload-scoping-design.md`](design/prompt/prompt-payload-scoping-design.md) | ★ 上位稿 | 全链路 Prompt 载荷作用域（材料白名单）；P0/P1 系列的总纲 |
+| [`chapter-prompt-pileup-triage.md`](design/prompt/chapter-prompt-pileup-triage.md) | 诊断 | 章节链路「一锅乱炖」逐条判定，payload 设计的前置 |
+| [`p1-literal-dedup.md`](design/prompt/p1-literal-dedup.md) | ✅ 已完成 | 单次请求内逐字重复消除（D1 收敛 2/2→1/1） |
+| [`p3-semantic-dedup.md`](design/prompt/p3-semantic-dedup.md) | 🏁 已关闭 | 语义去重；收益仅 2.8–4.7%，仅采纳提示词替代方案 |
+| [`p4-prompt-config-merge.md`](design/prompt/p4-prompt-config-merge.md) | ⏸ 待做 | 提示词配置整合（AI 优化 → diff → 人工确认） |
+| [`p4-reassessment.md`](design/prompt/p4-reassessment.md) | 结论 | P4 是否还有必要；原形态取消 |
+| [`p0-0-upstream-projection-design.md`](design/prompt/p0-0-upstream-projection-design.md) | ✅ 已实施 | 上游章级投影 |
+| [`p0-1-short-outline-scoping-design.md`](design/prompt/p0-1-short-outline-scoping-design.md) | ✅ 已实施 | 短细纲只喂该步材料（16.7k 字 → 单步材料） |
+| [`p1-1-boundary-notice-design.md`](design/prompt/p1-1-boundary-notice-design.md) | ✅ 已实施 | 后续计划降级为「本章不可写事件」清单 |
+| [`p1-2-architecture-projection-design.md`](design/prompt/p1-2-architecture-projection-design.md) | ✅ 已实施 | `architecture` 对正文只给事实源 |
+| [`p1-3-variable-export-scoping-design.md`](design/prompt/p1-3-variable-export-scoping-design.md) | 部分落地 · 待裁定 | L1 变量出口语义化（`acceptsScopes` / `enforceRequiredContext`） |
+| [`free-text-scoping-design.md`](design/prompt/free-text-scoping-design.md) | ✅ 已实施 | 自由文本按步骤分区（参考作品落点 + `global_guidance` 分区） |
+| [`short-outline-first-failure-retry-design.md`](design/prompt/short-outline-first-failure-retry-design.md) | ✅ 已实施 | 短细纲首次失败自动重试 |
+| [`outline-setting-compatibility-guard-design.md`](design/prompt/outline-setting-compatibility-guard-design.md) | 待裁定 R5 | 大纲/蓝图层「设定相容性」守卫 |
+| [`outline-structure-marker-assessment.md`](design/prompt/outline-structure-marker-assessment.md) | 评估（替代已实施） | 大纲要不要加「标记行」；诊断对、处方错层 |
+| [`global-guidance-scope-lint-design.md`](design/prompt/global-guidance-scope-lint-design.md) | ⏸ 搁置 | 全局写作要求章节越界静态校验（作者裁定不进框架） |
+| [`contract-first-reassessment.md`](design/prompt/contract-first-reassessment.md) | 存档 | 《全链路 Prompt 架构重构评估》复核；结论已折进上位稿 |
+| [`prompt-cache-evaluation.md`](design/prompt/prompt-cache-evaluation.md) | ⏸ 挂起 | 提示词缓存命中率评估 |
+| [`debug-prompt-trace-design.md`](design/prompt/debug-prompt-trace-design.md) | 设计稿 | Debug 开关：Prompt 片段追踪 + 输入输出落盘 |
+| [`prompt-trace-output-sample.md`](design/prompt/prompt-trace-output-sample.md) | 样本 | 真实生成数据的 Prompt 组装快照 |
+
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（14 篇）
+
+| 文档 | 状态 | 一句话 |
+|---|---|---|
+| [`stage-structure-layer.md`](design/architecture/stage-structure-layer.md) | ★ 主文档 | 第五层「阶段结构」显现设计（施工图 + 6 步落地） |
+| [`arc-nesting-design.md`](design/architecture/arc-nesting-design.md) | ★ 主文档 | 弧的层级/因果/篇幅语义规范（大弧⊃中弧⊃小弧） |
+| [`story-arc-proposal.md`](design/architecture/story-arc-proposal.md) | v3 提案 | 故事弧环节设计演进记录（v1→v4） |
+| [`arc-granularity-and-enum.md`](design/architecture/arc-granularity-and-enum.md) | 问答闭环 | 作者五问答复（步骤粒度 / 枚举降级） |
+| [`arc-prompt-assessment.md`](design/architecture/arc-prompt-assessment.md) | 评估 | 弧生成 Prompt 外部报告；哲学吸收、手段拒绝 |
+| [`arc-space-causal-state-feasibility.md`](design/architecture/arc-space-causal-state-feasibility.md) | 评估 | 弧/空间/因果/状态修订版落地可行性 |
+| [`causal-vs-state-digestion.md`](design/architecture/causal-vs-state-digestion.md) | 判据 | 「能推理→prompt；不能推理→代码」 |
+| [`state-tracking-assessment.md`](design/architecture/state-tracking-assessment.md) | 评估 | 13 类状态里只有「角色知识」是纯空白 P0 |
+| [`seven-layer-skeleton-assessment.md`](design/architecture/seven-layer-skeleton-assessment.md) | 坐标系 | 七层骨架模型 L0–L6（与「五层架构」编号不同，见文内换算） |
+| [`l3-arc-gap-verification.md`](design/architecture/l3-arc-gap-verification.md) | 定论 | 为什么剧情树/叙事线索都不构成 L3 |
+| [`layered-generation-assessment.md`](design/architecture/layered-generation-assessment.md) | 评估 | 分层/增量生成；仅篇幅约束可采纳 |
+| [`architecture-consistency-design.md`](design/architecture/architecture-consistency-design.md) | 评估（已进台账） | 五层一致性校验 → AC1/AC2/AC3 三段走 |
+| [`blueprint-key-events-structuring-design.md`](design/architecture/blueprint-key-events-structuring-design.md) | 初稿 v2 · 待裁定 | 蓝图 `keyEvents` 结构化 |
+| [`phase2-keyevents-bprime-implementation-plan.md`](design/architecture/phase2-keyevents-bprime-implementation-plan.md) | 待过目 · 未动代码 | 阶段 2 + B′（含 R6）实施清单 |
+
+### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
+
+| 文档 | 状态 | 一句话 |
+|---|---|---|
+| [`p7-review-material-dedup-design.md`](design/review/p7-review-material-dedup-design.md) | ✅ 已实施 | 审稿链材料去重（世界观/角色状态重复注入） |
+| [`c1-review-architecture-declaration-design.md`](design/review/c1-review-architecture-declaration-design.md) | ✅ 已实施 | 审稿链「远期设定使用规则」声明（路子 B） |
+| [`consistency-check-ordinal-claim-guard-design.md`](design/review/consistency-check-ordinal-claim-guard-design.md) | ✅ 已实施 | 序数/全称断言独立复核 |
+
+### 4.4 角色 · [`design/characters/`](design/characters/)（2 篇）
+
+| 文档 | 状态 | 一句话 |
+|---|---|---|
+| [`p1-blueprint-roster-sync.md`](design/characters/p1-blueprint-roster-sync.md) | ✅ 已实施 | 蓝图角色 ↔ 角色卡 roster 同步 |
+| [`p2-character-card-ai-generation.md`](design/characters/p2-character-card-ai-generation.md) | ✅ 已实施 | 角色卡管理界面的 AI 生成增强 |
+
+### 4.5 功能与设置 · [`design/features/`](design/features/)（2 篇）
+
+| 文档 | 状态 | 一句话 |
+|---|---|---|
+| [`user-settings-package-design.md`](design/features/user-settings-package-design.md) | 待审核 · 未编码 | 用户级设置包（创作资产导出/导入） |
+| [`p1-2b-settings-period-authoring-guide.md`](design/features/p1-2b-settings-period-authoring-guide.md) | 草案 v1 | 世界观期次标注的作者操作手册 |
+
+---
+
+## 5. 台账与冻结区
+
+- **唯一 TODO 台账**：[`plans/prompt-assembly-backlog.md`](plans/prompt-assembly-backlog.md)。P1–P5 + S1–S3 + AC1–AC3 全在里面；新待办追加到这里。
+- **历史看板**：[`plans/00-OVERVIEW.md`](plans/00-OVERVIEW.md)（2026-10-11 冻结，仅存档；现行状态见本页与台账）。
+- **Program v3 冻结合同**：[`plans/novel-quality-program-v3-2026-09-13/00-START-HERE.md`](plans/novel-quality-program-v3-2026-09-13/00-START-HERE.md)（34 节点原合同；DAG/NOT STARTED 不代表当前调度）。
+- **开发入口（Program v3 侧）**：[`research/novel-quality-modernization/current-spec-index.md`](research/novel-quality-modernization/current-spec-index.md) ← 逐项连接原合同与现行替代。
+- **线程 10 交付计划**：[`research/novel-quality-modernization/thread10-delivery-plan.md`](research/novel-quality-modernization/thread10-delivery-plan.md)（采样裁决与实施顺序）。
+- **留在 `plans/` 的两份历史文件**（目录外存在按字面路径的锚点，移动会造成断链，故不动）：
+  - [`chapter-goal-review-production.md`](plans/chapter-goal-review-production.md) —— 被 [`donor-delta.json`](research/novel-quality-modernization/donor-delta.json) 按路径引用。
+  - [`llm-probe-observation-plan.md`](plans/llm-probe-observation-plan.md) —— 被 `electron/services/llm-probe.ts`、`src/shared/synopsis-projection.ts`、`src/services/workflows/commands/generate-draft.command.ts` 的注释引用。
+- **实施证据索引**：[`research/novel-quality-modernization/evidence-index.md`](research/novel-quality-modernization/evidence-index.md)；质量协议：[`quality-protocol.md`](research/novel-quality-modernization/quality-protocol.md)。
+
+---
+
+## 6. 文档权威层级
 
 | 文档 | 用途 | 权威与生命周期 |
 | --- | --- | --- |
@@ -12,41 +199,28 @@
 | [`docs/product-domain.md`](product-domain.md) | 稳定产品术语、事实源和边界 | 可发布的领域词汇表；实现和规格应使用这里的名称 |
 | [`docs/adr/`](adr/) | 难以从代码恢复的架构决定、边界和取舍 | 已接受决定；后续变化应明确扩展或取代原决定 |
 | [`docs/agents/`](agents/) | Issue、领域文档和 Agent 协作规则 | 当前贡献流程；不得承载临时任务状态 |
-| [`docs/plans/`](plans/) | 受审实施范围、依赖和验收合同 | Program v3 保存冻结范围；当前剩余工作由活跃规格/计划及显式 delta 调度，冻结包不回填进度 |
-| [`docs/research/`](research/) | 调研、实施证据及实验执行说明 | 按各文件的日期和角色使用；历史回执不自动成为当前资格，活跃执行说明须与已接受 ADR 一致 |
+| [`docs/design/`](design/) | 现行设计稿、评估与实施记录 | 按各稿头部的状态行使用；状态只改那一行 |
+| [`docs/plans/`](plans/) | 待办台账 + Program v3 冻结范围 | 台账活；冻结包不回填进度 |
+| [`docs/research/`](research/) | 调研、实施证据及实验执行说明 | 按各文件的日期和角色使用；历史回执不自动成为当前资格 |
 | [`docs/handoffs/`](handoffs/) | 指定分支或任务的交接快照 | 有日期的任务状态；完成或分支变化后可能过时 |
-| [`plugins/dsh-ai-novel-writer/`](../plugins/dsh-ai-novel-writer/) | DeepSeek Harness 插件的独立使用与开发说明 | 由插件包维护，不替代桌面版文档 |
 
-根目录 `AGENTS.md` 与 `CONTEXT.md` 是可选的本机 Agent 上下文，按仓库卫生规则保持忽略，不是公共文档，也不能覆盖 [`docs/product-domain.md`](product-domain.md) 或 ADR。需要进入公共仓库的稳定产品边界写入领域词汇表或 ADR；公开用户行为同步到中英文 README。
+本机 `AGENTS.md` 与 `CONTEXT.md` 是可选的本机 Agent 上下文，按仓库卫生规则保持忽略，**不是公共文档**，不能覆盖 [`product-domain.md`](product-domain.md) 或 ADR。
 
-## 已取代的决定
+---
+
+## 7. 已取代的决定
 
 - [`0006-unified-cross-platform-github-release.md`](adr/0006-unified-cross-platform-github-release.md) 保存最初的 Windows + macOS ARM64 发布决定，当前三目标发布与平台更新动作由 [`0016-three-target-release-and-platform-update-actions.md`](adr/0016-three-target-release-and-platform-update-actions.md) 取代。
 - [`0019-remove-real-call-hard-cap.md`](adr/0019-remove-real-call-hard-cap.md) 取代冻结实验合同的全局 80 次调用硬帽；80 保留为计划分配额，逐请求记账和产品安全限额继续有效。
-- [`0020-legacy-project-copy-import.md`](adr/0020-legacy-project-copy-import.md) 将旧小说兼容改为保留原件的完整项目导入，禁止 AI 重建或覆盖既有设定；取代旧根退役/永久拒写要求。[现行 F05](research/novel-quality-modernization/frontend-transition-specs.md#f05--最终-v3-功能及桌面体验资格) 同时拥有新版编辑交互验收，旧版性能基线不再阻断新版。
-- [正文篇幅现行要求](plans/novel-quality-modernization/specs/S06B.md#prose-length-overrun)自 2026-10-05 起保留一次既有超长压缩，仍超长则提示并继续；偏短处理不变。[旧 ±20%/±30% 规则与实验记录](research/novel-quality-modernization/quality-protocol.md#现行字数标准)保留原标准和历史结论。
-- [AI 自主审稿与成稿资格](research/novel-quality-modernization/quality-protocol.md#ai-review-final-manuscript) 自 2026-10-01 获用户批准：未来写作资格同时验 AI 自主发现和审修后的最终稿，取代部分首稿直接终点与人工补题路线。机器接线和真实资格另行验证，历史结果不改判。
-- [线程 10 交付计划](research/novel-quality-modernization/thread10-delivery-plan.md) 自 2026-10-02 拥有材料补齐、自动短细纲、有界模型筛选及 candidate-only 多轮资格，取代单轮七案全绿前置、必需双臂和旧 Pro 唯一下一实验。它是生效要求，新增能力与机器协议待实现；冻结旧文与旧协议限制保留为历史和实现差距，不能否决新要求，也不能冒充新资格就绪。
+- [`0020-legacy-project-copy-import.md`](adr/0020-legacy-project-copy-import.md) 将旧小说兼容改为保留原件的完整项目导入，禁止 AI 重建或覆盖既有设定；取代旧根退役/永久拒写要求。[现行 F05](research/novel-quality-modernization/frontend-transition-specs.md#f05--最终-v3-功能及桌面体验资格) 同时拥有新版编辑交互验收。
+- [正文篇幅现行要求](plans/novel-quality-modernization/specs/S06B.md#prose-length-overrun) 自 2026-10-05 起保留一次既有超长压缩，仍超长则提示并继续；偏短处理不变。
+- [AI 自主审稿与成稿资格](research/novel-quality-modernization/quality-protocol.md#ai-review-final-manuscript) 自 2026-10-01 获用户批准。
+- [线程 10 交付计划](research/novel-quality-modernization/thread10-delivery-plan.md) 自 2026-10-02 拥有材料补齐、自动短细纲、有界模型筛选及 candidate-only 多轮资格。
 
-## Program v3 开发入口
+---
 
-1. [全部 34 项现行 Spec 索引](research/novel-quality-modernization/current-spec-index.md)：开发及代码审查的统一入口，逐项连接原合同和现行替代；原 Spec 的 NOT STARTED 不代表当前进度。
-2. [线程 10 交付计划](research/novel-quality-modernization/thread10-delivery-plan.md)负责本次采样裁决与实施顺序。[S07 现行增量](plans/novel-quality-modernization/specs/S07.md#generic-model-compatibility)统一保存通用模型兼容和自动参数匹配的详细要求，其余本次产品增量仍由线程 10 计划拥有。[总实施计划](research/novel-quality-modernization/frontend-transition-plan.md)与[现行变更规格](research/novel-quality-modernization/frontend-transition-specs.md)保留 V3、导入、平台和发布出口。审计结论只覆盖各自日期的合同；实际进度读唯一私有当前检查点。
-3. [交付 delta](research/novel-quality-modernization/delivery-contract-delta-2026-09-21.md)：明确替代冻结合同哪些条款；[执行规则](agents/delivery.md)管理 Skills、调试和审查。
-4. [冻结 Program v3](plans/novel-quality-program-v3-2026-09-13/00-START-HERE.md)：34 节点原合同与未被替代的核心要求；其 DAG/NOT STARTED 不代表当前调度或状态。
-5. [实施证据索引](research/novel-quality-modernization/evidence-index.md)与[质量协议](research/novel-quality-modernization/quality-protocol.md)：保存历史证据、机器接线说明与实现差距；新资格规则引用线程 10，旧 CLI 和历史 PASS 不自动成为新资格。
-
-本机续开发快照使用 `docs/handoffs/` 下日期化文件；包含本机路径或未公开证据的文件默认仅供本地接管，不作为公共导航的必需依赖。公开提交前单独脱敏并核对链接。
-
-## 新文档放置规则
-
-- 当前用户行为写入 README；不要复制发布资产清单，精确资产合同由 [`.release/release-profile.json`](../.release/release-profile.json) 维护。
-- 稳定领域术语先更新 [`docs/product-domain.md`](product-domain.md)；本机 `CONTEXT.md` 只能补充当前 checkout 的 Agent 说明。
-- 难以逆转的架构决定新增连续编号 ADR。实现进度、测试记录和待办不写入 ADR。
-- 带日期的调研保留来源、采集时间和适用边界；实现完成不会自动把调研升级为产品合同。
-- 临时计划和交接使用日期化文件。交接文档必须注明分支、基准 SHA、脏状态和未验证事项。
-- 不在文档中复制 API Key、模型凭据、小说测试内容、用户目录或可再生构建输出。
-
-## Worktree 边界
+## 8. Worktree 边界
 
 审计或接手任务时先运行 `git worktree list --porcelain`，再在目标 Worktree 内记录分支、SHA 和 `git status --short`。移动、合并或删除 Worktree 属于单独的清理任务；文档治理不授权这些操作。
+
+每次提交态文档绑定其实际 SHA；用户授权的工作区规格增量可供本次审查，但须记录来源、内容 hash 和未提交状态。不能把其他 Worktree 的材料或尚未提交的修订说成当前提交/远端已包含的事实。

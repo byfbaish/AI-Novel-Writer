@@ -13,7 +13,7 @@ import {
 import { syncBlueprintCharacterCandidates } from '../blueprint-character-sync'
 
 /**
- * Step 0 guardrails for P1 (`docs/plans/p1-blueprint-roster-sync.md`).
+ * Step 0 guardrails for P1 (`docs/design/characters/p1-blueprint-roster-sync.md`).
  *
  * P1 only adds a trigger and a UI entry on top of the existing durability
  * skeleton. These tests freeze the candidate-set contract that the new entry

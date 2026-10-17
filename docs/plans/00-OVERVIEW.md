@@ -1,3 +1,7 @@
+> ⚠️ **本页已冻结（2026-10-11 的状态看板，仅作存档）。现行唯一入口是 [`../README.md`](../README.md)。**
+> 自 2026-10-17 起 `docs/plans/` 只保留「唯一 TODO 台账 + Program v3 冻结合同」；
+> 原先散落在本目录的设计稿已迁至 [`../design/`](../design/)，索引见 [`../README.md` §4](../README.md#4-现行设计索引)。
+
 # 📋 docs/plans 总览索引（唯一入口）
 
 > **本文件是 `docs/plans/` 的导航 + 状态看板。任何 agent 接手先读这里。**
@@ -24,46 +28,46 @@
 
 | 文档 | 角色 | 状态 |
 |---|---|---|
-| [`story-arc-proposal.md`](./story-arc-proposal.md) | 弧设计的**首份提案**（v1→v4） | ✅ 已被后续文档吸收，保留作演进记录 |
-| [`stage-structure-layer.md`](./stage-structure-layer.md) | ★ **第五层显现设计**（"不是二选一，是把隐藏层显性化"）+ **6 步落地+<20 行改动链** | ★ **主文档：施工图** |
-| [`arc-nesting-design.md`](./arc-nesting-design.md) | ★ **弧的层级/因果/篇幅设计**（同级推进=核心、弧分型 A/B/C、篇幅经验表、无字段） | ★ **主文档：语义规范** |
-| [`arc-granularity-and-enum.md`](./arc-granularity-and-enum.md) | ★ **作者五问答复**（步骤粒度=一步+Prompt内分节；枚举=降级不删除；空间/P4/AC1 三条拍板） | ★ **本文件：问答闭环记录** |
-| [`l3-arc-gap-verification.md`](./l3-arc-gap-verification.md) | L3 缺失的**二次核实**（剧情树/线索/弧光都不构成 L3） | ✅ 已定论（撤回"半个 L3"高估） |
+| [`story-arc-proposal.md`](../design/architecture/story-arc-proposal.md) | 弧设计的**首份提案**（v1→v4） | ✅ 已被后续文档吸收，保留作演进记录 |
+| [`stage-structure-layer.md`](../design/architecture/stage-structure-layer.md) | ★ **第五层显现设计**（"不是二选一，是把隐藏层显性化"）+ **6 步落地+<20 行改动链** | ★ **主文档：施工图** |
+| [`arc-nesting-design.md`](../design/architecture/arc-nesting-design.md) | ★ **弧的层级/因果/篇幅设计**（同级推进=核心、弧分型 A/B/C、篇幅经验表、无字段） | ★ **主文档：语义规范** |
+| [`arc-granularity-and-enum.md`](../design/architecture/arc-granularity-and-enum.md) | ★ **作者五问答复**（步骤粒度=一步+Prompt内分节；枚举=降级不删除；空间/P4/AC1 三条拍板） | ★ **本文件：问答闭环记录** |
+| [`l3-arc-gap-verification.md`](../design/architecture/l3-arc-gap-verification.md) | L3 缺失的**二次核实**（剧情树/线索/弧光都不构成 L3） | ✅ 已定论（撤回"半个 L3"高估） |
 
 ### B. 【外部材料评估】四份报告 + 一份修订版 + 一份数量诊断（正交：广度/手段/判据/施工图/数量）
 
 | 文档 | 对应报告 | 一句话裁决 |
 |---|---|---|
-| [`state-tracking-assessment.md`](./state-tracking-assessment.md) | ①《状态管理的收益/可落地性分析》 | **= 广度**：13 类状态里，只有"角色知识"是纯空白 P0 |
-| [`arc-prompt-assessment.md`](./arc-prompt-assessment.md) | ②《弧生成 Prompt 设计》 | **= 手段**：哲学吸收（弧分型）、手段拒绝（YAML/三步/逐弧审） |
-| [`causal-vs-state-digestion.md`](./causal-vs-state-digestion.md) | ③《因果 vs 状态》 | **= 判据**："能推理→prompt；不能推理→代码"，纠其"因果一律 prompt"失真 |
-| [`arc-space-causal-state-feasibility.md`](./arc-space-causal-state-feasibility.md) | ④《弧/空间/因果/状态》修订版 | **= 施工图**：方向一致，3 处"零代码"被低估（已还原真实成本） |
-| [`layered-generation-assessment.md`](./layered-generation-assessment.md) | ⑤《分层生成 + 增量生成》 | **= 数量诊断**：仅建议 4（篇幅约束）可采纳；其 `scope` 字段与三层拆步**撞已定边界**。★ 实测根因带行号 |
+| [`state-tracking-assessment.md`](../design/architecture/state-tracking-assessment.md) | ①《状态管理的收益/可落地性分析》 | **= 广度**：13 类状态里，只有"角色知识"是纯空白 P0 |
+| [`arc-prompt-assessment.md`](../design/architecture/arc-prompt-assessment.md) | ②《弧生成 Prompt 设计》 | **= 手段**：哲学吸收（弧分型）、手段拒绝（YAML/三步/逐弧审） |
+| [`causal-vs-state-digestion.md`](../design/architecture/causal-vs-state-digestion.md) | ③《因果 vs 状态》 | **= 判据**："能推理→prompt；不能推理→代码"，纠其"因果一律 prompt"失真 |
+| [`arc-space-causal-state-feasibility.md`](../design/architecture/arc-space-causal-state-feasibility.md) | ④《弧/空间/因果/状态》修订版 | **= 施工图**：方向一致，3 处"零代码"被低估（已还原真实成本） |
+| [`layered-generation-assessment.md`](../design/architecture/layered-generation-assessment.md) | ⑤《分层生成 + 增量生成》 | **= 数量诊断**：仅建议 4（篇幅约束）可采纳；其 `scope` 字段与三层拆步**撞已定边界**。★ 实测根因带行号 |
 
 ### C. 【架构校验】AC 系列
 
 | 文档 | 角色 | 状态 |
 |---|---|---|
-| [`architecture-consistency-design.md`](./architecture-consistency-design.md) | 五层一致性校验评估 → **AC1/AC2/AC3 分三段** | ✅ 已进 backlog 优先级表；**§6 已补实机核对**（前 30 章 vs 弧光：Σ大弧 880≠845、中弧 2 的动作被提前到第 9–10 章执行、副本未命名等） |
-| [`outline-structure-marker-assessment.md`](./outline-structure-marker-assessment.md) | 对外部《大纲加标记行》报告的评估 | **诊断对、处方错层**：本项目大纲与正文之间**已有章节蓝图 JSON**；5 个缺口里 4 个已覆盖/已立项。替代方案（`【第N章必现】` 接入大纲）**已实施** |
+| [`architecture-consistency-design.md`](../design/architecture/architecture-consistency-design.md) | 五层一致性校验评估 → **AC1/AC2/AC3 分三段** | ✅ 已进 backlog 优先级表；**§6 已补实机核对**（前 30 章 vs 弧光：Σ大弧 880≠845、中弧 2 的动作被提前到第 9–10 章执行、副本未命名等） |
+| [`outline-structure-marker-assessment.md`](../design/prompt/outline-structure-marker-assessment.md) | 对外部《大纲加标记行》报告的评估 | **诊断对、处方错层**：本项目大纲与正文之间**已有章节蓝图 JSON**；5 个缺口里 4 个已覆盖/已立项。替代方案（`【第N章必现】` 接入大纲）**已实施** |
 
 ### D. 【坐标系/骨架】
 
 | 文档 | 角色 | 状态 |
 |---|---|---|
-| [`seven-layer-skeleton-assessment.md`](./seven-layer-skeleton-assessment.md) | 七层骨架模型（L0–L6）+ 已有 P1–P5 归位 | ✅ 已定论（⚠️ 与"五层架构"编号不同，见该文档换算） |
+| [`seven-layer-skeleton-assessment.md`](../design/architecture/seven-layer-skeleton-assessment.md) | 七层骨架模型（L0–L6）+ 已有 P1–P5 归位 | ✅ 已定论（⚠️ 与"五层架构"编号不同，见该文档换算） |
 | [`prompt-assembly-backlog.md`](./prompt-assembly-backlog.md) | ★★ **跨会话待办台账**（P1–P5 + S1–S3 + AC1–AC3 全在里面） | ★ **主台账：所有 TODO 的唯一清单** |
 
 ### E. 【P 系列：Prompt 组装 / 角色卡】（前序会话主线，多已关闭）
 
 | 文档 | 角色 | 状态 |
 |---|---|---|
-| [`p1-literal-dedup.md`](./p1-literal-dedup.md) | P1 逐字去重 | ✅ **已完成**（Phase 0/1/2） |
-| [`p1-blueprint-roster-sync.md`](./p1-blueprint-roster-sync.md) | P1 蓝图角色↔roster 同步 | ✅ 已实施（`9504097`/`5933a50`） |
-| [`p2-character-card-ai-generation.md`](./p2-character-card-ai-generation.md) | P2 角色卡 AI 生成增强 | ✅ 已实施 |
-| [`p3-semantic-dedup.md`](./p3-semantic-dedup.md) | P3 语义去重 | 🏁 **已关闭**（收益仅 2.8–4.7%，替代方案 A 已落地 `835b297`） |
-| [`p4-prompt-config-merge.md`](./p4-prompt-config-merge.md) | P4 提示词配置整合 | ⚠️ **待做**（P3 关闭后它的地位上升，见 `p4-reassessment.md`） |
-| [`p4-reassessment.md`](./p4-reassessment.md) | P4 重新评估 | ✅ 结论：原形态取消，实质并入 P3 思路 |
+| [`p1-literal-dedup.md`](../design/prompt/p1-literal-dedup.md) | P1 逐字去重 | ✅ **已完成**（Phase 0/1/2） |
+| [`p1-blueprint-roster-sync.md`](../design/characters/p1-blueprint-roster-sync.md) | P1 蓝图角色↔roster 同步 | ✅ 已实施（`9504097`/`5933a50`） |
+| [`p2-character-card-ai-generation.md`](../design/characters/p2-character-card-ai-generation.md) | P2 角色卡 AI 生成增强 | ✅ 已实施 |
+| [`p3-semantic-dedup.md`](../design/prompt/p3-semantic-dedup.md) | P3 语义去重 | 🏁 **已关闭**（收益仅 2.8–4.7%，替代方案 A 已落地 `835b297`） |
+| [`p4-prompt-config-merge.md`](../design/prompt/p4-prompt-config-merge.md) | P4 提示词配置整合 | ⚠️ **待做**（P3 关闭后它的地位上升，见 `p4-reassessment.md`） |
+| [`p4-reassessment.md`](../design/prompt/p4-reassessment.md) | P4 重新评估 | ✅ 结论：原形态取消，实质并入 P3 思路 |
 
 ### F. 【历史/冻结】novel-quality program（**不要动**）
 
@@ -80,7 +84,7 @@
 ## 2. ★★ 接下来做什么（按此顺序）
 
 > 综合 [`prompt-assembly-backlog.md`](./prompt-assembly-backlog.md) 优先级表 +
-> [`arc-space-causal-state-feasibility.md §5`](./arc-space-causal-state-feasibility.md) 的修正次序。
+> [`arc-space-causal-state-feasibility.md §5`](../design/architecture/arc-space-causal-state-feasibility.md) 的修正次序。
 
 ```
 ┌─ 阶段〇：★ 实机验证 + 数量修正（当前焦点）
@@ -130,7 +134,7 @@
 
 ## 3. ✅ 作者已拍板（原 5 个待确认项 —— **本轮全部闭环**）
 
-> 来源：`stage-structure-layer.md §5` + backlog。**原话与推演详见 [`arc-granularity-and-enum.md`](./arc-granularity-and-enum.md)。**
+> 来源：`stage-structure-layer.md §5` + backlog。**原话与推演详见 [`arc-granularity-and-enum.md`](../design/architecture/arc-granularity-and-enum.md)。**
 
 | # | 原待确认 | ✅ 作者决策 | 落点 |
 |---|---|---|---|

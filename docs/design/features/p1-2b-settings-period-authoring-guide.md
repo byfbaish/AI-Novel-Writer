@@ -1,7 +1,7 @@
 # P1-2b 作者操作手册草案（世界观期次标注）
 
 > 版本：**草案 v1**（2026-10-16）。**不是设计稿**——按同行评审建议 2，先明确「作者实际要做什么」，再决定是否出设计稿。
-> 关联：`docs/design/p1-2-architecture-projection-design.md`（P1-2a，已落地）· `docs/design/prompt-payload-scoping-design.md`（P1-2b，另立小项）。
+> 关联：`docs/design/prompt/p1-2-architecture-projection-design.md`（P1-2a，已落地）· `docs/design/prompt/prompt-payload-scoping-design.md`（P1-2b，另立小项）。
 > ~~裁定：作者「全按建议来」⇒ 形态暂定 **② 手工加机读行**；本文先把动作量摆清楚，**开工与否待读完本文再定**。~~
 >
 > ## ⏸ 裁定（2026-10-16，读完本文后）：**待定 · 列为最低优化级别**

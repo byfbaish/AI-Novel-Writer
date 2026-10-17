@@ -2,7 +2,7 @@
 
 > 日期：2026-10-13
 > 触发：作者补充报告《你这锅乱炖的感觉是对的，而且原因比"塞太多"更根本》+ 作者诉求「从上到下每一层级 prompt 都得梳理，不然像这次错误蓝图指导了错误结果」
-> 前置：`docs/design/chapter-prompt-pileup-triage.md`（逐条判定外部报告的产物级诊断）
+> 前置：`docs/design/prompt/chapter-prompt-pileup-triage.md`（逐条判定外部报告的产物级诊断）
 > 本文定位：**从"逐条判定"升级为"全链路架构设计"**——给出每一层级的材料边界、落地机制、以及必须诚实标注的"框架做不到的部分"
 > 状态：**设计稿，未改任何代码，待作者审核后再定实施范围**
 
@@ -411,7 +411,7 @@ interface PromptTemplate {
 |---|---|---|---|
 | **P0-0** | **上游章级/期次投影**：`novel_architecture`（蓝图侧 15,917 字含全书 33 章）、`plot_structure_guide`（大纲侧 12,513 字含全书 185 章）按本章范围投影 | **量级最大**：每生成一章大纲都要携带全书 185 章弧光（§7.0.5-C3/C4） | 中（须守住"设定事实源"语义，不可误裁禁则/术语） |
 | **P0-1** | 短细纲只喂**该步材料**（本章 keyEvents + 前驱状态），不再喂整份初始生成 prompt | 消除全链路最明确的浪费；直接改善"短细纲输出散文" | 低（改 `generate-draft.command.ts:1012` 一处） |
-| ~~**P0-2**~~ ✅ **已完成**（2026-10-13） | 剥离**正文格式类规则**（落点 = **`global_guidance` 的 304 字分区**——含"弹幕【】格式/一句一段/短句口令"4 条；**已实测否证** `writingStyle` 为上游污染源） | 直接消除"上游被正文形态纪律污染"的首要来源 | **改用段级标签机制**（作者裁定 ③，不建 `draftingRules` 槽位）：零 schema、零迁移、旧数据逐字不变；同机制覆盖 `referenceWorks` / `writingStyle`。设计稿 `docs/design/free-text-scoping-design.md` §11 |
+| ~~**P0-2**~~ ✅ **已完成**（2026-10-13） | 剥离**正文格式类规则**（落点 = **`global_guidance` 的 304 字分区**——含"弹幕【】格式/一句一段/短句口令"4 条；**已实测否证** `writingStyle` 为上游污染源） | 直接消除"上游被正文形态纪律污染"的首要来源 | **改用段级标签机制**（作者裁定 ③，不建 `draftingRules` 槽位）：零 schema、零迁移、旧数据逐字不变；同机制覆盖 `referenceWorks` / `writingStyle`。设计稿 `docs/design/prompt/free-text-scoping-design.md` §11 |
 | **P0-2b** ✅ **已完成**（2026-10-13） | `referenceWorks` 落点错位：该看它的看不到（世界观/弧光零注入）、不该每章吃的每章吃（正文每章 2,301 字） | 体系/机制终于能进设定层；正文可只保留禁则与调性 | 作者裁定 ②「需要」→ `world_building` / `plot_structure` 新增 `reference_works`（zh+en 对称）；⚠️ 这是**唯一碰模板契约基线**的动作，已同步期望表 |
 | ~~**P0-3**~~ ✅ **已完成**（2026-10-13） | `role` 字段加**枚举取值域契约**（模板由"例如…"改硬枚举；节奏意图改走 `purpose`） | 消除 `role` 长文本进 prompt 的"同信息两遍 + 跨章指涉"（§7.0.5-C5） | 已落地：内置 `chapter_blueprint`/`chapter_blueprint_chunk` + **作者全局覆盖版** + trace 测试；**ch6/ch7 旧值未自动改写**（守"不自动执行副作用"） |
 | ~~P0-3~~ → **移至 §10-F** | 蓝图容量合同带上本章 `wordsTarget` | **性质不同**：它修的是"字数链路不一致"，不是"乱炖"。混在 P0 里会让两个问题域的验收标准互相干扰 | 低 |
@@ -429,7 +429,7 @@ interface PromptTemplate {
 
 - **P1-1** ✅ 已完成 + 实机复验（`chapter-boundary.ts`；ch2 边界块 1,656 → 729 字，省 56%）。
 - **P1-2a** ✅ 已完成 + 作者行动项闭合（`architecture-projection.ts`；ch2 `architecture` 6,854 → 5,958，省 896）。**作者已把「代述禁忌」迁入 §1**、并裁定「现实变薄」**随 §3 移除**（原话「当期不该知道，这个变化由弧光和大纲来安排」）⇒ 见 `p1-2-architecture-projection-design.md` §8/§8.1/§12。**仅剩实机复验**（与 B′ 段二同批待决）。
-- **P1-3** ✅ **已结项（2026-10-16 裁定：D1/D2 不立项 · D3 重定义为「可观测性」并**已落地** · D4【C1】另立小项）** ⇒ `p1-3-variable-export-scoping-design.md`。三条独立取证（内置 25 模板 / 覆盖版 20 份 / 实机 18 snapshot）显示 `enforceRequiredContext` 的兜底**一次都没触发**；`acceptsScopes` 的四个潜在消费者已被 P0-1 / P0-2 / P1-1 / P1-2a 逐一取代，且对 `architecture` 这类 `G+A+D` 混合变量**按主层过滤只有 0/100 两档、无中间态**。**可观测性已实施**：`projection` 元数据（零行为变更，不碰契约测试基线）。**唯一真候选落点 C1**（审稿链 `review-chapter.command.ts:71` 吃全量 `worldbuilding`、无投影）已单列为另立小项；**✅ 已实施（2026-10-16，路子 B 保留完整 §3 + 合同级声明）** ⇒ `shared/review-far-term-setting.ts` + `docs/design/c1-review-architecture-declaration-design.md`。
+- **P1-3** ✅ **已结项（2026-10-16 裁定：D1/D2 不立项 · D3 重定义为「可观测性」并**已落地** · D4【C1】另立小项）** ⇒ `p1-3-variable-export-scoping-design.md`。三条独立取证（内置 25 模板 / 覆盖版 20 份 / 实机 18 snapshot）显示 `enforceRequiredContext` 的兜底**一次都没触发**；`acceptsScopes` 的四个潜在消费者已被 P0-1 / P0-2 / P1-1 / P1-2a 逐一取代，且对 `architecture` 这类 `G+A+D` 混合变量**按主层过滤只有 0/100 两档、无中间态**。**可观测性已实施**：`projection` 元数据（零行为变更，不碰契约测试基线）。**唯一真候选落点 C1**（审稿链 `review-chapter.command.ts:71` 吃全量 `worldbuilding`、无投影）已单列为另立小项；**✅ 已实施（2026-10-16，路子 B 保留完整 §3 + 合同级声明）** ⇒ `shared/review-far-term-setting.ts` + `docs/design/review/c1-review-architecture-declaration-design.md`。
 - **P1-2b** ⏸ **已转「待定 · 最低优化级别」（2026-10-16 作者裁定）** ⇒ **主线上级稿至此收口**：P1 系四项（P1-1 / P1-2a / P1-3 / C1）**全部落地或结项，无可排期项**。P1-2b 与 **P2/P3** 未动（P1-2b 转触发式待定，见该行；P2/P3 属 §6 L1/L3 设计，未受本轮影响）。
 
 ---
@@ -438,7 +438,7 @@ interface PromptTemplate {
 
 **作者计划：新建空项目跑全流程**（尚未执行；跑前须重启 `pnpm dev`）。
 
-**（2026-10-14 收口补记）** P0 主线（P0-0 / P0-1 / P0-2 / P0-2b / P0-3）**已全部完成并提交**，最近的正文层实机验证（ch1 + ch2）机制层全绿。同轮两件事：① AGL 设计稿（`docs/design/global-guidance-scope-lint-design.md`）经作者裁定**搁置** —— 「黄金三章拆分属使用层问题，框架不做兜底」，不进框架、保留备查（作者处置路径 = 手动拆进「节奏/风格指导」+`userGuidance`）；② 修复**大纲生成弹框进度记录无上限堆叠**（`DirectoryConfigDialog.tsx`，commit `1c3d436`）。③ **三项待裁定口径已裁定并落地**（原 §7.1-D）：加优先级声明（模板三处：内置 zh/en + 作者覆盖版）、修弧光跨界缺口（`arc-position.ts`，本批跨中弧时后半批缺规格）、空项目暂不跑先推代码 —— 见 `p0-0-upstream-projection-design.md` §13 与新版 §7.1-D。**下一步起点 = 下方 B-4（`keyEvents` 结构化），它是 P1 系的共同前提。**
+**（2026-10-14 收口补记）** P0 主线（P0-0 / P0-1 / P0-2 / P0-2b / P0-3）**已全部完成并提交**，最近的正文层实机验证（ch1 + ch2）机制层全绿。同轮两件事：① AGL 设计稿（`docs/design/prompt/global-guidance-scope-lint-design.md`）经作者裁定**搁置** —— 「黄金三章拆分属使用层问题，框架不做兜底」，不进框架、保留备查（作者处置路径 = 手动拆进「节奏/风格指导」+`userGuidance`）；② 修复**大纲生成弹框进度记录无上限堆叠**（`DirectoryConfigDialog.tsx`，commit `1c3d436`）。③ **三项待裁定口径已裁定并落地**（原 §7.1-D）：加优先级声明（模板三处：内置 zh/en + 作者覆盖版）、修弧光跨界缺口（`arc-position.ts`，本批跨中弧时后半批缺规格）、空项目暂不跑先推代码 —— 见 `p0-0-upstream-projection-design.md` §13 与新版 §7.1-D。**下一步起点 = 下方 B-4（`keyEvents` 结构化），它是 P1 系的共同前提。**
 
 **（2026-10-14 18:25 再补记）** B-4「`keyEvents` 结构化」**阶段 1 已实施并修复完成（未提交）**。
 作者告知首轮实施**中途失败**；经复核，首轮**实际引入 53 条回归**（含 1 条**用户可见的生产崩溃**），
@@ -457,18 +457,18 @@ interface PromptTemplate {
 | 契约测试期望表修正 | `src/services/__tests__/prompt-local-qwen-contract.test.ts`（补 `character_background_synthesis`；`character_dynamics` 去 `schemaVersion`） | ✅ 21/21 |
 | 英文变量说明表补登记（第 3 条既有失败） | `src/services/builtin-prompt-templates.ts` 的 `PROMPT_VARIABLE_DESCRIPTIONS_EN` 补 `character_name`/`mainline`/`mentions`/`existing_roster` | ✅ `prompt-project-session.test.ts` 9/9；`prompt*` 全组 **144/144** |
 | **P0-0 上游章级/弧光投影** | 新建 `src/shared/synopsis-projection.ts`；改 `directory-workflow.ts` / `directory.command.ts` / `arc-position.ts` / `architecture.command.ts` / `generate-draft.command.ts` | ✅ 28 例单测全绿；**蓝图侧 + 大纲侧实机均确认生效**（含弧标题解析缺陷修复）；**已 commit**（`e01ed5b`/`48451b7`/`283f6de`/`a2199fe`/`09351e9`/`4df194d`） |
-| **P0-1 短细纲只喂该步材料** | `src/shared/draft-short-outline.ts`（`DraftShortOutlineMaterial` 契约 + 指令拆「纪律/范围」两段）、`generate-draft.command.ts:939`（不再由 `prompt` 派生） | ✅ 新 9 例 + 命令 211/211；**蓝图/前驱/执行合同三块**；**实机取证通过**（载荷 16,736 → 1,336 字、输出 553 字 5 条，见设计稿 §8.1）；**已 commit** `14fc64c`。设计稿 `docs/design/p0-1-short-outline-scoping-design.md` |
+| **P0-1 短细纲只喂该步材料** | `src/shared/draft-short-outline.ts`（`DraftShortOutlineMaterial` 契约 + 指令拆「纪律/范围」两段）、`generate-draft.command.ts:939`（不再由 `prompt` 派生） | ✅ 新 9 例 + 命令 211/211；**蓝图/前驱/执行合同三块**；**实机取证通过**（载荷 16,736 → 1,336 字、输出 553 字 5 条，见设计稿 §8.1）；**已 commit** `14fc64c`。设计稿 `docs/design/prompt/p0-1-short-outline-scoping-design.md` |
 
 **B. 下一步（建议顺序，含"第一步动作"）**
 
-1. ~~**P0-0 上游章级投影**~~ ✅ **已完成 + 实机复验通过（两条链全部生效）** —— 三项裁定、实施记录、取证结论、缺陷修复、修复后复验见 `docs/design/p0-0-upstream-projection-design.md` §7 / §9 / §10 / §11 / **§12**。
+1. ~~**P0-0 上游章级投影**~~ ✅ **已完成 + 实机复验通过（两条链全部生效）** —— 三项裁定、实施记录、取证结论、缺陷修复、修复后复验见 `docs/design/prompt/p0-0-upstream-projection-design.md` §7 / §9 / §10 / §11 / **§12**。
    - 关键认知（仍适用于后续）：**不能照抄正文侧全剔章级**——大纲的章级条目对蓝图步骤是**本步输入**（不是冗余），故须**三段切分**（前序→剔（由 `chapter_list` 承载）/ 本批→保留 / 后续→降级为边界声明）；
    - 实施落点与设计稿的偏差：投影**下移到 `directory.command.ts`**（`n`/`m` 与 `chapter_list` 同处一室），workflow 侧只负责输出 `context.data.architectureParts`；B 档**未动 `SKIP_FIELDS`**（改为按行识别接续理由）；
    - **实机结果（第一轮 ch6–10）**：蓝图侧 ✅ 生效（`novel_architecture` 10,392 → 9,313 字，与期望值精确相等）；大纲侧 ❌ 未生效（`plot_structure_guide` 仍 12,513 字）。
    - **根因已定位并已修（既有缺陷）**：`arc-position.ts` 的弧标题正则只认「（约 N 章）」单值，而内置模板 `builtin-prompt-templates.ts:680/704` 示范写区间「（约 X–Y 章）」→ `parseArcStructure` 恒返回 `null` → **弧位块与 B 档裁剪从未生效**（静默失败）。
    - **★ 修复后复验（第二轮 ch11–12）**：大纲侧 `plot_structure_guide` **12,513 → 2,983 字（省 76%）**，变量**逐字等于**「B 档裁剪 2,279 + `\n\n` + 弧位块 702」，两次调用 user 消息**都含【本批所处弧位】与防提前硬约束**（user 20,472 / 20,712）；蓝图侧 `novel_architecture` **8,629 字**与期望值精确相等（只剩 ch11–12 章标题，前序 1–10 已剔）。**两条链均已确认生效。**
    - **其余待办**：① 若章末 `suspenseHook` 质量下降，把后续段降级起点由 `m+1` 回退为 `m+2`；② `charactersArch` 投影单独立项。
-2. ~~**P0-2 `global_guidance` 分区**~~ ✅ **已实施 + 实机验证（2026-10-13）** —— 设计稿 `docs/design/free-text-scoping-design.md`（与「参考作品落点错位」合并为一稿，同一根因：作者自由文本按步骤落点未分区）。**实施记录 §11 / 实机结果 §11.4 / 补漏 §11.5 / 覆盖版分歧 §11.6。**
+2. ~~**P0-2 `global_guidance` 分区**~~ ✅ **已实施 + 实机验证（2026-10-13）** —— 设计稿 `docs/design/prompt/free-text-scoping-design.md`（与「参考作品落点错位」合并为一稿，同一根因：作者自由文本按步骤落点未分区）。**实施记录 §11 / 实机结果 §11.4 / 补漏 §11.5 / 覆盖版分歧 §11.6。**
    - **★ 实机结果（作者跑「ch13 大纲 + ch1 正文」）**：正文链投影**精确生效** —— `【参考作品…】` 块 **2,267 → 148 字**（逐字等于 `【适用：架构,正文】` 那 3 行）、user 17,524 → **15,270**、`builtLength` 11,287 → **9,053**、**标签零泄漏**；章节段 `ch13` 正确（单章形态本就是 `ch13`，`chN-M` 只在多章批次）。
    - **★ 补漏：`【其余冻结作者配置】` 是第 7 个注入点（已修）** —— 逐章大纲路径把**整份 config `JSON.stringify`** 直灌 prompt，不经模板变量 → 未投影时带 `【适用：架构】` 的原始 `referenceWorks` 原样进入大纲请求（与裁定 ① 冲突）。修法与校验见 §11.5；**判据：「模型输出会写回配置」的块不适用投影**（premise 的 `【作者已有配置】` 即此类，刻意保留原文）。
    - **✅ 裁定 ② 的覆盖版遮蔽已解除（2026-10-13 作者同意后执行，见 `free-text-scoping-design.md` §11.6/§11.7）**：`plot_structure` 无全局覆盖 → builtin 直接生效；**`world_building` 的参考作品原本由「末端兜底块」供应**（`appendRequiredPromptContext` 拿内置 required 清单比对覆盖版，未引用即追加在正文末尾）——**并非零注入，而是位置不对**；本次已把 `{{reference_works}}` 与统一表头写进覆盖版 → **就地按 `【参考作品…】` 渲染**。同轮把 4 处旧表头一并同步。⇒ **当前项目与空项目机制层已一致**。
@@ -479,7 +479,7 @@ interface PromptTemplate {
    - **实测数据**：ch1 `global_guidance` = **315 字**，9 句里约 5 句是**正文形态纪律**（"一句一段""弹幕用【】""短句切分+计数口令"）却被注入架构/大纲/章纲/蓝图；该变量在 **12 处**模板中声明，是覆盖面最广的自由文本。
    - **同稿附带的"参考作品"取证（已一并修掉）**：含 `{{reference_works}}` 的模板改前**只有 4 个**（premise / 角色图谱 / 首章 / 后续章），注入点 2 处；**世界观·弧光·大纲·章纲·蓝图全看不到**；正文每章吃 **2,301 字**；UI `placeholder` 写"AI 架构生成时会参考"与行为不符；作者那栏里含「13‑20 章要写的内容」→ **第 1 章正文可见后续规划**（与 P1-1 同类、另一条通道）。
 
-3. ~~**P0-1 短细纲只喂该步材料**~~ ✅ **已实施 + 实机取证通过（2026-10-13 21:23）** —— 作者裁定三项（**后续计划边界不给** / 前驱给**上一章定稿全文** / 执行合同给），实施记录与校验见 `docs/design/p0-1-short-outline-scoping-design.md` §6.1 / §7，**实机数字见其 §8.1**。
+3. ~~**P0-1 短细纲只喂该步材料**~~ ✅ **已实施 + 实机取证通过（2026-10-13 21:23）** —— 作者裁定三项（**后续计划边界不给** / 前驱给**上一章定稿全文** / 执行合同给），实施记录与校验见 `docs/design/prompt/p0-1-short-outline-scoping-design.md` §6.1 / §7，**实机数字见其 §8.1**。
    - **实机结果**：短细纲请求 user **16,736 → 1,336 字（省 92%）**、零越界材料；输出 **553 字 5 条清单**（原为 ~1,747 字散文）；注入正文的短细纲块 ~1.8K → **588 字**；正文请求块序完整、`【后续计划边界】` 仍在、`prompt`/`systemRole` 逐字未动；文件名 `…-正文-ch1-a495f9c6`（一次运行一份）。
    - 落地契约 = **本章蓝图 JSON + 上一章定稿原文 + 本章执行合同**；此前输入 = 整份初始正文 prompt（实测 16,736 字）。
    - ⚠️ **本文原写的行号 `generate-draft.command.ts:1012` 已漂移**，实际落点 = **`:939`**；短细纲唯一一次 LLM 调用在 `:1108-1112`，**只有 user 消息、无 system**（"材料形态即正文形态"→ 输出散文的机制性原因）。
@@ -487,7 +487,7 @@ interface PromptTemplate {
    - **本步不依赖 `keyEvents` 结构化**（不消费 `estimatedUnits`，按 §8-7 YAGNI 不立项）。
    - 主进程**不必改**（重试回放 `usage_replayTask`；哈希两侧同源）。
    - **踩坑提醒（新）**：P0-1 会让"以前最大的那个请求"变小 —— 凡按**序号**取"第一个/最大请求"做断言的测试都会假红（本轮 `does not locally reject a 30K prompt…` 即此，已改为**按 `purpose` 取**）。
-4. ★ **共同前提 `keyEvents` 结构化**（`string` → `Array<{id, event, estimatedUnits}>`）—— 原写「落点在蓝图 schema，**必须走 lane 六步**」，**该前提已被调研否证**：复用 `blueprints.key_events TEXT` 存 `JSON.stringify(array)`（与同表 `characters` 同一惯用法）⇒ **零 schema 迁移、不动 DDL 一字节、基线指纹不受影响**（红线 1 天然满足）。§5.5 表里有三行都依赖它。设计稿 `docs/design/blueprint-key-events-structuring-design.md`（作者已裁定 D1–D6 全部同意）。
+4. ★ **共同前提 `keyEvents` 结构化**（`string` → `Array<{id, event, estimatedUnits}>`）—— 原写「落点在蓝图 schema，**必须走 lane 六步**」，**该前提已被调研否证**：复用 `blueprints.key_events TEXT` 存 `JSON.stringify(array)`（与同表 `characters` 同一惯用法）⇒ **零 schema 迁移、不动 DDL 一字节、基线指纹不受影响**（红线 1 天然满足）。§5.5 表里有三行都依赖它。设计稿 `docs/design/architecture/blueprint-key-events-structuring-design.md`（作者已裁定 D1–D6 全部同意）。
    **★ 阶段 1 已实施并修复完成（2026-10-14，未提交）**：首轮实施**中途失败**、实际引入 **53 条回归**（含 1 条**用户可见的生产崩溃**），两条真实缺陷已修 + fixture 已同步；真实读数与复盘见该稿 **§11.4 / §11.6**。**下一步 = 阶段 2（产出侧）**，入口见其 §11.5。
 5. **P1-1 / P1-2 / P1-3**（见上表；P1-1 落点已修正为【后续计划边界】块）。
 
@@ -649,7 +649,7 @@ interface PromptTemplate {
 > ① **"对存量项目零收益"这条批评对新槽位同样成立**——正文里那 304 字本来就写在 `globalGuidance` 中，新槽位默认只喂正文链，作者同样得**手动把文字搬过去**才生效；不存在"新内容天然正确"的免费午餐。
 > ② 标签机制**一套覆盖三个变量**（`globalGuidance` / `referenceWorks` / `writingStyle`），零 schema、零迁移、旧数据逐字不变（无标签 = 全量）。
 > ③ "作者会忘/看不见"这条风险，**由作者裁定 ④ 的段统计 + chip + 未知标签告警对冲**（`ScopeTagBar`）。
-> 详细取舍与实施记录见 `docs/design/free-text-scoping-design.md` §5、§9、§11。
+> 详细取舍与实施记录见 `docs/design/prompt/free-text-scoping-design.md` §5、§9、§11。
 
 **2. 语法**：行内标记 `[[scope:C,S]]`（比 `## 适用：架构` 更不易与 Markdown 标题冲突），或段落级前缀 `【正文】`。**解析器**放 `src/shared/prompt-scope-label.ts`（零依赖，与 `prompt-trace-markdown.ts` 同族），由 `prompt-builder.ts` 调用。
 
@@ -682,7 +682,7 @@ interface PromptTemplate {
 
 ### 附录 H：外部评审《全链路 Prompt 架构重构评估》的吸收与驳回（2026-10-13）
 
-> 评审全文复核见 `docs/design/contract-first-reassessment.md`（**存档，不作实施依据**；结论已折进本稿）。
+> 评审全文复核见 `docs/design/prompt/contract-first-reassessment.md`（**存档，不作实施依据**；结论已折进本稿）。
 > 该文**不是平行方案，而是读过本稿后写的评审**（判据 1 直接用本稿 `G/A/D/C/S` 代号、风险 2 点名 `acceptsScopes` 与 `prompt-language-contract.test.ts`）。故只做增量审计。
 
 **H.1 已吸收（4 条，已折进正文）**

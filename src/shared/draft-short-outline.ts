@@ -13,7 +13,7 @@ export const DRAFT_SHORT_OUTLINE_PURPOSE = 'chapter-draft-short-outline' as cons
  *
  * 现在只喂三块：本章蓝图（主料）、前驱状态、本章执行合同。
  * 作者裁定：**后续计划边界不给**（已有蓝图，不应再多给信息）；前驱给**上一章定稿全文**；
- * 本章执行合同**给**。取舍记录见 `docs/design/p0-1-short-outline-scoping-design.md` §6。
+ * 本章执行合同**给**。取舍记录见 `docs/design/prompt/p0-1-short-outline-scoping-design.md` §6。
  *
  * ⚠️ 字段只收录「本步确有读取点」的项（YAGNI）：短细纲不消费 `estimatedUnits`，
  * 故蓝图 `keyEvents` 的结构化改造**不在本步依赖链上**。

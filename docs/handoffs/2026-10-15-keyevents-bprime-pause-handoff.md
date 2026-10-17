@@ -111,7 +111,7 @@ AI 重新抽取报「缺少已预览的角色卡候选，未写入角色名单�
    「待建卡候选」；再登记回去 ⇒ 回到列表（撤销 = 追加 `revoke`，不改历史）。
    ⚠️ **已知边界**：撤销后他在候选清单里会重新出现，但**已批准的来源批次不可重开** ⇒
    他**不会**因此获得一个新卡。想给他建卡请走「为指定角色补全背景」或手动建卡。
-   深层「候选复审批次」已登记 `docs/plans/architecture-consistency-design.md` §8。
+   深层「候选复审批次」已登记 `docs/design/architecture/architecture-consistency-design.md` §8。
 
 **若发现异常**：把 trace（`debug/prompt-trace/`）+ 库内该行读数给我，我按老规矩先取证再改。
 
@@ -163,16 +163,16 @@ AI 重新抽取报「缺少已预览的角色卡候选，未写入角色名单�
 > **盘点口径**：本表只列**除段二验证外**的未完成项（验证已按作者裁定退后待决，见 §2.5）。
 > 每项都标了「能不能现在做」——`可做` = 不依赖实机/不依赖前置裁定。
 
-### A. 主线「全链路 prompt 载荷重构」`docs/design/prompt-payload-scoping-design.md`
+### A. 主线「全链路 prompt 载荷重构」`docs/design/prompt/prompt-payload-scoping-design.md`
 
 | 项 | 状态 | 落点 / 备注 |
 |---|---|---|
 | P0-0 / P0-1 / P0-2 / P0-2b / P0-3 | ✅ 已落地 + 实机取证 | — |
 | B-4 `keyEvents` 结构化（阶段 1 / 段一 / 阶段 2.5） | ✅ 已落地 + 实机 | 只剩段二验证（**待决**） |
 | **P1-1** | ✅ **已落地（2026-10-15）** | 正文/续写把后续计划降级为「本章不可写事件」清单。**真实落点**（旧写的 `:784-802` 已漂移）= `generate-draft.command.ts:723` 拼 `futureBlueprintsStr` → `:898` 传 `futurePlans` → `chapter-materials.ts:522`。新增 `src/shared/chapter-boundary.ts`（`toBoundaryNotice`）。**实机同 run 实测：块 1,598 → 555 字（省 65%），占 user 10.4% → 3.6%**。提交 `233ea44`（设计稿）+ `933021fe`（实现）。**代价**：说明措辞变了 ⇒ `context-entry-parity` 两处 sha256 护栏更新。**遗留**：~~实机复验（真跑一章）随段二验证同批待决~~ → **✅ 已实机复验（2026-10-16，作者跑 ch2 正文）**：边界块 **1,656 → 729 字（省 56%）**，占 user 17,168 的 9.6% → 4.2%；5 章 12 条事件全部压成首句要点，ch7 因 5 条多事件章展开为缩进子项（255 字）——形态与设计契约一致（源 `20261015-235440-262-正文-ch2-*.json`；复算脚本 `.runtime/quant-p11-ch2.mjs`）。本项只「少给素材」，不提供强制门禁（护栏在附录 C）。⚠️ 红线提醒：**块标题被执行合同按名引用 ⇒ 块必须恒在**（空串回落「（无后续蓝图）」，不可省略） |
-| **P1-2a** | ✅ **已落地（2026-10-16）** | L2 投影（**按节**）：`architecture` 对正文剥离**整节远期**段。新增 `src/shared/architecture-projection.ts`（`withArchitectureDraftProjection`，fail-open：找不到该节/作者改了标题 ⇒ 逐字返回，只会少省不会多删），接在 `generate-draft.command.ts:688` `readArchitecture()`（**全库唯一调用点** ⇒ ch1 初始 + ch2+ 续写共用；精修/审稿不读它）。**三方案**：**A** = 按模板固定标题把 `### 3.【隐喻与深层危机】` 换成「标题 + 一行声明」；**C** = 运行时合同补【远期设定边界】；**E（作者 D1 追问追加，v1/v2 漏项）** = 给 `world_building` §3 加**产出侧生成约束**（内置 zh/en + 作者覆盖版）—— A/C 只治**消费侧**，作者问的是**之后的生成**会不会再犯。**ch2 实测：`architecture` 6,854 → 5,958（省 896 = user 5.2% / total 4.9%）**，终局谜底（"终极谜团/零号档案/终极抉择"）**全部不再进请求**。设计稿 `docs/design/p1-2-architecture-projection-design.md`（v3 含裁定与实施记录）。**遗留**：① 实机复验随段二验证同批待决；② ~~存量 §3 的「代述禁忌」要作者手工迁到 `### 1.【核心规则与体系漏洞】`~~ → **✅ 作者已完成（2026-10-16）**：迁段结果已只读核对（`worldbuilding` 6,186 → 6,210；「代述禁忌」现于 §1 @476 与 §3 @4004 各一处；「现实变薄」裁定**不迁**、随 §3 移除，判据「当期不该知道，变化由弧光和大纲来安排」；§3 四节标题结构未变），读数见该稿 §8.1；③ 纯按节投影上限仅 ~5%，要拿到"只给事实源"须做 P1-2b |
-| **P1-2b** | ⏸ **待定 · 最低优化级别（2026-10-16 作者裁定）** | 产出侧**期次结构**：每个设定标注 `展开期`/`适用章`（与 `空间名｜hours=` 机读行、【具名人物登记】**同形**）。理论收益 ~20–50%。**作者裁定**：「直觉上产出和收益不成正比……**除非投产后效果实在太差**」⇒ **待定 · 最低优化级别**。**理由**：作者动作仅 **12 处**（段落块口径：`worldbuilding` 6,210 字 = 58 块，含期次词 12 块 = §1 六 / §3 一 / §4 五；§2 零；上一轮口述的"15 条"是行首 `- ` 口径，偏粗），**但收益完全卡在框架侧**——「本章属哪一期」由谁判定、蓝图侧是否对称标注、与 P1-2a 整节投影去留，**三件均未定** ⇒ **瓶颈不是标注量，是框架侧判定机制**（成本远超 12 处标注）。**执行形态 = 触发式待定**（与段二验证同范式：**不为它专门造场景**，真遇到「早期设定被写进后期章且现有手段拦不住」的具体问题再启）。**手册转「即用操作指南」保留**：`docs/design/p1-2b-settings-period-authoring-guide.md`（含 12 处清单 + 编辑入口 `WorldBuildingEditor.tsx` + 失败回退 + 三形态对比 + §7 裁定记录）。**§3 已有天然范式**（`- 前期 / - 中期 / - 后期 / - 终局`）照抄即可；**§4 五块文本已写「全书反复出现」**，只需改机读 |
-| **P1-3** | ✅ **已结项（2026-10-16 作者裁定「按建议来」：D1/D2 不立项 · D3 重定义「可观测性」并已实施 · D4【C1】另立小项）** | L1 变量出口语义化 + `enforceRequiredContext`。**三条独立取证：兜底 0 触发**（内置 25 / 覆盖版 20 / 实机 18 snapshot）⇒ 关掉兜底 = 拆安全网；`acceptsScopes` = **抽象层级错误**（四个消费者已被 P0-1/P0-2/P1-1/P1-2a 逐一取代，且对 `architecture` 按主层过滤只有 0/100 两档）；`enforceRequiredContext` = **语义被混淆**（作用于兜底通道，附 systemSuffix 适用边界）。**可观测性已落地**：`projection` 元数据（`shared/prompt-projection.ts` + 两个投影函数 detailed 变体 + trace 吸附 + markdown 呈现），零行为变更、不碰契约测试基线。**C1**（审稿链 `review-chapter.command.ts:71` 全量 `worldbuilding` 无投影）= 唯一缺口，已另立小项。稿 `docs/design/p1-3-variable-export-scoping-design.md`（v3：§3.1 适用边界 + §7.1 全量消费点扫描 + §8.1 裁定记录 + §9.1 实施记录）。**C1 已实施（2026-10-16，解法 B）**：`shared/review-far-term-setting.ts` → `review-chapter.command.ts` 的 `ordinaryReviewPrompt`，稿 `docs/design/c1-review-architecture-declaration-design.md` |
+| **P1-2a** | ✅ **已落地（2026-10-16）** | L2 投影（**按节**）：`architecture` 对正文剥离**整节远期**段。新增 `src/shared/architecture-projection.ts`（`withArchitectureDraftProjection`，fail-open：找不到该节/作者改了标题 ⇒ 逐字返回，只会少省不会多删），接在 `generate-draft.command.ts:688` `readArchitecture()`（**全库唯一调用点** ⇒ ch1 初始 + ch2+ 续写共用；精修/审稿不读它）。**三方案**：**A** = 按模板固定标题把 `### 3.【隐喻与深层危机】` 换成「标题 + 一行声明」；**C** = 运行时合同补【远期设定边界】；**E（作者 D1 追问追加，v1/v2 漏项）** = 给 `world_building` §3 加**产出侧生成约束**（内置 zh/en + 作者覆盖版）—— A/C 只治**消费侧**，作者问的是**之后的生成**会不会再犯。**ch2 实测：`architecture` 6,854 → 5,958（省 896 = user 5.2% / total 4.9%）**，终局谜底（"终极谜团/零号档案/终极抉择"）**全部不再进请求**。设计稿 `docs/design/prompt/p1-2-architecture-projection-design.md`（v3 含裁定与实施记录）。**遗留**：① 实机复验随段二验证同批待决；② ~~存量 §3 的「代述禁忌」要作者手工迁到 `### 1.【核心规则与体系漏洞】`~~ → **✅ 作者已完成（2026-10-16）**：迁段结果已只读核对（`worldbuilding` 6,186 → 6,210；「代述禁忌」现于 §1 @476 与 §3 @4004 各一处；「现实变薄」裁定**不迁**、随 §3 移除，判据「当期不该知道，变化由弧光和大纲来安排」；§3 四节标题结构未变），读数见该稿 §8.1；③ 纯按节投影上限仅 ~5%，要拿到"只给事实源"须做 P1-2b |
+| **P1-2b** | ⏸ **待定 · 最低优化级别（2026-10-16 作者裁定）** | 产出侧**期次结构**：每个设定标注 `展开期`/`适用章`（与 `空间名｜hours=` 机读行、【具名人物登记】**同形**）。理论收益 ~20–50%。**作者裁定**：「直觉上产出和收益不成正比……**除非投产后效果实在太差**」⇒ **待定 · 最低优化级别**。**理由**：作者动作仅 **12 处**（段落块口径：`worldbuilding` 6,210 字 = 58 块，含期次词 12 块 = §1 六 / §3 一 / §4 五；§2 零；上一轮口述的"15 条"是行首 `- ` 口径，偏粗），**但收益完全卡在框架侧**——「本章属哪一期」由谁判定、蓝图侧是否对称标注、与 P1-2a 整节投影去留，**三件均未定** ⇒ **瓶颈不是标注量，是框架侧判定机制**（成本远超 12 处标注）。**执行形态 = 触发式待定**（与段二验证同范式：**不为它专门造场景**，真遇到「早期设定被写进后期章且现有手段拦不住」的具体问题再启）。**手册转「即用操作指南」保留**：`docs/design/features/p1-2b-settings-period-authoring-guide.md`（含 12 处清单 + 编辑入口 `WorldBuildingEditor.tsx` + 失败回退 + 三形态对比 + §7 裁定记录）。**§3 已有天然范式**（`- 前期 / - 中期 / - 后期 / - 终局`）照抄即可；**§4 五块文本已写「全书反复出现」**，只需改机读 |
+| **P1-3** | ✅ **已结项（2026-10-16 作者裁定「按建议来」：D1/D2 不立项 · D3 重定义「可观测性」并已实施 · D4【C1】另立小项）** | L1 变量出口语义化 + `enforceRequiredContext`。**三条独立取证：兜底 0 触发**（内置 25 / 覆盖版 20 / 实机 18 snapshot）⇒ 关掉兜底 = 拆安全网；`acceptsScopes` = **抽象层级错误**（四个消费者已被 P0-1/P0-2/P1-1/P1-2a 逐一取代，且对 `architecture` 按主层过滤只有 0/100 两档）；`enforceRequiredContext` = **语义被混淆**（作用于兜底通道，附 systemSuffix 适用边界）。**可观测性已落地**：`projection` 元数据（`shared/prompt-projection.ts` + 两个投影函数 detailed 变体 + trace 吸附 + markdown 呈现），零行为变更、不碰契约测试基线。**C1**（审稿链 `review-chapter.command.ts:71` 全量 `worldbuilding` 无投影）= 唯一缺口，已另立小项。稿 `docs/design/prompt/p1-3-variable-export-scoping-design.md`（v3：§3.1 适用边界 + §7.1 全量消费点扫描 + §8.1 裁定记录 + §9.1 实施记录）。**C1 已实施（2026-10-16，解法 B）**：`shared/review-far-term-setting.ts` → `review-chapter.command.ts` 的 `ordinaryReviewPrompt`，稿 `docs/design/review/c1-review-architecture-declaration-design.md` |
 
 > ### ★ 2026-10-16 主线 A 实机复验（作者两轮：03:0x 未重启版 → 03:1x 重启版）
 >
@@ -191,7 +191,7 @@ AI 重新抽取报「缺少已预览的角色卡候选，未写入角色名单�
 > - 前一轮审稿报告：2 条 finding（1 error「第一句谎话未成真」+ 1 warning「老陈记时序与第 1 章颠倒」）**均真实可核验**，其中 warning 正是**用世界观/前文抓到** ⇒ 再次印证「保留完整设定的收益实测」；**未出现**「拿终局当事实」的误用。
 
 
-### B. 另一条主线：**用户级设置包** `docs/design/user-settings-package-design.md`
+### B. 另一条主线：**用户级设置包** `docs/design/features/user-settings-package-design.md`
 
 - 状态 = **待审核、未编码**（可做）。
 - ★ **核心裁定点**：**不能把创作资产和个人环境打进同一个包** —— 「番茄文风」可分享；`models.json` 的 apiKey **绝不可外流**（红线 6）。这两类必须在**内核层就切开**，不是靠打包时过滤。
@@ -199,7 +199,7 @@ AI 重新抽取报「缺少已预览的角色卡候选，未写入角色名单�
 - 数据点：20 个用户级 prompt 覆盖里 **18 个判为「可跨项目复用的文风资产」** ⇒ 需求真实、非设想。
 - 附带：把项目级「备份」面板**合并升级为统一的「备份与迁移」**面板。
 
-### C. 架构一致性三段 `docs/plans/architecture-consistency-design.md`
+### C. 架构一致性三段 `docs/design/architecture/architecture-consistency-design.md`
 
 | 项 | 状态 | 备注 |
 |---|---|---|
@@ -209,7 +209,7 @@ AI 重新抽取报「缺少已预览的角色卡候选，未写入角色名单�
 | **S4 AI 语义审计入口** | 低优先 | 给 `continuity-check` skill 一个"架构级"调用入口，不新增确定性代码 |
 | §8「候选复审批次」 | ⏸ **本次新登记** | 判据 ⑰（有待决 ≠ 可决策）；**动批次身份与证明，需独立设计小节** |
 
-### D. 事实层缺口 `docs/plans/state-tracking-assessment.md` + backlog
+### D. 事实层缺口 `docs/design/architecture/state-tracking-assessment.md` + backlog
 
 | 项 | 优先级 | 一句话 |
 |---|---|---|

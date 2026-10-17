@@ -1,8 +1,8 @@
 /**
  * 【后续计划边界】清单正文生成（P1-1）。
  *
- * 设计依据：`docs/design/p1-1-boundary-notice-design.md`（§3 契约 / §4 提取规则 / §5 输出形态）。
- * 上级稿：`docs/design/prompt-payload-scoping-design.md` 附录 B（`toBoundaryNotice` 派生机制）。
+ * 设计依据：`docs/design/prompt/p1-1-boundary-notice-design.md`（§3 契约 / §4 提取规则 / §5 输出形态）。
+ * 上级稿：`docs/design/prompt/prompt-payload-scoping-design.md` 附录 B（`toBoundaryNotice` 派生机制）。
  *
  * 目的：后续章节的 `keyEvents` 原先被**逐字**塞进正文请求的 user 消息（实机 1,598 字），
  * 模型把它当「可写素材」⇒ 续写越界下一章。本模块把它重新定性为「**不可写事件要点**」：

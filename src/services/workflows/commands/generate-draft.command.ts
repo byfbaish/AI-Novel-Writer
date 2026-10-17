@@ -981,7 +981,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // 16,736 字：全书设定池 5,049 / 参考作品 3,071 / 文风要求 1,492 / 全局写作要求 315 /
     // 篇幅合同 / 黄金第一章法则 / AI 味反制…），而这一步的调用**没有 system 消息** ——
     // 模型看到的唯一输入就是「指令 + 正文写作材料」，材料形态本身在教它写散文
-    //（实测输出 1,747 字）。取舍与裁定见 docs/design/p0-1-short-outline-scoping-design.md §6。
+    //（实测输出 1,747 字）。取舍与裁定见 docs/design/prompt/p0-1-short-outline-scoping-design.md §6。
     const outlinePrompt = draftShortOutlinePrompt(writingLanguage, {
       // 本步没有 system 消息，作者本章指导只能靠蓝图 JSON 承载 → 不 drop userGuidance。
       chapterInfo: JSON.stringify(toBlueprintProjection(writerChapterInfo), null, 2),
@@ -1144,7 +1144,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           let shortOutline = recovery?.draftShortOutline?.completedOutput ?? ''
           // 首次生成必须排在重试分支之前：全新运行时 recovery 为 null，重试分支必然被跳过；
           // 首次失败会落成 run 里唯一的 attempt，重试授权随即可用，紧随其后的分支据此自动重试一次。
-          // 见 docs/design/short-outline-first-failure-retry-design.md
+          // 见 docs/design/prompt/short-outline-first-failure-retry-design.md
           let outlined: GenerationOutcome | undefined
           if (!recovery) {
             callbacks.log(uiText('生成短细纲...', 'Generating a short chapter outline...'))

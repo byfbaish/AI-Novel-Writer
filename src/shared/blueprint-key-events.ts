@@ -1,7 +1,7 @@
 /**
  * 蓝图关键事件的结构化表示。
  *
- * 设计依据：`docs/design/blueprint-key-events-structuring-design.md`（§3 契约 / §3.1 归一化规则）。
+ * 设计依据：`docs/design/architecture/blueprint-key-events-structuring-design.md`（§3 契约 / §3.1 归一化规则）。
  *
  * 背景：`keyEvents` 原先是一段自由文本 —— 无法编号、无法对账、算不出停止点。
  * 本模块是它的**唯一归一化入口**：读写两侧都过 `normalizeKeyEvents`，

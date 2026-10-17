@@ -1,7 +1,7 @@
 /**
  * 变量投影元数据（P1-3′ 可观测性，2026-10-16）。
  *
- * 设计依据：`docs/design/p1-3-variable-export-scoping-design.md`（§6 附录 D 的 `projection` 元数据）。
+ * 设计依据：`docs/design/prompt/p1-3-variable-export-scoping-design.md`（§6 附录 D 的 `projection` 元数据）。
  *
  * ## 为什么需要它
  *

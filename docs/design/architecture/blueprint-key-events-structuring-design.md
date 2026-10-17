@@ -1,7 +1,7 @@
 # 蓝图 `keyEvents` 结构化设计稿（§7.1-B-4 共同前提）
 
 > **状态**：初稿 **v2** · 已吸收外部评审（见 §10）· **待作者裁定 D1–D6 与分期**（2026-10-14）  
-> **上游依据**：`docs/design/prompt-payload-scoping-design.md` §5.5 / §7.1-B-4 / 附录 C / 附录 F  
+> **上游依据**：`docs/design/prompt/prompt-payload-scoping-design.md` §5.5 / §7.1-B-4 / 附录 C / 附录 F  
 > **本文只回答一个问题**：把蓝图 `keyEvents` 从 `string` 变成 `Array<{id, event, estimatedUnits}>`，**要动什么、代价多大、怎么分期**。  
 > **本文不实施**。按项目惯例，作者初评通过后才进入编码。
 
