@@ -136,7 +136,7 @@ docs/
 | [`p8-fanqie-flavor-draft-quality-design.md`](design/prompt/p8-fanqie-flavor-draft-quality-design.md) | ✅ P1 生效 · ⏳ P2/P3 待复验 | 番茄向正文质量闸门：续写判定接回合格线 / 可判定 AI 味禁令 / 番茄 KPI 落点（§10 复验 #1） |
 | [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（19 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（22 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -158,7 +158,10 @@ docs/
 | [`arc-delivery-audit-assessment.md`](design/architecture/arc-delivery-audit-assessment.md) | 📝 待裁定 | 弧光兑现度审计：情节弧被超额消耗、角色弧 3/7 起点、两弧不对齐 |
 | [`p12-arc-node-anchoring-design.md`](design/architecture/p12-arc-node-anchoring-design.md) | 📝 待裁定 | 弧光结构位 ID（`M1-2/转折`，纯函数派生）+ `covers` + 三个不变量 |
 | [`p13-arc-layer-expansion-design.md`](design/architecture/p13-arc-layer-expansion-design.md) | ✅ 已实施 | 弧光分层信息量必须递增：小弧从「标签」变「材料」+ 大弧「中弧推进」+ 生成时体检 |
-| [`arc-proportion-calibration.md`](design/architecture/arc-proportion-calibration.md) | 📝 立项 · 待议 | 弧光篇幅比例：30:45:25 / 40:60 / 小弧差 ≤2 倍（现为全层均分） |
+| [`arc-proportion-calibration.md`](design/architecture/arc-proportion-calibration.md) | 📝 已并入下条 | 弧光篇幅比例：30:45:25 / 40:60 / 小弧差 ≤2 倍（现为全层均分） |
+| [`arc-budget-engine-design.md`](design/architecture/arc-budget-engine-design.md) | 📝 立项 · 待裁定 | **骨架预算引擎**（合并平台画像）：章数由本地算、模型只复核；一张画像两个消费者；比例与绝对区间在 150 章下不兼容 |
+| [`o1-arc-event-progress-design.md`](design/architecture/o1-arc-event-progress-design.md) | 📝 待裁定 | **O1 落地：按弧分配、按章生成**——事件按 `→` 编号 + 每章进度线 + `覆盖：#E<n>` 水位，四条不变量（不改批次/cursor/请求数） |
+| [`synopsis-expansion-design.md`](design/architecture/synopsis-expansion-design.md) | ✅ 已实施 | **大纲层扩张机制**：章数不减，改「章级局面」（想要—被挡—尝试—代价—未决）+ 展开四来源 + 弧位块逐章步数上限（代码算，不让模型排） |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
 
