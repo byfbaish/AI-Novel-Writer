@@ -392,6 +392,17 @@ Example shape (compute your own numbers; do not copy these):
 
 [Step 2 — write the progression within each level (the only reason this layer exists)]
 Between major arcs: every major arc must state a **continuation reason** — why it follows the previous major arc.
+★ A major arc must also state **mid-arc progression** — how its mid arcs drive each other. This is the coarse-grained
+  twin of a mid arc's Causality/Goal. A continuation reason alone is not enough: it only says why this major arc
+  follows the previous one, and says **nothing** about how it moves forward internally — which turns its "type" into an
+  empty label and lets a mid arc write the goal that belongs to the major arc (observed: major arc 2 declared B
+  Goal-driven but had no "Goal" line at all, while mid arc 1's goal was exactly that missing goal). By type:
+  - A Causal:      Mid-arc progression: because <mid arc 1's specific outcome>, therefore <mid arc 2's action>
+  - B Goal-driven: Mid-arc progression: goal moves from X to Y; mid arc 1 = attempt 1, mid arc 2 = attempt 2 (say why a retry is required)
+  - C Exploratory: Mid-arc progression: <place A / discovery> -> <place B / discovery>
+★ Every clause of a major arc's **End state** must name the mid arc that pays it off (in parentheses, e.g.
+  "Lu Chuanfu takes on his first ledger entry (mid arc 2)"). An end state with no mid arc behind it means the
+  volume cannot close (observed: 2 of 4 clauses had no taker).
 Between mid arcs (within one major arc): classify each mid arc, then write its progression by type:
 - A Causal: events chain together, expressible as "because … therefore …".
   Causality: because <previous mid arc / prior event> produced <specific outcome>, therefore <this mid arc's action>
@@ -402,7 +413,33 @@ Between mid arcs (within one major arc): classify each mid arc, then write its p
 - C Exploratory: parallel encounters in a space or cast; events connect as "and then they met …" rather than "therefore …".
   Motivation: <why explore> (this compensates for the absence of causality)
   Path: <place A> -> discovery <X>; <place B> -> discovery <Y>
-Minor arcs: give **name + chapter count only** (one line of positioning). Their detailed expansion belongs to the plot outline — do not develop plot here.
+★ Minor arcs (level 3) — this layer works the **opposite** way to the two above: the deeper you go, the more concrete
+  it must get, and the information must **grow, not shrink**. A minor arc is not a label; it is the only layer fed
+  directly into the chapter outline, and a name alone cannot carry its 8–9 chapters.
+  Format (one line per minor arc):
+  <minor arc name> (approx. N chapters): <start state> -> <required event 1> -> <required event 2> -> … -> <end state>
+  - **3–5 required events**, count set by the chapter span (roughly one per 2 chapters), 15–30 words each; write only
+    "who did what / what was obtained / what was discovered".
+  - Write **content only**, no causal reasoning — the "because … therefore …" was already stated one layer up; repeating it adds nothing.
+  - The **end state** is the world as this minor arc leaves it, and it must equal the next minor arc's start state.
+  - ✗ Unacceptable: a name plus chapter count only ("X (approx. 8 chapters)") — zero information; the outline can only
+    guess, and guessing means borrowing material from the next mid arc (this has actually happened).
+  - ✗ Also unacceptable: chapter-by-chapter beats ("chapter 1 … chapter 2 …") — that belongs to the plot outline.
+
+[Step 2.5 — verify that information **increases** layer by layer (structural requirement, mandatory)]
+Each step down must carry more, and more concrete, information — never less:
+  Major arc (4 fields: what this volume must achieve — abstract)
+    ⊃ Mid arc (3–5 fields: why it must progress this way — one notch more concrete)
+      ⊃ Minor arc (3–5 required events: what actually happens — one notch more concrete)
+        ⊃ Chapter (expanded by the plot outline; not written here)
+★ Self-check: take any mid arc and add up the required events of all its minor arcs — the total must be **clearly
+  more** than that mid arc's own few lines; and that mid arc must in turn be clearly more than its parent major arc.
+  If a layer is only a paraphrase of its parent (comparable size, same information), that layer was never really
+  subdivided and must be rewritten.
+★ Reverse prohibition: **do not push detail upward into the parent layer.** A mid arc must not spell out minor-arc
+  beats; a major arc must not spell out a mid arc's attempt sequence. When a parent writes the child's detail, the
+  child has nothing left to expand and can only guess — and guessing means borrowing the next layer's material,
+  which is exactly how plot gets paid off early.
 
 [Output format — Markdown only, use headings for levels, no code fences]
 ★ **Do not output a level-1 heading** — “# Arc Structure” is prepended automatically. Your output starts with the “[Length budget]” line.
@@ -412,27 +449,33 @@ Minor arcs: give **name + chapter count only** (one line of positioning). Their 
 ## Major arc 1: <name> (approx. X–Y chapters)
 - Type: A Causal / B Goal-driven / C Exploratory
 - Continuation reason: (the first arc says "opening"; every other must say why it follows the previous major arc)
+- Mid-arc progression: because <mid arc 1's specific outcome>, therefore <mid arc 2's action> (B: "goal moves from X to Y; mid arc 1 = attempt 1, mid arc 2 = attempt 2"; C: "<place A> -> <discovery>, <place B> -> <discovery>")
 - Central conflict: …
-- End state: …
+- End state: <state 1> (mid arc 2), <state 2> (mid arc 2's attempt-1 outcome), … (every clause names its mid arc)
 ### Mid arc 1: <name> (approx. N chapters)
 - Type: A Causal
 - Causality: because <previous mid arc / prior event> produced <specific outcome>, therefore <this mid arc's action>
 - Ordering: this mid arc starts from <the exact state> the previous mid arc ended in
 - Turn: …
-- Minor arcs: <name> (approx. M chapters); <name> (approx. M2 chapters); …
+- Minor arcs (one line each; must carry "start -> required events -> end"):
+  - <name> (approx. M chapters): <start state> -> <required event 1> -> <required event 2> -> <required event 3> -> <end state>
+  - <name> (approx. M2 chapters): <start state> -> <required event 1> -> … -> <end state>
 ### Mid arc 2: <name> (approx. N chapters)
 - Type: B Goal-driven
 - Goal: <one sentence, the full change from X to Y>
 - Attempt 1: <method> -> outcome <what> -> therefore attempt 2
 - Attempt 2: <method> -> outcome <what>
 - Turn: …
-- Minor arcs: <name> (approx. M chapters); <name> (approx. M2 chapters); …
+- Minor arcs (one line each):
+  - <name> (approx. M chapters): <start state> -> <required event 1> -> … -> <end state>
+  - <name> (approx. M2 chapters): <start state> -> <required event 1> -> … -> <end state>
 ### Mid arc 3: <name> (approx. N chapters)
 - Type: C Exploratory
 - Motivation: <why explore>
 - Path: <place A> -> discovery <X>; <place B> -> discovery <Y>
 - Turn: …
-- Minor arcs: <name> (approx. M chapters); <name> (approx. M2 chapters); …
+- Minor arcs (one line each):
+  - <name> (approx. M chapters): <start state> -> <required event 1> -> … -> <end state>
 ## Major arc 2: <name> (approx. X–Y chapters)
 …
 ★ The above demonstrates the **writing format**, and uses three mid arcs to show the field names for each of A / B / C.
@@ -452,13 +495,15 @@ Minor arcs: give **name + chapter count only** (one line of positioning). Their 
 5. Every mid arc's field names match its type (A = Causality/Ordering, B = Goal/Attempt, C = Motivation/Path)
 6. The minor-arc counts of all mid arcs are **not all identical** (at least two distinct values)
 7. No chapters were added or removed merely to make a sum come out equal — a difference is allowed, padding is not
+8. Every major arc states its mid-arc progression, and every clause of its end state names the mid arc that pays it off
+9. **Information increases downward**: every minor arc carries "start -> 3–5 required events -> end", and any mid arc's total minor-arc content is clearly larger than that mid arc's own fields
 
 [Requirements]
 1. This is a **three-level progression skeleton**, not a chapter-by-chapter outline — do not write per-chapter content.
 2. Chapter numbers are estimates ("approx. X–Y chapters"), not contracts; arcs may overlap and shift.
 3. Preserve explicit author facts from the premise, character dynamics, and world system; never contradict them.
 4. If a mid arc is type C, do not force a causal link — write motivation/path instead, or it becomes fake causality.
-5. Minor arcs get a name and a chapter count only; do not develop their plot.
+5. Minor arcs must carry "start -> 3–5 required events -> end", but must **not** become chapter-by-chapter beats — allocating them to chapters is the plot outline's job.
 6. Return only the content above, with no explanation, greetings, or code fences.
 
 [Reference works — borrow systems/mechanics/tone; obey stated prohibitions]

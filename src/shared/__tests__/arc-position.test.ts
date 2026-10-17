@@ -412,3 +412,56 @@ describe('withProjectedArcGuide · 投影 + 弧位块', () => {
     expect(withProjectedArcGuide(PLAN, PLAN, 195, 196, 200, 'zh-CN')).toBe(PLAN)
   })
 })
+
+describe('小弧内容（P13）：从「只有名字」升级为「名字 + 起点→事件→落点」', () => {
+  const PLAN_WITH_CONTENT = [
+    '## 大弧一：门牌错位（约 50 章）',
+    '- 类型：A 因果驱动型',
+    '- 接续理由：开篇起点',
+    '### 中弧 1：门牌错位与第一页报告（约 25 章）',
+    '- 类型：A 因果驱动型',
+    '- 因果：因为"我马上到"成真，所以门牌集体错位。',
+    '- 时序：本中弧起点 = 程实刚醒。',
+    '- 转折：三家同时抢物证。',
+    '- 小弧：',
+    '  - 错位门牌（约 8 章）：17 号换成 71 号 → 街坊说法不一 → 找周德胜对质 → 拿到排班单 → 手里有物证但不知能证明什么',
+    '  - 第一页报告（约 8 章）：观察科递来登记回执 → 沈砚上门问话 → 回执被拍照 → 被写进第一页报告',
+    '  - 三家人抢一张排班表（约 9 章）：庄家找上门 → 自媒体直播围堵 → 物证被三家同时认领',
+  ].join('\n')
+
+  it('多行子项各自成一条，既不吞并、也不混进中弧字段', () => {
+    const parsed = parseArcStructure(PLAN_WITH_CONTENT)!
+    const mid = parsed.majors[0]!.mids[0]!
+    expect(mid.minors.map(item => item.name)).toEqual(['错位门牌', '第一页报告', '三家人抢一张排班表'])
+    expect(mid.minors.map(item => item.chapters)).toEqual([8, 8, 9])
+    expect(mid.minors[0]!.text).toContain('17 号换成 71 号')
+    // 子项若被 FIELD_LINE 吃掉，中弧会凭空多出三条叫「错位门牌（约 8 章）」的字段
+    expect(mid.fields.map(([name]) => name)).toEqual(['因果', '时序', '转折'])
+  })
+
+  it('单行清单形态也能带内容（旧格式向后兼容）', () => {
+    const oneLine = [
+      '## 大弧一：A（约 50 章）',
+      '### 中弧 1：B（约 25 章）',
+      '- 小弧：甲（约 8 章）：起点甲 → 事件甲 → 落点甲；乙（约 9 章）：起点乙 → 事件乙 → 落点乙',
+    ].join('\n')
+    const minors = parseArcStructure(oneLine)!.majors[0]!.mids[0]!.minors
+    expect(minors.map(item => item.name)).toEqual(['甲', '乙'])
+    expect(minors.map(item => item.chapters)).toEqual([8, 9])
+    expect(minors[1]!.text).toContain('事件乙')
+  })
+
+  it('没有内容时 text 为 undefined（旧弧光不因此变成空串或报错）', () => {
+    const minors = parseArcStructure(PLAN)!.majors[0]!.mids[0]!.minors
+    expect(minors.length).toBeGreaterThan(0)
+    expect(minors[0]!.text).toBeUndefined()
+  })
+
+  it('小弧内容随「弧光结构」一起进入本批 prompt（投影不丢子项）', () => {
+    const parsed = parseArcStructure(PLAN_WITH_CONTENT)!
+    const span = arcSpanForChapters(parsed, 50, 1, 8)!
+    const text = projectArcStructureText(PLAN_WITH_CONTENT, span)
+    expect(text).toContain('17 号换成 71 号')
+    expect(text).toContain('三家人抢一张排班表（约 9 章）')
+  })
+})
