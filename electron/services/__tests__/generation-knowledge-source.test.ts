@@ -57,6 +57,33 @@ it('does not create an absent store and rejects empty to populated transition', 
   await seed()
   await expect(verifyGenerationKnowledge({ projectStorageRoot: root, snapshot })).rejects.toThrow('SOURCE_STALE')
 })
+it('tolerates the production read connection that lazily creates an empty store after capture', async () => {
+  // vector-store getConnectionInternal mkdirs {root}/lancedb on any read.  A
+  // prepared snapshot taken while the directory was still absent must survive
+  // that unrelated, chunk-free directory creation.
+  const { prepareCanonicalStorageFixture } = await import('../../../test/helpers/canonical-project-fixture')
+  const { getConnection, closeConnection } = await import('../../vector-store')
+  const { closeProjectDatabase } = await import('../../database')
+  const project = path.join(root, 'project'), storage = path.join(project, '.ai-novel')
+  prepareCanonicalStorageFixture(project)
+  try {
+    const snapshot = await captureGenerationKnowledge({ projectStorageRoot: storage, query: '中文' })
+    expect(snapshot.storageState).toBe('absent')
+    expect(fs.existsSync(path.join(storage, 'lancedb'))).toBe(false)
+    await getConnection(project)
+    closeConnection(project)
+    expect(fs.existsSync(path.join(storage, 'lancedb'))).toBe(true)
+    await verifyGenerationKnowledge({ projectStorageRoot: storage, snapshot })
+    expect(snapshot.storageState).toBe('absent')
+  } finally { closeConnection(project); closeProjectDatabase() }
+})
+it('rejects an empty store that gains canonical chunks after capture', async () => {
+  fs.mkdirSync(path.join(root, 'lancedb'), { recursive: true })
+  const snapshot = await captureGenerationKnowledge({ projectStorageRoot: root, query: '中文' })
+  expect(snapshot.storageState).toBe('empty')
+  await seed()
+  await expect(verifyGenerationKnowledge({ projectStorageRoot: root, snapshot })).rejects.toThrow('SOURCE_STALE')
+})
 it.each(['chunk', 'document'] as const)('rejects %s corruption as an explicit failure, not empty retrieval', async kind => {
   await seed()
   await mutate(kind === 'chunk' ? 'chunks' : 'documents', async table => {

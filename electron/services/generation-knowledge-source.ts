@@ -159,7 +159,15 @@ export async function verifyGenerationKnowledge(input: { projectStorageRoot: str
     || !Number.isSafeInteger(expected.topK) || expected.topK < 1 || expected.topK > 100
     || expected.items.length > expected.topK || expected.state !== (expected.items.length ? 'stored' : 'empty')) fail('INVALID_SNAPSHOT')
   await readStable(input.projectStorageRoot, async reader => {
-    if (reader.state !== expected.storageState || reader.canonicalRevision !== expected.canonicalRevision || reader.documentsRevision !== expected.documentsRevision) fail('SOURCE_STALE')
+    // A read-only connection lazily creates an empty `lancedb` directory
+    // (vector-store getConnectionInternal) while a prepared snapshot is still
+    // open.  An empty directory holds no canonical chunk, so `absent` and
+    // `empty` describe the same source and both revisions stay null; only a
+    // state change that can alter a selected chunk is stale.
+    const withoutChunks = (state: GenerationKnowledgeSnapshot['storageState']) => state === 'absent' || state === 'empty'
+    const sameStorage = reader.state === expected.storageState
+      || (withoutChunks(reader.state) && withoutChunks(expected.storageState))
+    if (!sameStorage || reader.canonicalRevision !== expected.canonicalRevision || reader.documentsRevision !== expected.documentsRevision) fail('SOURCE_STALE')
     if (new Set(expected.items.map(item => item.chunkId)).size !== expected.items.length) fail('INVALID_SNAPSHOT')
     for (const item of expected.items) {
       if (!reader.chunks) fail('SOURCE_STALE')
