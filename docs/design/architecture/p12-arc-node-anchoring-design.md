@@ -236,6 +236,36 @@ R3 额度与失控：一天仅一次；第一句被当面揭穿，或出现第�
 
 ## 实施记录
 
+### 2026-10-18 · P12-1（大纲声明「覆盖：」+ 当场对账）—— 已实施
+
+**做了什么**（提交 `ff5477cb`）：
+
+| 件 | 落点 | 关键决定 |
+|---|---|---|
+| ID 对模型可见 | `renderArcPositionBlock` | 新增「本批可声明的结构位」一行列出本批中弧的 ID；后续中弧改写成「中弧【三方上门】（M1-2，约第 27–52 章）」，硬约束 2 补「不得出现在任何一章的覆盖声明里」。跨中弧边界的批同时给前后两个中弧的 ID（新增 `ArcSpan.endMidFields`，此前只列起始中弧，后半批会拿不到 ID） |
+| 输出要求 | `synopsis` 的 **systemSuffix** | ⚠️ 写 systemSuffix 不写 content：`content` 被全局覆盖版遮蔽（`synopsis.zh-CN.json` 存在），只有 systemSuffix 恒取内置。这条决定让改动**没有碰作者资产** |
+| 解析 | `parseChapterArcCovers` | 章标题后第一行 `覆盖：` 归属该章；「覆盖：无」= 不声明；**一章多行只取第一行**（合并会让「一章声明两格」悄悄通过）。英文 `Covers:` 与 `**Covers:**` 都认 |
+| 对账 | `auditArcCovers` | INV-1 越界 / INV-2 同一格被两章消费 / INV-3 本批有格子无人认领。`uncovered` 只统计本批区间内的节点，否则全书未写到的格子会全部变成噪音 |
+| 接线 | `architecture.command.execute` | 大纲校验通过后跑一次，`callbacks.log` 输出。**只报告不阻断**：现网数据必然命中，一上线就拦会直接卡住续写 |
+
+**实测（真实 150 章弧光 + 现大纲 ch1–5）**：
+
+```
+[INV-1] 第 2 章「M1-2/尝试 2」属第 27–52 章 —— 提前了 25 章
+[INV-1] 第 3 章「M1-2/转折」—— 提前 24 章
+[INV-1] 第 4 章「M1-2/转折」—— 提前 23 章
+[INV-2] 「M1-2/转折」在第 3 章已被声明过
+[INV-3] M1-1/时序、M1-1/转折 无人认领
+```
+
+这正是审计稿用人工读出的三条结论，现在变成机械输出。
+
+验证：`tsc 0`；`arc-node` 20（+9）、`arc-position` 28、`architecture-projection` 8、`architecture.command` 47、`arc-cover-report` 4 全绿。
+
+**未做 / 待定**：
+- `INV-1` 仍是 warning。转 error 的前提是「数据先干净」或「作者明确接受拦断」。现在 ch2–ch4 会命中，直接 error 等于让第 6 章起的续写失败。
+- P12-2（蓝图 `structured_refs.arcNodes`）需要新增键，而 `structured_refs` 现在是 `spaceRefs` 数组的专用列，加平行键要么改列结构、要么加新列 —— 归到 P11-3 的 lane 六步一起做更划算。
+
 ### 2026-10-18 · P12-0a（结构位 ID 派生）
 
 - 新增 `src/shared/arc-node.ts`：`listArcNodes` / `findArcNode` / `arcNodesForChapter` / `validateArcCovers`。

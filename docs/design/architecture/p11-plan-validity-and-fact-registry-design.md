@@ -298,7 +298,7 @@ planningHorizon: 0 | N     // 单位：章；0 = 严格滚动
 
 | 序 | 项 | 依赖 | 备注 |
 |---|---|---|---|
-| **P11-1** | `attacks` 形状 + 蓝图模板产出要求 + `attacks` 缺失的覆盖度交代 | 无 | 最便宜的起步；不加它，复核无从谈起 |
+| **P11-1** | `attacks` 形状 + 产出要求 + 缺失时的预检提示 | 无 | ✅ **已实施**（`806eb888`）：`BlueprintKeyEvent.attacks` + 语义合同（代码生成、不受覆盖版遮蔽）+ `findBlueprintSlotAttackRisks`（意图词命中但无 attacks ⇒ warning）+ 归档投影白名单登记。**未改任何模板正文、未碰覆盖版** |
 | **P11-2** | `notes` 接入 `recentBlueprints`，标注「已发生」；删除模板「以本节为准」，改「冲突说明前一章计划未按预期落地；本章须建立在事实上，但**仍须完成大纲给本章的意图**」 | 无 | 只改模板正文与填充，**不碰 `requiredContextVariables`**（红线 16） |
 | **P11-3** | `planned_against_finalized_through` 列 + 写入点 + **三档接地判定（stale / assumed / grounded）** + 接地深度 `g` 展示 | P11-1 | 新增列走 lane 六步；`assumed` 档是本稿第一版漏掉的，必须补齐 |
 | **P11-4** | L3 事实登记（`eventClaims/stateClaims/openThreads`）+ `quote` 证据闸门 + `slot` 派生 | P11-3 | 分期：先 `notes` 机读尾巴，再结构体 |
