@@ -415,13 +415,22 @@ Between mid arcs (within one major arc): classify each mid arc, then write its p
   Causality: because <previous mid arc / prior event> produced <specific outcome>, therefore <this mid arc's action>
   Ordering: this mid arc starts from <the exact state> the previous mid arc ended in
   Block: <what stops what he is trying to do in this link, so that he fails once> (a type-A arc most easily becomes a chain of smooth causality; this line exists to prevent that)
+  Counter: <the one time whoever was pushing him tried it again and lost, because of something he already held> (without this line a type-A arc is twenty-five chapters of being pushed)
 - B Goal-driven: the protagonist pursues a goal through repeated attempt–setback–retry.
   Goal: <one sentence, the full change from X to Y>
   Attempt 1: <method> -> outcome <what> -> therefore attempt 2 (explain why a retry is required)
+  Score: <the one attempt that actually got him something, more than he himself expected> (attempts and setbacks with no single win is twenty-five chapters of taking hits)
 - C Exploratory: parallel encounters in a space or cast; events connect as "and then they met …" rather than "therefore …".
   Motivation: <why explore> (this compensates for the absence of causality)
   Path: <place A> -> discovery <X>; <place B> -> discovery <Y>
   Dead end: <which line of exploration found nothing, or found something worse than nothing> (a type-C arc's discoveries most easily all succeed)
+  Recovery: <the one line of exploration that found something it should not have, or that the other side never expected him to find> (a type-C arc that only ever finds nothing is pure setback)
+★ All three types need **both the failure slot and the win-back slot**: A = Block + Counter, B = Attempts + Score, C = Dead end + Recovery.
+  A list of failures only reads as twenty-five chapters of the protagonist being hit. All three types used to define only where he fails, and
+  none of them had a slot for the opponent losing (observed: one 8-chapter minor arc with 12 events — 10 setbacks, 2 "wins" that were merely
+  "he did nothing and it still counted", and the opponent never lost once; the author read it as "passively taking a beating").
+★ Narrow the definition of **Turn**: it is the moment **initiative flips** (whoever was pushing him stops pushing, and he starts pushing),
+  not a realization. "He realizes / he finally understands / he tastes for the first time" is not a turn — it only spreads the beating evenly over 25 chapters.
 ★ Minor arcs (level 3) — this layer works the **opposite** way to the two above: the deeper you go, the more concrete
   it must get, and the information must **grow, not shrink**. A minor arc is not a label; it is the only layer fed
   directly into the chapter outline, and a name alone cannot carry its 8–9 chapters.
@@ -448,6 +457,12 @@ Between mid arcs (within one major arc): classify each mid arc, then write its p
     If none of the four differs ⇒ the two are two halves of the same scene: **merge them into one** and spend the slot on something that moves.
     (This is not a demand for "tone whiplash": one setting and one opponent throughout can work — as long as every link invalidates
     his expectation once.)
+  - ★ **At least one event per minor arc must be written from the opponent's side**: <who wants to block him> plans <what> -> he <uses something he already held> -> <their plan fails>.
+    The other events still follow "he wants … and gets …". Only three legitimate sources: **information asymmetry** (he knows something they do not),
+    **a favour owed** (someone owes him, or he already carried one for them), **the opponent's own interest** (going through with it would hurt them).
+    **Never** let the counter move rely on the advantage — the ability is the source of the danger, not a weapon; solving it with the ability means losing again.
+    This is where the payoff lives: a comeback is the opponent's expectation failing, and the opponent must fail because of **something he planted earlier**,
+    not because of reinforcements that appear in this very chapter (that is coincidence, and readers do not accept it).
 
 [Step 2.5 — verify that information **increases** layer by layer (structural requirement, mandatory)]
 Each step down must carry more, and more concrete, information — never less:
@@ -502,6 +517,7 @@ It must satisfy all four:
 - Causality: because <previous mid arc / prior event> produced <specific outcome>, therefore <this mid arc's action>
 - Ordering: this mid arc starts from <the exact state> the previous mid arc ended in
 - Block: <what stops what he is trying to do in this link, so that he fails once>
+- Counter: <the one time whoever was pushing him lost, and what he already held>
 - Turn: …
 - Minor arcs (one line each; must carry "start -> required events -> end"):
   - <name> (approx. M chapters): <start state> -> <required event 1> -> <required event 2> -> <required event 3> -> <end state>
@@ -511,6 +527,7 @@ It must satisfy all four:
 - Goal: <one sentence, the full change from X to Y>
 - Attempt 1: <method> -> outcome <what> -> therefore attempt 2
 - Attempt 2: <method> -> outcome <what>
+- Score: <the one attempt that actually got him something, beyond his own expectation>
 - Turn: …
 - Minor arcs (one line each):
   - <name> (approx. M chapters): <start state> -> <required event 1> -> … -> <end state>
@@ -520,6 +537,7 @@ It must satisfy all four:
 - Motivation: <why explore>
 - Path: <place A> -> discovery <X>; <place B> -> discovery <Y>
 - Dead end: <which line of exploration found nothing, or found something worse than nothing>
+- Recovery: <the one find he should not have made, unexpected by the other side>
 - Turn: …
 - Minor arcs (one line each):
   - <name> (approx. M chapters): <start state> -> <required event 1> -> … -> <end state>
@@ -527,10 +545,10 @@ It must satisfy all four:
 …
 ★ The above demonstrates the **writing format**, and uses three mid arcs to show the field names for each of A / B / C.
 ★ **Field names must match the type; never mix them:**
-  - A Causal → "Causality / Ordering / Block"
-  - B Goal-driven → "Goal / Attempt 1 / Attempt 2 …" (the most common failure is writing a B arc with
+  - A Causal → "Causality / Ordering / Block / Counter"
+  - B Goal-driven → "Goal / Attempt 1 / Attempt 2 / Score …" (the most common failure is writing a B arc with
     "Causality / Ordering" and stuffing the attempt–setback–retry sequence into "Ordering")
-  - C Exploratory → "Motivation / Path / Dead end"
+  - C Exploratory → "Motivation / Path / Dead end / Recovery"
 ★ The **counts** of major / mid / minor arcs come from Step 0's arithmetic — **not 2, and not 4**;
   a mid arc does **not** always need exactly 3 minor arcs — give 2–4 as that mid arc actually requires.
 
@@ -539,7 +557,7 @@ It must satisfy all four:
 2. For every major arc: Σ(its mid arc chapters) is within ±10% of that major arc's chapter count, and the actual sum is written
 3. For every mid arc: Σ(its minor arc chapters) is within ±10% of that mid arc's chapter count, and the actual sum is written
 4. Every major arc contains ≥2 mid arcs; every mid arc contains ≥2 minor arcs
-5. Every mid arc's field names match its type (A = Causality/Ordering/Block, B = Goal/Attempt, C = Motivation/Path/Dead end)
+5. Every mid arc's field names match its type (A = Causality/Ordering/Block/Counter, B = Goal/Attempt/Score, C = Motivation/Path/Dead end/Recovery)
 6. The minor-arc counts of all mid arcs are **not all identical** (at least two distinct values)
 7. No chapters were added or removed merely to make a sum come out equal — a difference is allowed, padding is not
 8. Every major arc states its mid-arc progression, and every clause of its end state names the mid arc that pays it off
@@ -549,6 +567,8 @@ It must satisfy all four:
 12. **Every major arc states a time span**, and the book does not use a single time unit throughout (if the genre really is compressed into a very short span, the central conflict already says what holds it up)
 13. **Ending**: the [Story question] is answerable yes/no; the final major arc's End state answers it, and contains one cost the protagonist himself paid and cannot undo
 14. **No new thread at the end**: the final major arc's End state contains no new pressure source, new mystery, or "more to come" hint, and the final minor arc's end state is "answer + cost", not another setup
+15. **Every mid arc has a win-back line**: A has Counter, B has Score, C has Recovery, and each describes **the opponent's plan failing** — "he did nothing and it still counted" does not count
+16. **Every minor arc has at least one event written from the opponent's side** (they move -> something he planted earlier -> they lose); any arc without one has been fixed
 
 [Requirements]
 1. This is a **three-level progression skeleton**, not a chapter-by-chapter outline — do not write per-chapter content.

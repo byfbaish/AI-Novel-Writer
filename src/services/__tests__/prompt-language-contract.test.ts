@@ -243,3 +243,61 @@ describe('弧光与大纲的结构条款双侧一致（P15）', () => {
     expect(synopsisSuffix('en-US')).toContain('final minor arc')
   })
 })
+
+/**
+ * P16：每型都要有「赢回来」的位置。
+ *
+ * P15 给 A/C 补了「阻塞 / 扑空」，把「一路顺利」治好了，但三型**都只规定了失败**：
+ * A=阻塞、B=尝试受挫、C=扑空。25 章的中弧里唯一还能写"赢"的地方只剩「转折」一处，
+ * 于是弧光整体读感变成「被动挨打」（作者实测：中弧1 的 12 条事件 10 条受挫，
+ * 2 条还是"什么都不做也算赢"，对手一次没失手）。
+ *
+ * 断言只防「单侧改动」：这些字段一旦只在 zh 或只在 en 出现，另一种语言的作者静默拿不到。
+ */
+describe('弧光三型的"赢回来"位置双侧一致（P16）', () => {
+  const arc = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('plot_structure', language)!.content
+
+  it('A/B/C 各补一个赢回字段（中英各三个）', () => {
+    const zh = arc('zh-CN')
+    expect(zh).toContain('反制：<')
+    expect(zh).toContain('得手：<')
+    expect(zh).toContain('反获：<')
+    const en = arc('en-US')
+    expect(en).toContain('Counter: <')
+    expect(en).toContain('Score: <')
+    expect(en).toContain('Recovery: <')
+  })
+
+  it('写明三型都必须同时有失败和赢回来，并点名"一个对手失手的位置都没有"', () => {
+    expect(arc('zh-CN')).toContain('同时有失败和赢回来')
+    expect(arc('en-US')).toContain('both the failure slot and the win-back slot')
+  })
+
+  it('「转折」收窄为主动权反转，不是一次认知', () => {
+    expect(arc('zh-CN')).toContain('主动权反转')
+    expect(arc('zh-CN')).toContain('他意识到 / 他终于明白 / 他第一次尝到')
+    expect(arc('en-US')).toContain('initiative flips')
+    expect(arc('en-US')).toContain('he finally understands')
+  })
+
+  it('每小弧至少一条从对手那一侧写，且合法来源只有三种、不得靠金手指', () => {
+    const zh = arc('zh-CN')
+    expect(zh).toContain('每小弧至少有一条事件从对手那一侧写')
+    expect(zh).toContain('信息差')
+    expect(zh).toContain('人情')
+    expect(zh).toContain('对方自己的利益')
+    expect(zh).toContain('不得**让反制靠金手指')
+    const en = arc('en-US')
+    expect(en).toContain("written from the opponent's side")
+    expect(en).toContain('information asymmetry')
+    expect(en).toContain('the opponent\'s own interest')
+    expect(en).toContain('Never** let the counter move rely on the advantage')
+  })
+
+  it('自检 15/16 双侧存在', () => {
+    expect(arc('zh-CN')).toContain('15. **每个中弧都写了"赢回来"**')
+    expect(arc('zh-CN')).toContain('16. **每个小弧至少有一条事件从对手那一侧写**')
+    expect(arc('en-US')).toContain('15. **Every mid arc has a win-back line**')
+    expect(arc('en-US')).toContain('16. **Every minor arc has at least one event written from the opponent')
+  })
+})

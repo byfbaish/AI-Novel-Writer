@@ -747,7 +747,15 @@ ${coverableLabel}
  * 体检只报告不拦截（与弧光覆盖对账同策略）：作者可能有意让某层简写。
  */
 export interface ArcDensityFinding {
-  code: 'MINORS_NAMELESS' | 'MINOR_LAYER_THINNER' | 'MAJOR_NO_MID_PROGRESSION' | 'MAJOR_END_STATE_UNASSIGNED'
+  code:
+    | 'MINORS_NAMELESS'
+    | 'MINOR_LAYER_THINNER'
+    | 'MAJOR_NO_MID_PROGRESSION'
+    | 'MAJOR_END_STATE_UNASSIGNED'
+    /** 中弧只规定了「他失败」的位置，没有「对手失手」的位置（P16） */
+    | 'MID_ONE_SIDED'
+    /** 小弧的全部事件都从主角视角写，没有一条是对手出招落空（P16） */
+    | 'MINOR_NO_COUNTER'
   /** 出问题的层级，如 `大弧1【门牌错位与三方围猎】` */
   where: string
   zh: string
@@ -759,6 +767,18 @@ const densityLength = (value: string): number => value.replace(/\s+/gu, '').leng
 const MINOR_CONTENT_FLOOR = 20
 const MAJOR_PROGRESSION_FIELD = /中弧推进|mid[-\t ]*arc[-\t ]*progression/iu
 const NAMES_A_MID = /中弧[\t ]*[0-9０-９一二三四五六七八九十]|mid[\t ]*arc[\t ]*[0-9]/iu
+/**
+ * 三型各自规定「他失败」的位置：A=阻塞、B=尝试、C=扑空。
+ *
+ * P16 的背景：这三行是 P15 加的（治"一路顺利"），但它们**只加了失败**。于是弧光
+ * 从"每条都顺利"摆到了另一头——作者 150 章弧光的中弧1 里，12 条事件 10 条受挫、
+ * 2 条还是"什么都不做也算赢"，对手一次没失手。读者的读感就是「被动挨打」。
+ * 所以每一型都补了一个「赢回来」字段，这两组判定用来核对它们有没有被写出来。
+ */
+const FAILURE_SLOT_FIELD = /阻塞|尝试|扑空|block|attempt|dead[\t ]*end/iu
+const WINBACK_SLOT_FIELD = /反制|得手|反获|counter|score|recovery/iu
+/** 「他想要…」是模板给的事件句式；全部事件都用它 = 视角全在主角的失败上。 */
+const HERO_WANTS_OPENER = /^[他她]想要/u
 
 export function auditArcDensity(parsed: ParsedArcStructure | null): ArcDensityFinding[] {
   if (!parsed) return []
@@ -804,6 +824,39 @@ export function auditArcDensity(parsed: ParsedArcStructure | null): ArcDensityFi
           zh: `${midWhere} 的小弧内容合计 ${minorWords} 字，不多于该中弧自身的 ${fieldWords} 字 —— 信息量在这一层没有增加，等于没有真正细分。`,
           en: `${midWhere}: minor-arc content totals ${minorWords} chars, no more than the mid arc's own ${fieldWords} — information does not grow at this layer, so it was never really subdivided.`,
         })
+      }
+
+      // ---- P16：受挫偏置 ----
+      // 三型原本都只有「他失败」的位置（阻塞 / 尝试 / 扑空），没有「对手失手」的位置。
+      // 一条 25 章的中弧里，唯一还能写"赢"的地方只剩「转折」一处 —— 于是整弧读起来
+      // 就是一路挨打。这里核对每型有没有补上「赢回来」那一行。
+      const hasFailureSlot = mid.fields.some(([name]) => FAILURE_SLOT_FIELD.test(name))
+      const hasWinBackSlot = mid.fields.some(([name]) => WINBACK_SLOT_FIELD.test(name))
+      if (!hasWinBackSlot) {
+        findings.push({
+          code: 'MID_ONE_SIDED',
+          where: midWhere,
+          zh: hasFailureSlot
+            ? `${midWhere} 只写了"他失败"的位置（阻塞 / 尝试 / 扑空），没有写"对手失手"的位置（反制 / 得手 / 反获）—— 这 ${mid.chapters} 章里他一直在挨打。`
+            : `${midWhere} 既没有"他失败"的位置，也没有"对手失手"的位置（旧格式）—— 这一弧的推进只剩"然后呢"。`,
+          en: hasFailureSlot
+            ? `${midWhere} defines only where he fails (Block / Attempt / Dead end) and never where the opponent loses (Counter / Score / Recovery) — across these ${mid.chapters} chapters he only takes hits.`
+            : `${midWhere} defines neither where he fails nor where the opponent loses (legacy format) — this arc progresses on "and then" alone.`,
+        })
+      } else {
+        // 中弧已有赢回位置时才查小弧层面：中弧缺那一行时，同一条病报两遍只会淹没真信号。
+        for (const minor of mid.minors) {
+          const steps = splitMinorSteps(minor.text)
+          const events = steps.slice(1, -1)
+          if (events.length >= 3 && events.every(item => HERO_WANTS_OPENER.test(item))) {
+            findings.push({
+              code: 'MINOR_NO_COUNTER',
+              where: `${midWhere}/小弧【${minor.name}】`,
+              zh: `${midWhere}/小弧【${minor.name}】的 ${events.length} 条事件全部写成「他想要…结果…」—— 视角全在他的失败上，没有一条是对手出招落空。`,
+              en: `${midWhere}/minor arc [${minor.name}]: all ${events.length} events are written as "he wants … and gets …" — the whole arc is his failures, with no event where the opponent's plan fails.`,
+            })
+          }
+        }
       }
     })
   })
