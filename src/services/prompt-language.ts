@@ -520,6 +520,12 @@ Every chapter has three parts in this exact order: (1) chapter heading, (2) the 
 - It is not an event that happened in this chapter: do not restate the last thing in the prose, and do not preview something that only happens in the next chapter.
 - This line is the sole source of the later chapter blueprint's ending hook. Without it the hook is invented by the blueprint and drifts away from this chapter's intent.
 
+(4) Chapter-to-chapter continuity — mandatory from the second chapter onward:
+- The previous chapter's "Closes:" line names something still unresolved. This chapter's prose must pick it up: either advance it, or state plainly why it is no longer hanging (already resolved, or set aside with a reason).
+- "Pick it up" does not mean "resolve it now": the item may stay unresolved, but the reader must see that this chapter knows it is still hanging.
+- Never write a chapter wholly unrelated to the previous chapter's Closes line. The commonest broken link is a chapter that opens on a fresh scene while the chapter before it left a concrete offer, threat, or discovery dangling.
+- Then close this chapter with its own "Closes:" line per (3).
+
 [Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
   },

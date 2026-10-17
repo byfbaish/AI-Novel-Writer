@@ -273,14 +273,29 @@ describe('auditArcCovers', () => {
     expect(outOfRange[0]!.id).toBe('M1-2/尝试 2')
   })
 
-  it('INV-3：本批覆盖到的格子没被任何一章声明 ⇒ 提示（仅提示，不拦）', () => {
-    const chapters = parseChapterArcCovers('## 第1章：开篇\n覆盖：M1-1/小弧:睁眼十秒')
+  it('INV-3：小弧落在本批区间内却没被任何一章声明 ⇒ 提示（仅提示，不拦）', () => {
+    // 第 1–5 章全写「覆盖：无」⇒ 它们明明属于「睁眼十秒」[1,9]，却没人认领。
+    const chapters = parseChapterArcCovers('## 第1章：开篇\n覆盖：无')
     const audit = auditArcCovers(nodes, chapters, { from: 1, to: 5 })
     const uncoveredIds = audit.uncovered.map(node => node.id)
-    expect(uncoveredIds).toContain('M1-1/转折')
-    expect(uncoveredIds).not.toContain('M1-1/小弧:睁眼十秒')
+    expect(uncoveredIds).toContain('M1-1/小弧:睁眼十秒')
+    // 纸门牌 [10,18] 与本批无交集；M1-2 的转折更远 ⇒ 都不判。
+    expect(uncoveredIds).not.toContain('M1-1/小弧:纸门牌')
     expect(uncoveredIds).not.toContain('M1-2/转折')
     expect(audit.declaredChapters).toBe(1)
+  })
+
+  it('INV-3：转折是额度 —— 未到期不报，整条中弧写完仍未出现才报', () => {
+    // 中弧 1 是第 1–26 章，转折本来就该在后段发生。第 1–5 章没花掉它，不是漏。
+    // 旧实现在这里恒定报一条「M1-1/转折 未声明」，每批都报、永远消不掉。
+    const early = parseChapterArcCovers('## 第1章：开篇\n覆盖：M1-1/小弧:睁眼十秒')
+    expect(auditArcCovers(nodes, early, { from: 1, to: 5 }).uncovered.map(node => node.id))
+      .not.toContain('M1-1/转折')
+
+    // 本批已写到第 26 章（中弧 1 的末尾），转折仍未出现 ⇒ 额度过期，真漏。
+    const late = parseChapterArcCovers('## 第26章：收束\n覆盖：M1-1/小弧:第一笔登记账')
+    expect(auditArcCovers(nodes, late, { from: 20, to: 26 }).uncovered.map(node => node.id))
+      .toContain('M1-1/转折')
   })
 })
 
@@ -324,13 +339,14 @@ describe('小弧子节点（P12-3）', () => {
     expect(violations[0]!.message).toContain('提前了 7 章')
   })
 
-  it('漏覆盖只统计可声明节点，不把 因果/时序 报成永远消不掉的噪音', () => {
+  it('漏覆盖不统计 因果/时序 这类整段规格，也不把未到期的转折算漏', () => {
     const chapters = parseChapterArcCovers('## 第1章：开篇\n覆盖：M1-1/小弧:睁眼十秒')
     const audit = auditArcCovers(nodes, chapters, { from: 1, to: 9 })
     const uncoveredIds = audit.uncovered.map(node => node.id)
-    expect(uncoveredIds).toContain('M1-1/转折')
     expect(uncoveredIds).not.toContain('M1-1/因果')
     expect(uncoveredIds).not.toContain('M1-1/时序')
     expect(uncoveredIds).not.toContain('M1-1/小弧:睁眼十秒')
+    // 本批只走到中弧 1 的前 1/3，转折本来就该在后段发生 ⇒ 不该恒报。
+    expect(uncoveredIds).not.toContain('M1-1/转折')
   })
 })

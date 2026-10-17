@@ -356,10 +356,11 @@ export function summarizeArcCoverFindings(
   if (uncovered.length > 0) {
     // 「漏覆盖」是提示而非错误，但它和上面两类是彼此独立的问题。
     // 原来的 `if (problems.length === 0)` 让「缺声明」一出现就把漏覆盖整句吞掉 ——
-    // 实测第 4 章漏写覆盖行时，同一批里 M1-1/转折 从没被声明这件事完全看不见。
+    // 实测第 4 章漏写覆盖行时，同一批里没人认领的小弧这件事完全看不见。
+    // 纳入范围由 `isUncoveredCandidate` 决定：小弧看交集（归属缺失），转折看额度过期。
     problems.push(uiText(
-      `本批有 ${uncovered.length} 个结构位没有任何一章声明（${uncovered.slice(0, 3).map(node => node.id).join('、')}${uncovered.length > 3 ? ' 等' : ''}）—— 该用的格子还没用`,
-      `${uncovered.length} slot(s) in this batch are claimed by no chapter (${uncovered.slice(0, 3).map(node => node.id).join(', ')}${uncovered.length > 3 ? ', …' : ''}) — unused capacity`,
+      `本批有 ${uncovered.length} 个结构位没有任何一章声明（${uncovered.slice(0, 3).map(node => node.id).join('、')}${uncovered.length > 3 ? ' 等' : ''}）—— 要么本批内容没落到该落脚的地方，要么这一格被整体跳过`,
+      `${uncovered.length} slot(s) in this batch are claimed by no chapter (${uncovered.slice(0, 3).map(node => node.id).join(', ')}${uncovered.length > 3 ? ', …' : ''}) — either this batch never lands where it should, or the slot was skipped entirely`,
     ))
   }
 

@@ -381,13 +381,39 @@ export interface ArcCoverAudit {
  * - **INV-1**：声明了某格但本章不在其区间内 ⇒ error（`INV-1-OUT_OF_RANGE`）。
  * - **INV-2**：同一**一次性**节点（转折）被两章声明 ⇒ error（`INV-2-DUPLICATE`）。
  *   小弧不参与这条 —— 它是**归属**：`M1-1/小弧:错位门牌 [1,8]` 的 8 章都该声明它。
- * - **INV-3**：本批覆盖到的中弧里，有**可声明**格子从未被声明 ⇒ warning（`INV-3-UNCOVERED`）。
+ * - **INV-3**：有**可声明**格子从未被声明 ⇒ warning（`INV-3-UNCOVERED`）。判据按节点类型分两种。
  *
- * `uncovered` 只统计**本批区间内的可声明节点**（`from`–`to` 覆盖到的中弧的转折与小弧）：
- * ① 不算本批之外，否则全书尚未写到的格子会全部报成漏覆盖，信噪比归零；
+ * `uncovered` 的纳入条件（`isUncoveredCandidate`）：
+ * ① 不算本批之外 —— 否则全书尚未写到的格子会全部报成漏覆盖，信噪比归零；
  * ② 不算整段规格字段（因果/时序/目标/动机…），否则「M1-1/因果未声明」这类
- *    永远无法消除的噪音会淹没真信号（见 `isClaimableArcNode`）。
+ *    永远无法消除的噪音会淹没真信号（见 `isClaimableArcNode`）；
+ * ③ **小弧只要求「有交集」**：它是归属，区间内的每一章都属于它，本批落在区间里却没写
+ *    ⇒ 真漏；
+ * ④ **转折要求「本批已写到该中弧末尾」**：转折是一次性额度，在 [1,26] 里第 5 章没花掉
+ *    完全正常 —— 它本来就该在中弧后段发生。只有整条中弧都写完了、转折还没出现，才是
+ *    真漏。否则每批都会固定报一条「M1-1/转折 未声明」，而它永远消不掉（实测 ch1–5 就是
+ *    这个形态）。**额度没花完不是错，额度过期才是。**
  */
+/**
+ * 该节点是否应被纳入「本批漏覆盖」统计。
+ *
+ * 两类节点的判据不同（见 `auditArcCovers` 的注释）：
+ * - **小弧**：区间与本批有交集即可。它是归属，落在区间内的章本该声明它。
+ * - **转折**：必须本批已写到该中弧的末尾。它是**一次性额度**，在 26 章的窗口里第 5 章
+ *   还没花掉是正常的；只有额度**过期**（中弧写完仍未出现）才是漏。
+ *
+ * 写成独立函数是因为「什么算漏」和「怎么报」会一起漂移 —— 实测 ch1–5 恒定报一条
+ * `M1-1/转折 未声明`，每批都报、永远消不掉，等于把整条 INV-3 的信噪比拖到 0。
+ */
+export function isUncoveredCandidate(node: ArcNode, options: { from: number; to: number }): boolean {
+  if (!isClaimableArcNode(node)) return false
+  // 与本批区间无交集 ⇒ 不在本批，不判。
+  if (node.range[0] > options.to || node.range[1] < options.from) return false
+  if (node.kind === 'minor') return true
+  // 转折：额度过期才算漏（本批已写到该中弧末尾）。
+  return options.to >= node.range[1]
+}
+
 export function auditArcCovers(
   nodes: readonly ArcNode[],
   chapters: readonly ChapterArcCover[],
@@ -416,8 +442,7 @@ export function auditArcCovers(
     }
   }
 
-  const inBatch = nodes.filter(node => isClaimableArcNode(node)
-    && node.range[0] <= options.to && node.range[1] >= options.from)
+  const inBatch = nodes.filter(node => isUncoveredCandidate(node, options))
   const uncovered = inBatch.filter(node => !seen.has(node.id))
   for (const node of uncovered) {
     violations.push({
@@ -425,7 +450,9 @@ export function auditArcCovers(
       id: node.id,
       chapterNumber: options.from,
       range: node.range,
-      message: `本批覆盖到的结构位「${node.id}」没有被任何一章声明 —— 要么它不属于本批（可忽略），要么大纲漏了它。`,
+      message: node.kind === 'minor'
+        ? `本批落在小弧「${node.id}」（第 ${node.range[0]}–${node.range[1]} 章）的区间内，却没有一章写它 —— 归属缺失，说明这一段的落脚点没被认出来。`
+        : `结构位「${node.id}」是一次性额度，而本批已写到它所属的中点（第 ${node.range[1]} 章）仍未出现 —— 这一格被整体跳过了。`,
     })
   }
 
