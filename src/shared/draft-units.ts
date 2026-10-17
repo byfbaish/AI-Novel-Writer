@@ -12,6 +12,22 @@ export function draftTargetUnitRange(targetUnits: number): Readonly<{ minimum: n
   })
 }
 
+/**
+ * The qualifying line for a chapter target (the low end of the "aim for" band).
+ *
+ * This is deliberately *not* `minimum`: `minimum` is the reject floor — a draft
+ * that lands exactly on it is technically storable but is not what the length
+ * contract asks for. Auto-continuation must compare against this line, otherwise
+ * a semantically complete draft stops at the reject floor and the "aim for
+ * X–Y" half of the contract never gets enforced.
+ *
+ * Must stay in sync with `chapterLengthContractText` (same 0.85 factor).
+ */
+export function draftAimLowUnits(targetUnits: number): number {
+  if (!Number.isSafeInteger(targetUnits) || targetUnits < 1) throw new Error('DRAFT_TARGET_UNITS_INVALID')
+  return Math.round(targetUnits * 0.85)
+}
+
 const LEGACY_CHINESE_CHARACTER_PATTERN = /[\u3400-\u4DBF\u4E00-\u9FFF\uF900-\uFAFF]/gu
 const LEGACY_ENGLISH_WORD_PATTERN = /[A-Za-z]+(?:['’][A-Za-z]+)*/g
 const HAN_CHARACTER_PATTERN = /\p{Script=Han}/gu

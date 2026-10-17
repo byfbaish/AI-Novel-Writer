@@ -1683,7 +1683,9 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
         receipt.capabilityEvidence.maxOutputTokens = 1
         return { content: '初'.repeat(3500), finishReason: 'length' }
       }
-      return { content: `${'续'.repeat(700)}。`, finishReason: 'stop' }
+      // 2026-10-17 P8：首稿 3500 / 目标 5000 未到合格线（4250），续写一轮需补足到合格线以上，
+      // 否则会再触发一轮续写，把「一次续写」这个用例前提改掉。
+      return { content: `${'续'.repeat(900)}。`, finishReason: 'stop' }
     })
     const environment: GenerationRuntimeEnvironment = {
       snapshotDefaultModelId: vi.fn(() => selectedModelId),
@@ -2177,7 +2179,10 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       'Later prose. 后续正文。'.repeat(200),
       'She stops at the end of the corridor. 她停在走廊尽头。',
     ].join('\n\n')
-    const runtime = fakeOutcomes(outcome('初'.repeat(2000), 'stop', 1), outcome(`${'续'.repeat(1700)}。`, 'stop', 2))
+    // 2026-10-17 P8：默认 wordsTarget 的合格线高于 2000，首稿 stop 会继续补写一轮。
+    // 2026-10-17 P8：默认 wordsTarget=5000 的合格线是 4250，故续写需一轮补到 4250 以上，
+    // 才能保持「初始 + 一次续写」这个用例前提。
+    const runtime = fakeOutcomes(outcome('初'.repeat(2000), 'stop', 1), outcome(`${'续'.repeat(2500)}。`, 'stop', 2))
     const { invoke, context, callbacks, command } = setup({
       runtime, writingLanguage, chapterNumber: 2,
       ...(source === 'finalized'
@@ -2843,7 +2848,9 @@ ${headingPrefix}第3章：潮门
       : '"The Road": sparse post-apocalyptic prose, restrained tone.'
     let observedTask: GenerationTask | undefined
     const runtime = fakeRuntime((_attempt, task) => {
-      observedTask = task
+      // 参考作品块只在初始请求的模板正文里；续写轮走 draftAuthorMaterialBlock，不携带该段。
+      // 2026-10-17 P8 之后首稿可能短于合格线而触发续写，故只锁第一个请求。
+      observedTask ??= task
       return outcome(writingLanguage === 'zh-CN' ? '新事件继续发生。'.repeat(70) : 'A new event unfolds in the city. '.repeat(60), 'stop')
     })
     const { context, callbacks, command } = setup({
@@ -3000,6 +3007,32 @@ ${headingPrefix}第3章：潮门
       expect(continuation).not.toContain('★')
       expect(continuation.split(guidance)).toHaveLength(2)
       expect(continuation).toContain('"userGuidance"')
+    })
+
+    it('P8 D6: 续写轮携带本步生成规则（taskGuidance 与内置 systemSuffix）', async () => {
+      // 回归护栏：续写 prompt 历史上只复刻「材料」不复刻「规则」，
+      // 任何写在模板正文 / taskGuidance / systemSuffix 的风格约束都会在续写轮静默失效。
+      const guidance = 'USER_GUIDANCE_SENTINEL_D6_必须主动试探规则'
+      // wordsTarget 500 → 合格线 425 / 上限 650；首稿 100 触发续写，续写补到 500 正好落在带内（不再触发压缩）。
+      const runtime = fakeOutcomes(
+        outcome('初'.repeat(100), 'length', 1),
+        outcome(`${'续'.repeat(400)}。`, 'stop', 2),
+      )
+      const { context, callbacks, command } = setup({
+        runtime, wordsTarget: 500, chapterNumber: 1, userGuidance: guidance,
+      })
+
+      await command.execute({ step: {}, context, callbacks })
+
+      const continuation = runtime.complete.mock.calls[1]![0].messages
+        .find(m => m.role === 'user')!.content
+      expect(continuation).toContain('【本章生成规则（续写与压缩同样适用）】')
+      // 规则来自内置 systemSuffix（P2 的具体生成要求 / AI 味反制）
+      expect(continuation).toContain('写满合格线之后才允许按本章结束状态收束')
+      expect(continuation).toContain('禁止归纳式收束')
+      // 作者的额外指导仍只由蓝图 JSON 承载一次，不出现 ★ 块（否则就是同一轮装两遍）
+      expect(continuation).not.toContain('★')
+      expect(continuation.split(guidance)).toHaveLength(2)
     })
   })
 
@@ -3986,20 +4019,47 @@ ${headingPrefix}第3章：潮门
     expect(physicalRequest.plan.maxOutputTokens).toBe(8192)
   })
 
-  it('accepts exactly 70% of the target without requesting a continuation', async () => {
-    const runtime = fakeOutcomes(outcome('正'.repeat(1400), 'stop', 1))
+  it('requests a continuation when a semantically complete draft stops at the reject floor', async () => {
+    // 2026-10-17 P8：语义收束（stop）时的续写触发线从「退回线」(70%) 提到「合格线」(85%)。
+    // 1400/2000 = 70% 恰好等于退回线：旧行为直接落库，新行为必须补写。
+    const runtime = fakeOutcomes(
+      outcome('正'.repeat(1400), 'stop', 1),
+      outcome('续'.repeat(300), 'stop', 2),
+    )
     const { invoke, context, callbacks, command } = setup({
       runtime,
       wordsPerChapter: 2000,
       wordsTarget: 2000,
     })
 
-    await expect(command.execute({ step: {}, context, callbacks })).resolves.toHaveLength(1400)
+    // 可见正文由 composeDraftVisibleContinuation 用空行拼接，故字符数为 1400 + 2 + 300。
+    await expect(command.execute({ step: {}, context, callbacks })).resolves.toHaveLength(1702)
+
+    expect(runtime.complete.mock.calls.map(([task]) => task.purpose))
+      .toEqual(['chapter-draft', 'chapter-draft-continuation'])
+    expect(invoke).toHaveBeenCalledWith(
+      'db:draft-create',
+      expect.objectContaining({ content: `${'正'.repeat(1400)}\n\n${'续'.repeat(300)}`, wordCount: 1700 }),
+      expect.anything(),
+      expect.anything(),
+    )
+  })
+
+  it('accepts a draft already at the qualifying line without requesting a continuation', async () => {
+    // 合格线 = round(2000 * 0.85) = 1700：达到即不再续写。
+    const runtime = fakeOutcomes(outcome('正'.repeat(1700), 'stop', 1))
+    const { invoke, context, callbacks, command } = setup({
+      runtime,
+      wordsPerChapter: 2000,
+      wordsTarget: 2000,
+    })
+
+    await expect(command.execute({ step: {}, context, callbacks })).resolves.toHaveLength(1700)
 
     expect(runtime.complete.mock.calls.map(([task]) => task.purpose)).toEqual(['chapter-draft'])
     expect(invoke).toHaveBeenCalledWith(
       'db:draft-create',
-      expect.objectContaining({ content: '正'.repeat(1400), wordCount: 1400 }),
+      expect.objectContaining({ content: '正'.repeat(1700), wordCount: 1700 }),
       expect.anything(),
       expect.anything(),
     )
@@ -4273,7 +4333,12 @@ ${headingPrefix}第3章：潮门
     const continuation = runtime.complete.mock.calls[1]![0]
     expect(continuation).toMatchObject({ purpose: 'chapter-draft-continuation', budgetDemand: { requestedUnits: 1000 } })
     const prompt = continuation.messages.at(-1)!.content
-    expect(prompt).toContain('- 本次续写补足约 1000 字即可，新增部分绝不超过 1600 字；接近时按本章结束状态收束，停在完整句子和自然段落末尾。')
+    // P8：续写指令只给一个目标数（到本章目标还差多少），不再同时给「距合格线差额」和「补足额度」两个数。
+    expect(prompt).toContain('- 本章已写约 1000 字，目标 2000 字，还差 1000 字。请把差额写满：推进本章蓝图内尚未落地的事件、动作或对话，不要用总结句、心理旁白或景物堆砌凑数。')
+    expect(prompt).toContain('- 新增部分绝不超过 1600 字；接近目标时按本章结束状态收束，停在完整句子和自然段落末尾。')
+    // 同一段里不得再出现第二个目标数（合格线 1700 只应出现在篇幅合同里，不进续写指令）
+    expect(prompt).not.toContain('距合格线')
+    expect(prompt).not.toContain('本次续写补足约')
     expect(prompt).toContain('【本章篇幅合同】\n目标 2000 字（按汉字计，不含标点）；请写到约 1700–2000 字。2600 字是参考上限')
     expect(prompt.indexOf('【本章篇幅合同】')).toBeLessThan(prompt.indexOf('【本章蓝图】'))
     expect(prompt).not.toContain('剩余约')
@@ -4465,7 +4530,8 @@ ${headingPrefix}第3章：潮门
   }) => {
     const initial = [opening, filler.repeat(1000).trim(), middle, filler.repeat(1000).trim(), ending].join('\n\n')
     const accepted = `${advance.repeat(500).trim()}。`
-    const recovered = `${closing.repeat(1600).trim()}。`
+    // 2026-10-17 P8：最终稿需越过合格线（默认目标 5000 的 85% = 4250），否则会再触发一轮续写。
+    const recovered = `${closing.repeat(2800).trim()}。`
     const discarded = 'DISCARDED_LOW_PROGRESS'
     const runtime = fakeOutcomes(
       outcome(`<think>HIDDEN_REASONING</think>\n${initial}\n\n未完待续`, 'stop', 1),

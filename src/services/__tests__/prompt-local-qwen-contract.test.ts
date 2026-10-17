@@ -536,17 +536,20 @@ describe('built-in model-neutral prompt contract', () => {
         const template = getBuiltinPromptTemplate(key, language)!
         const text = [template.content, template.systemSuffix].join('\n')
         expect(text, `${key} ${language}`).not.toMatch(/停在自然段落末尾|踏踏实实|natural paragraph boundary|Use approximately \{\{word_number\}\} words to complete/u)
+        // 2026-10-17 P8：长度指引从「接近目标就收束」改为「写到合格线(85%)之前不得收束」。
+        // 目标是让「贴着退回线收手」不再成立，因此这里锁定的是新的合格线语义。
         expect(text, `${key} ${language}`).toContain(language === 'zh-CN'
-          ? '- 接近目标篇幅时按本章结束状态收束，不要超过目标；不要写“继续生成”“点我继续”之类的界面提示。'
-          : "- As you approach the target length, close at the chapter's specified ending state and do not exceed the target; never ask the user to continue.")
+          ? '写满合格线之后才允许按本章结束状态收束，且不得超过目标上限'
+          : 'Only after reaching the qualifying line may you close')
         expect(text.split('{{word_number}}'), `${key} ${language} keeps one target mention`).toHaveLength(2)
       }
     }
     const nextChapter = getBuiltinPromptTemplate('next_chapter_draft', 'zh-CN')!
     expect(nextChapter.content).toContain('3. 落实本章核心冲突：集中推演完本章目标，避免平淡流水账。')
-    expect(nextChapter.systemSuffix).toContain('切忌注水！不要为了凑字数而撰写冗余的旁白科普或无意义的日常对话。')
+    // 注水禁令不能随刹车一起被删掉：只把「凑字数」改成「把事件写满而不是把句子写长」。
+    expect(nextChapter.systemSuffix).toContain('禁止为凑字数撰写旁白科普、重复复述或无关日常对话')
     expect(getBuiltinPromptTemplate('next_chapter_draft', 'en-US')!.systemSuffix)
-      .toContain('- Write approximately {{word_number}} words. Cover only the chapter brief and stop once its conflict is complete; do not pad with filler narration or idle dialogue, and do not advance later blueprints.')
+      .toContain('Padding with exposition, repeated information, or idle small talk is still forbidden.')
   })
 
   it.each([

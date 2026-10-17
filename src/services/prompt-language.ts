@@ -873,11 +873,14 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 {{user_guidance}}
 
 [Output contract]
-- Write approximately {{word_number}} words and cover only the chapter brief. End at the state or hook specified there; when none is specified, end naturally without advancing later blueprints or adding filler. A supplied ending hook is an open question for the reader, not an event to complete: do not resolve, reveal, or close it inside this chapter.
+- Target {{word_number}} words; the qualifying line is 85% of that. Do not close the chapter before reaching the qualifying line. When short of it, keep advancing events, dialogue, and actions that are still unrealized in the chapter brief — fill the events, not the sentences. Padding with exposition, repeated information, or idle small talk is still forbidden. End at the state or hook specified in the chapter brief; when none is specified, end naturally without advancing later blueprints.
 - Output plain manuscript prose only. Do not use Markdown, headings, analysis, plans, or screenplay formatting.
 - Separate every paragraph with one blank line. Use standard quotation marks consistently for dialogue.
-- As you approach the target length, close at the chapter's specified ending state and do not exceed the target; never ask the user to continue.
-- Keep each character's voice distinct. Avoid paragraph-ending summaries, generic destiny metaphors, and unrelated philosophical conclusions.`,
+- Only after reaching the qualifying line may you close at the chapter's specified ending state, and never exceed the target ceiling; never ask the user to continue.
+- Keep each character's voice distinct. Avoid paragraph-ending summaries, generic destiny metaphors, and unrelated philosophical conclusions.
+- Forbid inductive closings: no paragraph-ending "X: Y" colon explanations (where Y restates or concludes X), and no three or more structurally identical short clauses in a row (e.g. "it will not move A, not B, not C"). Let the reader draw the conclusion; the narrator must not state it.
+- Forbid the narrator from defining a world rule: a rule may only surface through at least two observable consequences; no blanket claims such as "nothing ever", "never", or "the only place where".
+- Reuse of the same externalized-emotion phrase (breath caught / throat tightened / chest loosened / back stiffened / knuckles trembling) is limited to once per chapter each; never spend three consecutive paragraphs on physical reactions without external action or dialogue.`,
   },
   next_chapter_draft: {
     systemRole: 'You are an experienced fiction writer. Maintain long-form continuity and advance this chapter through motivated choices, resistance, and consequences. Never reveal reasoning or meta commentary.',
@@ -926,11 +929,14 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 {{user_guidance}}
 
 [Output contract]
-- Write approximately {{word_number}} words. Cover only the chapter brief and stop once its conflict is complete; do not pad with filler narration or idle dialogue, and do not advance later blueprints.
+- Target {{word_number}} words; the qualifying line is 85% of that. Do not close the chapter before reaching the qualifying line. When short of it, keep advancing the conflict, actions, and dialogue still unrealized in the chapter brief — fill the events, not the sentences. Padding with exposition, repeated information, or idle small talk is still forbidden. Do not advance later blueprints.
 - Output plain manuscript prose only, without headings, Markdown, analysis, plans, or screenplay formatting.
 - Separate every paragraph with one blank line and use quotation marks consistently for dialogue.
-- As you approach the target length, close at the chapter's specified ending state and do not exceed the target; never ask the user to continue.
-- Keep character voices distinct and avoid generic paragraph summaries, destiny metaphors, or unrelated philosophical conclusions.`,
+- Only after reaching the qualifying line may you close at the chapter's specified ending state, and never exceed the target ceiling; never ask the user to continue.
+- Keep character voices distinct and avoid generic paragraph summaries, destiny metaphors, or unrelated philosophical conclusions.
+- Forbid inductive closings: no paragraph-ending "X: Y" colon explanations (where Y restates or concludes X), and no three or more structurally identical short clauses in a row. Let the reader draw the conclusion; the narrator must not state it.
+- Forbid the narrator from defining a world rule: a rule may only surface through at least two observable consequences; no blanket claims such as "nothing ever", "never", or "the only place where".
+- Reuse of the same externalized-emotion phrase is limited to once per chapter each; never spend three consecutive paragraphs on physical reactions without external action or dialogue.`,
   },
 } satisfies Record<CoreLocalizedBuiltinPromptKey, PromptLanguageTemplate> & Record<string, PromptLanguageTemplate>)
 
