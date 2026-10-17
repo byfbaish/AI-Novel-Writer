@@ -277,16 +277,19 @@ describe('renderArcPositionBlock / withArcPositionGuide', () => {
     expect(renderArcPositionBlock(parsed, 195, 16, 25, 'zh-CN')).toContain('它们属于第 26 章及以后')
   })
 
-  it('可声明清单只列「转折」与小弧，不列 因果/时序 这类整段规格（P12-3）', () => {
+  it('可声明清单只列「转折」与小弧，并且给出每个小弧的章号区间（P12-4 归属语义）', () => {
     const block = renderArcPositionBlock(parsed, 195, 1, 10, 'zh-CN')
     expect(block).toContain('M1-1/转折')
-    expect(block).toContain('M1-1/小弧:首夜敲门')
-    expect(block).toContain('M1-1/小弧:门缝纸条')
+    // 只说「可以声明这些 ID」而不说「哪个覆盖哪几章」，模型只能猜 —— 实测猜成 5 章里 4 章写「无」。
+    expect(block).toContain('M1-1/小弧:首夜敲门 — 第 1–12 章')
+    expect(block).toContain('M1-1/小弧:门缝纸条 — 第 13–25 章')
     // 因果/时序 覆盖整个中弧区间，声明它们永远不越界 ⇒ 不列进可声明清单
     expect(block).not.toContain('M1-1/因果')
     expect(block).not.toContain('M1-1/时序')
-    // 明确告诉模型：大多数章节应当不声明，否则它会为了不空着而乱挑
-    expect(block).toContain('大多数章节应当写「覆盖：无」')
+    // 归属语义：小弧跨 8–9 章，这 8–9 章写同一个 ID 是对的，不是重复消费
+    expect(block).toContain('本章章号落在哪个区间就写哪个')
+    expect(block).toContain('这是对的，不是重复消费')
+    expect(block).not.toContain('大多数章节应当写「覆盖：无」')
   })
 
   it('renderArcPositionBlock 在无小弧时只列「转折」；英文侧用同一套 ID', () => {

@@ -500,16 +500,18 @@ Produce a complete outline made of structural turning points rather than chapter
 6. Preserve the project-wide writing guidance.
 7. Return only the plot architecture, with no analysis or explanation.`,
     systemSuffix: `[Fixed per-chapter format — mandatory]
-Every chapter has three parts in this exact order: (1) chapter heading, (2) optional "Covers:" line, (3) the outline prose followed by a mandatory "Closes:" line.
+Every chapter has three parts in this exact order: (1) chapter heading, (2) the "Covers:" line (mandatory in every chapter whenever the arc-position block is present), (3) the outline prose followed by a mandatory "Closes:" line.
 
 (1) Chapter heading: "## Chapter N: title".
 
 (2) "Covers:" line — only when the [ARC POSITION for this batch] block is present:
-- Place it immediately after the chapter heading, on its own line, as "Covers: <slot ID>".
-- The ID must be copied verbatim from the "slots this batch may claim" line of that block (including "/" and the field name).
-- Claim exactly one slot per chapter — the one this chapter actually pays off. If a chapter seems to need two, you are consuming later content early: split it into later chapters.
-- **Most chapters should write "Covers: none"**: the claimable list holds only the turning point and the minor arcs, and one minor arc usually spans 8-9 chapters — claim a slot only in the chapter that actually uses it up.
-- When a chapter pays off no slot, write "Covers: none". Never invent an ID, never put a mid-arc or major-arc ID (such as M1-1) here, and never claim a whole-mid-arc spec field (Causality / Ordering / Goal / Motivation / Path / Attempt N) as if it were a one-off slot — it spans the entire mid arc, so claiming it carries no information.
+- Place it immediately after the chapter heading, on its own line, as "Covers: <slot ID>". Omitting the line is a format error, not a declaration of "nothing".
+- The ID must be copied verbatim from the claimable list in that block (including "/" and the field name), and it must be a slot whose chapter range contains this chapter.
+- Claim exactly one slot per chapter — the one this chapter mainly advances.
+- **Minor arcs are assignments**: write the minor arc whose chapter range contains this chapter. A minor arc spans 8-9 chapters and the same ID repeating across all of them is **correct**, not a duplicate claim.
+- **The turning point is one-shot**: one per mid arc, claimed only in the chapter where it actually happens.
+- If this chapter's content has already moved into the next minor arc, claim that next arc's ID honestly — consuming a slot early is a useful signal and the reconciliation will report it. Never force a slot that this chapter does not belong to just to "stay in range".
+- Write "Covers: none" only when no minor arc contains this chapter. Never invent an ID, never put a mid-arc or major-arc ID (such as M1-1) here, and never claim a whole-mid-arc spec field (Causality / Ordering / Goal / Motivation / Path / Attempt N) as if it were a one-off slot — it spans the entire mid arc, so claiming it carries no information.
 - The chapter's outline text follows that line; do not repeat the ID in the prose.
 
 (3) "Closes:" line — mandatory for every chapter, no exceptions:
