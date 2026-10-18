@@ -174,7 +174,6 @@ docs/
 | [`arc-prompt-v6-web-test.md`](design/architecture/arc-prompt-v6-web-test.md) | ✅ 双画像已验证（2026-10-19）· 被 v7 取代 | **个数单一事实源 + 去同质化**：个数只在【节奏推荐】声明；相邻两单元交手类型不许相同。实测首次分开卷数（番茄 7 卷 / 起点 5 卷），**总单元数守恒 28 vs 29**（被 章数÷跨度 钉住）⇒ 画像控形状、章数守恒 |
 | [`arc-prompt-v7-web-test.md`](design/architecture/arc-prompt-v7-web-test.md) | ✅ 双画像已验证（2026-10-19）· 提示词定稿 | **标注转正 + 自检静默**：把模型自发的「（交手：X；档：A→B）」收编为正式字段供机器校验；自检改为只做不输出。实测起点 4 卷/23 单元、番茄 7 卷/28 单元；**"单元数守恒"被证伪**（是巧合） |
 | [`arc-v7-implementation-design.md`](design/architecture/arc-v7-implementation-design.md) | ✅ 已实施 P1–P4 | **落地方案 P1/P2**：① 解析器兼容（`大弧\|卷`、`中弧\|单元`、补中文序号、两级模式成一等公民、golden 测试）；② 画像注入（`rhythm_profile` 走 M08 lane 六步，空=中性，模板需同时进 `requiredContextVariables`）；P3 体检两条只报不拦、P4 UI 文案 |
-
 | [`unit-budget-elastic-allocation-design.md`](design/architecture/unit-budget-elastic-allocation-design.md) | 📝 设计稿 · 待实施 | **弹性配给制**：单元章数由内容决定，代码只给「紧/松/按节奏」的方向（Z = 实际消耗 − 计划进度，±10% 三档）；偏差只在卷内结清、不跨卷；卷计划额度 = 画像默认 + 作者可覆盖；逐单元生成（不给 to，写完本单元即停） |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
