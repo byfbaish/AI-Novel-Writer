@@ -167,7 +167,7 @@ docs/
 | [`arc-layer-handoff.md`](design/architecture/arc-layer-handoff.md) | ✅ 交接必读 | **弧光层工间交接**：初衷（把硬编码的阶段划分显性化）/ 职责三问 / 怎么长到 10.6k 的正反馈 / 五条已证伪假设 / 六条交接禁忌 / 下一步（先只写大弧层跑一次） |
 | [`arc-tree-expansion-design.md`](design/architecture/arc-tree-expansion-design.md) | 🟡 待评审（`exp/arc-tree-v2`） | **弧光「逐节点展开」验证方案**：一次性生成的病是"同一个上下文里同时做 27 个决定 ⇒ 只能套格式"；本轮只做两层（大弧一次 + 中弧逐个大弧展开、小弧不拆）；复用同一 key 跑 1+N 次拼接，零 DB/契约改动；`arc-node` 的中弧结构位已够大纲对账，不依赖小弧 |
 | [`arc-generality-and-ending-design.md`](design/architecture/arc-generality-and-ending-design.md) | ✅ 已实施（P15 + P16） | **弧光泛用性 / 结局 / 类型分配**：层级由章数定义、类型只有 A/B/C、骨料只认「拿到了」是三处题材偏置；张力=价值翻转；结局四笔债；**中弧三型原来只规定了"他失败"的位置、没有"对手失手"的位置**⇒ 各补反制/得手/反获 + 每小弧一条对手侧事件；D/E **暂不加** |
-| [`arc-prompt-v2-web-test.md`](design/architecture/arc-prompt-v2-web-test.md) | 🧪 验证件 · 未落代码 | **弧光提示词 v2 的组装稿**：真实项目数据填充、可直接粘到网页模型验证；核心改动 = 小弧由「3–5 条必发事件」改为「回合（要办成/失去什么/挡他的是/少了哪条路）」+ 大弧声明收窄维度 + 新路须写来源 |
+| [`arc-prompt-v2-web-test.md`](design/architecture/arc-prompt-v2-web-test.md) | 🧪 验证件 v2.1 · 未落代码 | **弧光提示词组装稿**：真实项目数据填充、可直接粘到网页模型验证。v2 网页实测三处失败已修：小弧由「3–5 条必发事件」→「回合」→ **战线**（同一目标×同一对手×换过两种办法×翻转）；中弧补**局面**（谁要什么／怎么逼／逼法变了什么）；**底牌记账上移大弧**（1–3 张，写明为什么回不去，中弧 0–1，小弧不记） |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
 
