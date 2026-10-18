@@ -62,6 +62,8 @@ docs/
 | [`handoffs/`](handoffs/) | 指定分支或任务的交接快照 | 按日期过时 | ✅ `YYYY-MM-DD-主题.md` |
 | [`experiments/`](experiments/) | 实验执行说明与回执 | 按日期 | ✅ |
 
+> **编号勘误（2026-10-18 登记）**：`adr/0018-module-ownership.md` 与 `adr/0018-program-v3-domain-contracts.md` 为历史重号——后者实际接续 0017、先于 0019 定稿，引用时请以**文件全名**为准，不要凭编号猜测。因冻结子树 `research/novel-quality-modernization/`（`current-spec-index.md`、`evidence-index.md`、`s01-evidence.md`）按字面路径引用这两个文件名，**暂不改名**；后续新 ADR 从 **0021** 起连续编号。
+
 ---
 
 ## 3. 新文档放置规则（写之前先读这一节）
@@ -136,7 +138,7 @@ docs/
 | [`p8-fanqie-flavor-draft-quality-design.md`](design/prompt/p8-fanqie-flavor-draft-quality-design.md) | ✅ P1 生效 · ⏳ P2/P3 待复验 | 番茄向正文质量闸门：续写判定接回合格线 / 可判定 AI 味禁令 / 番茄 KPI 落点（§10 复验 #1） |
 | [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（23 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（25 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
