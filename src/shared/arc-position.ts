@@ -839,6 +839,10 @@ export interface ArcDensityFinding {
     | 'MINOR_NO_COUNTER'
     /** 中弧的「位置行」没有点名由哪个小弧兑现，等于只是声明（P17） */
     | 'MID_SLOT_UNLINKED'
+    /** 两级结构：同一卷内相邻两个单元的交手类型相同（拿同类交手填个数） */
+    | 'ARC_SAME_HAND_TYPE'
+    /** 两级结构：相邻单元停在同一档，或本单元档位没动（压力原地踏步） */
+    | 'ARC_TIER_STUCK'
   /** 出问题的层级，如 `大弧1【门牌错位与三方围猎】` */
   where: string
   zh: string
@@ -876,13 +880,77 @@ const SLOT_FIELD = /阻塞|反制|得手|扑空|反获|转折|block|counter|scor
 /** 位置行末尾的兑现点：`（小弧 1）` / `(minor arc 2)` */
 const SLOT_LINK = /小弧[\t ]*[0-9０-９一二三四五六七八九十]|minor[\t ]*arc[\t ]*[0-9]/iu
 
+/**
+ * 两级结构（v7）的逼法标注：`（交手：堵门；档：关心→标价）`。
+ *
+ * 这个标注最初是模型自己加的（v6 只要求"相邻类型不许相同"，没让它标出来），两版都自发写了。
+ * 与其禁止，不如固定成字段：类型和档位一旦可机读，"拿同类交手填个数"和"压力原地踏步"
+ * 就都能被体检抓到，不用再做语义猜测。
+ */
+const PRESSURE_TAG = /（\s*交手[：:]\s*([^；;）]+?)\s*[；;]\s*档[：:]\s*([^→）]+?)\s*(?:→|->)\s*([^）]+?)\s*）/u
+
+interface PressureTag { hand: string; from: string; to: string }
+
+function pressureTagOf(mid: ArcMid): PressureTag | null {
+  const line = mid.fields.find(([name]) => /^(逼法|pressure method)$/iu.test(name))
+  if (!line) return null
+  const match = PRESSURE_TAG.exec(line[1])
+  if (!match) return null
+  return { hand: match[1]!.trim(), from: match[2]!.trim(), to: match[3]!.trim() }
+}
+
+/**
+ * 两级结构（卷 / 单元）的体检：只看标注，不猜语义。
+ *
+ * 一条标注都没有时返回空 —— v6 及以前的两级 plan 没有标注，对它们刷告警没有意义
+ * （要修也无从修起：那是历史产出）。
+ */
+function auditTwoLevelDensity(parsed: ParsedArcStructure): ArcDensityFinding[] {
+  const findings: ArcDensityFinding[] = []
+  const tagged = parsed.majors.some(major => major.mids.some(mid => pressureTagOf(mid)))
+  if (!tagged) return findings
+  parsed.majors.forEach((major, majorOffset) => {
+    let previous: PressureTag | null = null
+    major.mids.forEach((mid, midOffset) => {
+      const tag = pressureTagOf(mid)
+      if (!tag) return
+      const where = `卷${majorOffset + 1}/单元${midOffset + 1}【${mid.name}】`
+      if (previous && previous.hand === tag.hand) {
+        findings.push({
+          code: 'ARC_SAME_HAND_TYPE',
+          where,
+          zh: `${where} 与上一个单元都是「${tag.hand}」—— 拿同类交手填了个数。换一种交手（堵门 / 谈判 / 取证 / 设局 / 摊牌 / 认账），或把这个单元并进上一个。`,
+          en: `${where} uses the same confrontation type as the previous unit ("${tag.hand}") — a filler unit. Switch the type or merge it into the previous one.`,
+        })
+      }
+      if (tag.to === tag.from) {
+        findings.push({
+          code: 'ARC_TIER_STUCK',
+          where,
+          zh: `${where} 的逼法从「${tag.from}」到「${tag.to}」—— 这一格没动。压力没升级，读者感觉不到这一段往前走了。`,
+          en: `${where} goes from "${tag.from}" to "${tag.to}" — the pressure never moves inside this unit.`,
+        })
+      } else if (previous && previous.to === tag.to) {
+        findings.push({
+          code: 'ARC_TIER_STUCK',
+          where,
+          zh: `${where} 与上一个单元停在同一档（${tag.to}）—— 压力原地踏步。要么在这一段再进一档，要么把两段合成一段。`,
+          en: `${where} parks in the same tier as the previous unit (${tag.to}) — pressure is treading water.`,
+        })
+      }
+      previous = tag
+    })
+  })
+  return findings
+}
+
 export function auditArcDensity(parsed: ParsedArcStructure | null): ArcDensityFinding[] {
   if (!parsed) return []
   // v7 两级（卷/单元）用的是另一套字段（叙事任务 / 进入·离开 / 段间推进 / 逼法）。
   // 下面七条全部针对三级规格（「中弧推进」「位置行点名」「小弧密度」）—— 在两级结构上
-  // 逐条都会误报（例如"没有中弧推进"对每个卷都成立）。两级自己的体检（交手类型 /
-  // 档位）另行接入；在那之前，这里对 volume 词表保持静默，而不是刷一屏假告警。
-  if (parsed.naming === 'volume') return []
+  // 逐条都会误报（例如"没有中弧推进"对每个卷都成立）。两级有自己的两条体检，
+  // 读的是逼法行末的（交手／档）标注；没有标注的历史产出不报。
+  if (parsed.naming === 'volume') return auditTwoLevelDensity(parsed)
   const findings: ArcDensityFinding[] = []
   parsed.majors.forEach((major, majorOffset) => {
     const majorIndex = majorOffset + 1
