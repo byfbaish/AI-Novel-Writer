@@ -250,8 +250,10 @@ export function upgradeProjectSqlite(options: { databasePath: string; registry?:
   const registry = options.registry ?? getDesktopMigrationRegistry()
   const before = probeProjectSqlite({ databasePath: options.databasePath, registry })
   if (before.schemaVersion === CURRENT_DESKTOP_SCHEMA_VERSION) return verifyProjectSqlite({ ...options, registry })
-  // 7/8 必须保留：旧项目可能停在 v7（由 M07 升 v8）或 v8（由 M08 升 v9）。
-  if (![1, 2, 3, 4, 5, 6, 7, 8].includes(before.schemaVersion)) throw new Error('CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED')
+  // 每一项都必须保留：旧项目可能停在任一历史版本（v7 由 M07 升 v8、v8 由 M08 升 v9、
+  // v9 由 M09 升 v10）。漏一档的直接表现就是老项目打不开：
+  // `CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED`（2026-10-19 实测踩过）。
+  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(before.schemaVersion)) throw new Error('CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED')
   sourceFile(options.databasePath)
   const database = new Database(options.databasePath, { fileMustExist: true })
   try {
