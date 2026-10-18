@@ -304,3 +304,37 @@ describe('节奏画像的空值语义（空 = 中性）', () => {
     expect(resolveRhythmProfile('自定义节奏：每章一钩', 'zh-CN')).toBe('自定义节奏：每章一钩')
   })
 })
+
+describe('章纲 → 蓝图 的字段分工（选择行 / 事件序列归蓝图）', () => {
+  const synopsis = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('synopsis', language)!
+  const blueprint = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('chapter_blueprint', language)!
+
+  it('章纲要求每章写「选择：」行，四选一（中英一致）', () => {
+    const zh = `${synopsis('zh-CN').content}${synopsis('zh-CN').systemSuffix ?? ''}`
+    const en = `${synopsis('en-US').content}${synopsis('en-US').systemSuffix ?? ''}`
+    expect(zh).toContain('「选择：」行')
+    expect(zh).toContain('躲 | 拖 | 换 | 认')
+    expect(en).toContain('"Choice:" line')
+    expect(en).toContain('hide | stall | trade | own')
+  })
+
+  it('章纲不再写「他试了什么」——试法归蓝图的 keyEvents', () => {
+    const zh = `${synopsis('zh-CN').content}${synopsis('zh-CN').systemSuffix ?? ''}`
+    const en = `${synopsis('en-US').content}${synopsis('en-US').systemSuffix ?? ''}`
+    expect(zh).not.toContain('他**试**了什么')
+    expect(zh).toContain('那是章节蓝图的工作')
+    expect(en).not.toContain('What he **tries**')
+    expect(en).toContain("That is the chapter blueprint's job")
+  })
+
+  it('章纲要求写「因为什么」——与前文的接口不许省', () => {
+    expect(`${synopsis('zh-CN').systemSuffix}`).toContain('**因为什么**')
+    expect(`${synopsis('en-US').systemSuffix}`).toContain('**Because of what**')
+  })
+
+  it('蓝图 purpose 必须继承章纲的选择（中英都写死）', () => {
+    expect(blueprint('zh-CN').content).toContain('purpose 必须承接情节大纲该章的「选择：」行')
+    expect(blueprint('en-US').content).toContain('[Choice authority]')
+    expect(blueprint('en-US').content).toContain('purpose must open with that same choice')
+  })
+})

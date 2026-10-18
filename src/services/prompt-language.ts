@@ -489,7 +489,7 @@ Produce a complete outline in which every chapter states a concrete cause and a 
 6. Preserve the project-wide writing guidance.
 7. Return only the plot architecture, with no analysis or explanation.`,
     systemSuffix: `[Fixed per-chapter format — mandatory]
-Every chapter has three parts in this exact order: (1) chapter heading, (2) the "Covers:" line (mandatory in every chapter whenever the arc-position block is present), (3) the outline prose followed by a mandatory "Closes:" line.
+Every chapter has three parts in this exact order: (1) chapter heading, (2) the declaration lines ("Covers:" and "Choice:"), (3) the outline prose followed by a mandatory "Closes:" line.
 
 (1) Chapter heading: "## Chapter N: title".
 
@@ -502,6 +502,12 @@ Every chapter has three parts in this exact order: (1) chapter heading, (2) the 
 - If this chapter's content has already moved into the next minor arc, claim that next arc's ID honestly — consuming a slot early is a useful signal and the reconciliation will report it. Never force a slot that this chapter does not belong to just to "stay in range".
 - Write "Covers: none" only when no minor arc contains this chapter. Never invent an ID, never put a mid-arc or major-arc ID (such as M1-1) here, and never claim a whole-mid-arc spec field (Causality / Ordering / Goal / Motivation / Path / Attempt N) as if it were a one-off slot — it spans the entire mid arc, so claiming it carries no information.
 - The chapter's outline text follows that line; do not repeat the ID in the prose.
+
+(2b) "Choice:" line — mandatory in every chapter, whether or not the arc-position block is present:
+- Place it immediately after the "Covers:" line (or immediately after the chapter heading when there is no arc-position block), on its own line, as "Choice: <hide | stall | trade | own> — <what he actively chose in this chapter>".
+- Exactly one of four: hide = avoid contact and let no one close in; stall = buy time and push it later; trade = give one thing to get another; own = take the debt onto himself.
+- It answers "what did he decide", not "what happened to him". "He decided to face reality" or "he decided to investigate" is not one of the four.
+- This line does not fix plot; it fixes whose hands the initiative is in. The chapter blueprint inherits it (its purpose must open with the same choice), so never declare one choice here and dramatize another in the prose.
 
 (3) "Closes:" line — mandatory for every chapter, no exceptions:
 - Put it on its own line as "Closes: <one sentence>"; never fold it into the prose paragraph, and never write it mid-sentence as "in closing, ...".
@@ -519,23 +525,24 @@ Every chapter has three parts in this exact order: (1) chapter heading, (2) the 
 - Never write a chapter wholly unrelated to the previous chapter's Closes line. The commonest broken link is a chapter that opens on a fresh scene while the chapter before it left a concrete offer, threat, or discovery dangling.
 - Then close this chapter with its own "Closes:" line per (3).
 
-(5) Every chapter's prose must realize a **chapter-level situation**, not a summary. Work these out before writing (render them as connected prose, never as a field list — including arc-layer labels such as “Goal:” “Stake:” “start:” “end state:”; those are this layer's vocabulary, not prose):
-- What must he **obtain** in this chapter: something that could plausibly fail that same day. Never write "he needs to find out / understand / realize" — those cannot fail.
+(5) Every chapter's prose must realize the **cause and the cost of one thing**, not a stream of events and not a scene list. Think it through first, then render it as connected prose — never as a field list (including arc-layer labels such as “Goal:” “Stake:” “start:” “end state:”; those are this layer's vocabulary, not prose):
+- What he **actively chooses**: the same one of the four from the "Choice:" line, expanded into what it concretely looks like — if he hides, show how he detours, whom he avoids, what excuse he uses. Do not merely restate "he chose to hide".
+- **Because of what**: which unresolved item, debt, or unanswered line from the previous chapter forced this choice. This is the chapter's joint with the text before it; never omit it.
 - Who or what **blocks** him: a specific person, rule, deadline, debt, or bodily limit — and never the same kind of blocker as the previous chapter.
-- What he **tries**: a concrete action or line of speech. "He thought about it again", "he now had a plan", "he decided to look around first" are not attempts.
-- What he **pays** when it fails: what he loses, owes, or exposes; whose situation gets worse.
+- **Who pays the cost**: what is lost, owed, or exposed; whose situation gets worse. A cost that lands only on "he feels bad" is not a cost.
 - What is still unresolved at the end — this is the "Closes:" line from (3); the two must name the same thing.
-  If you cannot answer the first question for a chapter, that chapter has not been given a task — it is not "a chapter with little content".
+  ★ How he tries, how many attempts, how to split the chapter, how many units each part takes: **write none of it**. That is the chapter blueprint's job (it splits the chapter into 2–5 keyEvents with a word budget). Writing it here a second time leaves the blueprint nothing to do but copy, and the manuscript nothing to write.
+  If you cannot answer "because of what", the chapter has not been given a position — it is not "a chapter with little content".
 
 (6) The chapter range the arc structure assigns to a minor arc is a **given, not an estimate**. A minor arc spanning 8 chapters needs 8 chapters of content; never compress it into 1–2 chapters and fold the free chapters into the next minor arc. When material feels thin, do not cut chapters — expand downward, and the thing you expand is **the next failure of the same goal**, not the next minor arc's events.
 ★ Nor may **elapsed story time** justify compression: a single day can carry ten chapters (one per setback, one per boundary crossed), and a century can pass in one chapter. What sets length is **the number of setbacks and the number of boundaries**, not how many days went by.
 ★ Sections (5)(6)(7) override any earlier instruction to "write only structural turning points / only the spine / no detailed outline": that instruction is about cross-chapter compression, it does not license writing a whole chapter as one sentence.
 
 (7) A chapter may draw material only from these four places, and all of it must sit **inside the minor arc this chapter belongs to**:
-- **Process** — how the same thing actually gets done: where it jams, how many attempts it takes, who interferes.
+- **Anchor** — the single most decisive step of the thing: one action or one line of dialogue that makes the consequence below true. Write only that step, **not the full process** (the process is the blueprint's keyEvents).
 - **Consequence** — whom the previous event **changed**: who got dragged in, when the cost lands, what starts going wrong.
 - **Reaction** — how **others misread it**: what bystanders, rivals, and side characters each conclude, and what they do because of it.
-- **Repetition** — the **same thing he wants**, approached another way, failing again.
+- **Repetition** — the **same thing he wants**, approached another way, failing again — write only "what the other approach was and why it still fails", not the number of attempts or their details.
 Never draw on: the next minor arc's required events; the next mid arc's Goal / Attempt / Turning point; the major arc's Ending state.
 
 8. Settlement (applies **only to the last chapters of the book**: only when this chapter falls inside the final minor arc of
@@ -582,6 +589,9 @@ When the plot outline inside [Story architecture] already names a chapter (forma
 
 [Hook authority]
 The sole authority for suspenseHook is the same outline. When the outline for that chapter ends with a "Closes:" line, suspenseHook must land on the unresolved item that line already names. You may phrase it more concretely and more like a question, but never substitute a different suspense, and never drop the item the Closes line already identified. Only when the outline gives no "Closes:" line for that chapter may you derive the hook from the keyEvents/suspenseHook split above.
+
+[Choice authority]
+When the outline for that chapter carries a "Choice:" line, purpose must open with that same choice — "He chooses <hide | stall | trade | own> — <the concrete move>" — and only then state what he wants to settle. keyEvents expand how that choice is carried out and how it fails; never swap in a different way of responding.
 Return JSON only, with no Markdown, preface, analysis, plan, code fence, or reasoning.
 
 [Author pacing and style guidance — highest priority when present]
@@ -611,7 +621,8 @@ The following are already-finalized prior chapters (brief excerpts, to prevent d
 4. Give every chapter a material event change; do not add filler.
 5. The plot outline inside [Story architecture] is the only authority for chapter titles: when it already names a chapter (formatted as "## Chapter N: Title"), reuse that title verbatim — punctuation and wording included — and never rewrite, shorten, restyle, or make it catchier. Invent a title only when the outline gives none. If the chapter content diverges slightly from the outline title, change the content, never the title.
 6. The sole authority for suspenseHook is the same outline. When the outline for that chapter ends with a "Closes:" line, suspenseHook must land on the unresolved item that line already names. You may phrase it more concretely and more like a question, but never substitute a different suspense, and never drop the item the Closes line already identified. Only when the outline gives no "Closes:" line for that chapter may you derive the hook freely.
-7. Return exactly one JSON object with a blueprints array and no analysis, plan, explanation, Markdown, or code fence.
+7. When the outline for that chapter carries a "Choice:" line, purpose must open with that same choice — "He chooses <hide | stall | trade | own> — <the concrete move>" — before stating what he wants to settle; keyEvents expand how that choice is carried out, never a different response.
+8. Return exactly one JSON object with a blueprints array and no analysis, plan, explanation, Markdown, or code fence.
 
 [Author pacing and style guidance]
 {{pacing_guidance}}`,
