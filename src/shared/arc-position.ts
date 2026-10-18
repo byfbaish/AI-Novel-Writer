@@ -756,6 +756,8 @@ export interface ArcDensityFinding {
     | 'MID_ONE_SIDED'
     /** 小弧的全部事件都从主角视角写，没有一条是对手出招落空（P16） */
     | 'MINOR_NO_COUNTER'
+    /** 中弧的「位置行」没有点名由哪个小弧兑现，等于只是声明（P17） */
+    | 'MID_SLOT_UNLINKED'
   /** 出问题的层级，如 `大弧1【门牌错位与三方围猎】` */
   where: string
   zh: string
@@ -779,6 +781,19 @@ const FAILURE_SLOT_FIELD = /阻塞|尝试|扑空|block|attempt|dead[\t ]*end/iu
 const WINBACK_SLOT_FIELD = /反制|得手|反获|counter|score|recovery/iu
 /** 「他想要…」是模板给的事件句式；全部事件都用它 = 视角全在主角的失败上。 */
 const HERO_WANTS_OPENER = /^[他她]想要/u
+/**
+ * 中弧里的「位置行」——它们各占一个具体的事发点，必须点名由哪一个小弧兑现（P17）。
+ *
+ * 背景：这几行是 P15/P16 加的，但代码从来没有解析过它们的取值 —— 它们只作为
+ * `mid.fields` 的自由文本被原样注入下游，既不校验、也没有任何小弧字段引用它们。
+ * 于是它们只是**声明**：写成什么都合规，逐章展开时可以一次都不兑现
+ * （实测一条 25 章的中弧写了「反制」，它下面 3 个小弧无一对应，那 25 章里对手一次没失手）。
+ * 大弧的「结束状态」早有同一条规矩（`NAMES_A_MID`：必须点名承接它的中弧），
+ * 中弧这一层却漏了 —— 同一个病下移了一层。
+ */
+const SLOT_FIELD = /阻塞|反制|得手|扑空|反获|转折|block|counter|score|dead[\t ]*end|recovery|turning[\t ]*point/iu
+/** 位置行末尾的兑现点：`（小弧 1）` / `(minor arc 2)` */
+const SLOT_LINK = /小弧[\t ]*[0-9０-９一二三四五六七八九十]|minor[\t ]*arc[\t ]*[0-9]/iu
 
 export function auditArcDensity(parsed: ParsedArcStructure | null): ArcDensityFinding[] {
   if (!parsed) return []
@@ -857,6 +872,21 @@ export function auditArcDensity(parsed: ParsedArcStructure | null): ArcDensityFi
             })
           }
         }
+      }
+
+      // ---- P17：位置行有没有落到某个小弧上 ----
+      // 只查形状（末尾有没有「（小弧 N）」），不查语义 —— 但这一条恰恰是"声明"与
+      // "约束"的分界：不点名，那几行没有任何东西会来兑现它。
+      const slotFields = mid.fields.filter(([name]) => SLOT_FIELD.test(name))
+      const unlinked = slotFields.filter(([, value]) => !SLOT_LINK.test(value))
+      if (unlinked.length > 0 && mid.minors.length > 0) {
+        const names = unlinked.map(([name]) => name).join(' / ')
+        findings.push({
+          code: 'MID_SLOT_UNLINKED',
+          where: midWhere,
+          zh: `${midWhere} 的「${names}」没有点名由哪个小弧兑现 —— 它们只是声明，逐章展开时这几个事发点可以一次都不发生。`,
+          en: `${midWhere}: ${names} name no minor arc that pays them off — they stay declarations, and the chaptered expansion may never let one of them happen.`,
+        })
       }
     })
   })
