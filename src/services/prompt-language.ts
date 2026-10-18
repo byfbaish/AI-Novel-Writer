@@ -407,13 +407,14 @@ Between major arcs: every major arc must state a **continuation reason** — the
 ★ Every clause of a major arc's **End state** must name the mid arc that pays it off (in parentheses, e.g.
   "Lu Chuanfu takes on his first ledger entry (mid arc 2)"). An end state with no mid arc behind it means the
   volume cannot close (observed: 2 of 4 clauses had no taker).
-★ A major arc must also state a **time span** (roughly how much story time this volume covers). This is the **only**
-  place in the whole arc structure that states a time span — there are only 3–12 of them, a human can check them at a
-  glance, and anything deeper (mid / minor arc) becomes a label nobody will ever verify.
-  It constrains the outline; it is not decoration: if this volume spans three days, the outline may not say "three months later".
-  Also do **not** give every volume the same time unit — three volumes of "a few days" leave the reader with no sense that time passes.
-  (Exception: when the genre itself is slice-of-life where a day fills ten chapters — then state "this volume is compressed
-  into N days" honestly and say in the central conflict what holds it up.)
+★ A major arc must also state a **time density**: how tightly this volume presses the reader in time, and **why**.
+  - Give a **magnitude plus a reason**, not a precise day count: "a few months, because this volume is a hunt and every day tightens it".
+  - It is a **narrative choice**, not a world calendar: you write "three days" because the volume needs an airtight pace,
+    not because you computed that the events take exactly three days. So **it does not constrain the outline** — the outline
+    may skip a stretch, as long as the reader feels time passing.
+  - Try not to use one time unit for the whole book: three volumes of "a few days" leave the reader with no sense that time passes.
+  - When the genre itself is slice-of-life where a day fills ten chapters, write honestly that it is pressed into that one day
+    and say in the central conflict what holds it up.
 Between mid arcs (within one major arc): classify each mid arc, then write its progression by type:
 - A Causal: one stretch after another. The field name stays "Causality", but **it records the entrance, not necessity** —
   it only requires that you can get here from the previous stretch (see “reachability ≠ causality” above).
@@ -540,11 +541,10 @@ It must satisfy all four:
 
 [Arc counts] <N major arcs; mid arcs per major arc; minor arcs per mid arc> (the result of Step 0; **no chapter count may appear after this line**)
 [Story question] <one sentence, answerable yes/no, e.g. "can he live on this ability without killing the people around him">
-[Story time span] <total time in the story world, e.g. "forty days" / "twelve years">
 
 ## Major arc 1: <name>
 - Type: A Causal / B Goal-driven / C Exploratory
-- Time span: roughly <number + unit> of story time in this volume ("three days" / "half a year" / "forty years")
+- Time density: this volume presses the reader into <a few days / a few months / a few years>, because <why this stretch needs that pace>
 - Continuation reason: (the first arc says "opening"; every other must say which state of the previous arc it starts from and by what means it gets here)
 - Mid-arc progression: <mid arc 1's outcome> changes <a condition>, so <mid arc 2's action> (B: "goal moves from X to Y; mid arc 1 = attempt 1, mid arc 2 = attempt 2"; C: "<place A> -> <discovery>, <place B> -> <discovery>")
 - Central conflict: …
@@ -601,7 +601,7 @@ It must satisfy all four:
 9. **Adjacent events differ**: within every minor arc, adjacent required events differ in at least one respect (setting / goal / pressure source / magnitude), and after each step the protagonist cannot return to the previous situation; any pair with none of these differing has been merged
 10. **Not a run of clean yeses**: every minor arc contains at least one "no / yes-but / no-and" event, and never three clean yeses in a row
 11. A minor arc is neither a bare name nor a chapter-by-chapter beat ("chapter 1 … chapter 2 …" belongs to the plot outline)
-12. **Every major arc states a time span**, and the book does not use a single time unit throughout (if the genre really is compressed into a very short span, the central conflict already says what holds it up)
+12. **Every major arc states a time density** (magnitude plus a reason, no precise day count), and the book does not use a single time unit throughout; a volume that cannot give the reason has not thought through its pace
 13. **Ending**: the [Story question] is answerable yes/no; the final major arc's End state answers it, and contains one cost the protagonist himself paid and cannot undo
 14. **No new thread at the end**: the final major arc's End state contains no new pressure source, new mystery, or "more to come" hint, and the final minor arc's end state is "answer + cost", not another setup
 15. **Every mid arc has a win-back line**: A has Counter, B has Score, C has Recovery, and each describes **the opponent's plan failing** — "he did nothing and it still counted" does not count
@@ -687,7 +687,7 @@ Every chapter has three parts in this exact order: (1) chapter heading, (2) the 
 - Never write a chapter wholly unrelated to the previous chapter's Closes line. The commonest broken link is a chapter that opens on a fresh scene while the chapter before it left a concrete offer, threat, or discovery dangling.
 - Then close this chapter with its own "Closes:" line per (3).
 
-(5) Every chapter's prose must realize a **chapter-level situation**, not a summary. Work these out before writing (render them as connected prose, never as a field list):
+(5) Every chapter's prose must realize a **chapter-level situation**, not a summary. Work these out before writing (render them as connected prose, never as a field list — including arc-layer labels such as “Goal:” “Stake:” “start:” “end state:”; those are this layer's vocabulary, not prose):
 - What must he **obtain** in this chapter: something that could plausibly fail that same day. Never write "he needs to find out / understand / realize" — those cannot fail.
 - Who or what **blocks** him: a specific person, rule, deadline, debt, or bodily limit — and never the same kind of blocker as the previous chapter.
 - What he **tries**: a concrete action or line of speech. "He thought about it again", "he now had a plan", "he decided to look around first" are not attempts.
