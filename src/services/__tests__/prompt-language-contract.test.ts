@@ -301,3 +301,63 @@ describe('弧光三型的"赢回来"位置双侧一致（P16）', () => {
     expect(arc('en-US')).toContain('16. **Every minor arc has at least one event written from the opponent')
   })
 })
+
+/**
+ * P17：中弧的「位置行」必须点名由哪个小弧兑现；小弧行必须带「目标 ｜ 赌注」。
+ *
+ * 两件事同源：作者连问两次「这真的能写出 8 章么」「中弧那些标签怎么被小弧诠释的」。
+ * ① 位置行（阻塞/反制/得手/扑空/反获/转折）此前只是自由文本，小弧层零引用 ⇒ 声明而已；
+ * ② 小弧只有"发生了什么"，没有"他想要什么"和"失败会失去什么" ⇒ 遭遇链 + 全档位轻赌注。
+ * 断言只防单侧改动：这两段一旦只在 zh 或只在 en 出现，另一种语言的作者静默拿不到。
+ */
+describe('中弧位置行点名 + 小弧目标/赌注双侧一致（P17）', () => {
+  const arc = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('plot_structure', language)!.content
+  const zh = () => arc('zh-CN')
+  const en = () => arc('en-US')
+
+  it('位置行必须点名兑现它的小弧（zh / en 各写了同一条规矩）', () => {
+    expect(zh()).toContain('都必须点名**由哪一个小弧兑现**')
+    expect(zh()).toContain('这与大弧「结束状态」必须点名承接它的中弧是同一条规矩，只是下移一层')
+    expect(en()).toContain('must name **which minor arc pays it off**')
+    expect(en()).toContain('one level down')
+  })
+
+  it('小弧格式行带「目标 ｜ 赌注」，且写明分隔符纪律', () => {
+    expect(zh()).toContain('目标 <他这一弧想做成的一件事> ｜ 赌注')
+    expect(zh()).toContain('不要用「；」')
+    expect(zh()).toContain('目标/赌注里不要出现「→」')
+    expect(en()).toContain('Goal <the one thing he wants to accomplish in this arc> | Stake')
+    expect(en()).toContain('The leading **Goal** and **Stake** are mandatory')
+  })
+
+  it('三条口径：目标必须是"他去做的"、赌注必须补不回来、重量不靠事故', () => {
+    const text = zh()
+    expect(text).toContain('必须是他**要去做的**事，不是**发生在他身上**的事')
+    expect(text).toContain('遭遇链')
+    expect(text).toContain('陈佩斯吃一碗面')
+    expect(text).toContain('具体且补不回来')
+    expect(text).toContain('不要用加大事故来造重量')
+    const enText = en()
+    expect(enText).toContain('something he **goes and does**')
+    expect(enText).toContain('chain of encounters')
+    expect(enText).toContain('unrecoverable')
+    expect(enText).toContain('Do not manufacture weight with bigger accidents')
+  })
+
+  it('赌注必须挂在一笔已声明的债上，且写明"1949-10-01"那条机制', () => {
+    expect(zh()).toContain('赌注必须挂在**一笔已经声明的债**上')
+    expect(zh()).toContain('1949-10-01')
+    expect(zh()).toContain('这一天在全局里的位置')
+    expect(en()).toContain('must hang on **a debt already declared**')
+    expect(en()).toContain('1949-10-01')
+  })
+
+  it('自检 17/18/19 双侧存在', () => {
+    expect(zh()).toContain('17. **每个小弧都有「目标 ｜ 赌注」**')
+    expect(zh()).toContain('18. **赌注挂得住**')
+    expect(zh()).toContain('19. **中弧的位置行都点了名**')
+    expect(en()).toContain('17. **Every minor arc has')
+    expect(en()).toContain('18. **The stake hangs somewhere**')
+    expect(en()).toContain('19. **The mid-arc slot lines are all linked**')
+  })
+})

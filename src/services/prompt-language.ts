@@ -414,17 +414,25 @@ Between mid arcs (within one major arc): classify each mid arc, then write its p
 - A Causal: events chain together, expressible as "because … therefore …".
   Causality: because <previous mid arc / prior event> produced <specific outcome>, therefore <this mid arc's action>
   Ordering: this mid arc starts from <the exact state> the previous mid arc ended in
-  Block: <what stops what he is trying to do in this link, so that he fails once> (a type-A arc most easily becomes a chain of smooth causality; this line exists to prevent that)
-  Counter: <the one time whoever was pushing him tried it again and lost, because of something he already held> (without this line a type-A arc is twenty-five chapters of being pushed)
+  Block: <what stops what he is trying to do in this link, so that he fails once> (minor arc 1) (a type-A arc most easily becomes a chain of smooth causality; this line exists to prevent that)
+  Counter: <the one time whoever was pushing him tried it again and lost, because of something he already held> (minor arc 2) (without this line a type-A arc is twenty-five chapters of being pushed)
 - B Goal-driven: the protagonist pursues a goal through repeated attempt–setback–retry.
   Goal: <one sentence, the full change from X to Y>
   Attempt 1: <method> -> outcome <what> -> therefore attempt 2 (explain why a retry is required)
-  Score: <the one attempt that actually got him something, more than he himself expected> (attempts and setbacks with no single win is twenty-five chapters of taking hits)
+  Score: <the one attempt that actually got him something, more than he himself expected> (minor arc 2) (attempts and setbacks with no single win is twenty-five chapters of taking hits)
 - C Exploratory: parallel encounters in a space or cast; events connect as "and then they met …" rather than "therefore …".
   Motivation: <why explore> (this compensates for the absence of causality)
   Path: <place A> -> discovery <X>; <place B> -> discovery <Y>
-  Dead end: <which line of exploration found nothing, or found something worse than nothing> (a type-C arc's discoveries most easily all succeed)
-  Recovery: <the one line of exploration that found something it should not have, or that the other side never expected him to find> (a type-C arc that only ever finds nothing is pure setback)
+  Dead end: <which line of exploration found nothing, or found something worse than nothing> (minor arc 1) (a type-C arc's discoveries most easily all succeed)
+  Recovery: <the one line of exploration that found something it should not have, or that the other side never expected him to find> (minor arc 2) (a type-C arc that only ever finds nothing is pure setback)
+★ Every one of “Block / Counter / Score / Dead end / Recovery / Turn” must name **which minor arc pays it off**, written as
+  (minor arc 2). Each of these lines is a concrete happening, but before it is named, nothing says which minor arc of this
+  mid arc it belongs to — and no field at the minor-arc layer ever refers back to it. So they are **declarations**:
+  any content is compliant, and the chapter expansion may never pay a single one of them off (observed: a 25-chapter mid arc
+  declared a Counter, and none of its 3 minor arcs mentioned it — the opponent never lost once across those 25 chapters).
+  Naming it gives it force, in both directions: the named minor arc must contain one required event that is exactly that line,
+  and the minor arc then knows what **has to** happen in it instead of sliding forward on "and then he found out…".
+  This is the same rule as “every clause of a major arc's End state must name its mid arc”, one level down — previously only the upper level had it.
 ★ All three types need **both the failure slot and the win-back slot**: A = Block + Counter, B = Attempts + Score, C = Dead end + Recovery.
   A list of failures only reads as twenty-five chapters of the protagonist being hit. All three types used to define only where he fails, and
   none of them had a slot for the opponent losing (observed: one 8-chapter minor arc with 12 events — 10 setbacks, 2 "wins" that were merely
@@ -435,7 +443,30 @@ Between mid arcs (within one major arc): classify each mid arc, then write its p
   it must get, and the information must **grow, not shrink**. A minor arc is not a label; it is the only layer fed
   directly into the chapter outline, and a name alone cannot carry its 8–9 chapters.
   Format (one line per minor arc):
-  <minor arc name> (approx. N chapters): <start state> -> <required event 1> -> <required event 2> -> … -> <end state>
+  <minor arc name> (approx. N chapters): Goal <the one thing he wants to accomplish in this arc> | Stake <what he loses if the end state is not reached> | <start state> -> <required event 1> -> <required event 2> -> … -> <end state>
+  - The leading **Goal** and **Stake** are mandatory, separated by “|” only. **Never use “;”**
+    (the system splits minor arcs on it, and one arc would become two), and **never use “->” inside Goal or Stake**
+    (“->” is the step marker: one extra arrow adds one step, and the per-chapter ceiling is computed from it).
+  - **Goal** must be something he **goes and does**, not something that **happens to him**. Test: read all the required
+    events of the arc in a row — can you hear one thing running through them? If not, this is a **chain of encounters**,
+    not a plot. Observed: a 8-chapter minor arc had five events — wake up -> handle the landlord -> discover the house
+    numbers were reissued -> get confronted — each more serious than the last, yet he **wanted none of them**; every step
+    moved forward only by "and then he found out something new", so two chapters said everything and the remaining six
+    could only re-confirm it. Chen Peisi can play twenty-five minutes of eating noodles because he **has to finish the bowl**.
+  - **Stake** = what he loses if the end state is not reached. It must be **concrete and unrecoverable**:
+    a person / an object / a status / an opportunity / a way back. "He will feel awful" or "his name is damaged" does not
+    count, and neither does anything the arc can restore by itself (money lost then found again = no stake).
+  - The **weight comes from the stake, not from the size of the incident**. Same greeting: "I said good morning to Aunt
+    Zhang" is light; "Aunt Zhang moves away today, and she is the only one who remembers that sentence" is heavy — the
+    event did not get more violent, the stake changed. **Do not manufacture weight with bigger accidents** (car crash,
+    murder, kidnapping): slice-of-life turns into an accident-of-the-week show, and fantasy turns every chapter into a
+    life-or-death fight.
+  - The stake must hang on **a debt already declared**, and the line must make clear which one:
+    ① the [Story question]; ② this mid arc's Goal / Block / Counter; ③ a planted setup; ④ a world rule the reader already
+    knows (house number = who lives where; an IOU = whose debt). If it hangs on none of them, the arc means nothing to the
+    book and the reader will not be tense for it. (This is the mechanism behind "a laundry-list diary dated 1949-10-01
+    reads completely differently": not one word changed — **the position of that day in the whole** gave it the weight.
+    The same person's diary on 1949-10-03 has the same words and none of the weight.)
   - **3–5 required events**, count set by the chapter span (roughly one per 2 chapters), 15–30 words each; write
     "what he **wants** -> **what he gets**".
   - **Only four outcomes are allowed**: a clean yes, a no, a yes-but (he gets it and pays for it), and a no-and
@@ -516,31 +547,31 @@ It must satisfy all four:
 - Type: A Causal
 - Causality: because <previous mid arc / prior event> produced <specific outcome>, therefore <this mid arc's action>
 - Ordering: this mid arc starts from <the exact state> the previous mid arc ended in
-- Block: <what stops what he is trying to do in this link, so that he fails once>
-- Counter: <the one time whoever was pushing him lost, and what he already held>
-- Turn: …
-- Minor arcs (one line each; must carry "start -> required events -> end"):
-  - <name> (approx. M chapters): <start state> -> <required event 1> -> <required event 2> -> <required event 3> -> <end state>
-  - <name> (approx. M2 chapters): <start state> -> <required event 1> -> … -> <end state>
+- Block: <what stops what he is trying to do in this link, so that he fails once> (minor arc 1)
+- Counter: <the one time whoever was pushing him lost, and what he already held> (minor arc 2)
+- Turn: … (minor arc 2)
+- Minor arcs (one line each; must carry "Goal | Stake | start -> required events -> end"):
+  - <name> (approx. M chapters): Goal <the one thing he wants to accomplish here> | Stake <what he loses if the end state is not reached> | <start state> -> <required event 1> -> <required event 2> -> <required event 3> -> <end state>
+  - <name> (approx. M2 chapters): Goal <…> | Stake <…> | <start state> -> <required event 1> -> … -> <end state>
 ### Mid arc 2: <name> (approx. N chapters)
 - Type: B Goal-driven
 - Goal: <one sentence, the full change from X to Y>
 - Attempt 1: <method> -> outcome <what> -> therefore attempt 2
 - Attempt 2: <method> -> outcome <what>
-- Score: <the one attempt that actually got him something, beyond his own expectation>
-- Turn: …
+- Score: <the one attempt that actually got him something, beyond his own expectation> (minor arc 2)
+- Turn: … (minor arc 2)
 - Minor arcs (one line each):
-  - <name> (approx. M chapters): <start state> -> <required event 1> -> … -> <end state>
-  - <name> (approx. M2 chapters): <start state> -> <required event 1> -> … -> <end state>
+  - <name> (approx. M chapters): Goal <…> | Stake <…> | <start state> -> <required event 1> -> … -> <end state>
+  - <name> (approx. M2 chapters): Goal <…> | Stake <…> | <start state> -> <required event 1> -> … -> <end state>
 ### Mid arc 3: <name> (approx. N chapters)
 - Type: C Exploratory
 - Motivation: <why explore>
 - Path: <place A> -> discovery <X>; <place B> -> discovery <Y>
-- Dead end: <which line of exploration found nothing, or found something worse than nothing>
-- Recovery: <the one find he should not have made, unexpected by the other side>
-- Turn: …
+- Dead end: <which line of exploration found nothing, or found something worse than nothing> (minor arc 1)
+- Recovery: <the one find he should not have made, unexpected by the other side> (minor arc 2)
+- Turn: … (minor arc 2)
 - Minor arcs (one line each):
-  - <name> (approx. M chapters): <start state> -> <required event 1> -> … -> <end state>
+  - <name> (approx. M chapters): Goal <…> | Stake <…> | <start state> -> <required event 1> -> … -> <end state>
 ## Major arc 2: <name> (approx. X–Y chapters)
 …
 ★ The above demonstrates the **writing format**, and uses three mid arcs to show the field names for each of A / B / C.
@@ -569,6 +600,9 @@ It must satisfy all four:
 14. **No new thread at the end**: the final major arc's End state contains no new pressure source, new mystery, or "more to come" hint, and the final minor arc's end state is "answer + cost", not another setup
 15. **Every mid arc has a win-back line**: A has Counter, B has Score, C has Recovery, and each describes **the opponent's plan failing** — "he did nothing and it still counted" does not count
 16. **Every minor arc has at least one event written from the opponent's side** (they move -> something he planted earlier -> they lose); any arc without one has been fixed
+17. **Every minor arc has "Goal | Stake"**: the goal is something he **goes and does** (one thing runs through all its events), not something that happens to him; the stake is concrete, unrecoverable, and not "he will feel bad"
+18. **The stake hangs somewhere**: every minor arc's stake can name the debt it hangs on (the [Story question] / this mid arc's Goal·Block·Counter / a planted setup / a world rule the reader knows); any arc whose stake hangs on none of them has been rewritten
+19. **The mid-arc slot lines are all linked**: "Block / Counter / Score / Dead end / Recovery / Turn" each end with (minor arc N), and the named minor arc does contain one required event that is exactly that line
 
 [Requirements]
 1. This is a **three-level progression skeleton**, not a chapter-by-chapter outline — do not write per-chapter content.
