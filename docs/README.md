@@ -162,6 +162,7 @@ docs/
 | [`arc-budget-engine-design.md`](design/architecture/arc-budget-engine-design.md) | 📝 立项 · 待裁定 | **骨架预算引擎**（合并平台画像）：章数由本地算、模型只复核；一张画像两个消费者；比例与绝对区间在 150 章下不兼容 |
 | [`o1-arc-event-progress-design.md`](design/architecture/o1-arc-event-progress-design.md) | 📝 待裁定 | **O1 落地：按弧分配、按章生成**——事件按 `→` 编号 + 每章进度线 + `覆盖：#E<n>` 水位，四条不变量（不改批次/cursor/请求数） |
 | [`synopsis-expansion-design.md`](design/architecture/synopsis-expansion-design.md) | ✅ 已实施 | **大纲层扩张机制**：章数不减，改「章级局面」（想要—被挡—尝试—代价—未决）+ 展开四来源 + 弧位块逐章步数上限（代码算，不让模型排） |
+| [`arc-tree-expansion-design.md`](design/architecture/arc-tree-expansion-design.md) | 🟡 待评审（`exp/arc-tree-v2`） | **弧光「逐节点展开」验证方案**：一次性生成的病是"同一个上下文里同时做 27 个决定 ⇒ 只能套格式"；本轮只做两层（大弧一次 + 中弧逐个大弧展开、小弧不拆）；复用同一 key 跑 1+N 次拼接，零 DB/契约改动；`arc-node` 的中弧结构位已够大纲对账，不依赖小弧 |
 | [`arc-generality-and-ending-design.md`](design/architecture/arc-generality-and-ending-design.md) | ✅ 已实施（P15 + P16） | **弧光泛用性 / 结局 / 类型分配**：层级由章数定义、类型只有 A/B/C、骨料只认「拿到了」是三处题材偏置；张力=价值翻转；结局四笔债；**中弧三型原来只规定了"他失败"的位置、没有"对手失手"的位置**⇒ 各补反制/得手/反获 + 每小弧一条对手侧事件；D/E **暂不加** |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
