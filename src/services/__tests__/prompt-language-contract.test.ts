@@ -219,10 +219,19 @@ describe('弧光与大纲的结构条款双侧一致（P15）', () => {
     expect(arc('en-US')).toContain('Dead end:')
   })
 
-  it('大弧写时间跨度，且写明它是唯一一层写时间跨度的地方', () => {
-    expect(arc('zh-CN')).toContain('时间跨度：本卷内的故事时间约')
-    expect(arc('zh-CN')).toContain('唯一')
-    expect(arc('en-US')).toContain('Time span: roughly')
+  it('P19：大弧写的是「时间密度」（量级+理由），不再报一个没有来源的天数', () => {
+    const zh = arc('zh-CN')
+    // 保留了"考虑时间"这个创作手段（作者：删了会压缩发挥空间）
+    expect(zh).toContain('时间密度：本卷把读者压在')
+    expect(zh).toContain('写**量级 + 理由**，不写精确天数')
+    // 但不再是"世界日历事实"，也不再冒充唯一权威、不再反过来否决大纲
+    expect(zh).not.toContain('时间跨度：本卷内的故事时间约')
+    expect(zh).not.toContain('大纲就不许出现')
+    expect(zh).not.toContain('【全书时间跨度】')
+    const en = arc('en-US')
+    expect(en).toContain('Time density: this volume presses the reader into')
+    expect(en).toContain('magnitude plus a reason')
+    expect(en).not.toContain('[Story time span]')
   })
 
   it('结局四问：全书问题 / 不可逆代价 / 不开新线 / 最后一击', () => {
