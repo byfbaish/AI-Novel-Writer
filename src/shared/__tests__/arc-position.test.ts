@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   arcSpanForChapters,
   arcStructureNeedsRescale,
+  isTwoLevelArcStructure,
   parseArcStructure,
   projectArcStructureText,
   renderArcPositionBlock,
@@ -560,5 +561,90 @@ describe('小弧事件步与逐章进度上限（P14）', () => {
     expect(parsed.majors[0]!.mids[0]!.minors.map(m => m.chapters)).toEqual([8, undefined])
     const span = arcSpanForChapters(parsed, 18, 1, 1)!
     expect(span.midRange).toEqual([1, 18])
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v7（2026-10-19）：行业词「卷 / 单元」+ 两级结构（没有小弧）
+// ─────────────────────────────────────────────────────────────────────────────
+const V7_PLAN = [
+  '# 卷 / 单元结构',
+  '',
+  '【全书问题】程实能不能在零点前不把第一句话交出去？',
+  '',
+  '## 卷一：一句我马上到，整条巷门牌全歪了',
+  '- 卷叙事任务：让读者看清第一句话是账单，不是许愿。',
+  '- 进入状态：他把日子压到最小。',
+  '- 离开状态：观察科立卷，黑市报价。',
+  '- 换的阻力：熟人关心换成按天标价。',
+  '- 结账：少了工卡，因为被登记；从此沈砚拿刷卡记录来问。',
+  '- 时间密度：单日倒计时，因为额度零点翻篇。',
+  '',
+  '### 单元一：老陈问还是老样子，他点头点歪门牌',
+  '- 叙事任务：立规则，代价落在最近的人身上。',
+  '- 进入状态：刚醒，嘴比脑子快。',
+  '- 离开状态：门牌错位，观察科第一次写进报告。',
+  '- 段间推进：卷首，靠早上敷衍房东走到这里。',
+  '- 逼法：老陈用关心逼他接话 → 结束时变成周德胜拿房租报新价（交手：堵门；档：关心→标价）',
+  '',
+  '### 单元二：鲁传福拿机器故障挡笔录，挡不住',
+  '- 叙事任务：把代价从自己挪到鲁传福。',
+  '- 进入状态：他躲进回声棚。',
+  '- 离开状态：笔录落在鲁传福名下。',
+  '- 段间推进：拿房租新价当由头躲进棚里。',
+  '- 逼法：沈砚要他写书面说明 → 结束时变成把笔录落在鲁传福名下（交手：取证；档：标价→立卷）',
+  '',
+  '## 卷二：想销档案，先给观察科凑三处细节',
+  '- 卷叙事任务：销档是拿三处细节换的。',
+  '- 进入状态：工卡没了。',
+  '- 离开状态：会用假合同把成真引到现成路径。',
+  '- 换的阻力：观察科销档流程。',
+  '- 结账：少了面摊灶位，因为场所封；从此庞大勇每天来问解封。',
+  '- 时间密度：销档流程量级。',
+  '',
+  '### 单元一：沈砚拿销档表，换他一次配合',
+  '- 叙事任务：把销档从愿望变成交易。',
+  '- 进入状态：只剩配合这一条路。',
+  '- 离开状态：销档表变成债务。',
+  '- 段间推进：刷卡记录让沈砚有由头叫他。',
+  '- 逼法：沈砚拿销档表换配合 → 结束时变成按三处细节补时间线（交手：取证；档：立卷→债务）',
+].join('\n')
+
+describe('v7 两级结构（卷 / 单元）', () => {
+  it('认行业词标题，且中文序号可解析', () => {
+    const parsed = parseArcStructure(V7_PLAN)
+    expect(parsed).not.toBeNull()
+    expect(parsed!.majors.map(m => m.name)).toEqual([
+      '一句我马上到，整条巷门牌全歪了',
+      '想销档案，先给观察科凑三处细节',
+    ])
+    expect(parsed!.majors[0]!.mids.map(m => m.name)).toEqual([
+      '老陈问还是老样子，他点头点歪门牌',
+      '鲁传福拿机器故障挡笔录，挡不住',
+    ])
+    // 没有小弧 —— 两级结构的定义特征
+    expect(parsed!.majors[0]!.mids[0]!.minors).toEqual([])
+  })
+
+  it('两级判定：卷/单元为两级，旧「大弧/中弧」不是', () => {
+    expect(isTwoLevelArcStructure(parseArcStructure(V7_PLAN))).toBe(true)
+    expect(isTwoLevelArcStructure(parseArcStructure(PLAN))).toBe(false)
+    expect(isTwoLevelArcStructure(null)).toBe(false)
+  })
+
+  it('弧位块换成「卷 / 单元」措辞，并给出可声明的「逼法」结构位', () => {
+    const block = renderArcPositionBlock(parseArcStructure(V7_PLAN), 60, 1, 6, 'zh-CN')
+    expect(block).toContain('所在卷：卷1【一句我马上到，整条巷门牌全歪了】')
+    expect(block).toContain('所在单元：单元1【老陈问还是老样子，他点头点歪门牌】')
+    // 两级结构的"转折"等价物是逼法：不给它，大纲层一个可声明位都没有
+    expect(block).toContain('M1-1/逼法')
+    expect(block).not.toContain('中弧')
+    expect(block).not.toContain('小弧')
+  })
+
+  it('旧三级结构的弧位块措辞逐字不变', () => {
+    const block = renderArcPositionBlock(parseArcStructure(PLAN), 845, 1, 20, 'zh-CN')
+    expect(block).toContain('所在大弧：大弧1【')
+    expect(block).toContain('所在中弧：中弧1【')
   })
 })

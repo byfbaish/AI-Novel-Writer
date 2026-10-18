@@ -132,6 +132,15 @@ export interface ParsedArcStructure {
    * 「弧光合计 3 章，以下章号已按全书 150 章等比折算」这种无意义提示。
    */
   declaredChapters: boolean
+  /**
+   * 这份结构用的是哪套词（v7）。
+   *
+   * `volume` = 标题写的是「卷 / 单元」（行业词）；缺省 = 旧「大弧 / 中弧」。
+   * 它**只影响措辞**，不影响解析、折算或定位：同一份结构换成哪套词，算出来的
+   * 区间与结构位 ID 完全一样。渲染弧位块时据此决定叫「中弧」还是「单元」——
+   * 不能用"有没有小弧"来替代：旧项目里也有缺小弧的形态，会被误判成改词。
+   */
+  naming?: 'volume'
 }
 
 export interface ArcSpan {
@@ -191,8 +200,11 @@ export interface ArcSpan {
  * 区间取 `末 − 首 + 1`：它同时是"该弧含多少章"，与单值标注语义一致。
  */
 const CHAPTER_COUNT = '([0-9]+)(?:[\\t ]*[–—~～-][\\t ]*([0-9]+))?[\\t ]*章'
-const MAJOR_HEADING = new RegExp(`^#{2,3}[\\t ]*大弧[^：:]*[：:][\\t ]*(.+?)[\\t ]*(?:（[\\t ]*约?[\\t ]*${CHAPTER_COUNT}[\\t ]*）)?[\\t ]*$`, 'u')
-const MID_HEADING = new RegExp(`^#{3,4}[\\t ]*中弧[\\t ]*[0-9]*[\\t ]*[：:][\\t ]*(.+?)[\\t ]*(?:（[\\t ]*约?[\\t ]*${CHAPTER_COUNT}[\\t ]*）)?[\\t ]*$`, 'u')
+// v7（2026-10-19）：弧光改用行业词「卷 / 单元」，旧方案的「大弧 / 中弧」必须继续可解析
+//（旧项目 plot_structure_plan 是只读存量，不做任何文本迁移）。别名只用"或"，不做字符串替换。
+// 中弧的序号历史上只认阿拉伯数字；v7 写「单元一」，中文序号必须一起认，否则整份结构解析为空。
+const MAJOR_HEADING = new RegExp(`^#{2,3}[\\t ]*(?:大弧|卷)[^：:]*[：:][\\t ]*(.+?)[\\t ]*(?:（[\\t ]*约?[\\t ]*${CHAPTER_COUNT}[\\t ]*）)?[\\t ]*$`, 'u')
+const MID_HEADING = new RegExp(`^#{3,4}[\\t ]*(?:中弧|单元)[\\t ]*[0-9一二三四五六七八九十百]*[\\t ]*[：:][\\t ]*(.+?)[\\t ]*(?:（[\\t ]*约?[\\t ]*${CHAPTER_COUNT}[\\t ]*）)?[\\t ]*$`, 'u')
 /** `- **类型**：A 因果驱动型` / `- 因果：…` —— 字段名与值 */
 const FIELD_LINE = /^[-*][\t ]*\*{0,2}([^：:*]{1,12}?)\*{0,2}[\t ]*[：:][\t ]*(.+?)[\t ]*$/u
 /** 只保留能定位内容的字段，忽略纯枚举（类型）与排版字段 */
@@ -316,6 +328,8 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
   type MutableMid = { name: string; chapters?: number; fields: [string, string][]; minors: ArcMinor[] }
   let major: { name: string; chapters?: number; fields: [string, string][]; mids: MutableMid[]; endState?: string } | null = null
   let mid: MutableMid | null = null
+  /** v7：这份结构用的是「卷 / 单元」这套词（只影响渲染措辞，不影响任何换算）。 */
+  let naming: 'volume' | undefined
 
   for (const rawLine of plan.split(/\r?\n/u)) {
     const line = rawLine.trim()
@@ -323,6 +337,7 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
     const majorChapters = majorMatch ? headingChapterCount(majorMatch[2], majorMatch[3]) : null
     // P18：标题不带章数也收（弧光层已不做篇幅预算）。缺省 → `chapters` undefined → 等权折算。
     if (majorMatch) {
+      if (/^#{2,3}[\t ]*卷/u.test(line)) naming = 'volume'
       major = { name: stripBrackets(majorMatch[1]!), ...(majorChapters !== null ? { chapters: majorChapters } : {}), fields: [], mids: [] }
       majors.push(major as ArcMajor)
       mid = null
@@ -331,6 +346,7 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
     const midMatch = MID_HEADING.exec(line)
     const midChapters = midMatch ? headingChapterCount(midMatch[2], midMatch[3]) : null
     if (midMatch && major) {
+      if (/^#{3,4}[\t ]*单元/u.test(line)) naming = 'volume'
       mid = { name: stripBrackets(midMatch[1]!), ...(midChapters !== null ? { chapters: midChapters } : {}), fields: [], minors: [] }
       major.mids.push(mid)
       continue
@@ -379,7 +395,22 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
     majors: Object.freeze(usable),
     declaredTotal: usable.reduce((sum, item) => sum + arcWeight(item.chapters), 0),
     declaredChapters: usable.some(item => typeof item.chapters === 'number'),
+    ...(naming ? { naming } : {}),
   })
+}
+
+/**
+ * 两级结构判定（v7）：卷 → 单元，没有小弧。
+ *
+ * 判定必须用**结构**而不是"有没有【】"：小弧的记号是形态特征，两级结构的
+ * 单元同样可能带【】。`minors` 全空 + `mids` 非空，就是两级。
+ *
+ * 两级不是降级形态：`arcWeight` / `scaledBoundaries` / `listArcNodes` 都已经
+ * 按"有几个算几个"工作，小弧为空只是少了最细一层的区间，不影响卷/单元两级的定位。
+ */
+export function isTwoLevelArcStructure(parsed: ParsedArcStructure | null): boolean {
+  if (!parsed?.majors.length) return false
+  return parsed.majors.every(major => major.mids.length > 0 && major.mids.every(mid => mid.minors.length === 0))
 }
 
 /**
@@ -633,7 +664,9 @@ export function withProjectedArcGuide(
  * 正则必然漂移，于是「提示词允许声明什么」和「审计认可什么」会对不上。
  */
 export function isTurnField(name: string): boolean {
-  return /^(转折|turning[\t ]*point)$/iu.test(name)
+  // v7（两级：卷/单元）没有「转折」字段，它的等价物是「逼法」——单元结束时逼法从 X 变成 Y，
+  // 就是这一格的主动权/压力反转。不认它，两级结构在大纲层会一个可声明位都没有。
+  return /^(转折|逼法|turning[\t ]*point|escalation)$/iu.test(name)
 }
 
 /**
@@ -650,6 +683,9 @@ export function renderArcPositionBlock(
   const span = arcSpanForChapters(parsed, totalChapters, from, to)
   if (!parsed || !span) return ''
   const en = writingLanguage === 'en-US'
+  // 措辞跟着**结构自己的用词**走：`volume` 才换词。不能用"有没有小弧"判断 ——
+  // 旧项目里也存在缺小弧的形态，那样会被误改名（实测：已有用例的旧结构被错换成「卷/单元」）。
+  const volumeWording = parsed.naming === 'volume'
   const spec = span.midFields.map(([name, value]) => `${name}：${value}`).join('；')
   const rescale = arcStructureNeedsRescale(parsed, totalChapters)
     ? (en
@@ -715,7 +751,7 @@ export function renderArcPositionBlock(
         : `\n★ 本批跨越中弧边界：第 ${span.nextMidBoundary} 章起属于 中弧【${span.nextMidName}】。跨过边界后按**新中弧**的规格写（其完整规格见上方「弧光结构」中的该中弧），但**不得**连带把更后面的中弧内容提前。`)
     : ''
 
-  return en
+  const body = en
     ? `[ARC POSITION for this batch — derived from the arc structure, for placement only]
 - This batch: chapters ${from}–${to} of ${totalChapters}${rescale}
 - Major arc ${span.majorIndex} "${span.majorName}" (approx. ch. ${span.majorRange[0]}–${span.majorRange[1]})
@@ -749,6 +785,22 @@ ${coverableLabel}
    ★ 章数只是**给定条件**（由弧光的个数均分而来），不是写作预算：不要为了"用满这几章"而加料，
    也不要因为"这几章还没用完"而拖延 —— 一章值不值得看，取决于这一章的局面，不取决于它占第几格。
    这一条在本批覆盖整条弧时**同样成立** —— 覆盖整弧不是"可以一次写完"的许可，而是"必须逐章分摊"。${crossing}`
+
+  if (!volumeWording) return body
+
+  // v7 两级（卷 / 单元）：结构里的词已经是「卷/单元」，而本块是按「大弧/中弧/小弧」写的。
+  // 只在最后统一换词，不改上面任何一条约束的语义 —— 换词会同时把规则 3、5 里的「中弧/小弧」
+  // 替换成「单元」，这正是两级结构下它们该指的对象。旧三级结构走不到这里，措辞逐字不变。
+  return body
+    .replaceAll('大弧', '卷')
+    .replaceAll('中弧', '单元')
+    .replaceAll('小弧', '单元')
+    .replaceAll('mid arcs', 'units')
+    .replaceAll('mid arc', 'unit')
+    .replaceAll('Mid arc', 'Unit')
+    .replaceAll('minor arcs', 'units')
+    .replaceAll('minor arc', 'unit')
+    .replaceAll('major arc', 'volume')
 }
 
 /**
@@ -826,6 +878,11 @@ const SLOT_LINK = /小弧[\t ]*[0-9０-９一二三四五六七八九十]|minor[
 
 export function auditArcDensity(parsed: ParsedArcStructure | null): ArcDensityFinding[] {
   if (!parsed) return []
+  // v7 两级（卷/单元）用的是另一套字段（叙事任务 / 进入·离开 / 段间推进 / 逼法）。
+  // 下面七条全部针对三级规格（「中弧推进」「位置行点名」「小弧密度」）—— 在两级结构上
+  // 逐条都会误报（例如"没有中弧推进"对每个卷都成立）。两级自己的体检（交手类型 /
+  // 档位）另行接入；在那之前，这里对 volume 词表保持静默，而不是刷一屏假告警。
+  if (parsed.naming === 'volume') return []
   const findings: ArcDensityFinding[] = []
   parsed.majors.forEach((major, majorOffset) => {
     const majorIndex = majorOffset + 1
