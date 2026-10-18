@@ -26,6 +26,7 @@ import {
   resolvePromptTemplate,
 } from '../../prompt-templates'
 import { ArchitecturePromptBuilder } from '../../prompts/prompt-builder'
+import { resolveRhythmProfile } from '../../prompts/rhythm-profiles'
 import { ipc } from '../../ipc-client'
 import { requireIpcSuccess } from '../../ipc-result'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../../shared/project-session-context'
@@ -1900,6 +1901,9 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
       .withGlobalGuidance(projectScopedText(config.globalGuidance || '', 'architecture').text || missingValue)
       .withStepGuidance(((context.data.stepGuidance as Record<string, string>) || {}).plotStructure || '')
       .withReferenceWorks(projectScopedText(config.referenceWorks || '', 'architecture').text)
+      // v7：平台节奏画像。空 = 中性（模板里的【节奏推荐】整段裁掉），
+      // 不给老项目一个它没选过的默认节奏。
+      .withRhythmProfile(resolveRhythmProfile(core?.rhythmProfile, writingLanguage))
 
     const result = await this.callLLMWithBuilder(
       promptBuilder,

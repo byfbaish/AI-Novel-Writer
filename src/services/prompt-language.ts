@@ -345,8 +345,8 @@ Build four connected dimensions. The first three each need a concrete source of 
 {{step_guidance}}`,
   },
   plot_structure: {
-    systemRole: 'You are a long-form narrative structure planner. You output a **three-level nested** arc structure (major arc ⊃ mid arc ⊃ minor arc), and within each level every arc must answer "why does this come after the previous one?" instead of listing parallel intervals.',
-    content: `Plan the book's arc structure: how the story advances in three nested levels, and how each level connects to the next. The plot outline will follow it.
+    systemRole: 'You are a long-form web-novel structure planner working at the "volume / unit" level. You are not writing plot and you are not writing chapters. At each level you answer four things only: what this segment must accomplish, what state it starts and ends in, who is pressuring him and how that pressure changes, and what is permanently lost by the end of it. Chapter counts, word counts and percentages are not yours to decide — the system converts them from the platform profile.',
+    content: `Plan a two-level structure for this book: volumes and units, for the next layer (volume outlines, chapter outlines).
 
 [Authoritative project settings]
 - Genre: {{genre}}
@@ -356,272 +356,104 @@ Build four connected dimensions. The first three each need a concrete source of 
 - Planned scale: {{number_of_chapters}} chapters at roughly {{word_number}} words each
 - Project-wide writing guidance: {{global_guidance}}
 
-[Step 0 — decide the **counts** only (the one thing this step computes)]
-Length answers exactly one question: **into how many segments does this story split**. It does not decide how much is written in each.
-- major arcs = total chapters ÷ 100 (minimum 3, maximum 12)
-- mid arcs per major arc (2–6): set by how many **distinct phases** this stretch actually contains
-- minor arcs per mid arc (2–4): set by how many **distinct things** actually happen in that stretch
-Example (compute your own from the book's chapter total; do not copy): [Arc counts] 800 chapters ⇒ 8 major arcs; 4 mid arcs each ⇒ 32 mid arcs; 3 minor arcs each ⇒ 96 minor arcs.
-★★ **From this line downward, no chapter count, word count or length allocation may appear again.** No “approx. N chapters”,
-  no Σ, no “how many chapters does this volume span”, no difference checking. Chapter ranges are divided automatically by the
-  system from the **counts** — you do not compute them. The moment you start computing them you begin arranging events to match
-  the numbers, and that is the most common source of padding (observed: given a 1,500-word floor, a model stopped at exactly
-  1,500 words and the story lost its tension).
-★ The **distribution** of counts follows the content; never reuse a fixed value: sibling arcs at the same level **must not all
-  have the same count** (30 mid arcs all with 3 minor arcs means nothing was computed). A difference of 1 is normal.
+[Rhythm profile (if any) — injected from the platform; the ONLY source of counts in this prompt]
+{{rhythm_profile}}
 
-[Step 1 — the levels (three levels, carrying story meaning only, no length meaning)]
-- Major arc (level 1): a period in which **both the world and he change state**. Test: when it ends, the world he faces is different.
-- Mid arc (level 2): one **shift of position or situation** inside that period. ≥2 per major arc.
-- Minor arc (level 3): one **concrete thing that runs its course**. ≥2 per mid arc; this is what the plot outline consumes directly.
-★ Most common failure: **returning only 3–5 major arcs with no mid or minor arcs at all** — that mistakes narrative phases for hierarchy.
-★ Second most common failure: **splitting by chapter count** (“80–150 chapters per major arc”). A level is a level of the story,
-  not of pages: “he is reborn as a schoolboy, and later becomes the richest man in the country” already carries three levels, and a
-  several-hundred-thousand-word conception may still need only three. How many levels you need depends on **how many genuinely
-  different situations lie in between**, not on how many chapters you plan to write.
+[How to cut]
+- Volume: a period in which **both the world and he change state**.
+- Unit: one standoff situation.
+- The number of volumes and the number of units per volume **must follow the ranges in the rhythm profile above**. Do not compute them yourself and do not restate the ranges as fixed values.
+- Sibling arcs at the same level must not all have the same count (all 3 = nobody counted). A difference of 1 is normal.
+- Do NOT write chapter counts, word counts or length percentages, and do not put "chapters 1-6" in a title. Conversion is the system's job.
+- Both volume names and unit names must be a **concrete image** ("one 'I'll be right there' and every door number on the street tilts"), not an abstraction ("the crisis deepens").
 
-[Step 2 — write how one gets from here to there, not why it had to happen]
-★ Separate two things first: **causality** means B necessarily follows from A; **reachability** only means you can get from A to B.
-  Arcs need **reachability** only. Take “he is reborn as a schoolboy → he becomes the richest man in the country”: there is no
-  necessity between the two, but there is a traversable road in between (what he started with, who gave him his first opening,
-  which step turned it around) — that road is what the mid and minor arcs are. Forcing a “because … therefore …” onto them seals
-  off exactly that creative space and leaves a single straight line.
-★ Reachability may **not** be skipped: drop a “I take a fleet to conquer the galaxy” in the middle and nothing connects — it cannot
-  be squared later. Every arc must therefore state **its entrance**: which concrete state of the previous arc it starts from, and by
-  what means it gets there. If you cannot write it, the problem is not “missing causality” — there is **no road**, so delete that arc
-  or move it somewhere with a road.
-★ Between two adjacent nodes at the same level, at least **one** way of getting there must be statable (something he did / someone who
-  pushed him / a condition that changed). Several such nodes chained together is what we call a storyline.
-★ Nodes at a lower level must land **between the adjacent nodes of the level above**: a minor arc's end state may not leave the
-  entrance and exit of its mid arc; a mid arc's end state may not leave those of its major arc. This is the only positional
-  constraint at that level, and it is where “do not borrow from a coarser layer” comes from.
-Between major arcs: every major arc must state a **continuation reason** — the road from the previous arc's exit to this arc's entrance.
-★ A major arc must also state **mid-arc progression** — how its mid arcs drive each other. This is the coarse-grained
-  twin of a mid arc's Causality/Goal. A continuation reason alone is not enough: it only says why this major arc
-  follows the previous one, and says **nothing** about how it moves forward internally — which turns its "type" into an
-  empty label and lets a mid arc write the goal that belongs to the major arc (observed: major arc 2 declared B
-  Goal-driven but had no "Goal" line at all, while mid arc 1's goal was exactly that missing goal). By type:
-  - A Causal:      Mid-arc progression: <mid arc 1's outcome> changes <a condition>, so mid arc 2 does <action>
-  - B Goal-driven: Mid-arc progression: goal moves from X to Y; mid arc 1 = attempt 1, mid arc 2 = attempt 2 (say why a retry is required)
-  - C Exploratory: Mid-arc progression: <place A / discovery> -> <place B / discovery>
-★ Every clause of a major arc's **End state** must name the mid arc that pays it off (in parentheses, e.g.
-  "Lu Chuanfu takes on his first ledger entry (mid arc 2)"). An end state with no mid arc behind it means the
-  volume cannot close (observed: 2 of 4 clauses had no taker).
-★ A major arc must also state a **time density**: how tightly this volume presses the reader in time, and **why**.
-  - Give a **magnitude plus a reason**, not a precise day count: "a few months, because this volume is a hunt and every day tightens it".
-  - It is a **narrative choice**, not a world calendar: you write "three days" because the volume needs an airtight pace,
-    not because you computed that the events take exactly three days. So **it does not constrain the outline** — the outline
-    may skip a stretch, as long as the reader feels time passing.
-  - Try not to use one time unit for the whole book: three volumes of "a few days" leave the reader with no sense that time passes.
-  - When the genre itself is slice-of-life where a day fills ten chapters, write honestly that it is pressed into that one day
-    and say in the central conflict what holds it up.
-Between mid arcs (within one major arc): classify each mid arc, then write its progression by type:
-- A Causal: one stretch after another. The field name stays "Causality", but **it records the entrance, not necessity** —
-  it only requires that you can get here from the previous stretch (see “reachability ≠ causality” above).
-  Causality: at the end of the previous stretch he was <concrete state>; from there, by <what means / who pushed him / what condition changed>, he enters this mid arc
-  Ordering: this mid arc starts from <the exact state> the previous mid arc ended in
-  Block: <what stops what he is trying to do in this link, so that he fails once> (minor arc 1) (a type-A arc most easily becomes a chain of smooth causality; this line exists to prevent that)
-  Counter: <the one time whoever was pushing him tried it again and lost, because of something he already held> (minor arc 2) (without this line a type-A arc is twenty-five chapters of being pushed)
-- B Goal-driven: the protagonist pursues a goal through repeated attempt–setback–retry.
-  Goal: <one sentence, the full change from X to Y>
-  Attempt 1: <method> -> outcome <what> -> therefore attempt 2 (explain why a retry is required)
-  Score: <the one attempt that actually got him something, more than he himself expected> (minor arc 2) (attempts and setbacks with no single win is twenty-five chapters of taking hits)
-- C Exploratory: parallel encounters in a space or cast; events connect as "and then they met …" rather than "therefore …".
-  Motivation: <why explore> (this compensates for the absence of causality)
-  Path: <place A> -> discovery <X>; <place B> -> discovery <Y>
-  Dead end: <which line of exploration found nothing, or found something worse than nothing> (minor arc 1) (a type-C arc's discoveries most easily all succeed)
-  Recovery: <the one line of exploration that found something it should not have, or that the other side never expected him to find> (minor arc 2) (a type-C arc that only ever finds nothing is pure setback)
-★ Every one of “Block / Counter / Score / Dead end / Recovery / Turn” must name **which minor arc pays it off**, written as
-  (minor arc 2). Each of these lines is a concrete happening, but before it is named, nothing says which minor arc of this
-  mid arc it belongs to — and no field at the minor-arc layer ever refers back to it. So they are **declarations**:
-  any content is compliant, and the chapter expansion may never pay a single one of them off (observed: a 25-chapter mid arc
-  declared a Counter, and none of its 3 minor arcs mentioned it — the opponent never lost once across those 25 chapters).
-  Naming it gives it force, in both directions: the named minor arc must contain one required event that is exactly that line,
-  and the minor arc then knows what **has to** happen in it instead of sliding forward on "and then he found out…".
-  This is the same rule as “every clause of a major arc's End state must name its mid arc”, one level down — previously only the upper level had it.
-★ All three types need **both the failure slot and the win-back slot**: A = Block + Counter, B = Attempts + Score, C = Dead end + Recovery.
-  A list of failures only reads as twenty-five chapters of the protagonist being hit. All three types used to define only where he fails, and
-  none of them had a slot for the opponent losing (observed: one 8-chapter minor arc with 12 events — 10 setbacks, 2 "wins" that were merely
-  "he did nothing and it still counted", and the opponent never lost once; the author read it as "passively taking a beating").
-★ Narrow the definition of **Turn**: it is the moment **initiative flips** (whoever was pushing him stops pushing, and he starts pushing),
-  not a realization. "He realizes / he finally understands / he tastes for the first time" is not a turn — it only spreads the beating evenly over 25 chapters.
-★ Minor arcs (level 3) — this layer works the **opposite** way to the two above: the deeper you go, the more concrete
-  it must get, and the information must **grow, not shrink**. A minor arc is not a label; it is the only layer fed
-  directly into the chapter outline, and a name alone cannot carry its 8–9 chapters.
-  Format (one line per minor arc):
-  [<minor arc name>]: Goal <the one thing he wants to accomplish in this arc> | Stake <what he loses if the end state is not reached> | <start state> -> <required event 1> -> <required event 2> -> … -> <end state>
-  - The name goes inside [square brackets], and **no chapter count is written** (this layer does no length budgeting).
-    The leading **Goal** and **Stake** are mandatory, separated by “|” only. **Never use “;”**
-    (the system splits minor arcs on it, and one arc would become two), and **never use “->” inside Goal or Stake**
-    (“->” is the step marker: one extra arrow adds one step, and the per-chapter ceiling is computed from it).
-  - **Goal** must be something he **goes and does**, not something that **happens to him**. Test: read all the required
-    events of the arc in a row — can you hear one thing running through them? If not, this is a **chain of encounters**,
-    not a plot. Observed: a 8-chapter minor arc had five events — wake up -> handle the landlord -> discover the house
-    numbers were reissued -> get confronted — each more serious than the last, yet he **wanted none of them**; every step
-    moved forward only by "and then he found out something new", so two chapters said everything and the remaining six
-    could only re-confirm it. Chen Peisi can play twenty-five minutes of eating noodles because he **has to finish the bowl**.
-  - **Stake** = what he loses if the end state is not reached. It must be **concrete and unrecoverable**:
-    a person / an object / a status / an opportunity / a way back. "He will feel awful" or "his name is damaged" does not
-    count, and neither does anything the arc can restore by itself (money lost then found again = no stake).
-  - The **weight comes from the stake, not from the size of the incident**. Same greeting: "I said good morning to Aunt
-    Zhang" is light; "Aunt Zhang moves away today, and she is the only one who remembers that sentence" is heavy — the
-    event did not get more violent, the stake changed. **Do not manufacture weight with bigger accidents** (car crash,
-    murder, kidnapping): slice-of-life turns into an accident-of-the-week show, and fantasy turns every chapter into a
-    life-or-death fight.
-  - The stake must hang on **a debt already declared**, and the line must make clear which one:
-    ① the [Story question]; ② this mid arc's Goal / Block / Counter; ③ a planted setup; ④ a world rule the reader already
-    knows (house number = who lives where; an IOU = whose debt). If it hangs on none of them, the arc means nothing to the
-    book and the reader will not be tense for it. (This is the mechanism behind "a laundry-list diary dated 1949-10-01
-    reads completely differently": not one word changed — **the position of that day in the whole** gave it the weight.
-    The same person's diary on 1949-10-03 has the same words and none of the weight.)
-  - **3–5 required events**, count set by how many things actually happen in this arc (not spread over chapters), 15–30 words each; write
-    "what he **wants** -> **what he gets**".
-  - **Only four outcomes are allowed**: a clean yes, a no, a yes-but (he gets it and pays for it), and a no-and
-    (he gets it and it makes things worse). **At least one event per minor arc must be something other than a clean yes**,
-    and **never three clean yeses in a row**. (These labels are for your own classification only — **never write them into the event text**: write "he did not get it / he got it but had to vouch for someone first", not the label.) A whole arc of clean yeses is competent and inert — eight chapters of it
-    can only be padding (observed: six events that were all "he successfully obtained some information", so chapter 1
-    wrote out the entire arc). What carries length is not the **count of information** but the **value turn**:
-    what he expected versus what he got. More information with a flat value line is still zero tension.
-  - Write **content only**, no causal reasoning — the "because … therefore …" was already stated one layer up; repeating it adds nothing.
-  - The **end state** is the world as this minor arc leaves it, and it must equal the next minor arc's start state.
-  - ✗ Unacceptable: a name only ("[X]") — zero information; the outline can only
-    guess, and guessing means borrowing material from the next mid arc (this has actually happened).
-  - ✗ Also unacceptable: chapter-by-chapter beats ("chapter 1 … chapter 2 …") — that belongs to the plot outline.
-  - ★ **Any two adjacent required events must differ in at least one respect**, and after the first one the protagonist
-    must be **unable to return** to the situation the previous one ended in:
-    ① setting (place / time jump); ② goal (what he wants has changed); ③ pressure source (who blocks him: person / world rule / institution / market);
-    ④ magnitude (same situation, but the cost exceeds what he expected).
-    Ask yourself: **after this step, can he still go back to where the previous step left him?** If yes, this step carries no weight.
-    If none of the four differs ⇒ the two are two halves of the same scene: **merge them into one** and spend the slot on something that moves.
-    (This is not a demand for "tone whiplash": one setting and one opponent throughout can work — as long as every link invalidates
-    his expectation once.)
-  - ★ **At least one event per minor arc must be written from the opponent's side**: <who wants to block him> plans <what> -> he <uses something he already held> -> <their plan fails>.
-    The other events still follow "he wants … and gets …". Only three legitimate sources: **information asymmetry** (he knows something they do not),
-    **a favour owed** (someone owes him, or he already carried one for them), **the opponent's own interest** (going through with it would hurt them).
-    **Never** let the counter move rely on the advantage — the ability is the source of the danger, not a weapon; solving it with the ability means losing again.
-    This is where the payoff lives: a comeback is the opponent's expectation failing, and the opponent must fail because of **something he planted earlier**,
-    not because of reinforcements that appear in this very chapter (that is coincidence, and readers do not accept it).
+[Five lines per volume]
+1. Volume task: what this volume must accomplish structurally — not a plot summary. It is the one change in the reader's understanding of the rules, the opponents or the protagonist that must have happened by the end of it.
+2. Enter state / leave state: what the world and he have each become.
+3. Pressure turnover: the opponent **or** rule this volume replaces. No turnover means the previous volume is being repeated.
+4. Settlement: what he **permanently** loses by the end (1-3 items). Each needs a reason it cannot come back, and there are only five: it was registered / it became known / a favour was spent / a place was closed / his identity changed.
+   - The loss must land on **one concrete thing**: a door, a person, a record, a street, an identity. Never "options", "room to manoeuvre", "quiet", "trust", "leverage" — those are feelings, not losses.
+   - For every item, ask: **who will now come looking for him because of it?** If you cannot name a person, it is not settled.
+5. Time density: how long the volume compresses the reader into, and why (magnitude + reason, never a number of days).
 
-[Step 2.5 — verify that information **increases** layer by layer (structural requirement, mandatory)]
-Each step down must carry more, and more concrete, information — never less:
-  Major arc (5 fields: what this volume must achieve + how long it spans — abstract)
-    ⊃ Mid arc (3–5 fields: why it must progress this way — one notch more concrete)
-      ⊃ Minor arc (3–5 required events: what actually happens — one notch more concrete)
-        ⊃ Chapter (expanded by the plot outline; not written here)
-★ Self-check: take any mid arc and add up the required events of all its minor arcs — the total must be **clearly
-  more** than that mid arc's own few lines; and that mid arc must in turn be clearly more than its parent major arc.
-  If a layer is only a paraphrase of its parent (comparable size, same information), that layer was never really
-  subdivided and must be rewritten.
-★ Reverse prohibition: **do not push detail upward into the parent layer.** A mid arc must not spell out minor-arc
-  beats; a major arc must not spell out a mid arc's attempt sequence. When a parent writes the child's detail, the
-  child has nothing left to expand and can only guess — and guessing means borrowing the next layer's material,
-  which is exactly how plot gets paid off early.
+[Four lines per unit]
+1. Unit task: what this stretch must accomplish — his situation, his means or his relationships must move exactly one notch.
+2. Enter state / leave state.
+3. Transition: from the previous unit's leave state, by what route do we arrive at this unit's enter state? The route must be nameable.
+4. **Pressure method**: who wants what from him here, and how they force it; by the end of this unit, the pressure turns **from X into Y**.
+   - "Turns" means: the method he used to get through the previous stretch **stops working here**. Either the opponent learned it, or the rule changed, or the trick only worked once.
+   - Merely swapping the person applying pressure (the journalist for the investigator, the investigator for the broker) **is not a turn** — that is the same pressure method. Rewrite it.
+   - Five tiers for calibrating intensity: concern -> pricing -> case file -> debt -> showdown. Never park two consecutive units in the same tier inside one volume.
+   - **Two adjacent units must not use the same confrontation type**: door-block / negotiation / evidence / trap / showdown / admission. Two negotiations in a row is filler.
+   - End this line with the fixed tag (the system validates it; a malformed tag counts as missing):
+     (hand: <one of the six>; tier: <from>-><to>)
 
-[Step 3 — the ending (only for the final major arc; other arcs skip this)]
-The most common failure of a last volume is writing it as "another success" — the reader finishes without feeling the book ended.
-It must satisfy all four:
-1. **Answer the story question.** The [Story question] line at the top must be answerable yes/no; the final major arc's
-   End state must answer it directly (yes / no / redefine the question into the truer one). It may not stop at
-   "he seems to have understood" or "he finally came to see something" — sentences that cannot be judged true or false.
-2. **The protagonist pays something he cannot get back.** The End state must contain **one** cost the protagonist himself
-   paid and cannot undo (an escape route sealed, an identity changed, a relationship broken, the thing he kept protecting
-   gone). Costs paid only by side characters — someone investigated, someone's stall shut down — while the protagonist
-   merely acquires a new speaking habit: that is not an ending, it is a closing checklist.
-3. **No new thread at the end.** The End state may not introduce a new pressure source, a new mystery, or a hint that
-   "there is more to come" (a side character leaves a spare key, someone sends another letter). An unexplained small
-   detail is fine; a new main line is not.
-4. **The final minor arc is the last blow.** Its end state = the answer to the story question + that cost. It must **not**
-   be "another setup / another exploration / another investigation". In that final minor arc the protagonist must give up
-   one of the two things he wants. Winning because the advantage makes a sentence come true, through an outside force, or
-   through the opponent's mistake does not count.
-★ If the author's project-wide guidance explicitly asks for a sequel hook, relax rule 3 only; the other three stay.
+[Finally, one book-level rhythm table (cross-cutting, not extra fields on an arc)]
+- Progression node: which volume gives him what new means (Vol N: from A to B).
+- Cost landing: whose account the cost moves onto (himself -> people near him -> the whole street -> he admits it himself).
+- Main-line debt: every volume must **pay off one debt planted earlier** and **plant one new debt**. Only planting = the main line decapitates; only paying = the next volume has no entrance.
+  - Debts must be written as **that specific debt** (who owes whom, what object, bought in which unit), never "an old favour" or "old scores".
+- Hidden-line exposure: how much each volume reveals (hint -> thread -> traceable -> pried open -> full disclosure).
+- Pressure rotation: each volume has at least two parties escalating and one showing a crack. **Never all three at full pressure**, or you run out of cards.
+- Tone density: which volumes lean slice-of-life / comedy, which tighten, and why.
 
-[Output format — Markdown only, use headings for levels, no code fences]
-★ **Do not output a level-1 heading** — “# Arc Structure” is prepended automatically. Your output starts with the “[Arc counts]” line.
+[Output format — Markdown, no code fences]
+# Volume / Unit Structure
 
-[Arc counts] <N major arcs; mid arcs per major arc; minor arcs per mid arc> (the result of Step 0; **no chapter count may appear after this line**)
-[Story question] <one sentence, answerable yes/no, e.g. "can he live on this ability without killing the people around him">
+**Volumes**: N
+**Units**: N per volume
 
-## Major arc 1: <name>
-- Type: A Causal / B Goal-driven / C Exploratory
-- Time density: this volume presses the reader into <a few days / a few months / a few years>, because <why this stretch needs that pace>
-- Continuation reason: (the first arc says "opening"; every other must say which state of the previous arc it starts from and by what means it gets here)
-- Mid-arc progression: <mid arc 1's outcome> changes <a condition>, so <mid arc 2's action> (B: "goal moves from X to Y; mid arc 1 = attempt 1, mid arc 2 = attempt 2"; C: "<place A> -> <discovery>, <place B> -> <discovery>")
-- Central conflict: …
-- End state: <state 1> (mid arc 2), <state 2> (mid arc 2's attempt-1 outcome), … (every clause names its mid arc)
-### Mid arc 1: <name>
-- Type: A Causal
-- Causality: at the end of the previous stretch he was <concrete state>; by <what means / who pushed him / what condition changed> he enters this mid arc (record the entrance, not necessity)
-- Ordering: this mid arc starts from <the exact state> the previous mid arc ended in
-- Block: <what stops what he is trying to do in this link, so that he fails once> (minor arc 1)
-- Counter: <the one time whoever was pushing him lost, and what he already held> (minor arc 2)
-- Turn: … (minor arc 2)
-- Minor arcs (one line each; must carry "[name]: Goal | Stake | start -> required events -> end"):
-  - [<name>]: Goal <the one thing he wants to accomplish here> | Stake <what he loses if the end state is not reached> | <start state> -> <required event 1> -> <required event 2> -> <required event 3> -> <end state>
-  - [<name>]: Goal <…> | Stake <…> | <start state> -> <required event 1> -> … -> <end state>
-### Mid arc 2: <name>
-- Type: B Goal-driven
-- Goal: <one sentence, the full change from X to Y>
-- Attempt 1: <method> -> outcome <what> -> therefore attempt 2
-- Attempt 2: <method> -> outcome <what>
-- Score: <the one attempt that actually got him something, beyond his own expectation> (minor arc 2)
-- Turn: … (minor arc 2)
-- Minor arcs (one line each):
-  - [<name>]: Goal <…> | Stake <…> | <start state> -> <required event 1> -> … -> <end state>
-  - [<name>]: Goal <…> | Stake <…> | <start state> -> <required event 1> -> … -> <end state>
-### Mid arc 3: <name>
-- Type: C Exploratory
-- Motivation: <why explore>
-- Path: <place A> -> discovery <X>; <place B> -> discovery <Y>
-- Dead end: <which line of exploration found nothing, or found something worse than nothing> (minor arc 1)
-- Recovery: <the one find he should not have made, unexpected by the other side> (minor arc 2)
-- Turn: … (minor arc 2)
-- Minor arcs (one line each):
-  - [<name>]: Goal <…> | Stake <…> | <start state> -> <required event 1> -> … -> <end state>
-## Major arc 2: <name>
-…
-★ The above demonstrates the **writing format**, and uses three mid arcs to show the field names for each of A / B / C.
-★ **Field names must match the type; never mix them:**
-  - A Causal → "Causality / Ordering / Block / Counter"
-  - B Goal-driven → "Goal / Attempt 1 / Attempt 2 / Score …" (the most common failure is writing a B arc with
-    "Causality / Ordering" and stuffing the attempt–setback–retry sequence into "Ordering")
-  - C Exploratory → "Motivation / Path / Dead end / Recovery"
-★ The **counts** of major / mid / minor arcs come from Step 0's arithmetic — **not 2, and not 4**;
-  a mid arc does **not** always need exactly 3 minor arcs — give 2–4 as that mid arc actually requires.
+[Book question] <one sentence that can be answered yes/no>
 
-[Self-check before output (mandatory; fix until every line holds)]
-1. **No chapter counts anywhere**: the first line gives [Arc counts], and after it no arc carries “approx. N chapters”, no Σ, no difference check — if any appear, this was not followed
-2. Every major arc contains ≥2 mid arcs; every mid arc contains ≥2 minor arcs
-3. Sibling arcs at the same level are **not all identical in count** (at least two distinct values)
-4. Every mid arc's field names match its type (A = Causality/Ordering/Block/Counter, B = Goal/Attempt/Score, C = Motivation/Path/Dead end/Recovery)
-5. **Every arc states its entrance**: which concrete state of the previous arc it starts from, and by what means it gets here (continuation reason / causality / goal all start from "the state the previous arc left behind"); any arc that cannot is not "missing causality" — there is **no road**, so it was deleted or moved
-6. **No unbridgeable jump**: between adjacent nodes at the same level at least one way of getting there can be stated; a lower-level arc's end state stays inside the region between the two adjacent nodes of the level above
-7. Every major arc states its mid-arc progression, and every clause of its end state names the mid arc that pays it off
-8. **Information increases downward**: every minor arc carries "start -> 3–5 required events -> end", and any mid arc's total minor-arc content is clearly larger than that mid arc's own fields
-9. **Adjacent events differ**: within every minor arc, adjacent required events differ in at least one respect (setting / goal / pressure source / magnitude), and after each step the protagonist cannot return to the previous situation; any pair with none of these differing has been merged
-10. **Not a run of clean yeses**: every minor arc contains at least one "no / yes-but / no-and" event, and never three clean yeses in a row
-11. A minor arc is neither a bare name nor a chapter-by-chapter beat ("chapter 1 … chapter 2 …" belongs to the plot outline)
-12. **Every major arc states a time density** (magnitude plus a reason, no precise day count), and the book does not use a single time unit throughout; a volume that cannot give the reason has not thought through its pace
-13. **Ending**: the [Story question] is answerable yes/no; the final major arc's End state answers it, and contains one cost the protagonist himself paid and cannot undo
-14. **No new thread at the end**: the final major arc's End state contains no new pressure source, new mystery, or "more to come" hint, and the final minor arc's end state is "answer + cost", not another setup
-15. **Every mid arc has a win-back line**: A has Counter, B has Score, C has Recovery, and each describes **the opponent's plan failing** — "he did nothing and it still counted" does not count
-16. **Every minor arc has at least one event written from the opponent's side** (they move -> something he planted earlier -> they lose); any arc without one has been fixed
-17. **Every minor arc has "Goal | Stake"**: the goal is something he **goes and does** (one thing runs through all its events), not something that happens to him; the stake is concrete, unrecoverable, and not "he will feel bad"
-18. **The stake hangs somewhere**: every minor arc's stake can name the debt it hangs on (the [Story question] / this mid arc's Goal·Block·Counter / a planted setup / a world rule the reader knows); any arc whose stake hangs on none of them has been rewritten
-19. **The mid-arc slot lines are all linked**: "Block / Counter / Score / Dead end / Recovery / Turn" each end with (minor arc N), and the named minor arc does contain one required event that is exactly that line
+## Volume 1: <concrete image>
+- Volume task: <...>
+- Enter state: <...>
+- Leave state: <...>
+- Pressure turnover: <...>
+- Settlement: lost <the specific thing>, because <registered / became known / favour spent / place closed / identity changed>; from now on <who comes looking>
+- Time density: <magnitude>, because <reason>
+
+### Unit 1: <concrete image>
+- Unit task: <...>
+- Enter state: <...>
+- Leave state: <...>
+- Transition: <...>
+- Pressure method: <who wants what, how they force it> -> by the end it becomes <new method>, because his previous <trick> no longer works (hand: <...>; tier: <...>-><...>)
+
+### Unit 2: <...>
+- ...
+
+## Volume 2: <concrete image>
+...
+
+## Book-level rhythm table
+
+| Volume | Progression | Cost landing | Debt paid | New debt (concrete risk) | Hidden line | Tone |
+|---|---|---|---|---|---|---|
+| Vol 1 | ... | ... | ... | ... | ... | ... |
+| ... | | | | | | |
+
+[Self-check — do this silently, **do not output this section**, never say "I checked"]
+1. No chapter counts, word counts or percentages anywhere; no "chapter N".
+2. Volume count and units per volume fall inside the rhythm profile ranges.
+3. Every volume turns over its pressure; a volume where the same cast grinds on must be rewritten.
+4. Every settlement lands on a concrete thing and names who comes looking; "options / room / quiet" must be rewritten.
+5. Every unit names why the previous trick stopped working; a mere change of opponent must be rewritten.
+6. Adjacent units differ in (hand:); no volume parks two consecutive units in the same (tier:).
+7. Every volume pays one specific old debt and plants one specific new debt; flag volumes that only plant.
+8. The rhythm table has all six columns, and pressure rotation never has three parties at full pressure in one volume.
+
+[Reference works — if any, borrow structure density and gear-change rhythm; never borrow plot]
+{{reference_works}}
 
 [Requirements]
-1. This is a **three-level progression skeleton**, not a chapter-by-chapter outline — do not write per-chapter content.
-2. Do not write chapter numbers: this layer does no length budgeting — chapter ranges are divided by the system from the counts. Arcs may overlap and shift.
-3. Preserve explicit author facts from the premise, character dynamics, and world system; never contradict them.
-4. If a mid arc is type C, do not force a causal link — write motivation/path instead, or it becomes fake causality.
-5. Minor arcs must carry "start -> 3–5 required events -> end", but must **not** become chapter-by-chapter beats — allocating them to chapters is the plot outline's job.
-6. Return only the content above, with no explanation, greetings, or code fences.
-
-[Reference works — borrow systems/mechanics/tone; obey stated prohibitions]
-{{reference_works}}
+1. Only volumes and units. No chapter content — that is the next layer.
+2. Respect the author's explicit settings in premise, character dynamics and world system. Never contradict them.
+3. The rhythm profile only affects counts and confrontation density. Never translate it into chapter numbers.
+4. Stop at the rhythm table. Do not append a self-check list, an overall assessment, writing advice or any explanation.
+5. Return only the above, no pleasantries, no code fences.
 `,
-    systemSuffix: `[Author guidance for this step — highest priority when present]
+    systemSuffix: `★ [Extra author guidance for this step — highest priority if present] ★:
 {{step_guidance}}`,
   },
   synopsis: {

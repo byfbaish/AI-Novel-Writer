@@ -201,258 +201,106 @@ it.each(['zh-CN', 'en-US'] as const)('declares the structured keyEvents shape in
  * 这一组断言只防「单侧改动」：这些条款一旦只在 zh 或只在 en 出现，
  * 另一种语言下的作者就静默拿不到约束。
  */
-describe('弧光与大纲的结构条款双侧一致（P15）', () => {
+
+describe('弧光 v7 契约（卷 / 单元 · 两级 · 画像驱动）', () => {
   const arc = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('plot_structure', language)!.content
-  const synopsisSuffix = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('synopsis', language)!.systemSuffix ?? ''
+  const zh = arc('zh-CN')
+  const en = arc('en-US')
 
-  it('小弧骨料要求四种结果形态，禁止连续 plain yes', () => {
-    expect(arc('zh-CN')).toContain('顺利拿到（plain yes）')
-    expect(arc('zh-CN')).toContain('不得连续三条都是 plain yes')
-    expect(arc('en-US')).toContain('a clean yes')
-    expect(arc('en-US')).toContain('never three clean yeses in a row')
+  it('两侧都用行业词，三级旧词不再出现', () => {
+    expect(zh).toContain('卷')
+    expect(zh).toContain('单元')
+    expect(zh).not.toContain('大弧')
+    expect(zh).not.toContain('中弧')
+    expect(zh).not.toContain('小弧')
+    expect(en).toContain('volume')
+    expect(en).toContain('unit')
+    expect(en).not.toContain('major arc')
+    expect(en).not.toContain('minor arc')
   })
 
-  it('A / C 型各自补一条阻力字段（A 型与 C 型原本可以零失败）', () => {
-    expect(arc('zh-CN')).toContain('阻塞：')
-    expect(arc('zh-CN')).toContain('扑空：')
-    expect(arc('en-US')).toContain('Block:')
-    expect(arc('en-US')).toContain('Dead end:')
+  it('个数只有一个来源：{{rhythm_profile}}，正文不再写死区间', () => {
+    expect(zh).toContain('{{rhythm_profile}}')
+    expect(en).toContain('{{rhythm_profile}}')
+    // v6 的教训：个数曾同时写在【节奏推荐】【怎么切】和输出格式三处，
+    // 改画像时两处常量不跟着变，模型同时收到两个数。
+    expect(zh).not.toMatch(/全书\s*[0-9]+\s*[–-]\s*[0-9]+\s*卷/u)
+    expect(zh).not.toMatch(/每卷\s*[0-9]+\s*[–-]\s*[0-9]+\s*个单元/u)
+    expect(zh).toContain('一律按上面【节奏推荐】给的区间取')
   })
 
-  it('P19：大弧写的是「时间密度」（量级+理由），不再报一个没有来源的天数', () => {
-    const zh = arc('zh-CN')
-    // 保留了"考虑时间"这个创作手段（作者：删了会压缩发挥空间）
-    expect(zh).toContain('时间密度：本卷把读者压在')
-    expect(zh).toContain('写**量级 + 理由**，不写精确天数')
-    // 但不再是"世界日历事实"，也不再冒充唯一权威、不再反过来否决大纲
-    expect(zh).not.toContain('时间跨度：本卷内的故事时间约')
-    expect(zh).not.toContain('大纲就不许出现')
-    expect(zh).not.toContain('【全书时间跨度】')
-    const en = arc('en-US')
-    expect(en).toContain('Time density: this volume presses the reader into')
-    expect(en).toContain('magnitude plus a reason')
-    expect(en).not.toContain('[Story time span]')
+  it('节奏画像进 requiredContextVariables（红线 16：覆盖版也要拿到）', () => {
+    const template = getBuiltinPromptTemplate('plot_structure', 'zh-CN')!
+    expect(template.requiredContextVariables).toContain('rhythm_profile')
+    expect(template.variables.rhythm_profile).toBeTruthy()
   })
 
-  it('结局四问：全书问题 / 不可逆代价 / 不开新线 / 最后一击', () => {
-    for (const language of ['zh-CN', 'en-US'] as const) {
-      const text = arc(language)
-      expect(text).toContain(language === 'zh-CN' ? '【全书问题】' : '[Story question]')
-      expect(text).toContain(language === 'zh-CN' ? '拿不回来的代价' : 'cannot get back')
-      expect(text).toContain(language === 'zh-CN' ? '不得在末尾开新线' : 'No new thread at the end')
-      expect(text).toContain(language === 'zh-CN' ? '最后一击' : 'the last blow')
-    }
+  it('逼法换代：只换施压者不算变，并强制带机器可读标注', () => {
+    expect(zh).toContain('这一段不好使了')
+    expect(zh).toContain('不算变')
+    expect(zh).toContain('（交手：')
+    expect(zh).toContain('；档：')
+    expect(en).toContain('(hand:')
+    expect(en).toContain('tier:')
   })
 
-  it('大纲侧有收束条款，且只在最后一个小弧内生效', () => {
-    expect(synopsisSuffix('zh-CN')).toContain('⑧ 收束')
-    expect(synopsisSuffix('zh-CN')).toContain('最后一个小弧')
-    expect(synopsisSuffix('zh-CN')).toContain('不得由金手指或外力代办')
-    expect(synopsisSuffix('en-US')).toContain('Settlement')
-    expect(synopsisSuffix('en-US')).toContain('final minor arc')
+  it('结账落到具体物，并追问"谁来找麻烦"', () => {
+    expect(zh).toContain('一扇门、一个人、一份记录、一条街、一个身份')
+    expect(zh).toContain('谁现在会因此来找他麻烦')
+    expect(zh).toContain('不许写"退路""余地""安静"')
+  })
+
+  it('主线债：每卷还一笔、留一笔', () => {
+    expect(zh).toContain('还掉一笔此前埋下的债')
+    expect(zh).toContain('留下一笔新债')
+    expect(zh).toContain('主线断头')
+  })
+
+  it('篇幅仍不下放到模型：没有章数公式、没有 Σ、没有百分比', () => {
+    expect(zh).not.toContain('Σ')
+    expect(zh).not.toMatch(/占总篇幅约/u)
+    expect(zh).toContain('不要写章数、字数、篇幅占比')
+  })
+
+  it('自检只做不输出，且要求停在节奏表', () => {
+    expect(zh).toContain('不要输出这一节')
+    expect(zh).toContain('输出到节奏表为止')
+    expect(zh).toContain('不要追加自检清单')
+  })
+
+  it('参考作品块仍在（可选，空则被裁剪）', () => {
+    expect(zh).toContain('{{reference_works}}')
+    expect(en).toContain('{{reference_works}}')
   })
 })
 
-/**
- * P16：每型都要有「赢回来」的位置。
- *
- * P15 给 A/C 补了「阻塞 / 扑空」，把「一路顺利」治好了，但三型**都只规定了失败**：
- * A=阻塞、B=尝试受挫、C=扑空。25 章的中弧里唯一还能写"赢"的地方只剩「转折」一处，
- * 于是弧光整体读感变成「被动挨打」（作者实测：中弧1 的 12 条事件 10 条受挫，
- * 2 条还是"什么都不做也算赢"，对手一次没失手）。
- *
- * 断言只防「单侧改动」：这些字段一旦只在 zh 或只在 en 出现，另一种语言的作者静默拿不到。
- */
-describe('弧光三型的"赢回来"位置双侧一致（P16）', () => {
-  const arc = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('plot_structure', language)!.content
+describe('节奏画像的空值语义（空 = 中性）', () => {
+  const vars = {
+    genre: '都市', premise: '前提', character_dynamics: '角色', world_building: '世界',
+    number_of_chapters: '120', word_number: '2500', global_guidance: '全局',
+    step_guidance: '', reference_works: '', rhythm_profile: '',
+  }
 
-  it('A/B/C 各补一个赢回字段（中英各三个）', () => {
-    const zh = arc('zh-CN')
-    expect(zh).toContain('反制：<')
-    expect(zh).toContain('得手：<')
-    expect(zh).toContain('反获：<')
-    const en = arc('en-US')
-    expect(en).toContain('Counter: <')
-    expect(en).toContain('Score: <')
-    expect(en).toContain('Recovery: <')
+  it('空画像不留下空标题：整段【节奏推荐】被裁掉，仍保留【怎么切】', () => {
+    const template = getBuiltinPromptTemplate('plot_structure', 'zh-CN')!
+    const out = renderPrompt(template, vars, 'zh-CN')
+    expect(out).not.toContain('【节奏推荐（如有')
+    expect(out).toContain('【怎么切】')
   })
 
-  it('写明三型都必须同时有失败和赢回来，并点名"一个对手失手的位置都没有"', () => {
-    expect(arc('zh-CN')).toContain('同时有失败和赢回来')
-    expect(arc('en-US')).toContain('both the failure slot and the win-back slot')
+  it('有画像时原文进入提示词', () => {
+    const template = getBuiltinPromptTemplate('plot_structure', 'zh-CN')!
+    const out = renderPrompt(template, { ...vars, rhythm_profile: '起点向（长线铺陈）' }, 'zh-CN')
+    expect(out).toContain('【节奏推荐（如有')
+    expect(out).toContain('起点向（长线铺陈）')
   })
 
-  it('「转折」收窄为主动权反转，不是一次认知', () => {
-    expect(arc('zh-CN')).toContain('主动权反转')
-    expect(arc('zh-CN')).toContain('他意识到 / 他终于明白 / 他第一次尝到')
-    expect(arc('en-US')).toContain('initiative flips')
-    expect(arc('en-US')).toContain('he finally understands')
-  })
-
-  it('每小弧至少一条从对手那一侧写，且合法来源只有三种、不得靠金手指', () => {
-    const zh = arc('zh-CN')
-    expect(zh).toContain('每小弧至少有一条事件从对手那一侧写')
-    expect(zh).toContain('信息差')
-    expect(zh).toContain('人情')
-    expect(zh).toContain('对方自己的利益')
-    expect(zh).toContain('不得**让反制靠金手指')
-    const en = arc('en-US')
-    expect(en).toContain("written from the opponent's side")
-    expect(en).toContain('information asymmetry')
-    expect(en).toContain('the opponent\'s own interest')
-    expect(en).toContain('Never** let the counter move rely on the advantage')
-  })
-
-  it('自检 15/16 双侧存在', () => {
-    expect(arc('zh-CN')).toContain('15. **每个中弧都写了"赢回来"**')
-    expect(arc('zh-CN')).toContain('16. **每个小弧至少有一条事件从对手那一侧写**')
-    expect(arc('en-US')).toContain('15. **Every mid arc has a win-back line**')
-    expect(arc('en-US')).toContain('16. **Every minor arc has at least one event written from the opponent')
-  })
-})
-
-/**
- * P17：中弧的「位置行」必须点名由哪个小弧兑现；小弧行必须带「目标 ｜ 赌注」。
- *
- * 两件事同源：作者连问两次「这真的能写出 8 章么」「中弧那些标签怎么被小弧诠释的」。
- * ① 位置行（阻塞/反制/得手/扑空/反获/转折）此前只是自由文本，小弧层零引用 ⇒ 声明而已；
- * ② 小弧只有"发生了什么"，没有"他想要什么"和"失败会失去什么" ⇒ 遭遇链 + 全档位轻赌注。
- * 断言只防单侧改动：这两段一旦只在 zh 或只在 en 出现，另一种语言的作者静默拿不到。
- */
-describe('中弧位置行点名 + 小弧目标/赌注双侧一致（P17）', () => {
-  const arc = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('plot_structure', language)!.content
-  const zh = () => arc('zh-CN')
-  const en = () => arc('en-US')
-
-  it('位置行必须点名兑现它的小弧（zh / en 各写了同一条规矩）', () => {
-    expect(zh()).toContain('都必须点名**由哪一个小弧兑现**')
-    expect(zh()).toContain('这与大弧「结束状态」必须点名承接它的中弧是同一条规矩，只是下移一层')
-    expect(en()).toContain('must name **which minor arc pays it off**')
-    expect(en()).toContain('one level down')
-  })
-
-  it('小弧格式行带「目标 ｜ 赌注」，且写明分隔符纪律', () => {
-    expect(zh()).toContain('目标 <他这一弧想做成的一件事> ｜ 赌注')
-    expect(zh()).toContain('不要用「；」')
-    expect(zh()).toContain('目标/赌注里不要出现「→」')
-    expect(en()).toContain('Goal <the one thing he wants to accomplish in this arc> | Stake')
-    expect(en()).toContain('The leading **Goal** and **Stake** are mandatory')
-  })
-
-  it('三条口径：目标必须是"他去做的"、赌注必须补不回来、重量不靠事故', () => {
-    const text = zh()
-    expect(text).toContain('必须是他**要去做的**事，不是**发生在他身上**的事')
-    expect(text).toContain('遭遇链')
-    expect(text).toContain('陈佩斯吃一碗面')
-    expect(text).toContain('具体且补不回来')
-    expect(text).toContain('不要用加大事故来造重量')
-    const enText = en()
-    expect(enText).toContain('something he **goes and does**')
-    expect(enText).toContain('chain of encounters')
-    expect(enText).toContain('unrecoverable')
-    expect(enText).toContain('Do not manufacture weight with bigger accidents')
-  })
-
-  it('赌注必须挂在一笔已声明的债上，且写明"1949-10-01"那条机制', () => {
-    expect(zh()).toContain('赌注必须挂在**一笔已经声明的债**上')
-    expect(zh()).toContain('1949-10-01')
-    expect(zh()).toContain('这一天在全局里的位置')
-    expect(en()).toContain('must hang on **a debt already declared**')
-    expect(en()).toContain('1949-10-01')
-  })
-
-  it('自检 17/18/19 双侧存在', () => {
-    expect(zh()).toContain('17. **每个小弧都有「目标 ｜ 赌注」**')
-    expect(zh()).toContain('18. **赌注挂得住**')
-    expect(zh()).toContain('19. **中弧的位置行都点了名**')
-    expect(en()).toContain('17. **Every minor arc has')
-    expect(en()).toContain('18. **The stake hangs somewhere**')
-    expect(en()).toContain('19. **The mid-arc slot lines are all linked**')
-  })
-})
-
-/**
- * P18：弧光层不做篇幅预算（作者裁定）。
- *
- * 作者的原话：篇幅是**计算弧光个数**的必要手段，不是**内容预算**。两条陷阱：
- * ① 关联陷阱 —— 用强因果约束弧间关系（"重生小学生"到"全国首富"没有必然因果，中间那段空白才是创作空间）；
- * ② 篇幅陷阱 —— 为达篇幅而写（实测：给了 1500 字下限，能力弱的模型到 1500 字立刻收笔，故事失去张力）。
- * 所以弧光层只留**个数**，章数、字数、Σ、差额一并下线；弧间只要求**可达**，不要求必然。
- *
- * 断言只防单侧改动，以及防"删了正文却没删干净"（残留一句「约 N 章」就足够把模型拽回篇幅思维）。
- */
-describe('弧光层去篇幅化 + 可达性（P18）', () => {
-  const arc = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('plot_structure', language)!.content
-  const zh = () => arc('zh-CN')
-  const en = () => arc('en-US')
-
-  it('篇幅预算整段下线：没有 Σ、没有 ±10%、没有逐项相加', () => {
-    for (const text of [zh(), en()]) {
-      expect(text).not.toContain('±10%')
-      expect(text).not.toContain('【篇幅预算】')
-      expect(text).not.toContain('Length budget')
-      expect(text).not.toContain('逐项相加')
-      expect(text).not.toContain('term-by-term addition')
-    }
-  })
-
-  it('只留个数：第一行是【弧光个数】，并明令之后不许再出现章数', () => {
-    expect(zh()).toContain('【弧光个数】')
-    expect(zh()).toContain('从这一行往下，不许再出现任何章数、字数、篇幅分配')
-    expect(zh()).toContain('章号区间由系统按**个数**自动均分')
-    expect(en()).toContain('[Arc counts]')
-    expect(en()).toContain('no chapter count, word count or length allocation may appear again')
-    expect(en()).toContain('divided automatically by the')
-  })
-
-  it('输出格式与示例里没有「约 N 章」，小弧用【名】划界', () => {
-    for (const text of [zh(), en()]) {
-      expect(text).not.toMatch(/##\s*大弧[^\n]*（约[^）]*章）/u)
-      expect(text).not.toMatch(/##\s*Major arc[^\n]*approx\.[^)]*chapter/iu)
-    }
-    expect(zh()).toContain('【<小弧名>】：目标')
-    expect(zh()).toContain('**不要写章数**（弧光层不排篇幅）')
-    expect(en()).toContain('[<name>]: Goal')
-    expect(en()).toContain('**no chapter count is written**')
-  })
-
-  it('层的含义由故事尺度定义，不由章数定义', () => {
-    expect(zh()).toContain('层是故事的层，不是页数的层')
-    expect(zh()).toContain('他重生成了小学生，后来成了全国首富')
-    expect(zh()).toContain('与要写多少章无关')
-    expect(en()).toContain('A level is a level of the story')
-    expect(en()).toContain('how many genuinely')
-  })
-
-  it('关联 → 可达：启发性留白 + 不可跳过的可达性（含"舰队远征银河"反例）', () => {
-    expect(zh()).toContain('**因果**要求 B 由 A 必然推出；**可达**只要求能从 A 走到 B')
-    expect(zh()).toContain('舰队远征银河')
-    expect(zh()).toContain('不是"缺因果"，是**这段没有路**')
-    expect(zh()).toContain('下层级的节点必须落在**上层级相邻节点之间**')
-    expect(en()).toContain('**causality** means B necessarily follows from A; **reachability** only means you can get from A to B')
-    expect(en()).toContain('I take a fleet to conquer the galaxy')
-    expect(en()).toContain('there is **no road**')
-  })
-
-  it('因果字段改成写"入口"，并显式说不要求必然', () => {
-    expect(zh()).toContain('它写的是入口，不是必然性')
-    expect(zh()).toContain('上一段结束时他是 <具体状态>')
-    expect(en()).toContain('it records the entrance, not necessity')
-    expect(en()).toContain('at the end of the previous stretch he was <concrete state>')
-  })
-
-  it('自检 1 就是"全文没有章数"，且带上这条硬指标', () => {
-    expect(zh()).toContain('1. **全文没有章数**')
-    expect(zh()).toContain('5. **每段弧都写得出入口**')
-    expect(zh()).toContain('6. **没有跨不过去的跳脱节点**')
-    expect(en()).toContain('1. **No chapter counts anywhere**')
-    expect(en()).toContain('5. **Every arc states its entrance**')
-    expect(en()).toContain('6. **No unbridgeable jump**')
-  })
-
-  it('下游大纲仍然拿得到章数，但只作为给定条件（避免与"弧光不写章数"打架）', () => {
-    const synopsis = getBuiltinPromptTemplate('synopsis', 'zh-CN')!.systemSuffix ?? ''
-    expect(synopsis).toContain('系统给出的小弧章号区间')
-    expect(synopsis).toContain('不含任何篇幅要求')
+  it('画像解析：id → 内置文案；未知值原样使用；空 → 空串', async () => {
+    const { resolveRhythmProfile } = await import('../prompts/rhythm-profiles')
+    expect(resolveRhythmProfile('', 'zh-CN')).toBe('')
+    expect(resolveRhythmProfile('qidian', 'zh-CN')).toContain('起点向')
+    expect(resolveRhythmProfile('fanqie', 'zh-CN')).toContain('番茄向')
+    expect(resolveRhythmProfile('qidian', 'en-US')).toContain('Qidian')
+    expect(resolveRhythmProfile('自定义节奏：每章一钩', 'zh-CN')).toBe('自定义节奏：每章一钩')
   })
 })

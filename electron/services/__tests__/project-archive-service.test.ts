@@ -611,7 +611,7 @@ describe('portable project export service', { timeout: 20_000 }, () => {
       snapshotGeneration: 'generation-test-1',
       requiresRuntimeFreezeGuard: true,
       // M08 迁移（2026-10-15, `6dfea726`）把基线推到 v9 并新增 10 列，此期望同步更新。
-      sourceEvidence: { schemaVersion: 9, tableCount: 52, fieldCount: 492 },
+      sourceEvidence: { schemaVersion: 10, tableCount: 52, fieldCount: 493 },
     })
     expect(contextCalls).toEqual(['lease-current', 'lease-current', 'lease-current'])
     expect(fs.readFileSync(f.databasePath)).toEqual(before)
@@ -638,7 +638,7 @@ describe('portable project export service', { timeout: 20_000 }, () => {
     })
     const portable = new Database(path.join(unpacked.stagingPath, 'project.db'), { readonly: true })
     try {
-      expect(portable.pragma('user_version', { simple: true })).toBe(9)
+      expect(portable.pragma('user_version', { simple: true })).toBe(10)
       expect(portable.prepare('SELECT COUNT(*) FROM review_cycle_merges').pluck().get()).toBe(0)
       expect(portable.prepare('SELECT body FROM contents WHERE id=1').pluck().get()).toBe(seeded.body)
       expect(portable.prepare('SELECT relation FROM character_relationships').pluck().get()).toBe('盟友')
@@ -671,14 +671,14 @@ describe('portable project export service', { timeout: 20_000 }, () => {
     const before = fs.readFileSync(f.databasePath)
 
     const receipt = await exportPortableProject(input(f))
-    expect(receipt.sourceEvidence).toMatchObject({ schemaVersion: 9, tableCount: 52, fieldCount: 493 })
+    expect(receipt.sourceEvidence).toMatchObject({ schemaVersion: 10, tableCount: 52, fieldCount: 494 })
     const targetProjectRoot = path.join(f.base, 'restored-donor')
     await restorePortableProject({ archivePath: f.target, targetProjectRoot })
 
     const restoredStorage = path.join(targetProjectRoot, '.ai-novel')
     const restored = new Database(path.join(restoredStorage, 'project.db'), { readonly: true })
     try {
-      expect(restored.pragma('user_version', { simple: true })).toBe(9)
+      expect(restored.pragma('user_version', { simple: true })).toBe(10)
       expect(restored.prepare('SELECT avatar FROM characters').pluck().all()).toEqual(['', ''])
       expect(restored.prepare('SELECT body FROM contents WHERE id=1').pluck().get()).toBe(seeded.body)
       const avatarPath = restored.prepare('SELECT relative_path FROM character_avatar_assets').pluck().get() as string
