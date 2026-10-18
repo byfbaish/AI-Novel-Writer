@@ -330,8 +330,8 @@ function findPlotOutlineTitleRanges(text: string): PlotOutlineTitleRange[] {
  * 返回 null 表示结构不可解析或体检全绿。
  */
 /** @internal 导出只为可单测。 */
-export function summarizeArcDensity(plan: string | null | undefined, uiText: UiText): string | null {
-  const findings = auditArcDensity(parseArcStructure(plan))
+export function summarizeArcDensity(plan: string | null | undefined, uiText: UiText, totalChapters?: number): string | null {
+  const findings = auditArcDensity(parseArcStructure(plan), totalChapters)
   if (findings.length === 0) return null
   return [
     uiText('⚠️ 弧光分层体检（只提示，不影响本次生成）：', '⚠️ Arc structure check (advisory only):'),
@@ -1943,7 +1943,7 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
     ))
     // P13：分层信息量体检 —— 只提示。小弧只有名字时，后面每一批大纲都会越层取材，
     // 在这里说一句比让作者去读 40 章大纲之后才返工便宜得多。
-    const densityNote = summarizeArcDensity(content, text)
+    const densityNote = summarizeArcDensity(content, text, Number(config.totalChapters) || undefined)
     if (densityNote) callbacks.log(densityNote)
     return content
   }
