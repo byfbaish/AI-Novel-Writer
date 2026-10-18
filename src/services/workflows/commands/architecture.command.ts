@@ -8,6 +8,7 @@ import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../.
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
 import { auditArcDensity, parseArcStructure, withProjectedArcGuide } from '../../../shared/arc-position'
 import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../shared/arc-node'
+import { composeGenreLabel } from '../../../shared/genre-label'
 import { withSpaceConstraints } from '../../../shared/space-constraints'
 import { projectScopedConfigFields, projectScopedText } from '../../../shared/text-scope-tags'
 import { declareTraceScopeChapterRange } from '../../prompts/trace-scope'
@@ -1891,7 +1892,9 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
       .withCoreSeed(premise)
       .withCharacterDynamics(charactersArch || missingValue)
       .withWorldBuilding(worldbuilding)
-      .withGenre(modelFacts.genre)
+      // 配置页的「细分类型」必须一起进来：只给「都市」时，决定调性的「脑洞/轻喜剧」整层丢失
+      // （2026-10-18 作者在提示词里看到「小说类型：都市」而配置页写的是「都市/脑洞/轻喜剧」）。
+      .withGenre(composeGenreLabel(modelFacts.genre, config.subGenre))
       .withNumberOfChapters(config.totalChapters)
       .withWordNumber(config.wordsPerChapter)
       .withGlobalGuidance(projectScopedText(config.globalGuidance || '', 'architecture').text || missingValue)
