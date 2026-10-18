@@ -138,7 +138,7 @@ docs/
 | [`p8-fanqie-flavor-draft-quality-design.md`](design/prompt/p8-fanqie-flavor-draft-quality-design.md) | ✅ P1 生效 · ⏳ P2/P3 待复验 | 番茄向正文质量闸门：续写判定接回合格线 / 可判定 AI 味禁令 / 番茄 KPI 落点（§10 复验 #1） |
 | [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（32 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（33 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -173,7 +173,9 @@ docs/
 | [`arc-prompt-v5-web-test.md`](design/architecture/arc-prompt-v5-web-test.md) | 🧪 验证件 v5 · 被 v6 取代 | **补两处退化**：① 逼法"变"= 上一段那个办法**不好使了**，只换施压者判不合格，并给五档强度；② 结账必须落到具体的人/物/记录，追问"谁现在会来找麻烦"。硬画像实测 19 vs 27 单元。⚠️ 个数在三处声明（画像/怎么切/输出格式），画像改不动常量 |
 | [`arc-prompt-v6-web-test.md`](design/architecture/arc-prompt-v6-web-test.md) | ✅ 双画像已验证（2026-10-19）· 被 v7 取代 | **个数单一事实源 + 去同质化**：个数只在【节奏推荐】声明；相邻两单元交手类型不许相同。实测首次分开卷数（番茄 7 卷 / 起点 5 卷），**总单元数守恒 28 vs 29**（被 章数÷跨度 钉住）⇒ 画像控形状、章数守恒 |
 | [`arc-prompt-v7-web-test.md`](design/architecture/arc-prompt-v7-web-test.md) | ✅ 双画像已验证（2026-10-19）· 提示词定稿 | **标注转正 + 自检静默**：把模型自发的「（交手：X；档：A→B）」收编为正式字段供机器校验；自检改为只做不输出。实测起点 4 卷/23 单元、番茄 7 卷/28 单元；**"单元数守恒"被证伪**（是巧合） |
-| [`arc-v7-implementation-design.md`](design/architecture/arc-v7-implementation-design.md) | 📝 待裁定 · 未动代码 | **落地方案 P1/P2**：① 解析器兼容（`大弧\|卷`、`中弧\|单元`、补中文序号、两级模式成一等公民、golden 测试）；② 画像注入（`rhythm_profile` 走 M08 lane 六步，空=中性，模板需同时进 `requiredContextVariables`）；P3 体检两条只报不拦、P4 UI 文案 |
+| [`arc-v7-implementation-design.md`](design/architecture/arc-v7-implementation-design.md) | ✅ 已实施 P1–P4 | **落地方案 P1/P2**：① 解析器兼容（`大弧\|卷`、`中弧\|单元`、补中文序号、两级模式成一等公民、golden 测试）；② 画像注入（`rhythm_profile` 走 M08 lane 六步，空=中性，模板需同时进 `requiredContextVariables`）；P3 体检两条只报不拦、P4 UI 文案 |
+
+| [`unit-budget-elastic-allocation-design.md`](design/architecture/unit-budget-elastic-allocation-design.md) | 📝 设计稿 · 待实施 | **弹性配给制**：单元章数由内容决定，代码只给「紧/松/按节奏」的方向（Z = 实际消耗 − 计划进度，±10% 三档）；偏差只在卷内结清、不跨卷；卷计划额度 = 画像默认 + 作者可覆盖；逐单元生成（不给 to，写完本单元即停） |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
 
