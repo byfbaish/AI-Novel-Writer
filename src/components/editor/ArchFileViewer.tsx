@@ -62,7 +62,7 @@ const ARCH_META: Record<ArchStepKey, { iconName: string; label: string; labelEn:
   premise: { iconName: 'target', label: '故事前提', labelEn: 'Premise', desc: 'Logline、核心冲突、金手指定位', descEn: 'Logline, central conflict, and story hook' },
   characters: { iconName: 'users', label: '角色图谱', labelEn: 'Character graph', desc: '角色弧光、关系网、矛盾交织', descEn: 'Character arcs, relationships, and conflicts' },
   worldbuilding: { iconName: 'globe', label: '世界观', labelEn: 'Worldbuilding', desc: '核心规则、阶层断层、深层危机、空间结构', descEn: 'Core rules, social divides, deeper crises, and spatial structure' },
-  plotStructure: { iconName: 'compass', label: '弧光结构', labelEn: 'Arc structure', desc: '弧光分层、因果时序推进、篇幅约束', descEn: 'Arc breakdown, causal progression, and length heuristics' },
+  plotStructure: { iconName: 'compass', label: '卷 / 单元结构', labelEn: 'Volumes and units', desc: '按卷与单元切段，交代处境、阻力与代价', descEn: 'Volume and unit breakdown: states, pressure, and permanent costs' },
   synopsis: { iconName: 'map', label: '情节大纲', labelEn: 'Synopsis', desc: '按所选故事结构展开的章节级大纲', descEn: 'Chapter-level outline following the selected structure' },
 }
 

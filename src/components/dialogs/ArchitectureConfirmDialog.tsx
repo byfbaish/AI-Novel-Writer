@@ -29,7 +29,7 @@ const ARCH_FILES: Array<{
   { key: 'premise', fileName: 'premise.md', label: '故事前提', labelEn: 'Premise', iconName: 'target', desc: 'Logline、核心冲突、金手指定位', descEn: 'Logline, core conflict, and protagonist advantage' },
   { key: 'characters', fileName: 'characters.md', label: '角色图谱', labelEn: 'Characters', iconName: 'users', desc: '角色弧光、关系网、矛盾交织', descEn: 'Character arcs, relationships, and conflicts' },
   { key: 'worldbuilding', fileName: 'worldbuilding.md', label: '世界观', labelEn: 'World building', iconName: 'globe', desc: '核心规则、阶层断层、深层危机、空间结构', descEn: 'Core rules, social fault lines, hidden crises, and spatial structure' },
-  { key: 'plotStructure', fileName: 'plot_structure.md', label: '弧光结构', labelEn: 'Arc structure', iconName: 'compass', desc: '弧光分层、因果时序推进、篇幅约束', descEn: 'Arc breakdown, causal progression, and length heuristics' },
+  { key: 'plotStructure', fileName: 'plot_structure.md', label: '卷 / 单元结构', labelEn: 'Volumes and units', iconName: 'compass', desc: '按卷与单元切段，交代处境、阻力与代价', descEn: 'Volume and unit breakdown: states, pressure, and permanent costs' },
   { key: 'synopsis', fileName: 'synopsis.md', label: '情节大纲', labelEn: 'Synopsis', iconName: 'map', desc: '按所选故事结构展开的章节级大纲', descEn: 'Chapter-level outline following the selected structure' },
 ]
 

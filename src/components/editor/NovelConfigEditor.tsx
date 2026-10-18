@@ -71,8 +71,17 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
   const dirty = useEditorStore(state => state.tabs.some(
     tab => tab.type === 'config' && tab.projectKey === projectKey && tab.dirty,
   ))
-  // 第五层「弧光结构 / 自由弧」是否存在：决定上面那个枚举下拉框是"生效"还是"兜底"。
+  // 第五层「卷 / 单元」是否已定制：决定上面那个枚举下拉框是"生效"还是"兜底"。
   const [hasFreeArc, setHasFreeArc] = useState(false)
+  /**
+   * 平台节奏画像（v7）。只影响"切几段、多久换一次挡"，不碰文风——
+   * 两者是配套但独立的两个轴：起点节奏 + 番茄文风是合法的中间态（融合产物并不少见）。
+   * 空 = 不指定（中性），模板里那段【节奏推荐】会被整段裁掉。
+   */
+  const [rhythmProfile, setRhythmProfile] = useState('')
+  const [rhythmCustom, setRhythmCustom] = useState('')
+  const RHYTHM_IDS = ['qidian', 'fanqie'] as const
+  const rhythmIsCustom = rhythmProfile.trim() !== '' && !(RHYTHM_IDS as readonly string[]).includes(rhythmProfile)
   // 「按步骤分区」标签要插到光标处，故这两个自由文本框需要 ref（Textarea 支持 forwardRef）。
   const globalGuidanceRef = useRef<HTMLTextAreaElement>(null)
   const referenceWorksRef = useRef<HTMLTextAreaElement>(null)
@@ -92,6 +101,18 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
     updateNovelConfig({ [key]: value }, projectSession)
     setSaveOutcome('idle')
+  }
+
+  /** 节奏画像单独落库：它属于 project_core，不在 NovelConfig 里。 */
+  const saveRhythmProfile = async (value: string) => {
+    const projectSession = captureProjectSession(currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    setRhythmProfile(value)
+    setSaveOutcome('idle')
+    const result = await ipc.invokeWithProjectSession(
+      projectSession, 'db:project-core-update', { rhythmProfile: value }, projectSession.projectPath,
+    )
+    if (!result?.success) setSaveOutcome('failed')
   }
 
   /** 保存配置 — Store 已是最新数据，仅需持久化到磁盘 */
@@ -134,7 +155,11 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
     let disposed = false
     void ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectSession.projectPath)
       .then(core => {
-        if (!disposed) setHasFreeArc(((core?.plotStructurePlan ?? '').length > 50))
+        if (disposed) return
+        setHasFreeArc(((core?.plotStructurePlan ?? '').length > 50))
+        const profile = core?.rhythmProfile ?? ''
+        setRhythmProfile(profile)
+        setRhythmCustom((RHYTHM_IDS as readonly string[]).includes(profile) ? '' : profile)
       })
       .catch(() => { if (!disposed) setHasFreeArc(false) })
     return () => { disposed = true }
@@ -330,7 +355,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                 '节拍表：好莱坞十五拍结构，节奏最精细，适合情感张力强的故事',
                 '起承转合：中国传统四段式结构，适合古言/武侠/仙侠',
                 '多线叙事：多条故事线并进交织，适合群像或复杂情节',
-                '弧光结构：不套固定叙事框架，由 AI 按内容自适应；也可在「故事架构 · 弧光结构」里写成本书专属的推进，写了就以它为准',
+                '卷 / 单元结构：不套固定叙事框架，由 AI 按卷与单元自适应；也可在「故事架构 · 卷 / 单元结构」里写成本书专属的推进，写了就以它为准',
               ].map((item, index) => text(item, [
                 'Three-act structure: setup, confrontation, and climax; suitable for most genres',
                 'Hero’s journey: a transformation-focused adventure structure',
@@ -349,7 +374,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                   <option value="save_the_cat">{text('节拍表', 'Beat sheet')}</option>
                   <option value="kishotenketsu">{text('起承转合', 'Kishōtenketsu')}</option>
                   <option value="multi_thread">{text('多线叙事', 'Multi-thread')}</option>
-                  <option value="freeform">{text('弧光结构', 'Arc structure')}</option>
+                  <option value="freeform">{text('卷 / 单元结构', 'Volumes and units')}</option>
                 </NativeSelect>
                 {hasFreeArc ? (
                   <button
@@ -370,6 +395,53 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                     {text('想让本书用自己的弧光推进结构？前往「故事架构 · 弧光结构」编辑', 'Want a book-specific arc progression? Edit it under Story architecture · Arc structure')}
                   </button>
                 )}
+              </Field>
+              <Field label={text('平台节奏', 'Platform rhythm')} tipItems={[
+                '只影响"切成几段、多久换一次挡"，不决定文风；文风仍由写作风格与全局要求决定',
+                '起点向：卷少单元多、允许慢热，适合长线铺陈与升级流',
+                '番茄向：卷多单元少、开场就出事、章末必有钩子',
+                '不指定：不给任何推荐区间，由 AI 按内容自己定（老项目默认就是这一档）',
+                '可以自定义：填一段自己的节奏说明，会原样注入弧光提示词',
+              ].map((item, index) => text(item, [
+                'Only controls how many segments the book is cut into and how often the gear changes; it does not set the prose style',
+                'Qidian: fewer volumes, more units per volume, slow openings allowed — long builds and progression arcs',
+                'Fanqie: more volumes, fewer units each, hit on the first page, hook on every chapter end',
+                'Unspecified: no recommended ranges at all — the model decides from the content',
+                'Custom: write your own rhythm note; it is injected verbatim into the arc prompt',
+              ][index]))}>
+                <NativeSelect
+                  value={rhythmIsCustom ? 'custom' : rhythmProfile}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    if (next === 'custom') {
+                      void saveRhythmProfile(rhythmCustom.trim())
+                      return
+                    }
+                    setRhythmCustom('')
+                    void saveRhythmProfile(next)
+                  }}
+                >
+                  <option value="">{text('不指定（按内容定）', 'Unspecified')}</option>
+                  <option value="qidian">{text('起点向（长线铺陈）', 'Qidian (slow build)')}</option>
+                  <option value="fanqie">{text('番茄向（强钩子快兑现）', 'Fanqie (fast payoffs)')}</option>
+                  <option value="custom">{text('自定义…', 'Custom…')}</option>
+                </NativeSelect>
+                {rhythmIsCustom ? (
+                  <Textarea
+                    className="mt-1"
+                    rows={3}
+                    value={rhythmCustom}
+                    placeholder={text('例如：每卷 4 个单元，开场即冲突，两章一次兑现', 'e.g. four units per volume, conflict on page one, a payoff every two chapters')}
+                    onChange={(e) => setRhythmCustom(e.target.value)}
+                    onBlur={() => { void saveRhythmProfile(rhythmCustom.trim()) }}
+                  />
+                ) : null}
+                <p className="mt-1 text-[0.7rem] leading-4" style={{ color: 'var(--color-text-muted)' }}>
+                  {text(
+                    '节奏与文风是两个轴：起点节奏配番茄文风是合法组合（融合风格并不少见）。只改节奏不会改文风。',
+                    'Rhythm and prose style are separate axes: Qidian pacing with Fanqie prose is a legitimate mix. Changing rhythm never changes style.',
+                  )}
+                </p>
               </Field>
               <Field label={text('叙事视角', 'Point of view')} tipItems={[
                 '第一人称："我"视角叙事，代入感最强，信息受限',
