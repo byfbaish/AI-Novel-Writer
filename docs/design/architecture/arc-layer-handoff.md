@@ -4,6 +4,23 @@
 > 这一层当初为什么存在、现在该干什么、为什么会长成现在这样。
 > 细节在 `arc-generality-and-ending-design.md`（判据）与 `arc-tree-expansion-design.md`（改造方案，待重写）。
 
+## 0. 定位：这是一层**后加的、可剥离的**层（2026-10-18 核实）
+
+弧光层不是管线的前提，而是**替换掉一层硬编码**的可选增强。证据以代码为准：
+
+| 事实 | 证据 |
+|---|---|
+| 原始架构只有枚举 | `electron/migrations/baseline-schema.ts:33` 只有 `plot_structure TEXT DEFAULT 'three_act'`；**基线 DDL 里没有** `plot_structure_plan` |
+| 自由弧是后加列 | `electron/migrations/m07-plot-structure-plan.ts:9`：`ALTER TABLE project_core ADD COLUMN plot_structure_plan TEXT NOT NULL DEFAULT ''`；同文件注释——基线已冻结，新增列必须走 lane，不能改 baseline |
+| 空值即回退 | `architecture-workflow.ts:366-368` `resolveStageStructureGuide`：`plotStructurePlan` 为空 → `getPlotStructureGuide()` 枚举模板；注释写明「保证老项目与"不想用自由弧"的作者行为完全不变」 |
+| 投影失败也回退 | `arc-position.ts:621`：`span && plan ? 裁剪 : guide` —— 结构不可解析 / 本批越界 → 原样返回，不抛错 |
+| 体检不拦 | `architecture.command.ts:318-346`：`summarizeArcDensity` / `summarizeArcCoverFindings` 注释均写「只报告，不阻断」 |
+| 下游不读它 | `plotStructurePlan` 的非测试消费点只有三处：`synopsis` 生成（`architecture.command.ts:2058 / 2249 / 2534`）、编辑器预填（`editor-store.ts:84`）、仓储与导出。**正文与审稿链路零引用** |
+
+**所以「剥离」的真实含义**是：删掉 `plot_structure` 生成步骤 + 弧光 UI + 两个体检函数，列保留（DEFAULT `''`）→ 大纲照样出，只是退回「三幕 20/55/25」这类**硬编码比例分段**。不是「没有分段」，是「分段重新由枚举常量给」。
+
+**它存在的意义**：把「全书切几段、每段从哪到哪」从常量变成按本书生成的数据，于是**大纲不必自己发明全书节奏**，只需管章级局面。这既是它值钱的地方，也是它的边界——见 §2 / §3：一旦它开始替大纲写「事件好不好看」，就是上游代偿下游，必然补不到位。
+
 ## 1. 初衷（作者 2026-10-11 原话）
 
 > 「现在的架构**其实就是五层架构**，只不过**有一层被隐藏起来了**，而且是**固定编码**。
