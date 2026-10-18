@@ -101,9 +101,32 @@
 ### 3.3 不改什么（YAGNI 边界）
 
 - **不动 `keyEvents` 结构**。上位稿 §5.5 的 `OutlineContract` 要求 `keyEvents: Array<{id, event, estimatedUnits}>`；但**本步不消费 `estimatedUnits`**（短细纲只要事件清单），按 §8-7"无读取点者不立项"→ 结构化留给 lane 六步那一轮，**P0-1 不依赖它**。
+  - `[已更新 2026-10-19]`：这一条被后续改动取代。查证发现 `estimatedUnits` **在全仓没有任何消费者**（`keyEventsText` 投影时还把它丢掉了），而短细纲因为不读预算，只能把蓝图重新组织成"六条要点"——与 `keyEvents` 重复。现改为：**代码**把每个事件的 `estimatedUnits` 按本章目标字数折算成「分段预算」（`shortOutlineSegmentBudget`，floor 分配 + 末段吃余数，保证合计严格相等），短细纲只按段数/顺序/字数落成执行表。见 §3.5。
 - **不改 `shortOutlinePromptHash` 机制**（继续每 run 一份）。
 - **不改 `systemRole`**（那是正文步骤的合同，短细纲用的是 user 侧块 ④）。
 - **不改 `assembleChapterMaterials` 的 8,000 预算**（容量结算是为正文做的；本步只是不消费它的全部产物）。
+
+---
+
+### 3.5 后续修订：从「第二个规划者」改为「预算执行者」（2026-10-19）
+
+**问题**：这一步不消费 `estimatedUnits`，只能把蓝图重新组织成"最多六条要点"——而这六条
+与蓝图 `keyEvents` 是同一批事件的第二次表述。与此同时，全仓**没有任何代码读 `estimatedUnits`**
+（`keyEventsText` 投影时直接丢弃），"每段多少字"的预算没有执行者。
+
+**改法**：
+
+- `DraftShortOutlineMaterial` 增加 `segmentBudget`（由代码渲染好的文本，不是让模型估）。
+- `shortOutlineSegmentBudget(language, keyEvents, targetChars)`：按 `estimatedUnits` 比例分配，
+  **floor 分配 + 末段吃余数**，保证合计严格等于本章目标（判据 AZ：比例式必须代码算）。
+  蓝图没给 units 时退化为等分；事件为空时返回空串，材料块整块省略。
+- 指令改为：段数 / 顺序 / 每段字数**照抄给定条件**，不得增删合并重排；只写"这一段发生什么"
+  与"停在哪"；不得新增作者事实、禁令或目标，不得把计划写成已发生的事实。
+- 材料块序变为：指令 → 本章蓝图 → **分段预算** → 前驱状态 → 本章执行合同。
+
+**为什么不给它开放用户级 prompt**：这一步位于「事实 → 正文」的装配位，不是创作位。
+一旦可编辑，作者偏好会与 `globalGuidance` / 写作 Skill / 蓝图三处打架，并多出一个真相源。
+要表达偏好，正确位置是**执行合同**（`executionContract`）。
 
 ---
 

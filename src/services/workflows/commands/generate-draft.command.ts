@@ -6,7 +6,7 @@ import { notePromptProjection } from '../../prompts/prompt-trace'
 import { appErrorMessage } from '../../../i18n/app-errors'
 import { sanitizeDraftText, composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, DRAFT_VISIBLE_TEXT_VERSION, isDraftVisibleTextVersion, type DraftVisibleTextVersion } from '../../../shared/draft-visible-text'
 import { DRAFT_RECONCILE_PURPOSE, draftReconciliationBlock } from '../../../shared/draft-reconciliation'
-import { DRAFT_SHORT_OUTLINE_PURPOSE, draftShortOutlinePrompt, draftShortOutlineBlock } from '../../../shared/draft-short-outline'
+import { DRAFT_SHORT_OUTLINE_PURPOSE, draftShortOutlinePrompt, draftShortOutlineBlock, shortOutlineSegmentBudget } from '../../../shared/draft-short-outline'
 export { sanitizeDraftText } from '../../../shared/draft-visible-text'
 import { synopsisSettingSectionsForDraft } from '../../../shared/synopsis-projection'
 import { projectScopedText } from '../../../shared/text-scope-tags'
@@ -1007,6 +1007,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         .find(source => source.chapterNumber === this.chapterInfo.chapterNumber - 1)?.content?.trim()
         || previousEnding,
       executionContract: chapterExecutionContract.rules,
+      // 预算只依赖蓝图与本章目标字数：算不出（无 keyEvents）就整块省略，退回要点模式。
+      segmentBudget: shortOutlineSegmentBudget(writingLanguage, this.chapterInfo.keyEvents, targetChars),
     })
     const withSkill = (content: string) => injectWritingSkillIntoTask({ purpose: 'chapter-draft', output: 'visible-text',
       messages: [{ role: 'user', content }] }, context, 'drafting').task.messages[0]!.content
