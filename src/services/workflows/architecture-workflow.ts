@@ -181,9 +181,9 @@ export function createArchitectureWorkflow(
       },
     },
     {
-      name: text('弧光结构', 'Arc structure'),
+      name: text('卷 / 单元结构', 'Volumes and units'),
       key: 'plotStructure',
-      description: stepDesc('plotStructure', '把世界观与角色推演成有因果/时序推进的弧光结构（自由弧）', 'Turn worldbuilding and characters into a arc structure with causal and temporal progression'),
+      description: stepDesc('plotStructure', '把世界观与角色推演成「卷 → 单元」两级结构：处境、阻力换代、代价', 'Turn worldbuilding and characters into a two-level structure of volumes and units'),
       executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
         context.data.stepGuidance = guidance
         const { GeneratePlotStructureCommand } = await import('./commands/architecture.command')

@@ -390,7 +390,7 @@ export function summarizeArcCoverFindings(
   }
 
   return uiText(
-    `⚠️ 弧光结构位对账：${problems.join('；')}。（大纲已保存；这是提示，不阻断。）`,
+    `⚠️ 卷 / 单元结构位对账：${problems.join('；')}。（大纲已保存；这是提示，不阻断。）`,
     `⚠️ Arc slot reconciliation: ${problems.join('; ')}. (The outline was saved; this is advisory only.)`,
   )
 }
@@ -1881,10 +1881,10 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
       'The worldbuilding is missing or incomplete. Go back and include it for generation.',
     ))
 
-    callbacks.log(text('生成弧光结构（自由弧）...', 'Generating the arc structure...'))
+    callbacks.log(text('生成卷 / 单元结构...', 'Generating volumes and units...'))
     const template = await resolvePromptTemplate('plot_structure', projectSession, writingLanguage)
     if (!template) throw new Error(text(
-      '弧光结构模板丢失',
+      '卷 / 单元结构模板丢失',
       'The arc-structure template is missing.',
     ))
 
@@ -1915,12 +1915,12 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
       context,
     )
     if (!result.trim()) throw new Error(text(
-      '弧光结构生成失败，AI 返回空内容',
+      '卷 / 单元结构生成失败，AI 返回空内容',
       'Stage-structure generation failed because the AI returned empty content.',
     ))
     if (context.cancelled) throw new Error(text('工作流已取消', 'Workflow was cancelled.'))
 
-    const heading = promptLanguageText(writingLanguage, '弧光结构', 'Arc Structure')
+    const heading = promptLanguageText(writingLanguage, '卷 / 单元结构', 'Volumes and Units')
     const body = stripThinkingTags(result)
     // 若模型已自带一级标题则不重复；否则补一个统一标题，与其它架构块一致。
     const content = /^\s*#\s/u.test(body) ? `${body}\n` : `# ${heading}\n\n${body}\n`
@@ -1932,14 +1932,14 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
       expectedProjectPath,
       context.runId,
       projectSession,
-      text('弧光结构写入数据库失败', 'Failed to write the arc structure to the database.'),
+      text('卷 / 单元结构写入数据库失败', 'Failed to write the volume and unit structure to the database.'),
       this.requireGenerationExecution().mainOwned ? context.mainGenerationRunHandle : undefined,
     )
     this.assertNotCancelled(context)
 
     callbacks.log(text(
-      '弧光结构（自由弧）已生成并写入数据库',
-      'Arc structure generated and saved to the database.',
+      '卷 / 单元结构已生成并写入数据库',
+      'Volume and unit structure generated and saved to the database.',
     ))
     // P13：分层信息量体检 —— 只提示。小弧只有名字时，后面每一批大纲都会越层取材，
     // 在这里说一句比让作者去读 40 章大纲之后才返工便宜得多。

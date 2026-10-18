@@ -136,8 +136,8 @@ function ArchFileViewerSession({
         if (disposed || !isProjectSessionCurrent(session)) return
         if (String(core?.plotStructurePlan ?? '').trim().length > 50) {
           setSynopsisStructureDesc({
-            zh: '按本书自定义「弧光结构」展开',
-            en: 'Expanded from this book’s custom arc structure',
+            zh: '按本书自定义「卷 / 单元结构」展开',
+            en: 'Expanded from this book’s custom volume and unit structure',
           })
           return
         }

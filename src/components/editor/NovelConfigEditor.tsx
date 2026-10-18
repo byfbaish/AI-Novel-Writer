@@ -199,7 +199,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
     } else {
       store.openFile({
         id: tabId,
-        name: text('弧光结构', 'Arc structure'),
+        name: text('卷 / 单元结构', 'Volumes and units'),
         type: 'arch-file',
         filePath,
         content,
@@ -383,7 +383,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                     className="mt-1 text-left text-[0.7rem] leading-4 underline decoration-dotted"
                     style={{ color: 'var(--color-warning-text)' }}
                   >
-                    {text('已在「故事架构」中定制弧光结构，当前选择仅作起手模板（点击查看）', 'A custom arc structure exists; this choice is only a starting template (click to view)')}
+                    {text('已在「故事架构」中定制卷 / 单元结构，当前选择仅作起手模板（点击查看）', 'A custom volume and unit structure exists; this choice is only a starting template (click to view)')}
                   </button>
                 ) : (
                   <button
@@ -392,7 +392,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
                     className="mt-1 text-left text-[0.7rem] leading-4 underline decoration-dotted"
                     style={{ color: 'var(--color-text-muted)' }}
                   >
-                    {text('想让本书用自己的弧光推进结构？前往「故事架构 · 弧光结构」编辑', 'Want a book-specific arc progression? Edit it under Story architecture · Arc structure')}
+                    {text('想让本书用自己的卷 / 单元推进结构？前往「故事架构 · 卷 / 单元结构」编辑', 'Want a book-specific volume and unit progression? Edit it under Story architecture · Volumes and units')}
                   </button>
                 )}
               </Field>
