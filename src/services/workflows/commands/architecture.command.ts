@@ -1622,7 +1622,7 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
 
     const promptBuilder = new ArchitecturePromptBuilder(template, writingLanguage)
       .withCoreSeed(premise_result)
-      .withGenre(modelFacts.genre)
+      .withGenre(composeGenreLabel(modelFacts.genre, config.subGenre))
       .withCoreSetting(config.worldSetting || missingValue)
       .withGoldenFinger(config.goldenFinger || missingValue)
       .withProtagonistProfile(config.protagonistProfile || missingValue)
@@ -2239,7 +2239,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       //   但埋在 6,000+ 字散文里、与七八个空间并列 —— 是"喂了没看见"而非"没喂"。
       //   这里把它原样摘录成短清单，紧跟世界观全文独立成节；摘录不到则原样返回。
       .withWorldBuilding(withSpaceConstraints(world_b, writingLanguage))
-      .withGenre(modelFacts.genre)
+      .withGenre(composeGenreLabel(modelFacts.genre, config.subGenre))
       .withNumberOfChapters(totalChapters)
       .withWordNumber(config.wordsPerChapter)
       // ★ 弧位圈定：把「本批落在哪个大弧/中弧」显式告诉模型。
@@ -2527,7 +2527,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       .withCoreSeed(sourceExpected.premise).withCharacterDynamics(sourceExpected.charactersArch)
       // ★ 空间约束摘录（同 :2141，断点续写 / 逐章路径）
       .withWorldBuilding(withSpaceConstraints(sourceExpected.worldbuilding, language))
-      .withGenre(localizeNovelConfigFacts(config, language).genre).withNumberOfChapters(sourceExpected.totalChapters)
+      .withGenre(composeGenreLabel(localizeNovelConfigFacts(config, language).genre, config.subGenre)).withNumberOfChapters(sourceExpected.totalChapters)
       .withWordNumber(sourceExpected.wordsPerChapter)
       // ★ 弧位圈定同 :2135（断点续写路径）：让模型知道本批落在哪个中弧，避免提前执行后续中弧。
       //   P0-0b：同样先按本批弧位分级裁剪弧光结构，再追加弧位硬约束块。
