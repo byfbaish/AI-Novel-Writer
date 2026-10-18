@@ -1,4 +1,4 @@
-import { isTurnField, minorRanges, parseArcStructure, scaledBoundaries } from './arc-position'
+import { arcWeight, isTurnField, minorRanges, parseArcStructure, scaledBoundaries } from './arc-position'
 
 /**
  * 弧光结构位（P12-0a）。
@@ -106,7 +106,7 @@ export function listArcNodes(plan: string | null | undefined, totalChapters: num
   if (!parsed) return []
 
   const nodes: ArcNode[] = []
-  const majorBounds = scaledBoundaries(parsed.majors.map(item => item.chapters), totalChapters)
+  const majorBounds = scaledBoundaries(parsed.majors.map(item => arcWeight(item.chapters)), totalChapters)
 
   parsed.majors.forEach((major, majorOffset) => {
     const majorIndex = majorOffset + 1
@@ -121,7 +121,7 @@ export function listArcNodes(plan: string | null | undefined, totalChapters: num
     }))
 
     // 中弧的章数是**在本大弧跨度内**的相对刻度，必须用大弧长度做 total 再折算一次。
-    const midBounds = scaledBoundaries(major.mids.map(item => item.chapters), majorRange[1] - majorRange[0] + 1)
+    const midBounds = scaledBoundaries(major.mids.map(item => arcWeight(item.chapters)), majorRange[1] - majorRange[0] + 1)
     major.mids.forEach((mid, midOffset) => {
       const midIndex = midOffset + 1
       const midRange: readonly [number, number] = [

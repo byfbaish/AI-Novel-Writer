@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   arcSpanForChapters,
   arcStructureNeedsRescale,
-  minorStepCeiling,
   parseArcStructure,
   projectArcStructureText,
   renderArcPositionBlock,
@@ -175,15 +174,27 @@ describe('parseArcStructure · 区间章数标注（既有缺陷回归）', () =
     }
   })
 
-  it('乱序或非正数区间仍被丢弃（不猜测）', () => {
-    expect(parseArcStructure('## 大弧一：甲（约 94–1 章）\n### 中弧 1：乙（约 1 章）\n- 因果：x')).toBeNull()
-    expect(parseArcStructure('## 大弧一：甲（约 0–94 章）\n### 中弧 1：乙（约 1 章）\n- 因果：x')).toBeNull()
-    // 大弧区间合法但中弧乱序 → 该大弧仍被丢弃
-    expect(parseArcStructure('## 大弧一：甲（约 1–94 章）\n### 中弧 1：乙（约 24–1 章）\n- 因果：x')).toBeNull()
+  it('P18：章数是可选信息，坏值/缺省都只降级为等权，不再让整份弧光作废', () => {
+    // 从前：任何一条弧算不出章数 ⇒ `usable` 过滤 ⇒ 整份返回 null（弧位块静默失效）。
+    // P18 起弧光层不做篇幅预算，章数只是折算刻度；算不出就按个数均分，不该连累全篇。
+    // 算不出章数的三条：不报错、不丢弃，只是没有章数
+    for (const plan of [
+      '## 大弧一：甲（约 94–1 章）\n### 中弧 1：乙（约 1 章）\n- 因果：x',
+      '## 大弧一：甲（约 0–94 章）\n### 中弧 1：乙（约 1 章）\n- 因果：x',
+      '## 大弧一：甲\n### 中弧 1：乙\n- 因果：x',
+    ]) {
+      const parsed = parseArcStructure(plan)
+      expect(parsed, plan).not.toBeNull()
+      expect(parsed!.majors[0]!.chapters, plan).toBeUndefined()
+    }
+    // 大弧合法、中弧乱序：大弧照旧，只有中弧降级
+    const half = parseArcStructure('## 大弧一：甲（约 1–94 章）\n### 中弧 1：乙（约 24–1 章）\n- 因果：x')!
+    expect(half.majors[0]!.chapters).toBe(94)
+    expect(half.majors[0]!.mids[0]!.chapters).toBeUndefined()
   })
 
-  it('标题完全没有章数标注时该条被丢弃', () => {
-    expect(parseArcStructure('## 大弧一：甲\n### 中弧 1：乙\n- 因果：x')).toBeNull()
+  it('没有中弧的大弧不算可用结构（层级没拆出来，弧位块无意义）', () => {
+    expect(parseArcStructure('## 大弧一：甲（约 94 章）\n- 因果：x')).toBeNull()
   })
 })
 
@@ -500,43 +511,54 @@ describe('小弧事件步与逐章进度上限（P14）', () => {
     expect(splitMinorSteps('A -> B -> C')).toEqual(['A', 'B', 'C'])
   })
 
-  it('minorStepCeiling 单调不降、首章至少 1 步、末章必须到落点', () => {
-    const ceilings = Array.from({ length: 8 }, (_, i) => minorStepCeiling(i + 1, 6, 8))
-    expect(ceilings).toEqual([1, 2, 3, 3, 4, 5, 6, 6])
-    expect(minorStepCeiling(0, 6, 8)).toBe(1) // 越界入参按首章处理
-    expect(minorStepCeiling(99, 6, 8)).toBe(6) // 越界入参按末章处理
-    expect(minorStepCeiling(3, 0, 8)).toBe(0)
-  })
-
-  it('弧位块给每个小弧印出逐章上限与落点最早出现的章号', () => {
+  it('P18 已撤回逐章上限：步数不再换算成「第 N 章→第 M 步」', () => {
     const parsed = parseArcStructure(PLAN_WITH_STEPS)!
-    const block = renderArcPositionBlock(parsed, 25, 1, 10, 'zh-CN')
-    expect(block).toContain('本弧共 6 步')
-    expect(block).toContain('第1章→第1步；第2章→第2步；第3章→第3步；第4章→第3步；第5章→第4步；第6章→第5步；第7章→第6步；第8章→第6步')
-    expect(block).toContain('落点最早出现在第 7 章')
-    // 判据 BJ 的修法：约束改成按章表述，不再依赖"本批只落在前段"这个在批≥弧长时失效的条件
-    expect(block).toContain('给定条件，不是估计值')
-    expect(block).toContain('那就是硬数字')
+    for (const language of ['zh-CN', 'en-US'] as const) {
+      const block = renderArcPositionBlock(parsed, 25, 1, 10, language)!
+      expect(block).not.toContain('逐章上限')
+      expect(block).not.toContain('Per-chapter ceiling')
+      expect(block).not.toContain('本弧共')
+      expect(block).not.toContain('→第1步')
+    }
+    // 弧位块本身还在（小弧归属仍是可声明的结构位）
+    expect(renderArcPositionBlock(parsed, 25, 1, 10, 'zh-CN')).toContain('小弧')
   })
 
-  it('只印出本批范围内的章（批只覆盖弧中段时不许列出全弧）', () => {
-    const parsed = parseArcStructure(PLAN_WITH_STEPS)!
-    const block = renderArcPositionBlock(parsed, 25, 3, 5, 'zh-CN')
-    expect(block).toContain('第3章→第3步；第4章→第3步；第5章→第4步')
-    expect(block).not.toContain('第1章→第1步')
+  it('P18 弧光不写章数时，区间按**个数**均分（区间必须有来源，只是不再来自模型）', () => {
+    const noChapters = `## 大弧一：开局
+### 中弧 1：门牌
+- 类型：A 因果驱动型
+- 因果：上一段他刚醒，靠一句谎走进本中弧
+- 小弧：
+  - 【错位门牌】：目标 天亮前换回牌子 ｜ 赌注 换不回去就没了住处 ｜ 他刚醒 → 街坊各记一套 → 门牌全错
+  - 【第一页报告】：目标 让报告上不出现他 ｜ 赌注 名字落上去就抹不掉 ｜ 观察科递来回执 → 有人上门问话 → 他被写进报告
+  - 【三家抢单】：目标 把单子攥住 ｜ 赌注 交出去就是替人认账 ｜ 庄家上门 → 三家同时认领 → 谁都退不了
+### 中弧 2：定价
+- 类型：B 目标驱动型
+- 目标：从撑过今天 到 摸清谁在定价
+- 小弧：
+  - 【加班】：目标 把第一句拖到零点 ｜ 赌注 零点前开口就白撑了 ｜ 他躲进棚里 → 登记来电 → 只能留到半夜
+`
+    const parsed = parseArcStructure(noChapters)!
+    expect(parsed.majors[0]!.chapters).toBeUndefined()
+    expect(parsed.majors[0]!.mids[0]!.minors.map(m => m.name)).toEqual(['错位门牌', '第一页报告', '三家抢单'])
+    expect(parsed.majors[0]!.mids[0]!.minors[0]!.chapters).toBeUndefined()
+    // 两个中弧等权 ⇒ 9 章对半分：中弧 1 拿第 1–5 章
+    const span = arcSpanForChapters(parsed, 9, 1, 1)!
+    expect(span.midRange).toEqual([1, 5])
   })
 
-  it('英文侧同步输出逐章上限', () => {
-    const parsed = parseArcStructure(PLAN_WITH_STEPS)!
-    const block = renderArcPositionBlock(parsed, 25, 1, 10, 'en-US')
-    expect(block).toContain('This arc has 6 steps')
-    expect(block).toContain('ch.1→step 1; ch.2→step 2')
-    expect(block).toContain('landing state may first appear at ch.7')
-  })
-
-  it('旧弧光（小弧只有名字、没有 →）不出现逐章上限，行为与从前一致', () => {
-    const parsed = parseArcStructure(PLAN)!
-    const block = renderArcPositionBlock(parsed, 195, 1, 10, 'zh-CN')
-    expect(block).not.toContain('本弧共')
+  it('P18 有章数与无章数混排：有章数的按比例，没章数的按 1 计权', () => {
+    const mixed = `## 大弧一：开局
+### 中弧 1：门牌
+- 类型：A 因果驱动型
+- 小弧：
+  - 错位门牌（约 8 章）：他想换回牌子 → 街坊各记一套
+  - 【第一页报告】：目标 让报告上不出现他 ｜ 赌注 名字落上去就抹不掉 ｜ 观察科递来回执 → 他被写进报告
+`
+    const parsed = parseArcStructure(mixed)!
+    expect(parsed.majors[0]!.mids[0]!.minors.map(m => m.chapters)).toEqual([8, undefined])
+    const span = arcSpanForChapters(parsed, 18, 1, 1)!
+    expect(span.midRange).toEqual([1, 18])
   })
 })
