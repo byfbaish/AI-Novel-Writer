@@ -58,7 +58,7 @@ const ARCH_FILES: Array<{
     { key: 'premise', fileName: 'premise.md', labelZh: '故事前提', labelEn: 'Story premise', iconName: 'target', descZh: '故事钩子 · 核心冲突链 · 主角优势 · 悬念骨架', descEn: 'Story hook · core conflict · protagonist edge · suspense structure' },
     { key: 'characters', fileName: 'characters.md', labelZh: '角色图谱', labelEn: 'Character map', iconName: 'users', descZh: '角色弧光 · 关系网络 · 矛盾交织', descEn: 'Character arcs · relationships · interlocking tensions' },
     { key: 'worldbuilding', fileName: 'worldbuilding.md', labelZh: '世界观', labelEn: 'Worldbuilding', iconName: 'globe', descZh: '核心规则 · 社会结构 · 深层危机 · 空间结构', descEn: 'Core rules · social structure · underlying crisis · spatial structure' },
-    { key: 'plotStructure', fileName: 'plot_structure.md', labelZh: '弧光结构', labelEn: 'Arc structure', iconName: 'compass', descZh: '弧光分层 · 因果/时序推进 · 篇幅约束', descEn: 'Arc breakdown · causal progression · length heuristics' },
+    { key: 'plotStructure', fileName: 'plot_structure.md', labelZh: '卷 / 单元结构', labelEn: 'Volumes and units', iconName: 'compass', descZh: '按卷与单元切段 · 处境、阻力换代、代价', descEn: 'Volume and unit breakdown · states, pressure shifts, costs' },
     { key: 'synopsis', fileName: 'synopsis.md', labelZh: '情节大纲', labelEn: 'Plot outline', iconName: 'map', descZh: '结构推进 · 转折节奏 · 伏笔闭环', descEn: 'Story progression · turning points · setup and payoff' },
   ]
 

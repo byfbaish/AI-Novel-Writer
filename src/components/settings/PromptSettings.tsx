@@ -214,7 +214,7 @@ export default function PromptSettings() {
         <span>
           {text('自定义提示词仅修改 AI 的创作指导策略，输出格式约束（如 JSON schema）会自动追加，不受自定义影响。支持两级覆盖：全局（所有小说生效）和项目（仅当前小说生效）。', 'Custom prompts change AI writing guidance only. Output constraints such as JSON schemas are appended automatically. Overrides can be global for all novels or project-specific.')}
           <br />
-          {text('标注「架构链」的模板是故事架构的一整套（前提 → 角色图谱 → 世界观 → 弧光结构 → 情节大纲 → 章节蓝图），上下游互相咬合，建议保持内置默认；而草稿、精修、审稿属于可按你的文风定制的输出层。', 'Templates tagged “Architecture chain” form one interlocking story-architecture pipeline (premise → characters → world → arc structure → plot synopsis → chapter blueprint) and are best left at the built-in default. Drafting, revision, and review templates are the output layer you can freely customize.')}
+          {text('标注「架构链」的模板是故事架构的一整套（前提 → 角色图谱 → 世界观 → 卷 / 单元结构 → 情节大纲 → 章节蓝图），上下游互相咬合，建议保持内置默认；而草稿、精修、审稿属于可按你的文风定制的输出层。', 'Templates tagged “Architecture chain” form one interlocking story-architecture pipeline (premise → characters → world → volumes and units → plot synopsis → chapter blueprint) and are best left at the built-in default. Drafting, revision, and review templates are the output layer you can freely customize.')}
         </span>
       </div>
 
@@ -531,8 +531,8 @@ function TemplateItem({
             >
               <Layers size={12} className="inline mr-1" />
               {text(
-                '这是「故事架构链」模板（前提 → 角色图谱 → 世界观 → 弧光结构 → 情节大纲 → 章节蓝图），一套互相咬合的产物：每一步的输出是下一步的输入，并且会被后续所有章节的蓝图与正文引用。建议保持内置默认 —— 确需定制时，请在「补充创作指导」里增补你的要求，不要删改正文里的输出契约、字段清单与判定标准，否则下游会连锁失准。',
-                'This is a story-architecture chain template (premise → characters → world → arc structure → plot synopsis → chapter blueprint). The steps interlock: each output feeds the next and is cited by every later chapter blueprint and draft. Keep the built-in default; if you must customize, add your requirements under “Additional creative guidance” rather than editing the output contracts, field lists, and decision criteria in the body, which would misalign everything downstream.',
+                '这是「故事架构链」模板（前提 → 角色图谱 → 世界观 → 卷 / 单元结构 → 情节大纲 → 章节蓝图），一套互相咬合的产物：每一步的输出是下一步的输入，并且会被后续所有章节的蓝图与正文引用。建议保持内置默认 —— 确需定制时，请在「补充创作指导」里增补你的要求，不要删改正文里的输出契约、字段清单与判定标准，否则下游会连锁失准。',
+                'This is a story-architecture chain template (premise → characters → world → volumes and units → plot synopsis → chapter blueprint). The steps interlock: each output feeds the next and is cited by every later chapter blueprint and draft. Keep the built-in default; if you must customize, add your requirements under “Additional creative guidance” rather than editing the output contracts, field lists, and decision criteria in the body, which would misalign everything downstream.',
               )}
             </div>
           )}

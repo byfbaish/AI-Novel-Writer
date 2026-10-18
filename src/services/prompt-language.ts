@@ -474,8 +474,8 @@ Build four connected dimensions. The first three each need a concrete source of 
 
 [Required structure]
 {{plot_structure_guide}}
-(If the above is an "arc structure / free arc", its Causality/Ordering/Goal/Turn lines are hard constraints:
- each stage must justify why it follows the previous one.)
+(If the above is a two-level "volumes / units" structure, each volume's Narrative task / Entry state / Exit state / Pressure shift / Settlement, and each unit's Narrative task / Entry state / Exit state / Forward step / Pressure shift lines are hard constraints:
+ each unit must justify why it follows the previous one.)
 
 [Deliverable]
 Produce a complete outline in which every chapter states a concrete cause and a concrete cost — not a scene-by-scene shot list (that belongs to chapter blueprints) and not a one-line summary (that belongs to the volume outline). Adapt the pacing to the core appeal of {{genre}}.

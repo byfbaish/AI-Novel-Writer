@@ -12,8 +12,8 @@ import { insertScopeTagAtCursor } from '../insert-at-cursor'
 /** chip 的悬浮说明：必须把"谁看得到、谁看不到"说清楚（作者反馈过"过了一天就迷茫"）。 */
 const CHIP_HINT: Readonly<Record<TextScopeChoice, { zh: string; en: string }>> = {
   architecture: {
-    zh: '只给主架构四步（故事前提 / 角色图谱 / 世界观 / 弧光结构）；大纲、蓝图与正文都看不到。',
-    en: 'Only the four architecture steps (premise / cast / world-building / arc structure); the outline, blueprints, and drafts will not see it.',
+    zh: '只给主架构四步（故事前提 / 角色图谱 / 世界观 / 卷 · 单元结构）；大纲、蓝图与正文都看不到。',
+    en: 'Only the four architecture steps (premise / cast / world-building / volumes and units); the outline, blueprints, and drafts will not see it.',
   },
   outline: {
     zh: '只给情节大纲与章节蓝图。',
