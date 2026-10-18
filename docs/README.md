@@ -138,7 +138,7 @@ docs/
 | [`p8-fanqie-flavor-draft-quality-design.md`](design/prompt/p8-fanqie-flavor-draft-quality-design.md) | ✅ P1 生效 · ⏳ P2/P3 待复验 | 番茄向正文质量闸门：续写判定接回合格线 / 可判定 AI 味禁令 / 番茄 KPI 落点（§10 复验 #1） |
 | [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（27 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（28 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -168,7 +168,8 @@ docs/
 | [`arc-tree-expansion-design.md`](design/architecture/arc-tree-expansion-design.md) | 🟡 待评审（`exp/arc-tree-v2`） | **弧光「逐节点展开」验证方案**：一次性生成的病是"同一个上下文里同时做 27 个决定 ⇒ 只能套格式"；本轮只做两层（大弧一次 + 中弧逐个大弧展开、小弧不拆）；复用同一 key 跑 1+N 次拼接，零 DB/契约改动；`arc-node` 的中弧结构位已够大纲对账，不依赖小弧 |
 | [`arc-generality-and-ending-design.md`](design/architecture/arc-generality-and-ending-design.md) | ✅ 已实施（P15 + P16） | **弧光泛用性 / 结局 / 类型分配**：层级由章数定义、类型只有 A/B/C、骨料只认「拿到了」是三处题材偏置；张力=价值翻转；结局四笔债；**中弧三型原来只规定了"他失败"的位置、没有"对手失手"的位置**⇒ 各补反制/得手/反获 + 每小弧一条对手侧事件；D/E **暂不加** |
 | [`arc-prompt-v2-web-test.md`](design/architecture/arc-prompt-v2-web-test.md) | 🧪 验证件 v2.1 · 已否决 | **弧光提示词组装稿（v2.1）**：真实项目数据填充、可直接粘到网页模型验证。v2 网页实测三处失败已修：小弧由「3–5 条必发事件」→「回合」→ **战线**；中弧补**局面**；**底牌记账上移大弧**。⚠️ v2.1 实测仍失败（小弧全是家长里短），原因见 v3 |
-| [`arc-prompt-v3-web-test.md`](design/architecture/arc-prompt-v3-web-test.md) | 🧪 验证件 v3 · 待裁定 | **弧光提示词 v3**：改用行业词（卷/单元）、**删掉第三层小弧**、放开章数区间与篇幅占比（反转 P18）、末尾加**全书节奏表**（进阶/代价落点/暗线露出/压力轮换/卷末隐患）。根因：禁章数使模型失去比例尺 + 自造词表是减法语言 + 三层 27 个记账点 |
+| [`arc-prompt-v3-web-test.md`](design/architecture/arc-prompt-v3-web-test.md) | ✅ 方向已验证（作者 2026-10-19）· 被 v4 取代 | **弧光提示词 v3**：行业词（卷/单元）、删掉第三层小弧、放开章数区间与占比、末尾**全书节奏表**。实测产出明显优于 v2.1（叙事任务有架子、状态变化留白） |
+| [`arc-prompt-v4-web-test.md`](design/architecture/arc-prompt-v4-web-test.md) | 🧪 验证件 v4 · 待复验 | **篇幅收回、改画像推荐**：模型不再输出章数/占比/章号（由系统按平台节奏折算），输入侧给「节奏推荐」画像（起点向/番茄向可换、提示词不动）；节奏表加**主线债**（每卷还一笔旧债·留一笔新债）；"部"层级预留不实现（冻结单位 · 逐部生成 · 交接主线债/人物去向/世界状态） |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
 
