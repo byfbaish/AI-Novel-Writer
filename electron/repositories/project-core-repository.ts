@@ -38,6 +38,8 @@ export interface ProjectCoreRow {
     worldbuilding: string
     characters_arch: string
     plot_structure_plan: string
+    /** 平台节奏画像（v7 弧光层）；空 = 中性，不回退到任何平台。 */
+    rhythm_profile: string
     synopsis: string
     character_states: string
     created_at: string
@@ -69,6 +71,8 @@ export interface ProjectCoreData {
     charactersArch: string
     /** 第五层「弧光结构 / 自由弧」全文；空则消费点回退到 plotStructure 枚举模板。 */
     plotStructurePlan: string
+    /** 平台节奏画像（起点向 / 番茄向 / 自定义）；空 = 中性，不给模型任何节奏推荐。 */
+    rhythmProfile: string
     synopsis: string
     characterStates: string
 }
@@ -126,6 +130,7 @@ function rowToData(row: ProjectCoreRow): ProjectCoreData {
         worldbuilding: row.worldbuilding,
         charactersArch: row.characters_arch,
         plotStructurePlan: row.plot_structure_plan,
+        rhythmProfile: row.rhythm_profile ?? '',
         synopsis: row.synopsis,
         characterStates: row.character_states,
     }
@@ -187,6 +192,7 @@ export class ProjectCoreRepository {
             premise: 'premise',
             worldbuilding: 'worldbuilding',
             plotStructurePlan: 'plot_structure_plan',
+            rhythmProfile: 'rhythm_profile',
             synopsis: 'synopsis',
             characterStates: 'character_states',
         }

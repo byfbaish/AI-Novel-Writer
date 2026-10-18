@@ -361,6 +361,12 @@ export class ArchitecturePromptBuilder extends BasePromptBuilder {
     return this;
   }
 
+  /** 平台节奏画像（v7 弧光层）。空串 = 中性，模板里的【节奏推荐】整段会被裁掉。 */
+  withRhythmProfile(profile: string) {
+    this.variables.rhythm_profile = profile;
+    return this;
+  }
+
   withNarrativePov(pov: string) {
     this.variables.narrative_pov = pov;
     return this;

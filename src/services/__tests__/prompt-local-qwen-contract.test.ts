@@ -56,6 +56,7 @@ const expectedPromptVariables: Record<string, string[]> = {
     'global_guidance',
     'step_guidance',
     'reference_works',
+    'rhythm_profile',
   ],
   synopsis: [
     'premise',

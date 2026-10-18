@@ -34,7 +34,7 @@
 | # | 层 | 改动 | 风险 |
 |---|---|---|---|
 | P1 | 解析 | 两张正则加别名 + 中文序号；两级模式成为一等公民 | **高**（弧位/大纲/审计三处共用） |
-| P2 | 数据 | 新列 `rhythm_profile`（M08）+ lane 六步 | 中（迁移） |
+| P2 | 数据 | 新列 `rhythm_profile`（**M09**，M08 已被 structured_refs 占用）+ lane 六步 | 中（迁移） |
 | P2 | 模板 | 新增 `{{rhythm_profile}}`，正文换 v7 | 中（红线 16 穿透覆盖版） |
 | P3 | 体检 | `ARC_SAME_HAND_TYPE` / `ARC_TIER_STUCK` | 低（只报不拦） |
 | P4 | UI | 平台节奏下拉 + 文案改"卷/单元" | 低 |
@@ -83,7 +83,7 @@ v7 输出根本没有小弧，`parseMinorArcs` 收集结果恒为空。需要把
 
 ## 5. P2 · 画像注入
 
-### 5.1 数据落点：新列 `rhythm_profile`（M08）
+### 5.1 数据落点：新列 `rhythm_profile`（**M09**，v9→v10）
 
 平台是**书的属性**，不是 App 的属性——同一个 App 里两本书可以一本起点一本番茄。所以落在 `project_core`，不是全局设置。
 
@@ -95,7 +95,7 @@ ALTER TABLE project_core ADD COLUMN rhythm_profile TEXT NOT NULL DEFAULT ''
 
 1. `registry.ts` 追加 `MIGRATION_LANE` + `LATEST_SCHEMA_VERSION+1`
 2. `src/shared/project-storage.ts` 追加同名 `MIGRATION_IDS`
-3. 新建 `electron/migrations/m08-rhythm-profile.ts`（`apply*` 幂等 + `verify*` + `create*Migration`）
+3. 新建 `electron/migrations/m09-rhythm-profile.ts`（`apply*` 幂等 + `verify*` + `create*Migration`）
 4. `desktop-registry.ts` 跑 `apply*` 后取 `schemas(n+1)` 注册、`CURRENT_DESKTOP_SCHEMA_VERSION+1`
 5. `sqlite-project-migration.ts` 的 `CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED` 白名单
 6. 基线保持冻结，不在 `initializeLegacyBaselineSchema` 里加幂等 ALTER
@@ -174,7 +174,7 @@ ALTER TABLE project_core ADD COLUMN rhythm_profile TEXT NOT NULL DEFAULT ''
 
 ```
 P1 解析器（含 golden 测试）  ← 先做，单独可验
-  └ P2 画像（M08 + 变量 + 模板替换）  ← 依赖 P1 能解析新词
+  └ P2 画像（M09 + 变量 + 模板替换）  ← 依赖 P1 能解析新词
       └ P3 体检器两条              ← 依赖 P2 的标注格式
           └ P4 UI/i18n            ← 最后，纯展示
 ```
