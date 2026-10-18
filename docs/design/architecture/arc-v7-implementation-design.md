@@ -97,7 +97,7 @@ ALTER TABLE project_core ADD COLUMN rhythm_profile TEXT NOT NULL DEFAULT ''
 2. `src/shared/project-storage.ts` 追加同名 `MIGRATION_IDS`
 3. 新建 `electron/migrations/m09-rhythm-profile.ts`（`apply*` 幂等 + `verify*` + `create*Migration`）
 4. `desktop-registry.ts` 跑 `apply*` 后取 `schemas(n+1)` 注册、`CURRENT_DESKTOP_SCHEMA_VERSION+1`
-5. `sqlite-project-migration.ts` 的 `CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED` 白名单
+5. `sqlite-project-migration.ts` 的 `CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED` 白名单（**最容易漏**：漏改的直接表现是老项目打不开；已加 v9→v10 回归测试）
 6. 基线保持冻结，不在 `initializeLegacyBaselineSchema` 里加幂等 ALTER
 
 ### 5.2 空值语义：**空 = 中性，不是默认起点**
