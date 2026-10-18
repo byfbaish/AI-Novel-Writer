@@ -138,7 +138,7 @@ docs/
 | [`p8-fanqie-flavor-draft-quality-design.md`](design/prompt/p8-fanqie-flavor-draft-quality-design.md) | ✅ P1 生效 · ⏳ P2/P3 待复验 | 番茄向正文质量闸门：续写判定接回合格线 / 可判定 AI 味禁令 / 番茄 KPI 落点（§10 复验 #1） |
 | [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（29 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（30 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -170,7 +170,8 @@ docs/
 | [`arc-prompt-v2-web-test.md`](design/architecture/arc-prompt-v2-web-test.md) | 🧪 验证件 v2.1 · 已否决 | **弧光提示词组装稿（v2.1）**：真实项目数据填充、可直接粘到网页模型验证。v2 网页实测三处失败已修：小弧由「3–5 条必发事件」→「回合」→ **战线**；中弧补**局面**；**底牌记账上移大弧**。⚠️ v2.1 实测仍失败（小弧全是家长里短），原因见 v3 |
 | [`arc-prompt-v3-web-test.md`](design/architecture/arc-prompt-v3-web-test.md) | ✅ 方向已验证（作者 2026-10-19）· 被 v4 取代 | **弧光提示词 v3**：行业词（卷/单元）、删掉第三层小弧、放开章数区间与占比、末尾**全书节奏表**。实测产出明显优于 v2.1（叙事任务有架子、状态变化留白） |
 | [`arc-prompt-v4-web-test.md`](design/architecture/arc-prompt-v4-web-test.md) | ✅ 双画像已验证（2026-10-19）· 被 v5 取代 | **篇幅收回、改画像推荐**：模型不再输出章数/占比/章号；输入侧给「节奏推荐」画像。实测：番茄 23 单元 / 起点 21 单元，**无篇幅数字也未缩小气** ⇒ 数字不是"大"的必要条件 |
-| [`arc-prompt-v5-web-test.md`](design/architecture/arc-prompt-v5-web-test.md) | 🧪 验证件 v5 · 待复验 | **补两处退化**：① 逼法"变"= 上一段那个办法**不好使了**，只换施压者判不合格，并给五档强度（关心→标价→立卷→债务→摊牌）；② 结账必须落到具体的人/物/记录，追问"谁现在会来找麻烦"。附 **部 = 冻结快照** 的最小 schema（含原文锚点，摘要可虚、指针必须准） |
+| [`arc-prompt-v5-web-test.md`](design/architecture/arc-prompt-v5-web-test.md) | 🧪 验证件 v5 · 被 v6 取代 | **补两处退化**：① 逼法"变"= 上一段那个办法**不好使了**，只换施压者判不合格，并给五档强度；② 结账必须落到具体的人/物/记录，追问"谁现在会来找麻烦"。硬画像实测 19 vs 27 单元。⚠️ 个数在三处声明（画像/怎么切/输出格式），画像改不动常量 |
+| [`arc-prompt-v6-web-test.md`](design/architecture/arc-prompt-v6-web-test.md) | 🧪 验证件 v6 · 待复验 | **个数单一事实源 + 去同质化**：个数只在【节奏推荐】声明（删掉【怎么切】与输出格式里的硬编码）；新增"相邻两单元交手类型不许相同"（谈判/堵门/取证/设局/摊牌/认账）。含正交实验设计（A 卷少单元多 / B 卷多单元少 / C 只改兑现间隔） |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
 
