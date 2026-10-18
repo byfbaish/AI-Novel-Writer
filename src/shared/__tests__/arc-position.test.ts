@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   arcSpanForChapters,
+  auditArcDensity,
   arcStructureNeedsRescale,
   isTwoLevelArcStructure,
   parseArcStructure,
@@ -646,5 +647,39 @@ describe('v7 两级结构（卷 / 单元）', () => {
     const block = renderArcPositionBlock(parseArcStructure(PLAN), 845, 1, 20, 'zh-CN')
     expect(block).toContain('所在大弧：大弧1【')
     expect(block).toContain('所在中弧：中弧1【')
+  })
+})
+
+describe('v7 两级体检：读（交手／档）标注，不猜语义', () => {
+  const BAD = [
+    '# 卷 / 单元结构',
+    '## 卷一：门牌全歪了',
+    '- 卷叙事任务：立规则。',
+    '### 单元一：面摊',
+    '- 叙事任务：立规则。',
+    '- 逼法：老陈逼他接话 → 变成房东催租（交手：堵门；档：关心→立卷）',
+    '### 单元二：巷口',
+    '- 叙事任务：再立一次。',
+    '- 逼法：邻居围门 → 变成房东再催（交手：堵门；档：立卷→立卷）',
+  ].join('\n')
+
+  it('相邻同类型 + 档位没动，两条都报', () => {
+    const codes = auditArcDensity(parseArcStructure(BAD)).map(item => item.code)
+    expect(codes).toContain('ARC_SAME_HAND_TYPE')
+    expect(codes).toContain('ARC_TIER_STUCK')
+  })
+
+  it('正常两级结构（类型不同、档位爬升）零告警', () => {
+    expect(auditArcDensity(parseArcStructure(V7_PLAN))).toEqual([])
+  })
+
+  it('没有标注的历史两级 plan 不报（v6 产出无从修）', () => {
+    const legacyTwoLevel = V7_PLAN.replace(/（交手：[^）]*）/gu, '')
+    expect(auditArcDensity(parseArcStructure(legacyTwoLevel))).toEqual([])
+  })
+
+  it('三级旧结构仍然走原来的七条，不被两级体检接管', () => {
+    const codes = auditArcDensity(parseArcStructure(PLAN)).map(item => item.code)
+    expect(codes).not.toContain('ARC_SAME_HAND_TYPE')
   })
 })
