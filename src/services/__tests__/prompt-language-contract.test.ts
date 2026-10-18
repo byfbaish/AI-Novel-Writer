@@ -361,3 +361,89 @@ describe('中弧位置行点名 + 小弧目标/赌注双侧一致（P17）', () 
     expect(en()).toContain('19. **The mid-arc slot lines are all linked**')
   })
 })
+
+/**
+ * P18：弧光层不做篇幅预算（作者裁定）。
+ *
+ * 作者的原话：篇幅是**计算弧光个数**的必要手段，不是**内容预算**。两条陷阱：
+ * ① 关联陷阱 —— 用强因果约束弧间关系（"重生小学生"到"全国首富"没有必然因果，中间那段空白才是创作空间）；
+ * ② 篇幅陷阱 —— 为达篇幅而写（实测：给了 1500 字下限，能力弱的模型到 1500 字立刻收笔，故事失去张力）。
+ * 所以弧光层只留**个数**，章数、字数、Σ、差额一并下线；弧间只要求**可达**，不要求必然。
+ *
+ * 断言只防单侧改动，以及防"删了正文却没删干净"（残留一句「约 N 章」就足够把模型拽回篇幅思维）。
+ */
+describe('弧光层去篇幅化 + 可达性（P18）', () => {
+  const arc = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('plot_structure', language)!.content
+  const zh = () => arc('zh-CN')
+  const en = () => arc('en-US')
+
+  it('篇幅预算整段下线：没有 Σ、没有 ±10%、没有逐项相加', () => {
+    for (const text of [zh(), en()]) {
+      expect(text).not.toContain('±10%')
+      expect(text).not.toContain('【篇幅预算】')
+      expect(text).not.toContain('Length budget')
+      expect(text).not.toContain('逐项相加')
+      expect(text).not.toContain('term-by-term addition')
+    }
+  })
+
+  it('只留个数：第一行是【弧光个数】，并明令之后不许再出现章数', () => {
+    expect(zh()).toContain('【弧光个数】')
+    expect(zh()).toContain('从这一行往下，不许再出现任何章数、字数、篇幅分配')
+    expect(zh()).toContain('章号区间由系统按**个数**自动均分')
+    expect(en()).toContain('[Arc counts]')
+    expect(en()).toContain('no chapter count, word count or length allocation may appear again')
+    expect(en()).toContain('divided automatically by the')
+  })
+
+  it('输出格式与示例里没有「约 N 章」，小弧用【名】划界', () => {
+    for (const text of [zh(), en()]) {
+      expect(text).not.toMatch(/##\s*大弧[^\n]*（约[^）]*章）/u)
+      expect(text).not.toMatch(/##\s*Major arc[^\n]*approx\.[^)]*chapter/iu)
+    }
+    expect(zh()).toContain('【<小弧名>】：目标')
+    expect(zh()).toContain('**不要写章数**（弧光层不排篇幅）')
+    expect(en()).toContain('[<name>]: Goal')
+    expect(en()).toContain('**no chapter count is written**')
+  })
+
+  it('层的含义由故事尺度定义，不由章数定义', () => {
+    expect(zh()).toContain('层是故事的层，不是页数的层')
+    expect(zh()).toContain('他重生成了小学生，后来成了全国首富')
+    expect(zh()).toContain('与要写多少章无关')
+    expect(en()).toContain('A level is a level of the story')
+    expect(en()).toContain('how many genuinely')
+  })
+
+  it('关联 → 可达：启发性留白 + 不可跳过的可达性（含"舰队远征银河"反例）', () => {
+    expect(zh()).toContain('**因果**要求 B 由 A 必然推出；**可达**只要求能从 A 走到 B')
+    expect(zh()).toContain('舰队远征银河')
+    expect(zh()).toContain('不是"缺因果"，是**这段没有路**')
+    expect(zh()).toContain('下层级的节点必须落在**上层级相邻节点之间**')
+    expect(en()).toContain('**causality** means B necessarily follows from A; **reachability** only means you can get from A to B')
+    expect(en()).toContain('I take a fleet to conquer the galaxy')
+    expect(en()).toContain('there is **no road**')
+  })
+
+  it('因果字段改成写"入口"，并显式说不要求必然', () => {
+    expect(zh()).toContain('它写的是入口，不是必然性')
+    expect(zh()).toContain('上一段结束时他是 <具体状态>')
+    expect(en()).toContain('it records the entrance, not necessity')
+    expect(en()).toContain('at the end of the previous stretch he was <concrete state>')
+  })
+
+  it('自检 1 就是"全文没有章数"，且带上这条硬指标', () => {
+    expect(zh()).toContain('1. **全文没有章数**')
+    expect(zh()).toContain('5. **每段弧都写得出入口**')
+    expect(zh()).toContain('6. **没有跨不过去的跳脱节点**')
+    expect(en()).toContain('1. **No chapter counts anywhere**')
+    expect(en()).toContain('5. **Every arc states its entrance**')
+    expect(en()).toContain('6. **No unbridgeable jump**')
+  })
+
+  it('下游大纲仍然拿得到章数，但只作为给定条件（避免与"弧光不写章数"打架）', () => {
+    const synopsis = getBuiltinPromptTemplate('synopsis', 'zh-CN')!.systemSuffix ?? ''
+    expect(synopsis).toContain('系统给出的小弧章号区间')
+    expect(synopsis).toContain('不含任何篇幅要求')
+  })
+})

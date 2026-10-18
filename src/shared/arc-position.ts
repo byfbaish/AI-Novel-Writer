@@ -33,13 +33,26 @@ import type { WritingLanguage } from './writing-language'
 export interface ArcMinor {
   /** 小弧名（已去掉【】） */
   name: string
-  /** 弧光里的约数章数 */
-  chapters: number
   /**
-   * 小弧内容（`起点 → 事件 → 落点`）。旧版弧光没有这一项时为 undefined ——
-   * 解析与渲染都按「只有名字」退化处理，不报错。
+   * 小弧的章数。**P18 起为可选**：弧光层不再做篇幅预算，模型可以完全不写章数。
+   * 缺省时按「与其他同级弧等权」参与区间折算（见 `arcWeight`）——
+   * 区间仍然有来源，只是来源从「模型自报」变成「个数均分」。
    */
+  chapters?: number
+  /** 小弧内容（`起点 → 事件 → 落点`）。旧版弧光没有这一项时为 undefined ——
+   * 解析与渲染都按「只有名字」退化处理，不报错。 */
   text?: string
+}
+
+/**
+ * 一条弧参与区间折算的**权重**：有章数用章数，没有就等权 1。
+ *
+ * P18 的理由（作者裁定）：篇幅只用来算**个数**，不用来定**内容**。模型一旦被要求
+ * 逐条写「约 N 章」，就会为对齐 N 而安排事件 —— 与「1500 字下限一到就停」是同一个病。
+ * 所以章数从必填变成可选，缺省时按个数均分，大纲层的章号区间照样拿得到。
+ */
+export function arcWeight(chapters?: number): number {
+  return typeof chapters === 'number' && Number.isFinite(chapters) && chapters > 0 ? chapters : 1
 }
 
 /**
@@ -54,7 +67,7 @@ export function minorRanges(
   midRange: readonly [number, number],
 ): Array<{ name: string; range: readonly [number, number]; text?: string }> {
   if (minors.length === 0) return []
-  const bounds = scaledBoundaries(minors.map(item => item.chapters), midRange[1] - midRange[0] + 1)
+  const bounds = scaledBoundaries(minors.map(item => arcWeight(item.chapters)), midRange[1] - midRange[0] + 1)
   return minors.map((minor, offset) => ({
     name: minor.name,
     range: [midRange[0] + bounds[offset]!, midRange[0] + bounds[offset + 1]! - 1] as const,
@@ -65,11 +78,10 @@ export function minorRanges(
 /**
  * 把小弧内容按 `→` 切成有序的**事件步**（含首项起点与末项落点）。
  *
- * 为什么编号而不是直接交给模型读：`→` 序列是**有序**的，但没有任何东西规定
- * "第几章该走到第几步"。实测（2026-10-18，作者 150 章弧光）第 1 章就把一条
- * 8 章小弧的 6 段全部写完，随后 7 章无料可写、越弧取材。
- * 有了步数，就能算出「弧内第 k 章的进度上限」，把"不得提前兑现落点"变成
- * **逐章可核对的数字**，而不是一句"不要提前"（判据 BJ：按批表述的约束在批覆盖整弧时失效）。
+ * ⚠️ **P18 已撤回它的用途**：曾用它算「弧内第 k 章的进度上限」（`minorStepCeiling`），
+ * 让模型按章分摊事件。作者裁定那是篇幅陷阱的一种 —— 模型会为对齐步数而填充，
+ * 与「1500 字下限一到就停」同源。逐章上限已删除；步数现在只用于体检读事件
+ * （`MINOR_NO_COUNTER` 判断事件是否全从主角视角写）。
  *
  * 无 `→`、或切出的步数 < 2 时返回空数组 —— 调用方退化为旧行为，不报错（fail-open）。
  */
@@ -82,18 +94,11 @@ export function splitMinorSteps(text?: string): string[] {
   return steps.length >= 2 ? steps : []
 }
 
-/** 弧内第 `k` 章（1-based）允许推进到的**步数**（1-based，累计语义）。 */
-export function minorStepCeiling(arcChapter: number, totalSteps: number, totalChapters: number): number {
-  if (totalSteps <= 0 || totalChapters <= 0) return 0
-  const k = Math.min(Math.max(arcChapter, 1), totalChapters)
-  return Math.min(totalSteps, Math.max(1, Math.ceil((k * totalSteps) / totalChapters)))
-}
-
 export interface ArcMid {
   /** 弧光里的名称（已去掉【】） */
   name: string
-  /** 弧光里的约数章数 */
-  chapters: number
+  /** 中弧章数（P18 起可选，缺省按个数均分，见 `arcWeight`） */
+  chapters?: number
   /** 该中弧的规格字段（类型 / 因果|目标|动机 / 时序|尝试|路径 / 转折 …） */
   fields: readonly (readonly [string, string])[]
   /**
@@ -105,7 +110,8 @@ export interface ArcMid {
 
 export interface ArcMajor {
   name: string
-  chapters: number
+  /** 大弧章数（P18 起可选，缺省按个数均分，见 `arcWeight`） */
+  chapters?: number
   fields: readonly (readonly [string, string])[]
   /**
    * 大弧的「结束状态」原文（P13）。它在 `SKIP_FIELDS` 里（不进 `fields`，因为它是
@@ -117,8 +123,15 @@ export interface ArcMajor {
 
 export interface ParsedArcStructure {
   majors: readonly ArcMajor[]
-  /** 弧光自报的章数合计（用于声明折算比例） */
+  /** 弧光自报的章数合计（用于声明折算比例）。无任何章数时等于权重合计，不参与折算提示。 */
   declaredTotal: number
+  /**
+   * 弧光里**有没有任何一条弧自报过章数**（P18）。
+   *
+   * 没有时 `declaredTotal` 只是"个数"，不能再拿它跟全书章数比 —— 否则会印出
+   * 「弧光合计 3 章，以下章号已按全书 150 章等比折算」这种无意义提示。
+   */
+  declaredChapters: boolean
 }
 
 export interface ArcSpan {
@@ -213,6 +226,14 @@ const BULLET_LINE = /^[-*][\t ]+(.+)$/u
  */
 const MINOR_LIST_HEADER = /^(?:小弧数|小弧|minor[\t ]*arc[\t ]*count|minor[\t ]*arcs)[\t ]*[：:]/iu
 
+/**
+ * P18：**无章数**的小弧行 —— `【错位门牌】：目标 … ｜ 起点 → 事件 → 落点`。
+ *
+ * 弧光层不再做篇幅预算后，模型可以完全不写「（约 N 章）」。此时必须另有东西把小弧行
+ * 与普通字段行区分开：认开头的【】。普通字段是 `- 因果：…`，不会被误认。
+ */
+const MINOR_ITEM_BARE = /^[【\[](.+?)[】\]][\t ]*(?:[：:][\t ]*(.+?))?[\t ]*[。．.、,，]?$/u
+
 /** 从正则匹配结果造一个 `ArcMinor`；名字/章数非法时返回 null。 */
 function toMinor(match: RegExpExecArray): ArcMinor | null {
   const name = stripBrackets(toText(match[1]!))
@@ -220,6 +241,14 @@ function toMinor(match: RegExpExecArray): ArcMinor | null {
   if (!name || !Number.isSafeInteger(chapters) || chapters < 1) return null
   const text = match[3] ? toText(match[3]) : ''
   return text ? { name, chapters, text } : { name, chapters }
+}
+
+/** P18：无章数形态。章数缺省 ⇒ 参与折算时等权（`arcWeight`）。 */
+function toMinorBare(match: RegExpExecArray): ArcMinor | null {
+  const name = stripBrackets(toText(match[1]!))
+  if (!name) return null
+  const text = match[2] ? toText(match[2]) : ''
+  return text ? { name, text } : { name }
 }
 
 /**
@@ -239,8 +268,14 @@ function parseMinorArcs(value: string): ArcMinor[] {
     const item = raw.trim()
     if (!item) continue
     const match = MINOR_ITEM_ZH.exec(item) ?? MINOR_ITEM_EN.exec(item)
-    if (!match) continue
-    const minor = toMinor(match)
+    if (match) {
+      const minor = toMinor(match)
+      if (minor) result.push(minor)
+      continue
+    }
+    // P18：无章数形态（模型没写「约 N 章」）—— 用【】认。
+    const bare = MINOR_ITEM_BARE.exec(item.replace(/^[-*][\t ]+/u, ''))
+    const minor = bare ? toMinorBare(bare) : null
     if (minor) result.push(minor)
   }
   return result
@@ -278,24 +313,25 @@ function headingChapterCount(start: string | undefined, end: string | undefined)
 export function parseArcStructure(plan: string | null | undefined): ParsedArcStructure | null {
   if (!plan?.trim()) return null
   const majors: ArcMajor[] = []
-  type MutableMid = { name: string; chapters: number; fields: [string, string][]; minors: ArcMinor[] }
-  let major: { name: string; chapters: number; fields: [string, string][]; mids: MutableMid[]; endState?: string } | null = null
+  type MutableMid = { name: string; chapters?: number; fields: [string, string][]; minors: ArcMinor[] }
+  let major: { name: string; chapters?: number; fields: [string, string][]; mids: MutableMid[]; endState?: string } | null = null
   let mid: MutableMid | null = null
 
   for (const rawLine of plan.split(/\r?\n/u)) {
     const line = rawLine.trim()
     const majorMatch = MAJOR_HEADING.exec(line)
     const majorChapters = majorMatch ? headingChapterCount(majorMatch[2], majorMatch[3]) : null
-    if (majorMatch && majorChapters !== null) {
-      major = { name: stripBrackets(majorMatch[1]!), chapters: majorChapters, fields: [], mids: [] }
+    // P18：标题不带章数也收（弧光层已不做篇幅预算）。缺省 → `chapters` undefined → 等权折算。
+    if (majorMatch) {
+      major = { name: stripBrackets(majorMatch[1]!), ...(majorChapters !== null ? { chapters: majorChapters } : {}), fields: [], mids: [] }
       majors.push(major as ArcMajor)
       mid = null
       continue
     }
     const midMatch = MID_HEADING.exec(line)
     const midChapters = midMatch ? headingChapterCount(midMatch[2], midMatch[3]) : null
-    if (midMatch && midChapters !== null && major) {
-      mid = { name: stripBrackets(midMatch[1]!), chapters: midChapters, fields: [], minors: [] }
+    if (midMatch && major) {
+      mid = { name: stripBrackets(midMatch[1]!), ...(midChapters !== null ? { chapters: midChapters } : {}), fields: [], minors: [] }
       major.mids.push(mid)
       continue
     }
@@ -304,10 +340,18 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
     // 悄悄混进 `fields`，既污染中弧规格，又让 `minors` 为空（区间折算随之全错）。
     const bullet = BULLET_LINE.exec(line)
     if (bullet && mid && !MINOR_LIST_HEADER.test(bullet[1]!.trim())) {
-      const item = MINOR_ITEM_ZH.exec(bullet[1]!.trim()) ?? MINOR_ITEM_EN.exec(bullet[1]!.trim())
+      const body = bullet[1]!.trim()
+      const item = MINOR_ITEM_ZH.exec(body) ?? MINOR_ITEM_EN.exec(body)
       const minor = item ? toMinor(item) : null
       if (minor) {
         mid.minors.push(minor)
+        continue
+      }
+      // P18：无章数的小弧行，用【】认（`- 【错位门牌】：目标 … ｜ 起点 → …`）。
+      const bare = MINOR_ITEM_BARE.exec(body)
+      const bareMinor = bare ? toMinorBare(bare) : null
+      if (bareMinor) {
+        mid.minors.push(bareMinor)
         continue
       }
     }
@@ -328,11 +372,13 @@ export function parseArcStructure(plan: string | null | undefined): ParsedArcStr
     else if (major) major.fields.push([name, value])
   }
 
-  const usable = majors.filter(item => item.chapters > 0 && item.mids.length > 0 && item.mids.every(sub => sub.chapters > 0))
+  // P18：不再要求每条弧自报章数 —— 只要求「有中弧」这件事成立，章数缺省时按等权折算。
+  const usable = majors.filter(item => item.mids.length > 0)
   if (!usable.length) return null
   return Object.freeze({
     majors: Object.freeze(usable),
-    declaredTotal: usable.reduce((sum, item) => sum + item.chapters, 0),
+    declaredTotal: usable.reduce((sum, item) => sum + arcWeight(item.chapters), 0),
+    declaredChapters: usable.some(item => typeof item.chapters === 'number'),
   })
 }
 
@@ -373,13 +419,13 @@ export function arcSpanForChapters(
   if (!parsed || !Number.isSafeInteger(totalChapters) || totalChapters < 1) return null
   if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 1 || to < from || from > totalChapters) return null
 
-  const majorBounds = scaledBoundaries(parsed.majors.map(item => item.chapters), totalChapters)
+  const majorBounds = scaledBoundaries(parsed.majors.map(item => arcWeight(item.chapters)), totalChapters)
   const majorIndex = parsed.majors.findIndex((_, index) => from <= majorBounds[index + 1]!)
   if (majorIndex < 0) return null
   const major = parsed.majors[majorIndex]!
   const majorRange: [number, number] = [majorBounds[majorIndex]! + 1, majorBounds[majorIndex + 1]!]
 
-  const midBounds = scaledBoundaries(major.mids.map(item => item.chapters), majorRange[1] - majorRange[0] + 1)
+  const midBounds = scaledBoundaries(major.mids.map(item => arcWeight(item.chapters)), majorRange[1] - majorRange[0] + 1)
   const midIndex = major.mids.findIndex((_, index) => from - majorRange[0] + 1 <= midBounds[index + 1]!)
   if (midIndex < 0) return null
   const mid = major.mids[midIndex]!
@@ -428,7 +474,7 @@ export function arcSpanForChapters(
 
 /** 结构里是否声明了与全书章数不同的合计（用于在注入文本里声明折算）。 */
 export function arcStructureNeedsRescale(parsed: ParsedArcStructure | null, totalChapters: number): boolean {
-  return !!parsed && parsed.declaredTotal > 0 && parsed.declaredTotal !== totalChapters
+  return !!parsed && parsed.declaredChapters && parsed.declaredTotal > 0 && parsed.declaredTotal !== totalChapters
 }
 
 /** `- **接续理由**：…` / `- Continuation reason: …` —— 大弧之间的推进理由（B 档要保留）。 */
@@ -639,26 +685,6 @@ export function renderArcPositionBlock(
         lines.push(en
           ? `    - M${span.majorIndex}-${midIndex}/小弧:${item.name} — ch. ${item.range[0]}–${item.range[1]}`
           : `    - M${span.majorIndex}-${midIndex}/小弧:${item.name} — 第 ${item.range[0]}–${item.range[1]} 章`)
-        // 逐章进度上限（P14）：把"不得提前兑现落点"从一句提醒变成每章一个数字。
-        // 步序 = 该小弧 `→` 序列从左到右编号（第 1 步 = 起点，最后一步 = 落点）。
-        const steps = splitMinorSteps(item.text)
-        const arcLen = item.range[1] - item.range[0] + 1
-        if (steps.length >= 2 && arcLen >= 2) {
-          const caps: string[] = []
-          for (let chapter = Math.max(from, item.range[0]); chapter <= Math.min(to, item.range[1]); chapter += 1) {
-            const arcChapter = chapter - item.range[0] + 1
-            const ceiling = minorStepCeiling(arcChapter, steps.length, arcLen)
-            caps.push(en
-              ? `ch.${chapter}→step ${ceiling}`
-              : `第${chapter}章→第${ceiling}步`)
-          }
-          if (caps.length) {
-            const landingFrom = item.range[0] + Math.floor(((steps.length - 1) * arcLen) / steps.length)
-            lines.push(en
-              ? `      ↳ This arc has ${steps.length} steps (step 1 = start state, step ${steps.length} = landing state; step order = the left-to-right "→" sequence above). Per-chapter ceiling: ${caps.join('; ')}. The landing state may first appear at ch.${landingFrom}.`
-              : `      ↳ 本弧共 ${steps.length} 步（第 1 步=起点，第 ${steps.length} 步=落点；步序即上方该小弧「→」序列从左到右的次序）。逐章上限：${caps.join('；')}。落点最早出现在第 ${landingFrom} 章。`)
-          }
-        }
       }
     }
     if (turn) {
@@ -703,7 +729,8 @@ ${coverableLabel}
 3. If this batch reaches the turning point of the current mid arc, close it out and ease into the next minor arc; do not jump to the next mid arc's goal.
 4. The "ending state" of major arc ${span.majorIndex} is the **acceptance criterion for chapter ${span.majorRange[1]}**, not material you may use now. Do not pay off any of its clauses in this batch (e.g. a character taking on their first ledger entry, someone quoting a price for the first time) — those are the business of later mid arcs.
 5. A minor arc's chapter span is a **given, not an estimate**: 8 chapters means 8 chapters of content — never compress it into 1–2 chapters and fold the free ones into the next minor arc.
-   Its end state belongs to its **last** chapters. When a per-chapter ceiling is printed above, that ceiling is a hard number: a chapter must not walk past the step listed for it; when there is no new event to advance, repeating the same step is allowed (that chapter's job is to unfold the consequences of the previous one).
+   Its end state belongs to its **last** chapters: when there is no new event to advance, unfolding the consequences of the same step is allowed, but the end state may not be paid off early.
+   ★ The chapter count is a **given condition** (divided from the arc counts), not a writing budget: do not add material just to fill those chapters, and do not stall because they are not used up — whether a chapter is worth reading depends on its situation, not on which slot it occupies.
    This holds **even when the batch covers the whole arc** — covering the whole arc is not permission to write it in one go, it is an obligation to spread it chapter by chapter.${crossing}`
     : `【本批所处弧位（据「弧光结构」推算，仅用于定位，不改变弧光本身）】
 - 本批范围：第 ${from}–${to} 章（全书 ${totalChapters} 章）${rescale}
@@ -718,7 +745,9 @@ ${coverableLabel}
 3. 若本批已写到当前中弧的转折点，请在此收束并向下一小弧过渡，**不要**跳到下一个中弧的目标；
 4. 大弧${span.majorIndex}【${span.majorName}】的「结束状态」是本卷**第 ${span.majorRange[1]} 章才成立的验收标准**，不是本批可用的材料 —— 不得把其中任何一条在本批写掉（实测：第 4 章就把「鲁传福替他挡」写成事实，而那属于后续中弧的尝试 1）；
 5. 一个小弧的章数区间是**给定条件，不是估计值**：跨 8 章就得写出 8 章的内容，**不得**压缩进 1–2 章、再把空出来的章并进下一个小弧。
-   它的「落点状态」是**最后几章**才到的地方 —— 上面若印了「逐章上限」，那就是硬数字：某一章不得越过它对应的步数；没有新事件可推进时，写同一水位是允许的（这一章的任务是展开上一步的后果）。
+   它的「落点状态」是**最后几章**才到的地方：没有新事件可推进时，写同一步的后果是允许的（这一章的任务是展开上一步的影响），但不得提前兑现落点。
+   ★ 章数只是**给定条件**（由弧光的个数均分而来），不是写作预算：不要为了"用满这几章"而加料，
+   也不要因为"这几章还没用完"而拖延 —— 一章值不值得看，取决于这一章的局面，不取决于它占第几格。
    这一条在本批覆盖整条弧时**同样成立** —— 覆盖整弧不是"可以一次写完"的许可，而是"必须逐章分摊"。${crossing}`
 }
 
@@ -821,11 +850,15 @@ export function auditArcDensity(parsed: ParsedArcStructure | null): ArcDensityFi
       const midWhere = `大弧${majorIndex}/中弧${midOffset + 1}【${mid.name}】`
       const nameless = mid.minors.filter(item => densityLength(item.text ?? '') < MINOR_CONTENT_FLOOR)
       if (nameless.length > 0) {
+        // P18：弧光可以不带章数，报"覆盖多少章"时按可得信息退化，不能编一个数字出来。
+        const namelessChapters = nameless.reduce((sum, item) => sum + (item.chapters ?? 0), 0)
+        const scope = namelessChapters > 0 ? `这 ${namelessChapters} 章` : '这一段'
+        const scopeEn = namelessChapters > 0 ? `the ${namelessChapters} chapters` : 'this stretch of'
         findings.push({
           code: 'MINORS_NAMELESS',
           where: midWhere,
-          zh: `${midWhere} 有 ${nameless.length}/${mid.minors.length} 个小弧只有名字、没有必然事件 —— 这些小弧覆盖的 ${nameless.reduce((sum, item) => sum + item.chapters, 0)} 章大纲拿不到本层材料，只能向上越层取材。`,
-          en: `${midWhere}: ${nameless.length}/${mid.minors.length} minor arcs carry a name only, with no required events — the ${nameless.reduce((sum, item) => sum + item.chapters, 0)} chapters they cover have no material at this layer and must borrow from a coarser one.`,
+          zh: `${midWhere} 有 ${nameless.length}/${mid.minors.length} 个小弧只有名字、没有必然事件 —— 这些小弧覆盖的${scope}大纲拿不到本层材料，只能向上越层取材。`,
+          en: `${midWhere}: ${nameless.length}/${mid.minors.length} minor arcs carry a name only, with no required events — ${scopeEn} they cover has no material at this layer and must borrow from a coarser one.`,
         })
       }
       const minorWords = mid.minors.reduce((sum, item) => sum + densityLength(item.name) + densityLength(item.text ?? ''), 0)
@@ -848,14 +881,16 @@ export function auditArcDensity(parsed: ParsedArcStructure | null): ArcDensityFi
       const hasFailureSlot = mid.fields.some(([name]) => FAILURE_SLOT_FIELD.test(name))
       const hasWinBackSlot = mid.fields.some(([name]) => WINBACK_SLOT_FIELD.test(name))
       if (!hasWinBackSlot) {
+        const span = mid.chapters ? `${mid.chapters} 章` : '整段'
+        const spanEn = mid.chapters ? `${mid.chapters} chapters` : 'this whole arc'
         findings.push({
           code: 'MID_ONE_SIDED',
           where: midWhere,
           zh: hasFailureSlot
-            ? `${midWhere} 只写了"他失败"的位置（阻塞 / 尝试 / 扑空），没有写"对手失手"的位置（反制 / 得手 / 反获）—— 这 ${mid.chapters} 章里他一直在挨打。`
+            ? `${midWhere} 只写了"他失败"的位置（阻塞 / 尝试 / 扑空），没有写"对手失手"的位置（反制 / 得手 / 反获）—— 这${span}里他一直在挨打。`
             : `${midWhere} 既没有"他失败"的位置，也没有"对手失手"的位置（旧格式）—— 这一弧的推进只剩"然后呢"。`,
           en: hasFailureSlot
-            ? `${midWhere} defines only where he fails (Block / Attempt / Dead end) and never where the opponent loses (Counter / Score / Recovery) — across these ${mid.chapters} chapters he only takes hits.`
+            ? `${midWhere} defines only where he fails (Block / Attempt / Dead end) and never where the opponent loses (Counter / Score / Recovery) — across ${spanEn} he only takes hits.`
             : `${midWhere} defines neither where he fails nor where the opponent loses (legacy format) — this arc progresses on "and then" alone.`,
         })
       } else {
