@@ -795,6 +795,9 @@ ${coverableLabel}
     .replaceAll('大弧', '卷')
     .replaceAll('中弧', '单元')
     .replaceAll('小弧', '单元')
+    // 规则 4 引用的是三级结构的「结束状态」字段；两级结构的对应字段叫「离开状态」。
+    // 不换的话，模型会去卷里找一栏根本不存在的「结束状态」，规则 4 直接落空。
+    .replaceAll('「结束状态」', '「离开状态」')
     .replaceAll('mid arcs', 'units')
     .replaceAll('mid arc', 'unit')
     .replaceAll('Mid arc', 'Unit')
@@ -843,6 +846,8 @@ export interface ArcDensityFinding {
     | 'ARC_SAME_HAND_TYPE'
     /** 两级结构：相邻单元停在同一档，或本单元档位没动（压力原地踏步） */
     | 'ARC_TIER_STUCK'
+    /** 两级结构：按全书章数折算后单元过长 —— 一次「逼法换代」撑不住这么多章 */
+    | 'UNIT_TOO_LONG'
   /** 出问题的层级，如 `大弧1【门牌错位与三方围猎】` */
   where: string
   zh: string
@@ -905,8 +910,39 @@ function pressureTagOf(mid: ArcMid): PressureTag | null {
  * 一条标注都没有时返回空 —— v6 及以前的两级 plan 没有标注，对它们刷告警没有意义
  * （要修也无从修起：那是历史产出）。
  */
-function auditTwoLevelDensity(parsed: ParsedArcStructure): ArcDensityFinding[] {
+/**
+ * 一个单元的章数软上限。
+ *
+ * 依据不是"网文应该多快"，而是**这一层能提供的信息量**：v7 的单元只承载
+ * 「叙事任务 + 进入/离开状态 + 段间推进 + 一次逼法换代」。一次换代 + 一个任务，
+ * 撑 5–8 章是自然的；超过 9 章时，模型能拿到的材料已经用尽，只能靠复述、
+ * 换个人再问一遍、把同一场戏拆成两章来填 —— 这就是"水"的机械来源。
+ *
+ * 它只用来**提示切少了**，不约束任何一段"该写多少章"（红线 18 / 判据 CE）。
+ */
+export const UNIT_CHAPTER_SOFT_CAP = 9
+
+function auditTwoLevelDensity(parsed: ParsedArcStructure, totalChapters?: number): ArcDensityFinding[] {
   const findings: ArcDensityFinding[] = []
+  // 单元跨度检查排在标注检查**之前**：它只依赖个数与总章数，不依赖模型有没有写标注。
+  // 一个单元只有「一次逼法换代」，能承载的局面数有上限；折算后过长时，靠重复与拖延
+  // 填满几乎是必然的 —— 这不是"写多了"，是"切少了"。
+  const unitCount = parsed.majors.reduce((sum, major) => sum + major.mids.length, 0)
+  if (typeof totalChapters === 'number' && totalChapters > 0 && unitCount > 0) {
+    const perUnit = totalChapters / unitCount
+    if (perUnit > UNIT_CHAPTER_SOFT_CAP) {
+      findings.push({
+        code: 'UNIT_TOO_LONG',
+        where: `${unitCount} 个单元 / ${totalChapters} 章`,
+        zh: `全书 ${totalChapters} 章分给 ${unitCount} 个单元，平均每个单元 ${perUnit.toFixed(1)} 章（上限 ${UNIT_CHAPTER_SOFT_CAP}）。`
+          + '一个单元只有一次「逼法换代」，摊到这么多章里，靠重复和拖延填满几乎不可避免。'
+          + '要么增加单元个数（或卷数），要么确认这一个单元确实有那么多不同局面 —— 别用“多写几件事”去凑章数。',
+        en: `${totalChapters} chapters spread over ${unitCount} units — ${perUnit.toFixed(1)} chapters per unit (soft cap ${UNIT_CHAPTER_SOFT_CAP}). `
+          + 'A unit gets one pressure shift, so a span this long is usually padded with repetition. '
+          + 'Add units (or volumes), or confirm this unit really holds that many distinct situations.',
+      })
+    }
+  }
   const tagged = parsed.majors.some(major => major.mids.some(mid => pressureTagOf(mid)))
   if (!tagged) return findings
   parsed.majors.forEach((major, majorOffset) => {
@@ -944,13 +980,13 @@ function auditTwoLevelDensity(parsed: ParsedArcStructure): ArcDensityFinding[] {
   return findings
 }
 
-export function auditArcDensity(parsed: ParsedArcStructure | null): ArcDensityFinding[] {
+export function auditArcDensity(parsed: ParsedArcStructure | null, totalChapters?: number): ArcDensityFinding[] {
   if (!parsed) return []
   // v7 两级（卷/单元）用的是另一套字段（叙事任务 / 进入·离开 / 段间推进 / 逼法）。
   // 下面七条全部针对三级规格（「中弧推进」「位置行点名」「小弧密度」）—— 在两级结构上
-  // 逐条都会误报（例如"没有中弧推进"对每个卷都成立）。两级有自己的两条体检，
-  // 读的是逼法行末的（交手／档）标注；没有标注的历史产出不报。
-  if (parsed.naming === 'volume') return auditTwoLevelDensity(parsed)
+  // 逐条都会误报（例如"没有中弧推进"对每个卷都成立）。两级有自己的三条体检：
+  // 单元跨度（折算后是否过长）+ 交手类型是否重样 + 档位是否原地踏步。
+  if (parsed.naming === 'volume') return auditTwoLevelDensity(parsed, totalChapters)
   const findings: ArcDensityFinding[] = []
   parsed.majors.forEach((major, majorOffset) => {
     const majorIndex = majorOffset + 1

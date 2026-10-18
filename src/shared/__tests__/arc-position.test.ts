@@ -683,3 +683,22 @@ describe('v7 两级体检：读（交手／档）标注，不猜语义', () => {
     expect(codes).not.toContain('ARC_SAME_HAND_TYPE')
   })
 })
+
+describe('v7 单元跨度：切少了会提示，但不拦', () => {
+  it('书长结构少 ⇒ 报 UNIT_TOO_LONG（3 个单元分 150 章）', () => {
+    const findings = auditArcDensity(parseArcStructure(V7_PLAN), 150)
+    expect(findings.map(f => f.code)).toContain('UNIT_TOO_LONG')
+    const note = findings.find(f => f.code === 'UNIT_TOO_LONG')!
+    // 提示必须指向"切少了"，不能指向"写多了"（红线 18 / CE）
+    expect(note.zh).toContain('增加单元个数')
+    expect(note.zh).toContain('别用')
+  })
+
+  it('密度健康 ⇒ 不报（3 个单元分 12 章 = 4 章/单元）', () => {
+    expect(auditArcDensity(parseArcStructure(V7_PLAN), 12).map(f => f.code)).not.toContain('UNIT_TOO_LONG')
+  })
+
+  it('不传总章数时不做跨度检查（旧调用点行为不变）', () => {
+    expect(auditArcDensity(parseArcStructure(V7_PLAN)).map(f => f.code)).not.toContain('UNIT_TOO_LONG')
+  })
+})
