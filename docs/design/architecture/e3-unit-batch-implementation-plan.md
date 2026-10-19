@@ -122,7 +122,28 @@
 
 ---
 
-## 9. 实施记录
+## 9. T4b 前置决策：unit 模式的指纹口径（待作者确认）
+
+**问题**：`synopsisInputsFingerprint(source, guidance, range, template)` 把 `range.to` 算进指纹；而单元模式的请求期**没有 `to`**。指纹是目前唯一能证明「源事实没变」的机制——口径不先定，T4b 接线会在续写/中断恢复两处直接失效。
+
+**建议：方案 D（不新增持久字段）**
+
+| 环节 | 做法 |
+|---|---|
+| 请求期 | 令 `boundTo = from + maxChapters − 1`（请求上界），**只参与指纹**，不写进检查点的 `to` |
+| 完成落盘 | `synopsis_range = { from, to: actual }`（T9 回填），`covered_to = actual` |
+| 中断落盘 | `synopsis_range = { from, to: boundTo }`、`covered_to = from − 1`（沿用旧语义） |
+| resume | 由 `computeSynopsisUnitRange(plan, total, cursor, coveredTo)` 重算 `boundTo`（确定性），指纹一致才放行；结构变了 `plotStructurePlan` 会令指纹不同 ⇒ 正确 fail-closed |
+| 进度标记 | 单元模式**不输出** `plotOutlineProgressLine`（它需要一个 `to`） |
+
+**为什么不用其它两条**：
+
+- 「指纹只算 `from`」：能跑，但 `maxChapters` / `volumeRemaining` 变了不会失效，语义比现状弱；
+- 「新增 `synopsis_request_bound` 字段」：多一份会漂移的持久状态，且与游标冗余。
+
+> 需要作者确认方案 D；确认后 T4b 按它接线。
+
+## 10. 实施记录
 
 ### 2026-10-20 · T1 `planUnitStats`（完成）
 
