@@ -38,6 +38,12 @@ export interface EditorScrollMemoryEntry {
    */
   topPos?: number
   /**
+   * 保存时顶部那行行首距视口顶的像素偏移（通常 ≤ 0：长段落被视口切成半截）。
+   * 恢复后用它校验「旧像素有没有落在同一行」—— 新挂载时 CodeMirror 的高度图是
+   * 估算值，同一个像素可能对应另一行，作者实测偏差能到一章（约 1000px）。
+   */
+  topOffset?: number
+  /**
    * 保存时 scroller 的换行宽度（像素）。恢复时宽度变了 ⇒ 旧像素属于另一套换行，
    * 只能认内容锚点；宽度没变则像素仍然精确，不该被锚点覆盖。
    */
@@ -84,6 +90,7 @@ export function rememberEditorScroll(key: string | undefined, view: EditorView |
   const selection = view.state.selection.main
   const pending = pendingRestores.get(key)
   const previous = memory.get(key)
+  const anchorPos = pending !== undefined ? undefined : topVisibleAnchor(view)
   memory.set(key, {
     // 恢复没落位就切走：记目标，不记被夹住的中间值。
     scrollTop: pending ?? scroller.scrollTop
@@ -91,7 +98,8 @@ export function rememberEditorScroll(key: string | undefined, view: EditorView |
     , head: selection.head
     , savedAt: Date.now()
     // 位置是夹取出来的话，行锚点也跟着不可信，沿用上一条记录的。
-    , topPos: pending !== undefined ? previous?.topPos : topVisiblePos(view) ?? undefined
+    , topPos: pending !== undefined ? previous?.topPos : anchorPos?.pos
+    , topOffset: pending !== undefined ? previous?.topOffset : anchorPos?.offset
     , editorWidth: Number.isFinite(scroller.clientWidth) ? Math.round(scroller.clientWidth) : previous?.editorWidth
     , docLength: view.state.doc.length
   })
@@ -135,6 +143,18 @@ function scrollPosToTopDelta(view: EditorView, pos: number, topMargin: number): 
   const lineOffset = view.documentTop + block.top - scroller.getBoundingClientRect().top
   const delta = lineOffset - topMargin
   return Number.isFinite(delta) ? delta : null
+}
+
+/**
+ * 目标行当前距视口顶（减去 `topMargin`）还差多少像素：正 ⇒ 还要往下滚。
+ * 恢复落位后用它校验「旧像素有没有落在同一行」。
+ */
+export function scrollPosToTopRemaining(
+  view: EditorView | null | undefined,
+  pos: number,
+  topMargin = 0,
+): number | null {
+  return view ? scrollPosToTopDelta(view, pos, topMargin) : null
 }
 
 /**
@@ -224,6 +244,19 @@ function topVisiblePos(view: EditorView): number | null {
   }
 }
 
+/**
+ * 顶部可见行首 + 它距视口顶的像素偏移（≤ 0：该长段落被视口切成半截）。
+ *
+ * 两个值必须**成对**保存：恢复时旧像素在新挂载的估算高度图里可能落到另一行，
+ * 靠 `pos` 找出「本来该在顶部的那行」，靠 `offset` 还原它被切掉的那一截。
+ */
+export function topVisibleAnchor(view: EditorView): { pos: number; offset: number } | null {
+  const pos = topVisiblePos(view)
+  if (pos === null) return null
+  const offset = scrollPosToTopDelta(view, pos, 0)
+  return offset === null ? null : { pos, offset }
+}
+
 function pruneEditorScrollMemory(limit = EDITOR_SCROLL_MEMORY_LIMIT): void {
   if (memory.size <= limit) return
   const oldest = [...memory.entries()].sort((left, right) => left[1].savedAt - right[1].savedAt)
@@ -297,8 +330,14 @@ export interface ScrollRestoreOptions {
   geometryChanged?: () => boolean
   /** 用户交互要挂监听的元素；一旦挂上，用户一动手就放弃恢复（可选）。 */
   interactionHost?: () => EventTarget | null
-  /** 已经落位或被用户接管时回调（调用方通常用来标记「有进度可记」）。 */
-  onLive?: () => void
+  /**
+   * 已经落位或被用户接管时回调（调用方通常用来标记「有进度可记」）。
+   *
+   * 参数区分两种原因：`settled` = 恢复守望自己摆稳了；`user` = 作者动手打断了恢复。
+   * 调用方的「落位后内容锚点校验」只能在 `settled` 时做 —— 用户接管后再去纠偏
+   * 就是抢滚动条（实测会把用户刚滚到的位置拽回旧位置）。
+   */
+  onLive?: (reason: 'settled' | 'user') => void
 }
 
 /**
@@ -326,11 +365,11 @@ export function startScrollRestore(options: ScrollRestoreOptions): () => void {
   let announcedLive = false
   let detachInteraction: (() => void) | null = null
 
-  const announceLive = () => {
+  const announceLive = (reason: 'settled' | 'user') => {
     if (announcedLive) return
     announcedLive = true
     pendingRestores.delete(key)
-    options.onLive?.()
+    options.onLive?.(reason)
   }
 
   const attachInteraction = () => {
@@ -340,7 +379,7 @@ export function startScrollRestore(options: ScrollRestoreOptions): () => void {
     // 用户一动手就让位：不和作者抢滚动条。
     const events = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const
     const onUserIntent = () => {
-      announceLive()
+      announceLive('user')
       stop()
     }
     for (const name of events) host.addEventListener(name, onUserIntent, { passive: true })
@@ -396,7 +435,7 @@ export function startScrollRestore(options: ScrollRestoreOptions): () => void {
     } else {
       settledFrames += 1
     }
-    if (settledFrames >= RESTORE_SETTLE_FRAMES) announceLive()
+    if (settledFrames >= RESTORE_SETTLE_FRAMES) announceLive('settled')
     // 落位后继续守望到窗口结束：晚到的内容重建仍可能把位置打回 0。
     if (frames >= RESTORE_MAX_FRAMES) stop()
     else frame = requestAnimationFrame(tick)

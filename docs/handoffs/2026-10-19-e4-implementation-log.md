@@ -593,3 +593,63 @@ T14 修好了「记不住」，但恢复本身是一只一次性 rAF：内容一
 
 - 作者 GUI 确认 T15 + T16 后，再接 E4 剩余 T9（按卷冻结）、T11（卷末快照）。
 
+### 2026-10-20 · E4j-4：树面板点章后切走再切回，没停在同一章（作者第二轮反馈）
+
+**作者反馈（m00492，附三张真实 app 截图）**
+
+> 「点击数里的第六章，切回卷单元，再切回大纲，发现没保持到第6章，然后再切回卷，卷内容进度保持。」
+
+**先修的一半：跳行必须落账**
+
+跳行 effect（`CodeMirrorEditor.tsx`）原来只 `view.focus()`，靠滚动事件把 `scrollLiveRef` 标起来；程序化写 `scrollTop` 有时不派发 scroll 事件 ⇒ 卸载时 cleanup 认为「没滚动过」而不落账，切回来读到的是跳行**之前**的位置。已在 `view.focus()` 后显式 `scrollLiveRef.current = true`（提交 `d5929ca4`）。**证伪记录**：把这行注掉后新加的回归用例仍通过（本环境写 `scrollTop` 会派发 scroll 事件），所以它只是兜底，不是本次真正的根因。
+
+**根因三（本条的真凶）：恢复的像素对了，但新挂载的高度图还是估算值**
+
+探针 `scripts/zz-probe-jump-persist2.mjs`（真 Electron，复制作者真实项目 `如果我的能力是每天第一句谎言都会成真`）：
+
+| 步骤 | 实测 |
+|---|---|
+| 大纲树（pin，宽 470）点第 6 章 | scroll 3501，CH6 视口偏移 **+40** ✅ |
+| 切「卷 / 单元结构」 | scroll 0 |
+| 切回「情节大纲」 | scroll **3501**（像素一模一样）但 CH6 偏移 **−993**（contentH 5066，估算值） |
+| 再点第 6 章 → 切走 → 切回 | scroll 3602 → 切回 CH6 偏移 **−1094**（contentH 4991） |
+
+而完全测准后 contentH 是 6477。结论：**像素是对的，行是错的** —— 新挂载那一帧 CodeMirror 的 `HeightOracle` 还没量出长段落的真实高度（估算 contentH 在 4991–6754 间浮动），同一个 `scrollTop` 落在第 8–9 章附近，作者看到「没保持到第 6 章」。
+
+**修法：落位后核对一次内容锚点，真偏了才纠**
+
+- `EditorScrollMemoryEntry` 新增 `topOffset?: number`（保存时顶部那行行首距视口顶的像素偏移，通常 ≤ 0：长段落被视口切成半截）；`rememberEditorScroll` 用新增的 `topVisibleAnchor(view)` 同时写 `topPos` + `topOffset`。恢复未落位就切走（`pendingRestores` 有值）时沿用上一条锚点，不用被夹取的像素推锚点。
+- 新增 `scrollPosToTopRemaining(view, pos, topMargin)`（= 差分公式的剩余量，供校验用）。
+- `startScrollRestore` 的 `onLive` 增加原因参数：`'settled'`（守望自己摆稳）/ `'user'`（作者动手打断）。
+- `CodeMirrorEditor.tsx` restore effect：`onLive('settled')` 后隔 2 帧（等高度图重算一帧）算 `scrollPosToTopRemaining(view, entry.topPos, entry.topOffset ?? 0)`，`|remaining| > 4` 才停掉守望循环并用 `scrollPosToTopConverge(view, entry.topPos, entry.topOffset ?? 0)` 逐帧逼近。`'user'` 时一律不纠 —— 无条件纠偏会跟作者抢滚动条（实测：滚轮滚到 120 后被锚点拽回 900）。
+
+**证伪记录**
+
+无条件内容锚点（上一轮、无 `onLive` 原因区分）：探针 C0–C7 恢复回顶部（scroll 0），整版回退 —— 所以这次只在「像素落位后锚点仍差 >4px」时动手。
+
+**探针实测（真 Electron，新 dist，作者真实项目）**
+
+| 场景 | 结果 |
+|---|---|
+| 大纲树点第 6 章 | ✅ scroll 3501 / CH6off 40 |
+| 切卷单元再切回（旧 −993） | ✅ scroll 3098 / CH6off **40** / 顶部同一行正文 |
+| 再跳 → 切走 → 切回（旧 −1094） | ✅ scroll 3098 / CH6off **40** |
+| 两树都固定、反复切 Tab ×8 | ✅ 大纲每帧 3098 / CH6off 40；卷纲每帧 0，不漂不崩 |
+| 控制台错误 | ✅ 无 |
+
+注：切回后的像素从 3501 变成 3098 —— 新高度图里「同一行正文」对应的像素不同，锚点校正本来就该改像素，不能拿像素相等当验收标准。
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| `editor-scroll-memory.test.ts` | ✅ 17 passed（新增锚点记录 / 未落位沿用锚点 2 条） |
+| `CodeMirrorEditor-scroll-memory.browser.tsx` | ✅ 11 passed（新增「跳章后切走再切回：顶部仍停在同一章」，用长段落文档制造估算误差） |
+| 真实 GUI 人工验证 | ⚠️ **待作者确认**：树面板点章 → 切 tab → 切回，是否停在同一章；关树后首次切回是否仍差一两行 |
+
+**残留**
+
+- 关树后**首次**切回时像素一致但顶部内容差一两行的旧残留，预计被锚点校正一并解决；需作者 GUI 确认（探针本次覆盖的是「树都开着」的路径）。
+
+
