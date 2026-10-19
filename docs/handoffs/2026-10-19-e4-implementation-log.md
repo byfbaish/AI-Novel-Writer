@@ -43,6 +43,7 @@
 | T13 | E4j-4：**情节大纲三层树**（卷/单元/章 + 归属来源标记） | ✅ |
 | T14 | E4j-2c：切 Tab 进度**仍然**丢失的真根因（remember 挪到 layout cleanup） | ❌ 被 T15 取代（作者 GUI 复验：时灵时不灵、会停到最底部） |
 | T15 | E4j-2d：滚动恢复改为「内容稳定门禁 + 长守望 + 让位」，修好「时灵时不灵 / 掉到最底下」 | ✅ 待作者 GUI 确认 |
+| T16 | E4j-2e：恢复只动编辑器自己的 scroller，修好「整个 Frame 往上移」 | ✅ 待作者 GUI 确认 |
 
 ---
 
@@ -500,4 +501,47 @@ T14 修好了「记不住」，但恢复本身是一只一次性 rAF：内容一
 **下一步**
 
 - 作者 GUI 确认后，再接 E4 剩余 T9（按卷冻结）、T11（卷末快照）。
+
+
+### 2026-10-19 · T16 E4j-2e：切几次 Tab 之后「整个 Frame 往上移」（完成）
+
+**作者反馈（第四轮，附截图）**
+
+> 「首先是往上缩了一行，然后是这整个 Frame（可能是？）往上移」——截图里「卷 / 单元结构」工具栏贴到窗口顶边，上一行主工具栏被切掉一截。
+
+**根因（读 CodeMirror 源码确认，不是猜）**
+
+`EditorView.scrollIntoView()` 底层是 `scrollRectIntoView`（`node_modules/@codemirror/view/dist/index.js:524-600`）：它从 `.cm-scroller` 起沿 `cur.assignedSlot || cur.parentNode` 逐级向上，把**每一个** `scrollHeight > clientHeight` 的祖先都滚一遍，连 `overflow: hidden` 的 Tailwind 布局容器和 body/window 也不放过。T15 的 `snapBack` 与 `revealLine` 都用它 ⇒ 每次恢复/跳行顺手把外层 Frame 滚走几像素。
+
+**做了什么**
+
+| 文件 | 改动 |
+|---|---|
+| `src/components/editor/editor-scroll-memory.ts` | 新增 `scrollPosToTop(view, pos, topMargin = 0)`：`view.lineBlockAt(pos).top` + `view.documentTop` 换算成 scroller 像素，只写 `view.scrollDOM.scrollTop`（注释写明为何不能用 `EditorView.scrollIntoView`） |
+| `src/components/editor/CodeMirrorEditor.tsx` | `snapBack` 改用 `scrollPosToTop(view, entry.topPos, 0)`；`revealLine` 去掉 dispatch 里的 `EditorView.scrollIntoView`，改 dispatch 选区后 `scrollPosToTop(view, lineInfo.from, 40)` 再 `view.focus()`（focus 走 `focusPreventScroll`，安全） |
+| `src/components/editor/__tests__/editor-scroll-memory.test.ts` | 新增「scrollPosToTop：只写自己的 scroller」（假视图 documentTop=12、lineBlockAt = pos*2，断言 480→972 / 480+40→932 / 0+40→0 / 99999→2012 / null→false），9 → 10 passed |
+| `src/components/editor/__tests__/CodeMirrorEditor-scroll-memory.browser.tsx` | 新增第 8 条「恢复只动编辑器自己的 scroller，不滚动外层布局容器」：外层 `height:160px; overflow:hidden` + `spacer 300px`（编辑器完全在可视区外）+ `outer.scrollTop = 0`，恢复后断言仍为 0 |
+
+**证伪记录（两次，教训在第一次）**
+
+1. 第一版用 `spacer 30px` + `outer.scrollTop = 60`：无条件失败 —— `scrollHeight 190 - clientHeight 160 = 30`，设 60 立刻被夹到 30。**给可滚动容器设初始 scrollTop 前必须先确认不超过 max。**
+2. 改成 `spacer 300px` + `scrollTop = 0` 后证伪成立：临时把 `snapBack` 换回 `EditorView.scrollIntoView`，测试失败（外层被滚走）；换回 `scrollPosToTop` 通过。
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| `npx eslint`（4 个改动文件） | ✅ 无输出 |
+| `editor-scroll-memory.test.ts` | ✅ 10 passed |
+| `CodeMirrorEditor-scroll-memory.browser.tsx` | ✅ 8 passed |
+| 真实 GUI 人工验证 | ⚠️ **待作者在 app 里确认**：反复切 Tab 后外层 Frame 不再上移、顶部工具栏不被切掉 |
+
+**提交**
+
+`a10b9a8d` `fix(editor): keep scroll restore inside the editor scroller (E4j-2e)`
+
+**下一步**
+
+- 作者 GUI 确认 T15 + T16 后，再接 E4 剩余 T9（按卷冻结）、T11（卷末快照）。
 
