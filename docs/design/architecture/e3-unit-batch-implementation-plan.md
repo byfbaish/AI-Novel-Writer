@@ -54,8 +54,8 @@
 | **T1** | `planUnitStats` 纯函数 + `renderUnitBudgetLine` | `src/shared/arc-position.ts` | ✅ 已实施（2026-10-20）：13 条单测 + 67 条回归全绿；`tsc --noEmit` exit 0 | 低 |
 | **T2** | 契约字段 `synopsisUnit`（并列，不动旧字段）+ 校验分支 | `generation-owner-contract.ts`、`plot-outline-contract.ts` | ✅ 已实施（2026-10-20）：13 条单测；`plotOutlinePolicy` 对单元模式返回 null，`plotOutlineUnitPolicy` 校验四元组与互斥 | 中 |
 | **T3** | 主进程预算：`synopsisUnit` ⇒ `2 × volumeRemaining` | `main-generation-plan.ts` | ✅ 已实施（2026-10-20）：7 条单测 + 94 条既有回归；`readMainGenerationPolicy` JSON 往返 | **高** |
-| **T4a** | 请求构造纯函数 + 选项管道（不接状态机） | `computeSynopsisUnitRange`、command options、`architecture-workflow` params/intent | ✅ 已实施（2026-10-20）：5 条单测（游标↔章号映射不一致 ⇒ null）；旧路径无行为变化 | **高** |
-| **T4b** | 状态机接线（unit 模式分支 + prompt + 余量块注入） | `executeWithinGeneration` | ⬜ 待做（依赖 T9 回填 `to`） | **高** |
+| **T4a** | 请求构造纯函数 + 选项管道（不接状态机） | `computeSynopsisUnitRange`、command options、`architecture-workflow` params/intent | ✅ 已实施（2026-10-20）：5 条单测；**当日晚修订**：去掉 `arcSpanForChapters` 反查（探针实测会把「少写」判成卡死）+ 卷预算写满兜底，扩到 8 条 | **高** |
+| **T4b** | 状态机接线（unit 模式分支 + prompt + 余量块注入） | `executeWithinGeneration`、`persistInterruptedSynopsis` | ✅ 已实施（2026-10-20）：新增 5 条集成单测；命令层 725 passed；`tsc` 0；**未接开关**（T11） | **高** |
 | **T5** | prompt unit 模式 | `synopsisUnitInstruction`（新函数，不动旧 `synopsisBatchInstruction`） | ✅ 已实施（2026-10-20）：3 条单测；无 from–to 区间、点名单元/起点/离开状态/不得进入下一单元 | 中 |
 | **T6** | 余量行常驻 + `r` 阈值指令 | `renderUnitBudgetBlock`（arc-position） | ✅ 渲染器已实施（2026-10-20）：5 条单测（带内/收紧/展开/英文/null）；**注入点在 T4** | 低 |
 | **T7** | 检查点写入游标 + 兼容旧值 | `architecture.command.ts`、partial 类型 | ✅ 已实施（2026-10-20）：`synopsis_unit_cursor` 入字段白名单；旧检查点一次性推导并落库；损坏游标报错；5 条推导单测 + 47 条命令回归 | **高** |
@@ -123,26 +123,30 @@
 
 ---
 
-## 9. T4b 前置决策：unit 模式的指纹口径（待作者确认）
+## 9. T4b 前置决策：unit 模式的指纹口径（**已确认，采用修订版 D**）
 
 **问题**：`synopsisInputsFingerprint(source, guidance, range, template)` 把 `range.to` 算进指纹；而单元模式的请求期**没有 `to`**。指纹是目前唯一能证明「源事实没变」的机制——口径不先定，T4b 接线会在续写/中断恢复两处直接失效。
 
-**建议：方案 D（不新增持久字段）**
+**方案 D（修订后，2026-10-20 作者确认）**
 
 | 环节 | 做法 |
 |---|---|
 | 请求期 | 令 `boundTo = from + maxChapters − 1`（请求上界），**只参与指纹**，不写进检查点的 `to` |
-| 完成落盘 | `synopsis_range = { from, to: actual }`（T9 回填），`covered_to = actual` |
-| 中断落盘 | `synopsis_range = { from, to: boundTo }`、`covered_to = from − 1`（沿用旧语义） |
-| resume | 由 `computeSynopsisUnitRange(plan, total, cursor, coveredTo)` 重算 `boundTo`（确定性），指纹一致才放行；结构变了 `plotStructurePlan` 会令指纹不同 ⇒ 正确 fail-closed |
+| 完成落盘 | `synopsis_range = { from, to: actual }`（T9 回填），`covered_to = actual`，**指纹按 `actual` 重算** |
+| 中断落盘 | `synopsis_range = { from, to: boundTo }`、`covered_to = from − 1`，指纹按 `boundTo` |
+| resume | 直接读检查点里的 `to`（= `boundTo`）参与指纹比对，**不再重算**；结构变了 `plotStructurePlan` 会令指纹不同 ⇒ 正确 fail-closed |
 | 进度标记 | 单元模式**不输出** `plotOutlineProgressLine`（它需要一个 `to`） |
+
+> **修订点（T4b 实施中发现）**：原方案 D 只写了中断/续写，漏了「完成落盘 → 下一批」这条路——
+> 续批校验（`architecture.command.ts` 的 batch 分支）是拿 `partial.synopsis_range` 复算指纹的，
+> 若完成时存的仍是 `boundTo` 指纹，则 `actual ≠ boundTo` 时**第二个单元必然报「源事实已变化」**
+> （实测指纹：`boundTo=15` → `zsrw54`，`actual=12` → `9v8uph`）。故完成落盘必须按实际范围重算指纹。
+> 同理 resume 也不该重算 `boundTo`：检查点里的 `to` 就是请求上界，重算只会多一个失败点。
 
 **为什么不用其它两条**：
 
 - 「指纹只算 `from`」：能跑，但 `maxChapters` / `volumeRemaining` 变了不会失效，语义比现状弱；
 - 「新增 `synopsis_request_bound` 字段」：多一份会漂移的持久状态，且与游标冗余。
-
-> 需要作者确认方案 D；确认后 T4b 按它接线。
 
 ## 10. 实施记录
 
@@ -211,3 +215,39 @@
 - 单测：`unit-batch-backfill.test.ts` 8 条（计数、未覆盖起点 ⇒ null、越界 clamp、跨卷推进、全书结束、非法输入）。
 - 回归：`architecture.command.test.ts` 47 passed；`tsc --noEmit` exit 0。
 - **写检查点在 T4b**：本步只提供回填数值与下一游标，不改任何落盘路径。
+
+### 2026-10-20 · T4a 修订（去掉等分反查）+ T4b 状态机接线（完成）
+
+**T4a 修订（探针驱动的两处改动）**
+
+- **删掉 `arcSpanForChapters` 交叉校验**：原实现在 `from = coveredTo + 1` 处反查弧位并要求与游标一致。
+  探针实测（卷一 2 单元、计划各 15 章、总 60 章）：单元实际写 **12 章** ⇒ `computeSynopsisUnitRange` 返回 `null`；
+  正好写 15 / 20 章 ⇒ 通过。即「只有落在计划边界那一带才能推进」——正是硬前置禁止的「按章号反推单元」。
+  ⇒ 改为**游标唯一真相**（单元/卷存在性由 `planUnitStats` 校验）。
+- **本卷预算写满不再卡死**：`writtenInVolume` 到达卷长时 `stats.remaining = 0`，原实现 ⇒ `maxChaptersCeil = 0` ⇒ null。
+  现在按**卷超写带**（`volumeChapters × 1.1 − writtenInVolume`）给余量、至少 1 章，`volumeRemaining` 同源；
+  **不跨卷摊剩余**（作者口径 + `unit-budget-elastic-allocation-design.md` §6「下一卷计划额度不变，偏差不跨卷」）。
+- 单测：`synopsis-unit-request.test.ts` 由 5 条扩到 8 条（少写 / 超写 / 卷预算写满 / 全书截断）。
+
+**T4b 接线（`executeWithinGeneration` + `persistInterruptedSynopsis`）**
+
+- **入口**：`options.synopsisUnit` 存在即单元模式（与 `synopsisRange` 互斥）。生产调用方还没有人传它，
+  所以**行为与提交前逐字节一致**；开关在 T11。
+- **定位**：`resolveUnitContext()` = `partial.synopsis_unit_cursor`（全书未写时用 `INITIAL_SYNOPSIS_UNIT_CURSOR = {1,1,0}`）
+  → `computeSynopsisUnitRange`；续写路径同样解析，并用 `approveUnitContext` 比对请求的 `from`/`unitIndex`，
+  不一致即 fail-closed（拒绝按过期请求生成）。
+- **请求**：`to = boundTo`，只用于指纹/预算核对；提示词换成 `synopsisUnitInstruction` + `renderUnitBudgetBlock`，
+  **不再出现「第 from–to 章」区间**（`synopsisBatchInstruction` 保持不变，旧路径零改动）。
+  余量为 0（本卷写满）时不注入余量块——那种块渲染出来就是「名义上界 0 章」，等于给章数目标。
+- **回填**：生成后 `backfillUnitBatch(merged, from, total)` → `to = actual`，再拿 `from..actual` 做
+  `assertPlotOutlineTitleCoverage`（顺序不能反：先按 `boundTo` 校验会把「写短」判成缺章、把「写长」判成越界）；
+  跳过 `assertPlotOutlineBatchComplete`（单元模式不产出进度标记）。
+- **落盘**：`synopsis_range = {from, actual}`、`covered_to = actual`、
+  `syncSynopsisUnitCursor(..., explicit = advanceUnitCursor(...))`（`null` = 全书写完 ⇒ 删游标）、
+  `synopsis_facts_fingerprint` 按 actual 重算。
+- **中断落盘**：`interruptionRange = {from, boundTo}` + 当前（未推进）游标，指纹按 boundTo；与 resume 的比对口径闭合。
+- `syncSynopsisUnitCursor` 的 `explicit` 语义收紧：`undefined` = 走章号推导（旧模式），`null` = 明确无下一单元。
+- `assertCheckpointDbMirrorCurrent` 的游标校验从 `writtenInVolume < 1` 放宽到 `< 0`——跨卷推进会把卷内已写重置为 0。
+- 单测：新增 `synopsis-unit-batch.command.test.ts` 5 条（单元 1 无章号区间 + 回填落盘 / 少写 5 章后单元 2 接上且不被指纹拒 /
+  中断续写 / 跨卷 writtenInVolume=0 不被判损坏 / 过期请求 fail-closed）。回归：命令层 33 个文件 725 passed，`tsc --noEmit` exit 0。
+- ⚠️ **未做**：T8（续批 / agent 子 run 的 deep-equal 改比 `{from, cursor}`）、T10（实机）、T11（开关）。
