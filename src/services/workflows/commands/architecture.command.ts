@@ -5,7 +5,7 @@ import type { CharacterProposalBatch } from '../../../shared/character-proposal'
 import { defaultCharacterProposalRelationships, defaultCharacterProposalSelections, formatCharacterProposalPreview } from '../character-proposal-preview'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import type { ArchitecturePlanningIntent, ArchitectureUnitRange, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
-import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
+import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, plotOutlineCoveredTo, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
 import { arcSpanForChapters, auditArcDensity, parseArcStructure, planProgress, planUnitStats, withProjectedArcGuide, type UnitBudgetState } from '../../../shared/arc-position'
 import { auditOutlineLength, outlineLengthOf, renderOutlineLengthReport } from '../../../shared/outline-budget'
 import { planOutlinePrefixBudget } from '../../../shared/outline-prefix-budget'
@@ -231,6 +231,62 @@ export function computeSynopsisUnitRange(
   const maxChapters = Math.min(stats.maxChaptersCeil, totalChapters - from + 1)
   if (!Number.isSafeInteger(maxChapters) || maxChapters < 1) return null
   return Object.freeze({ from, unitIndex: cursor.unitIndex, maxChapters, volumeRemaining: stats.remaining })
+}
+
+/**
+ * E3 T9：逐单元批次的**回填**（纯函数）。请求期没有 `to`，生成后由正文数出实际章数。
+ *
+ * - `actualChapters` = 本批正文覆盖到的最大章号 − `from` + 1；
+ * - `to` = `from + actualChapters − 1`，**超过全书时 clamp 到总章数**并把 `overflow` 标出来
+ *   （作者裁定：超写只记录、不阻断，卷末统一报告）。
+ */
+export interface UnitBatchBackfill {
+  actualChapters: number
+  to: number
+  /** 本批写过了全书末尾（`to` 已 clamp） */
+  overflow: boolean
+}
+
+export function backfillUnitBatch(
+  merged: string,
+  from: number,
+  totalChapters: number,
+): UnitBatchBackfill | null {
+  if (!Number.isSafeInteger(from) || from < 1) return null
+  if (!Number.isSafeInteger(totalChapters) || totalChapters < from) return null
+  const covered = plotOutlineCoveredTo(merged)
+  if (covered < from) return null
+  const actualChapters = covered - from + 1
+  const rawTo = from + actualChapters - 1
+  return Object.freeze({ actualChapters, to: Math.min(rawTo, totalChapters), overflow: rawTo > totalChapters })
+}
+
+/**
+ * E3 T9：单元完成后的游标推进（纯函数）。
+ *
+ * - 单元完成后 `writtenInVolume += actual`；
+ * - 若本单元是**本卷最后一个**，进入下一卷并把卷内已写重置为 0；
+ * - 全书最后一个单元完成 ⇒ `null`（没有下一批了）。
+ */
+export function advanceUnitCursor(
+  parsed: ReturnType<typeof parseArcStructure>,
+  totalChapters: number,
+  cursor: SynopsisUnitCursor,
+  actualChapters: number,
+): SynopsisUnitCursor | null {
+  if (!Number.isSafeInteger(actualChapters) || actualChapters < 1) return null
+  if (!parsed || parsed.majors.length === 0) return null
+  if (!Number.isSafeInteger(cursor.volumeIndex) || cursor.volumeIndex < 1 || cursor.volumeIndex > parsed.majors.length) return null
+  if (!Number.isSafeInteger(cursor.unitIndex) || cursor.unitIndex < 1) return null
+  if (!Number.isSafeInteger(cursor.writtenInVolume) || cursor.writtenInVolume < 0) return null
+  const stats = planUnitStats(parsed, totalChapters, cursor)
+  if (!stats) return null
+  const writtenInVolume = cursor.writtenInVolume + actualChapters
+  if (cursor.unitIndex < stats.unitCount) {
+    return Object.freeze({ volumeIndex: cursor.volumeIndex, unitIndex: cursor.unitIndex + 1, writtenInVolume })
+  }
+  if (cursor.volumeIndex >= parsed.majors.length) return null
+  return Object.freeze({ volumeIndex: cursor.volumeIndex + 1, unitIndex: 1, writtenInVolume: 0 })
 }
 
 /** 大纲章节范围。 */
