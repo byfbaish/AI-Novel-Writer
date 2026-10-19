@@ -29,7 +29,7 @@ import {
 import { readAuthoritativeNextChapter } from '../../services/authoritative-chapter-sequence'
 import { ipc } from '../../services/ipc-client'
 import { resolveWritingLanguage } from '../../shared/writing-language'
-import { assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS, DEFAULT_PLANNING_TARGET_UNITS, parsePlanningTargetUnits, PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../shared/plot-outline-contract'
+import { assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS, DEFAULT_PLANNING_TARGET_UNITS, parsePlanningTargetUnits, PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT, plotOutlineCoveredTo } from '../../shared/plot-outline-contract'
 
 /**
  * 已保存进度记录默认展示条数。
@@ -101,6 +101,8 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
   const [isRecovering, setIsRecovering] = useState(false)
   const [recoveryError, setRecoveryError] = useState<string | null>(null)
   const [authoritativeNextChapter, setAuthoritativeNextChapter] = useState<number | null>(null)
+  /** 大纲**实际覆盖到第几章**（`null` = 读不到，不限制；0 = 还没有大纲，也不限制——保持旧行为）。 */
+  const [outlineCovered, setOutlineCovered] = useState<number | null>(null)
   const [highestBlueprintChapter, setHighestBlueprintChapter] = useState<number | null>(null)
   const [authorityError, setAuthorityError] = useState<string | null>(null)
   const [authorityLoading, setAuthorityLoading] = useState(false)
@@ -186,13 +188,17 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
     const loadAuthority = async () => {
       setAuthorityLoading(true)
       try {
-        const [nextChapter, highestBlueprint] = await Promise.all([
+        const [nextChapter, highestBlueprint, core] = await Promise.all([
           readAuthoritativeNextChapter(projectSession, locale),
           readHighestBlueprintChapter(currentProject.path, projectSession),
+          // 没有大纲的章节不能出蓝图：以大纲**实际**覆盖到第几章为上界（读不到就不限制，保持旧行为）。
+          ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', currentProject.path)
+            .catch(() => null),
         ])
         if (disposed || !isProjectSessionCurrent(projectSession)) return
         setAuthoritativeNextChapter(nextChapter)
         setHighestBlueprintChapter(highestBlueprint)
+        setOutlineCovered(plotOutlineCoveredTo((core as { synopsis?: string } | null)?.synopsis ?? ''))
         const appendStart = Math.max(highestBlueprint + 1, nextChapter)
         setRangeStart(appendStart)
         setRangeEnd(Math.min(currentProject.novelConfig.totalChapters, appendStart + DEFAULT_PLANNING_ACTION_CHAPTERS - 1))
@@ -212,26 +218,33 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
 
   if (!currentProject) return null
   const total = currentProject.novelConfig.totalChapters
+  /**
+   * 蓝图的章数上界 = **大纲实际覆盖到的章**。
+   * 大纲还没写的章没有输入材料，生成出来只能靠设定瞎编（`projectSynopsisForBlueprint` 会把该段整段剔除、不报错），
+   * 所以这里直接把选项冻结在上界内。
+   * 读不到覆盖数（`null`）或还没有大纲（`0`）时不限制，保持旧行为——避免把未知状态当成"一章都不许生成"。
+   */
+  const chapterLimit = outlineCovered !== null && outlineCovered > 0 ? Math.min(total, outlineCovered) : total
   const appendStart = Math.max((highestBlueprintChapter ?? 0) + 1, authoritativeNextChapter ?? 1)
   const hasPriorAuthority = appendStart > 1
   const appendByDefault = overwriteMode === 'append' && (existingCount > 0 || hasPriorAuthority)
-  const selectedRangeStart = Math.min(total, Math.max(appendStart, Number(rangeStart) || appendStart))
-  const selectedRangeEnd = Math.min(total, Math.max(selectedRangeStart, Number(rangeEnd) || selectedRangeStart))
+  const selectedRangeStart = Math.min(chapterLimit, Math.max(appendStart, Number(rangeStart) || appendStart))
+  const selectedRangeEnd = Math.min(chapterLimit, Math.max(selectedRangeStart, Number(rangeEnd) || selectedRangeStart))
   const previewParams: DirectoryWorkflowParams = rangeMode === 'full'
-    ? { mode: overwriteMode === 'full' ? 'full' : 'append', count: 0 }
+    ? { mode: overwriteMode === 'full' ? 'full' : 'append', count: chapterLimit < total ? chapterLimit : 0 }
     : rangeMode === 'front'
       ? appendByDefault
         ? {
             mode: 'append',
             startChapter: appendStart,
             count: Math.min(
-              Math.max(0, total - appendStart + 1),
+              Math.max(0, chapterLimit - appendStart + 1),
               Math.max(1, Number(frontN) || DEFAULT_BLUEPRINT_GENERATION_COUNT),
             ),
           }
         : {
             mode: 'full',
-            count: Math.min(total, Math.max(1, Number(frontN) || DEFAULT_BLUEPRINT_GENERATION_COUNT)),
+            count: Math.min(chapterLimit, Math.max(1, Number(frontN) || DEFAULT_BLUEPRINT_GENERATION_COUNT)),
           }
       : {
           mode: 'append',
@@ -239,7 +252,7 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
           count: Math.max(1, selectedRangeEnd - selectedRangeStart + 1),
         }
   const previewCost = planBlueprintGenerationCost(
-    requestedChapterCount(previewParams, total, appendStart),
+    requestedChapterCount(previewParams, chapterLimit, appendStart),
   )
 
   const handleCharacterSyncRecovery = async () => {
@@ -296,11 +309,11 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
       : rangeMode === 'full' ? (overwriteMode === 'full' ? 1 : frozenAppendStart)
         : frozenAppendByDefault ? frozenAppendStart : 1
     const end = rangeMode === 'range' ? Number(rangeEnd)
-      : rangeMode === 'full' ? total : Math.min(total, start + Number(frontN) - 1)
+      : rangeMode === 'full' ? chapterLimit : Math.min(chapterLimit, start + Number(frontN) - 1)
     try {
       if (rangeMode === 'front') assertPlanningActionRange({ from: 1, to: Number(frontN) })
       assertPlanningActionRange({ from: start, to: end })
-      if (end > total || (rangeMode === 'range' && start < frozenAppendStart)) throw new Error('range')
+      if (end > chapterLimit || (rangeMode === 'range' && start < frozenAppendStart)) throw new Error('range')
     } catch {
       setLaunchError(text(`请选择有效的连续 1–${PLANNING_ACTION_CHAPTER_LIMIT} 章。全量范围过大时请改选数量或范围。`, `Select 1-${PLANNING_ACTION_CHAPTER_LIMIT} valid consecutive chapters. If the full range is larger, choose a quantity or range.`))
       return
@@ -357,6 +370,14 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
         </DialogHeader>
 
         <div className="px-5 py-4 space-y-4">
+          {chapterLimit < total && (
+            <p className="text-xs text-[var(--color-text-secondary)]">
+              {text(
+                `大纲已覆盖至第 ${chapterLimit} 章（计划 ${total} 章）。第 ${chapterLimit + 1} 章及以后还没有大纲，暂时不能生成蓝图——先生成后续大纲。`,
+                `The outline covers chapters 1-${chapterLimit} of a ${total}-chapter plan. Blueprints beyond chapter ${chapterLimit} are unavailable until the outline reaches them.`,
+              )}
+            </p>
+          )}
           {progressSessionKey === currentProject.id + ':' + currentProject.sessionLease && progressError && <p role="alert" className="text-xs">{progressError}</p>}
           {progressSessionKey === currentProject.id + ':' + currentProject.sessionLease && (
             <div className="space-y-3 max-h-[11rem] overflow-y-auto pr-1">
@@ -475,7 +496,7 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
                     {text('指定生成：第', 'Generate range:')}
                     <input
                       type="number"
-                      min={1} max={total} step={1}
+                      min={1} max={chapterLimit} step={1}
                       aria-label={text('蓝图起始章', 'First blueprint chapter')}
                       value={rangeStart}
                       onChange={e => setRangeStart(e.target.value === '' ? '' : Number(e.target.value))}
@@ -485,7 +506,7 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
                     {text('到 第', 'to')}
                     <input
                       type="number"
-                      min={1} max={total} step={1}
+                      min={1} max={chapterLimit} step={1}
                       aria-label={text('蓝图结束章', 'Last blueprint chapter')}
                       value={rangeEnd}
                       onChange={e => setRangeEnd(e.target.value === '' ? '' : Number(e.target.value))}
@@ -499,7 +520,7 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
               <RadioOption
                 checked={rangeMode === 'full'}
                 onChange={() => setRangeMode('full')}
-                label={text(`全量生成（共 ${total} 章）`, `Generate all ${total} chapters`)}
+                label={text(`全量生成（共 ${chapterLimit} 章）`, `Generate all ${chapterLimit} chapters`)}
               />
             </div>
             <p
