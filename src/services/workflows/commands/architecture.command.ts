@@ -6,7 +6,7 @@ import { defaultCharacterProposalRelationships, defaultCharacterProposalSelectio
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import type { ArchitecturePlanningIntent, ArchitectureUnitRange, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, plotOutlineCoveredTo, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
-import { arcSpanForChapters, auditArcDensity, parseArcStructure, planProgress, planUnitStats, renderUnitBudgetBlock, UNIT_BUDGET_TOLERANCE, withProjectedArcGuide, withProjectedUnitArcGuide, type UnitBudgetState } from '../../../shared/arc-position'
+import { arcSpanForChapters, auditArcDensity, expectedTotalChapters, parseArcStructure, planProgress, planUnitStats, renderUnitBudgetBlock, UNIT_BUDGET_TOLERANCE, volumeDeviationOf, withProjectedArcGuide, withProjectedUnitArcGuide, type UnitBudgetState } from '../../../shared/arc-position'
 import { auditOutlineLength, outlineLengthOf, renderOutlineLengthReport } from '../../../shared/outline-budget'
 import { planOutlinePrefixBudget } from '../../../shared/outline-prefix-budget'
 import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../shared/arc-node'
@@ -120,6 +120,11 @@ interface PartialArchData {
    * 旧检查点缺省时一次性迁移（见 `deriveSynopsisUnitCursor`）。
    */
   synopsis_unit_cursor?: SynopsisUnitCursor
+  /**
+   * E3 **累计卷偏离**（2026-10-20 作者口径）：每写完一卷记 `实际 − 计划`，逐卷累加。
+   * **实际预期章数 = `totalChapters`（计划）+ 本值**——计划与偏离分开存，实际预期不落第三份。
+   */
+  synopsis_volume_deviation?: number
   /** 大纲赖以生成的源事实指纹；源事实变化后禁止续写旧检查点。 */
   synopsis_facts_fingerprint?: string
   /** 上次写入 DB 的大纲全文指纹；用于检测大纲是否被手动编辑（防续批覆盖用户修改）。 */
@@ -137,6 +142,7 @@ const SYNOPSIS_CHECKPOINT_FIELDS = [
   'synopsis_covered_to',
   'synopsis_range',
   'synopsis_unit_cursor',
+  'synopsis_volume_deviation',
   'synopsis_facts_fingerprint',
   'synopsis_db_hash',
   'synopsis_body_hash',
@@ -2928,6 +2934,8 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     // ===== E3 回填：请求期没有 `to`，实际章数从正文数出来（写超全书只 clamp、不阻断）=====
     let unitNextCursor: SynopsisUnitCursor | null = null
     let completedFingerprint = factsFingerprint
+    /** 写完一卷时更新的累计偏离；**不在这里写 partial**（`previousPartial` 快照在下面，写早了回滚会带上它）。 */
+    let nextVolumeDeviation: number | undefined
     if (unitContext) {
       const backfill = backfillUnitBatch(merged, from, totalChapters)
       if (!backfill) throw new Error(text(
@@ -2936,15 +2944,11 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       ))
       to = backfill.to
       if (backfill.overflow) callbacks.log(text(
-        `本单元写过了全书末尾（写到第 ${from + backfill.actualChapters - 1} 章，全书 ${totalChapters} 章）；只记录，不阻断。`,
-        `This unit wrote past the end of the book (reached chapter ${from + backfill.actualChapters - 1} of ${totalChapters}); recorded only, not blocked.`,
+        `本单元写过了全书末尾（写到第 ${from + backfill.actualChapters - 1} 章，全书计划 ${totalChapters} 章）；只记录，不阻断。`,
+        `This unit wrote past the end of the book (reached chapter ${from + backfill.actualChapters - 1} of the planned ${totalChapters}); recorded only, not blocked.`,
       ))
-      unitNextCursor = advanceUnitCursor(
-        parseArcStructure(sourceExpected.plotStructurePlan ?? ''),
-        totalChapters,
-        unitContext.cursor,
-        backfill.actualChapters,
-      )
+      const parsedPlan = parseArcStructure(sourceExpected.plotStructurePlan ?? '')
+      unitNextCursor = advanceUnitCursor(parsedPlan, totalChapters, unitContext.cursor, backfill.actualChapters)
       // 完成落盘按**实际范围**重算指纹：下一批续接时用 `synopsis_range` 复算比对，
       // 若沿用请求期的 boundTo，实际章数一偏离就会把第二批误判成"源事实已变化"。
       completedFingerprint = synopsisInputsFingerprint(sourceExpected, effectiveStepGuidance, { from, to }, template)
@@ -2952,12 +2956,29 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         `本单元实际写 ${backfill.actualChapters} 章（第 ${from}–${to} 章）；`
           + `${unitNextCursor
             ? `下一个单元：卷 ${unitNextCursor.volumeIndex} 单元 ${unitNextCursor.unitIndex}（本卷已写 ${unitNextCursor.writtenInVolume} 章）`
-            : `弧光单元已全部写完（全书计划 ${totalChapters} 章，实际到第 ${to} 章）`}`,
+            : `弧光单元已全部写完（实际到第 ${to} 章）`}`,
         `This unit wrote ${backfill.actualChapters} chapters (${from}-${to}); `
           + `${unitNextCursor
             ? `next unit: volume ${unitNextCursor.volumeIndex} unit ${unitNextCursor.unitIndex} (${unitNextCursor.writtenInVolume} chapters written in this volume)`
-            : `no unit left (book planned ${totalChapters} chapters, written through chapter ${to})`}`,
+            : `no unit left (written through chapter ${to})`}`,
       ))
+      // 卷写完了 ⇒ 记这一卷的偏离并累加（作者口径：实际预期 = 计划 ± 各卷偏离之和）。
+      if (!unitNextCursor || unitNextCursor.volumeIndex !== unitContext.cursor.volumeIndex) {
+        const writtenInVolume = unitContext.cursor.writtenInVolume + backfill.actualChapters
+        const deviation = volumeDeviationOf(parsedPlan, totalChapters, unitContext.cursor.volumeIndex, writtenInVolume)
+        if (deviation) {
+          const accumulated = (partial.synopsis_volume_deviation ?? 0) + deviation.deviation
+          nextVolumeDeviation = accumulated
+          const expected = expectedTotalChapters(sourceExpected.totalChapters, accumulated)
+          const signed = (value: number) => (value >= 0 ? `+${value}` : `${value}`)
+          callbacks.log(text(
+            `卷 ${deviation.volumeIndex} 写完：计划 ${deviation.planned} 章，实际 ${deviation.actual} 章（偏离 ${signed(deviation.deviation)}）；`
+              + `全书计划 ${sourceExpected.totalChapters} 章，累计偏离 ${signed(accumulated)}，实际预期 ${expected} 章。`,
+            `Volume ${deviation.volumeIndex} done: planned ${deviation.planned}, actual ${deviation.actual} (${signed(deviation.deviation)}); `
+              + `book planned ${sourceExpected.totalChapters}, accumulated deviation ${signed(accumulated)}, expected ${expected} chapters.`,
+          ))
+        }
+      }
     }
 
     // ===== 完成校验：正文必须完整覆盖本批；附带进度行时也必须与范围一致 =====
@@ -2996,6 +3017,22 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     partial.synopsis_incomplete = false
     partial.synopsis_covered_to = to
     partial.synopsis_range = { from, to }
+    // 卷偏离只在「写完一卷」时推进；未推进时保留原值（跨批次累计）。
+    // **例外：作废已写章节重新规划**（`from = 1` 且原有已写内容）——这是计划章数唯一还起规划作用的场合，
+    // 偏离账必须清零，否则旧偏离会带进新计划（作者 2026-10-20 口径）。
+    const replannedFromScratch = mode === 'fresh' && coveredTo > 0
+    if (replannedFromScratch) {
+      if (partial.synopsis_volume_deviation !== undefined) {
+        callbacks.log(text(
+          `已作废第 1–${coveredTo} 章重新规划：清空累计卷偏离 ${partial.synopsis_volume_deviation >= 0 ? '+' : ''}${partial.synopsis_volume_deviation}，`
+            + `回到计划章数 ${totalChapters} 章为基准。`,
+          `Re-planning from scratch (chapters 1-${coveredTo} discarded): accumulated deviation `
+            + `${partial.synopsis_volume_deviation >= 0 ? '+' : ''}${partial.synopsis_volume_deviation} cleared, `
+            + `back to the ${totalChapters}-chapter plan as the baseline.`,
+        ))
+      }
+      delete partial.synopsis_volume_deviation
+    } else if (nextVolumeDeviation !== undefined) partial.synopsis_volume_deviation = nextVolumeDeviation
     // 单元模式：显式推进游标（`undefined` 走章号推导是旧模式的兼容路径，绝不能用于单元模式）。
     syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, totalChapters, unitContext ? unitNextCursor : undefined)
     partial.synopsis_facts_fingerprint = completedFingerprint
@@ -3056,12 +3093,15 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       && this.selectedSteps.includes('premise') && this.selectedSteps.includes('characters')
       && this.selectedSteps.includes('worldbuilding') && this.selectedSteps.includes('synopsis')) {
       this.assertNotCancelled(context)
+      // ⚠️ 不能整份写 `{}`：累计卷偏离是**最终账**，清掉之后「实际预期章数」就再也算不出来
+      //（各卷的实际章数无法从大纲反推——那正是按章号反推单元的坑）。只清生成态，留下这个数。
+      const preserved = nextVolumeDeviation ?? partial.synopsis_volume_deviation
       requireIpcSuccess(
         await ipc.invokeWithProjectSession(
           projectSession,
           'fs:write-file',
           `${expectedProjectPath}/${CANONICAL_PROJECT_DIRECTORY}/partial_arch.json`,
-          '{}',
+          JSON.stringify(preserved === undefined ? {} : { synopsis_volume_deviation: preserved }),
           expectedProjectPath,
         ),
         text('清理架构生成检查点', 'Clear architecture-generation checkpoint'),
@@ -3069,10 +3109,13 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       )
     }
 
+    const bookDeviation = nextVolumeDeviation ?? partial.synopsis_volume_deviation ?? 0
+    const expectedBookChapters = expectedTotalChapters(totalChapters, bookDeviation)
+    const signedDrift = `${bookDeviation >= 0 ? '+' : ''}${bookDeviation}`
     callbacks.log(text(
       bookComplete
         ? (unitContext
-            ? `剧情大纲已写完（弧光单元全部完成，实际 ${to} 章；开篇计划 ${totalChapters} 章，偏差按卷记录）`
+            ? `剧情大纲已写完（弧光单元全部完成，实际 ${to} 章；计划 ${totalChapters} 章 + 卷偏离 ${signedDrift} = 实际预期 ${expectedBookChapters} 章）`
             : (mode === 'resume' ? '情节大纲续写完成，全书大纲已就绪' : '情节大纲已生成，全书大纲已就绪'))
         : (unitContext
             ? `本单元已完成（写到第 ${to} 章）；下一个单元：卷 ${unitNextCursor!.volumeIndex} 单元 ${unitNextCursor!.unitIndex}`

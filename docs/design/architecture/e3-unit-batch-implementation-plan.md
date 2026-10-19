@@ -277,6 +277,30 @@
 - **修掉一处既有 bug**：`projectArcStructureText` 用 `majorMatch?.[2]` 判「匹配到没有」，而捕获组 2 是**可选章数**；
   P18 让标题可以不带章数之后，这段投影对所有无章数的弧光**静默退化成原文**（P0-0b 的分级裁剪成了 no-op）。
   改为 `if (majorMatch)` / `if (midMatch && …)`，与 `parseArcStructure` 的判据一致。
+
+### 2026-10-20 · 计划章数 / 实际预期章数（双轨，完成）
+
+**作者口径**：`totalChapters`（例 200）是**计划章数**；卷纲落地之后它**不再规划篇幅**，只在一种情况下还起规划作用——
+**已写章节作废、重新规划**。**实际预期章数另存**：`计划 ± 每一卷的偏离章数`。
+
+**落法**
+
+| 量 | 存哪 | 谁维护 |
+|---|---|---|
+| 计划章数 | `novelConfig.totalChapters`（不动） | 作者 |
+| 累计卷偏离 | 检查点 `synopsis_volume_deviation` | 每写完一卷累加 `实际 − 计划` |
+| 实际预期章数 | **不落第三份**，`expectedTotalChapters(计划, 累计偏离)` 算出 | 派生 |
+
+- 新增纯函数（`arc-position.ts`）：`planVolumeChapters`（与 `planUnitStats` 同一份折算）、`volumeDeviationOf`（**不截断**实际章数，
+  否则看不到超写）、`expectedTotalChapters`（计划非法 ⇒ 1，不拿偏离凭造数）。
+- 卷边界判定：`unitNextCursor` 为 `null`，或它指向的卷与当前游标的卷不同。写完卷时打一行
+  「卷 N 写完：计划 X 章，实际 Y 章（偏离 ±D）；全书计划 P，累计偏离 ±S，实际预期 P±S 章」。
+- **作废重规划清零**：`from = 1` 且原有已写内容（`coveredTo > 0`）= 作废重规划 ⇒ 删除 `synopsis_volume_deviation` 并提示「回到计划章数为基准」。
+  这是计划章数唯一还起规划作用的场合，旧偏离不能带进新计划。
+- **全流程收口不再整份写 `{}`**：`partial_arch.json` 只清生成态，保留 `synopsis_volume_deviation`——
+  各卷实际章数无法从大纲反推（那正是按章号反推单元的坑），这个数是最终账。
+- 单测：`unit-arc-position` 9 → 12 条；`synopsis-unit-batch` 5 → 6 条（卷完成记偏离 −21 / 跨卷累计 −47 ⇒ 实际预期 13 / 重规划清零）。
+
 - 单测：新增 `src/shared/__tests__/unit-arc-position.test.ts` 9 条；`synopsis-unit-batch.command.test.ts` 扩到 5 条
   （提示词断言「本次只写：卷/单元」、不含章号区间与「章数区间是给定条件」；写完时 DB 不再挂"其余章节"）。
   回归：shared 810（1 条既有 M09 失败）· workflows 448 · commands 725（18 条 SQLite ABI 噪声）· main-generation 101 · tsc 0。

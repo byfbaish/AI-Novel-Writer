@@ -134,8 +134,12 @@ node scripts/check-doc-links.mjs
    `approveUnitContext` 会拒绝与游标不符的请求 ⇒ 现有「显式覆盖重写」入口在单元模式下不可用（要么清检查点/游标，要么另给一条 reset 语义）。
 2. **卷末报警阈值**：`unit-budget` §5 现在是 ±15%，数据显示 ±15% 会常态触发（强模型可 −40%、弱模型可 +100%）——是否统一为 ±10%，或只作纯信息报告？
 3. **单元级偏差的展示位置**：现在设计是"只记录、卷末汇总"，UI 还没定落点（T10 之后再说）。
-4. **下游要按"实际章数"读大纲**（作者口径的连带）：开篇 `totalChapters` 是计划，写完时 `covered_to` 可能是 200 而不是 200 章计划值。
-   蓝图/正文如果按 `novelConfig.totalChapters` 取章号，会去要不存在的章节；T10 实机时要确认这段怎么接（读大纲实际章数 or 回写配置）。
+4. **章数双轨：已按作者口径落地，剩「谁读它」**（2026-10-20）。计划章数留在 `novelConfig.totalChapters`
+   （卷纲落地后不再规划篇幅，只在**作废重写**时当基准）；**累计卷偏离**存检查点 `synopsis_volume_deviation`；
+   **实际预期章数 = 计划 + 累计偏离**，不落第三份（`expectedTotalChapters`）。
+   作废重规划（`from = 1` 且原有已写）会清零偏离。**剩下的**：蓝图/对话框的上界仍读计划值
+   （`directory.command.ts` 的 `Math.min(totalChapters, …)`、`DirectoryConfigDialog.tsx` 的剩余章数），
+   要不要改成「计划 + 偏离」，以及这个数怎么给到渲染层（检查点文件 vs 新通道），留 T10 前定。
 
 > 已裁定（2026-10-20）：**弧位投影按游标**（T4c 已实现 `arcSpanForUnit` / `withProjectedUnitArcGuide`）；
 > **不存在「单元耗尽」这个说法**——骨架走完就是写完，计划章数不参与完成判定（T4c 已把 `bookComplete` 改成这个口径）。
