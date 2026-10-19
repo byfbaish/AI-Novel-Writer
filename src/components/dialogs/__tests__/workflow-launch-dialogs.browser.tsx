@@ -18,6 +18,8 @@ let authoritativeNextChapter: number
 let authorityGap: number | null
 let blueprintChapterNumbers: number[]
 let planningPreferences: { outlineTargetUnits?: number; blueprintTargetUnits?: number }
+/** 大纲覆盖到第几章（`null` = 不提供 synopsis，旧行为：不限制） */
+let outlineChapters: number | null
 
 const project = {
   id: 'dialogs', sessionLease: 'lease-dialogs', name: 'Dialogs', path: 'C:\\novels\\dialogs',
@@ -33,6 +35,7 @@ beforeEach(() => {
   authorityGap = null
   blueprintChapterNumbers = []
   planningPreferences = {}
+  outlineChapters = null
   useLocaleStore.setState({ locale: 'zh-CN' })
   useProjectStore.setState({ currentProject: project as never })
   useWorkflowStore.setState({
@@ -51,6 +54,13 @@ beforeEach(() => {
       return { success: true }
     }
     if (channel === 'generation:list-directory-progress') return []
+    if (channel === 'db:project-core-get') {
+      if (outlineChapters === null) return { success: true }
+      return {
+        synopsis: Array.from({ length: outlineChapters }, (_, index) =>
+          `第${index + 1}章：标题${index + 1}\n本章正文。`).join('\n\n'),
+      }
+    }
     if (channel === 'db:blueprint-character-sync-list-pending') return []
     if (channel === 'db:blueprint-get-all') {
       return blueprintChapterNumbers.map(chapterNumber => ({ chapterNumber }))
@@ -375,6 +385,13 @@ describe('workflow launch dialogs', () => {
     }
     invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
       if (channel === 'generation:list-directory-progress') return []
+    if (channel === 'db:project-core-get') {
+      if (outlineChapters === null) return { success: true }
+      return {
+        synopsis: Array.from({ length: outlineChapters }, (_, index) =>
+          `第${index + 1}章：标题${index + 1}\n本章正文。`).join('\n\n'),
+      }
+    }
       if (channel === 'db:blueprint-get-all') return []
       if (channel === 'db:draft-authority-sequence') return {
         status: 'empty',
@@ -520,6 +537,27 @@ it.each(['outline', 'blueprint'] as const)('retains %s input and does not start 
   await expect.element(target).toHaveValue(900)
   expect(onConfirm).not.toHaveBeenCalled()
   expect(onClose).not.toHaveBeenCalled()
+})
+
+it('freezes chapters that have no outline yet (upper bound = outline coverage)', async () => {
+  // 计划 10 章，但大纲只写到第 4 章：第 5 章起没有输入材料，选项直接冻结在上界内。
+  outlineChapters = 4
+  const onConfirm = vi.fn(async () => {})
+  await act(async () => root.render(<DirectoryConfigDialog isOpen onClose={() => {}} existingCount={0} onConfirm={onConfirm} />))
+
+  await expect.element(page.getByText(/大纲已覆盖至第 4 章/)).toBeVisible()
+  await expect.element(page.getByText('全量生成（共 4 章）')).toBeVisible()
+  await expect.element(page.getByRole('spinbutton', { name: '蓝图结束章' })).toHaveAttribute('max', '4')
+  await expect.element(page.getByRole('spinbutton', { name: '蓝图起始章' })).toHaveAttribute('max', '4')
+})
+
+it('keeps the old behaviour when the outline coverage cannot be read', async () => {
+  outlineChapters = null
+  const onConfirm = vi.fn(async () => {})
+  await act(async () => root.render(<DirectoryConfigDialog isOpen onClose={() => {}} existingCount={0} onConfirm={onConfirm} />))
+
+  await expect.element(page.getByText(/大纲已覆盖至第/)).not.toBeInTheDocument()
+  await expect.element(page.getByText('全量生成（共 10 章）')).toBeVisible()
 })
 
 it('rejects full-book generation above ten chapters and does not normalize an empty quantity', async () => {
