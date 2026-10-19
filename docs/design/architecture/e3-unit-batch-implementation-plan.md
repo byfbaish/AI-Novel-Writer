@@ -3,6 +3,7 @@
 > 状态：🟡 **T1 已实施**（纯函数 + 单测，零行为变化）· 其余待评审 ｜ 日期：2026-10-20
 > 上级稿：[`volume-quota-context-budget-design.md`](volume-quota-context-budget-design.md) §6–§7（现行口径）｜[`unit-budget-elastic-allocation-design.md`](unit-budget-elastic-allocation-design.md) §9（E3 定位与硬前置）
 > 实测依据：[`unit-budget-prompt-ab-test.md`](unit-budget-prompt-ab-test.md) §13（含 DeepSeek 思考模式交叉验证）
+> 交接：[`2026-10-20-e3-unit-batch-handoff.md`](../../handoffs/2026-10-20-e3-unit-batch-handoff.md)（上下文过长时的接力点）
 > 分支：`exp/arc-tree-v2` · 基准：`540c701c`（E4j-4 之后）
 
 ---
