@@ -29,7 +29,7 @@
 | # | 任务 | 状态 |
 |---|---|---|
 | T1 | 建立本施工记录 | ✅ |
-| T2 | E4a-1：`outline-budget.ts` 纯函数 + 单测（`OUTLINE_OVERSHOOT` / `OUTLINE_TOTAL_OVERSHOOT`） | ⬜ |
+| T2 | E4a-1：`outline-budget.ts` 纯函数 + 单测（`OUTLINE_OVERSHOOT` / `OUTLINE_TOTAL_OVERSHOOT`） | ✅ |
 | T3 | E4a-2：`planVolumeStats` 卷内统计纯函数 + 单测 | ✅ |
 | T4 | E4b：`cached_tokens` 解析进 attempt receipt | ✅ |
 | T5 | E4c：前缀投影只读预估（打日志，不改行为） | ✅ |
