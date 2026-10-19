@@ -251,3 +251,32 @@
 - 单测：新增 `synopsis-unit-batch.command.test.ts` 5 条（单元 1 无章号区间 + 回填落盘 / 少写 5 章后单元 2 接上且不被指纹拒 /
   中断续写 / 跨卷 writtenInVolume=0 不被判损坏 / 过期请求 fail-closed）。回归：命令层 33 个文件 725 passed，`tsc --noEmit` exit 0。
 - ⚠️ **未做**：T8（续批 / agent 子 run 的 deep-equal 改比 `{from, cursor}`）、T10（实机）、T11（开关）。
+
+### 2026-10-20 · T4c 弧位按游标 + 「写完」改判据（完成）
+
+**作者裁定（2026-10-20）**
+
+1. **弧位投影按游标**，不按章号；
+2. **不存在「单元耗尽」这个说法**：开篇的 200 章是**计划不是约束**，靠反馈收敛机制约束偏差；每卷额度各自独立；
+   开卷以后总章数由自下而上的真实章数决定 ⇒ **骨架走完 = 写完**，与计划章数无关。
+
+**改动**
+
+- `arc-position.ts` 新增 `arcSpanForUnit(parsed, total, volumeIndex, unitIndex)`：按游标取本单元的计划区间，
+  **只用于文本投影**（注释里写明不参与状态判定）。
+- 新增 `renderUnitArcPositionBlock` / `withProjectedUnitArcGuide`：单元版弧位块。与批量版的三处刻意差异：
+  ① 不写本单元章号区间（会和「从第 N 章开始」打架，也会把章号变成配额）；
+  ② 不出现「覆盖：」声明清单（按章号认领，漂移即错位）；
+  ③ **删掉原第 5 条「一个小弧的章数区间是给定条件，不得压缩进 1–2 章」**——它与「写到离开状态就停、不要凑章数」直接冲突。
+  改为「本单元的篇幅由剧情决定」。
+- `executeWithinGeneration`：`withPlotStructureGuide` 在单元模式走 `withProjectedUnitArcGuide`；
+  `summarizeArcCoverFindings`（按章号的覆盖对账）在单元模式跳过。
+- **写完判据**：`bookComplete = unitContext ? unitNextCursor === null : to >= totalChapters`。
+  DB 尾部「其余章节将在后续批次继续生成」只在**未写完**时出现（写完时渲染按全书完成，但检查点仍存真实章数）；
+  收口清理与结束日志改用它。
+- **修掉一处既有 bug**：`projectArcStructureText` 用 `majorMatch?.[2]` 判「匹配到没有」，而捕获组 2 是**可选章数**；
+  P18 让标题可以不带章数之后，这段投影对所有无章数的弧光**静默退化成原文**（P0-0b 的分级裁剪成了 no-op）。
+  改为 `if (majorMatch)` / `if (midMatch && …)`，与 `parseArcStructure` 的判据一致。
+- 单测：新增 `src/shared/__tests__/unit-arc-position.test.ts` 9 条；`synopsis-unit-batch.command.test.ts` 扩到 5 条
+  （提示词断言「本次只写：卷/单元」、不含章号区间与「章数区间是给定条件」；写完时 DB 不再挂"其余章节"）。
+  回归：shared 810（1 条既有 M09 失败）· workflows 448 · commands 725（18 条 SQLite ABI 噪声）· main-generation 101 · tsc 0。

@@ -134,7 +134,7 @@ function harness(checkpoint: CheckpointSnapshot = {}, dbSynopsis = '') {
       setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn(),
     },
   })
-  return { partialWrites }
+  return { partialWrites, dbSynopsis: () => storedDbSynopsis }
 }
 
 function responseStream(responses: readonly string[]) {
@@ -196,6 +196,10 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
     const prompt = promptText(stream)
     expect(prompt).toContain('【单元 1：门牌】')
     expect(prompt).toContain('从第 1 章开始')
+    // 弧位按**游标**定位：不写本单元章号区间，也不给「章数以区间为给定条件」那条（与不凑章数冲突）
+    expect(prompt).toContain('本次只写：卷 1【开局】· 单元 1【门牌】')
+    expect(prompt).not.toContain('本批范围：第')
+    expect(prompt).not.toContain('章数区间是')
     // 请求期没有 `to`：不得出现按章号划定的批次范围（旧的 `synopsisBatchInstruction` 文案）
     expect(prompt).not.toContain('本次必须对第 1–')
     expect(prompt).not.toContain('本次不展开细写')
@@ -293,9 +297,11 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
     const saved = ipc.partialWrites.at(-1)!
     expect(saved.synopsis_range).toEqual({ from: 10, to: 13 })
     expect(saved.synopsis_covered_to).toBe(13)
-    // ⚠️ 待裁定（T4b 汇报 §未决 2）：弧光是两级结构、卷二只有 1 个单元 ⇒ 单元骨架走完即 cursor = null，
-    // 但实际只写到第 13 章（计划 60）。「单元耗尽」是否等于「全书写完」尚未定。
+    // 弧光单元骨架走完 ⇒ 就是「写完」，与计划章数无关（作者口径：200 章是计划不是约束）。
     expect(saved.synopsis_unit_cursor).toBeUndefined()
+    // 不能再挂「其余章节将在后续批次继续生成」——骨架走完就没有后续批次了。
+    expect(ipc.dbSynopsis()).not.toContain('其余章节将在后续批次继续生成')
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('弧光单元全部完成'))
   })
 
   it('过期请求（单元序号与游标不符）fail-closed，不生成', async () => {

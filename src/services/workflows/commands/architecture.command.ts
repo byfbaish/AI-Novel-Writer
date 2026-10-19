@@ -6,7 +6,7 @@ import { defaultCharacterProposalRelationships, defaultCharacterProposalSelectio
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import type { ArchitecturePlanningIntent, ArchitectureUnitRange, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, plotOutlineCoveredTo, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
-import { arcSpanForChapters, auditArcDensity, parseArcStructure, planProgress, planUnitStats, renderUnitBudgetBlock, UNIT_BUDGET_TOLERANCE, withProjectedArcGuide, type UnitBudgetState } from '../../../shared/arc-position'
+import { arcSpanForChapters, auditArcDensity, parseArcStructure, planProgress, planUnitStats, renderUnitBudgetBlock, UNIT_BUDGET_TOLERANCE, withProjectedArcGuide, withProjectedUnitArcGuide, type UnitBudgetState } from '../../../shared/arc-position'
 import { auditOutlineLength, outlineLengthOf, renderOutlineLengthReport } from '../../../shared/outline-budget'
 import { planOutlinePrefixBudget } from '../../../shared/outline-prefix-budget'
 import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../shared/arc-node'
@@ -2709,7 +2709,17 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       //   实测（2026-10-11）：不注入时，中弧 2 的核心动作会在中弧 1 的第 9–10 章被提前执行完。
       //   P0-0b：先按本批弧位**分级裁剪**弧光结构（本中弧全字段 / 本大弧他中弧只留一句话 /
       //   其他大弧只留接续理由），再追加弧位硬约束块。结构不可解析时行为与改造前一致。
-      .withPlotStructureGuide(withProjectedArcGuide(guide, core?.plotStructurePlan, totalChapters, from, to, writingLanguage))
+      //   E3：单元模式**按游标定位**（章号会随实际写作漂移，按章号定位会与「只写单元 k」自相矛盾）。
+      .withPlotStructureGuide(unitContext
+        ? withProjectedUnitArcGuide(
+            guide,
+            core?.plotStructurePlan,
+            totalChapters,
+            unitContext.cursor.volumeIndex,
+            unitContext.cursor.unitIndex,
+            writingLanguage,
+          )
+        : withProjectedArcGuide(guide, core?.plotStructurePlan, totalChapters, from, to, writingLanguage))
       .withNarrativePov(pov)
       .withGlobalGuidance(projectScopedText(config.globalGuidance || '', 'outline').text
         || promptLanguageText(writingLanguage, '（未填写）', '(not provided)'))
@@ -2958,8 +2968,11 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       if (!unitContext) assertPlotOutlineBatchComplete(merged, from, to, totalChapters, text)
       confirmedBody = stripPlotOutlineProgressLine(merged)
       // P12-1：结构位对账（只报告不阻断）。作者看得到「该用的格子没用完 / 不该用的提前花了」。
-      const arcCoverNote = summarizeArcCoverFindings(confirmedBody, core?.plotStructurePlan, totalChapters, from, to, text)
-      if (arcCoverNote) callbacks.log(arcCoverNote)
+      // 单元模式不注入「覆盖：」清单（它按章号认领结构位，漂移后必然错位），因此也不做这项对账。
+      if (!unitContext) {
+        const arcCoverNote = summarizeArcCoverFindings(confirmedBody, core?.plotStructurePlan, totalChapters, from, to, text)
+        if (arcCoverNote) callbacks.log(arcCoverNote)
+      }
     } catch (error) {
       if (error instanceof NonRecoverablePlotOutlineError) {
         if (previousBatchPartial && stagedBatchPartial) {
@@ -2988,7 +3001,20 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     partial.synopsis_facts_fingerprint = completedFingerprint
     partial.synopsis_body_hash = synopsisFactsFingerprint([confirmedBody])
     partial.synopsis_step_guidance = effectiveStepGuidance
-    const dbOutlineText = renderSynopsisDbText(confirmedBody, writingLanguage, totalChapters, partial)
+    /**
+     * 「写完」的判据（2026-10-20 作者裁定）：`totalChapters` 是**开篇计划，不是完成约束**——
+     * 开卷之后篇幅由自下而上的实际章数决定。所以单元模式以**弧光单元骨架是否走完**为准，
+     * 章数只做记录；旧路径仍以 `to >= totalChapters` 为准。
+     */
+    const bookComplete = unitContext ? unitNextCursor === null : to >= totalChapters
+    // 单元模式写完时 `covered_to` 仍是真实章数，但 DB 尾部**不能**再挂「其余章节将在后续批次继续生成」
+    // —— 骨架走完就没有后续批次了。渲染时按全书完成处理，检查点里保留真实进度。
+    const dbOutlineText = renderSynopsisDbText(
+      confirmedBody,
+      writingLanguage,
+      totalChapters,
+      unitContext && bookComplete ? { ...partial, synopsis_covered_to: totalChapters } : partial,
+    )
     partial.synopsis_db_hash = synopsisFactsFingerprint([dbOutlineText])
     context.data.partial = partial
     this.assertNotCancelled(context)
@@ -3026,7 +3052,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
 
     // 全书完成的「全流程」运行（前提+角色+世界观+大纲一次做完）才清理检查点文件；
     // 分块/续批运行保留检查点供后续批次与断点续写使用。
-    if (to >= totalChapters
+    if (bookComplete
       && this.selectedSteps.includes('premise') && this.selectedSteps.includes('characters')
       && this.selectedSteps.includes('worldbuilding') && this.selectedSteps.includes('synopsis')) {
       this.assertNotCancelled(context)
@@ -3044,16 +3070,24 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     }
 
     callbacks.log(text(
-      to >= totalChapters
-        ? (mode === 'resume' ? '情节大纲续写完成，全书大纲已就绪' : '情节大纲已生成，全书大纲已就绪')
-        : (mode === 'resume'
-            ? `第 ${from}–${to} 章续写完成；全书还剩第 ${to + 1} 章起待生成`
-            : `第 ${from}–${to} 章已生成；全书还剩第 ${to + 1} 章起待生成`),
-      to >= totalChapters
-        ? (mode === 'resume' ? 'Plot-outline continuation complete; the full outline is ready.' : 'Plot outline generated; the full outline is ready.')
-        : (mode === 'resume'
-            ? `Batch chapters ${from}-${to} continued; chapters ${to + 1}+ are still pending.`
-            : `Batch chapters ${from}-${to} generated; chapters ${to + 1}+ are still pending.`),
+      bookComplete
+        ? (unitContext
+            ? `剧情大纲已写完（弧光单元全部完成，实际 ${to} 章；开篇计划 ${totalChapters} 章，偏差按卷记录）`
+            : (mode === 'resume' ? '情节大纲续写完成，全书大纲已就绪' : '情节大纲已生成，全书大纲已就绪'))
+        : (unitContext
+            ? `本单元已完成（写到第 ${to} 章）；下一个单元：卷 ${unitNextCursor!.volumeIndex} 单元 ${unitNextCursor!.unitIndex}`
+            : (mode === 'resume'
+                ? `第 ${from}–${to} 章续写完成；全书还剩第 ${to + 1} 章起待生成`
+                : `第 ${from}–${to} 章已生成；全书还剩第 ${to + 1} 章起待生成`)),
+      bookComplete
+        ? (unitContext
+            ? `The outline is complete (all arc units done, ${to} chapters written against a ${totalChapters}-chapter plan).`
+            : (mode === 'resume' ? 'Plot-outline continuation complete; the full outline is ready.' : 'Plot outline generated; the full outline is ready.'))
+        : (unitContext
+            ? `This unit is done (through chapter ${to}); next unit: volume ${unitNextCursor!.volumeIndex} unit ${unitNextCursor!.unitIndex}.`
+            : (mode === 'resume'
+                ? `Batch chapters ${from}-${to} continued; chapters ${to + 1}+ are still pending.`
+                : `Batch chapters ${from}-${to} generated; chapters ${to + 1}+ are still pending.`)),
     ))
     return confirmedBody
   }

@@ -440,7 +440,43 @@ function gistOf(fields: readonly (readonly [string, string])[]): string {
   return text.length > 90 ? `${text.slice(0, 90)}…` : text
 }
 
-/** 推算某章范围落在哪个大弧 / 中弧。范围越界或结构不可解析时返回 null。 */
+/**
+ * 推算**某一个单元**（大弧内的中弧位）在计划里的章号区间，返回该单元的 `ArcSpan`。
+ *
+ * ⚠️ **只用于文本投影**（E3 逐单元：按游标定位弧位），**不参与任何状态判定**——
+ * 章号→单元的等分映射一遇到「实际章数偏离计划」就整体错位（见 `computeSynopsisUnitRange`
+ * 的注释与 2026-10-20 探针）。状态一律以落库游标为准。
+ *
+ * 结构不可解析 / 序号越界时返回 `null`，调用方据此不注入弧位块。
+ */
+export function arcSpanForUnit(
+  parsed: ParsedArcStructure | null,
+  totalChapters: number,
+  volumeIndex: number,
+  unitIndex: number,
+): ArcSpan | null {
+  if (!parsed || parsed.majors.length === 0) return null
+  if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return null
+  if (!Number.isSafeInteger(volumeIndex) || volumeIndex < 1 || volumeIndex > parsed.majors.length) return null
+  const major = parsed.majors[volumeIndex - 1]!
+  if (!Number.isSafeInteger(unitIndex) || unitIndex < 1 || unitIndex > major.mids.length) return null
+
+  const bounds = scaledBoundaries(parsed.majors.map(item => arcWeight(item.chapters)), totalChapters)
+  const volumeStart = bounds[volumeIndex - 1]! + 1
+  const volumeChapters = bounds[volumeIndex]! - bounds[volumeIndex - 1]!
+  if (volumeChapters < 1) return null
+  const midBounds = scaledBoundaries(major.mids.map(item => arcWeight(item.chapters)), volumeChapters)
+  const unitStart = volumeStart + midBounds[unitIndex - 1]!
+  const unitEnd = volumeStart + midBounds[unitIndex]! - 1
+  if (unitEnd < unitStart) return null
+  const span = arcSpanForChapters(parsed, totalChapters, unitStart, unitEnd)
+  // 折算后的区间可能被 clamp 到卷末，此时定位不到同一个单元 —— 宁可不注入，也不给错位的位置。
+  if (!span || span.majorIndex !== volumeIndex || span.midIndex !== unitIndex) return null
+  return span
+}
+
+/**
+ * 推算某章范围落在哪个大弧 / 中弧。范围越界或结构不可解析时返回 null。 */
 export function arcSpanForChapters(
   parsed: ParsedArcStructure | null,
   totalChapters: number,
@@ -933,7 +969,10 @@ export function projectArcStructureText(plan: string, span: ArcSpan): string {
   for (const rawLine of lines) {
     const line = rawLine.trim()
     const majorMatch = MAJOR_HEADING.exec(line)
-    if (majorMatch?.[2]) {
+    // ⚠️ 判「匹配到没有」不能用 `majorMatch?.[2]`：捕获组 2 是**可选**的章数，
+    // P18 之后弧光标题可以完全不带章数（`headingChapterCount` 缺省按个数等权），
+    // 用它当判据会让整段投影静默退化成原文（2026-10-20 实测：二级标题全不带章数时投影为 no-op）。
+    if (majorMatch) {
       flushMidBuffer()
       majorIndex += 1
       midIndex = 0
@@ -943,7 +982,7 @@ export function projectArcStructureText(plan: string, span: ArcSpan): string {
       continue
     }
     const midMatch = MID_HEADING.exec(line)
-    if (midMatch?.[2] && majorIndex > 0) {
+    if (midMatch && majorIndex > 0) {
       flushMidBuffer()
       midIndex += 1
       // 本批**覆盖到**的中弧全部保留全字段 —— 批可能跨越中弧边界，后半批的执行依据是
@@ -1163,6 +1202,97 @@ ${coverableLabel}
     .replaceAll('minor arcs', 'units')
     .replaceAll('minor arc', 'unit')
     .replaceAll('major arc', 'volume')
+}
+
+/**
+ * E3 逐单元：按**游标**渲染「本次所处弧位」块（2026-10-20 作者裁定：投影按游标，不按章号）。
+ *
+ * 与 `renderArcPositionBlock` 的三处不同（都是刻意的）：
+ *
+ * 1. **不写本单元的章号区间**——单元模式下实际章数由剧情决定，写「第 16–30 章」会和
+ *    「从第 13 章开始」自相矛盾，也会把章号变成配额；
+ * 2. **不出现「覆盖：」声明清单**——那份清单要求按章号认领结构位，章号一漂就错位；
+ * 3. **删掉「一个小弧的章数区间是给定条件」那条**——它的原话是「跨 8 章就得写出 8 章的内容，
+ *    不得压缩进 1–2 章」，与单元模式的「写到离开状态成立就停、不要凑章数」直接冲突。
+ *
+ * 结构不可解析 / 序号越界时返回 `''`（不注入）。
+ */
+export function renderUnitArcPositionBlock(
+  parsed: ParsedArcStructure | null,
+  totalChapters: number,
+  volumeIndex: number,
+  unitIndex: number,
+  writingLanguage: WritingLanguage,
+): string {
+  const span = arcSpanForUnit(parsed, totalChapters, volumeIndex, unitIndex)
+  if (!parsed || !span) return ''
+  const en = writingLanguage === 'en-US'
+  const volumeNaming = parsed.naming === 'volume'
+  const volumeWord = en ? 'volume' : (volumeNaming ? '卷' : '大弧')
+  const unitWord = en ? 'unit' : (volumeNaming ? '单元' : '中弧')
+  const endWord = en ? 'exit state' : (volumeNaming ? '离开状态' : '结束状态')
+  const totalUnits = parsed.majors[volumeIndex - 1]!.mids.length
+  const spec = span.midFields.map(([name, value]) => `${name}：${value}`).join('；')
+  const later = span.remainingMids.length
+    ? span.remainingMids
+        .map(item => (en
+          ? `${unitWord} ${item.midIndex} "${item.name}" — ${item.gist}`
+          : `${unitWord} ${item.midIndex}【${item.name}】— ${item.gist}`))
+        .join('\n  - ')
+    : (en ? `(none — this is the last ${unitWord} of the ${volumeWord})` : `（无 —— 这是本${volumeWord}最后一个${unitWord}）`)
+  const minors = span.midMinors.length
+    ? (en
+        ? `- Minor arcs inside this unit (advance in order; one may span several chapters):\n  - ${span.midMinors.map(item => `${item.name}${item.text ? ` — ${item.text}` : ''}`).join('\n  - ')}`
+        : `- 本${unitWord}内的小弧（按顺序推进；一个小弧可以跨多章）：\n  - ${span.midMinors.map(item => `${item.name}${item.text ? ` — ${item.text}` : ''}`).join('\n  - ')}`)
+    : ''
+
+  if (en) {
+    return [
+      '[ARC POSITION for this unit — derived from the arc structure, for placement only]',
+      `- Write only: ${volumeWord} ${span.majorIndex} "${span.majorName}" · ${unitWord} ${span.midIndex} "${span.midName}" (${unitWord} ${span.midIndex} of ${totalUnits} in this ${volumeWord})`,
+      `- Spec of this ${unitWord}: ${spec}`,
+      ...(minors ? [minors] : []),
+      `- Later ${unitWord}s inside this ${volumeWord} (do NOT execute them early, and never claim them):`,
+      `  - ${later}`,
+      '[HARD RULE — this failure has actually happened]',
+      `1. Advance only what is still unplayed inside "${span.midName}"; never rewrite a ${unitWord} that is already done;`,
+      `2. The goal / attempts / turning point of any later ${unitWord} must NOT happen now;`,
+      `3. The "${endWord}" of ${volumeWord} ${span.majorIndex} "${span.majorName}" only holds at its LAST ${unitWord} — it is not material you may use now;`,
+      '4. This unit\'s length follows the story: stop once the exit state holds. Do not add events to pad the chapter count, and do not wrap up early while things are still unresolved.',
+    ].join('\n')
+  }
+  return [
+    '【本次所处弧位（据「弧光结构」推算，仅用于定位，不改变弧光本身）】',
+    `- 本次只写：${volumeWord} ${span.majorIndex}【${span.majorName}】· ${unitWord} ${span.midIndex}【${span.midName}】（本${volumeWord}共 ${totalUnits} 个${unitWord}，这是第 ${span.midIndex} 个）`,
+    `- 本${unitWord}规格：${spec}`,
+    ...(minors ? [minors] : []),
+    `- 本${volumeWord}内**后续**${unitWord}（★ 本次不得提前执行）：`,
+    `  - ${later}`,
+    '【硬约束·防提前】（实测已发生过，务必遵守）',
+    `1. 本次只推进【${span.midName}】内**尚未发生**的内容；已经写完的${unitWord}不回头重写；`,
+    `2. 本${volumeWord}内后续${unitWord}的「目标 / 尝试 / 转折」不得在本次提前实现；`,
+    `3. ${volumeWord} ${span.majorIndex}【${span.majorName}】的「${endWord}」是**本${volumeWord}最后一个${unitWord}**才成立的验收标准，不是本次可用的材料——不得提前兑现其中任何一条；`,
+    `4. 本${unitWord}的篇幅由剧情决定：写到「${endWord}」成立就停笔，不要为凑章数加戏，也不要在还有事没发生时草草收尾。`,
+  ].join('\n')
+}
+
+/**
+ * 逐单元版「弧位注入」：先按**游标**裁剪弧光结构，再追加单元弧位块。
+ * 结构不可解析时退化为不裁剪、不注入（与 `withProjectedArcGuide` 的失败姿态一致）。
+ */
+export function withProjectedUnitArcGuide(
+  guide: string,
+  plan: string | null | undefined,
+  totalChapters: number,
+  volumeIndex: number,
+  unitIndex: number,
+  writingLanguage: WritingLanguage,
+): string {
+  const parsed = parseArcStructure(plan)
+  const span = arcSpanForUnit(parsed, totalChapters, volumeIndex, unitIndex)
+  const trimmed = span && plan ? projectArcStructureText(plan, span) : guide
+  const block = renderUnitArcPositionBlock(parsed, totalChapters, volumeIndex, unitIndex, writingLanguage)
+  return block ? `${trimmed}\n\n${block}` : trimmed
 }
 
 /**
