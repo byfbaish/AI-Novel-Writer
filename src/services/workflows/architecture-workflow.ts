@@ -2,7 +2,7 @@ import { parsePlanningTargetUnits, assertPlanningActionRange, DEFAULT_PLANNING_A
 import { globalEventBus } from '../../shared/event-bus'
 import type { WorkflowGenerationRuntimeDependencies } from './commands/base-command'
 import type { MainGenerationRunHandle } from '../generation/generation-runtime'
-import { ARCHITECTURE_PRIOR_STEPS, type ArchitecturePlanningIntent } from '../../shared/generation-owner-contract'
+import { ARCHITECTURE_PRIOR_STEPS, type ArchitecturePlanningIntent, type ArchitectureUnitRange } from '../../shared/generation-owner-contract'
 import { workflowResourceKey, type WorkflowDefinition, type WorkflowContext, type StepCallbacks } from '../../stores/workflow-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
@@ -57,6 +57,8 @@ export interface ArchitectureWorkflowParams {
   stepGuidance?: Record<string, string>
   /** 情节大纲本次生成范围 [from..to]（缺省 = 第 1 章到全书）。 */
   synopsisRange?: { from: number; to: number } | null
+  /** E3 逐单元批次（与 `synopsisRange` 互斥）：由调用方用落库游标构造。 */
+  synopsisUnit?: ArchitectureUnitRange | null
   /** 从上次输出长度中断的检查点续写情节大纲（工作流只包含 synopsis 一步）。 */
   resumeSynopsis?: boolean
   /** 从上次输出长度中断的候选续写世界观（工作流只包含 worldbuilding 一步）。 */
@@ -107,7 +109,7 @@ export function createArchitectureWorkflow(
   }
   // 工厂在捕获配置快照的同一时刻绑定 lease，防止同路径重新打开后复用旧快照。
   const projectSession = Object.freeze({ ...params.projectSession })
-  const synopsisRange = sel.includes('synopsis')
+  const synopsisRange = sel.includes('synopsis') && !params.synopsisUnit
     ? Object.freeze({ ...(params.synopsisRange ?? { from: 1, to: Math.min(project.novelConfig.totalChapters, DEFAULT_PLANNING_ACTION_CHAPTERS) }) }) : null
   if (synopsisRange && !resumingSynopsis) assertPlanningActionRange(synopsisRange)
   const targetUnits = parsePlanningTargetUnits(params.targetUnits)
@@ -115,6 +117,7 @@ export function createArchitectureWorkflow(
     version: 'architecture-action-v1',
     priorSteps: Object.freeze(ARCHITECTURE_PRIOR_STEPS.filter(step => sel.includes(step))),
     synopsisRange,
+    ...(params.synopsisUnit ? { synopsisUnit: Object.freeze({ ...params.synopsisUnit }) } : {}),
   })
   const projectSnapshot: ArchitectureProjectSnapshot = Object.freeze({
     targetUnits,
@@ -204,6 +207,7 @@ export function createArchitectureWorkflow(
           restartHandle: params.restartFrom,
           ...(resumingSynopsis ? { resumeHandle: await recoveryHandle(context, 'synopsis') } : {}),
           synopsisRange,
+          synopsisUnit: params.synopsisUnit ?? null,
         }).execute({ step, context, callbacks })
       },
     },

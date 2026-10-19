@@ -53,7 +53,8 @@
 | **T1** | `planUnitStats` 纯函数 + `renderUnitBudgetLine` | `src/shared/arc-position.ts` | ✅ 已实施（2026-10-20）：13 条单测 + 67 条回归全绿；`tsc --noEmit` exit 0 | 低 |
 | **T2** | 契约字段 `synopsisUnit`（并列，不动旧字段）+ 校验分支 | `generation-owner-contract.ts`、`plot-outline-contract.ts` | ✅ 已实施（2026-10-20）：13 条单测；`plotOutlinePolicy` 对单元模式返回 null，`plotOutlineUnitPolicy` 校验四元组与互斥 | 中 |
 | **T3** | 主进程预算：`synopsisUnit` ⇒ `2 × volumeRemaining` | `main-generation-plan.ts` | ✅ 已实施（2026-10-20）：7 条单测 + 94 条既有回归；`readMainGenerationPolicy` JSON 往返 | **高** |
-| **T4** | 请求构造：`computeUnitRequest`（游标 → 请求体，不算 `to`） | `architecture.command.ts` | 单测：游标推进、跨卷重置、无结构回退旧路径 | **高** |
+| **T4a** | 请求构造纯函数 + 选项管道（不接状态机） | `computeSynopsisUnitRange`、command options、`architecture-workflow` params/intent | ✅ 已实施（2026-10-20）：5 条单测（游标↔章号映射不一致 ⇒ null）；旧路径无行为变化 | **高** |
+| **T4b** | 状态机接线（unit 模式分支 + prompt + 余量块注入） | `executeWithinGeneration` | ⬜ 待做（依赖 T9 回填 `to`） | **高** |
 | **T5** | prompt unit 模式 | `synopsisUnitInstruction`（新函数，不动旧 `synopsisBatchInstruction`） | ✅ 已实施（2026-10-20）：3 条单测；无 from–to 区间、点名单元/起点/离开状态/不得进入下一单元 | 中 |
 | **T6** | 余量行常驻 + `r` 阈值指令 | `renderUnitBudgetBlock`（arc-position） | ✅ 渲染器已实施（2026-10-20）：5 条单测（带内/收紧/展开/英文/null）；**注入点在 T4** | 低 |
 | **T7** | 检查点写入游标 + 兼容旧值 | `architecture.command.ts`、partial 类型 | ✅ 已实施（2026-10-20）：`synopsis_unit_cursor` 入字段白名单；旧检查点一次性推导并落库；损坏游标报错；5 条推导单测 + 47 条命令回归 | **高** |
@@ -65,6 +66,8 @@
 > **T1–T3 可以先做**（纯函数 + 契约 + 预算，不接链路）。**T4 之后每一步都必须能单独回退**。
 
 > ⚠️ **依赖修正（2026-10-20 施工中发现）**：T4（请求构造）需要**游标已存在**，否则只能按章号反推——那正是硬前置禁止的做法。⇒ **实际顺序为 T7（游标落库 + 旧检查点迁移）→ T4（请求构造）**，T5/T6 可与之并行。
+>
+> ⚠️ **第二处依赖修正（2026-10-20）**：T4 拆成 **T4a（纯构造 + 管道）** 与 **T4b（状态机接线）**。T4b 需要「实际章数 → `to`」的回填逻辑，否则状态机拿不到 `to`、无法写检查点 ⇒ **T4b 必须与 T9 合并实施**（或先 T9 再 T4b）。
 
 ---
 
@@ -170,3 +173,11 @@
 - 单测：`synopsis-unit-instruction.test.ts` 3 条；`unit-stats.test.ts` 扩到 18 条（含带内/收紧/展开/英文/null）。
 - 回归：`architecture.command.test.ts` 47 passed；`tsc --noEmit` exit 0。
 - **未接线**：两个函数都还没有调用点——注入在 T4 的 unit 请求组装处。
+
+### 2026-10-20 · T4a 请求构造（完成，未接状态机）
+
+- 新增 `computeSynopsisUnitRange(plan, totalChapters, cursor, coveredTo)`（纯函数）：游标定单元、`coveredTo` 定起点；`maxChapters = min(名义上界向上取整, 全书剩余)`；`volumeRemaining = 本卷剩余`。
+- **不变量**：游标必须指向 `coveredTo + 1` 所在单元（用 `arcSpanForChapters` 校验）；不一致 ⇒ `null`，**绝不按章号猜单元**。
+- 管道：command options 增 `synopsisUnit`；`stepAuthorInputs` 增参数（旧的 worldbuilding 调用点同步补 `null`）；`architecture-workflow` params/intent/命令构造全部接通（`synopsisRange` 与 `synopsisUnit` 互斥，unit 模式不再走 `assertPlanningActionRange` 的 ≤10 章限制）。
+- 单测：`synopsis-unit-request.test.ts` 5 条；`architecture.command.test.ts` 47 passed；`tsc --noEmit` exit 0。
+- **无行为变化**：没有任何调用方传 `synopsisUnit`，旧路径逐字节不变。

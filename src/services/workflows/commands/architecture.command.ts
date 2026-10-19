@@ -4,9 +4,9 @@ import { decodeCharacterIdentityManifest, decodeCharacterDetails, validateCharac
 import type { CharacterProposalBatch } from '../../../shared/character-proposal'
 import { defaultCharacterProposalRelationships, defaultCharacterProposalSelections, formatCharacterProposalPreview } from '../character-proposal-preview'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
-import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
+import type { ArchitecturePlanningIntent, ArchitectureUnitRange, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
-import { arcSpanForChapters, auditArcDensity, parseArcStructure, planProgress, withProjectedArcGuide, type UnitBudgetState } from '../../../shared/arc-position'
+import { arcSpanForChapters, auditArcDensity, parseArcStructure, planProgress, planUnitStats, withProjectedArcGuide, type UnitBudgetState } from '../../../shared/arc-position'
 import { auditOutlineLength, outlineLengthOf, renderOutlineLengthReport } from '../../../shared/outline-budget'
 import { planOutlinePrefixBudget } from '../../../shared/outline-prefix-budget'
 import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../shared/arc-node'
@@ -60,11 +60,15 @@ import {
 // --- 基础工具库 ---
 
 function stepAuthorInputs(context: WorkflowContext, key: 'premise' | 'characters' | 'worldbuilding' | 'plotStructure' | 'synopsis',
-  snapshot: ArchitectureProjectSnapshot, synopsisRange?: PlotOutlineChapterRange | null, resuming = false): { id: string; text: string }[] {
+  snapshot: ArchitectureProjectSnapshot, synopsisRange?: PlotOutlineChapterRange | null,
+  synopsisUnit?: ArchitectureUnitRange | null, resuming = false): { id: string; text: string }[] {
   const value = (context.data.stepGuidance as Record<string, unknown> | undefined)?.[key]
   const intent: ArchitecturePlanningIntent | undefined = snapshot.planningIntent ?? (resuming || context.mainGenerationRootHandle ? undefined : {
     version: 'architecture-action-v1', priorSteps: key === 'synopsis' ? [] : [key],
-    synopsisRange: key === 'synopsis' ? synopsisRange ?? { from: 1, to: Math.min(snapshot.novelConfig.totalChapters, DEFAULT_PLANNING_ACTION_CHAPTERS) } : null,
+    synopsisRange: key === 'synopsis' && !synopsisUnit
+      ? synopsisRange ?? { from: 1, to: Math.min(snapshot.novelConfig.totalChapters, DEFAULT_PLANNING_ACTION_CHAPTERS) }
+      : null,
+    ...(key === 'synopsis' && synopsisUnit ? { synopsisUnit } : {}),
   })
   return [{ id: 'planning:target-units', text: String(parsePlanningTargetUnits(snapshot.targetUnits)) }, { id: 'architecture:author-config', text: JSON.stringify(snapshot.novelConfig) },
     ...(intent ? [{ id: 'architecture:planning-intent', text: JSON.stringify(intent) }] : []),
@@ -196,6 +200,37 @@ function syncSynopsisUnitCursor(
   const cursor = deriveSynopsisUnitCursor(plan, totalChapters, partial.synopsis_covered_to ?? 0)
   if (cursor) partial.synopsis_unit_cursor = cursor
   else delete partial.synopsis_unit_cursor
+}
+
+/**
+ * E3 T4a：由「游标 + 已覆盖章数」构造逐单元请求（纯函数，不读写任何状态）。
+ *
+ * 不变量：**游标必须指向 `coveredTo + 1` 所在的那个单元**——游标与章号映射不一致时返回
+ * `null`（fail-closed，调用方退回旧路径），绝不"以章号为准"去猜单元。
+ */
+export function computeSynopsisUnitRange(
+  plan: string | undefined,
+  totalChapters: number,
+  cursor: SynopsisUnitCursor | null | undefined,
+  coveredTo: number,
+): ArchitectureUnitRange | null {
+  if (!cursor) return null
+  if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return null
+  if (!Number.isSafeInteger(coveredTo) || coveredTo < 0 || coveredTo >= totalChapters) return null
+  const parsed = parseArcStructure(plan ?? '')
+  if (!parsed) return null
+  const from = coveredTo + 1
+  const span = arcSpanForChapters(parsed, totalChapters, from, from)
+  if (!span || span.majorIndex !== cursor.volumeIndex || span.midIndex !== cursor.unitIndex) return null
+  const stats = planUnitStats(parsed, totalChapters, {
+    volumeIndex: cursor.volumeIndex,
+    unitIndex: cursor.unitIndex,
+    writtenInVolume: cursor.writtenInVolume,
+  })
+  if (!stats || stats.maxChaptersCeil < 1) return null
+  const maxChapters = Math.min(stats.maxChaptersCeil, totalChapters - from + 1)
+  if (!Number.isSafeInteger(maxChapters) || maxChapters < 1) return null
+  return Object.freeze({ from, unitIndex: cursor.unitIndex, maxChapters, volumeRemaining: stats.remaining })
 }
 
 /** 大纲章节范围。 */
@@ -1813,7 +1848,7 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
       'This legacy candidate has no persistent run record. It remains available to view or copy; explicitly restart generation.',
     ))
     return this.executeWithGenerationRuntime('text', params, () => this.executeWithinGeneration(params), {
-      authorInputs: stepAuthorInputs(params.context, 'worldbuilding', this.snapshot, null, this.options.resumeWorldBuilding),
+      authorInputs: stepAuthorInputs(params.context, 'worldbuilding', this.snapshot, null, null, this.options.resumeWorldBuilding),
       operation: 'generate-world-building', promptKeys: ['world_building'], skillStages: ['planning'], output: 'visible-text',
       ...(this.options.resumeWorldBuilding ? { resumeHandle: this.options.resumeHandle } : {}),
       onRunOpened: async handle => {
@@ -2247,6 +2282,11 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         restartHandle?: MainGenerationRunHandle
       /** 本次生成范围 [from..to]；缺省 = 第 1 章到全书（显式覆盖重写）。 */
       synopsisRange?: PlotOutlineChapterRange | null
+      /**
+       * E3 逐单元批次（与 `synopsisRange` 互斥）：由游标 + 已覆盖章数构造，
+       * 见 `computeSynopsisUnitRange`。缺省 = 旧的章号区间模式。
+       */
+      synopsisUnit?: ArchitectureUnitRange | null
     } = {},
   ) {
     super(generationDependencies)
@@ -2259,7 +2299,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       'This legacy candidate has no persistent run record. It remains available to view or copy; explicitly restart generation.',
     ))
     return this.executeWithGenerationRuntime('text', params, () => this.executeWithinGeneration(params), {
-      authorInputs: stepAuthorInputs(params.context, 'synopsis', this.snapshot, this.options.synopsisRange, this.options.resumeSynopsis),
+      authorInputs: stepAuthorInputs(params.context, 'synopsis', this.snapshot, this.options.synopsisRange, this.options.synopsisUnit, this.options.resumeSynopsis),
       operation: 'generate-plot-outline', promptKeys: ['synopsis'], skillStages: ['planning'], output: 'visible-text',
       ...(this.options.resumeSynopsis ? { resumeHandle: this.options.resumeHandle } : {}),
         ...(this.options.restartHandle ? { restartHandle: this.options.restartHandle } : {}),
