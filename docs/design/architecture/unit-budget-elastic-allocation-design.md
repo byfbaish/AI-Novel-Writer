@@ -3,7 +3,7 @@
 > 状态：设计稿（待实施）
 > 日期：2026-10-19
 > 上位稿：[`arc-v7-implementation-design.md`](arc-v7-implementation-design.md)（卷/单元两级结构）、[`arc-budget-engine-design.md`](arc-budget-engine-design.md)（章数由代码算）
-> 相关：[`arc-layer-handoff.md`](arc-layer-handoff.md)（弧光层职责边界）
+> 相关：[`arc-layer-handoff.md`](arc-layer-handoff.md)（弧光层职责边界）、[`unit-budget-prompt-ab-test.md`](unit-budget-prompt-ab-test.md)（提示词层实测，§12 为本文 §2.5 的数据来源）
 
 ---
 
@@ -73,6 +73,24 @@ Z = (actualUsed(v) − plannedUsed(k)) / budget(v)
 - 写少了 → Z 变负 → 后面被鼓励扩充 → Z 回升
 - 卷末自然收敛在计划额度附近，**不需要"最后一章收口"**
 
+### 2.5 实测依据与适用边界（2026-10-19）
+
+状态块到底能不能改变篇幅，已用四组对照实测（详见 [`unit-budget-prompt-ab-test.md`](unit-budget-prompt-ab-test.md) §12；本地 `qwen3.5:9b-128k`，每组 5 次）：
+
+| 内容状态 | 无状态块 | 有状态块 | 状态块作用 |
+|---|---|---|---|
+| **刚性**（四道关，天然 6–7 章） | 6.8 章 | **3.2 章**（收紧） | **−3.6 章（−53%）** |
+| **稀薄**（四字段，天然约 6 章） | 6.0 章 | **8.2 章**（展开） | **+2.2 章（+37%）** |
+| **弹性**（写 3–8 章都成立） | 5.6 章 | 5.4 章 | +0.2 章（噪声内） |
+
+三条读法，都直接影响落地：
+
+1. **作用量与内容刚性正相关。** 内容与预算不冲突时，模型按"每单元平均"自己配给，状态块没有活干；冲突时它是主力。**这不是缺陷，正是本设计想要的行为**——它只在需要时用力。
+2. **压缩比展开可靠 1.6 倍。** 压缩 = 合并已有场面（刚性组的四道关 5/5 全落地，只是排布变紧）；展开 = 发明内容（模型会自我克制，怕注水、怕越界）。**所以「不足」档的实施优先级高于「充足」档**，而卷末爆额正是「不足」要处理的问题。
+3. **均衡档可以不注入。** 该档实测作用在噪声内，注入只会把"按进度应已写 X 章"变成新锚点（见 §4.4 条件注入）。
+
+> ⚠️ 样本量：组内 n=5、单模型（9b）、温度 0.9。结论方向可信（刚性与弹性两组区间不重叠），但**−53% / +37% 这两个倍数不可当常数使用**。
+
 ---
 
 ## 3. 卷计划额度的来源
@@ -139,6 +157,15 @@ Z = (actualUsed(v) − plannedUsed(k)) / budget(v)
   但只展开**本单元已有的事**，不得提前使用下一个单元的材料。
 ```
 
+**条件注入（实测后追加，2026-10-19）**
+
+均衡档（`−10% ≤ Z ≤ +10%`）**默认不注入**本节的整块内容——模板变量留空，由渲染层裁掉。两条理由：
+
+1. 该档实测边际作用在噪声内（§2.5），注入没有收益；
+2. 状态块里"按进度此刻应已写 X 章"这行本身会被当成目标（实测中模型会主动做 `剩余章数 ÷ 剩余单元` 的等分），均衡时注入等于多给一个锚。
+
+只有 `|Z| > 10%` 时注入，且**只给方向、不给章数**。
+
 ### 4.5 检查点兼容
 
 现有状态机依赖 `synopsis_range = { from, to }`。改为逐单元后：
@@ -181,9 +208,9 @@ Z = (actualUsed(v) − plannedUsed(k)) / budget(v)
 
 | # | 文件 | 改动 | 风险 |
 |---|---|---|---|
-| 1 | `src/shared/arc-position.ts` | 新增 `planProgress(parsed, totalChapters, unitRef)` → 返回 `{ budget, plannedUsed, actualUsed, z, state }` 纯函数 | 低 |
-| 2 | `src/services/workflows/commands/architecture.command.ts` | 批次模式加 `unit` 模式；`synopsisBatchInstruction` 支持"不给 to"；状态块注入 | **高**（状态机） |
-| 3 | `src/services/builtin-prompt-templates.ts` / `prompt-language.ts` | synopsis 模板加 `{{unit_budget_state}}` 段（可选，空则裁掉） | 低 |
+| 1 | `src/shared/arc-position.ts` | 新增 `planProgress(parsed, totalChapters, unitRef)` → 返回 `{ budget, plannedUsed, actualUsed, z, state }` 纯函数 —— **✅ E1 已实施** | 低 |
+| 2 | `src/services/workflows/commands/architecture.command.ts` | 批次模式加 `unit` 模式；`synopsisBatchInstruction` 支持"不给 to"；状态块注入。**E1.5 已先落地只读预估 `summarizeUnitBudget`（只打日志，未注入）** | **高**（状态机） |
+| 3 | `src/services/builtin-prompt-templates.ts` / `prompt-language.ts` | synopsis 模板加 `{{unit_budget_state}}` 段（可选，空则裁掉；**均衡档传空**，见 §4.4 条件注入） | 低 |
 | 4 | 项目设置 | 卷级额度输入（可选，空则用画像默认） | 中 |
 | 5 | 检查点 | `synopsis_range` 结构扩展，兼容旧值 | **高** |
 
@@ -196,6 +223,8 @@ Z = (actualUsed(v) − plannedUsed(k)) / budget(v)
 3. **状态生效**：人为把卷预算压到很小，令 Z > +10%，确认注入的状态块出现且为"不足"。
 4. **不越界**：单元 k 的产出里不得出现单元 k+1 的段间推进内容（用弧位对账查）。
 5. **卷末报警**：人为让某卷超 15%，确认报警出现且不阻断。
+6. **条件注入**：`Z` 落在 ±10% 内时，渲染后的 prompt 中**不得出现**「本卷配给状态」整段（模板变量为空即裁掉）；`|Z| > 10%` 时该段必须出现且状态与符号一致。
+7. **只读预估（E1.5）**：真实项目生成情节大纲时日志出现 ⚖️ 三行，且 `实际章数 − 进度线` 与手算一致；**同一次生成的 prompt 里不得出现该段**（此阶段只打日志）。
 
 ---
 
@@ -203,9 +232,54 @@ Z = (actualUsed(v) − plannedUsed(k)) / budget(v)
 
 | 阶段 | 内容 | 可独立验证 |
 |---|---|---|
-| **E1** | `planProgress` 纯函数 + 单测；只计算不接链路 | ✅ |
-| **E2** | 用 [`unit-budget-prompt-ab-test.md`](unit-budget-prompt-ab-test.md) 的 A/B/C 微型 prompt 验证状态块是否真的改变章数（**不跑真项目**：真材料 1 万多字，成本高且看不出变量） | ✅ |
+| **E1** | `planProgress` 纯函数 + 单测；只计算不接链路 | ✅ 已完成（2026-10-19） |
+| **E1.5** | **只读预估**：在真实结构上打日志（预算 / 进度线 / Z），不注入、不改状态机 | ✅ 已完成（2026-10-19），待真项目读数 |
+| **E2** | 用 [`unit-budget-prompt-ab-test.md`](unit-budget-prompt-ab-test.md) 的 A/B/C 微型 prompt 验证状态块是否真的改变章数（**不跑真项目**：真材料 1 万多字，成本高且看不出变量） | ✅ 已完成（见测试件 §12） |
 | **E3** | 批次改为逐单元（状态机改造 + 检查点兼容） | ✅ |
 | **E4** | 卷级额度设置项 + 卷末报警 | ✅ |
 
 **E2 必须先于 E3**：先确认"鼓励"这个提示词真的能改变篇幅，再改分批机制。否则 E3 做完发现提示词无效，会误判是机制问题。
+
+**E1 实施记录（2026-10-19）**
+
+- 位置：`src/shared/arc-position.ts`（紧随 `arcSpanForChapters`）
+- 新增导出：`UnitBudgetRef` / `UnitBudgetProgress` / `UnitBudgetState` / `UNIT_BUDGET_TOLERANCE` / `unitBudgetStateOf` / `planProgress`
+- 关键口径：
+  - `budget` 由卷权重经 **`scaledBoundaries`** 折算 —— 与弧位块同源，不另写一套（同一教训：两处各写一份必然漂移）；
+  - 序号 **1 起**，与 `ArcSpan.majorIndex` / `ArcSpan.midIndex` 对齐；
+  - `plannedUsed = budget × (midIndex − 1) / midCount`，`j = 1` 时为 0；
+  - **边界归中**：`Z` 正好 ±10% 算「均衡」，用 `1e-9` 容差吃掉浮点噪声；
+  - 越界 / 非法输入一律返回 `null`（fail-open），调用方据此"不注入状态块"，而不是渲染一组无意义的数字。
+- 单测：`src/shared/__tests__/arc-position.test.ts` 新增 9 条（±10% 边界、`j=1` 归零、`m=1` 不除零、845 章折算一致性、越界与 NaN）。**58 passed**，`tsc --noEmit` 通过
+
+**E3 完成后先验「不足」档，再验「充足」档**（2026-10-19 实测排序）：收紧的实测效果是展开的 1.6 倍（§2.5），且卷末爆额正是「不足」要处理的问题。「充足」档的端到端验收可以缓一轮——先在最常见的场景上证明链路通，再去补收益较小的那一半。
+
+**E1.5 实施记录 · 只读预估（2026-10-19）**
+
+为什么要有这一步：`planProgress` 再怎么单测，也只在**合成结构**上验过。真实弧光里如果出现「某卷 5 个单元、预算只有 6 章」这类配比，E3 一上线就会把荒谬的数字注入提示词。所以先只打日志、不接线。
+
+- 位置：`src/services/workflows/commands/architecture.command.ts` 的 `summarizeUnitBudget(plan, totalChapters, coveredTo, from, uiText)`，紧邻 `summarizeArcDensity`（同样是"只报不拦"的体检器家族）。
+- 调用点：`GeneratePlotArchitectureCommand.execute` 里 `from`/`to`/`coveredTo` 都已确定、`taskPrompt` 组装**之前**——只有这三处同时在场，才算得出 `actualUsed`。每次生成情节大纲都会打一段 ⚖️ 日志。
+- 三个口径的取法：
+  - 卷 / 单元：`arcSpanForChapters(parsed, totalChapters, from, from)` —— 按**本批起点**定位，不自己再解析一遍；
+  - `actualUsed`：`coveredTo` 是**全书**口径，必须 `min(coveredTo, 卷末) − 卷首 + 1`。直接拿 `coveredTo` 当卷内已写，第二卷起会立刻爆表；
+  - 各卷摘要：`planProgress(i, 1)` 取 budget，避免把 `scaledBoundaries` 再导出一次（同 §7 第 1 条的教训）。
+- 输出形状（两行 + 一行各卷清单；各卷**不写卷名**——真实项目 7 卷时带全名的这行会占满屏）：
+  ```
+  ⚖️ 弹性配给预估（只读，不写进提示词）：卷 2「…」单元 2/3
+  - 本卷预算 20 章 ÷ 3 单元 ≈ 6.7 章/单元；已写 7 章；进度线 6.7 章；Z = +1.5%（均衡）
+  - 各卷（章/单元）：1: 23/4 · 2: 20/3 · 3: 18/5
+  ```
+- 单测：`src/services/workflows/commands/__tests__/unit-budget-report.test.ts` 9 条（三档、`j=1`、`m=1`、跨卷截断、各卷清单、不可解析 / 越界闭嘴）。**9 passed**，`tsc --noEmit` 通过，eslint 干净。
+- **真实项目读数**（`C:\develop\workspace\AI-writer\如果我的能力是每天第一句谎言都会成真`，150 章 / 7 卷 / 28 单元 / 已覆盖 5 章）：
+
+  | 项 | 读数 |
+  |---|---|
+  | 各卷单元数 | 4, 3, 5, 4, 3, 5, 4（合计 28，与实测样本同为「7 卷 28 单元」） |
+  | 各卷预算 | 21 / 22 交替（7 卷均分 150） |
+  | 章每单元 | **4.2 – 7.3**，无一个接近 1 或超过 9 |
+  | 本批（第 6 章起） | 卷 1 单元 2/4；已写 5；进度线 5.3；**Z = −1.2%（均衡）** |
+
+  结论：**数值不荒谬，E3 可以按这套口径接线。**
+
+- ⚠️ **但这次读数暴露了 E4 的必要性**：该项目的弧光**没有声明任何卷章数**（`declaredChapters = false`，`declaredTotal` 只是"7 个卷"），所以每卷预算完全是 150 ÷ 7 = 21~22 的等分结果。也就是说 `Z` 的分母目前**与内容无关**——若某卷本身就值 30 章，等分会把它永久判成「不足」，越写越紧，直到把内容压坏。**所以 E4 的「卷级额度」不是可选项**：要么让弧光自报卷章数，要么给作者一个覆盖入口。这条要在 E3 之前定，否则 E3 接的是一条算错的参照线。
