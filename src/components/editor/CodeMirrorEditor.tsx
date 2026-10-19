@@ -15,7 +15,7 @@ import { countDraftUnits } from '../../shared/draft-units'
 import { useLocaleStore } from '../../stores/locale-store'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import { livePreview, paperHeadFacet, type PaperHead } from './live-preview'
-import { rememberEditorScroll, restoreEditorScroll } from './editor-scroll-memory'
+import { readEditorScrollMemory, rememberEditorScroll, startScrollRestore } from './editor-scroll-memory'
 
 export type CodeMirrorEditorProps = {
   content: string
@@ -83,6 +83,8 @@ export default function CodeMirrorEditor({
   const editorRef = useRef<ReactCodeMirrorRef>(null)
   /** 本视图自挂载以来是否真发生过滚动（见下方 E4j-2 修正三的 StrictMode 说明）。 */
   const scrollLiveRef = useRef(false)
+  /** 正在进行的「守望式恢复」的停止函数（E4j-2 修正四）：跳行、卸载时要让它让位。 */
+  const stopScrollRestoreRef = useRef<(() => void) | null>(null)
 
   // 避免状态回路
   const lastEmittedContentRef = useRef(content)
@@ -218,6 +220,36 @@ export default function CodeMirrorEditor({
     aiTargetRef.current = null
   }, [scrollMemoryKey])
 
+  // E4j-2（修正四）：标记「这个视图真被滚过」，供 layout cleanup 决定要不要落账。
+  //
+  // 判定用的是「发生过滚动事件」而不是「读数 > 0」：作者把长文档拉回顶部再切走时，
+  // 记 0 才是对的（否则下次打开会莫名跳回旧位置）；而 StrictMode 的双跑发生在同一个
+  // 同步批次里、早于任何 scroll 事件派发，所以不会把旧进度误写成 0。
+  useEffect(() => {
+    scrollLiveRef.current = false
+    let frame = 0
+    let waits = 0
+    let detach: (() => void) | null = null
+    const attach = () => {
+      if (detach) return
+      const view = editorRef.current?.view
+      if (!view) return
+      const scroller = view.scrollDOM
+      const markLive = () => { scrollLiveRef.current = true }
+      scroller.addEventListener('scroll', markLive, { passive: true })
+      detach = () => scroller.removeEventListener('scroll', markLive)
+    }
+    const tick = () => {
+      attach()
+      if (!detach && (waits += 1) < 120) frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(frame)
+      detach?.()
+    }
+  }, [scrollMemoryKey])
+
   // E4j-2（修正 2026-10-19）：挂载后恢复浏览进度。
   //
   // ⚠️ 原先只靠一次 `requestAnimationFrame` —— 观察到的真实失败（卷单元 ↔ 情节大纲）：
@@ -226,44 +258,70 @@ export default function CodeMirrorEditor({
   // 所以改成「重试到内容稳定」：连续若干帧里只要内容长度还在变，就继续等。
   useEffect(() => {
     if (!scrollMemoryKey) return
-    scrollLiveRef.current = false
-    let frame = 0
-    let stableFrames = 0
-    let lastLength = -1
-    let detachScroll: (() => void) | null = null
-    // 只要这个视图真被滚过（用户滚动 / 恢复把位置摆回去），就标记「有进度可记」。
-    // 没标记的视图一律不落账，避免 StrictMode 的双跑把旧进度写成 0。
-    //
-    // 注意判定用的是「发生过滚动事件」而不是「读数 > 0」：作者把长文档拉回顶部再切走时，
-    // 记 0 才是对的（否则下次打开会莫名跳回旧位置）；而 StrictMode 的双跑发生在同一个
-    // 同步批次里、早于任何 scroll 事件派发，所以不会把旧进度误写成 0。
-    const watchScroll = (view: NonNullable<typeof editorRef.current>['view']) => {
-      if (!view || detachScroll) return
-      const scroller = view.scrollDOM
-      const markLive = () => { scrollLiveRef.current = true }
-      scroller.addEventListener('scroll', markLive, { passive: true })
-      detachScroll = () => scroller.removeEventListener('scroll', markLive)
+    const entry = readEditorScrollMemory(scrollMemoryKey)
+    if (!entry) return
+    // 位置本来就在顶部：只把光标摆回去，不必进入守望循环。
+    if (entry.scrollTop <= 0) {
+      if (entry.anchor === 0 && entry.head === 0) return
+      const frame = requestAnimationFrame(() => {
+        const view = editorRef.current?.view
+        if (!view) return
+        const docLength = view.state.doc.length
+        view.dispatch({ selection: { anchor: Math.min(entry.anchor, docLength), head: Math.min(entry.head, docLength) } })
+        scrollLiveRef.current = true
+      })
+      return () => cancelAnimationFrame(frame)
     }
-    const tick = () => {
+    // 内容稳定前不写 scrollTop：文档还没铺开时写入会被夹取，而且 CodeMirror 的
+    // 文档替换（`ArchFileViewer` 晚到的内容）会顺着这个「视口贴在空文档末尾」的状态
+    // 把视口甩到全文底部 —— 作者看到的「停留到最底下」就是这个。
+    let lastDocLength = -1
+    let stableLengthFrames = 0
+    // 选区只摆一次：摆完若被 CodeMirror 的测量拽走，滚动位置由下面的守望循环兜住。
+    let selectionApplied = false
+    const applySelectionOnce = () => {
       const view = editorRef.current?.view
-      if (view) {
-        watchScroll(view)
-        const length = view.state.doc.length
-        if (length === lastLength) stableFrames += 1
-        else { lastLength = length; stableFrames = 0 }
-        if (stableFrames >= 2) {
-          if (restoreEditorScroll(scrollMemoryKey, view) && view.scrollDOM.scrollTop > 0) {
-            scrollLiveRef.current = true
-          }
-          return
-        }
-      }
-      frame = requestAnimationFrame(tick)
+      if (!view || selectionApplied) return
+      selectionApplied = true
+      const docLength = view.state.doc.length
+      const anchor = Math.min(Math.max(0, entry.anchor), docLength)
+      const head = Math.min(Math.max(0, entry.head), docLength)
+      if (anchor !== 0 || head !== 0) view.dispatch({ selection: { anchor, head } })
     }
-    frame = requestAnimationFrame(tick)
+    const stop = startScrollRestore({
+      key: scrollMemoryKey,
+      read: () => {
+        const view = editorRef.current?.view
+        if (!view) return null
+        const docLength = view.state.doc.length
+        if (docLength !== lastDocLength) {
+          lastDocLength = docLength
+          stableLengthFrames = 0
+        } else {
+          stableLengthFrames += 1
+        }
+        if (stableLengthFrames < 2) return null
+        applySelectionOnce()
+        return view.scrollDOM.scrollTop
+      },
+      write: scrollTop => {
+        const view = editorRef.current?.view
+        if (view) view.scrollDOM.scrollTop = scrollTop
+      },
+      snapBack: () => {
+        // 像素被夹住（内容还没铺满 / 高度重算）时，先按「顶部行」把视口摆过去。
+        const view = editorRef.current?.view
+        if (!view || !entry.topPos) return
+        const pos = Math.min(Math.max(0, entry.topPos), view.state.doc.length)
+        if (pos > 0) view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'start', yMargin: 0 }) })
+      },
+      interactionHost: () => editorRef.current?.view?.dom ?? null,
+      onLive: () => { scrollLiveRef.current = true },
+    })
+    stopScrollRestoreRef.current = stop
     return () => {
-      cancelAnimationFrame(frame)
-      detachScroll?.()
+      stop()
+      stopScrollRestoreRef.current = null
     }
   }, [scrollMemoryKey])
 
@@ -272,6 +330,9 @@ export default function CodeMirrorEditor({
   const revealNonce = revealLine?.nonce ?? 0
   useEffect(() => {
     if (!revealLine) return
+    // 跳行是用户的显式意图，守望中的恢复必须让位，否则会被拽回旧位置。
+    stopScrollRestoreRef.current?.()
+    stopScrollRestoreRef.current = null
     const view = editorRef.current?.view
     if (!view) return
     const lineNumber = Math.min(Math.max(1, revealLine.line + 1), view.state.doc.lines)
