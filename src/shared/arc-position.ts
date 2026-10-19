@@ -741,43 +741,73 @@ export function planVolumeChapters(
   return Number.isFinite(chapters) && chapters > 0 ? chapters : null
 }
 
-/** 卷偏离的明细：`deviation = actual − planned`（超写为正、少写为负）。 */
-export interface VolumeDeviation {
+/**
+ * 一卷的**章数账**：计划多少、实际写了多少。
+ *
+ * 偏离**不单独存**（= `actual − planned`）——存三份就会漂。按卷记账而不是只存一个总数，
+ * 是为了让「卷回滚」能按卷扣掉：卷大纲回滚后该卷的账直接删掉，累计偏离自动跟着变。
+ */
+export interface VolumeDeviationRecord {
   volumeIndex: number
   planned: number
   actual: number
-  deviation: number
+}
+
+/** 单卷偏离（超写为正、少写为负）。 */
+export function volumeDeviationValue(record: VolumeDeviationRecord): number {
+  return record.actual - record.planned
 }
 
 /**
- * 某一卷**写完时**的偏离（2026-10-20 作者口径：实际预期章数 = 计划章数 ± 每一卷的偏离章数）。
+ * 某一卷**写完时**的账（2026-10-20 作者口径：实际预期章数 = 计划章数 ± 每一卷的偏离章数）。
  *
  * ⚠️ `writtenInVolume` 必须是**未截断**的实际章数——`planUnitStats` 那边会把它 clamp 到卷长，
- * 拿那个值算偏离会永远看不到超写。故这里单独算，不与统计函数复用。
+ * 拿那个值记账会永远看不到超写。故这里单独算，不与统计函数复用。
  */
-export function volumeDeviationOf(
+export function volumeDeviationRecordOf(
   parsed: ParsedArcStructure | null,
   totalChapters: number,
   volumeIndex: number,
   writtenInVolume: number,
-): VolumeDeviation | null {
+): VolumeDeviationRecord | null {
   const planned = planVolumeChapters(parsed, totalChapters, volumeIndex)
   if (planned === null) return null
   if (!Number.isSafeInteger(writtenInVolume) || writtenInVolume < 0) return null
-  return Object.freeze({
-    volumeIndex,
-    planned,
-    actual: writtenInVolume,
-    deviation: writtenInVolume - planned,
-  })
+  return Object.freeze({ volumeIndex, planned, actual: writtenInVolume })
+}
+
+/** 写入/覆盖某一卷的账（同一卷重写时覆盖，不让一份账出现两条）。 */
+export function upsertVolumeDeviation(
+  records: readonly VolumeDeviationRecord[] | null | undefined,
+  entry: VolumeDeviationRecord,
+): VolumeDeviationRecord[] {
+  return [...(records ?? []).filter(item => item.volumeIndex !== entry.volumeIndex), entry]
+    .sort((left, right) => left.volumeIndex - right.volumeIndex)
+    .map(item => Object.freeze({ volumeIndex: item.volumeIndex, planned: item.planned, actual: item.actual }))
+}
+
+/** 删掉某一卷的账 —— **卷回滚**的唯一入口（冻结/续写不需要它）。 */
+export function dropVolumeDeviation(
+  records: readonly VolumeDeviationRecord[] | null | undefined,
+  volumeIndex: number,
+): VolumeDeviationRecord[] {
+  return (records ?? []).filter(item => item.volumeIndex !== volumeIndex)
+    .map(item => Object.freeze({ volumeIndex: item.volumeIndex, planned: item.planned, actual: item.actual }))
+}
+
+/** 累计偏离 = 各卷 `actual − planned` 之和（没有账 ⇒ 0）。 */
+export function accumulatedVolumeDeviation(
+  records: readonly VolumeDeviationRecord[] | null | undefined,
+): number {
+  return (records ?? []).reduce((sum, item) => sum + volumeDeviationValue(item), 0)
 }
 
 /**
  * **实际预期章数** = 计划章数 + 各卷偏离之和（至少 1 章）。
  *
- * 计划章数（`novelConfig.totalChapters`）是开篇的**计划**，不是完成约束；开卷之后篇幅由各卷
- * 实际写出来的章数决定（作者 2026-10-20）。两者分开存：计划在配置里，偏离在检查点里，
- * 这个数由两者算出——**不落第三份**，免得三处各说各话。
+ * ⚠️ **它不是规划基线**（作者 2026-10-20）：卷纲要滚动续写时，仍以计划章数（`totalChapters`）
+ * 作为基线来分卷——拿实际预期当基线会让全书规模单调漂移（一路萎缩或一路膨胀）。
+ * 这个数只用于**展示与对账**；唯一的例外是「已写章节作废、重新规划」，那时回到计划章数并把账清零。
  */
 export function expectedTotalChapters(plannedTotal: number, accumulatedDeviation: number): number {
   // 计划非法就没有可算的基准 —— 返回 1（调用方据此知道"这个数不可信"），不要拿偏离凭空造一个数。

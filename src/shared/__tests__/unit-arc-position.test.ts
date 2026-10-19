@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  accumulatedVolumeDeviation,
   arcSpanForUnit,
+  dropVolumeDeviation,
   expectedTotalChapters,
   parseArcStructure,
   planVolumeChapters,
   renderUnitArcPositionBlock,
-  volumeDeviationOf,
+  upsertVolumeDeviation,
+  volumeDeviationRecordOf,
+  volumeDeviationValue,
   withProjectedUnitArcGuide,
 } from '../arc-position'
 
@@ -83,11 +87,39 @@ describe('卷偏离与实际预期章数（计划与偏离分开存）', () => {
     expect(planVolumeChapters(null, 60, 1)).toBeNull()
   })
 
-  it('偏离 = 实际 − 计划，超写为正、少写为负，**不截断**', () => {
-    expect(volumeDeviationOf(parsed, 60, 1, 9)).toEqual({ volumeIndex: 1, planned: 30, actual: 9, deviation: -21 })
-    expect(volumeDeviationOf(parsed, 60, 1, 38)).toEqual({ volumeIndex: 1, planned: 30, actual: 38, deviation: 8 })
-    expect(volumeDeviationOf(parsed, 60, 1, -1)).toBeNull()
-    expect(volumeDeviationOf(parsed, 60, 9, 1)).toBeNull()
+  it('按卷记账：偏离 = 实际 − 计划，超写为正、少写为负，**不截断**', () => {
+    const under = volumeDeviationRecordOf(parsed, 60, 1, 9)!
+    expect(under).toEqual({ volumeIndex: 1, planned: 30, actual: 9 })
+    expect(volumeDeviationValue(under)).toBe(-21)
+    const over = volumeDeviationRecordOf(parsed, 60, 1, 38)!
+    expect(over).toEqual({ volumeIndex: 1, planned: 30, actual: 38 })
+    expect(volumeDeviationValue(over)).toBe(8)
+    expect(volumeDeviationRecordOf(parsed, 60, 1, -1)).toBeNull()
+    expect(volumeDeviationRecordOf(parsed, 60, 9, 1)).toBeNull()
+  })
+
+  it('累计偏离 = 各卷之和；同一卷重写覆盖而不叠加', () => {
+    const first = volumeDeviationRecordOf(parsed, 60, 1, 9)!
+    const second = volumeDeviationRecordOf(parsed, 60, 2, 34)!
+    const records = upsertVolumeDeviation(upsertVolumeDeviation([], first), second)
+    expect(records.map(item => item.volumeIndex)).toEqual([1, 2])
+    expect(accumulatedVolumeDeviation(records)).toBe(-21 + 4)
+    // 卷 1 重写后覆盖原账，不是再记一条
+    const rewritten = upsertVolumeDeviation(records, volumeDeviationRecordOf(parsed, 60, 1, 30)!)
+    expect(rewritten).toHaveLength(2)
+    expect(accumulatedVolumeDeviation(rewritten)).toBe(4)
+    expect(accumulatedVolumeDeviation(null)).toBe(0)
+  })
+
+  it('卷回滚：删掉该卷的账，累计偏离随之减少', () => {
+    const records = upsertVolumeDeviation(
+      upsertVolumeDeviation([], volumeDeviationRecordOf(parsed, 60, 1, 9)!),
+      volumeDeviationRecordOf(parsed, 60, 2, 34)!,
+    )
+    const rolledBack = dropVolumeDeviation(records, 2)
+    expect(rolledBack.map(item => item.volumeIndex)).toEqual([1])
+    expect(accumulatedVolumeDeviation(rolledBack)).toBe(-21)
+    expect(dropVolumeDeviation(rolledBack, 9)).toHaveLength(1)
   })
 
   it('实际预期 = 计划 + 累计偏离，且至少 1 章', () => {
