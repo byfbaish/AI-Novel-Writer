@@ -8,19 +8,47 @@ import {
   restoreElementScroll,
   restoreEditorScroll,
   scrollPosToTop,
+  scrollPosToTopConverge,
+  startScrollRestore,
 } from '../editor-scroll-memory'
+
+// node 环境没有 rAF：这两个用例要驱动「逐帧纠正」，用 setTimeout 等价物顶上。
+const globalWithRaf = globalThis as typeof globalThis & {
+  requestAnimationFrame?: (callback: (time: number) => void) => number;
+  cancelAnimationFrame?: (handle: number) => void;
+}
+if (typeof globalWithRaf.requestAnimationFrame !== 'function') {
+  const handles = new Map<number, ReturnType<typeof setTimeout>>()
+  let nextHandle = 1
+  globalWithRaf.requestAnimationFrame = (callback) => {
+    const handle = nextHandle
+    nextHandle += 1
+    handles.set(handle, setTimeout(() => { handles.delete(handle); callback(Date.now()) }, 0))
+    return handle
+  }
+  globalWithRaf.cancelAnimationFrame = (handle) => {
+    const timer = handles.get(handle)
+    if (timer !== undefined) { clearTimeout(timer); handles.delete(handle) }
+  }
+}
+
+/** 放行若干帧（每帧一个宏任务）。 */
+const frames = async (count: number) => {
+  for (let index = 0; index < count; index += 1) await new Promise(resolve => setTimeout(resolve, 0))
+}
 
 // E4j-2：浏览进度记忆。旁路 Map，不依赖真实 CodeMirror 实例——
 // 用最小假视图验证「记住 / 恢复 / 夹住 / 裁剪」。
 type FakeView = {
-  scrollDOM: { scrollTop: number };
+  // scrollDOM 要能回答「视口顶部在屏幕上的 Y」——`scrollPosToTop` 用屏幕坐标差分定位。
+  scrollDOM: { scrollTop: number; clientWidth: number; getBoundingClientRect: () => { top: number } };
   state: { doc: { length: number }; selection: { main: { anchor: number; head: number } } };
   dispatch: (spec: { selection: { anchor: number; head: number } }) => void;
 };
 
-function fakeView(scrollTop = 0, anchor = 0, head = 0, docLength = 1000): FakeView {
+function fakeView(scrollTop = 0, anchor = 0, head = 0, docLength = 1000, clientWidth = 726): FakeView {
   const view: FakeView = {
-    scrollDOM: { scrollTop },
+    scrollDOM: { scrollTop, clientWidth, getBoundingClientRect: () => ({ top: 0 }) },
     state: { doc: { length: docLength }, selection: { main: { anchor, head } } },
     dispatch: spec => { view.state.selection.main = { ...spec.selection }; },
   };
@@ -94,10 +122,11 @@ describe('editor-scroll-memory：浏览进度记忆', () => {
 
   it('scrollPosToTop：只写自己的 scroller，不调 EditorView.scrollIntoView', () => {
     const view = fakeView(0) as FakeView & {
+      // 真实 CodeMirror 的 `documentTop` 是**屏幕坐标**：滚动后变负。这里如实模拟。
       documentTop: number;
       lineBlockAt: (pos: number) => { top: number };
     };
-    view.documentTop = 12;
+    Object.defineProperty(view, 'documentTop', { get: () => 12 - view.scrollDOM.scrollTop });
     view.lineBlockAt = pos => ({ top: pos * 2 });
     expect(scrollPosToTop(view as never, 480)).toBe(true);
     // 文档坐标 480*2 加上 documentTop 才是 scroller 的像素坐标。
@@ -112,6 +141,92 @@ describe('editor-scroll-memory：浏览进度记忆', () => {
     expect(view.scrollDOM.scrollTop).toBe(2012);
     // 没有视图时返回 false（卸载期）。
     expect(scrollPosToTop(null, 10)).toBe(false);
+  })
+
+  it('scrollPosToTopConverge：视口外的行只有估算高度，也能纠正到实测位置', async () => {
+    // 真实读数（Playwright + 真 Electron）：726px 宽时估算多滚 228px、470px 窄宽时
+    // 少滚 452px —— 树面板点章跳不准就是这个。收敛版应当纠正到实测位置。
+    const scroller = { scrollTop: 0, getBoundingClientRect: () => ({ top: 0 }) }
+    const measuredTop = 720
+    const view = {
+      scrollDOM: scroller,
+      state: { doc: { length: 1000 } },
+      // 屏幕坐标：滚动后文档顶部上移。
+      get documentTop() { return -scroller.scrollTop },
+      // 还没滚到附近时只有估算值（268）；一旦写进去，CodeMirror 就量出真实高度。
+      lineBlockAt: () => ({ top: scroller.scrollTop === 0 ? 268 : measuredTop }),
+    }
+    const cancel = scrollPosToTopConverge(view as never, 480, 40)
+    await frames(8)
+    cancel()
+    expect(scroller.scrollTop).toBe(measuredTop - 40)
+  })
+
+  it('恢复：宽度变了（snapBack 报出的位置与旧像素不符）时以内容锚点为准', async () => {
+    // 作者场景：窄宽（树 fixed，470px）下停在 680，开/关树换了换行宽度后再切回来。
+    // 旧实现先按「顶部行」摆到 400，又用旧像素 680 覆盖回去 —— 位置就落在错的行上。
+    rememberEditorScroll('tab-width', asView(fakeView(680)))
+    let current = 0
+    let snaps = 0
+    const stop = startScrollRestore({
+      key: 'tab-width',
+      read: () => current,
+      write: value => { current = value },
+      snapBack: () => { snaps += 1; current = 400; return 400 },
+    })
+    await frames(8)
+    stop()
+    expect(snaps).toBeGreaterThan(0)
+    expect(current).toBe(400)
+  })
+
+  it('恢复：宽度没变时仍按记忆像素做微调（锚点接近就听旧像素）', async () => {
+    rememberEditorScroll('tab-same-width', asView(fakeView(680)))
+    let current = 0
+    const stop = startScrollRestore({
+      key: 'tab-same-width',
+      read: () => current,
+      write: value => { current = value },
+      snapBack: () => { current = 681; return 681 },
+    })
+    await frames(8)
+    stop()
+    expect(current).toBe(680)
+  })
+
+  it('恢复：几何没变就不许内容锚点覆盖像素（顶部长段落被切成半截时它会挪掉一整块）', async () => {
+    // 作者场景：卷纲 tab 顶部是一块 403px 高的长段落，切 Tab 时它被视口切成半截。
+    // 「行首摆到视口顶」会补回那 403px —— 现象就是「切几次进度自己跑了」。
+    rememberEditorScroll('tab-tall-block', asView(fakeView(1979)))
+    expect(readEditorScrollMemory('tab-tall-block')).toMatchObject({ editorWidth: 726, docLength: 1000 })
+    let current = 0
+    let snaps = 0
+    const stop = startScrollRestore({
+      key: 'tab-tall-block',
+      read: () => current,
+      write: value => { current = value },
+      snapBack: () => { snaps += 1; current = 2382; return 2382 },
+      geometryChanged: () => false,
+    })
+    await frames(8)
+    stop()
+    expect(snaps).toBe(0)
+    expect(current).toBe(1979)
+  })
+
+  it('恢复：宽度真的变了（树抽屉 ↔ 固定侧栏）才认内容锚点', async () => {
+    rememberEditorScroll('tab-tree-pin', asView(fakeView(680, 0, 0, 1000, 726)))
+    let current = 0
+    const stop = startScrollRestore({
+      key: 'tab-tree-pin',
+      read: () => current,
+      write: value => { current = value },
+      snapBack: () => { current = 400; return 400 },
+      geometryChanged: () => true,
+    })
+    await frames(8)
+    stop()
+    expect(current).toBe(400)
   })
 
   it('clearEditorScrollMemory 清空全部（切项目用）', () => {

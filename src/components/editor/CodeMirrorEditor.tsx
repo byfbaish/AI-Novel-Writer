@@ -15,7 +15,7 @@ import { countDraftUnits } from '../../shared/draft-units'
 import { useLocaleStore } from '../../stores/locale-store'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import { livePreview, paperHeadFacet, type PaperHead } from './live-preview'
-import { readEditorScrollMemory, rememberEditorScroll, scrollPosToTop, startScrollRestore } from './editor-scroll-memory'
+import { readEditorScrollMemory, rememberEditorScroll, scrollPosToTop, scrollPosToTopConverge, startScrollRestore } from './editor-scroll-memory'
 
 export type CodeMirrorEditorProps = {
   content: string
@@ -279,6 +279,8 @@ export default function CodeMirrorEditor({
     let stableLengthFrames = 0
     // 选区只摆一次：摆完若被 CodeMirror 的测量拽走，滚动位置由下面的守望循环兜住。
     let selectionApplied = false
+    // 内容锚点摆位的上一帧落点：连续两帧一致才算稳（见 snapBack）。
+    let lastSnapScrollTop: number | null = null
     const applySelectionOnce = () => {
       const view = editorRef.current?.view
       if (!view || selectionApplied) return
@@ -309,11 +311,32 @@ export default function CodeMirrorEditor({
         if (view) view.scrollDOM.scrollTop = scrollTop
       },
       snapBack: () => {
-        // 像素被夹住（内容还没铺满 / 高度重算）时，先按「顶部行」把视口摆过去。
+        // 像素被夹住（内容还没铺满 / 高度重算）或挂载时高度图还是估算值时，
+        // 按「顶部行首 + 保存时的行内偏移」把视口摆过去。
         // 只动自己的 scroller：`EditorView.scrollIntoView` 会连带滚动所有可滚动祖先，
         // 作者看到的外层 Frame 整体上移就是这么来的（见 `scrollPosToTop` 注释）。
-        if (!entry.topPos) return
-        scrollPosToTop(editorRef.current?.view, entry.topPos, 0)
+        if (entry.topPos === undefined) return
+        const view = editorRef.current?.view
+        if (!view || !scrollPosToTop(view, entry.topPos, 0)) return
+        // 对视口外的目标行，`lineBlockAt` 只有估算高度：摆一次未必到，所以逐帧调用、
+        // 连续两帧落点一致才算稳（和 `scrollPosToTopConverge` 同一套判据）。
+        const reached = view.scrollDOM.scrollTop
+        const stable = lastSnapScrollTop !== null && Math.abs(reached - lastSnapScrollTop) <= 1
+        lastSnapScrollTop = reached
+        if (!stable) return null
+        // 宽度变了的时候旧像素不可信，恢复循环要以它为准。
+        return reached
+      },
+      geometryChanged: () => {
+        // 保存与恢复之间的换行几何：宽度变了（树抽屉 ↔ 固定侧栏）或文档变了
+        // （内容晚到/被替换）⇒ 旧像素失效。否则顶部长段落被切成半截时，
+        // 「行首摆顶」会把位置整体挪掉一大块（实测 403px）。
+        const view = editorRef.current?.view
+        const scroller = view?.scrollDOM
+        if (!view || !scroller) return true
+        if (entry.editorWidth !== undefined && Math.abs(scroller.clientWidth - entry.editorWidth) > 2) return true
+        if (entry.docLength !== undefined && entry.docLength !== view.state.doc.length) return true
+        return false
       },
       interactionHost: () => editorRef.current?.view?.dom ?? null,
       onLive: () => { scrollLiveRef.current = true },
@@ -341,8 +364,11 @@ export default function CodeMirrorEditor({
       selection: { anchor: lineInfo.from, head: Math.min(lineInfo.to, lineInfo.from + lineInfo.text.length) },
     })
     // 同上：只动自己的 scroller，别把外层布局一起滚走。
-    scrollPosToTop(view, lineInfo.from, 40)
+    // 用收敛版：目标行在视口外时 `lineBlockAt` 只有估算高度，单次写入会偏几百像素
+    // （树面板跳章正是这种情况）。
+    const cancelScroll = scrollPosToTopConverge(view, lineInfo.from, 40)
     view.focus()
+    return cancelScroll
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealNonce])
 

@@ -155,6 +155,30 @@ describe('CodeMirrorEditor 浏览进度记忆', () => {
     }
   })
 
+  it('跳行（树面板点章）把目标行摆到顶部边距内 —— 视口外的估算高度必须被纠正', async () => {
+    await render()
+    await waitFrames(4)
+    // 目标行在视口外：CodeMirror 只有它的估算高度（真实 Electron 里估算能偏几百像素）。
+    const targetLine = 200
+    await act(async () => root.render(
+      <CodeMirrorEditor
+        content={longText}
+        mode="document"
+        scrollMemoryKey={KEY}
+        revealLine={{ line: targetLine - 1, nonce: 1 }}
+      />,
+    ))
+    // 收敛定位要好几帧：写估算位置 → CodeMirror 渲染/测量 → 再纠正。
+    await waitFrames(16)
+
+    const view = editorView()
+    const block = view.lineBlockAt(view.state.doc.line(targetLine).from)
+    // documentTop 是**屏幕坐标**（滚动后为负），所以差值必须对 scroller 的视口顶算，
+    // 不能减 scrollTop——那会把滚动量算两遍。
+    const offsetInScroller = view.documentTop + block.top - scroller().getBoundingClientRect().top
+    expect(Math.abs(offsetInScroller - 40)).toBeLessThanOrEqual(4)
+  })
+
   it('光标在文末时也不把视口拽到底部（恢复的是阅读位置，不是光标位置）', async () => {
     await render()
     await waitFrames(4)
