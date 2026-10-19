@@ -9,6 +9,7 @@ import {
   restoreEditorScroll,
   scrollPosToTop,
   scrollPosToTopConverge,
+  scrollPosToTopRemaining,
   startScrollRestore,
 } from '../editor-scroll-memory'
 
@@ -227,6 +228,44 @@ describe('editor-scroll-memory：浏览进度记忆', () => {
     await frames(8)
     stop()
     expect(current).toBe(400)
+  })
+
+  it('记住顶部行锚点 + 行内偏移（恢复后核对「旧像素有没有落在同一行」）', () => {
+    const view = fakeView(200, 0, 0, 2000) as FakeView & {
+      documentTop: number;
+      lineBlockAtHeight: (height: number) => { from: number };
+      lineBlockAt: (pos: number) => { top: number };
+    };
+    Object.defineProperty(view, 'documentTop', { get: () => 12 - view.scrollDOM.scrollTop })
+    // 顶部可见行 = 文档偏移 1200；它行首距视口顶 100px（被切成半截 ⇒ 保存的偏移为负）。
+    view.lineBlockAtHeight = () => ({ from: 1200 })
+    view.lineBlockAt = pos => ({ top: pos - 1100 })
+    expect(scrollPosToTopRemaining(view as never, 1200, 0)).toBe(-88)
+    rememberEditorScroll('tab-anchor', asView(view))
+    expect(readEditorScrollMemory('tab-anchor')).toMatchObject({ topPos: 1200, topOffset: -88 })
+  })
+
+  it('恢复未落位就切走：像素记目标值，锚点沿用上一条（不被夹取位置骗走）', async () => {
+    const saved = fakeView(200, 0, 0, 2000) as FakeView & {
+      documentTop: number;
+      lineBlockAtHeight: (height: number) => { from: number };
+      lineBlockAt: (pos: number) => { top: number };
+    };
+    Object.defineProperty(saved, 'documentTop', { get: () => 12 - saved.scrollDOM.scrollTop })
+    saved.lineBlockAtHeight = () => ({ from: 1200 })
+    saved.lineBlockAt = pos => ({ top: pos - 1100 })
+    rememberEditorScroll('tab-anchor-pending', asView(saved))
+    // 恢复途中内容还没铺开：read 返回 null ⇒ pending 建立。
+    const stop = startScrollRestore({ key: 'tab-anchor-pending', read: () => null, write: () => {}, snapBack: () => {} })
+    await frames(1)
+    // 此刻卸载记账：像素要被夹过的 50 覆盖成目标 200，锚点不能跟着变成当前（未铺开）视图。
+    const clamped = fakeView(50) as FakeView & typeof saved
+    Object.defineProperty(clamped, 'documentTop', { get: () => 12 - clamped.scrollDOM.scrollTop })
+    clamped.lineBlockAtHeight = () => ({ from: 0 })
+    clamped.lineBlockAt = () => ({ top: 0 })
+    rememberEditorScroll('tab-anchor-pending', asView(clamped))
+    stop()
+    expect(readEditorScrollMemory('tab-anchor-pending')).toMatchObject({ scrollTop: 200, topPos: 1200, topOffset: -88 })
   })
 
   it('clearEditorScrollMemory 清空全部（切项目用）', () => {

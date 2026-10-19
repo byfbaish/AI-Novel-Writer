@@ -23,6 +23,20 @@ const longText = Array.from({ length: 240 }, (_, index) => (
   `第 ${index + 1} 行：这是一段用于验证浏览进度记忆的正文，长度足够撑出滚动条。`
 )).join('\n')
 
+
+/**
+ * 模拟作者真实项目：一整段几百字的长正文，窄宽度下会折成很多**视觉行**。
+ *
+ * 为什么需要它：CodeMirror 对还没测量过的行只有估算高度（`HeightOracle`），
+ * 长段落被折行后估算误差会累积到几百上千像素 —— 切 Tab 重挂载时「旧像素对应另一行」
+ * 只有在这种文档里才测得出（m00492：点第 6 章切回来落到第 8–9 章附近）。
+ */
+const paragraphText = Array.from({ length: 80 }, (_, index) => (
+  `## 第${index + 1}章：标题${index + 1}\n\n`
+  + `这是第 ${index + 1} 章正文的开头。`
+  + '这一段刻意写得很长，用来模拟作者真实项目里那种一整段几百字、在窄宽度下会折成很多行的正文。'.repeat(8)
+)).join('\n\n')
+
 let root: Root
 let container: HTMLDivElement
 let styleElement: HTMLStyleElement
@@ -207,6 +221,42 @@ describe('CodeMirrorEditor 浏览进度记忆', () => {
     await render()
     await waitFrames(8)
     expect(Math.abs(scroller().scrollTop - jumped)).toBeLessThan(80)
+  })
+
+  it('跳章后切走再切回：顶部仍停在同一章（新挂载的高度图是估算值，旧像素会落到别的章）', async () => {
+    // m00492 的真实现象：大纲树点第 6 章（跳转正确、视口偏移 40），切卷单元再切回，
+    // 像素 3501 一模一样，但那帧高度图是估算值 —— 同一个像素落在第 8–9 章附近。
+    await renderWith(paragraphText)
+    await waitFrames(4)
+    const targetLine = 170
+    await act(async () => root.render(
+      <CodeMirrorEditor
+        content={paragraphText}
+        mode="document"
+        scrollMemoryKey={KEY}
+        revealLine={{ line: targetLine - 1, nonce: 1 }}
+      />,
+    ))
+    await waitFrames(16)
+    const jumped = scroller().scrollTop
+    expect(jumped).toBeGreaterThan(1_000)
+
+    await act(async () => root.unmount())
+    const saved = readEditorScrollMemory(KEY)!
+    expect(saved.scrollTop).toBe(jumped)
+    expect(saved.topPos).toBeDefined()
+    expect(saved.topOffset).toBeDefined()
+
+    root = createRoot(container)
+    await renderWith(paragraphText)
+    // 恢复守望 + 落位后的锚点校验需要更多帧。
+    await waitFrames(20)
+
+    const view = editorView()
+    const block = view.lineBlockAt(saved.topPos!)
+    const offset = view.documentTop + block.top - scroller().getBoundingClientRect().top
+    // 保存时那行就在视口顶（偏移 topOffset），切回来必须还在同一位置。
+    expect(Math.abs(offset - (saved.topOffset ?? 0))).toBeLessThanOrEqual(8)
   })
 
   it('光标在文末时也不把视口拽到底部（恢复的是阅读位置，不是光标位置）', async () => {

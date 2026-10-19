@@ -15,7 +15,7 @@ import { countDraftUnits } from '../../shared/draft-units'
 import { useLocaleStore } from '../../stores/locale-store'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import { livePreview, paperHeadFacet, type PaperHead } from './live-preview'
-import { readEditorScrollMemory, rememberEditorScroll, scrollPosToTop, scrollPosToTopConverge, startScrollRestore } from './editor-scroll-memory'
+import { readEditorScrollMemory, rememberEditorScroll, scrollPosToTop, scrollPosToTopConverge, scrollPosToTopRemaining, startScrollRestore } from './editor-scroll-memory'
 
 export type CodeMirrorEditorProps = {
   content: string
@@ -290,6 +290,37 @@ export default function CodeMirrorEditor({
       const head = Math.min(Math.max(0, entry.head), docLength)
       if (anchor !== 0 || head !== 0) view.dispatch({ selection: { anchor, head } })
     }
+    // E4j-4：落位后再校验一次**内容锚点**。
+    //
+    // 作者实测（m00492）：大纲树点第 6 章 → 切卷单元 → 切回大纲，滚动像素确实是 3501，
+    // 但那一帧 CodeMirror 的高度图还是**估算值**（contentH 实测在 4991–6754 之间浮动），
+    // 同一个像素落在第 8–9 章附近（CH6 与视口差 −993 ~ −1094px）——表现为「没保持到第 6 章」。
+    //
+    // 所以落位后拿保存的「顶部行 + 行内偏移」核对一次：真偏了才纠（用收敛版逐帧逼近），
+    // 不偏就一个像素都不碰。无条件认锚点会把位置摆回顶部，已证伪（见 handoff 日志）。
+    let anchorScheduled = false
+    let anchorFrame = 0
+    let cancelAnchor: (() => void) | null = null
+    const scheduleAnchorCheck = () => {
+      if (anchorScheduled) return
+      anchorScheduled = true
+      if (entry.topPos === undefined) return
+      const targetPos = entry.topPos
+      const targetOffset = entry.topOffset ?? 0
+      // 等两帧：落位那一帧的高度图还在重算，立刻核对会读到估算值。
+      anchorFrame = requestAnimationFrame(() => {
+        anchorFrame = requestAnimationFrame(() => {
+          const view = editorRef.current?.view
+          if (!view) return
+          const remaining = scrollPosToTopRemaining(view, targetPos, targetOffset)
+          if (remaining === null || Math.abs(remaining) <= 4) return
+          // 先停守望循环：否则它看到像素偏离目标，会把旧像素写回来和纠偏打架。
+          stopScrollRestoreRef.current?.()
+          stopScrollRestoreRef.current = null
+          cancelAnchor = scrollPosToTopConverge(view, targetPos, targetOffset)
+        })
+      })
+    }
     const stop = startScrollRestore({
       key: scrollMemoryKey,
       read: () => {
@@ -339,12 +370,18 @@ export default function CodeMirrorEditor({
         return false
       },
       interactionHost: () => editorRef.current?.view?.dom ?? null,
-      onLive: () => { scrollLiveRef.current = true },
+      onLive: reason => {
+        scrollLiveRef.current = true
+        // 作者动手接管了就别纠偏：否则会把他刚滚到的位置拽回旧像素（实测 900→120 后被拉回）。
+        if (reason === 'settled') scheduleAnchorCheck()
+      },
     })
     stopScrollRestoreRef.current = stop
     return () => {
       stop()
       stopScrollRestoreRef.current = null
+      cancelAnimationFrame(anchorFrame)
+      cancelAnchor?.()
     }
   }, [scrollMemoryKey])
 
