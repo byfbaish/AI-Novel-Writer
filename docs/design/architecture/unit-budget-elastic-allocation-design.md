@@ -1,6 +1,6 @@
 # 弹性配给制 · 单元章数由内容决定
 
-> 状态：设计稿 · **§2 的额度口径已被作者裁定取代（2026-10-19）**，见 [`volume-quota-context-budget-design.md`](volume-quota-context-budget-design.md)
+> 状态：**E1 / E1.5 / E2 已实施**（2026-10-19，实施记录见本文 §13 起）；**§2 的额度口径已被作者裁定取代（2026-10-19）**，现行口径见 [`volume-quota-context-budget-design.md`](volume-quota-context-budget-design.md)（E4 施工中）；E3 待实施（硬前置：检查点必须存显式「当前单元游标」）
 > 日期：2026-10-19
 > 上位稿：[`arc-v7-implementation-design.md`](arc-v7-implementation-design.md)（卷/单元两级结构）、[`arc-budget-engine-design.md`](arc-budget-engine-design.md)（章数由代码算）
 > 相关：[`arc-layer-handoff.md`](arc-layer-handoff.md)（弧光层职责边界）、[`unit-budget-prompt-ab-test.md`](unit-budget-prompt-ab-test.md)（提示词层实测，§12 为本文 §2.5 的数据来源）
@@ -130,6 +130,8 @@ Z = (actualUsed(v) − plannedUsed(k)) / budget(v)
   生成后：代码数出实际章数 actual，写 covered_to = from + actual − 1
 ```
 
+> ⚠️ 「Z 状态」已由 [`volume-quota-context-budget-design.md`](volume-quota-context-budget-design.md) §6.2 改为「本卷已写 ÷ 本卷章数上界」（B 项，2026-10-20）；「单元序号 k」的来源必须是**落库的显式游标**，不是按章号反推（A 项）。
+
 ### 4.3 提示词怎么表述（不给 to，给边界）
 
 ```
@@ -142,6 +144,8 @@ Z = (actualUsed(v) − plannedUsed(k)) / budget(v)
 关键差异：**没有"第 from–to 章"这个区间**，只有"从第 from 章起，写完这个单元为止"。
 
 ### 4.4 状态块（注入位置：紧跟弧位块）
+
+> ⚠️ **已被取代（2026-10-20 作者裁定 B 项）**：下文的 `Z / 偏差 / ±10% 三档` 口径已由 [`volume-quota-context-budget-design.md`](volume-quota-context-budget-design.md) §6.2 **删除**——E3 接线只用「本卷已写 ÷ 本卷章数上界，接近上界才注入收紧」+「全书进度只陈述、不下命令」。本节保留为 E2 的实测记录（它证明了收紧/展开两个方向有效），**不要据此接线**。
 
 ```
 【本卷配给状态 · 单元 3/5】
@@ -174,8 +178,8 @@ Z = (actualUsed(v) − plannedUsed(k)) / budget(v)
 
 - `from` 仍然已知
 - `to` 在生成完成后由解析得出
-- 检查点保存：`synopsis_range: { from, unitIndex }`，`to` 在完成后回填
-- 续写（resume）：从 `covered_to + 1` 起，重新定位到"所属单元"，而不是恢复原 `to`
+- **检查点同时保存两样**：① `synopsis_range: { from, to }`（`to` = 实际完成章，回填后写入——既有校验 / 指纹 / 续批语义不变）；② **显式单元游标 `{ 卷序号, 单元序号, 本卷已写章数 }`**（volume-quota §7.2）。**resume 用游标定位，不得用 `covered_to + 1` 反推单元**——`arcSpanForChapters` 是按计划等分的映射，实际章数一偏离就整体错位（本文 §9 实施记录：「硬前置，不是优化项」）。2026-10-20 作者裁定 A 项修正版：取代本节早先的 `{ from, unitIndex }` 与随后「unitIndex 不落库」两种写法。
+- 续写（resume）：从 `covered_to + 1` 起，**用游标重新定位到"所属单元"**，而不是恢复原 `to`
 
 **这是改动风险最高的一块**，必须单独一轮实施并加回归测试。
 
@@ -237,7 +241,7 @@ Z = (actualUsed(v) − plannedUsed(k)) / budget(v)
 | **E1** | `planProgress` 纯函数 + 单测；只计算不接链路 | ✅ 已完成（2026-10-19） |
 | **E1.5** | **只读预估**：在真实结构上打日志（预算 / 进度线 / Z），不注入、不改状态机 | ✅ 已完成（2026-10-19），已获实机读数（Z = −1.2%，均衡） |
 | **E2** | 用 [`unit-budget-prompt-ab-test.md`](unit-budget-prompt-ab-test.md) 的 A/B/C 微型 prompt 验证状态块是否真的改变章数（**不跑真项目**：真材料 1 万多字，成本高且看不出变量） | ✅ 已完成（见测试件 §12） |
-| **E3** | 批次改为逐单元（状态机改造 + 检查点兼容） | ❌ 未开始（§4.5 / §291 的硬前置仍在；**先读** [`volume-quota-context-budget-design.md`](volume-quota-context-budget-design.md) §3.3 / §6） |
+| **E3** | 批次改为逐单元（状态机改造 + 检查点兼容） | 🔥 **全项目 Top 优先（2026-10-20 作者裁定）** · ❌ 未开始。它关系大纲 → 蓝图 → 正文三段生成，是与原系统接驳的最后一环；**先把整个流程打通，再做改善与升级**。硬前置与定稿：**先读** [`volume-quota-context-budget-design.md`](volume-quota-context-budget-design.md) §6 / §7（检查点形态、`maxChapters` 在 §7.1 已定稿；状态块按 §6.2，**不要**用本文 §4.4 的 Z 三档） |
 | **E4** | ~~卷级额度设置项~~ + 卷末报警 | ❌ 未开始，**额度设置项已被作者裁定删除**，改由 `volume-quota-context-budget-design.md` 的 E4a–E4g 取代 |
 
 **E2 必须先于 E3**：先确认"鼓励"这个提示词真的能改变篇幅，再改分批机制。否则 E3 做完发现提示词无效，会误判是机制问题。

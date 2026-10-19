@@ -1,0 +1,132 @@
+# E3 实施拆解：批次改为「一个单元」（逐单元生成）
+
+> 状态：🟡 **T1 已实施**（纯函数 + 单测，零行为变化）· 其余待评审 ｜ 日期：2026-10-20
+> 上级稿：[`volume-quota-context-budget-design.md`](volume-quota-context-budget-design.md) §6–§7（现行口径）｜[`unit-budget-elastic-allocation-design.md`](unit-budget-elastic-allocation-design.md) §9（E3 定位与硬前置）
+> 实测依据：[`unit-budget-prompt-ab-test.md`](unit-budget-prompt-ab-test.md) §13（含 DeepSeek 思考模式交叉验证）
+> 分支：`exp/arc-tree-v2` · 基准：`540c701c`（E4j-4 之后）
+
+---
+
+## 0. 一句话
+
+把情节大纲的批次从「第 from–to 章」改成「一个单元」：请求期只给 `{ from, unitIndex, maxChapters }`，**请求时没有 `to`**；生成后解析出实际章数，回填 `to` 并**把显式游标落库**。
+
+**E3 是全项目 Top 优先**——它关系大纲 → 蓝图 → 正文三段生成，是打通全流程的最后一环（2026-10-20 作者裁定）。
+
+---
+
+## 1. 已定口径（2026-10-20 作者裁定，A/B/C + 三条）
+
+| 项 | 口径 |
+|---|---|
+| **A 检查点** | `synopsis_range: { from, to }`（`to` = 实际完成章）+ **新增并落库** `synopsis_unit_cursor: { volumeIndex, unitIndex, writtenInVolume }`。**resume 只用游标定位，不得用 `covered_to + 1` 反推**（`arcSpanForChapters` 是计划等分映射，实际章数一偏离就整体错位） |
+| **B 状态块** | 按 volume-quota §6.2：**余量行常驻**（已写 / 上界 / 剩余单元数）+ 余量比 `r` 阈值指令；**不用** unit-budget §4.4 的 Z / plannedUsed / ±10% 三档 |
+| **C 章数** | `maxChapters` = 结构派生的**名义**上界（卷内剩余章数 ÷ 剩余单元），**不是配额**；单元数与单元内章数都由模型按剧情弹性决定；**±10% 是信号带，不是产出接受带** |
+| **预算冻结** | 按**本卷剩余章数**冻结，不按 `nominal × 1.1`（实测弱模型可写 +100%、强模型可写 −40%） |
+| **越界处理** | 单元级偏差**只记录、不阻断**，卷末汇总；**取消**逐单元「本单元超长，请回弧光拆分」报错 |
+| **模型前提** | 生产**只用思考模式**（写小说要一致性）；非思考数据只作参考（测试件 §13.5） |
+
+---
+
+## 2. 代码触点（符号定位，不写行号——行号已漂移过一次）
+
+| 层 | 位置 | 现状 | E3 改动 |
+|---|---|---|---|
+| 契约 | `src/shared/generation-owner-contract.ts` · `synopsisRange` | `{ from, to }` | **新增**并列字段 `synopsisUnit?: { from, unitIndex, maxChapters, volumeRemaining }`；`synopsisRange` 保留 |
+| 契约 | `src/shared/plot-outline-contract.ts` · 校验 | 强制 `to` 与 `to−from+1 ≤ maxPhysicalRequests` | 带 `synopsisUnit` 时走新校验；旧值路径不变 |
+| 主进程 | `electron/services/main-generation-plan.ts` · architecture 预算 | `2 × (to − from + 1)` | 带 `synopsisUnit` 时 `2 × volumeRemaining` |
+| 主进程 | `electron/services/main-generation-owner.ts` · 续批 deep-equal | 比 `synopsisRange` | 比 `{ from, cursor }`（cursor 缺失时回退旧比较） |
+| 主进程 | `electron/services/agent-generation.ts` · 子 run 授权 | 比 `{ from, to }` | 同步改，否则子 run 会 `GENERATION_AGENT_CHILD_NOT_AUTHORIZED` |
+| 命令 | `architecture.command.ts` · 检查点类型 | `synopsis_range?: { from, to }` | 加 `synopsis_unit_cursor?` |
+| 命令 | `architecture.command.ts` · 检查点校验 | `Number.isSafeInteger(range.to)` + `coveredTo === range.to` | 保留；新增游标校验（卷序号/单元序号/已写 ≥ 0） |
+| 命令 | `architecture.command.ts` · 指纹 | `range.from:range.to` | 回填后按实际 `to` 计算（本来就是实际值） |
+| 命令 | `architecture.command.ts` · resume | 读 `synopsis_range` | **优先读游标**；旧检查点无游标时一次性推导并落库（仅迁移） |
+| 命令 | `architecture.command.ts` · `synopsisBatchInstruction` | 硬写「必须覆盖第 from–to 章」+「to+1 起只写概览」 | 新分支：只给单元 + 起点 + 离开状态；**不给 to** |
+| 共享 | `src/shared/arc-position.ts` | `planVolumeStats`（卷级） | 新增 `planUnitStats`（单元级：名义上界 / 本卷上界 / 剩余单元数 / 余量比 `r` / 余量行文本） |
+
+---
+
+## 3. 施工步骤（每步可独立验证，按顺序）
+
+| # | 步骤 | 改哪里 | 验证 | 风险 |
+|---|---|---|---|---|
+| **T1** | `planUnitStats` 纯函数 + `renderUnitBudgetLine` | `src/shared/arc-position.ts` | ✅ 已实施（2026-10-20）：13 条单测 + 67 条回归全绿；`tsc --noEmit` exit 0 | 低 |
+| **T2** | 契约字段 `synopsisUnit`（并列，不动旧字段）+ 校验分支 | `generation-owner-contract.ts`、`plot-outline-contract.ts` | 单测：旧值 / 新值 / 两者互斥；缺 `to` 但带 `synopsisUnit` 放行 | 中 |
+| **T3** | 主进程预算：`synopsisUnit` ⇒ `2 × volumeRemaining` | `main-generation-plan.ts` | 单测：预算上界、旧路径逐字节不变 | **高** |
+| **T4** | 请求构造：`computeUnitRequest`（游标 → 请求体，不算 `to`） | `architecture.command.ts` | 单测：游标推进、跨卷重置、无结构回退旧路径 | **高** |
+| **T5** | prompt unit 模式 | `synopsisBatchInstruction` | 快照单测（中/英）：无「第 from–to 章」、有「离开状态为止」「不得进入下一单元」 | 中 |
+| **T6** | 余量行常驻 + `r` 阈值指令 + 模板变量 | `architecture.command.ts`、`builtin-prompt-templates.ts` | 渲染单测：`r<0.9` 收紧 / `r>1.1` 展开 / 带内只给余量行 / 无法计算时为空 | 低 |
+| **T7** | 检查点写入游标 + 兼容旧值 | `architecture.command.ts`、partial 类型 | 集成：新旧检查点混合、损坏值报错文案不变 | **高** |
+| **T8** | 续批 / agent 子 run 的 deep-equal 改比 `{from, cursor}` | `main-generation-owner.ts`、`agent-generation.ts` | 集成：续批成功、子 run 授权成功、篡改游标被拒 | **高** |
+| **T9** | 回填与记账：解析 `actual`、`to = from+actual−1`、`writtenInVolume += actual`、`covered_to = to`；超卷末只记录 | `architecture.command.ts` | 单测 + 集成：连写两个单元、章号偏离后仍正确 | **高** |
+| **T10** | 端到端实机 | 真项目 | 单元 1 → 单元 2 连续；日志出现余量行与 `r`；无中途 `ROOT_BUDGET_EXHAUSTED`；弱模型 / 强模型各一次 | 中 |
+| **T11** | 收口：开关、文档回填、施工记录 | — | 旧路径保留一个版本；回退只需关开关 | 低 |
+
+> **T1–T3 可以先做**（纯函数 + 契约 + 预算，不接链路）。**T4 之后每一步都必须能单独回退**。
+
+---
+
+## 4. 回归测试清单（检查点是最高风险区）
+
+1. **旧检查点 resume**：无游标 ⇒ 推导一次并落库，续写正常。
+2. **续批**：`isDeepStrictEqual` 比较对象变更后，合法续批仍通过。
+3. **agent 子 run**：授权 deep-equal 同步，不得出现 `GENERATION_AGENT_CHILD_NOT_AUTHORIZED`。
+4. **指纹失效**：改结构 / 改设定 ⇒ 旧检查点被正确拒绝，文案不变。
+5. **损坏检查点**：越界 / 非整数 / `coveredTo` 不一致 ⇒ 原报错文案不变。
+6. **无结构回退**：`parseArcStructure` 失败 ⇒ 回旧「章号区间」路径，不得崩。
+7. **批量模式隔离**：若仍保留多章批，必须与新路径互不影响。
+
+---
+
+## 5. 旧数据兼容
+
+- 旧检查点没有 `synopsis_unit_cursor`：resume 时**一次性**由 `covered_to + 1` 推导所属单元并落库。**这是唯一允许按章号反推的场合**（旧数据本来就是等分映射），迁移后一律走游标。
+- 不改指纹算法；`to` 本来就是实际值，指纹输入随之变化属预期。
+- 回退开关：新路径默认关，作者确认后打开；关闭时行为与今天逐字节一致。
+
+---
+
+## 6. 明确不做（不在本稿）
+
+- T11 卷末快照（E4e）、T9 按卷冻结（E4h）、T10 全量清除确认（E4i）——按 E4 内部排序另行施工。
+- E4d 前缀投影启用（需先拿到 E4c 实测对比）。
+- 回滚 / 定稿撤销（单独立项，优先级往后）。
+- 卷末报警阈值是否从 ±15% 统一到 ±10%——单独裁定（数据表明 ±15% 会常态触发）。
+
+---
+
+## 7. 风险与回退
+
+| 风险 | 应对 |
+|---|---|
+| 检查点/续批语义改错 ⇒ 无法续写 | T7/T8 单独一轮 + 回归清单 1–5；旧路径保留 |
+| 主进程预算算错 ⇒ 请求数无上界或提前耗尽 | T3 单测覆盖上下界；预算只减不增 |
+| 子 run 授权漏改 | T8 与 owner 同改，集成测试覆盖 |
+| 强模型不需要状态块、弱模型需要 | 余量行常驻（成本极低），指令按 `r` 阈值 |
+| 模型把单元写穿 | 游标 + 卷末记账兜底；单元级不阻断（作者裁定） |
+
+---
+
+## 8. 验收（端到端）
+
+1. 连续两个单元：单元 1 生成 → 游标 `{v1,u1,w=n}` → 单元 2 从 `covered_to+1` 起、**用游标定位** → 游标 `{v1,u2,w=n+m}`。
+2. 人为让单元 1 多写 / 少写（改游标的 `writtenInVolume`），单元 2 的定位仍正确。
+3. 日志每单元出现余量行（已写 / 上界 / 剩余单元）+ `r` 值。
+4. 全程不出现中途 `ROOT_BUDGET_EXHAUSTED`（除非真写穿整卷）。
+5. 旧检查点项目可正常续写一次。
+
+---
+
+## 9. 实施记录
+
+### 2026-10-20 · T1 `planUnitStats`（完成）
+
+- 新增（`src/shared/arc-position.ts`）：`UnitStatsRef` / `UnitStats` / `unitRemainingStateOf` / `planUnitStats` / `renderUnitBudgetLine`。
+- 口径：`maxChapters = 本卷剩余章数 ÷ 剩余单元数（含本单元）`；`ratio = maxChapters ÷ 本卷均分每单元`；`state` 复用 `UNIT_BUDGET_TOLERANCE`（边界归中）。
+- `maxChaptersCeil = remaining > 0 ? max(1, ceil(maxChapters)) : 0`，供请求与预算冻结使用。
+- fail-open：结构不可解析 / 序号越界 / 卷长非正 ⇒ `null`（调用方不注入余量行）。
+- 单测：`src/shared/__tests__/unit-stats.test.ts` 13 条（单元 1/2、卷末单元、收紧/展开、非整数取整、截断、非法值、折算、越界、判档边界、中英渲染）。
+- 回归：`unit-stats` 13 + `volume-stats` 9 + `arc-position` 58 = **80 passed**；`tsc --noEmit` exit 0。
+- **零行为变化**：未接任何调用点。
+
+> 环境笔记：本机 `vitest` 直接用 `node node_modules/vitest/vitest.mjs run <file>` 可以跑（`.tmp-run-tests.mjs` 在 vitest 4 下报 `Cannot read properties of undefined (reading 'config')`，已不可用）。
