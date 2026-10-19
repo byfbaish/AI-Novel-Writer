@@ -2,7 +2,7 @@
 
 > **用途**：上下文过长时的接力点。**先读这一页，再读拆解稿**，防止目标漂移。
 > 分支：`exp/arc-tree-v2` · 代码 HEAD：见 `git log`（T4b 之后）· 工作区：干净
-> 进度：**9/11 步完成**（T4a 已按探针结论修订、T4b 已接线）；剩 T8 / T10 / T11，另有 2 个待裁定项（§8）。
+> 进度：**9/11 步完成** + 插入步 **T4c**（弧位按游标 / 写完判据）；剩 T8 / T10 / T11，另有 4 个待定项（§8）。
 > 主设计稿：[`docs/design/architecture/e3-unit-batch-implementation-plan.md`](../design/architecture/e3-unit-batch-implementation-plan.md)（T1–T11 + §9 决策 + §10 实施记录）
 > 口径稿：[`volume-quota-context-budget-design.md`](../design/architecture/volume-quota-context-budget-design.md) §6.2 / §7.1 · 实测：[`unit-budget-prompt-ab-test.md`](../design/architecture/unit-budget-prompt-ab-test.md) §13
 
@@ -18,7 +18,7 @@
 
 ---
 
-## 2. 已完成的 9 步（都有 commit，全部单测 + tsc 绿）
+## 2. 已完成（含插入步 T4c，都有 commit，全部单测 + tsc 绿）
 
 | 步 | Commit | 内容 | 单测 |
 |---|---|---|---|
@@ -30,7 +30,8 @@
 | T4a | `549dee9c` | `computeSynopsisUnitRange` + command/workflow 选项管道 | 5 → **8 条**（修订后） |
 | T9 | `83c49ca5` | `backfillUnitBatch`（数实际章数、越界 clamp）+ `advanceUnitCursor`（跨卷推进） | 8 条 |
 | 决策 | `88020fa9` | T4b 前置决策稿（指纹口径，方案 D **已确认并修订**） | — |
-| T4b | 见 `git log` | 状态机接线：单元定位 / 提示词 / 回填 / 游标 / 指纹闭环 | 5 条集成 |
+| T4b | `89d0bfcc` | 状态机接线：单元定位 / 提示词 / 回填 / 游标 / 指纹闭环 | 5 条集成 |
+| T4c | 见 `git log` | 弧位**按游标**定位（`arcSpanForUnit` / `withProjectedUnitArcGuide`）+ 写完判据改骨架 + 修投影 no-op | 9 + 5 条 |
 
 **关键**：单元模式仍**没有生产调用方**（没人传 `synopsisUnit`），旧路径逐字节不变；开关在 T11。
 
@@ -103,6 +104,7 @@ node scripts/check-doc-links.mjs
 - `src/services/workflows/commands/__tests__/synopsis-unit-request.test.ts` —— **8**（修订后）
 - `src/services/workflows/commands/__tests__/unit-batch-backfill.test.ts` —— 8
 - `src/services/workflows/commands/__tests__/synopsis-unit-batch.command.test.ts` —— **5**（T4b 集成）
+- `src/shared/__tests__/unit-arc-position.test.ts` —— **9**（T4c 游标定弧位）
 - `src/services/workflows/commands/__tests__/architecture.command.test.ts` —— 47
 
 **既有失败（与本线无关）**：`src/shared/__tests__/novel-contracts.test.ts` 的 M09 lane 断言；
@@ -128,20 +130,15 @@ node scripts/check-doc-links.mjs
 
 ## 8. 未决问题（按优先级）
 
-1. **弧位投影按章号还是按游标**（T10 实机前必须定）：`withProjectedArcGuide` / `renderArcPositionBlock` 都按
-   `from..to` 章号定位弧位。但单元模式的实际章数会漂移——单元 1 少写、单元 2 少写，走到卷二单元 1 时章号可能才第 10 章；
-   此时提示词会一边说「只写【单元 1：配合】（卷二）」，一边用章号把本批定位成「卷一·单元二」。两条路：
-   (a) 新增按游标定位的 span（`arcSpanForUnit(parsed, volumeIndex, unitIndex)`），投影与结构位清单都用它；
-   (b) 承认章号只是标签，单元模式下不再注入章号化的弧位块（只注入单元自身的字段）。
-   **倾向 (a)**：裁剪与结构位清单对模型有用，只是定位基准要换。
-2. **「单元耗尽」是否等于「全书写完」**：`advanceUnitCursor` 在最后一个单元后返回 `null`，
-   但实际章数可能远小于 `totalChapters`（探针：卷二只有 1 个单元，写到第 13 章就 cursor = null）。
-   现在落盘仍是诚实的 `covered_to = 13`，而 DB 尾部会带「其余章节将在后续批次继续生成」——那句是假的。
-   需要裁定：单元耗尽 ⇒ 记 `covered_to = totalChapters` 收尾（要放宽检查点不变量），还是保留偏差交作者处理。
-3. **卷末报警阈值**：`unit-budget` §5 现在是 ±15%，数据显示 ±15% 会常态触发（强模型可 −40%、弱模型可 +100%）——是否统一为 ±10%，或只作纯信息报告？
-4. **单元级偏差的展示位置**：现在设计是"只记录、卷末汇总"，UI 还没定落点（T10 之后再说）。
-5. **T11 开关要顺带决定"从第 1 章重写"在单元模式下怎么表达**：单元模式的 `from` 由 `coveredTo + 1` 决定，
+1. **T11 开关要顺带决定「从第 1 章重写」在单元模式下怎么表达**：单元模式的 `from` 由 `coveredTo + 1` 决定，
    `approveUnitContext` 会拒绝与游标不符的请求 ⇒ 现有「显式覆盖重写」入口在单元模式下不可用（要么清检查点/游标，要么另给一条 reset 语义）。
+2. **卷末报警阈值**：`unit-budget` §5 现在是 ±15%，数据显示 ±15% 会常态触发（强模型可 −40%、弱模型可 +100%）——是否统一为 ±10%，或只作纯信息报告？
+3. **单元级偏差的展示位置**：现在设计是"只记录、卷末汇总"，UI 还没定落点（T10 之后再说）。
+4. **下游要按"实际章数"读大纲**（作者口径的连带）：开篇 `totalChapters` 是计划，写完时 `covered_to` 可能是 200 而不是 200 章计划值。
+   蓝图/正文如果按 `novelConfig.totalChapters` 取章号，会去要不存在的章节；T10 实机时要确认这段怎么接（读大纲实际章数 or 回写配置）。
+
+> 已裁定（2026-10-20）：**弧位投影按游标**（T4c 已实现 `arcSpanForUnit` / `withProjectedUnitArcGuide`）；
+> **不存在「单元耗尽」这个说法**——骨架走完就是写完，计划章数不参与完成判定（T4c 已把 `bookComplete` 改成这个口径）。
 
 ---
 
