@@ -59,7 +59,7 @@
 | **T6** | 余量行常驻 + `r` 阈值指令 | `renderUnitBudgetBlock`（arc-position） | ✅ 渲染器已实施（2026-10-20）：5 条单测（带内/收紧/展开/英文/null）；**注入点在 T4** | 低 |
 | **T7** | 检查点写入游标 + 兼容旧值 | `architecture.command.ts`、partial 类型 | ✅ 已实施（2026-10-20）：`synopsis_unit_cursor` 入字段白名单；旧检查点一次性推导并落库；损坏游标报错；5 条推导单测 + 47 条命令回归 | **高** |
 | **T8** | 续批 / agent 子 run 的 deep-equal 改比 `{from, cursor}` | `main-generation-owner.ts`、`agent-generation.ts` | 集成：续批成功、子 run 授权成功、篡改游标被拒 | **高** |
-| **T9** | 回填与记账：解析 `actual`、`to = from+actual−1`、`writtenInVolume += actual`、`covered_to = to`；超卷末只记录 | `architecture.command.ts` | 单测 + 集成：连写两个单元、章号偏离后仍正确 | **高** |
+| **T9** | 回填与记账：解析 `actual`、`to = from+actual−1`、`writtenInVolume += actual`、`covered_to = to`；超卷末只记录 | `backfillUnitBatch` / `advanceUnitCursor`（纯函数） | ✅ 纯函数已实施（2026-10-20）：8 条单测（计数/越界 clamp/跨卷推进/全书结束）；**写检查点在 T4b** | **高** |
 | **T10** | 端到端实机 | 真项目 | 单元 1 → 单元 2 连续；日志出现余量行与 `r`；无中途 `ROOT_BUDGET_EXHAUSTED`；弱模型 / 强模型各一次 | 中 |
 | **T11** | 收口：开关、文档回填、施工记录 | — | 旧路径保留一个版本；回退只需关开关 | 低 |
 
@@ -181,3 +181,11 @@
 - 管道：command options 增 `synopsisUnit`；`stepAuthorInputs` 增参数（旧的 worldbuilding 调用点同步补 `null`）；`architecture-workflow` params/intent/命令构造全部接通（`synopsisRange` 与 `synopsisUnit` 互斥，unit 模式不再走 `assertPlanningActionRange` 的 ≤10 章限制）。
 - 单测：`synopsis-unit-request.test.ts` 5 条；`architecture.command.test.ts` 47 passed；`tsc --noEmit` exit 0。
 - **无行为变化**：没有任何调用方传 `synopsisUnit`，旧路径逐字节不变。
+
+### 2026-10-20 · T9 回填与游标推进（纯函数完成，未接线）
+
+- `backfillUnitBatch(merged, from, totalChapters)`：`actualChapters = 正文最大章号 − from + 1`；`to` 超全书时 **clamp 到总章数**并置 `overflow`（作者裁定：超写只记录、不阻断）。
+- `advanceUnitCursor(parsed, totalChapters, cursor, actualChapters)`：单元完成后 `writtenInVolume += actual`；本卷最后一个单元 ⇒ 进入下一卷并重置卷内已写；全书最后一个 ⇒ `null`。
+- 单测：`unit-batch-backfill.test.ts` 8 条（计数、未覆盖起点 ⇒ null、越界 clamp、跨卷推进、全书结束、非法输入）。
+- 回归：`architecture.command.test.ts` 47 passed；`tsc --noEmit` exit 0。
+- **写检查点在 T4b**：本步只提供回填数值与下一游标，不改任何落盘路径。
