@@ -724,6 +724,68 @@ export function planVolumeStats(
   return Object.freeze({ majorIndex, midCount, volumeChapters, actualUsed, remaining, bookProgress })
 }
 
+/**
+ * 某一卷的**计划章数**（与 `planUnitStats` / 弧位块同一份 `scaledBoundaries` 折算）。
+ * 序号越界或结构不可解析时返回 `null`。
+ */
+export function planVolumeChapters(
+  parsed: ParsedArcStructure | null,
+  totalChapters: number,
+  volumeIndex: number,
+): number | null {
+  if (!parsed || parsed.majors.length === 0) return null
+  if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return null
+  if (!Number.isSafeInteger(volumeIndex) || volumeIndex < 1 || volumeIndex > parsed.majors.length) return null
+  const bounds = scaledBoundaries(parsed.majors.map(item => arcWeight(item.chapters)), totalChapters)
+  const chapters = bounds[volumeIndex]! - bounds[volumeIndex - 1]!
+  return Number.isFinite(chapters) && chapters > 0 ? chapters : null
+}
+
+/** 卷偏离的明细：`deviation = actual − planned`（超写为正、少写为负）。 */
+export interface VolumeDeviation {
+  volumeIndex: number
+  planned: number
+  actual: number
+  deviation: number
+}
+
+/**
+ * 某一卷**写完时**的偏离（2026-10-20 作者口径：实际预期章数 = 计划章数 ± 每一卷的偏离章数）。
+ *
+ * ⚠️ `writtenInVolume` 必须是**未截断**的实际章数——`planUnitStats` 那边会把它 clamp 到卷长，
+ * 拿那个值算偏离会永远看不到超写。故这里单独算，不与统计函数复用。
+ */
+export function volumeDeviationOf(
+  parsed: ParsedArcStructure | null,
+  totalChapters: number,
+  volumeIndex: number,
+  writtenInVolume: number,
+): VolumeDeviation | null {
+  const planned = planVolumeChapters(parsed, totalChapters, volumeIndex)
+  if (planned === null) return null
+  if (!Number.isSafeInteger(writtenInVolume) || writtenInVolume < 0) return null
+  return Object.freeze({
+    volumeIndex,
+    planned,
+    actual: writtenInVolume,
+    deviation: writtenInVolume - planned,
+  })
+}
+
+/**
+ * **实际预期章数** = 计划章数 + 各卷偏离之和（至少 1 章）。
+ *
+ * 计划章数（`novelConfig.totalChapters`）是开篇的**计划**，不是完成约束；开卷之后篇幅由各卷
+ * 实际写出来的章数决定（作者 2026-10-20）。两者分开存：计划在配置里，偏离在检查点里，
+ * 这个数由两者算出——**不落第三份**，免得三处各说各话。
+ */
+export function expectedTotalChapters(plannedTotal: number, accumulatedDeviation: number): number {
+  // 计划非法就没有可算的基准 —— 返回 1（调用方据此知道"这个数不可信"），不要拿偏离凭空造一个数。
+  if (!Number.isSafeInteger(plannedTotal) || plannedTotal < 1) return 1
+  const drift = Number.isSafeInteger(accumulatedDeviation) ? accumulatedDeviation : 0
+  return Math.max(1, plannedTotal + drift)
+}
+
 /** 卷内统计 → 一行可读日志。`null` 输入返回 `null`（调用方直接不打印）。 */
 export function renderVolumeStats(
   stats: VolumeStats | null,

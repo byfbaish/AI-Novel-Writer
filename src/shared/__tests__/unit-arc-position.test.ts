@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   arcSpanForUnit,
+  expectedTotalChapters,
   parseArcStructure,
+  planVolumeChapters,
   renderUnitArcPositionBlock,
+  volumeDeviationOf,
   withProjectedUnitArcGuide,
 } from '../arc-position'
 
@@ -69,6 +72,30 @@ describe('renderUnitArcPositionBlock：不写章号、不给章数配额', () =>
   it('结构不可解析 ⇒ 空串（不注入）', () => {
     expect(renderUnitArcPositionBlock(null, 60, 1, 1, 'zh-CN')).toBe('')
     expect(renderUnitArcPositionBlock(parsed, 60, 9, 1, 'zh-CN')).toBe('')
+  })
+})
+
+describe('卷偏离与实际预期章数（计划与偏离分开存）', () => {
+  it('卷计划章数与折算同源', () => {
+    expect(planVolumeChapters(parsed, 60, 1)).toBe(30)
+    expect(planVolumeChapters(parsed, 60, 2)).toBe(30)
+    expect(planVolumeChapters(parsed, 60, 3)).toBeNull()
+    expect(planVolumeChapters(null, 60, 1)).toBeNull()
+  })
+
+  it('偏离 = 实际 − 计划，超写为正、少写为负，**不截断**', () => {
+    expect(volumeDeviationOf(parsed, 60, 1, 9)).toEqual({ volumeIndex: 1, planned: 30, actual: 9, deviation: -21 })
+    expect(volumeDeviationOf(parsed, 60, 1, 38)).toEqual({ volumeIndex: 1, planned: 30, actual: 38, deviation: 8 })
+    expect(volumeDeviationOf(parsed, 60, 1, -1)).toBeNull()
+    expect(volumeDeviationOf(parsed, 60, 9, 1)).toBeNull()
+  })
+
+  it('实际预期 = 计划 + 累计偏离，且至少 1 章', () => {
+    expect(expectedTotalChapters(200, -63)).toBe(137)
+    expect(expectedTotalChapters(200, 7)).toBe(207)
+    expect(expectedTotalChapters(200, 0)).toBe(200)
+    expect(expectedTotalChapters(200, -500)).toBe(1)
+    expect(expectedTotalChapters(Number.NaN, 3)).toBe(1)
   })
 })
 

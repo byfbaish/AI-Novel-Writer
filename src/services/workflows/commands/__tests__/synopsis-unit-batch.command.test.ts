@@ -242,6 +242,8 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
     // 本卷最后一个单元完成 ⇒ 进卷二、卷内已写重置
     expect(saved.synopsis_unit_cursor).toEqual({ volumeIndex: 2, unitIndex: 1, writtenInVolume: 0 })
     expect(saved.synopsis_facts_fingerprint).toBe(currentFingerprint({ from: 6, to: 9 }))
+    // 卷一写完：计划 30 章、实际 9 章 ⇒ 累计偏离 −21（实际预期 = 60 − 21 = 39）
+    expect(saved.synopsis_volume_deviation).toBe(-21)
   })
 
   it('断点续写：中断检查点（range = boundTo、游标未推进）续写后按实际章数落盘并推进游标', async () => {
@@ -281,6 +283,7 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
       synopsis_covered_to: 9,
       synopsis_range: { from: 6, to: 9 },
       synopsis_unit_cursor: { volumeIndex: 2, unitIndex: 1, writtenInVolume: 0 },
+      synopsis_volume_deviation: -21,
       synopsis_facts_fingerprint: currentFingerprint({ from: 6, to: 9 }),
       synopsis_step_guidance: '',
     }
@@ -299,9 +302,33 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
     expect(saved.synopsis_covered_to).toBe(13)
     // 弧光单元骨架走完 ⇒ 就是「写完」，与计划章数无关（作者口径：200 章是计划不是约束）。
     expect(saved.synopsis_unit_cursor).toBeUndefined()
+    // 卷二写完：计划 30 章、实际 4 章 ⇒ 累计偏离 −21 + (−26) = −47（实际预期 60 − 47 = 13 = 实际章数）
+    expect(saved.synopsis_volume_deviation).toBe(-47)
     // 不能再挂「其余章节将在后续批次继续生成」——骨架走完就没有后续批次了。
     expect(ipc.dbSynopsis()).not.toContain('其余章节将在后续批次继续生成')
-    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('弧光单元全部完成'))
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('实际预期 13 章'))
+  })
+
+  it('作废已写章节重新规划：清空累计卷偏离，回到计划章数为基准', async () => {
+    const stream = responseStream([chapters(1, 5)])
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream: stream })
+    const ipc = harness({
+      synopsis_result: chapters(1, 3),
+      synopsis_incomplete: false,
+      synopsis_covered_to: 3,
+      synopsis_range: { from: 1, to: 3 },
+      synopsis_volume_deviation: -21,
+    })
+
+    // 旧路径（章号区间）显式覆盖重写：from = 1 且原有已写内容 = 作废重规划
+    await new GeneratePlotArchitectureCommand(['synopsis'], { expectedProjectPath: projectAPath, novelConfig } as never,
+      createWorkflowRuntimeDependencies(), { synopsisRange: { from: 1, to: 5 } })
+      .execute({ step: {}, context, callbacks })
+
+    const saved = ipc.partialWrites.at(-1)!
+    expect(saved.synopsis_range).toEqual({ from: 1, to: 5 })
+    expect(saved.synopsis_volume_deviation).toBeUndefined()
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('回到计划章数 60 章为基准'))
   })
 
   it('过期请求（单元序号与游标不符）fail-closed，不生成', async () => {
