@@ -35,6 +35,13 @@ export type CodeMirrorEditorProps = {
    * 不传则不记忆——需要它的调用方（如 `ArchFileViewer`）用 `tabId` 即可。
    */
   scrollMemoryKey?: string
+  /**
+   * 「跳到第 N 行」（E4j-3）：由卷/单元树点击触发。
+   *
+   * 用 `nonce` 而不是纯行号：**同一行连点两次也要生效**（作者点同一个单元两次，
+   * 期望是「再跳一次」而不是「什么都没发生」）。
+   */
+  revealLine?: { line: number; nonce: number } | null
 }
 
 type EditorAIAction = {
@@ -65,6 +72,7 @@ export default function CodeMirrorEditor({
   mode = 'document',
   paperHead = null,
   scrollMemoryKey,
+  revealLine = null,
 }: CodeMirrorEditorProps) {
   const uiText = useLocaleStore(s => s.text)
   const uiLocale = useLocaleStore(s => s.locale)
@@ -195,6 +203,23 @@ export default function CodeMirrorEditor({
     })
     return () => cancelAnimationFrame(frame)
   }, [scrollMemoryKey])
+
+  // E4j-3：卷/单元树点击 ⇒ 跳到对应行并选中标题行。
+  // 依赖只取 nonce：同一行连点也要重新跳（见 `revealLine` 注释）。
+  const revealNonce = revealLine?.nonce ?? 0
+  useEffect(() => {
+    if (!revealLine) return
+    const view = editorRef.current?.view
+    if (!view) return
+    const lineNumber = Math.min(Math.max(1, revealLine.line + 1), view.state.doc.lines)
+    const lineInfo = view.state.doc.line(lineNumber)
+    view.dispatch({
+      selection: { anchor: lineInfo.from, head: Math.min(lineInfo.to, lineInfo.from + lineInfo.text.length) },
+      effects: EditorView.scrollIntoView(lineInfo.from, { y: 'start', yMargin: 40 }),
+    })
+    view.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealNonce])
 
   useEffect(() => {
     if (aiResult === '') {
