@@ -1,0 +1,249 @@
+# E4 施工记录（append-only）
+
+> 用途：**每完成一个细粒度任务就追加一条**，防止 Token 额度耗尽导致工作丢失。
+> 规则：只追加，不改历史条目；每条写「做了什么 / 改了哪些文件 / 验证结果 / 下一步」。
+> 设计稿：[`volume-quota-context-budget-design.md`](../design/architecture/volume-quota-context-budget-design.md)
+> 分支：`exp/arc-tree-v2` · 基准 `0e97f8de`
+
+---
+
+## 0. 施工前状态（2026-10-19）
+
+| 项 | 值 |
+|---|---|
+| 分支 / HEAD | `exp/arc-tree-v2` / `0e97f8de` |
+| 基线 `tsc --noEmit` | ✅ 通过（exit 0） |
+| 未提交改动 | 设计稿 5 个文件（见下） |
+| ⚠️ **git 不可用** | `.git` 目录写入被沙箱拒绝（`index.lock: Permission denied`），**本轮无法 commit**，改动留在工作区 |
+
+设计稿改动（待作者自行提交）：
+
+- `docs/design/architecture/volume-quota-context-budget-design.md`（新增）
+- `docs/design/architecture/arc-budget-engine-design.md`（状态行）
+- `docs/design/architecture/unit-budget-elastic-allocation-design.md`（§3 标为已被取代 + E3/E4 行）
+- `docs/handoffs/2026-10-19-arc-budget-handoff.md`（§3 进度 + §5 待裁定）
+- `docs/README.md`（索引一行）
+
+## 1. 任务清单（细粒度，逐条勾）
+
+| # | 任务 | 状态 |
+|---|---|---|
+| T1 | 建立本施工记录 | ✅ |
+| T2 | E4a-1：`outline-budget.ts` 纯函数 + 单测（`OUTLINE_OVERSHOOT` / `OUTLINE_TOTAL_OVERSHOOT`） | ⬜ |
+| T3 | E4a-2：`planVolumeStats` 卷内统计纯函数 + 单测 | ✅ |
+| T4 | E4b：`cached_tokens` 解析进 attempt receipt | ✅ |
+| T5 | E4c：前缀投影只读预估（打日志，不改行为） | ✅ |
+| T6 | E4j-1：滚动条可见性修复 | ✅ |
+| T7 | E4j-2：Tab `scrollTop` 墓碑 | ✅（LRU4 实例未做，见记录） |
+| T8 | E4j-3：分卷折叠 + 卷/单元树 | 🟡 数据层✅（`arc-tree.ts`），UI 组件待做 |
+| T9 | E4h：按卷冻结（作者触发） | ⬜ |
+| T10 | E4i：全量清除补弧光 | 🟡 代码已改，测试待原生模块重建 |
+| T11 | E4e：卷末快照（handoff + anchor）+ M10 | ⬜ |
+
+---
+
+## 记录
+
+### 2026-10-19 · T1 建立施工记录
+
+- 新增 `docs/handoffs/2026-10-19-e4-implementation-log.md`（本文件）
+- 记录施工前基线：`tsc --noEmit` 通过；git 写入被拒（无法 commit）
+- 下一步：T2
+### 2026-10-19 · T2 E4a-1：大纲字数探针纯函数（完成）
+
+**做了什么**
+
+- 新增 `src/shared/outline-budget.ts`（纯函数，无 IO）：
+  - `outlineLengthOf(text)`：去空白计字，与 `auditArcDensity` 的 `densityLength` 同口径；
+  - `auditOutlineLength(chapters, targetUnits)`：两条探针
+    - `OUTLINE_OVERSHOOT`：**连续 ≥3 章** 实际字数 > 目标 × 1.5（只报**最长的一段**，不刷 98 条告警）；
+    - `OUTLINE_TOTAL_OVERSHOOT`：总量 > 目标 × 章数 × 1.3；
+  - `renderOutlineLengthReport(findings, language)`：渲染成一段可读日志，空数组返回 `null`；
+  - 常量 `OUTLINE_OVERSHOOT_RUN = 3` / `OUTLINE_OVERSHOOT_FACTOR = 1.5` / `OUTLINE_TOTAL_OVERSHOOT_FACTOR = 1.3`。
+- 新增 `src/shared/__tests__/outline-budget.test.ts`（21 条）。
+
+**关键设计**
+
+- **fail-open**：目标 ≤0 / 非整数 / NaN、没有章节、条目非法 ⇒ 返回空数组，调用方直接不打印；
+- **只报不拦**（作者裁定：字数目标在 UI 里自己调，不加自动闸门）；
+- **边界归中**：正好 1.5 倍不算超（避免浮点噪声误报）。
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| 逻辑自测（node type-strip 脚本，20 项断言） | ✅ ALL PASSED |
+| `npx vitest run` | ❌ **环境不可用**：`spawn EPERM` + `tailwindcss-oxide` 原生绑定 UTF-8 解码失败（沙箱限制，与本改动无关） |
+
+> ⚠️ **vitest 在本机跑不起来**（不是本改动的错）：`[plugin externalize-deps] Error: spawn EPERM` + `Could not load @tailwindcss/oxide-win32-x64-msvc`。已改用 `node --experimental-strip-types` 跑等价断言作为替代验证。**后续任务都按这个方式验证**。
+
+**下一步**：T3（`planVolumeStats` 卷内统计纯函数）
+### 2026-10-19 · T3 E4a-2：`planVolumeStats` 卷内统计（完成）
+
+**做了什么**
+
+- `src/shared/arc-position.ts` 新增（紧邻 `planProgress`）：
+  - `VolumeStats` / `VolumeStatsRef` 类型；
+  - `planVolumeStats(parsed, totalChapters, ref)`：只返回 `majorIndex` / `midCount` / `volumeChapters` / `actualUsed` / `remaining` / `bookProgress`，**不含 `budget` / `z` / `state`**；
+  - `renderVolumeStats(stats, language)`：一行可读日志；
+- 新增 `src/shared/__tests__/volume-stats.test.ts`（13 条）。
+
+**关键口径**
+
+| 口径 | 做法 |
+|---|---|
+| 卷长 | `scaledBoundaries` 折算，**与弧位块同源**（不另写一份） |
+| `actualUsed` | 调用方负责按卷首/卷末截断后传入；本函数再 `min(..., volumeChapters)` 兜底 |
+| `remaining` | `max(0, volumeChapters − actualUsed)`，**永不为负** |
+| `bookProgress` | 不给 `coveredTo` 时为 `null`（不是 0）——避免把"没给"误读成"没写" |
+| 失败姿态 | 结构不可解析 / 越界 / 卷长 ≤0 ⇒ `null`（fail-open） |
+
+**与旧口径的关系**
+
+- `planProgress` **保留不删**（E1 的 7 条单测仍引用），但**生产调用点要改用 `planVolumeStats`**；
+- 这是刻意的过渡：先加新函数、再切调用点、最后才删旧的，避免一次性改动同时动纯函数与状态机。
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| 逻辑自测（18 项断言） | ✅ ALL PASSED |
+
+**下一步**：T4（`cached_tokens` 解析进 attempt receipt）
+### 2026-10-19 · T4 E4b：`cached_tokens` 解析（完成）
+
+**做了什么**
+
+- `src/shared/ipc-channels.ts`：`TokenUsage` 加 `cachedPromptTokens?: number | null`（**观测值，不参与结算**，是 `promptTokens` 的子集）；
+- `electron/llm/openai-provider.ts`：
+  - 非流式：解析 `usage.prompt_tokens_details.cached_tokens`（`:134-152`）；
+  - 流式：同样解析，同时进 `onUsageEvidence` 与最终 `onDone` 的 usage（`:280-310`）；
+- `electron/llm/__tests__/openai-provider.test.ts`：新增 2 条（缓存命中透传 / 供应商不报时字段缺省）。
+
+**关键口径**
+
+| 情形 | 行为 |
+|---|---|
+| 供应商报了 `cached_tokens: 768` | `cachedPromptTokens: 768` |
+| 供应商报了 `cached_tokens: 0` | `cachedPromptTokens: 0`（**报了但没命中**） |
+| 供应商没报 | **字段缺省**（不是 0）——「没报」≠「命中 0」 |
+| 结算 | **完全不变**：`settleProviderUsage` 不读这个字段 |
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| `arc-position.test.ts` + `openai-provider.test.ts` | ✅ **126 passed**（含新增 2 条） |
+
+**工具链记录（重要，后续复用）**
+
+`npx vitest run` 在本机沙箱下**跑不起来**（默认 pool `spawn EPERM` + vite 配置加载时 `tailwindcss-oxide` 原生绑定解码失败）。
+可用替代：`.tmp-run-tests.mjs`（vitest node API + `pool: threads` + `config: false`）：
+
+```
+node .tmp-run-tests.mjs <test-file> [...]
+```
+
+**下一步**：T5（前缀投影只读预估）
+### 2026-10-19 · T5 E4c：大纲前缀只读预估 + 字数体检接入（完成）
+
+**做了什么**
+
+- 新增 `src/shared/outline-prefix-budget.ts`：
+  - `estimateOutlinePrefix()`：算「整段前缀」与「投影后」各多少字、token 区间、省下比例；
+  - `planOutlinePrefixBudget()`：再加「按当前速度还能写几章」（整段 / 投影后）；
+  - `renderOutlinePrefixBudget()`：可读日志；
+- `src/services/workflows/commands/architecture.command.ts`：
+  - 新增 `summarizeOutlinePrefix()`（只读，打日志）与 `summarizeOutlineLength()`（字数体检）；
+  - 新增私有 `listOutlineChapterLengths()`：从大纲正文逐章切字数；
+  - 调用点：`execute` 里 `summarizeUnitBudget` 之后，两行日志；**不改提示词、不改批次范围**；
+- 新增测试：`outline-prefix-budget.test.ts`（16 条）、`outline-budget-report.test.ts`（8 条）。
+
+**关键口径（两处踩坑后修正）**
+
+| 坑 | 后果 | 修法 |
+|---|---|---|
+| L4「最近 K 章」被当成独立层叠加在 L2 上 | 顶层算出的投影体积**比整段还大**（7500 > 6001） | L4 是 L2 的**子集**，改成 `max(L2, 最近K章)`，不叠加 |
+| 第一卷也算「上一卷交接单」1,500 字 | 第一卷凭空多出体积，savedRatio 变负 | `locateVolume` 返回 `majorIndex`，只有 `majorIndex > 1` 才计 L3 |
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| 新增 2 个测试文件 | ✅ 24 passed |
+| 回归：`unit-budget-report` + `plot-outline-batch.command` + 新报告 | ✅ **57 passed** |
+
+**下一步**：T6（滚动条可见性修复，E4j-1）
+### 2026-10-19 · T6 E4j-1：滚动条可见性（完成）
+
+**做了什么**
+
+- `src/components/editor/CodeMirrorEditor.tsx` 的 `.cm-scroller` 主题：
+  - 加 `scrollbarGutter: "stable"`（预留槽位，内容不再因出现/消失而抖动）；
+  - `scrollbarWidth: "thin"` + `scrollbarColor`（Firefox）；
+  - 显式 `::-webkit-scrollbar` / `-thumb` / `-thumb:hover`（细条 + 悬停变亮）。
+
+**为什么之前「看不见滚动条」**：`.cm-content` 是 `max-width:800px; margin:0 auto`，滚动容器却是整个视口宽——滚动条被推到最右边，宽屏下离正文 800px 远。
+
+**验证**：`npx tsc --noEmit` ✅ exit 0。视觉需在 `pnpm dev` 里实际看一眼（本机无法跑浏览器 E2E）。
+
+---
+
+### 2026-10-19 · T7 E4j-2：切 Tab 保留浏览进度（完成，墓碑路径）
+
+**做了什么**
+
+- 新增 `src/components/editor/editor-scroll-memory.ts`（**旁路记忆，不进 store**，避免滚动这种高频事件触发重渲染）：
+  - `rememberEditorScroll` / `restoreEditorScroll`（CodeMirror：`scrollTop` + 光标 anchor/head）；
+  - `rememberElementScroll` / `restoreElementScroll`（普通 `overflow-y-auto` 容器）；
+  - LRU 裁剪 `EDITOR_SCROLL_MEMORY_LIMIT = 20`；`clearEditorScrollMemory()` 供切项目用；
+- `CodeMirrorEditor`：新增 `scrollMemoryKey` prop；卸载前 `remember`，挂载后下一帧 `restore`；
+- `ArchFileViewer`：传 `scrollMemoryKey={`arch-file:${tabId}`}`；
+- `ReviewReport`：新增 `scrollMemoryKey` prop，钩子挂在 **Session 子组件**（外层每换报告会重建 Session）；
+- `EditorArea`：传 `scrollMemoryKey={`review-report:${activeTab.id}`}`；
+- 测试：`editor-scroll-memory.test.ts`（9 条）。
+
+**关键决策**
+
+| 决策 | 理由 |
+|---|---|
+| 模块级 Map，不用 Zustand | 滚动是高频事件，进 store 会触发重渲染；这里只做旁路记忆 |
+| `scrollTop === 0` 时不覆盖目标 | 避免把「本来就停在顶部」误当成「恢复成顶部」 |
+| 光标位置一起记 | 成本几乎为零，审稿对照场景差别明显 |
+| **暂不做 LRU 4 实例** | 墓碑路径已能解决「回到顶部」；实例保留涉及 `EditorArea` 只渲染当前 tab 的结构性改动，单独一轮 |
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| 新增 9 条 + 回归批次（5 个文件） | ✅ **166 passed** |
+| `project-clear-repositories.test.ts` | ⚠️ **环境不可用**：`better-sqlite3` 原生模块与当前 Node ABI 不匹配（NODE_MODULE_VERSION 145 vs 137），7 条既有测试报错，与本次改动无关 |
+
+**下一步**：T10（E4i 全量清除补弧光 —— 代码已改，测试等 `pnpm rebuild` 后才能验）
+### 2026-10-19 · T8 E4j-3（上半）：卷 / 单元 只读树的数据层（完成）
+
+**做了什么**
+
+- 新增 `src/shared/arc-tree.ts`：
+  - `buildArcTree(plan)` → `ArcTree { volumes[{ index, name, line, units[{ index, name, line, hand, tier }] }], twoLevel }`；
+  - `arcTreeUnitCount(tree)`：折叠时显示「N 单元」；
+- 新增 `src/shared/__tests__/arc-tree.test.ts`（8 条）。
+
+**关键设计**
+
+| 决策 | 理由 |
+|---|---|
+| **不改 `parseArcStructure`** | 它的职责是「文本 → 结构」，树只需要额外一个「行号」；独立扫行号，不往核心解析器塞视图字段 |
+| 标题扫描与解析结果**数量必须对上**，否则返回 `null` | 出半棵树比不出树更糟（点击跳转会错位） |
+| 单元徽标从「逼法」标注读 `hand` / `tier` | 与 `auditTwoLevelDensity` 同一份正则语义；让「相邻两单元同类」一眼可见 |
+| 无标注时 `hand`/`tier` 为 `null`，**不编** | 与全仓「不给看起来合理的默认值」一致 |
+
+**验证**：`npx tsc --noEmit` ✅；新测试 8 条 ✅ passed。
+
+**剩余（下半）**：树组件本身（左侧抽屉、可 pin、与文本折叠共享状态、点击跳转）。
+需在 `pnpm dev` 里做视觉验证——本机无法跑浏览器 E2E。

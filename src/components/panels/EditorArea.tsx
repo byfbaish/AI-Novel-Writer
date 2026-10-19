@@ -745,6 +745,7 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
         )}
         {activeTab?.type === 'review-report' && activeTab.projectKey === currentProject.path && activeTab.content && (
           <ReviewReport
+            scrollMemoryKey={`review-report:${activeTab.id}`}
             reportText={activeTab.content}
             draftPath={activeTab.filePath}
             chapterNumber={activeTab.chapterNumber}

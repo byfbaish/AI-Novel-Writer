@@ -746,6 +746,80 @@ describe('OpenAIProvider NovelAI compatibility', () => {
     }, 'stop')
   })
 
+  it('forwards prompt cache hits as an observation without changing prompt tokens', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => sseReader(
+          'data: {"choices":[{"delta":{"content":"正文"},"finish_reason":"stop"}]}\n\n',
+          'data: {"choices":[],"usage":{"prompt_tokens":1000,"completion_tokens":21,"total_tokens":1021,"prompt_tokens_details":{"cached_tokens":768}}}\n\n',
+          'data: [DONE]\n\n',
+        ),
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const onDone = vi.fn()
+    const onUsageEvidence = vi.fn()
+
+    await new OpenAIProvider().generateStream({
+      ...novelAIModel,
+      provider: 'openai',
+      baseUrl: 'https://api.openai.com',
+    }, [{ role: 'user', content: '写正文' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      onChunk: vi.fn(),
+      onDone,
+      onError: vi.fn(),
+      onUsageEvidence,
+    })
+
+    // 缓存命中数是 promptTokens 的子集：只多带一个字段，promptTokens 不变。
+    expect(onDone).toHaveBeenCalledWith('正文', {
+      promptTokens: 1000,
+      completionTokens: 21,
+      totalTokens: 1021,
+      cachedPromptTokens: 768,
+    }, 'stop')
+    expect(onUsageEvidence).toHaveBeenCalledWith(expect.objectContaining({
+      usage: expect.objectContaining({ promptTokens: 1000, cachedPromptTokens: 768 }),
+    }))
+  })
+
+  it('omits the cache field when the provider does not report it', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      body: {
+        getReader: () => sseReader(
+          'data: {"choices":[{"delta":{"content":"正文"},"finish_reason":"stop"}]}\n\n',
+          'data: {"choices":[],"usage":{"prompt_tokens":13,"completion_tokens":21,"total_tokens":34}}\n\n',
+          'data: [DONE]\n\n',
+        ),
+      },
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const onDone = vi.fn()
+
+    await new OpenAIProvider().generateStream({
+      ...novelAIModel,
+      provider: 'openai',
+      baseUrl: 'https://api.openai.com',
+    }, [{ role: 'user', content: '写正文' }], {
+      temperature: 0.2,
+      maxTokens: 512,
+      signal: new AbortController().signal,
+      onChunk: vi.fn(),
+      onDone,
+      onError: vi.fn(),
+    })
+
+    // 「没报」不等于「命中 0」：字段缺省，不能填 0。
+    const payload = onDone.mock.calls[0]![1] as Record<string, unknown>
+    expect(payload).toMatchObject({ promptTokens: 13, completionTokens: 21, totalTokens: 34 })
+    expect(Object.hasOwn(payload, 'cachedPromptTokens')).toBe(false)
+  })
+
   it('rejects an OpenAI stream that ends before [DONE], even if text was received', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

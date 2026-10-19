@@ -881,6 +881,7 @@ function ArchFileViewerSession({
       <div className="flex-1 overflow-hidden">
         <CodeMirrorEditor
           mode="document"
+          scrollMemoryKey={`arch-file:${tabId}`}
           content={editorContent}
           filePath={filePath}
           editable={!isCharacterProjection}

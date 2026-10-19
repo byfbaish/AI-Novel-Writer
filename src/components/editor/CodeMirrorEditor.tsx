@@ -15,6 +15,7 @@ import { countDraftUnits } from '../../shared/draft-units'
 import { useLocaleStore } from '../../stores/locale-store'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import { livePreview, paperHeadFacet, type PaperHead } from './live-preview'
+import { rememberEditorScroll, restoreEditorScroll } from './editor-scroll-memory'
 
 export type CodeMirrorEditorProps = {
   content: string
@@ -29,6 +30,11 @@ export type CodeMirrorEditorProps = {
   hideStatusBar?: boolean
   mode?: 'document' | 'prose'
   paperHead?: PaperHead | null
+  /**
+   * 浏览进度记忆的键（E4j-2）。同一个键在卸载/挂载之间恢复 `scrollTop` 与光标。
+   * 不传则不记忆——需要它的调用方（如 `ArchFileViewer`）用 `tabId` 即可。
+   */
+  scrollMemoryKey?: string
 }
 
 type EditorAIAction = {
@@ -58,6 +64,7 @@ export default function CodeMirrorEditor({
   placeholder,
   mode = 'document',
   paperHead = null,
+  scrollMemoryKey,
 }: CodeMirrorEditorProps) {
   const uiText = useLocaleStore(s => s.text)
   const uiLocale = useLocaleStore(s => s.locale)
@@ -173,10 +180,21 @@ export default function CodeMirrorEditor({
   }, [recoveryKey])
 
   useEffect(() => () => {
+    // E4j-2：卸载前记住浏览进度（切 Tab 回来能回到原处）
+    rememberEditorScroll(scrollMemoryKey, editorRef.current?.view ?? null)
     inlineRef.current?.detach()
     aiRequestSequenceRef.current += 1
     aiTargetRef.current = null
-  }, [])
+  }, [scrollMemoryKey])
+
+  // E4j-2：挂载后恢复浏览进度。等 CodeMirror 完成首次测量再设 scrollTop，否则会被重置为 0。
+  useEffect(() => {
+    if (!scrollMemoryKey) return
+    const frame = requestAnimationFrame(() => {
+      restoreEditorScroll(scrollMemoryKey, editorRef.current?.view ?? null)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [scrollMemoryKey])
 
   useEffect(() => {
     if (aiResult === '') {
@@ -282,10 +300,25 @@ export default function CodeMirrorEditor({
     },
     ".cm-scroller": {
       overflow: "auto",
+      // E4j-1（2026-10-19）：内容区是 `max-width: 800px + margin auto`，滚动条被推到
+      // 视口最右边，宽屏下离正文很远，看起来就像「没有滚动条」。
+      // `scrollbar-gutter: stable` 预留槽位 + 显式样式，保证滚动条始终可见且贴着内容边缘。
+      scrollbarGutter: "stable",
+      scrollbarWidth: "thin",
+      scrollbarColor: "var(--color-border) transparent",
       paddingBottom: "100px",
       cursor: "text",
       fontFamily: (mode === 'prose' || mode === 'document') ? "var(--font-writing)" : "inherit"
     },
+    ".cm-scroller::-webkit-scrollbar": { width: "10px", height: "10px" },
+    ".cm-scroller::-webkit-scrollbar-track": { background: "transparent" },
+    ".cm-scroller::-webkit-scrollbar-thumb": {
+      backgroundColor: "var(--color-border)",
+      borderRadius: "5px",
+      border: "2px solid transparent",
+      backgroundClip: "content-box",
+    },
+    ".cm-scroller::-webkit-scrollbar-thumb:hover": { backgroundColor: "var(--color-text-muted)" },
     ".cm-content": {
       width: "100%",
       maxWidth: "800px",

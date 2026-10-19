@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle,
@@ -25,6 +25,7 @@ import { NativeSelect } from '../ui/NativeSelect'
 import { Textarea } from '../ui/Textarea'
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../project-session-gate'
 import { useProjectStore } from '../../stores/project-store'
+import { rememberElementScroll, restoreElementScroll } from './editor-scroll-memory'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useLLMStore } from '../../stores/llm-store'
 import { ipc } from '../../services/ipc-client'
@@ -75,6 +76,14 @@ interface ReviewJSON {
 interface ReviewReportProps {
   /** 原始审稿报告文本（JSON 或旧版 markdown） */
   reportText: string
+  /**
+   * 浏览进度记忆的键（E4j-2）。
+   *
+   * 审稿对照是作者最高频的多 Tab 场景（正文 ↔ 报告 ↔ diff ↔ 邻章），
+   * 而 `review-report` 每次打开都会强制重载内容（`editor-store.ts:291-296`），
+   * 所以它必须靠这个键把 `scrollTop` 带过重载。
+   */
+  scrollMemoryKey?: string
   /** 审稿报告关联的草稿路径（用于触发修稿） */
   draftPath?: string
   /** 章节号 */
@@ -422,7 +431,18 @@ function ReviewReportSession({
   initialSnapshot,
   cycle,
   reloadCycle,
+  scrollMemoryKey,
 }: ReviewReportSessionProps) {
+  // E4j-2：审稿对照是最高频的多 Tab 场景，记住浏览进度。
+  // 注意挂在 Session 上而不是外层：外层每次 reportKey 变化会重建 Session。
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => restoreElementScroll(scrollMemoryKey, scrollContainerRef.current))
+    return () => {
+      cancelAnimationFrame(frame)
+      rememberElementScroll(scrollMemoryKey, scrollContainerRef.current)
+    }
+  }, [scrollMemoryKey])
   const text = useLocaleStore(s => s.text)
   const writingLanguage = useProjectStore(s => resolveWritingLanguage(
     s.currentProject?.path === projectKey
@@ -898,7 +918,7 @@ function ReviewReportSession({
   }
 
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto" ref={scrollContainerRef}>
       <div className="max-w-2xl mx-auto px-6 py-4">
         {/* 统计栏 */}
         <div className="flex items-center gap-4 mb-4 pb-3 border-b border-[var(--color-border)]">
