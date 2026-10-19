@@ -52,7 +52,7 @@
 |---|---|---|---|---|
 | **T1** | `planUnitStats` 纯函数 + `renderUnitBudgetLine` | `src/shared/arc-position.ts` | ✅ 已实施（2026-10-20）：13 条单测 + 67 条回归全绿；`tsc --noEmit` exit 0 | 低 |
 | **T2** | 契约字段 `synopsisUnit`（并列，不动旧字段）+ 校验分支 | `generation-owner-contract.ts`、`plot-outline-contract.ts` | ✅ 已实施（2026-10-20）：13 条单测；`plotOutlinePolicy` 对单元模式返回 null，`plotOutlineUnitPolicy` 校验四元组与互斥 | 中 |
-| **T3** | 主进程预算：`synopsisUnit` ⇒ `2 × volumeRemaining` | `main-generation-plan.ts` | 单测：预算上界、旧路径逐字节不变 | **高** |
+| **T3** | 主进程预算：`synopsisUnit` ⇒ `2 × volumeRemaining` | `main-generation-plan.ts` | ✅ 已实施（2026-10-20）：7 条单测 + 94 条既有回归；`readMainGenerationPolicy` JSON 往返 | **高** |
 | **T4** | 请求构造：`computeUnitRequest`（游标 → 请求体，不算 `to`） | `architecture.command.ts` | 单测：游标推进、跨卷重置、无结构回退旧路径 | **高** |
 | **T5** | prompt unit 模式 | `synopsisBatchInstruction` | 快照单测（中/英）：无「第 from–to 章」、有「离开状态为止」「不得进入下一单元」 | 中 |
 | **T6** | 余量行常驻 + `r` 阈值指令 + 模板变量 | `architecture.command.ts`、`builtin-prompt-templates.ts` | 渲染单测：`r<0.9` 收紧 / `r>1.1` 展开 / 带内只给余量行 / 无法计算时为空 | 低 |
@@ -63,6 +63,8 @@
 | **T11** | 收口：开关、文档回填、施工记录 | — | 旧路径保留一个版本；回退只需关开关 | 低 |
 
 > **T1–T3 可以先做**（纯函数 + 契约 + 预算，不接链路）。**T4 之后每一步都必须能单独回退**。
+
+> ⚠️ **依赖修正（2026-10-20 施工中发现）**：T4（请求构造）需要**游标已存在**，否则只能按章号反推——那正是硬前置禁止的做法。⇒ **实际顺序为 T7（游标落库 + 旧检查点迁移）→ T4（请求构造）**，T5/T6 可与之并行。
 
 ---
 
@@ -141,3 +143,12 @@
 - 单测：`src/shared/__tests__/plot-outline-unit-policy.test.ts` 13 条（放行/旧模式/互斥/缺 to/七类非法字段/非大纲操作/内容声明不符）。
 - 回归：shared 796 条中 795 通过；唯一失败 `novel-contracts.test.ts` 的 M09 lane 断言为**既有问题**（`project-storage.ts` 已含 M09，测试仍按 9 条断言），与本次改动无关。
 - `tsc --noEmit` exit 0。仍未接任何调用点（T4 起才接线）。
+
+### 2026-10-20 · T3 主进程预算（完成）
+
+- `architectureIntent` 支持并严格归一化 `synopsisUnit`：四元组合法性（`maxChapters ≤ volumeRemaining`、序号 ≥1、整数）+ **与 `synopsisRange` 互斥** + 旧调用方（无该键）逐字节兼容（显式 `null` 视同缺省）。
+- `planningGenerationScope`：synopsis 步骤接受"无 `to` 的单元批次"；校验 `from + maxChapters − 1 ≤ totalChapters`；**不再套用 ≤10 章的 `assertPlanningActionRange`**（单元批次允许超过 10 章，这是 E3 的直接后果）。
+- `newMainGenerationPolicy`：单元模式的根预算 = `priorSteps + 2 × volumeRemaining`（按本卷剩余章数冻结，不按名义上界 ×1.1）。
+- 单测：`electron/services/__tests__/main-generation-unit-budget.test.ts` 7 条（预算 60 次、旧模式 32 次不变、互斥、越界、非法字段、JSON 往返）。
+- 回归：`main-generation-plan.test.ts` **94 passed**；`tsc --noEmit` exit 0。
+- ⚠️ **顺序修正**：T4 需要游标，实际按 T7 → T4 施工（见 §3 注）。
