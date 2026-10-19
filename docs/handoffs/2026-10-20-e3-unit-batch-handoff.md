@@ -1,7 +1,7 @@
 # E3 逐单元生成 · 工间交接（2026-10-20）
 
 > **用途**：上下文过长时的接力点。**先读这一页，再读拆解稿**，防止目标漂移。
-> 分支：`exp/arc-tree-v2` · HEAD：`88020fa9` · 工作区：干净（2026-10-20 03:18）
+> 分支：`exp/arc-tree-v2` · 代码 HEAD：`88020fa9`（本文档提交之前）· 工作区：干净（2026-10-20 03:18）
 > 进度：**8/11 步完成**；T4b 卡在一个待确认决策（§4）。
 > 主设计稿：[`docs/design/architecture/e3-unit-batch-implementation-plan.md`](../design/architecture/e3-unit-batch-implementation-plan.md)（T1–T11 + §9 决策 + §10 实施记录）
 > 口径稿：[`volume-quota-context-budget-design.md`](../design/architecture/volume-quota-context-budget-design.md) §6.2 / §7.1 · 实测：[`unit-budget-prompt-ab-test.md`](../design/architecture/unit-budget-prompt-ab-test.md) §13
