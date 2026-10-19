@@ -6,7 +6,7 @@ import { defaultCharacterProposalRelationships, defaultCharacterProposalSelectio
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
-import { auditArcDensity, parseArcStructure, withProjectedArcGuide } from '../../../shared/arc-position'
+import { arcSpanForChapters, auditArcDensity, parseArcStructure, planProgress, withProjectedArcGuide, type UnitBudgetState } from '../../../shared/arc-position'
 import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../shared/arc-node'
 import { composeGenreLabel } from '../../../shared/genre-label'
 import { withSpaceConstraints } from '../../../shared/space-constraints'
@@ -336,6 +336,82 @@ export function summarizeArcDensity(plan: string | null | undefined, uiText: UiT
   return [
     uiText('⚠️ 弧光分层体检（只提示，不影响本次生成）：', '⚠️ Arc structure check (advisory only):'),
     ...findings.map(finding => `- ${uiText(finding.zh, finding.en)}`),
+  ].join('\n')
+}
+
+const UNIT_BUDGET_STATE_TEXT: Record<UnitBudgetState, { zh: string; en: string }> = {
+  tight: { zh: '不足', en: 'tight' },
+  balanced: { zh: '均衡', en: 'balanced' },
+  ample: { zh: '充足', en: 'ample' },
+}
+
+/**
+ * 弹性配给 · **只读**预估（E1 → E3 之间的过渡步，2026-10-19）。
+ *
+ * 只回答一件事：`planProgress` 在**真实结构**上算出来的数字荒不荒谬
+ * （例如某卷 5 个单元却只有 6 章预算）。所以它**只写日志**：
+ * 不注入提示词、不改批次范围、不改检查点 —— 接入链路是 E3 的事。
+ *
+ * 为什么挂在生成前而不是单独跑脚本：这里已经有 `from`（本批起点）与 `coveredTo`
+ * （已确认覆盖到第几章），也就是 E3 唯一缺的两个运行时量。拿真实项目跑一遍，
+ * 比事后用假数据构造便宜得多。
+ *
+ * 返回 null 表示不适用（结构不可解析 / 单层结构 / 序号越界），调用方直接不打印。
+ *
+ * @internal 导出只为可单测；生产调用点只有 `execute` 内的那一处。
+ */
+export function summarizeUnitBudget(
+  plan: string | null | undefined,
+  totalChapters: number,
+  coveredTo: number,
+  from: number,
+  uiText: UiText,
+): string | null {
+  const parsed = parseArcStructure(plan)
+  if (!parsed) return null
+  const span = arcSpanForChapters(parsed, totalChapters, from, from)
+  if (!span) return null
+
+  // `coveredTo` 是**全书**口径，卷内已写必须减掉本卷起始章；跨过卷末时按卷末截断。
+  const covered = Number.isFinite(coveredTo) && coveredTo > 0 ? Math.floor(coveredTo) : 0
+  const capped = Math.min(covered, span.majorRange[1])
+  const actualUsed = Math.max(0, capped - span.majorRange[0] + 1)
+
+  const progress = planProgress(parsed, totalChapters, {
+    majorIndex: span.majorIndex,
+    midIndex: span.midIndex,
+    actualUsed,
+  })
+  if (!progress) return null
+
+  const state = UNIT_BUDGET_STATE_TEXT[progress.state]
+  // `-0.0%` 和 `+0.0%` 都会让读数看着别扭，先归一。
+  const z = Math.abs(progress.z) < 5e-5 ? 0 : progress.z
+  const zText = `${z >= 0 ? '+' : '-'}${Math.abs(z * 100).toFixed(1)}%`
+  const fixed1 = (value: number) => (Math.round(value * 10) / 10).toFixed(1)
+
+  // 各卷摘要：预算 ÷ 单元数。这是"数值是否荒谬"的主要证据面。
+  // 用 `planProgress(majorIndex, 1)` 取 budget，避免把 `scaledBoundaries` 再导出一份。
+  // **不写卷名**：真实项目 7 卷时，带全名的这行会占满整屏（实测），而扫数字时用不上名字。
+  const volumes = parsed.majors.map((major, index) => {
+    const cell = planProgress(parsed, totalChapters, { majorIndex: index + 1, midIndex: 1, actualUsed: 0 })
+    const midCount = major.mids.length
+    return cell ? `${index + 1}: ${cell.budget}/${midCount}` : `${index + 1}: —/${midCount}`
+  })
+
+  return [
+    uiText(
+      `⚖️ 弹性配给预估（只读，不写进提示词）：卷 ${progress.majorIndex}「${span.majorName}」单元 ${progress.midIndex}/${progress.midCount}`,
+      `⚖️ Budget estimate (read-only, not injected): volume ${progress.majorIndex} “${span.majorName}”, unit ${progress.midIndex}/${progress.midCount}`,
+    ),
+    uiText(
+      `- 本卷预算 ${progress.budget} 章 ÷ ${progress.midCount} 单元 ≈ ${fixed1(progress.budget / progress.midCount)} 章/单元；已写 ${progress.actualUsed} 章；进度线 ${fixed1(progress.plannedUsed)} 章；Z = ${zText}（${state.zh}）`,
+      `- Volume budget ${progress.budget} chapters / ${progress.midCount} units ≈ ${fixed1(progress.budget / progress.midCount)} per unit; written ${progress.actualUsed}; schedule line ${fixed1(progress.plannedUsed)}; Z = ${zText} (${state.en})`,
+    ),
+    uiText(
+      `- 各卷（章/单元）：${volumes.join(' · ')}`,
+      `- Volumes (chapters/units): ${volumes.join(' · ')}`,
+    ),
   ].join('\n')
 }
 
@@ -2276,6 +2352,12 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         `Continuing chapters ${from}-${to} (chapters 1-${coveredTo} are kept unchanged)...`,
       ))
     }
+
+    // 弹性配给 · 只读预估（E1 → E3 的过渡步）：在真实结构上把预算 / 进度线 / Z 打出来，
+    // 先确认数值不荒谬（例如某卷 5 个单元只有 6 章预算），再动批次状态机。
+    // **不注入提示词、不影响本次生成的任何行为**；结构不可解析时它自己闭嘴。
+    const budgetNote = summarizeUnitBudget(core?.plotStructurePlan, totalChapters, coveredTo, from, text)
+    if (budgetNote) callbacks.log(budgetNote)
 
     const taskPrompt = [
       promptBuilder.build(),
