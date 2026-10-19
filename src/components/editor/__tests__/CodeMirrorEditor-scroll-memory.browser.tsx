@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
+import { EditorView } from '@codemirror/view'
 
 import CodeMirrorEditor from '../CodeMirrorEditor'
 import { clearEditorScrollMemory, readEditorScrollMemory } from '../editor-scroll-memory'
@@ -58,10 +59,23 @@ async function waitFrames(count: number) {
   for (let index = 0; index < count; index += 1) await nextFrame()
 }
 
-function render() {
+function renderWith(content: string) {
   return act(async () => root.render(
-    <CodeMirrorEditor content={longText} mode="document" scrollMemoryKey={KEY} />,
+    <CodeMirrorEditor content={content} mode="document" scrollMemoryKey={KEY} />,
   ))
+}
+
+function render() {
+  return renderWith(longText)
+}
+
+/** 拿真实 EditorView（模拟「光标停在文末」这类外部状态要直接 dispatch）。 */
+function editorView(): EditorView {
+  const dom = container.querySelector('.cm-editor')
+  if (!(dom instanceof HTMLElement)) throw new Error('cm-editor not found')
+  const view = EditorView.findFromDOM(dom)
+  if (!view) throw new Error('EditorView not found')
+  return view
 }
 
 beforeEach(() => {
@@ -123,5 +137,76 @@ describe('CodeMirrorEditor 浏览进度记忆', () => {
     await act(async () => root.unmount())
 
     expect(readEditorScrollMemory(KEY)).toBeUndefined()
+  })
+
+  it('反复切换四次也不漂移（旧实现在内容未铺满时把夹取后的位置写回，越切越靠下）', async () => {
+    await render()
+    await waitFrames(4)
+    scroller().scrollTop = 900
+    await waitFrames(2)
+
+    for (let cycle = 0; cycle < 4; cycle += 1) {
+      await act(async () => root.unmount())
+      root = createRoot(container)
+      await render()
+      await waitFrames(8)
+      expect(scroller().scrollTop).toBeGreaterThan(700)
+      expect(scroller().scrollTop).toBeLessThan(1_100)
+    }
+  })
+
+  it('光标在文末时也不把视口拽到底部（恢复的是阅读位置，不是光标位置）', async () => {
+    await render()
+    await waitFrames(4)
+    scroller().scrollTop = 900
+    await waitFrames(2)
+    // 模拟「作者刚才在文末输入过」：光标落在文档末尾。
+    const view = editorView()
+    view.dispatch({ selection: { anchor: view.state.doc.length } })
+    await waitFrames(2)
+
+    await act(async () => root.unmount())
+    root = createRoot(container)
+    await render()
+    await waitFrames(8)
+
+    expect(scroller().scrollTop).toBeGreaterThan(400)
+    expect(scroller().scrollTop).toBeLessThan(1_100)
+  })
+
+  it('内容晚到（先空后填）仍能落回原位 —— ArchFileViewer 异步 setEditorContent 的真实时序', async () => {
+    await render()
+    await waitFrames(4)
+    scroller().scrollTop = 900
+    await waitFrames(2)
+
+    await act(async () => root.unmount())
+    root = createRoot(container)
+    // 先渲染空文档（真实场景里「加载中」这一帧），再换成完整内容。
+    await renderWith('')
+    await waitFrames(3)
+    await renderWith(longText)
+    await waitFrames(10)
+
+    expect(scroller().scrollTop).toBeGreaterThan(400)
+  })
+
+  it('恢复期间用户自己滚动，恢复立刻让位（不抢滚动条）', async () => {
+    await render()
+    await waitFrames(4)
+    scroller().scrollTop = 900
+    await waitFrames(2)
+
+    await act(async () => root.unmount())
+    root = createRoot(container)
+    await render()
+    await waitFrames(1)
+    // 恢复正在守望时，作者自己滚轮 / 拖滚动条把位置拉走。
+    editorView().dom.dispatchEvent(new WheelEvent('wheel', { bubbles: true }))
+    scroller().scrollTop = 120
+    await waitFrames(10)
+
+    // 让位之后不再被拉回 900（恢复守望窗口约 4 秒，这里等足够久）。
+    expect(scroller().scrollTop).toBeLessThan(400)
   })
 })

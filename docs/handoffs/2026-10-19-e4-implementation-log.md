@@ -41,7 +41,8 @@
 | T11 | E4e：卷末快照（handoff + anchor）+ M10 | ⬜ |
 | T12 | E4j-2b：Tab 进度保留**全量覆盖**（所有 Tab 兜底 memory key + 内容稳定后重试恢复） | ✅ |
 | T13 | E4j-4：**情节大纲三层树**（卷/单元/章 + 归属来源标记） | ✅ |
-| T14 | E4j-2c：切 Tab 进度**仍然**丢失的真根因（remember 挪到 layout cleanup） | ✅ 待作者 GUI 确认 |
+| T14 | E4j-2c：切 Tab 进度**仍然**丢失的真根因（remember 挪到 layout cleanup） | ❌ 被 T15 取代（作者 GUI 复验：时灵时不灵、会停到最底部） |
+| T15 | E4j-2d：滚动恢复改为「内容稳定门禁 + 长守望 + 让位」，修好「时灵时不灵 / 掉到最底下」 | ✅ 待作者 GUI 确认 |
 
 ---
 
@@ -453,3 +454,50 @@ React 卸载删子树时的顺序是：**layout cleanup → 摘 DOM / 摘 ref �
 **下一步**
 
 - 作者确认后，视情况再评估 §7A.3 的 LRU 4 实例（墓碑路径已可用，实例保留能让光标/撤销历史也保留）。
+
+
+### 2026-10-19 · T15 E4j-2d：恢复「时灵时不灵、会掉到最底下」的真机制（完成）
+
+**作者反馈（第三轮）**
+
+> 「时灵时不灵的，而且切换后不能回到准确的位置，比如说卷纲停到单元三，反复切换几次甚至会停留到最底下」
+
+T14 修好了「记不住」，但恢复本身是一只一次性 rAF：内容一变动（CodeMirror 重新测量、晚到内容替换）就把位置冲掉；漂移则来自「恢复把被夹取后的像素值落盘」。
+
+**两条真机制（Playwright 探针实测，不是猜）**
+
+1. **掉到最底下**：挂载时文档还是空的（`ArchFileViewer` 异步 `setEditorContent`），此时写 `scrollTop` 被夹到 45px；随后 `@uiw/react-codemirror` 用 `view.dispatch({changes:{from:0,to:len,insert:value}})`（`node_modules/@uiw/react-codemirror/esm/useCodeMirror.js:156-167`）整篇替换，视口从「贴在空文档末尾」被甩到全文底部（实测 45 → 7324 = max）。⇒ **内容稳定前绝不能写 scrollTop**。
+2. **越切越靠下**：恢复时写的是被夹取后的值，落盘又把这个夹取值存回去，反复切换累积下滑。⇒ 需要「恢复未落位就切走时，按**目标值**记账」。
+
+**做了什么**
+
+| 文件 | 改动 |
+|---|---|
+| `src/components/editor/editor-scroll-memory.ts` | 重写（~250 行）：`EditorScrollMemoryEntry` 加可选 `topPos`（顶部可见行首的文档偏移）；新增模块级 `pendingRestores`（key → 目标 scrollTop，期间 remember 存目标值、沿用旧 topPos）；新增 `startScrollRestore(options)`：`RESTORE_TOLERANCE=2` / `SNAP_BACK_THRESHOLD=24` / `RESTORE_SETTLE_FRAMES=3` / `RESTORE_MAX_FRAMES=240`（约 4 秒守望），连续 3 帧误差 ≤2 视为落位并 `onLive()` 清 pending，之后继续守望挡晚到内容；用户 `wheel/touchstart/pointerdown/keydown` 一动手即 `stop()` 让位 |
+| `src/components/editor/CodeMirrorEditor.tsx` | 新增 scroll-live 监听 effect（rAF 等 view 就绪后给 `view.scrollDOM` 挂 `scroll` 置 `scrollLiveRef`）；恢复走 `startScrollRestore`，`read()` 先做内容稳定门禁（`doc.length` 连续 2 帧不变才返回，否则 null ⇒ 不写）；`revealLine`（树面板点章跳转）先 `stop` 恢复，避免被拽回旧位置 |
+| `src/components/editor/ReviewReport.tsx` | `restoreElementScroll` 换成 `startScrollRestore`（同一套守望/让位语义） |
+| `src/components/editor/__tests__/CodeMirrorEditor-scroll-memory.browser.tsx` | 3 → 7 条：新增「反复切换四次不漂移」「光标在文末也不把视口拽到底部」「内容晚到（先空后填）仍落回原位」「恢复期间用户滚动立刻让位」 |
+
+**关键决策**
+
+| 决策 | 理由 |
+|---|---|
+| 恢复改成**长守望**（240 帧）而不是一次性 rAF | 恢复失败全部发生在「恢复之后又有东西动了」（晚到内容、CM 二次测量），一次性写入无法兜住 |
+| **内容稳定前拒绝写入**（门禁放在 read 里返回 null） | 空文档上写 scrollTop 会留下「贴末尾」状态，正是掉到底部的根源 |
+| 用户一动手就 `stop()` | 恢复是**代偿**，不是抢滚动条；作者自己滚动即代表意图优先 |
+| 未落位就切走时记**目标值** | 否则夹取/未生效的值被落盘，反复切换累积漂移 |
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| `npx eslint`（3 改动文件 + 新测试） | ✅ 无输出 |
+| `editor-scroll-memory.test.ts` | ✅ 9 passed |
+| 浏览器套件（6 文件） | ✅ 33 passed（scroll-memory 7 / ReviewReport 12 / ArchFileViewer 7 / live-preview 5 / caret 1 / draft-units 1） |
+| 真实 GUI 人工验证 | ⚠️ **待作者在 app 里确认**：卷纲停在单元三，反复切换仍停单元三；不再掉到底部 |
+
+**下一步**
+
+- 作者 GUI 确认后，再接 E4 剩余 T9（按卷冻结）、T11（卷末快照）。
+

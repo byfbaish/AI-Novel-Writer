@@ -25,7 +25,7 @@ import { NativeSelect } from '../ui/NativeSelect'
 import { Textarea } from '../ui/Textarea'
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../project-session-gate'
 import { useProjectStore } from '../../stores/project-store'
-import { rememberElementScroll, restoreElementScroll } from './editor-scroll-memory'
+import { rememberElementScroll, startScrollRestore } from './editor-scroll-memory'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useLLMStore } from '../../stores/llm-store'
 import { ipc } from '../../services/ipc-client'
@@ -451,13 +451,20 @@ function ReviewReportSession({
     // 同上：判定「发生过滚动事件」而非「读数 > 0」，作者拉回顶部再切走时记 0 才是对的。
     const markLive = () => { reportScrollLiveRef.current = true }
     container?.addEventListener('scroll', markLive, { passive: true })
-    const frame = requestAnimationFrame(() => {
-      if (restoreElementScroll(scrollMemoryKey, scrollContainerRef.current) && container && container.scrollTop > 0) {
-        reportScrollLiveRef.current = true
-      }
+    // E4j-2（修正四）：报告是「先渲染条目、随后测量」的，一次 rAF 恢复同样会落不到准确位置，
+    // 与 CodeMirror 侧共用守望式恢复（内容变高时反复落位，用户一动手就让位）。
+    const stop = startScrollRestore({
+      key: scrollMemoryKey,
+      read: () => scrollContainerRef.current?.scrollTop ?? null,
+      write: scrollTop => {
+        const element = scrollContainerRef.current
+        if (element) element.scrollTop = scrollTop
+      },
+      interactionHost: () => scrollContainerRef.current,
+      onLive: () => { reportScrollLiveRef.current = true },
     })
     return () => {
-      cancelAnimationFrame(frame)
+      stop()
       container?.removeEventListener('scroll', markLive)
     }
   }, [scrollMemoryKey])
