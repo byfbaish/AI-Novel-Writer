@@ -191,6 +191,39 @@ describe('CodeMirrorEditor 浏览进度记忆', () => {
     expect(scroller().scrollTop).toBeGreaterThan(400)
   })
 
+  it('恢复只动编辑器自己的 scroller，不滚动外层布局容器（Frame 整体上移的真凶）', async () => {
+    // 真实布局里 ArchFileViewer / EditorArea 都是 `overflow-hidden` 的 flex 容器：
+    // 只要 scrollHeight 比 clientHeight 大一点，它们就是「可滚动容器」，
+    // 而 `EditorView.scrollIntoView` 会沿 parentNode 把每个这样的祖先都滚一遍
+    // （`node_modules/@codemirror/view/dist/index.js:524-600`）。
+    // 作者看到的就是它一次几像素地把整个 Frame 滚上去、连顶部工具栏都被切掉。
+    const outer = document.createElement('div')
+    outer.style.height = '160px'
+    outer.style.overflow = 'hidden'
+    const spacer = document.createElement('div')
+    // 编辑器被放在容器可视区之外：任何「把目标行摆进视野」的祖先滚动都会把它拉进来。
+    spacer.style.height = '300px'
+    outer.append(spacer)
+    container.style.height = '160px'
+    document.body.append(outer)
+    outer.append(container)
+    outer.scrollTop = 0
+
+    await render()
+    await waitFrames(4)
+    scroller().scrollTop = 900
+    await waitFrames(2)
+    // 记忆里的 topPos 指向正文深处，但先渲染短内容 —— 像素写入会被夹住，
+    // 这正是触发 snapBack（按行回摆）的条件。
+    await act(async () => root.unmount())
+    root = createRoot(container)
+    await renderWith('第 1 行\n第 2 行')
+    await waitFrames(10)
+
+    expect(outer.scrollTop).toBe(0)
+    outer.remove()
+  })
+
   it('恢复期间用户自己滚动，恢复立刻让位（不抢滚动条）', async () => {
     await render()
     await waitFrames(4)
