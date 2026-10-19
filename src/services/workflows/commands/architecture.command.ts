@@ -7,6 +7,8 @@ import type { MainGenerationRunHandle } from '../../generation/generation-runtim
 import type { ArchitecturePlanningIntent, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
 import { arcSpanForChapters, auditArcDensity, parseArcStructure, planProgress, withProjectedArcGuide, type UnitBudgetState } from '../../../shared/arc-position'
+import { auditOutlineLength, outlineLengthOf, renderOutlineLengthReport } from '../../../shared/outline-budget'
+import { planOutlinePrefixBudget } from '../../../shared/outline-prefix-budget'
 import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../shared/arc-node'
 import { composeGenreLabel } from '../../../shared/genre-label'
 import { withSpaceConstraints } from '../../../shared/space-constraints'
@@ -426,6 +428,99 @@ export function summarizeUnitBudget(
       `- Volumes (chapters/units): ${volumes.join(' · ')}`,
     ),
   ].join('\n')
+}
+
+/**
+ * 大纲前沿预算 · **只读预估**（E4c，2026-10-19）。
+ *
+ * 设计稿：`docs/design/architecture/volume-quota-context-budget-design.md` §3.3 / §10（E4c）。
+ *
+ * 只回答一件事：**按今天「整段前缀」的形态，这本书还能写几章**；投影后能写几章。
+ * **不切分文本、不改提示词、不改批次范围** —— 与 E1.5 的 `summarizeUnitBudget` 同一策略：
+ * 先拿到真实读数，再决定投影怎么切（E4d）。
+ *
+ * 返回 null 表示不适用（没有已写前缀 / 每章字数算不出），调用方直接不打印。
+ *
+ * @internal 导出只为可单测；生产调用点只有 `execute` 内的那一处。
+ */
+export function summarizeOutlinePrefix(
+  prefix: string | null | undefined,
+  options: {
+    totalChapters: number;
+    from: number;
+    arcPlan?: string | null;
+    /** 单章目标字数（`outlineTargetUnits`），用于估算每章边际成本 */
+    targetUnits?: number | null;
+    /** 可用输入字数（上下文 − 预留输出 − 固定材料）；缺省则不算「还能写几章」 */
+    availableChars?: number | null;
+  },
+  uiText: UiText,
+): string | null {
+  const body = typeof prefix === 'string' ? prefix : ''
+  if (!body.trim()) return null
+  const target = typeof options.targetUnits === 'number' && options.targetUnits > 0 ? options.targetUnits : null
+  if (target === null) return null
+  const budget = planOutlinePrefixBudget({
+    prefix: body,
+    charsPerChapter: target,
+    arcPlan: options.arcPlan,
+    totalChapters: options.totalChapters,
+    from: options.from,
+    availableChars: options.availableChars ?? null,
+  });
+  if (!budget) return null
+  const percent = (value: number) => `${Math.round(value * 100)}%`
+  const left = (value: number | null) => (value === null ? '—' : String(value))
+  return [
+    uiText('⚖️ 大纲前缀预估（只读，不写进提示词）：', '⚖️ Outline prefix estimate (read-only, not injected):'),
+    uiText(
+      `- 已写 ${budget.writtenChapters} 章，每章按目标 ${target} 字估；整段前缀 ${budget.fullPrefixChars} 字（${budget.fullTokens[0]}–${budget.fullTokens[1]} tokens）`,
+      `- ${budget.writtenChapters} chapters at the ${target}-word target; full prefix ${budget.fullPrefixChars} chars (${budget.fullTokens[0]}–${budget.fullTokens[1]} tokens)`,
+    ),
+    uiText(
+      `- 投影后 ${budget.projectedChars} 字（省 ${percent(budget.savedRatio)}）；按当前速度还能写：整段前缀 ${left(budget.chaptersLeftFull)} 章，投影后 ${left(budget.chaptersLeftProjected)} 章`,
+      `- projected ${budget.projectedChars} chars (saves ${percent(budget.savedRatio)}); chapters left: full prefix ${left(budget.chaptersLeftFull)}, projected ${left(budget.chaptersLeftProjected)}`,
+    ),
+  ].join('\n')
+}
+
+/**
+ * 大纲字数体检 · **只读**（E4a-1，2026-10-19）。
+ *
+ * 设计稿 §8：连续 ≥3 章超目标 1.5 倍 / 总量超 1.3 倍时报告。
+ * **不阻断、不自动收紧**（作者裁定：字数目标在 UI 里自己调）。
+ *
+ * @internal 导出只为可单测。
+ */
+export function summarizeOutlineLength(
+  body: string | null | undefined,
+  options: { targetUnits?: number | null; writingLanguage: WritingLanguage },
+): string | null {
+  const text = typeof body === 'string' ? body : ''
+  if (!text.trim()) return null
+  const target = typeof options.targetUnits === 'number' && options.targetUnits > 0 ? options.targetUnits : null
+  if (target === null) return null
+  const chapters = listOutlineChapterLengths(text);
+  if (chapters.length === 0) return null
+  return renderOutlineLengthReport(auditOutlineLength(chapters, target), options.writingLanguage);
+}
+
+/** 从大纲正文里逐章切出字数（不含标题行）。解析不出章标题时返回空数组。 */
+function listOutlineChapterLengths(body: string): { chapter: number; chars: number }[] {
+  const lines = body.split(/\r?\n/u);
+  const chapters: { chapter: number; chars: number }[] = [];
+  let current: { chapter: number; chars: number } | null = null;
+  for (const line of lines) {
+    const heading = /^##\s*第\s*([0-9]+)\s*章/u.exec(line);
+    if (heading) {
+      if (current) chapters.push(current);
+      current = { chapter: Number(heading[1]), chars: 0 };
+      continue;
+    }
+    if (current) current.chars += outlineLengthOf(line);
+  }
+  if (current) chapters.push(current);
+  return chapters.filter(item => Number.isSafeInteger(item.chapter) && item.chapter >= 1);
 }
 
 /**
@@ -2371,6 +2466,23 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     // **不注入提示词、不影响本次生成的任何行为**；结构不可解析时它自己闭嘴。
     const budgetNote = summarizeUnitBudget(core?.plotStructurePlan, totalChapters, coveredTo, from, text)
     if (budgetNote) callbacks.log(budgetNote)
+
+    // E4c · 大纲前缀只读预估（2026-10-19）：整段前缀 vs 投影后各多少字、按当前速度还能写几章。
+    // **不切分文本、不改提示词**；前缀为空或每章字数算不出时自己闭嘴。
+    const prefixNote = summarizeOutlinePrefix(partial.synopsis_result, {
+      totalChapters,
+      from,
+      arcPlan: core?.plotStructurePlan,
+      targetUnits: this.snapshot.targetUnits ?? null,
+    }, text)
+    if (prefixNote) callbacks.log(prefixNote)
+
+    // E4a-1 · 大纲字数体检（2026-10-19）：连续超写 / 总量超写。**只提示，不阻断**。
+    const lengthNote = summarizeOutlineLength(partial.synopsis_result, {
+      targetUnits: this.snapshot.targetUnits ?? null,
+      writingLanguage,
+    })
+    if (lengthNote) callbacks.log(lengthNote)
 
     const taskPrompt = [
       promptBuilder.build(),

@@ -838,6 +838,16 @@ export interface TokenUsage {
   promptTokens: number | null
   completionTokens: number | null
   totalTokens: number | null
+  /**
+   * 命中供应商前缀缓存的输入 token 数（E4，2026-10-19）。
+   *
+   * **只是观测值，不参与任何结算**：缓存命中已经体现在 `promptTokens` 里（它是子集），
+   * 所以加这个字段不会改变任何计费/预算算术。它存在的唯一理由是把「是不是越写越慢」
+   * 从体感变成可读的数字——大纲前缀是 O(n) 增长的，缓存有没有帮上忙必须能看见。
+   *
+   * 供应商不报时缺省（不是 0）：0 表示「报了但没命中」，缺省表示「没报」，两者不能混。
+   */
+  cachedPromptTokens?: number | null
 }
 
 export interface ModelProfile {

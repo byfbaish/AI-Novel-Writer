@@ -132,6 +132,14 @@ export class ProjectClearRepository {
                         }
                         clearLegacyCharacterArchitecture(db)
                     }
+                    // E4i（2026-10-19）：**弧光结构必须一起清**。
+                    //
+                    // 此前这一句漏了 `plot_structure_plan`：作者点「清除全部」后前提/世界观/
+                    // 大纲都没了，弧光却还在——而弧光里点名的人物、空间已经不存在，
+                    // 是**悬空引用**，比不清更糟（设计稿 §8.1.7）。
+                    //
+                    // `plot_tree_snapshot` 也一并置空：它是从大纲/蓝图派生的快照，
+                    // 弧光与大纲都清了，它必然 stale（ADR 0014 定性为可重建的只读派生快照）。
                     db.prepare(`
                         UPDATE project_core
                         SET writing_style = '',
@@ -142,6 +150,8 @@ export class ProjectClearRepository {
                             worldbuilding = '',
                             synopsis = '',
                             character_states = '',
+                            plot_structure_plan = '',
+                            plot_tree_snapshot = '',
                             updated_at = datetime('now')
                         WHERE id = 'main'
                     `).run()

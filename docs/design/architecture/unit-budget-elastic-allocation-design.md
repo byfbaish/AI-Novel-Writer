@@ -1,6 +1,6 @@
 # 弹性配给制 · 单元章数由内容决定
 
-> 状态：设计稿（待实施）
+> 状态：设计稿 · **§2 的额度口径已被作者裁定取代（2026-10-19）**，见 [`volume-quota-context-budget-design.md`](volume-quota-context-budget-design.md)
 > 日期：2026-10-19
 > 上位稿：[`arc-v7-implementation-design.md`](arc-v7-implementation-design.md)（卷/单元两级结构）、[`arc-budget-engine-design.md`](arc-budget-engine-design.md)（章数由代码算）
 > 相关：[`arc-layer-handoff.md`](arc-layer-handoff.md)（弧光层职责边界）、[`unit-budget-prompt-ab-test.md`](unit-budget-prompt-ab-test.md)（提示词层实测，§12 为本文 §2.5 的数据来源）
@@ -94,6 +94,8 @@ Z = (actualUsed(v) − plannedUsed(k)) / budget(v)
 ---
 
 ## 3. 卷计划额度的来源
+
+> ⚠️ **本节已被作者裁定取代（2026-10-19）**：卷级额度**不是**输入，而是「模型按材料决定、作者事后否决」的统计量。本节保留作历史记录，现行口径见 [`volume-quota-context-budget-design.md`](volume-quota-context-budget-design.md) §3。
 
 采用**画像默认 + 作者可覆盖**：
 
@@ -235,8 +237,8 @@ Z = (actualUsed(v) − plannedUsed(k)) / budget(v)
 | **E1** | `planProgress` 纯函数 + 单测；只计算不接链路 | ✅ 已完成（2026-10-19） |
 | **E1.5** | **只读预估**：在真实结构上打日志（预算 / 进度线 / Z），不注入、不改状态机 | ✅ 已完成（2026-10-19），已获实机读数（Z = −1.2%，均衡） |
 | **E2** | 用 [`unit-budget-prompt-ab-test.md`](unit-budget-prompt-ab-test.md) 的 A/B/C 微型 prompt 验证状态块是否真的改变章数（**不跑真项目**：真材料 1 万多字，成本高且看不出变量） | ✅ 已完成（见测试件 §12） |
-| **E3** | 批次改为逐单元（状态机改造 + 检查点兼容） | ✅ |
-| **E4** | 卷级额度设置项 + 卷末报警 | ✅ |
+| **E3** | 批次改为逐单元（状态机改造 + 检查点兼容） | ❌ 未开始（§4.5 / §291 的硬前置仍在；**先读** [`volume-quota-context-budget-design.md`](volume-quota-context-budget-design.md) §3.3 / §6） |
+| **E4** | ~~卷级额度设置项~~ + 卷末报警 | ❌ 未开始，**额度设置项已被作者裁定删除**，改由 `volume-quota-context-budget-design.md` 的 E4a–E4g 取代 |
 
 **E2 必须先于 E3**：先确认"鼓励"这个提示词真的能改变篇幅，再改分批机制。否则 E3 做完发现提示词无效，会误判是机制问题。
 

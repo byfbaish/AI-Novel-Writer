@@ -609,6 +609,101 @@ export function planProgress(
   })
 }
 
+/**
+ * 卷内统计（E4，2026-10-19）：**取代** `planProgress` 的「预算 / 进度线 / 三档」口径。
+ *
+ * 设计稿：`docs/design/architecture/volume-quota-context-budget-design.md` §6.1 / §6.2。
+ *
+ * 为什么删掉 `budget` / `z` / `state`：作者 2026-10-19 裁定「卷/单元章数由模型按材料决定，
+ * 作者只有事后否决权」——既然没有「本卷应该多少章」这个分母，Z 就是拿拍出来的数当基准，
+ * 会把「这一卷本来就值 30 章」永久判成「不足」，越写越紧直到把内容压坏。
+ *
+ * 保留的是什么：**唯一一份正确的「卷内已写章数」口径**。`covered_to` 是**全书**口径，
+ * 第二卷起直接拿会立刻爆表，必须 `min(covered_to, 卷末) − 卷首 + 1`。
+ *
+ * `cap`（本单元还能写几章）由结构给出，不由上下文给出——投影落地后输入恒定，
+ * 容量不再随进度恶化（设计稿 §6.1）。
+ */
+export interface VolumeStats {
+  /** 卷序号，1 起 */
+  majorIndex: number
+  /** 本卷内的单元个数 */
+  midCount: number
+  /** 本卷章数上界（由 `scaledBoundaries` 折算，与弧位块同源） */
+  volumeChapters: number
+  /** 本卷内实际已写章数（调用方负责按卷首/卷末截断后传入） */
+  actualUsed: number
+  /** 本卷还剩几章可写（`volumeChapters − actualUsed`，不小于 0） */
+  remaining: number
+  /** 全书进度：已写章数 ÷ 全书章数，0–1；调用方不给 `coveredTo` 时为 null */
+  bookProgress: number | null
+}
+
+export interface VolumeStatsRef {
+  /** 卷序号，**1 起**（与 `ArcSpan.majorIndex` 一致） */
+  majorIndex: number
+  /** 本卷内已生成章数；缺省/非法按 0 */
+  actualUsed?: number
+  /** 全书已覆盖到第几章（`synopsis_covered_to`）；缺省/非法则 `bookProgress` 为 null */
+  coveredTo?: number
+}
+
+/**
+ * 推算某卷的卷内统计。结构不可解析、序号越界、卷长非正时返回 `null`（fail-open）。
+ *
+ * 与 `planProgress` 的关系：后者保留（E1 的单测仍引用它），但**生产调用点应改用本函数**——
+ * 它不返回任何「应该写多少」的数字，只返回「已经写了多少、还剩多少」。
+ */
+export function planVolumeStats(
+  parsed: ParsedArcStructure | null,
+  totalChapters: number,
+  ref: VolumeStatsRef | null | undefined,
+): VolumeStats | null {
+  if (!parsed || parsed.majors.length === 0) return null
+  if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return null
+  if (!ref) return null
+  const { majorIndex } = ref
+  if (!Number.isSafeInteger(majorIndex) || majorIndex < 1 || majorIndex > parsed.majors.length) return null
+
+  // 与弧位块用同一份折算（scaledBoundaries），否则"卷长"和"区间"会各说各话。
+  const majorBounds = scaledBoundaries(parsed.majors.map(item => arcWeight(item.chapters)), totalChapters)
+  const volumeChapters = majorBounds[majorIndex]! - majorBounds[majorIndex - 1]!
+  if (!Number.isFinite(volumeChapters) || volumeChapters <= 0) return null
+
+  const major = parsed.majors[majorIndex - 1]!
+  const midCount = major.mids.length
+  if (midCount < 1) return null
+
+  const rawActual = ref.actualUsed
+  const actualUsed = typeof rawActual === "number" && Number.isFinite(rawActual) && rawActual > 0
+    ? Math.min(Math.floor(rawActual), volumeChapters)
+    : 0
+  const remaining = Math.max(0, volumeChapters - actualUsed)
+
+  const rawCovered = ref.coveredTo
+  const bookProgress = typeof rawCovered === "number" && Number.isFinite(rawCovered) && rawCovered > 0
+    ? Math.min(1, rawCovered / totalChapters)
+    : null
+
+  return Object.freeze({ majorIndex, midCount, volumeChapters, actualUsed, remaining, bookProgress })
+}
+
+/** 卷内统计 → 一行可读日志。`null` 输入返回 `null`（调用方直接不打印）。 */
+export function renderVolumeStats(
+  stats: VolumeStats | null,
+  language: WritingLanguage,
+): string | null {
+  if (!stats) return null
+  const percent = stats.bookProgress === null ? null : Math.round(stats.bookProgress * 100)
+  if (language === "en-US") {
+    const tail = percent === null ? "" : "; book " + percent + "%"
+    return "volume " + stats.majorIndex + ": " + stats.actualUsed + "/" + stats.volumeChapters
+      + " chapters written, " + stats.remaining + " left" + tail
+  }
+  const tail = percent === null ? "" : "；全书 " + percent + "%"
+  return "卷 " + stats.majorIndex + "：已写 " + stats.actualUsed + "/" + stats.volumeChapters
+    + " 章，还剩 " + stats.remaining + " 章" + tail
+}
 /** 结构里是否声明了与全书章数不同的合计（用于在注入文本里声明折算）。 */
 export function arcStructureNeedsRescale(parsed: ParsedArcStructure | null, totalChapters: number): boolean {
   return !!parsed && parsed.declaredChapters && parsed.declaredTotal > 0 && parsed.declaredTotal !== totalChapters

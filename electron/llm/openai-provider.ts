@@ -136,15 +136,23 @@ export class OpenAIProvider implements ILLMProvider {
           message: { content: string; reasoning_content?: string }
           finish_reason?: string | null
         }>
-        usage?: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+        usage?: {
+          prompt_tokens: number
+          completion_tokens: number
+          total_tokens: number
+          prompt_tokens_details?: { cached_tokens?: number | null } | null
+        }
       }
 
       const finalContent = this.stripThinking(data.choices?.[0]?.message?.content ?? '')
       const finishReason = this.normalizeFinishReason(data.choices?.[0]?.finish_reason)
+      // E4（2026-10-19）：缓存命中数只做观测，不参与结算（它是 prompt_tokens 的子集）。
+      const cached = data.usage?.prompt_tokens_details?.cached_tokens
       const usage = data.usage ? {
         promptTokens: data.usage.prompt_tokens,
         completionTokens: data.usage.completion_tokens,
         totalTokens: data.usage.total_tokens,
+        ...(typeof cached === 'number' ? { cachedPromptTokens: cached } : {}),
       } : undefined
 
       if (finishReason === 'stop') {
@@ -283,11 +291,17 @@ export class OpenAIProvider implements ILLMProvider {
           const details = rawUsage.completion_tokens_details
           const reasoning = details && typeof details === 'object' && !Array.isArray(details)
             ? (details as Record<string, unknown>).reasoning_tokens : undefined
+          // E4（2026-10-19）：`prompt_tokens_details.cached_tokens` 是观测值，不进结算。
+          const promptDetails = rawUsage.prompt_tokens_details
+          const cachedPrompt = promptDetails && typeof promptDetails === 'object' && !Array.isArray(promptDetails)
+            ? (promptDetails as Record<string, unknown>).cached_tokens : undefined
+          const cachedPromptTokens = typeof cachedPrompt === 'number' ? cachedPrompt : undefined
           opts.onUsageEvidence?.({
             usage: {
               promptTokens: typeof rawUsage.prompt_tokens === 'number' ? rawUsage.prompt_tokens : null,
               completionTokens: typeof rawUsage.completion_tokens === 'number' ? rawUsage.completion_tokens : null,
               totalTokens: typeof rawUsage.total_tokens === 'number' ? rawUsage.total_tokens : null,
+              ...(cachedPromptTokens === undefined ? {} : { cachedPromptTokens }),
             },
             reasoningTokens: typeof reasoning === 'number' ? reasoning : null,
             accounting: 'included-in-completion', totalIncludesReasoning: true, protocol: 'openai',
@@ -301,6 +315,7 @@ export class OpenAIProvider implements ILLMProvider {
               promptTokens: rawUsage.prompt_tokens,
               completionTokens: rawUsage.completion_tokens,
               totalTokens: rawUsage.total_tokens,
+              ...(cachedPromptTokens === undefined ? {} : { cachedPromptTokens }),
             }
           }
         }

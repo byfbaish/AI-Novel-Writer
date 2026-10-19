@@ -68,7 +68,9 @@ describe('project clear repositories', () => {
       expect(after.legacyMarkdown ?? '').toBe('')
       expect(db.prepare('SELECT characters_arch FROM project_core').pluck().get()).toBe(after.renderedMarkdown)
       expect(after.renderedMarkdown).not.toContain('旧')
-      expect(db.prepare('SELECT plot_tree_snapshot FROM project_core').pluck().get()).toBe('plot-tree-before')
+      // E4i（2026-10-19）：弧光与大纲都已清空 ⇒ 剧情树快照必然 stale，必须一并置空。
+      expect(db.prepare('SELECT plot_tree_snapshot FROM project_core').pluck().get()).toBe('')
+      expect(db.prepare('SELECT plot_structure_plan FROM project_core').pluck().get()).toBe('')
       expect(db.prepare('SELECT COUNT(*) FROM characters WHERE retired=0').pluck().get()).toBe(0)
       expect(aliasRows()).toEqual(aliases)
       expect(db.prepare('SELECT COUNT(*) FROM character_aliases WHERE valid_through IS NULL').pluck().get()).toBe(0)
@@ -150,7 +152,10 @@ describe('project clear repositories', () => {
       expect.stringContaining('json_remove(binding_json,\'$."$runEffects".blueprintAuthorEdit\')') as unknown as string,
       expect.stringContaining('UPDATE project_core') as unknown as string,
     ]))
-    expect(statements).not.toContain("UPDATE project_core SET plot_tree_snapshot = '' WHERE id = 'main'")
+    // E4i：`creativeFields` 的 UPDATE 现在必须同时清弧光与剧情树快照（否则留下悬空引用）。
+    const creativeUpdate = statements.find(sql => typeof sql === 'string' && sql.includes('plot_structure_plan'))!
+    expect(creativeUpdate).toContain("plot_structure_plan = ''")
+    expect(creativeUpdate).toContain("plot_tree_snapshot = ''")
     expect(result.cleared).toEqual(['blueprints', 'creativeFields'])
   })
 
