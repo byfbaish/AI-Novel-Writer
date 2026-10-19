@@ -817,6 +817,38 @@ function synopsisBatchInstruction(
   return contract
 }
 
+/**
+ * E3 逐单元批次（2026-10-20）：**没有 `to`**，只给「单元 + 起点 + 离开状态」。
+ *
+ * 与 `synopsisBatchInstruction` 的区别：不声明「第 from–to 章」区间，也不要求
+ * 「to+1 起只写概览」——批次的自然边界是单元本身，不是章号。
+ */
+export function synopsisUnitInstruction(
+  writingLanguage: WritingLanguage,
+  from: number,
+  unitIndex: number,
+  unitName: string,
+  totalChapters: number,
+): string {
+  return promptLanguageText(
+    writingLanguage,
+    [
+      '【本次生成范围（重要）】',
+      `本次只写【单元 ${unitIndex}：${unitName}】这一段，从第 ${from} 章开始（全书共 ${totalChapters} 章）。`,
+      '写到该单元的「离开状态」成立为止：不要为了凑章数继续写，也不要因为章数少就跳过必要情节。',
+      '写完本单元立即停笔：不得进入下一个单元，也不得展开后续单元的内容；如需收尾，只允许写一行「后续概览：……」（不超过 200 字），且不得使用「第N章」标题、不计入本批覆盖。',
+      '每章必须以独立行标题开头，严格使用「第N章：标题」或「第N–M章：标题」格式，并在标题下一行起写非空正文。',
+    ].join('\n'),
+    [
+      '[Generation scope for this batch (important)]',
+      `Write only [Unit ${unitIndex}: ${unitName}], starting at chapter ${from} (the book has ${totalChapters} chapters).`,
+      'Stop when this unit\'s "exit state" holds: do not keep writing to pad the chapter count, and do not skip required events because the count is small.',
+      'Stop immediately when this unit is done: do NOT enter the next unit or expand any later unit. If you need a closing note, write only one line "Later overview: ..." (200 characters or fewer); it must not use a "Chapter N" heading and does not count toward this batch\'s coverage.',
+      'Every chapter must start with its own heading line, strictly formatted as "Chapter N: Title" or "Chapters N-M: Title", followed by a non-empty body on the next line.',
+    ].join('\n'),
+  )
+}
+
 /** 正常结束后以正文覆盖为准；可选自报进度不能与本批冲突。 */
 function assertPlotOutlineBatchComplete(
   merged: string,

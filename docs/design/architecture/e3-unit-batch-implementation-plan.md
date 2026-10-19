@@ -54,8 +54,8 @@
 | **T2** | 契约字段 `synopsisUnit`（并列，不动旧字段）+ 校验分支 | `generation-owner-contract.ts`、`plot-outline-contract.ts` | ✅ 已实施（2026-10-20）：13 条单测；`plotOutlinePolicy` 对单元模式返回 null，`plotOutlineUnitPolicy` 校验四元组与互斥 | 中 |
 | **T3** | 主进程预算：`synopsisUnit` ⇒ `2 × volumeRemaining` | `main-generation-plan.ts` | ✅ 已实施（2026-10-20）：7 条单测 + 94 条既有回归；`readMainGenerationPolicy` JSON 往返 | **高** |
 | **T4** | 请求构造：`computeUnitRequest`（游标 → 请求体，不算 `to`） | `architecture.command.ts` | 单测：游标推进、跨卷重置、无结构回退旧路径 | **高** |
-| **T5** | prompt unit 模式 | `synopsisBatchInstruction` | 快照单测（中/英）：无「第 from–to 章」、有「离开状态为止」「不得进入下一单元」 | 中 |
-| **T6** | 余量行常驻 + `r` 阈值指令 + 模板变量 | `architecture.command.ts`、`builtin-prompt-templates.ts` | 渲染单测：`r<0.9` 收紧 / `r>1.1` 展开 / 带内只给余量行 / 无法计算时为空 | 低 |
+| **T5** | prompt unit 模式 | `synopsisUnitInstruction`（新函数，不动旧 `synopsisBatchInstruction`） | ✅ 已实施（2026-10-20）：3 条单测；无 from–to 区间、点名单元/起点/离开状态/不得进入下一单元 | 中 |
+| **T6** | 余量行常驻 + `r` 阈值指令 | `renderUnitBudgetBlock`（arc-position） | ✅ 渲染器已实施（2026-10-20）：5 条单测（带内/收紧/展开/英文/null）；**注入点在 T4** | 低 |
 | **T7** | 检查点写入游标 + 兼容旧值 | `architecture.command.ts`、partial 类型 | ✅ 已实施（2026-10-20）：`synopsis_unit_cursor` 入字段白名单；旧检查点一次性推导并落库；损坏游标报错；5 条推导单测 + 47 条命令回归 | **高** |
 | **T8** | 续批 / agent 子 run 的 deep-equal 改比 `{from, cursor}` | `main-generation-owner.ts`、`agent-generation.ts` | 集成：续批成功、子 run 授权成功、篡改游标被拒 | **高** |
 | **T9** | 回填与记账：解析 `actual`、`to = from+actual−1`、`writtenInVolume += actual`、`covered_to = to`；超卷末只记录 | `architecture.command.ts` | 单测 + 集成：连写两个单元、章号偏离后仍正确 | **高** |
@@ -162,3 +162,11 @@
 - `assertCheckpointDbMirrorCurrent`：游标存在时校验三元组（整数、≥1），损坏则沿用同一套「请从第 1 章重新生成」文案。
 - 单测：`synopsis-unit-cursor.test.ts` 5 条（单元内 / 跨单元 / 跨卷重置 / 非法输入 / 结构不可解析）；`architecture.command.test.ts` **47 passed**；`tsc --noEmit` exit 0。
 - ⚠️ **T4 接线的硬约束**：单元模式下必须把请求的显式游标传给 `syncSynopsisUnitCursor` 的 `explicit` 参数，**不得让章号推导覆盖**（否则实际章数一偏离，游标就错位）。集成验证留 T10。
+
+### 2026-10-20 · T5/T6 提示词侧（完成，未接线）
+
+- T5：新增 `synopsisUnitInstruction(writingLanguage, from, unitIndex, unitName, totalChapters)`（`architecture.command.ts`）。与旧函数并存，**不改 `synopsisBatchInstruction`**——旧路径逐字节不变。内容：只写【单元 k：名】、从第 from 章起、写到离开状态成立、不得进入下一单元、收尾只许一行「后续概览」、每章独立标题。
+- T6：新增 `renderUnitBudgetBlock(stats, language)`（`arc-position.ts`）：**余量行常驻** + `r` 阈值方向；`balanced` 只给余量行、不给任何"多写/少写"指令；块内**不含章数目标**。
+- 单测：`synopsis-unit-instruction.test.ts` 3 条；`unit-stats.test.ts` 扩到 18 条（含带内/收紧/展开/英文/null）。
+- 回归：`architecture.command.test.ts` 47 passed；`tsc --noEmit` exit 0。
+- **未接线**：两个函数都还没有调用点——注入在 T4 的 unit 请求组装处。

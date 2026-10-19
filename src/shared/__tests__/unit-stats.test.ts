@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   parseArcStructure,
   planUnitStats,
+  renderUnitBudgetBlock,
   renderUnitBudgetLine,
   unitRemainingStateOf,
 } from '../arc-position'
@@ -130,5 +131,43 @@ describe('renderUnitBudgetLine：常驻余量行', () => {
 
   it('null 输入返回 null', () => {
     expect(renderUnitBudgetLine(null, 'zh-CN')).toBeNull()
+  })
+})
+
+describe('renderUnitBudgetBlock：余量行常驻 + 方向按阈值', () => {
+  it('带内（r=1）：只有余量行，不给任何方向', () => {
+    const stats = planUnitStats(parsed, 60, { volumeIndex: 1, unitIndex: 1 })!
+    const block = renderUnitBudgetBlock(stats, 'zh-CN')!
+    expect(block.split('\n')).toHaveLength(2)
+    expect(block).toContain('【本卷配给 · 单元 1/2】')
+    expect(block).toContain('本卷：已写 0/30 章')
+    expect(block).not.toContain('收紧')
+    expect(block).not.toContain('可以展开')
+  })
+
+  it('收紧（r < 0.9）：追加收紧指令，且不含章数目标', () => {
+    const stats = planUnitStats(parsed, 60, { volumeIndex: 1, unitIndex: 2, writtenInVolume: 28 })!
+    const block = renderUnitBudgetBlock(stats, 'zh-CN')!
+    expect(block).toContain('收紧：')
+    expect(block).toContain('必要情节一个都不能少')
+    expect(block).not.toMatch(/写到\s*\d+\s*章/)
+  })
+
+  it('展开（r > 1.1）：追加展开指令，且限定在本单元已有的事', () => {
+    const stats = planUnitStats(parsed, 60, { volumeIndex: 1, unitIndex: 2, writtenInVolume: 5 })!
+    const block = renderUnitBudgetBlock(stats, 'zh-CN')!
+    expect(block).toContain('可以展开：')
+    expect(block).toContain('只展开本单元已有的事')
+  })
+
+  it('英文版同口径', () => {
+    const stats = planUnitStats(parsed, 60, { volumeIndex: 1, unitIndex: 2, writtenInVolume: 28 })!
+    const block = renderUnitBudgetBlock(stats, 'en-US')!
+    expect(block).toContain('[Volume budget · unit 2/2]')
+    expect(block).toContain('Tighten:')
+  })
+
+  it('null 输入返回 null', () => {
+    expect(renderUnitBudgetBlock(null, 'zh-CN')).toBeNull()
   })
 })

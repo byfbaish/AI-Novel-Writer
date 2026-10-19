@@ -832,6 +832,36 @@ export function renderUnitBudgetLine(stats: UnitStats | null, language: WritingL
     + stats.remaining + ' 章；本单元 ' + stats.unitIndex + '/' + stats.unitCount
     + '，名义上界约 ' + cap + ' 章'
 }
+
+/**
+ * 余量块（volume-quota §6.2 / 2026-10-20 裁定）：**余量行常驻**，方向指令按余量比阈值给。
+ *
+ * - `tight`（r < 0.9）：收紧写法，但不许丢必要情节；
+ * - `ample`（r > 1.1）：可以展开，但只展开本单元已有的事；
+ * - `balanced`：只给余量行，不加任何"多写/少写"的指令（避免把余量行变成章数目标）。
+ *
+ * 块里**不含任何章数目标**（实测：强模型对状态块空转，弱模型需要余量行兜底，见测试件 §13）。
+ */
+export function renderUnitBudgetBlock(stats: UnitStats | null, language: WritingLanguage): string | null {
+  const line = renderUnitBudgetLine(stats, language)
+  if (!stats || !line) return null
+  if (language === 'en-US') {
+    const direction = stats.state === 'tight'
+      ? 'Tighten: open no new threads; compress setup and transitions; merge scenes that can be merged. No required event may be dropped.'
+      : stats.state === 'ample'
+        ? 'You may expand: add detail, open sub-threads, write the process out. Only expand what this unit already has; never borrow material from the next unit.'
+        : null
+    return ['[Volume budget · unit ' + stats.unitIndex + '/' + stats.unitCount + ']', '- ' + line,
+      ...(direction ? [direction] : [])].join('\n')
+  }
+  const direction = stats.state === 'tight'
+    ? '收紧：少开新线、压缩铺陈与过渡、合并可合并的场面；**必要情节一个都不能少**（收紧的是笔墨，不是内容）。'
+    : stats.state === 'ample'
+      ? '可以展开：铺细节、开支线、把过程写足；**只展开本单元已有的事**，不得提前使用下一个单元的材料。'
+      : null
+  return ['【本卷配给 · 单元 ' + stats.unitIndex + '/' + stats.unitCount + '】', '- ' + line,
+    ...(direction ? [direction] : [])].join('\n')
+}
 /** 结构里是否声明了与全书章数不同的合计（用于在注入文本里声明折算）。 */
 export function arcStructureNeedsRescale(parsed: ParsedArcStructure | null, totalChapters: number): boolean {
   return !!parsed && parsed.declaredChapters && parsed.declaredTotal > 0 && parsed.declaredTotal !== totalChapters
