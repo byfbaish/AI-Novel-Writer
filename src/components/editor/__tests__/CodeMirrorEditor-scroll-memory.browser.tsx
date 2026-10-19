@@ -179,6 +179,36 @@ describe('CodeMirrorEditor 浏览进度记忆', () => {
     expect(Math.abs(offsetInScroller - 40)).toBeLessThanOrEqual(4)
   })
 
+  it('跳行后立刻切走：记的是跳到的位置，切回来还停在同一章（旧实现回到跳行前的旧位置）', async () => {
+    await render()
+    await waitFrames(4)
+    // 跳行前停在靠上的旧位置。
+    scroller().scrollTop = 120
+    await waitFrames(2)
+
+    // 树面板点第 200 行。
+    await act(async () => root.render(
+      <CodeMirrorEditor
+        content={longText}
+        mode="document"
+        scrollMemoryKey={KEY}
+        revealLine={{ line: 199, nonce: 1 }}
+      />,
+    ))
+    await waitFrames(16)
+    const jumped = scroller().scrollTop
+    expect(jumped).toBeGreaterThan(1_000)
+
+    // 切 Tab ⇒ 卸载。跳行是用户显式意图，落账的必须是新位置。
+    await act(async () => root.unmount())
+    expect(readEditorScrollMemory(KEY)?.scrollTop).toBeGreaterThan(1_000)
+
+    root = createRoot(container)
+    await render()
+    await waitFrames(8)
+    expect(Math.abs(scroller().scrollTop - jumped)).toBeLessThan(80)
+  })
+
   it('光标在文末时也不把视口拽到底部（恢复的是阅读位置，不是光标位置）', async () => {
     await render()
     await waitFrames(4)

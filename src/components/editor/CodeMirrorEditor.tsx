@@ -368,6 +368,11 @@ export default function CodeMirrorEditor({
     // （树面板跳章正是这种情况）。
     const cancelScroll = scrollPosToTopConverge(view, lineInfo.from, 40)
     view.focus()
+    // 跳行是作者的显式意图 ⇒ 这个位置必须落账。
+    // 否则 layout cleanup 看到 `scrollLiveRef` 还是 false 就不写记忆，切走再切回来
+    // 读到的仍是跳行**之前**的旧位置（作者实测：大纲树点第 6 章 → 切卷单元 → 切回大纲，
+    // 没停在第 6 章；而手动滚过的卷单元 tab 却能保持）。
+    scrollLiveRef.current = true
     return cancelScroll
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealNonce])
