@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle,
@@ -436,11 +436,29 @@ function ReviewReportSession({
   // E4j-2：审稿对照是最高频的多 Tab 场景，记住浏览进度。
   // 注意挂在 Session 上而不是外层：外层每次 reportKey 变化会重建 Session。
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  // E4j-2（修正三，2026-10-19）：记住必须用 layout cleanup —— 普通 div 的 ref 同样在
+  // passive cleanup 之前被 React 摘成 null（探针读数：layout 有值、passive 为 null）。
+  // 只有真滚过才落账，挡 StrictMode 双跑把旧进度写成 0。
+  const reportScrollLiveRef = useRef(false)
+  useLayoutEffect(() => () => {
+    if (reportScrollLiveRef.current) {
+      rememberElementScroll(scrollMemoryKey, scrollContainerRef.current)
+    }
+  }, [scrollMemoryKey])
   useEffect(() => {
-    const frame = requestAnimationFrame(() => restoreElementScroll(scrollMemoryKey, scrollContainerRef.current))
+    reportScrollLiveRef.current = false
+    const container = scrollContainerRef.current
+    // 同上：判定「发生过滚动事件」而非「读数 > 0」，作者拉回顶部再切走时记 0 才是对的。
+    const markLive = () => { reportScrollLiveRef.current = true }
+    container?.addEventListener('scroll', markLive, { passive: true })
+    const frame = requestAnimationFrame(() => {
+      if (restoreElementScroll(scrollMemoryKey, scrollContainerRef.current) && container && container.scrollTop > 0) {
+        reportScrollLiveRef.current = true
+      }
+    })
     return () => {
       cancelAnimationFrame(frame)
-      rememberElementScroll(scrollMemoryKey, scrollContainerRef.current)
+      container?.removeEventListener('scroll', markLive)
     }
   }, [scrollMemoryKey])
   const text = useLocaleStore(s => s.text)
