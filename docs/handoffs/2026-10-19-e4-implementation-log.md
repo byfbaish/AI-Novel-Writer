@@ -41,6 +41,7 @@
 | T11 | E4e：卷末快照（handoff + anchor）+ M10 | ⬜ |
 | T12 | E4j-2b：Tab 进度保留**全量覆盖**（所有 Tab 兜底 memory key + 内容稳定后重试恢复） | ✅ |
 | T13 | E4j-4：**情节大纲三层树**（卷/单元/章 + 归属来源标记） | ✅ |
+| T14 | E4j-2c：切 Tab 进度**仍然**丢失的真根因（remember 挪到 layout cleanup） | ✅ 待作者 GUI 确认 |
 
 ---
 
@@ -393,3 +394,62 @@ T7 只给 `ArchFileViewer`（卷单元页）与 `ReviewReport`（审稿报告）
 
 - 章节点点击跳转只做「滚到章标题」，没做「高亮整章范围」；
 - 若作者手工在大纲里插入/删除章，`line` 会立即失效（重新构建即可，因为树是纯函数派生）。
+
+
+### 2026-10-19 · T14 E4j-2c：切 Tab 进度**仍然**丢失的真根因（完成）
+
+**作者反馈（第二轮）**
+
+> 「重启以后已经看到了章节大纲的树目录，非常不错，这体验一下子就上去了。但是章节大纲和卷单元的 Tab 之间互切，依然没有看到进度的保留，还是会刷到页顶。」
+
+T12 给所有 Tab 兜底了 memory key、也改成「内容稳定后重试恢复」，但**恢复从没成功过**——因为进度压根没被记住。
+
+**真根因：remember 挂在 passive cleanup，那时 ref 已为 null**
+
+React 卸载删子树时的顺序是：**layout cleanup → 摘 DOM / 摘 ref → passive cleanup**，而 `<CodeMirror>` 内部的 EditorView 也在 layout 阶段销毁。所以 T7/T12 写在 `useEffect`（passive）cleanup 里的 `rememberEditorScroll(scrollMemoryKey, editorRef.current?.view)` 拿到的永远是 `null`，而记忆模块对 `!view` 是**静默 return** 的——于是「存」这一步从来没发生过。`ReviewReport` 的普通 div 容器同理。
+
+**怎么证实的（不是猜）**
+
+用 Playwright 写探针，在真实 `@uiw/react-codemirror` 上分别读两个时机：
+
+| 时机 | 读数 |
+|---|---|
+| layout cleanup | `{ scrollTop: 800, connected: true, destroyed: false, docLen: 22291 }` |
+| passive cleanup | `null` |
+
+⇒ 修复方向确定：**把 remember 挪到 `useLayoutEffect` 的 cleanup**。
+
+**做了什么**
+
+| 文件 | 改动 |
+|---|---|
+| `src/components/editor/CodeMirrorEditor.tsx` | remember 移到 `useLayoutEffect` cleanup；新增 `scrollLiveRef`（只有真发生过 scroll 事件才落账，挡 StrictMode 双跑把旧进度写成 0）；恢复成功后同时标记 live |
+| `src/components/editor/ReviewReport.tsx` | 同一处修复（`useLayoutEffect` cleanup + `reportScrollLiveRef`） |
+| `src/components/editor/__tests__/CodeMirrorEditor-scroll-memory.browser.tsx`（新增） | 3 条浏览器回归测试：①滚到中途切走再回来位置还在 ②滚回顶部再切走记的是顶部 ③没滚动过就不落账 |
+
+**关键决策**
+
+| 决策 | 理由 |
+|---|---|
+| 用 `scrollLiveRef` 而不是「每次都存」 | `main.tsx` 开着 `React.StrictMode`，dev 下挂载后 effect 会「清理 → 重跑」一次；照写会把手里的旧进度覆盖成 0 |
+| 判定用「发生过 scroll 事件」而非「读数 > 0」 | 作者把长文档拉回顶部再切走时，记 0 才是对的；而 StrictMode 双跑是同一个同步批次、早于任何 scroll 事件派发，不会误伤 |
+| 测试必须能**证伪** | 临时把 remember 改回 passive cleanup 重跑：用例 ① 按预期失败（`readEditorScrollMemory(KEY)` 为 undefined），确认测试测的是真行为而不是空转 |
+
+**测试环境坑（写在这里防下次踩）**
+
+浏览器测试不加载项目 CSS，Tailwind 类全失效 ⇒ CodeMirror 没有高度约束，`.cm-scroller` 的 `clientHeight === scrollHeight === 6225`，写 `scrollTop` 直接被夹回 0（会误判成修复无效）。仅给 `.cm-scroller` 设高也无效（CM 自身样式压过内联/低优先级规则）。**必须先钉 `.cm-editor { height: 160px !important }`，scroller 的百分比高度才有参照。**
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| `npx eslint`（3 个改动文件） | ✅ 无输出 |
+| `CodeMirrorEditor-scroll-memory.browser.tsx` | ✅ 3 passed |
+| `CodeMirrorEditor-draft-units.browser.tsx`（回归） | ✅ 1 passed |
+| `editor-scroll-memory.test.ts`（回归） | ✅ 9 passed |
+| 真实 GUI 人工验证 | ⚠️ **待作者在 app 里确认**：情节大纲 ↔ 卷单元互切后位置保留 |
+
+**下一步**
+
+- 作者确认后，视情况再评估 §7A.3 的 LRU 4 实例（墓碑路径已可用，实例保留能让光标/撤销历史也保留）。

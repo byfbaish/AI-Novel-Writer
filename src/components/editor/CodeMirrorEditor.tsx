@@ -81,6 +81,8 @@ export default function CodeMirrorEditor({
   const uiText = useLocaleStore(s => s.text)
   const uiLocale = useLocaleStore(s => s.locale)
   const editorRef = useRef<ReactCodeMirrorRef>(null)
+  /** 本视图自挂载以来是否真发生过滚动（见下方 E4j-2 修正三的 StrictMode 说明）。 */
+  const scrollLiveRef = useRef(false)
 
   // 避免状态回路
   const lastEmittedContentRef = useRef(content)
@@ -191,9 +193,26 @@ export default function CodeMirrorEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recoveryKey])
 
+  // E4j-2（修正三，2026-10-19）：**记住浏览进度必须发生在 layout cleanup**。
+  //
+  // 真实探针（Playwright + 真 @uiw/react-codemirror）读数：
+  //   layout cleanup  ⇒ { scrollTop: 800, connected: true, destroyed: false }
+  //   passive cleanup ⇒ null
+  // React 卸载删子树时先跑 layout cleanup，再摘 DOM / 摘 ref，最后才跑 passive cleanup，
+  // 而 <CodeMirror> 内部也在 layout 阶段销毁 EditorView。所以原先写在 useEffect（passive）
+  // cleanup 里的 rememberEditorScroll 拿到的 editorRef.current 永远是 null，
+  // 被记忆模块静默跳过 —— 这正是「进度从来没记住过、切回来必回顶部」的根因。
+  //
+  // `scrollLiveRef` 挡的是 React.StrictMode（main.tsx 里开着）：dev 下挂载后
+  // effect 会「清理 → 重跑」一次，那时用户还没滚过、scrollTop 恒为 0；
+  // 若照写会把手里的旧进度覆盖成 0。只有真发生过滚动（或恢复已经把位置摆回去）才落账。
+  useLayoutEffect(() => () => {
+    if (scrollLiveRef.current) {
+      rememberEditorScroll(scrollMemoryKey, editorRef.current?.view ?? null)
+    }
+  }, [scrollMemoryKey])
+
   useEffect(() => () => {
-    // E4j-2：卸载前记住浏览进度（切 Tab 回来能回到原处）
-    rememberEditorScroll(scrollMemoryKey, editorRef.current?.view ?? null)
     inlineRef.current?.detach()
     aiRequestSequenceRef.current += 1
     aiTargetRef.current = null
@@ -207,24 +226,45 @@ export default function CodeMirrorEditor({
   // 所以改成「重试到内容稳定」：连续若干帧里只要内容长度还在变，就继续等。
   useEffect(() => {
     if (!scrollMemoryKey) return
+    scrollLiveRef.current = false
     let frame = 0
     let stableFrames = 0
     let lastLength = -1
+    let detachScroll: (() => void) | null = null
+    // 只要这个视图真被滚过（用户滚动 / 恢复把位置摆回去），就标记「有进度可记」。
+    // 没标记的视图一律不落账，避免 StrictMode 的双跑把旧进度写成 0。
+    //
+    // 注意判定用的是「发生过滚动事件」而不是「读数 > 0」：作者把长文档拉回顶部再切走时，
+    // 记 0 才是对的（否则下次打开会莫名跳回旧位置）；而 StrictMode 的双跑发生在同一个
+    // 同步批次里、早于任何 scroll 事件派发，所以不会把旧进度误写成 0。
+    const watchScroll = (view: NonNullable<typeof editorRef.current>['view']) => {
+      if (!view || detachScroll) return
+      const scroller = view.scrollDOM
+      const markLive = () => { scrollLiveRef.current = true }
+      scroller.addEventListener('scroll', markLive, { passive: true })
+      detachScroll = () => scroller.removeEventListener('scroll', markLive)
+    }
     const tick = () => {
       const view = editorRef.current?.view
       if (view) {
+        watchScroll(view)
         const length = view.state.doc.length
         if (length === lastLength) stableFrames += 1
         else { lastLength = length; stableFrames = 0 }
         if (stableFrames >= 2) {
-          restoreEditorScroll(scrollMemoryKey, view)
+          if (restoreEditorScroll(scrollMemoryKey, view) && view.scrollDOM.scrollTop > 0) {
+            scrollLiveRef.current = true
+          }
           return
         }
       }
       frame = requestAnimationFrame(tick)
     }
     frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
+    return () => {
+      cancelAnimationFrame(frame)
+      detachScroll?.()
+    }
   }, [scrollMemoryKey])
 
   // E4j-3：卷/单元树点击 ⇒ 跳到对应行并选中标题行。
