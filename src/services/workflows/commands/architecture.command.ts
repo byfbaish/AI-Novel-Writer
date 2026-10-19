@@ -71,6 +71,21 @@ function stepAuthorInputs(context: WorkflowContext, key: 'premise' | 'characters
     ...(typeof value === 'string' ? [{ id: `architecture:step-guidance:${key}`, text: value }] : [])]
 }
 
+/**
+ * E3 显式单元游标（2026-10-20）：`{ 卷序号, 单元序号, 本卷已写章数 }`。
+ *
+ * **不能按章号反推**——`arcSpanForChapters` 是按计划等分的映射，实际章数一偏离就整体错位。
+ * 旧检查点没有此字段时，由 `deriveSynopsisUnitCursor` 一次性推导并落库（仅迁移）。
+ */
+export interface SynopsisUnitCursor {
+  /** 卷序号，1 起 */
+  volumeIndex: number
+  /** 单元序号，1 起 */
+  unitIndex: number
+  /** 本卷内已写章数 */
+  writtenInVolume: number
+}
+
 interface PartialArchData {
   synopsis_protocol?: typeof PLOT_OUTLINE_PROTOCOL
   world_building_generation_handle?: MainGenerationRunHandle
@@ -96,6 +111,11 @@ interface PartialArchData {
   synopsis_covered_to?: number
   /** 当前/上次生成批次的范围；断点续写恢复时沿用。 */
   synopsis_range?: { from: number; to: number }
+  /**
+   * E3 显式单元游标：resume 定位当前单元的唯一依据（不得按章号反推）。
+   * 旧检查点缺省时一次性迁移（见 `deriveSynopsisUnitCursor`）。
+   */
+  synopsis_unit_cursor?: SynopsisUnitCursor
   /** 大纲赖以生成的源事实指纹；源事实变化后禁止续写旧检查点。 */
   synopsis_facts_fingerprint?: string
   /** 上次写入 DB 的大纲全文指纹；用于检测大纲是否被手动编辑（防续批覆盖用户修改）。 */
@@ -112,6 +132,7 @@ const SYNOPSIS_CHECKPOINT_FIELDS = [
   'synopsis_incomplete',
   'synopsis_covered_to',
   'synopsis_range',
+  'synopsis_unit_cursor',
   'synopsis_facts_fingerprint',
   'synopsis_db_hash',
   'synopsis_body_hash',
@@ -136,6 +157,45 @@ function restoreSynopsisCheckpoint(
     Object.assign(restored, { [field]: previous[field] })
   }
   return restored
+}
+
+/**
+ * 由「最后完成的章」推导游标。**只用于旧检查点的一次性迁移**——
+ * 新检查点一律使用写入时的显式游标（实际章数偏离计划后，章号→单元的等分映射会整体错位）。
+ */
+export function deriveSynopsisUnitCursor(
+  plan: string | undefined,
+  totalChapters: number,
+  coveredTo: number,
+): SynopsisUnitCursor | null {
+  if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return null
+  if (!Number.isSafeInteger(coveredTo) || coveredTo < 1 || coveredTo > totalChapters) return null
+  const parsed = parseArcStructure(plan ?? '')
+  if (!parsed) return null
+  const span = arcSpanForChapters(parsed, totalChapters, coveredTo, coveredTo)
+  if (!span) return null
+  const writtenInVolume = coveredTo - span.majorRange[0] + 1
+  if (!Number.isSafeInteger(writtenInVolume) || writtenInVolume < 1) return null
+  return Object.freeze({ volumeIndex: span.majorIndex, unitIndex: span.midIndex, writtenInVolume })
+}
+
+/**
+ * 同步检查点游标：**显式游标优先**（T4 起由请求传入），否则按已写章推导（旧模式）。
+ * 推导失败时删除游标，避免留下过期值被下游误用。
+ */
+function syncSynopsisUnitCursor(
+  partial: PartialArchData,
+  plan: string | undefined,
+  totalChapters: number,
+  explicit?: SynopsisUnitCursor | null,
+): void {
+  if (explicit) {
+    partial.synopsis_unit_cursor = explicit
+    return
+  }
+  const cursor = deriveSynopsisUnitCursor(plan, totalChapters, partial.synopsis_covered_to ?? 0)
+  if (cursor) partial.synopsis_unit_cursor = cursor
+  else delete partial.synopsis_unit_cursor
 }
 
 /** 大纲章节范围。 */
@@ -805,6 +865,16 @@ function assertCheckpointDbMirrorCurrent(
     throw new Error(uiText(
       '情节大纲检查点的章节范围或进度已损坏，无法安全续写。请从第 1 章重新生成。',
       'The plot-outline checkpoint has a damaged range or progress value and cannot be continued safely. Regenerate from chapter 1.',
+    ))
+  }
+  const cursor = partial.synopsis_unit_cursor
+  if (cursor !== undefined && (!cursor
+    || !Number.isSafeInteger(cursor.volumeIndex) || cursor.volumeIndex < 1
+    || !Number.isSafeInteger(cursor.unitIndex) || cursor.unitIndex < 1
+    || !Number.isSafeInteger(cursor.writtenInVolume) || cursor.writtenInVolume < 1)) {
+    throw new Error(uiText(
+      '情节大纲检查点的单元游标已损坏，无法安全续写。请从第 1 章重新生成。',
+      'The plot-outline checkpoint has a damaged unit cursor and cannot be continued safely. Regenerate from chapter 1.',
     ))
   }
   const checkpointBody = typeof partial.synopsis_result === 'string'
@@ -2251,6 +2321,14 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     context.data.partial = partial
     const coveredTo = partial.synopsis_covered_to ?? 0
     const interrupted = partial.synopsis_incomplete === true
+    // E3 迁移（2026-10-20）：旧检查点没有游标 → 一次性推导并落库；此后一律以游标为准。
+    if (partial.synopsis_range && coveredTo >= 1 && !partial.synopsis_unit_cursor) {
+      syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, totalChapters)
+      if (partial.synopsis_unit_cursor) {
+        await savePartialData(expectedProjectPath, partial, projectSession,
+          text('迁移情节大纲单元游标', 'Migrate the plot-outline unit cursor'))
+      }
+    }
     const checkpointFingerprint = partial.synopsis_facts_fingerprint
 
     let mode: 'resume' | 'fresh' | 'batch'
@@ -2639,6 +2717,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     partial.synopsis_incomplete = false
     partial.synopsis_covered_to = to
     partial.synopsis_range = { from, to }
+    syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, totalChapters)
     partial.synopsis_facts_fingerprint = factsFingerprint
     partial.synopsis_body_hash = synopsisFactsFingerprint([confirmedBody])
     partial.synopsis_step_guidance = effectiveStepGuidance
@@ -2767,6 +2846,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       partial.synopsis_incomplete = !complete
       partial.synopsis_range = { ...outline.range }
       partial.synopsis_covered_to = complete ? outline.range.to : outline.range.from - 1
+      syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, sourceExpected.totalChapters)
       partial.synopsis_step_guidance = guidance
       partial.synopsis_facts_fingerprint = factsFingerprint
       const body = joinPlotOutlineEntries(outline.confirmedPrefix, outline.composition?.text ?? '')
@@ -2925,6 +3005,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     partial.synopsis_incomplete = true
     partial.synopsis_covered_to = range.from - 1
     partial.synopsis_range = { from: range.from, to: range.to }
+    syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, sourceExpected.totalChapters)
     partial.synopsis_facts_fingerprint = factsFingerprint
     partial.synopsis_body_hash = synopsisFactsFingerprint([partialText])
     partial.synopsis_step_guidance = stepGuidance
