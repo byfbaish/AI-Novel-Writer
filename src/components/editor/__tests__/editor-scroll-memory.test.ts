@@ -7,6 +7,7 @@ import {
   rememberElementScroll,
   restoreElementScroll,
   restoreEditorScroll,
+  scrollPosToTop,
 } from '../editor-scroll-memory'
 
 // E4j-2：浏览进度记忆。旁路 Map，不依赖真实 CodeMirror 实例——
@@ -89,6 +90,28 @@ describe('editor-scroll-memory：浏览进度记忆', () => {
   it('普通容器变体：缺键/缺元素时静默跳过', () => {
     expect(restoreElementScroll('nope', { scrollTop: 0 })).toBe(false);
     expect(() => rememberElementScroll(undefined, { scrollTop: 1 })).not.toThrow();
+  })
+
+  it('scrollPosToTop：只写自己的 scroller，不调 EditorView.scrollIntoView', () => {
+    const view = fakeView(0) as FakeView & {
+      documentTop: number;
+      lineBlockAt: (pos: number) => { top: number };
+    };
+    view.documentTop = 12;
+    view.lineBlockAt = pos => ({ top: pos * 2 });
+    expect(scrollPosToTop(view as never, 480)).toBe(true);
+    // 文档坐标 480*2 加上 documentTop 才是 scroller 的像素坐标。
+    expect(view.scrollDOM.scrollTop).toBe(972);
+    expect(scrollPosToTop(view as never, 480, 40)).toBe(true);
+    expect(view.scrollDOM.scrollTop).toBe(932);
+    // 顶到文档开头时不能出现负 scrollTop。
+    expect(scrollPosToTop(view as never, 0, 40)).toBe(true);
+    expect(view.scrollDOM.scrollTop).toBe(0);
+    // 超出文档长度要夹住，不能读到越界行。
+    expect(scrollPosToTop(view as never, 99_999)).toBe(true);
+    expect(view.scrollDOM.scrollTop).toBe(2012);
+    // 没有视图时返回 false（卸载期）。
+    expect(scrollPosToTop(null, 10)).toBe(false);
   })
 
   it('clearEditorScrollMemory 清空全部（切项目用）', () => {

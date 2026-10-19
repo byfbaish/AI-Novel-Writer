@@ -15,7 +15,7 @@ import { countDraftUnits } from '../../shared/draft-units'
 import { useLocaleStore } from '../../stores/locale-store'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import { livePreview, paperHeadFacet, type PaperHead } from './live-preview'
-import { readEditorScrollMemory, rememberEditorScroll, startScrollRestore } from './editor-scroll-memory'
+import { readEditorScrollMemory, rememberEditorScroll, scrollPosToTop, startScrollRestore } from './editor-scroll-memory'
 
 export type CodeMirrorEditorProps = {
   content: string
@@ -310,10 +310,10 @@ export default function CodeMirrorEditor({
       },
       snapBack: () => {
         // 像素被夹住（内容还没铺满 / 高度重算）时，先按「顶部行」把视口摆过去。
-        const view = editorRef.current?.view
-        if (!view || !entry.topPos) return
-        const pos = Math.min(Math.max(0, entry.topPos), view.state.doc.length)
-        if (pos > 0) view.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'start', yMargin: 0 }) })
+        // 只动自己的 scroller：`EditorView.scrollIntoView` 会连带滚动所有可滚动祖先，
+        // 作者看到的外层 Frame 整体上移就是这么来的（见 `scrollPosToTop` 注释）。
+        if (!entry.topPos) return
+        scrollPosToTop(editorRef.current?.view, entry.topPos, 0)
       },
       interactionHost: () => editorRef.current?.view?.dom ?? null,
       onLive: () => { scrollLiveRef.current = true },
@@ -339,8 +339,9 @@ export default function CodeMirrorEditor({
     const lineInfo = view.state.doc.line(lineNumber)
     view.dispatch({
       selection: { anchor: lineInfo.from, head: Math.min(lineInfo.to, lineInfo.from + lineInfo.text.length) },
-      effects: EditorView.scrollIntoView(lineInfo.from, { y: 'start', yMargin: 40 }),
     })
+    // 同上：只动自己的 scroller，别把外层布局一起滚走。
+    scrollPosToTop(view, lineInfo.from, 40)
     view.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealNonce])

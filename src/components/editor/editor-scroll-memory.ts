@@ -103,6 +103,35 @@ export function restoreEditorScroll(key: string | undefined, view: EditorView | 
   return true
 }
 
+/**
+ * 把**文档位置**对应的行摆到视口顶部，只动 CodeMirror 自己的 scroller。
+ *
+ * ⚠️ 不要用 `EditorView.scrollIntoView`：它的 `scrollRectIntoView`
+ * （`node_modules/@codemirror/view/dist/index.js:524-600`）会从 `.cm-scroller` 起
+ * 沿 `parentNode` 逐级向上，把**每一个** `scrollHeight > clientHeight` 的祖先都滚一遍
+ * —— 包括 Tailwind 的 `overflow-hidden` 布局容器（它们同样可以被程序化滚动）。
+ * 作者实测到的「切几次之后整个 Frame 往上移、连顶部工具栏都被切掉一截」就是它
+ * 一次几像素地把 `ArchFileViewer` / `EditorArea` 的外层容器滚走了。
+ *
+ * 这里改成纯算术：读行块位置（文档坐标系）换算成 scroller 的 `scrollTop`，一个祖先都不碰。
+ */
+export function scrollPosToTop(
+  view: EditorView | null | undefined,
+  pos: number,
+  topMargin = 0,
+): boolean {
+  if (!view) return false
+  const scroller = view.scrollDOM
+  if (!scroller) return false
+  const docLength = view.state.doc.length
+  const safePos = Math.min(Math.max(0, pos), docLength)
+  const block = view.lineBlockAt(safePos)
+  // 文档坐标系 → scroller 像素坐标系：CodeMirror 自己也是这么换算的
+  // （见 `lineBlockAtHeight(y - view.documentTop)`）。
+  scroller.scrollTop = Math.max(0, view.documentTop + block.top - topMargin)
+  return true
+}
+
 function topVisiblePos(view: EditorView): number | null {
   const scroller = view.scrollDOM
   const lineBlockAtHeight = (view as unknown as { lineBlockAtHeight?: (height: number) => { from: number } }).lineBlockAtHeight
