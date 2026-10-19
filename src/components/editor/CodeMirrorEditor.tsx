@@ -71,9 +71,13 @@ export default function CodeMirrorEditor({
   placeholder,
   mode = 'document',
   paperHead = null,
-  scrollMemoryKey,
+  scrollMemoryKey: scrollMemoryKeyProp,
   revealLine = null,
 }: CodeMirrorEditorProps) {
+  // E4j-2（修正）：**所有 Tab 都要保留浏览进度**，不是只给显式传键的那几处。
+  // 调用方没传时按 `filePath` 兜底 —— DraftEditor / ChapterCardEditor / 正文包装层都走这条。
+  // 用 filePath 而不是 React key：同一份文档在不同入口打开应当共享同一个浏览位置。
+  const scrollMemoryKey = scrollMemoryKeyProp ?? (filePath ? `doc:${filePath}` : undefined)
   const uiText = useLocaleStore(s => s.text)
   const uiLocale = useLocaleStore(s => s.locale)
   const editorRef = useRef<ReactCodeMirrorRef>(null)
@@ -195,12 +199,31 @@ export default function CodeMirrorEditor({
     aiTargetRef.current = null
   }, [scrollMemoryKey])
 
-  // E4j-2：挂载后恢复浏览进度。等 CodeMirror 完成首次测量再设 scrollTop，否则会被重置为 0。
+  // E4j-2（修正 2026-10-19）：挂载后恢复浏览进度。
+  //
+  // ⚠️ 原先只靠一次 `requestAnimationFrame` —— 观察到的真实失败（卷单元 ↔ 情节大纲）：
+  // 切换时 `ArchFileViewer` 会**异步** `setEditorContent`（先清后填），CodeMirror 把内容
+  // 重建后 `scrollTop` 被重置为 0，而那一帧的 restore 已经跑完了。
+  // 所以改成「重试到内容稳定」：连续若干帧里只要内容长度还在变，就继续等。
   useEffect(() => {
     if (!scrollMemoryKey) return
-    const frame = requestAnimationFrame(() => {
-      restoreEditorScroll(scrollMemoryKey, editorRef.current?.view ?? null)
-    })
+    let frame = 0
+    let stableFrames = 0
+    let lastLength = -1
+    const tick = () => {
+      const view = editorRef.current?.view
+      if (view) {
+        const length = view.state.doc.length
+        if (length === lastLength) stableFrames += 1
+        else { lastLength = length; stableFrames = 0 }
+        if (stableFrames >= 2) {
+          restoreEditorScroll(scrollMemoryKey, view)
+          return
+        }
+      }
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
   }, [scrollMemoryKey])
 
