@@ -72,6 +72,21 @@ describe('summarizeUnitBudget', () => {
     expect(note).toContain('Z = -16.7%（充足）')
   })
 
+  it('批从单元中间起时不给 Z —— 否则会印出固定的假「不足」', () => {
+    // 卷一 = 1–30，单元一 1–15、单元二 16–30。第 21 章起批仍在单元二内部：
+    // 已写 20 章 vs 进度线 15.0（单元**起点**），差额来自「批没对齐单元」，不是超前。
+    // 实机同形：第 11 章起批（单元二 6–11）算成 +22.6%（不足）。
+    const note = summarizeUnitBudget(PLAN, TOTAL, 20, 21, zh)
+    expect(note).toContain('单元 2/2')
+    expect(note).toContain('批内')
+    expect(note).toContain('已写 20 章')
+    expect(note).toContain('Z 不适用（本批起点第 21 章 ≠ 单元首章第 16 章）')
+    expect(note).not.toContain('（不足）')
+    // 预算与各卷清单不依赖 Z，仍要照常给出
+    expect(note).toContain('本卷预算 30 章 ÷ 2 单元 ≈ 15.0 章/单元')
+    expect(note).toContain('各卷（章/单元）：1: 30/2 · 2: 30/1')
+  })
+
   it('单元 1 尚未开始：进度线为 0（j=1 不除错）', () => {
     const note = summarizeUnitBudget(PLAN, TOTAL, 0, 1, zh)
     expect(note).toContain('单元 1/2')

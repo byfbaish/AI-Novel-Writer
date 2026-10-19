@@ -390,6 +390,19 @@ export function summarizeUnitBudget(
   const zText = `${z >= 0 ? '+' : '-'}${Math.abs(z * 100).toFixed(1)}%`
   const fixed1 = (value: number) => (Math.round(value * 10) / 10).toFixed(1)
 
+  // ⚠️ **只在「本批起点 = 单元首章」时 Z 才有意义**（2026-10-19 实机踩到）。
+  // `plannedUsed` 是「本单元**开始前**应已写完的章数」，而 `actualUsed` 是「本卷已写到第几章」。
+  // 两者只有在单元边界上才可比：批从单元中间起时，已写章数必然大于进度线，
+  // 算出来是个**固定的假「不足」**（实测第 11 章起批 → 已写 10 章 vs 进度线 5.3 章 = +22.6%）。
+  // 此时只报预算与已写，不给 Z，别让假信号进日志。
+  const atUnitStart = span.midRange[0] === from
+  const zLine = atUnitStart
+    ? `进度线 ${fixed1(progress.plannedUsed)} 章；Z = ${zText}（${state.zh}）`
+    : `进度线 ${fixed1(progress.plannedUsed)} 章；Z 不适用（本批起点第 ${from} 章 ≠ 单元首章第 ${span.midRange[0]} 章）`
+  const zLineEn = atUnitStart
+    ? `schedule line ${fixed1(progress.plannedUsed)}; Z = ${zText} (${state.en})`
+    : `schedule line ${fixed1(progress.plannedUsed)}; Z n/a (batch starts at ${from}, unit starts at ${span.midRange[0]})`
+
   // 各卷摘要：预算 ÷ 单元数。这是"数值是否荒谬"的主要证据面。
   // 用 `planProgress(majorIndex, 1)` 取 budget，避免把 `scaledBoundaries` 再导出一份。
   // **不写卷名**：真实项目 7 卷时，带全名的这行会占满整屏（实测），而扫数字时用不上名字。
@@ -401,12 +414,12 @@ export function summarizeUnitBudget(
 
   return [
     uiText(
-      `⚖️ 弹性配给预估（只读，不写进提示词）：卷 ${progress.majorIndex}「${span.majorName}」单元 ${progress.midIndex}/${progress.midCount}`,
-      `⚖️ Budget estimate (read-only, not injected): volume ${progress.majorIndex} “${span.majorName}”, unit ${progress.midIndex}/${progress.midCount}`,
+      `⚖️ 弹性配给预估（只读，不写进提示词）：卷 ${progress.majorIndex}「${span.majorName}」单元 ${progress.midIndex}/${progress.midCount}${atUnitStart ? '' : ' · 批内'}`,
+      `⚖️ Budget estimate (read-only, not injected): volume ${progress.majorIndex} “${span.majorName}”, unit ${progress.midIndex}/${progress.midCount}${atUnitStart ? '' : ' · mid-unit'}`,
     ),
     uiText(
-      `- 本卷预算 ${progress.budget} 章 ÷ ${progress.midCount} 单元 ≈ ${fixed1(progress.budget / progress.midCount)} 章/单元；已写 ${progress.actualUsed} 章；进度线 ${fixed1(progress.plannedUsed)} 章；Z = ${zText}（${state.zh}）`,
-      `- Volume budget ${progress.budget} chapters / ${progress.midCount} units ≈ ${fixed1(progress.budget / progress.midCount)} per unit; written ${progress.actualUsed}; schedule line ${fixed1(progress.plannedUsed)}; Z = ${zText} (${state.en})`,
+      `- 本卷预算 ${progress.budget} 章 ÷ ${progress.midCount} 单元 ≈ ${fixed1(progress.budget / progress.midCount)} 章/单元；已写 ${progress.actualUsed} 章；${zLine}`,
+      `- Volume budget ${progress.budget} chapters / ${progress.midCount} units ≈ ${fixed1(progress.budget / progress.midCount)} per unit; written ${progress.actualUsed}; ${zLineEn}`,
     ),
     uiText(
       `- 各卷（章/单元）：${volumes.join(' · ')}`,
