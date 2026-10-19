@@ -56,7 +56,7 @@
 | **T4** | 请求构造：`computeUnitRequest`（游标 → 请求体，不算 `to`） | `architecture.command.ts` | 单测：游标推进、跨卷重置、无结构回退旧路径 | **高** |
 | **T5** | prompt unit 模式 | `synopsisBatchInstruction` | 快照单测（中/英）：无「第 from–to 章」、有「离开状态为止」「不得进入下一单元」 | 中 |
 | **T6** | 余量行常驻 + `r` 阈值指令 + 模板变量 | `architecture.command.ts`、`builtin-prompt-templates.ts` | 渲染单测：`r<0.9` 收紧 / `r>1.1` 展开 / 带内只给余量行 / 无法计算时为空 | 低 |
-| **T7** | 检查点写入游标 + 兼容旧值 | `architecture.command.ts`、partial 类型 | 集成：新旧检查点混合、损坏值报错文案不变 | **高** |
+| **T7** | 检查点写入游标 + 兼容旧值 | `architecture.command.ts`、partial 类型 | ✅ 已实施（2026-10-20）：`synopsis_unit_cursor` 入字段白名单；旧检查点一次性推导并落库；损坏游标报错；5 条推导单测 + 47 条命令回归 | **高** |
 | **T8** | 续批 / agent 子 run 的 deep-equal 改比 `{from, cursor}` | `main-generation-owner.ts`、`agent-generation.ts` | 集成：续批成功、子 run 授权成功、篡改游标被拒 | **高** |
 | **T9** | 回填与记账：解析 `actual`、`to = from+actual−1`、`writtenInVolume += actual`、`covered_to = to`；超卷末只记录 | `architecture.command.ts` | 单测 + 集成：连写两个单元、章号偏离后仍正确 | **高** |
 | **T10** | 端到端实机 | 真项目 | 单元 1 → 单元 2 连续；日志出现余量行与 `r`；无中途 `ROOT_BUDGET_EXHAUSTED`；弱模型 / 强模型各一次 | 中 |
@@ -152,3 +152,13 @@
 - 单测：`electron/services/__tests__/main-generation-unit-budget.test.ts` 7 条（预算 60 次、旧模式 32 次不变、互斥、越界、非法字段、JSON 往返）。
 - 回归：`main-generation-plan.test.ts` **94 passed**；`tsc --noEmit` exit 0。
 - ⚠️ **顺序修正**：T4 需要游标，实际按 T7 → T4 施工（见 §3 注）。
+
+### 2026-10-20 · T7 检查点显式单元游标（完成）
+
+- `PartialArchData` 新增 `synopsis_unit_cursor?: { volumeIndex, unitIndex, writtenInVolume }`，并加入 `SYNOPSIS_CHECKPOINT_FIELDS`（比对/回滚/恢复一并生效）。
+- `deriveSynopsisUnitCursor(plan, totalChapters, coveredTo)`：**只用于旧检查点迁移**；结构不可解析 / 未写章 / 越界 ⇒ `null`（fail-open）。
+- `syncSynopsisUnitCursor(partial, plan, total, explicit?)`：**显式游标优先**，否则按已写章推导；推导失败删除游标（不留过期值）。三处落盘点（完整批次 / 每章导航 / 中断候选）均已接入。
+- 迁移：`execute` 读检查点后，若 `synopsis_range` 存在、`covered_to ≥ 1` 且无游标 ⇒ 推导一次并 `savePartialData` 落库；此后一律以游标为准。
+- `assertCheckpointDbMirrorCurrent`：游标存在时校验三元组（整数、≥1），损坏则沿用同一套「请从第 1 章重新生成」文案。
+- 单测：`synopsis-unit-cursor.test.ts` 5 条（单元内 / 跨单元 / 跨卷重置 / 非法输入 / 结构不可解析）；`architecture.command.test.ts` **47 passed**；`tsc --noEmit` exit 0。
+- ⚠️ **T4 接线的硬约束**：单元模式下必须把请求的显式游标传给 `syncSynopsisUnitCursor` 的 `explicit` 参数，**不得让章号推导覆盖**（否则实际章数一偏离，游标就错位）。集成验证留 T10。
