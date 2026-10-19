@@ -37,6 +37,13 @@ export interface EditorScrollMemoryEntry {
    * 旧记录可能没有这个字段，缺省时退化成纯像素恢复。
    */
   topPos?: number
+  /**
+   * 保存时 scroller 的换行宽度（像素）。恢复时宽度变了 ⇒ 旧像素属于另一套换行，
+   * 只能认内容锚点；宽度没变则像素仍然精确，不该被锚点覆盖。
+   */
+  editorWidth?: number
+  /** 保存时的文档长度。长度变了（内容替换/晚到）像素同样不可信。 */
+  docLength?: number
 }
 
 /** 最多记住多少个 tab 的浏览进度（超出按最久未用裁剪）。 */
@@ -50,6 +57,7 @@ const SNAP_BACK_THRESHOLD = 24
 
 /** 连续多少帧落位才算恢复完成（CodeMirror 的测量常常滞后一两帧）。 */
 const RESTORE_SETTLE_FRAMES = 3
+
 
 /**
  * 恢复最多守望多少帧（约 4 秒）。内容晚到、字体晚到、外部 `setEditorContent`
@@ -84,6 +92,8 @@ export function rememberEditorScroll(key: string | undefined, view: EditorView |
     , savedAt: Date.now()
     // 位置是夹取出来的话，行锚点也跟着不可信，沿用上一条记录的。
     , topPos: pending !== undefined ? previous?.topPos : topVisiblePos(view) ?? undefined
+    , editorWidth: Number.isFinite(scroller.clientWidth) ? Math.round(scroller.clientWidth) : previous?.editorWidth
+    , docLength: view.state.doc.length
   })
   pruneEditorScrollMemory()
 }
@@ -104,16 +114,40 @@ export function restoreEditorScroll(key: string | undefined, view: EditorView | 
 }
 
 /**
+ * 目标行距 scroller 视口顶部还差多少像素：正值 ⇒ 还要往下滚。
+ *
+ * `view.documentTop` 是**屏幕坐标**（见 `@codemirror/view` 的 `documentTop` getter
+ * 注释：「may be negative when the editor is scrolled down」），滚动之后会变成负数。
+ * 早先的写法把它当文档坐标系原点（`scrollTop = documentTop + block.top`），于是滚到位
+ * 以后 `documentTop` 变成 `-scrollTop`，下一帧又算出一个离谱的目标 —— 实测跳行时
+ * `scrollTop` 会在目标值和 0 之间逐帧来回跳，最后停在 0。
+ *
+ * 这里改成**差分**：用屏幕坐标量出「现在差多少」，只对 `scrollTop` 做增量，与当前
+ * 滚动位置无关。
+ */
+function scrollPosToTopDelta(view: EditorView, pos: number, topMargin: number): number | null {
+  const scroller = view.scrollDOM
+  if (!scroller) return null
+  const docLength = view.state.doc.length
+  const safePos = Math.min(Math.max(0, pos), docLength)
+  const block = view.lineBlockAt(safePos)
+  // 行首的屏幕 Y − scroller 视口顶部 Y = 该行距视口顶部的像素距离。
+  const lineOffset = view.documentTop + block.top - scroller.getBoundingClientRect().top
+  const delta = lineOffset - topMargin
+  return Number.isFinite(delta) ? delta : null
+}
+
+/**
  * 把**文档位置**对应的行摆到视口顶部，只动 CodeMirror 自己的 scroller。
  *
  * ⚠️ 不要用 `EditorView.scrollIntoView`：它的 `scrollRectIntoView`
  * （`node_modules/@codemirror/view/dist/index.js:524-600`）会从 `.cm-scroller` 起
- * 沿 `parentNode` 逐级向上，把**每一个** `scrollHeight > clientHeight` 的祖先都滚一遍
+ * 沿 `parentNode` 逐级往上，把**每一个** `scrollHeight > clientHeight` 的祖先都滚一遍
  * —— 包括 Tailwind 的 `overflow-hidden` 布局容器（它们同样可以被程序化滚动）。
  * 作者实测到的「切几次之后整个 Frame 往上移、连顶部工具栏都被切掉一截」就是它
  * 一次几像素地把 `ArchFileViewer` / `EditorArea` 的外层容器滚走了。
  *
- * 这里改成纯算术：读行块位置（文档坐标系）换算成 scroller 的 `scrollTop`，一个祖先都不碰。
+ * 这里只改自己的 `scrollTop`，一个祖先都不碰。
  */
 export function scrollPosToTop(
   view: EditorView | null | undefined,
@@ -123,13 +157,60 @@ export function scrollPosToTop(
   if (!view) return false
   const scroller = view.scrollDOM
   if (!scroller) return false
-  const docLength = view.state.doc.length
-  const safePos = Math.min(Math.max(0, pos), docLength)
-  const block = view.lineBlockAt(safePos)
-  // 文档坐标系 → scroller 像素坐标系：CodeMirror 自己也是这么换算的
-  // （见 `lineBlockAtHeight(y - view.documentTop)`）。
-  scroller.scrollTop = Math.max(0, view.documentTop + block.top - topMargin)
+  const delta = scrollPosToTopDelta(view, pos, topMargin)
+  if (delta === null) return false
+  if (Math.abs(delta) > 0.5) scroller.scrollTop = Math.max(0, scroller.scrollTop + delta)
   return true
+}
+
+/** 跳行定位最多纠正多少帧（每次 rAF 一帧，约 130ms）。 */
+export const SCROLL_POS_MAX_FRAMES = 12
+
+/**
+ * 把文档位置摆到视口顶部，并**纠正到 CodeMirror 实测高度为止**。
+ *
+ * 为什么单次算术不够：`lineBlockAt` 对**视口外、还没渲染过**的行只能给估算高度
+ * （`HeightOracle`）。先跳到估算位置，CodeMirror 渲染并实测那一带以后高度会变，
+ * 同一个文档位置算出的目标也就跟着变，所以要**逐帧增量逼近**：每帧只补「还差多少
+ * 像素」（见 `scrollPosToTopDelta`），连续两帧都差不到 1px 才算落位。
+ *
+ * 为什么不能「每帧直接写绝对目标」：估算误差大时（实测最多几百像素）来回绝对写会
+ * 把 CodeMirror 的测量循环带进振荡，越纠越偏。
+ *
+ * 仍然只写自己的 scroller、不碰祖先（理由见 `scrollPosToTop` 的注释）。
+ * 返回取消函数：重新跳行 / 卸载时调用。
+ */
+export function scrollPosToTopConverge(
+  view: EditorView | null | undefined,
+  pos: number,
+  topMargin = 0,
+): () => void {
+  if (!view) return () => {}
+  let frame = 0
+  let cancelled = false
+  let frames = 0
+  let stableFrames = 0
+  const step = () => {
+    if (cancelled) return
+    try {
+      const scroller = view.scrollDOM
+      if (!scroller || view.state.doc.length === 0) return
+      if (!scrollPosToTop(view, pos, topMargin)) return
+      const remaining = scrollPosToTopDelta(view, pos, topMargin)
+      stableFrames = remaining !== null && Math.abs(remaining) <= 1 ? stableFrames + 1 : 0
+      frames += 1
+      if (stableFrames >= 2 || frames >= SCROLL_POS_MAX_FRAMES) return
+      frame = requestAnimationFrame(step)
+    } catch {
+      // 视图已销毁（切 Tab）：静默收手。
+      cancelled = true
+    }
+  }
+  step()
+  return () => {
+    cancelled = true
+    cancelAnimationFrame(frame)
+  }
 }
 
 function topVisiblePos(view: EditorView): number | null {
@@ -193,8 +274,27 @@ export interface ScrollRestoreOptions {
   read: () => number | null
   /** 写 `scrollTop`。 */
   write: (scrollTop: number) => void
-  /** 偏差较大时先用「文档位置」摆一次（CodeMirror 专用，可选）。 */
-  snapBack?: () => void
+  /**
+   * 偏差较大时先用「文档位置」摆一次（CodeMirror 专用，可选）。每帧都会被调用。
+   *
+   * 返回值语义：
+   * - **数字** = 已经摆稳，回传摆完之后的实际 `scrollTop`；
+   * - **`null`** = 还在收敛（`lineBlockAt` 对视口外的行只有估算高度），这一帧别判落位；
+   * - **`void`** = 这个容器没有可用的文档锚点，退回纯像素。
+   *
+   * 这一步不只是「省点像素」：**换行宽度变了**（树面板抽屉 ↔ 固定侧栏、窗口缩放）时，
+   * 旧像素属于另一套换行，写回去就会落在错的行上 —— 作者报的「关了树以后位置也存不住」。
+   * 所以只在地理几何变了时才认它（见 `geometryChanged`）。
+   */
+  snapBack?: () => number | null | void
+  /**
+   * 换行几何是否变了（宽度或文档长度）。只有变了才应该认 `snapBack` 的落点。
+   *
+   * 为什么需要：顶部那一行如果是**一块几百像素高的长段落**，它经常被视口切成半截。
+   * 「把行首摆到视口顶」会把这半截也补回去，位置整体挪掉几百像素 —— 表现得就像
+   * 「切几次之后进度自己跑掉了」。宽度和文档都没变时，旧像素才是准确的。
+   */
+  geometryChanged?: () => boolean
   /** 用户交互要挂监听的元素；一旦挂上，用户一动手就放弃恢复（可选）。 */
   interactionHost?: () => EventTarget | null
   /** 已经落位或被用户接管时回调（调用方通常用来标记「有进度可记」）。 */
@@ -271,12 +371,28 @@ export function startScrollRestore(options: ScrollRestoreOptions): () => void {
     }
     const deviation = current - entry.scrollTop
     if (Math.abs(deviation) > RESTORE_TOLERANCE) {
-      if (options.snapBack && Math.abs(deviation) > SNAP_BACK_THRESHOLD) options.snapBack()
-      options.write(entry.scrollTop)
-      const applied = options.read()
-      settledFrames = applied !== null && Math.abs(applied - entry.scrollTop) <= RESTORE_TOLERANCE
-        ? settledFrames + 1
-        : 0
+      const geometryChanged = options.geometryChanged?.() ?? true
+      const anchored = options.snapBack && geometryChanged && Math.abs(deviation) > SNAP_BACK_THRESHOLD
+        ? options.snapBack()
+        : undefined
+      // `null`：文档锚点还没收敛（那一带的行还是估算高度），这一帧不判落位，
+      // 让它继续逐帧逼近 —— 否则会把估算出来的错位置当成落位点。
+      if (anchored === null) {
+        settledFrames = 0
+      } else {
+        let target = entry.scrollTop
+        // 摆出来的位置和旧像素明显不同 ⇒ 这套换行里旧像素已经无意义（宽度变了），
+        // 认内容锚点；宽度没变时它俩应当接近，继续按记忆像素做微调。
+        if (typeof anchored === 'number' && Number.isFinite(anchored) && Math.abs(anchored - entry.scrollTop) > RESTORE_TOLERANCE) {
+          target = anchored
+        }
+        pendingRestores.set(key, target)
+        options.write(target)
+        const applied = options.read()
+        settledFrames = applied !== null && Math.abs(applied - target) <= RESTORE_TOLERANCE
+          ? settledFrames + 1
+          : 0
+      }
     } else {
       settledFrames += 1
     }

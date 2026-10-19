@@ -545,3 +545,51 @@ T14 修好了「记不住」，但恢复本身是一只一次性 rAF：内容一
 
 - 作者 GUI 确认 T15 + T16 后，再接 E4 剩余 T9（按卷冻结）、T11（卷末快照）。
 
+### 2026-10-19 · E4j 收口：两树都开着反复切 Tab（跳转不准 / 树崩 / 位置存不住）
+
+**作者反馈（m01768）**
+
+> 「一开始不使用两个面板的树目录功能，来回切换都是准确当打开两个面板的树目录功能以后，来回切换开始渐渐失灵，直至树目录都开始崩溃，无法准确跳转。然后关闭两边的树目录，本身的位置也开始保存不住了。」
+
+**根因一（跳转不准）：把屏幕坐标当文档坐标用**
+
+`EditorView.documentTop` 的 doc 注释写明是 **screen coordinates**（`node_modules/@codemirror/view/dist/index.js:8289-8291`：「The top position of the document, in screen coordinates. This may be negative when the editor is scrolled down.」）。T16 的 `scrollPosToTop` 写成 `scroller.scrollTop = max(0, view.documentTop + block.top - topMargin)`，滚到位后下一帧 `documentTop ≈ paddingTop - scrollTop` 变成负数 ⇒ 目标算成 0/离谱值，**逐帧振荡**（实测 6095→0→6095→0），最终停在 0 附近并把这个错位置记进 scroll memory。探针量化：宽 726 点第 3 章多滚 228px、固定树宽 470 少滚 452px。
+
+**修法**：换成与滚动位置无关的差分公式 ——
+`lineOffset = view.documentTop + block.top - scroller.getBoundingClientRect().top`，`delta = lineOffset - topMargin`，写 `scroller.scrollTop = max(0, scroller.scrollTop + delta)`；新增 `scrollPosToTopConverge`（逐帧增量逼近，|remaining|≤1 连续 2 帧才停，上限 `SCROLL_POS_MAX_FRAMES=12`）给树面板点章用。
+
+**根因二（关树后位置存不住）：几何没变也认内容锚点**
+
+`startScrollRestore` 的 snapBack 用「顶部行摆到视口顶」修正，但顶部是 403px 的长段落被视口切成半截时，这一摆就把整块补回去（实测 1979→2382 一次性 +403px），大纲 tab 也 ±25px 小漂。
+
+**修法**：`EditorScrollMemoryEntry` 记 `editorWidth` + `docLength`，恢复时 `geometryChanged()` 为假就**只写旧像素**、不调 snapBack；只有宽度真的变了（树抽屉 ↔ 固定侧栏、开/关树）才用内容锚点。
+
+**证伪记录**
+
+无条件用内容锚点（再加 `topOffset` 记录行内偏移、`RESTORE_ANCHOR_MISS_LIMIT=30` 兜底）跑探针：C0–C7 出现**恢复回顶部**（outline/arc scroll=0）的严重回归 —— 新挂载时高度图是估算值、内容还可能异步替换，顶部锚点行不可靠。**整版回退**到「像素优先 + 几何变化才认锚点」。
+
+**探针实测（真 Electron，新 dist）**
+
+| 场景 | 结果 |
+|---|---|
+| 大纲树点第 3 章（旧 -452px） | ✅ 视口偏移 40px |
+| 卷纲树点单元（旧 +228px） | ✅ 落位稳定 |
+| 两树都固定、反复切 Tab ×8 | ✅ arc 每帧 2091 / outline 每帧 680 / CH3off 40 / 两树都在 |
+| 关两树后再切 ×4 | ✅ arc 2091 / outline 519 不漂 |
+| 控制台错误 | ✅ 无 |
+
+**残留（已知，非坐标 bug）**：关树后**首次**切回时像素一致但顶部内容差一两行 —— 新挂载的 CodeMirror 高度图还在估算（contentH 实测 2951→3354→3429），同一像素对应不同行，高度图测准后就稳定。未找到零风险的消除手段，暂留。
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| `editor-scroll-memory.test.ts` | ✅ 15 passed（新增 converge / geometryChanged 等 5 条） |
+| `CodeMirrorEditor-scroll-memory.browser.tsx` | ✅ 9 passed（新增「跳行把目标行摆到顶部边距内」） |
+| 真实 GUI 人工验证 | ⚠️ **待作者确认**：树面板点章准确跳行、反复切 Tab 位置不漂、两树都开也不失灵 |
+
+**下一步**
+
+- 作者 GUI 确认 T15 + T16 后，再接 E4 剩余 T9（按卷冻结）、T11（卷末快照）。
+
