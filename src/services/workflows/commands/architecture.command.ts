@@ -6,7 +6,7 @@ import { defaultCharacterProposalRelationships, defaultCharacterProposalSelectio
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import type { ArchitecturePlanningIntent, ArchitectureUnitRange, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, plotOutlineCoveredTo, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
-import { arcSpanForChapters, auditArcDensity, parseArcStructure, planProgress, planUnitStats, withProjectedArcGuide, type UnitBudgetState } from '../../../shared/arc-position'
+import { arcSpanForChapters, auditArcDensity, parseArcStructure, planProgress, planUnitStats, renderUnitBudgetBlock, UNIT_BUDGET_TOLERANCE, withProjectedArcGuide, type UnitBudgetState } from '../../../shared/arc-position'
 import { auditOutlineLength, outlineLengthOf, renderOutlineLengthReport } from '../../../shared/outline-budget'
 import { planOutlinePrefixBudget } from '../../../shared/outline-prefix-budget'
 import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../shared/arc-node'
@@ -184,7 +184,8 @@ export function deriveSynopsisUnitCursor(
 }
 
 /**
- * 同步检查点游标：**显式游标优先**（T4 起由请求传入），否则按已写章推导（旧模式）。
+ * 同步检查点游标：**显式游标优先**（单元模式由请求传入），否则按已写章推导（旧模式）。
+ * `undefined` = 走推导；`null` = 明确表示"没有下一个单元"（全书写完），删除游标。
  * 推导失败时删除游标，避免留下过期值被下游误用。
  */
 function syncSynopsisUnitCursor(
@@ -193,8 +194,9 @@ function syncSynopsisUnitCursor(
   totalChapters: number,
   explicit?: SynopsisUnitCursor | null,
 ): void {
-  if (explicit) {
-    partial.synopsis_unit_cursor = explicit
+  if (explicit !== undefined) {
+    if (explicit) partial.synopsis_unit_cursor = explicit
+    else delete partial.synopsis_unit_cursor
     return
   }
   const cursor = deriveSynopsisUnitCursor(plan, totalChapters, partial.synopsis_covered_to ?? 0)
@@ -205,8 +207,13 @@ function syncSynopsisUnitCursor(
 /**
  * E3 T4a：由「游标 + 已覆盖章数」构造逐单元请求（纯函数，不读写任何状态）。
  *
- * 不变量：**游标必须指向 `coveredTo + 1` 所在的那个单元**——游标与章号映射不一致时返回
- * `null`（fail-closed，调用方退回旧路径），绝不"以章号为准"去猜单元。
+ * **游标是唯一真相**：`from = coveredTo + 1` 取自检查点，单元/卷取自游标，`maxChapters` 由
+ * `planUnitStats` 按本卷剩余章数摊到剩余单元。**不得用 `arcSpanForChapters` 反查单元**
+ * （那是计划等分映射；实际章数一偏离就整体错位——2026-10-20 探针实测：单元实际写 12 章
+ * 而计划 15 章时，反查会把它判成"还在单元 1"从而使单元模式永久卡死）。
+ *
+ * 本卷预算写满（`writtenInVolume` 已到卷长）时按**卷超写带**（±10%）给余量，至少 1 章；
+ * **不跨卷摊剩余**——各卷预算互不影响（`unit-budget-elastic-allocation-design.md` §6）。
  */
 export function computeSynopsisUnitRange(
   plan: string | undefined,
@@ -220,17 +227,21 @@ export function computeSynopsisUnitRange(
   const parsed = parseArcStructure(plan ?? '')
   if (!parsed) return null
   const from = coveredTo + 1
-  const span = arcSpanForChapters(parsed, totalChapters, from, from)
-  if (!span || span.majorIndex !== cursor.volumeIndex || span.midIndex !== cursor.unitIndex) return null
   const stats = planUnitStats(parsed, totalChapters, {
     volumeIndex: cursor.volumeIndex,
     unitIndex: cursor.unitIndex,
     writtenInVolume: cursor.writtenInVolume,
   })
-  if (!stats || stats.maxChaptersCeil < 1) return null
-  const maxChapters = Math.min(stats.maxChaptersCeil, totalChapters - from + 1)
+  if (!stats) return null
+  const volumeRemaining = stats.remaining > 0
+    ? stats.remaining
+    : Math.max(1, Math.ceil(stats.volumeChapters * (1 + UNIT_BUDGET_TOLERANCE)) - stats.writtenInVolume)
+  const maxChapters = Math.min(
+    Math.max(1, Math.ceil(volumeRemaining / stats.remainingUnits)),
+    totalChapters - from + 1,
+  )
   if (!Number.isSafeInteger(maxChapters) || maxChapters < 1) return null
-  return Object.freeze({ from, unitIndex: cursor.unitIndex, maxChapters, volumeRemaining: stats.remaining })
+  return Object.freeze({ from, unitIndex: cursor.unitIndex, maxChapters, volumeRemaining })
 }
 
 /**
@@ -288,6 +299,16 @@ export function advanceUnitCursor(
   if (cursor.volumeIndex >= parsed.majors.length) return null
   return Object.freeze({ volumeIndex: cursor.volumeIndex + 1, unitIndex: 1, writtenInVolume: 0 })
 }
+
+/**
+ * 首个单元的游标：新项目（`covered_to = 0`）没有检查点，也就没有游标可读。
+ * 这里**不含任何章号推测**——单元序号就是 1，卷内已写就是 0。
+ */
+export const INITIAL_SYNOPSIS_UNIT_CURSOR: SynopsisUnitCursor = Object.freeze({
+  volumeIndex: 1,
+  unitIndex: 1,
+  writtenInVolume: 0,
+})
 
 /** 大纲章节范围。 */
 export interface PlotOutlineChapterRange {
@@ -991,10 +1012,11 @@ function assertCheckpointDbMirrorCurrent(
     ))
   }
   const cursor = partial.synopsis_unit_cursor
+  // `writtenInVolume` 允许为 0：跨卷推进时卷内已写会重置（下一个单元 = 新卷单元 1）。
   if (cursor !== undefined && (!cursor
     || !Number.isSafeInteger(cursor.volumeIndex) || cursor.volumeIndex < 1
     || !Number.isSafeInteger(cursor.unitIndex) || cursor.unitIndex < 1
-    || !Number.isSafeInteger(cursor.writtenInVolume) || cursor.writtenInVolume < 1)) {
+    || !Number.isSafeInteger(cursor.writtenInVolume) || cursor.writtenInVolume < 0)) {
     throw new Error(uiText(
       '情节大纲检查点的单元游标已损坏，无法安全续写。请从第 1 章重新生成。',
       'The plot-outline checkpoint has a damaged unit cursor and cannot be continued safely. Regenerate from chapter 1.',
@@ -2458,6 +2480,36 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       }
     }
     const checkpointFingerprint = partial.synopsis_facts_fingerprint
+    const unitOption = this.options.synopsisUnit ?? null
+    /**
+     * E3：单元游标 → 本次请求。全书尚未写任何章（`covered_to = 0`）时用首单元游标；
+     * 其余情况必须已有游标（旧检查点上面已一次性迁移），**绝不按章号反推单元**。
+     */
+    const resolveUnitContext = () => {
+      const cursor = partial.synopsis_unit_cursor ?? (coveredTo === 0 ? INITIAL_SYNOPSIS_UNIT_CURSOR : null)
+      if (!cursor) return null
+      const range = computeSynopsisUnitRange(sourceExpected.plotStructurePlan, totalChapters, cursor, coveredTo)
+      if (!range) return null
+      const stats = planUnitStats(parseArcStructure(sourceExpected.plotStructurePlan ?? ''), totalChapters, {
+        volumeIndex: cursor.volumeIndex,
+        unitIndex: cursor.unitIndex,
+        writtenInVolume: cursor.writtenInVolume,
+      })
+      return { cursor, range, stats }
+    }
+    const approveUnitContext = (expected: ArchitectureUnitRange) => {
+      const resolved = resolveUnitContext()
+      if (!resolved) throw new Error(text(
+        '无法由单元游标定位本次单元（游标与已完成的大纲进度对不上）。请从「AI 生成故事架构」重新开始本卷。',
+        'The current unit cannot be located from the unit cursor (it does not match the confirmed outline). Restart this volume in “Generate story architecture”.',
+      ))
+      if (resolved.range.unitIndex !== expected.unitIndex || resolved.range.from !== expected.from) throw new Error(text(
+        `本次请求的单元（第 ${expected.unitIndex} 个，起于第 ${expected.from} 章）与大纲进度（第 ${resolved.range.unitIndex} 个，起于第 ${resolved.range.from} 章）不一致，拒绝按过期请求生成。请重新发起生成。`,
+        `The requested unit (#${expected.unitIndex} from chapter ${expected.from}) does not match the outline progress (#${resolved.range.unitIndex} from chapter ${resolved.range.from}); the stale request was rejected. Start the generation again.`,
+      ))
+      return resolved
+    }
+    let unitContext: ReturnType<typeof resolveUnitContext> = null
 
     let mode: 'resume' | 'fresh' | 'batch'
     let from: number
@@ -2535,18 +2587,26 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       }
       mode = 'resume'
     } else {
-      const requested = this.options.synopsisRange ?? null
-      if (requested && (
-        !Number.isSafeInteger(requested.from) || !Number.isSafeInteger(requested.to)
-        || requested.from < 1 || requested.to > totalChapters || requested.from > requested.to
-      )) {
-        throw new Error(text(
-          `章节范围无效：必须满足 1 ≤ from ≤ to ≤ ${totalChapters}`,
-          `Invalid chapter range: expected 1 ≤ from ≤ to ≤ ${totalChapters}.`,
-        ))
+      if (unitOption) {
+        // ===== E3 逐单元批次：范围由游标决定，请求期没有 `to` =====
+        unitContext = approveUnitContext(unitOption)
+        from = unitContext.range.from
+        // `boundTo` 只参与指纹与预算核对，**不写进检查点的 `to`**：完成时按实际章数回填。
+        to = Math.min(from + unitContext.range.maxChapters - 1, totalChapters)
+      } else {
+        const requested = this.options.synopsisRange ?? null
+        if (requested && (
+          !Number.isSafeInteger(requested.from) || !Number.isSafeInteger(requested.to)
+          || requested.from < 1 || requested.to > totalChapters || requested.from > requested.to
+        )) {
+          throw new Error(text(
+            `章节范围无效：必须满足 1 ≤ from ≤ to ≤ ${totalChapters}`,
+            `Invalid chapter range: expected 1 ≤ from ≤ to ≤ ${totalChapters}.`,
+          ))
+        }
+        from = requested?.from ?? 1
+        to = requested?.to ?? totalChapters
       }
-      from = requested?.from ?? 1
-      to = requested?.to ?? totalChapters
       if (from === 1) {
         // 覆盖重写（显式发起）或首次生成。若只覆盖到一半会静默丢弃
         // 第 to+1–coveredTo 章的已确认大纲 → 拒绝，要求续批或全量重写。
@@ -2614,6 +2674,15 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       }
     }
 
+    // E3：续写路径同样要拿到游标——完成时推进游标、拼提示词都要用它。
+    if (unitOption && resumeRequested) unitContext = approveUnitContext(unitOption)
+
+    /**
+     * **中断落盘用请求范围**（单元模式 = `boundTo`，请求期指纹就是对它算的），
+     * **完成落盘才用实际章数**（回填后重算指纹）。两者混用会让第二批被误判成"源事实已变化"。
+     */
+    const interruptionRange = { from, to }
+
     // 追踪文件名要用「本批章节段」。大纲链没有 chapterNumber、模板里也没有 n/m，
     // 章节号只存在于请求的 purpose（`plot-outline:chapter:N`）——而它要等 IO 回传，
     // 首次落盘时还没有；名字一旦钉住就再也补不上（作者反馈"分不清同类之间的先后"）。
@@ -2667,6 +2736,17 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       ))
     }
 
+    if (unitContext) {
+      const unitName = unitContext.stats?.unitName ?? ''
+      const exhausted = (unitContext.stats?.remaining ?? 1) <= 0
+      callbacks.log(text(
+        `正在写【单元 ${unitContext.range.unitIndex}：${unitName}】，从第 ${from} 章起（全书 ${totalChapters} 章）`
+          + `${exhausted ? '；本卷预算已写满，超出部分只在卷末汇总' : ''}...`,
+        `Writing [Unit ${unitContext.range.unitIndex}: ${unitName}] from chapter ${from} (book total ${totalChapters})`
+          + `${exhausted ? '; this volume’s budget is used up, overruns are only reported at volume end' : ''}...`,
+      ))
+    }
+
     // 弹性配给 · 只读预估（E1 → E3 的过渡步）：在真实结构上把预算 / 进度线 / Z 打出来，
     // 先确认数值不荒谬（例如某卷 5 个单元只有 6 章预算），再动批次状态机。
     // **不注入提示词、不影响本次生成的任何行为**；结构不可解析时它自己闭嘴。
@@ -2692,7 +2772,22 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
 
     const taskPrompt = [
       promptBuilder.build(),
-      synopsisBatchInstruction(writingLanguage, from, to, totalChapters),
+      // E3：单元模式只给「单元 + 起点 + 离开状态」，不给章号区间；余量行常驻（余量为 0 时不注入，
+      // 那种情况下渲染出来就是一句"别写"，等于给章数目标）。
+      unitContext
+        ? (unitContext.stats && unitContext.stats.remaining > 0
+            ? renderUnitBudgetBlock(unitContext.stats, writingLanguage) ?? ''
+            : '')
+        : synopsisBatchInstruction(writingLanguage, from, to, totalChapters),
+      unitContext
+        ? synopsisUnitInstruction(
+            writingLanguage,
+            from,
+            unitContext.range.unitIndex,
+            unitContext.stats?.unitName ?? '',
+            totalChapters,
+          )
+        : '',
       confirmedPrefix
         ? promptLanguageText(writingLanguage, `【已完成大纲前缀】\n${confirmedPrefix}`, `[Confirmed outline prefix]\n${confirmedPrefix}`)
         : '',
@@ -2700,7 +2795,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
 
     const previousBatchPartial = mode === 'batch' && this.requireGenerationExecution().mainOwned ? { ...partial } : undefined
     if (this.requireGenerationExecution().mainOwned && !resumeRequested) {
-      await this.persistInterruptedSynopsis(projectSession, expectedProjectPath, context, '', { from, to }, factsFingerprint, effectiveStepGuidance, sourceExpected)
+      await this.persistInterruptedSynopsis(projectSession, expectedProjectPath, context, '', interruptionRange, factsFingerprint, effectiveStepGuidance, sourceExpected, unitContext?.cursor)
     }
     const stagedBatchPartial = previousBatchPartial ? { ...partial } : undefined
     const generationSeedText = mode === 'batch' && confirmedPrefix ? '' : seedText
@@ -2762,18 +2857,25 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         expectedProjectPath,
         context,
         partialBody,
-        { from, to },
+        interruptionRange,
         factsFingerprint,
         effectiveStepGuidance,
         sourceExpected,
+        unitContext?.cursor,
       )
       callbacks.log(text(
         `已完成部分（约 ${partialBody.length} 字）已保存，可点击「继续生成情节大纲」从断点续写`,
         `The completed part (about ${partialBody.length} characters) was saved. Click “Continue plot outline” to resume from the break point.`,
       ))
       throw new PlotOutlineResumeAvailableError(text(
-        `情节大纲生成在完成前中断：${cause instanceof Error ? cause.message : String(cause)}。已完成部分（约 ${partialBody.length} 字）已自动保存为不完整状态，没有白费。\n点击「继续生成情节大纲」可续写本批（第 ${from}–${to} 章）；如本批范围仍偏大，可先在「AI 生成架构」缩小每批章节数后重试。`,
-        `Plot-outline generation stopped before completing this batch: ${cause instanceof Error ? cause.message : String(cause)}. The finished part (about ${partialBody.length} characters) was saved automatically.\nClick “Continue plot outline” to finish batch chapters ${from}-${to}; if the batch is still too large, choose a smaller per-batch range in “Generate story architecture” and retry.`,
+        `情节大纲生成在完成前中断：${cause instanceof Error ? cause.message : String(cause)}。已完成部分（约 ${partialBody.length} 字）已自动保存为不完整状态，没有白费。\n`
+          + `${unitContext
+            ? `点击「继续生成情节大纲」可续写本单元（【单元 ${unitContext.range.unitIndex}】）；如本单元仍然过大，可先回到弧光结构把它拆细后重试。`
+            : `点击「继续生成情节大纲」可续写本批（第 ${from}–${interruptionRange.to} 章）；如本批范围仍偏大，可先在「AI 生成架构」缩小每批章节数后重试。`}`,
+        `Plot-outline generation stopped before completing this batch: ${cause instanceof Error ? cause.message : String(cause)}. The finished part (about ${partialBody.length} characters) was saved automatically.\n`
+          + `${unitContext
+            ? `Click “Continue plot outline” to finish this unit ([Unit ${unitContext.range.unitIndex}]); if it is still too large, split it in the arc structure and retry.`
+            : `Click “Continue plot outline” to finish batch chapters ${from}-${interruptionRange.to}; if the batch is still too large, choose a smaller per-batch range in “Generate story architecture” and retry.`}`,
       ))
     }
 
@@ -2813,11 +2915,47 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       throw new Error(text('本批没有新增情节大纲内容，已保留上一批检查点。', 'This batch added no plot-outline content; the previous checkpoint was preserved.'))
     }
 
+    // ===== E3 回填：请求期没有 `to`，实际章数从正文数出来（写超全书只 clamp、不阻断）=====
+    let unitNextCursor: SynopsisUnitCursor | null = null
+    let completedFingerprint = factsFingerprint
+    if (unitContext) {
+      const backfill = backfillUnitBatch(merged, from, totalChapters)
+      if (!backfill) throw new Error(text(
+        `本次输出没有写出从第 ${from} 章起的章节条目标题，无法确定本单元完成到哪里，结果未保存。`,
+        `The output has no chapter heading starting at chapter ${from}, so the end of this unit cannot be determined; the result was not saved.`,
+      ))
+      to = backfill.to
+      if (backfill.overflow) callbacks.log(text(
+        `本单元写过了全书末尾（写到第 ${from + backfill.actualChapters - 1} 章，全书 ${totalChapters} 章）；只记录，不阻断。`,
+        `This unit wrote past the end of the book (reached chapter ${from + backfill.actualChapters - 1} of ${totalChapters}); recorded only, not blocked.`,
+      ))
+      unitNextCursor = advanceUnitCursor(
+        parseArcStructure(sourceExpected.plotStructurePlan ?? ''),
+        totalChapters,
+        unitContext.cursor,
+        backfill.actualChapters,
+      )
+      // 完成落盘按**实际范围**重算指纹：下一批续接时用 `synopsis_range` 复算比对，
+      // 若沿用请求期的 boundTo，实际章数一偏离就会把第二批误判成"源事实已变化"。
+      completedFingerprint = synopsisInputsFingerprint(sourceExpected, effectiveStepGuidance, { from, to }, template)
+      callbacks.log(text(
+        `本单元实际写 ${backfill.actualChapters} 章（第 ${from}–${to} 章）；`
+          + `${unitNextCursor
+            ? `下一个单元：卷 ${unitNextCursor.volumeIndex} 单元 ${unitNextCursor.unitIndex}（本卷已写 ${unitNextCursor.writtenInVolume} 章）`
+            : `弧光单元已全部写完（全书计划 ${totalChapters} 章，实际到第 ${to} 章）`}`,
+        `This unit wrote ${backfill.actualChapters} chapters (${from}-${to}); `
+          + `${unitNextCursor
+            ? `next unit: volume ${unitNextCursor.volumeIndex} unit ${unitNextCursor.unitIndex} (${unitNextCursor.writtenInVolume} chapters written in this volume)`
+            : `no unit left (book planned ${totalChapters} chapters, written through chapter ${to})`}`,
+      ))
+    }
+
     // ===== 完成校验：正文必须完整覆盖本批；附带进度行时也必须与范围一致 =====
     let confirmedBody = ''
     try {
       assertPlotOutlineTitleCoverage(merged, validationSeedText, from, to, text)
-      assertPlotOutlineBatchComplete(merged, from, to, totalChapters, text)
+      // 单元模式不产出进度标记（它需要一个 `to`），跳过该断言。
+      if (!unitContext) assertPlotOutlineBatchComplete(merged, from, to, totalChapters, text)
       confirmedBody = stripPlotOutlineProgressLine(merged)
       // P12-1：结构位对账（只报告不阻断）。作者看得到「该用的格子没用完 / 不该用的提前花了」。
       const arcCoverNote = summarizeArcCoverFindings(confirmedBody, core?.plotStructurePlan, totalChapters, from, to, text)
@@ -2845,8 +2983,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     partial.synopsis_incomplete = false
     partial.synopsis_covered_to = to
     partial.synopsis_range = { from, to }
-    syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, totalChapters)
-    partial.synopsis_facts_fingerprint = factsFingerprint
+    // 单元模式：显式推进游标（`undefined` 走章号推导是旧模式的兼容路径，绝不能用于单元模式）。
+    syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, totalChapters, unitContext ? unitNextCursor : undefined)
+    partial.synopsis_facts_fingerprint = completedFingerprint
     partial.synopsis_body_hash = synopsisFactsFingerprint([confirmedBody])
     partial.synopsis_step_guidance = effectiveStepGuidance
     const dbOutlineText = renderSynopsisDbText(confirmedBody, writingLanguage, totalChapters, partial)
@@ -3123,6 +3262,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     factsFingerprint: string,
     stepGuidance: string,
     sourceExpected: ProjectCoreSynopsisExpected,
+    unitCursor?: SynopsisUnitCursor | null,
   ): Promise<void> {
     const writingLanguage = workflowWritingLanguage(context)
     const text = (zhCNText: string, enUSText: string) => workflowUiText(context, zhCNText, enUSText)
@@ -3133,7 +3273,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     partial.synopsis_incomplete = true
     partial.synopsis_covered_to = range.from - 1
     partial.synopsis_range = { from: range.from, to: range.to }
-    syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, sourceExpected.totalChapters)
+    syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, sourceExpected.totalChapters, unitCursor)
     partial.synopsis_facts_fingerprint = factsFingerprint
     partial.synopsis_body_hash = synopsisFactsFingerprint([partialText])
     partial.synopsis_step_guidance = stepGuidance
