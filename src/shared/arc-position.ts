@@ -503,6 +503,112 @@ export function arcSpanForChapters(
   })
 }
 
+/**
+ * 弹性配给：某一个单元的进度位置与三档状态（E1，2026-10-19）。
+ *
+ * 设计稿：`docs/design/architecture/unit-budget-elastic-allocation-design.md` §2。
+ * 这里**只做计算**：不读库、不改状态机、不拼提示词 —— 接入链路是 E3 的事。
+ *
+ * 三个量的口径（§2.1）：
+ * - `budget`      = 本卷计划额度，由卷权重经 `scaledBoundaries` 折算；
+ * - `plannedUsed` = 卷内按单元均分画出的进度线，到本单元开始时应已写掉的章数；
+ * - `actualUsed`  = 本卷内实际已写章数，运行时才知道，由调用方传入。
+ *
+ * 均分**只用来画参照线**，不约束任何单元写多少章 —— 这是它与"配比制"的分界。
+ */
+export interface UnitBudgetRef {
+  /** 卷序号，**1 起**（与 `ArcSpan.majorIndex` 一致） */
+  majorIndex: number
+  /** 单元序号，**1 起**（与 `ArcSpan.midIndex` 一致） */
+  midIndex: number
+  /** 本卷内已生成的章数；缺省或非法值按 0（单元 1 尚未开始）处理 */
+  actualUsed?: number
+}
+
+/**
+ * 三档状态。中文对应见设计稿 §2.3：
+ * - `tight`    = 不足（本卷超前消耗，余量吃紧）→ 收紧写法
+ * - `balanced` = 均衡（贴着进度线）→ 不额外干预
+ * - `ample`    = 充足（本卷落后，还有余量）→ 扩充写法
+ */
+export type UnitBudgetState = 'tight' | 'balanced' | 'ample'
+
+export interface UnitBudgetProgress {
+  majorIndex: number
+  midIndex: number
+  /** 本卷内的单元个数（m），用于对账与调试 */
+  midCount: number
+  /** 本卷计划额度（章） */
+  budget: number
+  /** 按进度线，本单元开始时应已写掉的章数 */
+  plannedUsed: number
+  /** 本卷内实际已写章数 */
+  actualUsed: number
+  /** 偏差率 = (actualUsed − plannedUsed) / budget */
+  z: number
+  state: UnitBudgetState
+}
+
+/** 三档阈值（§2.3）：`Z > +10%` 为不足，`Z < −10%` 为充足。 */
+export const UNIT_BUDGET_TOLERANCE = 0.1
+
+/**
+ * 由 Z 判档。**边界归中**：正好踩在 ±10% 上算「均衡」——
+ * 否则浮点误差（0.1 常常算成 0.09999999999999998）会把贴线的单元随机推进某一档。
+ */
+export function unitBudgetStateOf(z: number, tolerance: number = UNIT_BUDGET_TOLERANCE): UnitBudgetState {
+  if (!Number.isFinite(z)) return 'balanced'
+  if (z > tolerance + 1e-9) return 'tight'
+  if (z < -tolerance - 1e-9) return 'ample'
+  return 'balanced'
+}
+
+/**
+ * 推算某单元的配给进度。结构不可解析、序号越界、额度非正时返回 `null`（fail-open）——
+ * 调用方据此决定"不注入状态块"，而不是拿到一组无意义的数字继续渲染。
+ */
+export function planProgress(
+  parsed: ParsedArcStructure | null,
+  totalChapters: number,
+  unitRef: UnitBudgetRef | null | undefined,
+): UnitBudgetProgress | null {
+  if (!parsed || parsed.majors.length === 0) return null
+  if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return null
+  if (!unitRef) return null
+
+  const { majorIndex, midIndex } = unitRef
+  if (!Number.isSafeInteger(majorIndex) || !Number.isSafeInteger(midIndex)) return null
+  if (majorIndex < 1 || majorIndex > parsed.majors.length) return null
+
+  // 与弧位块用同一份折算（scaledBoundaries），否则"预算"和"区间"会各说各话。
+  const majorBounds = scaledBoundaries(parsed.majors.map(item => arcWeight(item.chapters)), totalChapters)
+  const budget = majorBounds[majorIndex]! - majorBounds[majorIndex - 1]!
+  if (!Number.isFinite(budget) || budget <= 0) return null
+
+  const major = parsed.majors[majorIndex - 1]!
+  const midCount = major.mids.length
+  if (midCount < 1) return null
+  if (midIndex < 1 || midIndex > midCount) return null
+
+  // 进度线：卷内按单元均分；j = 1 时为 0（本单元尚未开始）。
+  const plannedUsed = (budget * (midIndex - 1)) / midCount
+
+  const rawActual = unitRef.actualUsed
+  const actualUsed = typeof rawActual === 'number' && Number.isFinite(rawActual) && rawActual > 0 ? rawActual : 0
+  const z = (actualUsed - plannedUsed) / budget
+
+  return Object.freeze({
+    majorIndex,
+    midIndex,
+    midCount,
+    budget,
+    plannedUsed,
+    actualUsed,
+    z,
+    state: unitBudgetStateOf(z),
+  })
+}
+
 /** 结构里是否声明了与全书章数不同的合计（用于在注入文本里声明折算）。 */
 export function arcStructureNeedsRescale(parsed: ParsedArcStructure | null, totalChapters: number): boolean {
   return !!parsed && parsed.declaredChapters && parsed.declaredTotal > 0 && parsed.declaredTotal !== totalChapters

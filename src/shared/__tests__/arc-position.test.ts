@@ -5,9 +5,12 @@ import {
   arcStructureNeedsRescale,
   isTwoLevelArcStructure,
   parseArcStructure,
+  planProgress,
   projectArcStructureText,
   renderArcPositionBlock,
   splitMinorSteps,
+  UNIT_BUDGET_TOLERANCE,
+  unitBudgetStateOf,
   withArcPositionGuide,
   withProjectedArcGuide,
 } from '../arc-position'
@@ -700,5 +703,82 @@ describe('v7 单元跨度：切少了会提示，但不拦', () => {
 
   it('不传总章数时不做跨度检查（旧调用点行为不变）', () => {
     expect(auditArcDensity(parseArcStructure(V7_PLAN)).map(f => f.code)).not.toContain('UNIT_TOO_LONG')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// E1（2026-10-19）：弹性配给 —— planProgress 纯函数
+// 设计稿 unit-budget-elastic-allocation-design.md §2 / §8 验收第 1 条
+// ─────────────────────────────────────────────────────────────────────────────
+describe('planProgress：卷预算、进度线与三档', () => {
+  const parsed = parseArcStructure(V7_PLAN)!
+
+  it('卷一 / 单元一：j=1 时进度线为 0，预算按卷权重折算', () => {
+    const p = planProgress(parsed, 60, { majorIndex: 1, midIndex: 1 })!
+    expect(p).not.toBeNull()
+    expect(p.budget).toBe(30) // 两卷等权 → 60 / 2
+    expect(p.midCount).toBe(2)
+    expect(p.plannedUsed).toBe(0)
+    expect(p.actualUsed).toBe(0)
+    expect(p.z).toBe(0)
+    expect(p.state).toBe('balanced')
+  })
+
+  it('卷一 / 单元二：进度线 = budget × (j−1) / m', () => {
+    const p = planProgress(parsed, 60, { majorIndex: 1, midIndex: 2 })!
+    expect(p.plannedUsed).toBe(15) // 30 × 1 / 2
+  })
+
+  it('三档边界：正好 ±10% 归「均衡」，越过去才换档', () => {
+    const at = (actualUsed: number) => planProgress(parsed, 60, { majorIndex: 1, midIndex: 2, actualUsed })!
+
+    expect(at(15).z).toBe(0)
+    expect(at(15).state).toBe('balanced')
+    expect(at(18).z).toBeCloseTo(0.1, 10)
+    expect(at(18).state).toBe('balanced') // +10% 恰好在线上
+    expect(at(19).state).toBe('tight') // +13.3%
+    expect(at(12).z).toBeCloseTo(-0.1, 10)
+    expect(at(12).state).toBe('balanced') // −10% 恰好在线上
+    expect(at(11).state).toBe('ample') // −13.3%
+  })
+
+  it('卷内只有 1 个单元时不除零，进度线为 0', () => {
+    const p = planProgress(parsed, 60, { majorIndex: 2, midIndex: 1, actualUsed: 30 })!
+    expect(p.midCount).toBe(1)
+    expect(p.plannedUsed).toBe(0)
+    expect(p.z).toBe(1)
+    expect(p.state).toBe('tight')
+  })
+
+  it('预算与弧位块同源：声明 195 章折算到 845 章时，大弧一预算 433', () => {
+    const p = planProgress(parseArcStructure(PLAN), 845, { majorIndex: 1, midIndex: 1 })!
+    expect(p.budget).toBe(433)
+  })
+
+  it('越界与非法输入一律返回 null（fail-open，调用方据此不注入）', () => {
+    expect(planProgress(parsed, 60, { majorIndex: 3, midIndex: 1 })).toBeNull() // 卷越界
+    expect(planProgress(parsed, 60, { majorIndex: 1, midIndex: 3 })).toBeNull() // 单元越界
+    expect(planProgress(parsed, 60, { majorIndex: 0, midIndex: 1 })).toBeNull() // 序号 0 起不合法
+    expect(planProgress(parsed, 0, { majorIndex: 1, midIndex: 1 })).toBeNull()
+    expect(planProgress(parsed, 60, null)).toBeNull()
+    expect(planProgress(null, 60, { majorIndex: 1, midIndex: 1 })).toBeNull()
+  })
+
+  it('actualUsed 非法值按 0 处理，不把 NaN 传下去', () => {
+    const p = planProgress(parsed, 60, { majorIndex: 1, midIndex: 1, actualUsed: Number.NaN })!
+    expect(p.actualUsed).toBe(0)
+    expect(p.state).toBe('balanced')
+  })
+})
+
+describe('unitBudgetStateOf：阈值边界', () => {
+  it('±10% 含在「均衡」内，且容差能吃掉浮点噪声', () => {
+    expect(unitBudgetStateOf(0)).toBe('balanced')
+    expect(unitBudgetStateOf(UNIT_BUDGET_TOLERANCE)).toBe('balanced')
+    expect(unitBudgetStateOf(-UNIT_BUDGET_TOLERANCE)).toBe('balanced')
+    expect(unitBudgetStateOf(0.1 + 1e-12)).toBe('balanced') // 浮点噪声不算越界
+    expect(unitBudgetStateOf(0.1001)).toBe('tight')
+    expect(unitBudgetStateOf(-0.1001)).toBe('ample')
+    expect(unitBudgetStateOf(Number.NaN)).toBe('balanced')
   })
 })
