@@ -17,7 +17,9 @@ import { toast } from '../ui/Toast'
 import { CharacterCardImportButton } from '../characters/CharacterCardImportButton'
 import CodeMirrorEditor from './CodeMirrorEditor'
 import ArcStructureTree, { readArcTreeState, writeArcTreeState } from './ArcStructureTree'
+import OutlineTreePanel, { readOutlineTreeState, writeOutlineTreeState, type OutlineTreePanelState } from './OutlineTreePanel'
 import { buildArcTree } from '../../shared/arc-tree'
+import { buildOutlineTree } from '../../shared/outline-tree'
 import { SaveFeedback, type SaveOutcome } from './save-feedback'
 import { useProjectStore } from '../../stores/project-store'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -128,14 +130,35 @@ function ArchFileViewerSession({
    * 不这么做的话，作者在小说设定里改了故事结构，这里仍显示旧文案。
    */
   const [synopsisStructureDesc, setSynopsisStructureDesc] = useState<{ zh: string; en: string } | null>(null)
+  /**
+   * 大纲三层树需要的两个**非本文档**输入：
+   * - `plotStructurePlan`：卷/单元结构的原文（大纲文件里没有它）；
+   * - `totalChapters`：全书总章数，`arcSpanForChapters` 折算章→单元时必须有分母。
+   * 两者都只在「情节大纲」这一步取。
+   */
+  const [outlineArcPlan, setOutlineArcPlan] = useState('')
+  const [outlineTotalChapters, setOutlineTotalChapters] = useState(0)
   useEffect(() => {
-    if (stepKey !== 'synopsis') { setSynopsisStructureDesc(null); return }
+    if (stepKey !== 'synopsis') {
+      setSynopsisStructureDesc(null)
+      setOutlineArcPlan('')
+      setOutlineTotalChapters(0)
+      return
+    }
     const session = captureProjectSession(currentProject)
-    if (!session || !isProjectSessionPath(session, projectKey)) { setSynopsisStructureDesc(null); return }
+    if (!session || !isProjectSessionPath(session, projectKey)) {
+      setSynopsisStructureDesc(null)
+      setOutlineArcPlan('')
+      setOutlineTotalChapters(0)
+      return
+    }
     let disposed = false
     void ipc.invokeWithProjectSession(session, 'db:project-core-get', session.projectPath)
       .then(core => {
         if (disposed || !isProjectSessionCurrent(session)) return
+        setOutlineArcPlan(String(core?.plotStructurePlan ?? ''))
+        const chapters = Number(core?.totalChapters)
+        setOutlineTotalChapters(Number.isSafeInteger(chapters) && chapters > 0 ? chapters : 0)
         if (String(core?.plotStructurePlan ?? '').trim().length > 50) {
           setSynopsisStructureDesc({
             zh: '按本书自定义「卷 / 单元结构」展开',
@@ -148,7 +171,12 @@ function ArchFileViewerSession({
         const en = localizeNovelConfigFacts({ plotStructure: structure }, 'en-US').plotStructure
         setSynopsisStructureDesc(zh && en ? { zh: `按「${zh}」展开`, en: `Expanded from “${en}”` } : null)
       })
-      .catch(() => { if (!disposed) setSynopsisStructureDesc(null) })
+      .catch(() => {
+        if (disposed) return
+        setSynopsisStructureDesc(null)
+        setOutlineArcPlan('')
+        setOutlineTotalChapters(0)
+      })
     return () => { disposed = true }
   }, [stepKey, currentProject, projectKey])
   const [recovery, setRecovery] = useState(recoveryTab?.planningRecovery)
@@ -237,6 +265,42 @@ function ArchFileViewerSession({
   const expandAllVolumes = () => patchTreeState({ expanded: (arcTree?.volumes ?? []).map(volume => volume.index) })
   const collapseAllVolumes = () => patchTreeState({ expanded: [] })
   const jumpToLine = (line: number) => setRevealLine({ line, nonce: Date.now() })
+
+  // ===== E4j-4：情节大纲的 卷 / 单元 / 章 三层树 =====
+  // 只在大纲这一步显示，且必须**同时**拿到卷单元结构与全书总章数（缺一个就无法折算归属）。
+  const showOutlineTree = stepKey === 'synopsis' && !isCharacterProjection
+  const outlineTree = useMemo(
+    () => (showOutlineTree ? buildOutlineTree(outlineArcPlan, editorContent, outlineTotalChapters) : null),
+    [showOutlineTree, outlineArcPlan, editorContent, outlineTotalChapters],
+  )
+  const [outlineTreeState, setOutlineTreeState] = useState<OutlineTreePanelState>(
+    () => (showOutlineTree ? readOutlineTreeState(projectKey, filePath) : { pinned: false, expanded: [] }),
+  )
+  const [outlineTreeOpen, setOutlineTreeOpen] = useState(false)
+  const patchOutlineTreeState = (next: { pinned?: boolean; expanded?: readonly string[] }) => {
+    setOutlineTreeState(previous => {
+      const merged = { pinned: next.pinned ?? previous.pinned, expanded: next.expanded ?? previous.expanded }
+      writeOutlineTreeState(projectKey, filePath, merged)
+      return merged
+    })
+  }
+  const toggleOutlineNode = (key: string) => {
+    patchOutlineTreeState({
+      expanded: outlineTreeState.expanded.includes(key)
+        ? outlineTreeState.expanded.filter(item => item !== key)
+        : [...outlineTreeState.expanded, key],
+    })
+  }
+  const allOutlineKeys = useMemo(() => {
+    const keys: string[] = []
+    for (const volume of outlineTree?.volumes ?? []) {
+      keys.push(`v:${volume.index}`)
+      for (const unit of volume.units) keys.push(`v:${volume.index}:u:${unit.index}`)
+    }
+    return keys
+  }, [outlineTree])
+  const expandAllOutlineNodes = () => patchOutlineTreeState({ expanded: allOutlineKeys })
+  const collapseAllOutlineNodes = () => patchOutlineTreeState({ expanded: [] })
 
   /**
    * 作者定调（2026-10-11）：大纲先出、角色随后补。大纲已完成、而作者还没处理过
@@ -739,6 +803,28 @@ function ArchFileViewerSession({
             </Button>
           )}
 
+          {/* 大纲目录（E4j-4）：只在情节大纲页出现 */}
+          {showOutlineTree && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (outlineTreeState.pinned) {
+                  patchOutlineTreeState({ pinned: false })
+                  setOutlineTreeOpen(false)
+                  return
+                }
+                setOutlineTreeOpen(open => !open)
+              }}
+              title={outlineTreeState.pinned
+                ? text('取消固定并收起大纲目录', 'Unpin and hide the outline contents')
+                : outlineTreeOpen ? text('收起大纲目录', 'Hide outline contents') : text('大纲目录（卷 / 单元 / 章）', 'Outline contents (volume / unit / chapter)')}
+              aria-pressed={outlineTreeState.pinned || outlineTreeOpen}
+            >
+              <ListTree size={13} style={outlineTreeOpen || outlineTreeState.pinned ? { color: 'var(--color-accent)' } : undefined} />
+            </Button>
+          )}
+
           {/* 刷新按钮 */}
           <Button
             variant="ghost"
@@ -946,6 +1032,20 @@ function ArchFileViewerSession({
             />
           </div>
         )}
+        {showOutlineTree && outlineTreeState.pinned && (
+          <div className="w-64 flex-shrink-0 h-full">
+            <OutlineTreePanel
+              tree={outlineTree}
+              onJumpLine={jumpToLine}
+              pinned={outlineTreeState.pinned}
+              expanded={outlineTreeState.expanded}
+              onTogglePin={() => patchOutlineTreeState({ pinned: false })}
+              onToggleNode={toggleOutlineNode}
+              onExpandAll={expandAllOutlineNodes}
+              onCollapseAll={collapseAllOutlineNodes}
+            />
+          </div>
+        )}
         <div className="flex-1 min-w-0 relative overflow-hidden">
           <CodeMirrorEditor
             mode="document"
@@ -979,6 +1079,24 @@ function ArchFileViewerSession({
                 onExpandAll={expandAllVolumes}
                 onCollapseAll={collapseAllVolumes}
                 onClose={() => setTreeOpen(false)}
+              />
+            </div>
+          )}
+          {showOutlineTree && !outlineTreeState.pinned && outlineTreeOpen && (
+            <div
+              className="absolute left-0 top-0 bottom-0 w-64 z-20 shadow-lg"
+              style={{ backgroundColor: 'var(--color-editor-bg)' }}
+            >
+              <OutlineTreePanel
+                tree={outlineTree}
+                onJumpLine={jumpToLine}
+                pinned={outlineTreeState.pinned}
+                expanded={outlineTreeState.expanded}
+                onTogglePin={() => patchOutlineTreeState({ pinned: true })}
+                onToggleNode={toggleOutlineNode}
+                onExpandAll={expandAllOutlineNodes}
+                onCollapseAll={collapseAllOutlineNodes}
+                onClose={() => setOutlineTreeOpen(false)}
               />
             </div>
           )}

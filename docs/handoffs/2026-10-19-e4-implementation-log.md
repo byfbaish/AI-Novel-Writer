@@ -39,6 +39,8 @@
 | T9 | E4h：按卷冻结（作者触发） | ⬜ |
 | T10 | E4i：全量清除补弧光 | 🟡 代码已改，测试待原生模块重建 |
 | T11 | E4e：卷末快照（handoff + anchor）+ M10 | ⬜ |
+| T12 | E4j-2b：Tab 进度保留**全量覆盖**（所有 Tab 兜底 memory key + 内容稳定后重试恢复） | ✅ |
+| T13 | E4j-4：**情节大纲三层树**（卷/单元/章 + 归属来源标记） | ✅ |
 
 ---
 
@@ -289,3 +291,105 @@ node .tmp-run-tests.mjs <test-file> [...]
 - 与**文本折叠**共享状态（设计稿 §7A.1 要求「树节点折叠 + 文本折叠共享同一个折叠状态」）；
   当前只做了树的折叠，文本侧仍是整篇（CodeMirror 折叠需要 `foldGutter` 或自定义 facade）。
 - 窄屏 pin 后正文 <600px 时自动退回抽屉（设计稿 §7A.1b 提到，未实现）。
+
+---
+
+### 2026-10-19 · T12 E4j-2b：切 Tab 保留浏览进度**全量覆盖**（完成）
+
+**作者指出的缺口**
+
+> 「T7 的 Tab 进度保留只做成了审稿链，不是全部——卷单元和情节大纲之间切换，是没有进度保留」
+
+T7 只给 `ArchFileViewer`（卷单元页）与 `ReviewReport`（审稿报告）传了 `scrollMemoryKey`，
+**其余所有 Tab 一个都没传**，于是它们根本不会 remember/restore。
+
+**根因（两层，缺一不可）**
+
+| 层 | 现象 | 根因 |
+|---|---|---|
+| 1. key | 大多数 Tab 压根不记 | `scrollMemoryKey` 是可选 prop，只有两个调用点传了 |
+| 2. 时机 | 记了也白记 | 恢复只跑**一次** `requestAnimationFrame`；而 `ArchFileViewer` 切 Tab 时是**异步**先清空再 `setEditorContent`，CodeMirror 重建文档后 `scrollTop` 被重置为 0——那一帧 restore 早就跑完了 |
+
+**做了什么**
+
+| 文件 | 改动 |
+|---|---|
+| `CodeMirrorEditor.tsx` | `scrollMemoryKey` → `scrollMemoryKeyProp`，并**所有 Tab 兜底**：`scrollMemoryKeyProp ?? (filePath ? "doc:" + filePath : undefined)`——DraftEditor / ChapterCardEditor / 正文包装层只要给了 `filePath` 就自动获得记忆 |
+| `CodeMirrorEditor.tsx` | 恢复逻辑从「一次 rAF」改成「**重试到内容稳定**」：连续 2 帧 `view.state.doc.length` 不变才 `restoreEditorScroll`，最多约 20 帧 |
+
+**关键决策**
+
+| 决策 | 理由 |
+|---|---|
+| 兜底 key 用 `doc:<filePath>` 而非 `tabId` | 同一份文档可能在不同 tab 打开；按文档记比按 tab 记更符合「回到我上次看的地方」 |
+| 恢复要「内容稳定」而非「挂载即可」 | 内容是被异步灌进来的，挂载瞬间 `doc.length === 0`，此时 restore 一定失败 |
+| 最多 20 帧就放弃 | 文档超过 ~330ms 还没稳定，说明不是正常灌内容，再等只是浪费 |
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| `editor-scroll-memory.test.ts` | ✅ 9 passed |
+
+**遗留**
+
+- 真正的「切 Tab 不卸载实例」（LRU 4 实例）仍未做——本任务是**墓碑路径的全量覆盖**，
+  实例保留涉及 `EditorArea` 只渲染当前 tab 的结构性改动，按 §7A.3 单独立项。
+
+---
+
+### 2026-10-19 · T13 E4j-4：情节大纲三层树（完成）
+
+**作者提出的问题**
+
+> 「现在的情节大纲生成以后，是不是跟卷纲之间的关联性丢失了？也就是说，我随便挑一章，问你它属于哪一卷、哪一单元，还能找出这种关系么？……大纲的内容长度将会比卷纲的长度还要长，那么卷纲都有一个树形目录，大纲更有理由增加一个了。」
+
+**先答问题：关联是「算出来的」，不是「存下来的」**
+
+- 大纲正文里**没有**归属字段，每章只有「覆盖：」行（写一次性转折位 ID 或「无」）；
+- 真实项目 10 章里 **8 章写「覆盖：无」**，仅 ch3=`M1-1/逼法`、ch9=`M1-2/逼法`；
+- 归属由 `arcSpanForChapters`（卷/单元区间**按计划等分折算**）反推 ⇒ **某单元写超，后面整体错位**。
+
+⇒ 所以树上必须**显式暴露「这个归属是折算的」**，否则作者会把它当成事实去校对。
+
+**做了什么**
+
+| 文件 | 改动 |
+|---|---|
+| `src/shared/outline-tree.ts`（新增，153 行） | `buildOutlineTree(plan, synopsis, totalChapters)` → `OutlineTree{ volumes[].units[].chapters[], twoLevel, computedCount, mismatchCount }`；每章带 `source: declared / computed / mismatch`、`declaredId`、`line`、`title`；`unitIndexFromCoverId("M1-2/逼法")` → 2 |
+| `src/shared/__tests__/outline-tree.test.ts`（新增） | 7 条：声明/折算/不一致三态、行号、缺参 fail-open、章数缺失 |
+| `src/components/editor/OutlineTreePanel.tsx`（新增） | 三层树 UI + `readOutlineTreeState`/`writeOutlineTreeState`（sessionStorage，独立 key `outline-tree:`） |
+| `src/components/editor/ArchFileViewer.tsx` | 取 `plotStructurePlan` + `totalChapters`（复用已有的 `db:project-core-get` effect）；工具栏「大纲目录」按钮；pin 左树右文 / 浮层抽屉；点击章节点 → `revealLine` 跳行 |
+
+**关键口径**
+
+| 口径 | 做法 |
+|---|---|
+| **数据来源是两份文档** | 大纲文件里没有卷单元结构 ⇒ 必须从 `project_core.plot_structure_plan` 取；`arcSpanForChapters` 还要 `totalChapters` 当分母 |
+| 归属判定优先级 | 有「覆盖：<本卷某个单元>」⇒ 用它并比对折算结果；否则用折算值 |
+| 跨卷声明 / 序号越界 | 一律按折算处理（比对无意义） |
+| 解析不出章级条目 | 返回 `null`，面板显示「大纲还没有章级条目」而不是半棵树 |
+| 视图偏好**与卷纲树分开存** | 节点键不同（卷纲按卷序号，大纲 `v:1` / `v:1:u:2`），混存会互相污染 |
+| 章节点三态 | `declared` 无标记 / `computed` 灰空心圈 / `mismatch` 琥珀警示点——**漂移的早期信号** |
+
+**与卷纲树的差异（有意为之）**
+
+| 项 | 卷纲树 `ArcStructureTree` | 大纲树 `OutlineTreePanel` |
+|---|---|---|
+| 层级 | 卷 → 单元 | 卷 → 单元 → **章** |
+| 节点行号来自 | 独立扫 title 行 | 章：`## 第 N 章` 标题行 |
+| 额外信息 | 单元徽标（交手/档位） | **归属来源标记** + 顶部汇总（N 章折算 / N 章不一致） |
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| `outline-tree.test.ts` + `arc-tree.test.ts` | ✅ **15 passed** |
+| 视觉验证 | ⚠️ **未做**——需在 `pnpm dev` 里看抽屉/pin/跳转 |
+
+**已知待办**
+
+- 章节点点击跳转只做「滚到章标题」，没做「高亮整章范围」；
+- 若作者手工在大纲里插入/删除章，`line` 会立即失效（重新构建即可，因为树是纯函数派生）。
