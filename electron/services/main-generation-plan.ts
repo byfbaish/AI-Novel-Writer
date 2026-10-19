@@ -9,7 +9,7 @@ import type { LLMGenerateOptions } from '../llm/provider.interface'
 import type { CreativeStrategy, GenerationReasoningStage } from '../../src/shared/reasoning-types'
 import { CREATIVE_STRATEGIES } from '../../src/shared/reasoning-types'
 import { isDeepStrictEqual } from 'node:util'
-import type { ArchitecturePlanningIntent, BeginGenerationRequest, PlanningGenerationScope } from '../../src/shared/generation-owner-contract'
+import type { ArchitecturePlanningIntent, ArchitectureUnitRange, BeginGenerationRequest, PlanningGenerationScope } from '../../src/shared/generation-owner-contract'
 import { ARCHITECTURE_PRIOR_STEPS, architectureStepForOperation, type ArchitecturePriorStep } from '../../src/shared/generation-owner-contract'
 import { planBlueprintGenerationCost } from '../../src/services/workflows/blueprint-batch-policy'
 import { PLOT_OUTLINE_CONTENT, PLOT_OUTLINE_PROTOCOL, assertPlanningActionRange, parsePlanningTargetUnits, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../src/shared/plot-outline-contract'
@@ -61,6 +61,23 @@ function planningRange(from: unknown, to: unknown): { from: number; to: number }
   return Object.freeze({ from, to })
 }
 
+/**
+ * E3 逐单元批次（2026-10-20）：与 `synopsisRange` 互斥；`maxChapters` 是名义上界，
+ * 只用于校验与参照（预算按 `volumeRemaining` 冻结，见 `newMainGenerationPolicy`）。
+ */
+function architectureUnitRange(value: unknown): ArchitectureUnitRange {
+  const unit = planningRecord(value)
+  const { from, unitIndex, maxChapters, volumeRemaining } = unit
+  if (typeof from !== 'number' || typeof unitIndex !== 'number'
+    || typeof maxChapters !== 'number' || typeof volumeRemaining !== 'number'
+    || !Number.isSafeInteger(from) || from < 1
+    || !Number.isSafeInteger(unitIndex) || unitIndex < 1
+    || !Number.isSafeInteger(maxChapters) || maxChapters < 1
+    || !Number.isSafeInteger(volumeRemaining) || volumeRemaining < 1
+    || maxChapters > volumeRemaining) throw new Error('GENERATION_PLANNING_INTENT_INVALID')
+  return Object.freeze({ from, unitIndex, maxChapters, volumeRemaining })
+}
+
 function architectureIntent(value: unknown): ArchitecturePlanningIntent {
   const record = planningRecord(value)
   const order = ARCHITECTURE_PRIOR_STEPS
@@ -69,10 +86,19 @@ function architectureIntent(value: unknown): ArchitecturePlanningIntent {
     || !isDeepStrictEqual(steps, order.filter(step => steps.includes(step))))
     throw new Error('GENERATION_PLANNING_INTENT_INVALID')
   const range = record.synopsisRange === null ? null : planningRecord(record.synopsisRange)
+  const hasUnit = record.synopsisUnit !== undefined && record.synopsisUnit !== null
+  const unit = hasUnit ? architectureUnitRange(record.synopsisUnit) : null
+  if (range !== null && unit !== null) throw new Error('GENERATION_PLANNING_INTENT_INVALID')
   const intent = { version: 'architecture-action-v1' as const,
     priorSteps: order.filter(step => steps.includes(step)),
-    synopsisRange: range === null ? null : planningRange(range.from, range.to) }
-  if (!isDeepStrictEqual(value, intent) || !intent.priorSteps.length && !intent.synopsisRange) throw new Error('GENERATION_PLANNING_INTENT_INVALID')
+    synopsisRange: range === null ? null : planningRange(range.from, range.to),
+    ...(unit ? { synopsisUnit: unit } : {}) }
+  // 归一化后逐字段比对：旧调用方不带 `synopsisUnit` 键，新调用方带对象；显式 null 视同缺省。
+  const normalized: Record<string, unknown> = { ...record }
+  if (hasUnit) normalized.synopsisUnit = unit
+  else delete normalized.synopsisUnit
+  if (!isDeepStrictEqual(normalized, intent)
+    || (!intent.priorSteps.length && !intent.synopsisRange && !intent.synopsisUnit)) throw new Error('GENERATION_PLANNING_INTENT_INVALID')
   return Object.freeze({ ...intent, priorSteps: Object.freeze(intent.priorSteps) })
 }
 
@@ -98,10 +124,16 @@ export function planningGenerationScope(selection: Pick<BeginGenerationRequest, 
   const intent = architectureIntent(provided ?? { version: 'architecture-action-v1',
     priorSteps: step === 'synopsis' ? [] : [step],
     synopsisRange: step === 'synopsis' ? { from: 1, to: Math.min(Number(config?.totalChapters), DEFAULT_PLANNING_ACTION_CHAPTERS) } : null })
-  if (step === 'synopsis' ? !intent.synopsisRange : !intent.priorSteps.includes(step)) throw new Error('GENERATION_PLANNING_OPERATION_NOT_SELECTED')
+  if (step === 'synopsis' ? !intent.synopsisRange && !intent.synopsisUnit : !intent.priorSteps.includes(step)) throw new Error('GENERATION_PLANNING_OPERATION_NOT_SELECTED')
   if (intent.synopsisRange) {
     planningRange(intent.synopsisRange.to, config?.totalChapters)
     assertPlanningActionRange(intent.synopsisRange)
+  } else if (intent.synopsisUnit) {
+    // 单元批次没有 `to`：只校验「本章 + 名义上界不越过全书」。
+    const total = config?.totalChapters
+    const last = intent.synopsisUnit.from + intent.synopsisUnit.maxChapters - 1
+    if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 1 || last > total)
+      throw new Error('GENERATION_PLANNING_INTENT_INVALID')
   }
   return Object.freeze({ kind: 'architecture', intent, outlineProtocol: PLOT_OUTLINE_PROTOCOL, outlineContent: PLOT_OUTLINE_CONTENT })
 }
@@ -137,7 +169,10 @@ export function newMainGenerationPolicy(selection: BeginGenerationRequest, model
     : planning?.kind === 'directory'
     ? planBlueprintGenerationCost(planning.requestedRange.endChapter - planning.requestedRange.startChapter + 1).recoveryCallBound
     : planning?.kind === 'architecture' ? planning.intent.priorSteps.reduce((sum, step) => sum + architecturePriorStepRequests(step), 0)
-      + (planning.intent.synopsisRange ? 2 * (planning.intent.synopsisRange.to - planning.intent.synopsisRange.from + 1) : 0)
+      + (planning.intent.synopsisUnit
+        // E3：逐单元批次的根预算按「本卷剩余章数」冻结（不按 maxChapters × 1.1）。
+        ? 2 * planning.intent.synopsisUnit.volumeRemaining
+        : planning.intent.synopsisRange ? 2 * (planning.intent.synopsisRange.to - planning.intent.synopsisRange.from + 1) : 0)
     : MAIN_GENERATION_POLICY.budget.maxPhysicalRequests
   const liability = Math.max(...(['drafting', 'planning', 'review', 'general'] as const).flatMap(stage =>
     CREATIVE_STRATEGIES.map(strategy => resolvePhysicalLiability(model, strategy, stage).reservationCeiling)))
