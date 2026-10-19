@@ -1,6 +1,6 @@
 import type { ProjectCoreRow, ProjectCoreSynopsisExpected } from '../../electron/repositories/project-core-repository'
 import type { PhysicalAttempt } from './generation-contract'
-import type { VisibleCompositionReceipt } from './generation-owner-contract'
+import type { VisibleCompositionReceipt, ArchitectureUnitRange } from './generation-owner-contract'
 import type { MainGenerationRunHandle } from '../services/generation/generation-runtime'
 import type { WritingLanguage } from './writing-language'
 
@@ -88,20 +88,75 @@ function record(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value)
 }
 
+/** 大纲协议内容声明必须与常量逐项一致（旧检查点缺项 ⇒ 失效，而不是猜）。 */
+function assertOutlineContent(outlineContent: unknown): void {
+  if (!record(outlineContent)
+    || Object.keys(outlineContent).length !== Object.keys(PLOT_OUTLINE_CONTENT).length
+    || Object.entries(PLOT_OUTLINE_CONTENT).some(([key, value]) => outlineContent[key] !== value)) throw new Error('GENERATION_PLOT_OUTLINE_POLICY_INVALID')
+}
+
+/**
+ * E3 逐单元批次的策略形态。类型与 `ArchitectureUnitRange` 同源（只此一份定义）。
+ */
+export type PlotOutlineUnitRange = ArchitectureUnitRange
+
 export function plotOutlinePolicy(manifest: Readonly<Record<string, unknown>>): { range: PlotOutlineRange; content: typeof PLOT_OUTLINE_CONTENT } | null {
   if (manifest.operation !== 'generate-plot-outline') return null
   const policy = manifest.policy
   if (!record(policy) || !record(policy.planning)
     || policy.planning.kind !== 'architecture' || policy.planning.outlineProtocol !== PLOT_OUTLINE_PROTOCOL) return null
   const { intent, outlineContent } = policy.planning
-  if (!record(intent) || !record(intent.synopsisRange) || !record(outlineContent)
-    || Object.keys(outlineContent).length !== Object.keys(PLOT_OUTLINE_CONTENT).length
-    || Object.entries(PLOT_OUTLINE_CONTENT).some(([key, value]) => outlineContent[key] !== value)) throw new Error('GENERATION_PLOT_OUTLINE_POLICY_INVALID')
+  if (!record(intent)) throw new Error('GENERATION_PLOT_OUTLINE_POLICY_INVALID')
+  assertOutlineContent(outlineContent)
+  // E3：逐单元批次请求期没有 `to`，由 `plotOutlineUnitPolicy` 处理；两种形态互斥。
+  // 调用点在 T4 接入前必须先路由，否则这里会静默返回 null（而不是把无 `to` 的批次当成非法）。
+  if (record(intent.synopsisUnit)) {
+    if (record(intent.synopsisRange)) throw new Error('GENERATION_PLOT_OUTLINE_POLICY_INVALID')
+    return null
+  }
+  if (!record(intent.synopsisRange)) throw new Error('GENERATION_PLOT_OUTLINE_POLICY_INVALID')
   const { from, to } = intent.synopsisRange
   if (typeof from !== 'number' || typeof to !== 'number' || !Number.isSafeInteger(from) || !Number.isSafeInteger(to)
     || from < 1 || to < from || !record(policy.budget) || typeof policy.budget.maxPhysicalRequests !== 'number'
     || to - from + 1 > policy.budget.maxPhysicalRequests) throw new Error('GENERATION_PLOT_OUTLINE_POLICY_INVALID')
   return { range: { from, to }, content: PLOT_OUTLINE_CONTENT }
+}
+
+/**
+ * E3 逐单元批次（2026-10-20）：校验「无 `to`」的请求形态。
+ *
+ * 非单元模式返回 `null`（交给 `plotOutlinePolicy`）；字段非法、与 `synopsisRange` 并存、
+ * 或 `maxChapters` 超过预算上限时抛 `GENERATION_PLOT_OUTLINE_POLICY_INVALID`。
+ *
+ * 注意：`maxChapters` 是**名义上界**，只用于预算冻结与画参照线；实际章数允许超出
+ * （±10% 是信号带，不是产出接受带，见 volume-quota §6.2 / §7.1）。
+ */
+export function plotOutlineUnitPolicy(
+  manifest: Readonly<Record<string, unknown>>,
+): { unit: PlotOutlineUnitRange; content: typeof PLOT_OUTLINE_CONTENT } | null {
+  if (manifest.operation !== 'generate-plot-outline') return null
+  const policy = manifest.policy
+  if (!record(policy) || !record(policy.planning)
+    || policy.planning.kind !== 'architecture' || policy.planning.outlineProtocol !== PLOT_OUTLINE_PROTOCOL) return null
+  const { intent, outlineContent } = policy.planning
+  if (!record(intent)) throw new Error('GENERATION_PLOT_OUTLINE_POLICY_INVALID')
+  assertOutlineContent(outlineContent)
+  const unit = intent.synopsisUnit
+  if (!record(unit)) return null
+  if (record(intent.synopsisRange)) throw new Error('GENERATION_PLOT_OUTLINE_POLICY_INVALID')
+
+  const { from, unitIndex, maxChapters, volumeRemaining } = unit
+  if (typeof from !== 'number' || typeof unitIndex !== 'number'
+    || typeof maxChapters !== 'number' || typeof volumeRemaining !== 'number'
+    || !Number.isSafeInteger(from) || from < 1
+    || !Number.isSafeInteger(unitIndex) || unitIndex < 1
+    || !Number.isSafeInteger(maxChapters) || maxChapters < 1
+    || !Number.isSafeInteger(volumeRemaining) || volumeRemaining < 1
+    || maxChapters > volumeRemaining
+    || !record(policy.budget) || typeof policy.budget.maxPhysicalRequests !== 'number'
+    || maxChapters > policy.budget.maxPhysicalRequests) throw new Error('GENERATION_PLOT_OUTLINE_POLICY_INVALID')
+
+  return { unit: { from, unitIndex, maxChapters, volumeRemaining }, content: PLOT_OUTLINE_CONTENT }
 }
 
 export function plotOutlineExpected(value: unknown): ProjectCoreSynopsisExpected {
