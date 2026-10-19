@@ -55,10 +55,29 @@ export function architectureStepForOperation(operation: string): ArchitectureSte
   return match ?? null
 }
 
+/**
+ * E3 逐单元批次（2026-10-20）：请求期只声明「从第几章起、哪个单元、名义上界多少」，
+ * **没有 `to`** —— 实际章数由模型按剧情写完后再回填。
+ *
+ * 与 `synopsisRange` **互斥**（校验见 `plot-outline-contract.ts` 的 `plotOutlineUnitPolicy`）。
+ */
+export type ArchitectureUnitRange = Readonly<{
+  /** 本单元起始章（= 已写章数 + 1） */
+  from: number
+  /** 单元序号，1 起 */
+  unitIndex: number
+  /** 本单元名义上界 = 本卷剩余章数 ÷ 剩余单元数（结构派生，不是配额） */
+  maxChapters: number
+  /** 本卷剩余章数（预算冻结按它，不按 maxChapters × 1.1） */
+  volumeRemaining: number
+}>
+
 export type ArchitecturePlanningIntent = Readonly<{
   version: 'architecture-action-v1'
   priorSteps: readonly ArchitecturePriorStep[]
   synopsisRange: Readonly<{ from: number; to: number }> | null
+  /** E3：逐单元批次；与 `synopsisRange` 互斥，缺省/`null` 表示旧的章号区间模式 */
+  synopsisUnit?: ArchitectureUnitRange | null
 }>
 export type PlanningGenerationScope =
   | Readonly<{ kind: 'architecture'; intent: ArchitecturePlanningIntent; outlineProtocol: 'legacy-range-v1' }>

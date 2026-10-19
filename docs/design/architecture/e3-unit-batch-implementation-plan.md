@@ -51,7 +51,7 @@
 | # | 步骤 | 改哪里 | 验证 | 风险 |
 |---|---|---|---|---|
 | **T1** | `planUnitStats` 纯函数 + `renderUnitBudgetLine` | `src/shared/arc-position.ts` | ✅ 已实施（2026-10-20）：13 条单测 + 67 条回归全绿；`tsc --noEmit` exit 0 | 低 |
-| **T2** | 契约字段 `synopsisUnit`（并列，不动旧字段）+ 校验分支 | `generation-owner-contract.ts`、`plot-outline-contract.ts` | 单测：旧值 / 新值 / 两者互斥；缺 `to` 但带 `synopsisUnit` 放行 | 中 |
+| **T2** | 契约字段 `synopsisUnit`（并列，不动旧字段）+ 校验分支 | `generation-owner-contract.ts`、`plot-outline-contract.ts` | ✅ 已实施（2026-10-20）：13 条单测；`plotOutlinePolicy` 对单元模式返回 null，`plotOutlineUnitPolicy` 校验四元组与互斥 | 中 |
 | **T3** | 主进程预算：`synopsisUnit` ⇒ `2 × volumeRemaining` | `main-generation-plan.ts` | 单测：预算上界、旧路径逐字节不变 | **高** |
 | **T4** | 请求构造：`computeUnitRequest`（游标 → 请求体，不算 `to`） | `architecture.command.ts` | 单测：游标推进、跨卷重置、无结构回退旧路径 | **高** |
 | **T5** | prompt unit 模式 | `synopsisBatchInstruction` | 快照单测（中/英）：无「第 from–to 章」、有「离开状态为止」「不得进入下一单元」 | 中 |
@@ -130,3 +130,14 @@
 - **零行为变化**：未接任何调用点。
 
 > 环境笔记：本机 `vitest` 直接用 `node node_modules/vitest/vitest.mjs run <file>` 可以跑（`.tmp-run-tests.mjs` 在 vitest 4 下报 `Cannot read properties of undefined (reading 'config')`，已不可用）。
+
+### 2026-10-20 · T2 契约字段与校验（完成）
+
+- `generation-owner-contract.ts`：新增 `ArchitectureUnitRange { from, unitIndex, maxChapters, volumeRemaining }`；`ArchitecturePlanningIntent` 加可选 `synopsisUnit?: ArchitectureUnitRange | null`（旧构造点无需改动）。
+- `plot-outline-contract.ts`：
+  - 抽出 `assertOutlineContent`（区间/单元两个校验器共用同一把尺）；
+  - 新增 `plotOutlineUnitPolicy`：单元模式放行无 `to`；字段非法、与 `synopsisRange` 并存、`maxChapters > volumeRemaining` 或超单请求上限 ⇒ 拒绝；
+  - `plotOutlinePolicy` 遇到单元模式**返回 `null` 而不是抛错**（T4 接入前必须先路由；两种形态并存时抛错）。
+- 单测：`src/shared/__tests__/plot-outline-unit-policy.test.ts` 13 条（放行/旧模式/互斥/缺 to/七类非法字段/非大纲操作/内容声明不符）。
+- 回归：shared 796 条中 795 通过；唯一失败 `novel-contracts.test.ts` 的 M09 lane 断言为**既有问题**（`project-storage.ts` 已含 M09，测试仍按 9 条断言），与本次改动无关。
+- `tsc --noEmit` exit 0。仍未接任何调用点（T4 起才接线）。
