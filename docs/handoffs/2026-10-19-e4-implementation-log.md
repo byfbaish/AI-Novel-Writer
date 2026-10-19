@@ -35,7 +35,7 @@
 | T5 | E4c：前缀投影只读预估（打日志，不改行为） | ✅ |
 | T6 | E4j-1：滚动条可见性修复 | ✅ |
 | T7 | E4j-2：Tab `scrollTop` 墓碑 | ✅（LRU4 实例未做，见记录） |
-| T8 | E4j-3：分卷折叠 + 卷/单元树 | 🟡 数据层✅（`arc-tree.ts`），UI 组件待做 |
+| T8 | E4j-3：分卷折叠 + 卷/单元树（抽屉可 pin） | ✅ UI 完成（文本折叠共享、窄屏自动退回待做） |
 | T9 | E4h：按卷冻结（作者触发） | ⬜ |
 | T10 | E4i：全量清除补弧光 | 🟡 代码已改，测试待原生模块重建 |
 | T11 | E4e：卷末快照（handoff + anchor）+ M10 | ⬜ |
@@ -247,3 +247,45 @@ node .tmp-run-tests.mjs <test-file> [...]
 
 **剩余（下半）**：树组件本身（左侧抽屉、可 pin、与文本折叠共享状态、点击跳转）。
 需在 `pnpm dev` 里做视觉验证——本机无法跑浏览器 E2E。
+### 2026-10-19 · T8b E4j-3：卷/单元树 UI（完成）
+
+**做了什么**
+
+| 文件 | 改动 |
+|---|---|
+| `src/components/editor/ArcStructureTree.tsx`（新增） | 只读树组件 + `readArcTreeState` / `writeArcTreeState`（sessionStorage，按项目+文件隔离） |
+| `src/components/editor/CodeMirrorEditor.tsx` | 新增 `revealLine: { line, nonce }`：跳到指定行并选中标题行 |
+| `src/components/editor/ArchFileViewer.tsx` | 工具栏「结构树」按钮；pin 时左树右文、不 pin 时浮层抽屉；接 `buildArcTree` |
+| `src/components/editor/__tests__/arc-structure-tree.test.ts`（新增） | 6 条：默认折叠、pin、按项目隔离、损坏 JSON、非法序号过滤 |
+
+**作者三条裁定的落点**
+
+| 裁定 | 实现 |
+|---|---|
+| 「默认当然是折叠状态」 | `DEFAULT_STATE = { pinned: false, expanded: [] }`，打开即全折叠 |
+| 「但要允许人家全量展开」 | 头部一个「展开 / 折叠」按钮，一键全展开或全折叠 |
+| 「可折叠抽屉 + 能选择性固定住」 | 默认浮层抽屉；pin 后变常驻侧栏（左树右文）|
+
+**几个实现细节**
+
+| 细节 | 理由 |
+|---|---|
+| `revealLine` 用 `{ line, nonce }` 而不是纯行号 | 同一行连点两次也要生效——作者期望「再跳一次」而不是「什么都没发生」 |
+| `view.dispatch` 里带 `EditorView.scrollIntoView` | 只设选区的话 CodeMirror 不一定滚动（视口外） |
+| 树只读、编辑仍在右侧 | markdown 自由格式不可能无损往返，可编辑树 = 两份事实 |
+| 折叠/pin 存 `sessionStorage` | 视图偏好不是作品数据；换项目「轻装上阵」（作者原话） |
+| 单元徽标只显示「交手」类型，档位放 tooltip | 抽屉宽 256px，全部塞进去会换行 |
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | ✅ exit 0 |
+| 合并回归（9 个文件） | ✅ **197 passed** |
+| 视觉验证 | ⚠️ **未做**——需要在 `pnpm dev` 里看一眼抽屉/pin/跳转（本机无法跑浏览器 E2E） |
+
+**已知待办**
+
+- 与**文本折叠**共享状态（设计稿 §7A.1 要求「树节点折叠 + 文本折叠共享同一个折叠状态」）；
+  当前只做了树的折叠，文本侧仍是整篇（CodeMirror 折叠需要 `foldGutter` 或自定义 facade）。
+- 窄屏 pin 后正文 <600px 时自动退回抽屉（设计稿 §7A.1b 提到，未实现）。

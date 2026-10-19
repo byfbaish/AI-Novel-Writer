@@ -1,7 +1,7 @@
 import { LegacyRosterRecoveryPanel } from './LegacyRosterRecoveryPanel'
 import { resourceWriteAllowed } from '../../shared/project-paths'
-import { useState, useCallback, useRef, useEffect } from 'react'
-import { Save, RefreshCw, Sparkles, Loader2, AlertTriangle, FileText } from 'lucide-react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { Save, RefreshCw, Sparkles, Loader2, AlertTriangle, FileText, ListTree } from 'lucide-react'
 import { renderIcon } from '../panels/sidebar/sidebar-icons'
 
 import { registerEditorExitSaveHandler, useEditorStore, type PlanningRecoverySaveSnapshot } from '../../stores/editor-store'
@@ -16,6 +16,8 @@ import { appErrorMessage } from '../../i18n/app-errors'
 import { toast } from '../ui/Toast'
 import { CharacterCardImportButton } from '../characters/CharacterCardImportButton'
 import CodeMirrorEditor from './CodeMirrorEditor'
+import ArcStructureTree, { readArcTreeState, writeArcTreeState } from './ArcStructureTree'
+import { buildArcTree } from '../../shared/arc-tree'
 import { SaveFeedback, type SaveOutcome } from './save-feedback'
 import { useProjectStore } from '../../stores/project-store'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -207,6 +209,34 @@ function ArchFileViewerSession({
 
   // 中文字数（由 CodeMirrorEditor 回调更新）
   const [charCount, setCharCount] = useState(0)
+
+  // ===== E4j-3：卷 / 单元 只读树（抽屉，可 pin） =====
+  // 只在「卷 / 单元结构」这一步显示：别的文档没有卷单元层级。
+  const showArcTree = stepKey === 'plotStructure' && !isCharacterProjection
+  const arcTree = useMemo(
+    () => (showArcTree ? buildArcTree(editorContent) : null),
+    [showArcTree, editorContent],
+  )
+  const [treeState, setTreeState] = useState(() => (showArcTree ? readArcTreeState(projectKey, filePath) : { pinned: false, expanded: [] }))
+  const [treeOpen, setTreeOpen] = useState(false)
+  const [revealLine, setRevealLine] = useState<{ line: number; nonce: number } | null>(null)
+  const patchTreeState = (next: { pinned?: boolean; expanded?: readonly number[] }) => {
+    setTreeState(previous => {
+      const merged = { pinned: next.pinned ?? previous.pinned, expanded: next.expanded ?? previous.expanded }
+      writeArcTreeState(projectKey, filePath, merged)
+      return merged
+    })
+  }
+  const toggleVolume = (volumeIndex: number) => {
+    patchTreeState({
+      expanded: treeState.expanded.includes(volumeIndex)
+        ? treeState.expanded.filter(index => index !== volumeIndex)
+        : [...treeState.expanded, volumeIndex],
+    })
+  }
+  const expandAllVolumes = () => patchTreeState({ expanded: (arcTree?.volumes ?? []).map(volume => volume.index) })
+  const collapseAllVolumes = () => patchTreeState({ expanded: [] })
+  const jumpToLine = (line: number) => setRevealLine({ line, nonce: Date.now() })
 
   /**
    * 作者定调（2026-10-11）：大纲先出、角色随后补。大纲已完成、而作者还没处理过
@@ -686,6 +716,29 @@ function ArchFileViewerSession({
           )}
           <SaveFeedback dirty={isDirty} saving={saving} outcome={saveOutcome} />
 
+          {/* 卷/单元树（E4j-3）：只在结构页出现 */}
+          {showArcTree && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                if (treeState.pinned) {
+                  // 已固定为侧栏时，这个按钮负责取消固定并收起
+                  patchTreeState({ pinned: false })
+                  setTreeOpen(false)
+                  return
+                }
+                setTreeOpen(open => !open)
+              }}
+              title={treeState.pinned
+                ? text('取消固定并收起结构树', 'Unpin and hide the tree')
+                : treeOpen ? text('收起结构树', 'Hide structure tree') : text('卷 / 单元结构树', 'Volume / unit tree')}
+              aria-pressed={treeState.pinned || treeOpen}
+            >
+              <ListTree size={13} style={treeOpen || treeState.pinned ? { color: 'var(--color-accent)' } : undefined} />
+            </Button>
+          )}
+
           {/* 刷新按钮 */}
           <Button
             variant="ghost"
@@ -877,23 +930,59 @@ function ArchFileViewerSession({
         </div>
       )}
 
-      {/* CodeMirrorEditor document 模式，隐藏底部栏（信息已整合到上方工具栏） */}
-      <div className="flex-1 overflow-hidden">
-        <CodeMirrorEditor
-          mode="document"
-          scrollMemoryKey={`arch-file:${tabId}`}
-          content={editorContent}
-          filePath={filePath}
-          editable={!isCharacterProjection}
-          onChange={isCharacterProjection ? undefined : handleChange}
-          onSave={isCharacterProjection ? undefined : handleSave}
-          onCharCountChange={setCharCount}
-          hideStatusBar
-          placeholder={text(
-            '尚未生成内容，点击右上角「AI 生成」或直接在此编辑...',
-            'No content yet. Click “AI Generate” in the top-right or start editing here...',
+      {/* 内容区：pin 时左树右文；不 pin 时树是浮层抽屉（作者 2026-10-19 裁定） */}
+      <div className="flex-1 flex min-h-0 overflow-hidden">
+        {showArcTree && treeState.pinned && (
+          <div className="w-64 flex-shrink-0 h-full">
+            <ArcStructureTree
+              tree={arcTree}
+              onJumpLine={jumpToLine}
+              pinned={treeState.pinned}
+              expanded={treeState.expanded}
+              onTogglePin={() => patchTreeState({ pinned: false })}
+              onToggleVolume={toggleVolume}
+              onExpandAll={expandAllVolumes}
+              onCollapseAll={collapseAllVolumes}
+            />
+          </div>
+        )}
+        <div className="flex-1 min-w-0 relative overflow-hidden">
+          <CodeMirrorEditor
+            mode="document"
+            scrollMemoryKey={`arch-file:${tabId}`}
+            revealLine={revealLine}
+            content={editorContent}
+            filePath={filePath}
+            editable={!isCharacterProjection}
+            onChange={isCharacterProjection ? undefined : handleChange}
+            onSave={isCharacterProjection ? undefined : handleSave}
+            onCharCountChange={setCharCount}
+            hideStatusBar
+            placeholder={text(
+              '尚未生成内容，点击右上角「AI 生成」或直接在此编辑...',
+              'No content yet. Click “AI Generate” in the top-right or start editing here...',
+            )}
+          />
+          {/* 抽屉模式：浮在正文左侧，不占布局宽度 */}
+          {showArcTree && !treeState.pinned && treeOpen && (
+            <div
+              className="absolute left-0 top-0 bottom-0 w-64 z-20 shadow-lg"
+              style={{ backgroundColor: 'var(--color-editor-bg)' }}
+            >
+              <ArcStructureTree
+                tree={arcTree}
+                onJumpLine={jumpToLine}
+                pinned={treeState.pinned}
+                expanded={treeState.expanded}
+                onTogglePin={() => patchTreeState({ pinned: true })}
+                onToggleVolume={toggleVolume}
+                onExpandAll={expandAllVolumes}
+                onCollapseAll={collapseAllVolumes}
+                onClose={() => setTreeOpen(false)}
+              />
+            </div>
           )}
-        />
+        </div>
       </div>
 
       {/* AI 生成确认弹窗 */}
