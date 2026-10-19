@@ -704,6 +704,134 @@ export function renderVolumeStats(
   return "卷 " + stats.majorIndex + "：已写 " + stats.actualUsed + "/" + stats.volumeChapters
     + " 章，还剩 " + stats.remaining + " 章" + tail
 }
+
+/**
+ * 单元级统计（E3，2026-10-20）。
+ *
+ * 设计稿：`docs/design/architecture/e3-unit-batch-implementation-plan.md` §1 / §3 T1；
+ * 口径：`docs/design/architecture/volume-quota-context-budget-design.md` §6.2 / §7.1（C 项）。
+ *
+ * 只回答三个问题：**本卷已写多少、还剩几个单元、本单元的名义上界是多少**。
+ * 不返回「本单元应该写几章」的配额——名义上界只用于冻结预算与画参照线，
+ * 实际章数由模型按剧情决定（±10% 是信号带，不是产出接受带）。
+ *
+ * ⚠️ 等分只用于画参照线；**定位当前单元必须用落库游标**，不要拿章号反推。
+ */
+export interface UnitStatsRef {
+  /** 卷序号，**1 起**（与 `ArcSpan.majorIndex` 一致） */
+  volumeIndex: number
+  /** 单元序号，**1 起**（与 `ArcSpan.midIndex` 一致） */
+  unitIndex: number
+  /** 本卷内已写章数；缺省/非法按 0，超过卷长按卷长截断 */
+  writtenInVolume?: number
+}
+
+export interface UnitStats {
+  volumeIndex: number
+  unitIndex: number
+  /** 本卷内的单元个数 */
+  unitCount: number
+  volumeName: string
+  unitName: string
+  /** 本卷章数上界（`scaledBoundaries` 折算，与弧位块同源） */
+  volumeChapters: number
+  writtenInVolume: number
+  /** 本卷还剩几章（不小于 0） */
+  remaining: number
+  /** 还剩几个单元（**含本单元**） */
+  remainingUnits: number
+  /** 名义上界 = 本卷剩余章数 ÷ 剩余单元数；浮点，未取整 */
+  maxChapters: number
+  /** 名义上界向上取整、至少 1（用于请求与预算冻结）；本卷已写满时为 0 */
+  maxChaptersCeil: number
+  /** 余量比 = 本单元名义上界 ÷ 本卷均分每单元（1 = 贴线） */
+  ratio: number
+  state: UnitBudgetState
+}
+
+/**
+ * 余量比判档：`r < 90%` ⇒ 收紧；`r > 110%` ⇒ 展开；带内均衡。
+ * **边界归中**（`1e-9` 容差吃掉浮点噪声），与 `unitBudgetStateOf` 同一套约定。
+ */
+export function unitRemainingStateOf(
+  ratio: number,
+  tolerance: number = UNIT_BUDGET_TOLERANCE,
+): UnitBudgetState {
+  if (!Number.isFinite(ratio)) return 'balanced'
+  if (ratio < 1 - tolerance - 1e-9) return 'tight'
+  if (ratio > 1 + tolerance + 1e-9) return 'ample'
+  return 'balanced'
+}
+
+/**
+ * 推算某单元的余量统计。结构不可解析、序号越界、卷长非正时返回 `null`（fail-open）——
+ * 调用方据此"不注入余量行"，而不是渲染一组无意义的数字。
+ */
+export function planUnitStats(
+  parsed: ParsedArcStructure | null,
+  totalChapters: number,
+  ref: UnitStatsRef | null | undefined,
+): UnitStats | null {
+  if (!parsed || parsed.majors.length === 0) return null
+  if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return null
+  if (!ref) return null
+
+  const { volumeIndex, unitIndex } = ref
+  if (!Number.isSafeInteger(volumeIndex) || volumeIndex < 1 || volumeIndex > parsed.majors.length) return null
+  if (!Number.isSafeInteger(unitIndex) || unitIndex < 1) return null
+
+  // 与弧位块用同一份折算，否则「卷长」和「区间」会各说各话。
+  const bounds = scaledBoundaries(parsed.majors.map(item => arcWeight(item.chapters)), totalChapters)
+  const volumeChapters = bounds[volumeIndex]! - bounds[volumeIndex - 1]!
+  if (!Number.isFinite(volumeChapters) || volumeChapters <= 0) return null
+
+  const major = parsed.majors[volumeIndex - 1]!
+  const unitCount = major.mids.length
+  if (unitCount < 1 || unitIndex > unitCount) return null
+
+  const rawWritten = ref.writtenInVolume
+  const writtenInVolume = typeof rawWritten === 'number' && Number.isFinite(rawWritten) && rawWritten > 0
+    ? Math.min(Math.floor(rawWritten), volumeChapters)
+    : 0
+  const remaining = Math.max(0, volumeChapters - writtenInVolume)
+  const remainingUnits = unitCount - unitIndex + 1
+
+  // 名义上界：剩余章数摊到剩余单元（含本单元）。
+  const maxChapters = remaining / remainingUnits
+  const perUnit = volumeChapters / unitCount
+  const ratio = perUnit > 0 ? maxChapters / perUnit : 0
+  const maxChaptersCeil = remaining > 0 ? Math.max(1, Math.ceil(maxChapters)) : 0
+
+  return Object.freeze({
+    volumeIndex,
+    unitIndex,
+    unitCount,
+    volumeName: major.name,
+    unitName: major.mids[unitIndex - 1]!.name,
+    volumeChapters,
+    writtenInVolume,
+    remaining,
+    remainingUnits,
+    maxChapters,
+    maxChaptersCeil,
+    ratio,
+    state: unitRemainingStateOf(ratio),
+  })
+}
+
+/** 余量行（volume-quota §6.2：**常驻**，不再只在接近上界时注入）。`null` 输入返回 `null`。 */
+export function renderUnitBudgetLine(stats: UnitStats | null, language: WritingLanguage): string | null {
+  if (!stats) return null
+  const cap = Math.round(stats.maxChapters * 10) / 10
+  if (language === 'en-US') {
+    return 'volume: ' + stats.writtenInVolume + '/' + stats.volumeChapters + ' chapters written, '
+      + stats.remaining + ' left; unit ' + stats.unitIndex + '/' + stats.unitCount
+      + ', nominal cap ' + cap + ' chapters'
+  }
+  return '本卷：已写 ' + stats.writtenInVolume + '/' + stats.volumeChapters + ' 章，还剩 '
+    + stats.remaining + ' 章；本单元 ' + stats.unitIndex + '/' + stats.unitCount
+    + '，名义上界约 ' + cap + ' 章'
+}
 /** 结构里是否声明了与全书章数不同的合计（用于在注入文本里声明折算）。 */
 export function arcStructureNeedsRescale(parsed: ParsedArcStructure | null, totalChapters: number): boolean {
   return !!parsed && parsed.declaredChapters && parsed.declaredTotal > 0 && parsed.declaredTotal !== totalChapters

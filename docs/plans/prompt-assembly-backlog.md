@@ -4,7 +4,7 @@
 > 本文件是**唯一 TODO 台账**；设计稿在 [`docs/design/`](../design/)，历史看板 [`00-OVERVIEW.md`](./00-OVERVIEW.md) 已冻结。
 > 本文件是**跨会话交接文档**，给后续接手的 Agent 看。
 > 每项都写清「**缘起（为什么提这件事）**、**现状（代码在哪、现在什么样）**、**目标**、**验收**、**风险与边界**」。
-> 日期：2026-10-10。分支：`dev_byf`。
+> 日期：2026-10-10 首建 · 2026-10-20 登记 E 系列。分支：`dev_byf`（P / N 系列）/ `exp/arc-tree-v2`（E 系列）。
 
 ---
 
@@ -1171,3 +1171,22 @@ P1 只做**逐字重复**消除。作者明确区分：
 **不做什么**：不要按题材硬绑节奏或文风（番茄也有悬疑向爆款）。若要联动，只做**两个显式选项之间的默认推荐**，且"作者改过一次就不再覆盖"。
 
 **将来要做什么**：见 [`p9-platform-style-layer-design.md`](../design/prompt/p9-platform-style-layer-design.md)（用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段）。落地时应与 `rhythm_profile` 成对：**一套平台画像同时产出"节奏推荐"和"文风指导"两个消费者**，而不是再各加一列。
+
+---
+
+## E 系列 · 弹性配给 + 大纲前缀预算（2026-10-19 立项 · 分支 `exp/arc-tree-v2`）
+
+> 缘起：弧光 v7 落地后，作者实测发现两个问题——①「批次按固定章数切」与「单元内容实际需要多少章」脱节；② 每批把整段已完成大纲塞进 prompt，成本 O(已写章数)，666 章 / 20 万字的大纲**数学上塞不进**上下文。
+> 设计稿链：[`unit-budget-elastic-allocation-design.md`](../design/architecture/unit-budget-elastic-allocation-design.md)（弹性配给 · 上位）→ [`volume-quota-context-budget-design.md`](../design/architecture/volume-quota-context-budget-design.md)（大纲前缀预算 E4 · **现行口径**）→ 施工记录 [`2026-10-19-e4-implementation-log.md`](../handoffs/2026-10-19-e4-implementation-log.md)（append-only，逐条进度以它为准）。
+> ⚠️ [`arc-budget-engine-design.md`](../design/architecture/arc-budget-engine-design.md)「代码算卷章数」的前提已被 2026-10-19 作者裁定取代（卷/单元章数由模型按材料决定、作者只有事后否决权）；该稿仍成立的部分：§3.3（比例与绝对区间在 150 章下不兼容）、§2.3–2.6 逐条裁定、「章数不该由模型做长除法」的第一性理由。
+
+| # | 项 | 状态 |
+|---|---|---|
+| E1 | `planProgress` 纯函数 + 三档判定（只计算不接链路） | ✅ 已完成（2026-10-19） |
+| E1.5 | 只读预估 `summarizeUnitBudget`（打日志、不注入） | ✅ 已完成（2026-10-19）；实机读数 Z=−1.2%（均衡）。⚠️ 批内不算 Z（假「不足」已修于 `0e97f8de`） |
+| E2 | A/B/C 微型 prompt 验证状态块是否真改章数 | ✅ 已完成（见测试件 §12：冲突时收紧 −53% / 展开 +37%，无冲突时边际作用在噪声内） |
+| E3 | 逐单元生成（请求无 to、落库回填） | 🔥 **全项目 Top 优先（2026-10-20 作者裁定）** —— 关系大纲/蓝图/正文三段生成，是与原系统接驳的最后一环；先把全流程打通，再做改善与升级。**硬前置**：检查点必须存显式「当前单元游标」（单元序号 + 本卷已写章数）——`arcSpanForChapters` 按计划等分映射章号→单元，实际章数一偏离就整体错位，**不能用「第 N 章」反推**。A/B/C 定稿见 volume-quota §7.1；**实施拆解**：[`e3-unit-batch-implementation-plan.md`](../design/architecture/e3-unit-batch-implementation-plan.md)（T1–T11） |
+| E4 | 大纲前缀三层投影 + 卷末快照 + 按卷冻结 + 弧光进全量清除 + 阅读体验 | 🟡 实施中：T2–T8 ✅（预算纯函数 / `cached_tokens` / 只读预估 / 滚动条 / Tab 墓碑 / 分卷折叠 + 树抽屉可 pin）；**T11 卷末快照 ⬜ 优先级上提（2026-10-20 作者裁定：E4 内部剩余项之首，次于 E3）**；**T9 按卷冻结 ⬜ 往后放**；**T10 弧光进全量清除 🟡 作者确认搁置**（代码已改、测试待原生模块重建，不等待确认） |
+
+**剩余待作者确认**（不阻塞施工）：卷/单元树 pin 状态的记忆粒度（项目级 vs 全局）。
+**明确不做**（见设计稿 §12）：回滚 + 定稿撤销单独立项、优先级往后；窄屏并排（自动退回抽屉）。

@@ -1,7 +1,7 @@
 # 项目文档 · 唯一入口
 
 > **找文档只看这一页。** 本页给出「想干什么 → 打开哪个文件」的完整索引、每个目录的职责边界，以及**新文档该放哪里**的硬规则。
-> 更新：2026-10-17 · 分支 `dev_byf`
+> 更新：2026-10-20 · 分支 `exp/arc-tree-v2`（E 系列施工中）
 > 上一版入口是 [`plans/00-OVERVIEW.md`](plans/00-OVERVIEW.md)（2026-10-11 历史看板，已冻结，只作存档）。
 
 ---
@@ -138,7 +138,7 @@ docs/
 | [`p8-fanqie-flavor-draft-quality-design.md`](design/prompt/p8-fanqie-flavor-draft-quality-design.md) | ✅ P1 生效 · ⏳ P2/P3 待复验 | 番茄向正文质量闸门：续写判定接回合格线 / 可判定 AI 味禁令 / 番茄 KPI 落点（§10 复验 #1） |
 | [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（34 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（36 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -174,9 +174,10 @@ docs/
 | [`arc-prompt-v6-web-test.md`](design/architecture/arc-prompt-v6-web-test.md) | ✅ 双画像已验证（2026-10-19）· 被 v7 取代 | **个数单一事实源 + 去同质化**：个数只在【节奏推荐】声明；相邻两单元交手类型不许相同。实测首次分开卷数（番茄 7 卷 / 起点 5 卷），**总单元数守恒 28 vs 29**（被 章数÷跨度 钉住）⇒ 画像控形状、章数守恒 |
 | [`arc-prompt-v7-web-test.md`](design/architecture/arc-prompt-v7-web-test.md) | ✅ 双画像已验证（2026-10-19）· 提示词定稿 | **标注转正 + 自检静默**：把模型自发的「（交手：X；档：A→B）」收编为正式字段供机器校验；自检改为只做不输出。实测起点 4 卷/23 单元、番茄 7 卷/28 单元；**"单元数守恒"被证伪**（是巧合） |
 | [`arc-v7-implementation-design.md`](design/architecture/arc-v7-implementation-design.md) | ✅ 已实施 P1–P4 | **落地方案 P1/P2**：① 解析器兼容（`大弧\|卷`、`中弧\|单元`、补中文序号、两级模式成一等公民、golden 测试）；② 画像注入（`rhythm_profile` 走 M08 lane 六步，空=中性，模板需同时进 `requiredContextVariables`）；P3 体检两条只报不拦、P4 UI 文案 |
-| [`unit-budget-elastic-allocation-design.md`](design/architecture/unit-budget-elastic-allocation-design.md) | 📝 设计稿 · 待实施（§2 额度口径已被取代） | **弹性配给制**：单元章数由内容决定，代码只给「紧/松/按节奏」的方向（Z = 实际消耗 − 计划进度，±10% 三档）；偏差只在卷内结清、不跨卷；卷计划额度 = 画像默认 + 作者可覆盖；逐单元生成（不给 to，写完本单元即停） |
-| [`volume-quota-context-budget-design.md`](design/architecture/volume-quota-context-budget-design.md) | 📝 设计稿 · 待实施 | **大纲前缀预算（E4）**：每批都把整段已完成大纲塞进 prompt ⇒ 成本 O(已写章数)，长篇 666 章大纲 20 万字（133k–200k tokens）**数学上塞不进**；改三层投影（本卷全文 + **上一卷快照** + 最近 K 章），输入恒定 ≈2.6 万字；**卷末快照**按 agent compaction 语义只交接下一卷要用的物与债（生命周期止于下一卷）；**冻结与定稿同机制（作者触发、按卷冻、当前卷不冻）**，快照同时是回滚锚点（回滚单独立项）+ 弧光进全量清除；长卷单元**默认折叠可全量展开 + 可 pin 的卷/单元只读树 + Tab 实例 LRU4/墓碑（审稿对照场景）**；顺带解析 `cached_tokens`；E3 改「请求无 to、落库回填」 |
-| [`unit-budget-prompt-ab-test.md`](design/architecture/unit-budget-prompt-ab-test.md) | 🧪 测试件 · 可立即跑 | **弹性配给的 A/B/C 微型 prompt**：同一结构只改「配给状态」块（不足/均衡/充足），验章数是否跟着变；三份各 <1,500 字、虚构数据；附判读表与「提示词无效就别动机制」的判定规则 |
+| [`unit-budget-elastic-allocation-design.md`](design/architecture/unit-budget-elastic-allocation-design.md) | ✅ E1/E1.5/E2 已实施 · **E3 全项目 Top 优先（未开始）** · §2 额度口径已被取代 | **弹性配给制**：单元章数由内容决定，代码只给「紧/松/按节奏」的方向（Z = 实际消耗 − 计划进度，±10% 三档）；偏差只在卷内结清、不跨卷；卷计划额度 = 画像默认 + 作者可覆盖；逐单元生成（不给 to，写完本单元即停） |
+| [`volume-quota-context-budget-design.md`](design/architecture/volume-quota-context-budget-design.md) | 🟡 实施中（T2–T8 ✅ · E4 内：T11 优先/T9 后放/T10 确认搁置） | **大纲前缀预算（E4）**：每批都把整段已完成大纲塞进 prompt ⇒ 成本 O(已写章数)，长篇 666 章大纲 20 万字（133k–200k tokens）**数学上塞不进**；改三层投影（本卷全文 + **上一卷快照** + 最近 K 章），输入恒定 ≈2.6 万字；**卷末快照**按 agent compaction 语义只交接下一卷要用的物与债（生命周期止于下一卷）；**冻结与定稿同机制（作者触发、按卷冻、当前卷不冻）**，快照同时是回滚锚点（回滚单独立项）+ 弧光进全量清除；长卷单元**默认折叠可全量展开 + 可 pin 的卷/单元只读树 + Tab 实例 LRU4/墓碑（审稿对照场景）**；顺带解析 `cached_tokens`；E3 改「请求无 to、落库回填」 |
+| [`unit-budget-prompt-ab-test.md`](design/architecture/unit-budget-prompt-ab-test.md) | 🧪 E2 已完成 · 提示词层已验证 | **弹性配给的 A/B/C 微型 prompt**：同一结构只改「配给状态」块（不足/均衡/充足），验章数是否跟着变；三份各 <1,500 字、虚构数据；附判读表与「提示词无效就别动机制」的判定规则 |
+| [`e3-unit-batch-implementation-plan.md`](design/architecture/e3-unit-batch-implementation-plan.md) | 🟡 T1 已实施 · 其余待评审 | **E3 实施拆解**：请求 `{from,unitIndex,maxChapters}`、落库 `{from,to}` + 游标三元组；预算按本卷剩余章数冻结；T1–T11 每步可独立验证 + 检查点回归清单 |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
 
@@ -206,7 +207,7 @@ docs/
 
 ## 5. 台账与冻结区
 
-- **唯一 TODO 台账**：[`plans/prompt-assembly-backlog.md`](plans/prompt-assembly-backlog.md)。P1–P5 + S1–S3 + AC1–AC3 全在里面；新待办追加到这里。
+- **唯一 TODO 台账**：[`plans/prompt-assembly-backlog.md`](plans/prompt-assembly-backlog.md)。P 系列（P1–P9 / P11 / P12）+ N 系列 + E 系列全在里面；新待办追加到这里。
 - **历史看板**：[`plans/00-OVERVIEW.md`](plans/00-OVERVIEW.md)（2026-10-11 冻结，仅存档；现行状态见本页与台账）。
 - **Program v3 冻结合同**：[`plans/novel-quality-program-v3-2026-09-13/00-START-HERE.md`](plans/novel-quality-program-v3-2026-09-13/00-START-HERE.md)（34 节点原合同；DAG/NOT STARTED 不代表当前调度）。
 - **开发入口（Program v3 侧）**：[`research/novel-quality-modernization/current-spec-index.md`](research/novel-quality-modernization/current-spec-index.md) ← 逐项连接原合同与现行替代。
