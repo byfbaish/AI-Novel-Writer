@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, Menu, shell, type MenuItemConstructorOptions } from 'electron'
 import { registerIPCHandlers } from './ipc-handlers'
 import { registerMCPHandlers } from './mcp/mcp-ipc-bridge'
 import { mainT } from './i18n'
@@ -140,6 +140,29 @@ function publishUpdateState(state: UpdateState): void {
   }
 }
 
+/**
+ * 自绘标题栏（`frame: false`）不显示菜单栏，但**菜单本身必须存在**。
+ *
+ * Windows/Linux 上 Ctrl+C / Ctrl+V / Ctrl+Z 这类编辑命令不是渲染进程自己实现的：
+ * Electron 没有 Chrome 那层浏览器 UI，这些键被渲染进程视为「未处理事件」后交给主进程，
+ * 由 application menu 的 accelerator 分发到**当前聚焦的 webContents**。
+ * DevTools 的控制台同样是一个 webContents，所以菜单缺失时它的粘贴也一并失效——
+ * 表现为「在应用外复制的内容粘不进控制台」。
+ *
+ * 这里显式装一份最小菜单保证 accelerator 存在，随后仍由
+ * `win.setMenuBarVisibility(false)` 把菜单栏隐藏，外观不变。
+ */
+function installApplicationMenu(): void {
+  const template: MenuItemConstructorOptions[] = [
+    ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1440,
@@ -165,7 +188,7 @@ function createWindow() {
     app.dock?.setIcon(path.join(process.env.APP_ROOT!, 'build', 'icon.png'))
   }
 
-  // 隐藏默认菜单栏（Windows/Linux）
+  // 只隐藏菜单栏，**不要移除菜单**：编辑快捷键依赖它的 accelerator（见 installApplicationMenu）。
   win.setMenuBarVisibility(false)
 
   // 所有新窗口都留在应用外；仅精确匹配的官方仓库可交给系统浏览器。
@@ -224,6 +247,8 @@ app.on('activate', () => {
 
 app.whenReady().then(async () => {
   if (!applicationInstanceAccepted) return
+  // 必须在任何 BrowserWindow 之前：编辑快捷键靠 application menu 的 accelerator 分发。
+  installApplicationMenu()
   reportReleaseSmokeStage('electron-ready')
   if (releaseSmokeRequested) {
     const requestedSmokeModeCount = Number(releaseVectorSmokeRequested)

@@ -50,6 +50,10 @@ vi.mock('electron', () => ({
   BrowserWindow: mocks.BrowserWindow,
   ipcMain: { removeHandler: vi.fn() },
   shell: { openExternal: vi.fn() },
+  Menu: {
+    buildFromTemplate: vi.fn((template: unknown[]) => template),
+    setApplicationMenu: vi.fn(),
+  },
 }))
 vi.mock('../ipc-handlers', () => ({ registerIPCHandlers: mocks.registerIPCHandlers }))
 vi.mock('../services/skin-service', () => ({ skinService: {
