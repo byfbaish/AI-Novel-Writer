@@ -153,8 +153,42 @@ export function formatChapterPosition(pos: ChapterPosition, language: WritingLan
 |---|---|---|---|
 | **P0** | 抽共享解析器 `chapter-heading.ts`，三处接线，**行为零变化** | 低 | ✅ `f444f88a` |
 | **P1** | 展示层 `formatChapterPosition` + 全部调用点 | 低 | ✅ `492dc012` |
-| **P2** | 大纲标题合同 + `validPlotOutlineEntry` + `outline-tree` 加 `heading` | **中** | 待做 |
+| **P2** | 单元批次章标题合同带归属 + `outline-tree` 加 `heading` | 中 | ✅ 已落地（见 §9） |
 | **P3** | T11 开关 + 起点表达 | 中 | 待做 |
+
+### P2 落地时的三个修正（原计划与实际不符，以本节为准）
+
+**① `naming === 'volume'` 不等于「两级结构」。**
+
+原计划写「两级结构走 `getSynopsisTwoLevelSuffix`、三层走内置 suffix」，代码里也是这么分的。
+但 `naming === 'volume'` 只描述**措辞**（把大弧叫「卷」、中弧叫「单元」），**不描述层数** ——
+A/B 两个真实项目都是 `volume` 命名，且都有完整的单元层（`mids` 非空）。
+
+所以两者必须分开判：
+- **措辞**（`naming`）→ 决定用哪套输出合同（两级版 / 内置弧光版）
+- **有没有单元批次**（`unitContext`）→ 决定要不要追加章标题归属格式段
+
+写成 `if (naming === 'volume') ... else if (unitContext)` 会让**所有真实项目**走进第一支、
+永远拿不到归属格式段。这个错误在首轮测试就被 `synopsis-unit-batch.command.test.ts`
+抓住了（两个用例同时红），所以最终改成「基础合同」+「归属格式段」两维组合。
+
+**② 格式段放 `systemSuffix`（用函数形态追加），不放 `synopsisUnitInstruction`。**
+
+最初把格式段写进了 `synopsisUnitInstruction`，但那会让同一约束出现两遍的风险：
+`build()` 已经渲染一次 suffix，instruction 又追加一次。**每个约束只出现一次**是硬规则
+（红线 4 的同源判据），所以：suffix 管**写法**，instruction 只给**数值**（卷/单元/起章）。
+
+`withSystemSuffixOverride` 因此扩展成 `string | ((builtin: string) => string)`：
+字符串 = 整段替换（两级版用），函数 = 在内置原文上追加一节。
+后者让内置 suffix 那 70 行只有一份，改一个字的措辞都不会让追加节静默失效。
+
+**③ 逐章模式（`plotOutlineRequestContract`）**不改**。**
+它按章逐个请求（1..total），**并不知道真实归属** —— 只能拿 `arcSpanForChapters` 折算。
+把折算结果写进标题，等于把「会错的那个东西」固化成一个看起来像真值的字段，
+`driftedCount` 反而全部失真。所以那里继续用旧格式，`outline-tree` 对它继续标 `computed`。
+
+两级结构在无单元层时（`mids` 为空）也不追加格式段 —— 它不进入单元模式，
+标题保持旧格式，本设计对它零改动。
 
 ### P0 实际挖出的三处真实差异（P2 必读）
 
@@ -202,9 +236,40 @@ export function formatChapterPosition(pos: ChapterPosition, language: WritingLan
    否则两级结构永远只能靠折算，问题原样存在。
 3. **英文格式**：`Vol 3 Unit 2 Ch 3 (Book Ch 45)`。
 
-## 8. P2 开工前必须确认的两件事
+## 8. P2 开工前的两个前置（均已满足）
 
 1. **三层结构的内置 `systemSuffix` 必须走 `withSystemSuffixOverride()`**（红线 19）。
    直接改模板对象会让 `synopsisInputsFingerprint` 全变，A/B 两个项目的检查点一起作废。
-2. **`synopsisUnitInstruction` 现在只给单元号、不给卷号**（`architecture.command.ts:981`），
-   模型写不出「第 V 卷」—— 必须先把 `volumeIndex` 喂进 prompt。
+   ✅ 已改成函数形态追加，模板对象一字未动。
+2. **`synopsisUnitInstruction` 只给单元号、不给卷号**，模型写不出「第 V 卷」。
+   ✅ 已补 `volumeIndex`，并把措辞改成「第 V 卷第 U 单元」。
+
+## 9. P2 实际改动清单
+
+| 文件 | 改动 |
+|---|---|
+| `src/services/prompts/prompt-builder.ts` | `withSystemSuffixOverride` 支持函数形态；抽出 `resolveSystemSuffix()` |
+| `src/services/prompts/synopsis-unit-heading.ts`（新增） | `getSynopsisUnitHeadingSection` 产出格式段（中英），含本批前两章的完整示例行；`formatAttributedChapterHeading` 与解析器同口径 |
+| `architecture.command.ts` `synopsisUnitInstruction` | 补 `volumeIndex`，「本次只写【第 V 卷第 U 单元】」 |
+| `architecture.command.ts` 渲染期接线 | 「基础合同（按 `naming`）」× 「归属格式段（按 `unitContext`）」两个维度组合 |
+| `src/shared/outline-tree.ts` | `ChapterUnitSource` 加 `heading`；`scanChapterLines` 带出归属；`headingCount` / `driftedCount`；标题卷/单元越界时退回折算 |
+| `src/components/editor/OutlineTreePanel.tsx` | 展示标题归属章数与漂移章数；章节点 tooltip 区分 heading |
+| `builtin-prompt-templates.ts` | 蓝图 `title` 合同认两种标题形态，明确「冒号前是位置、不属于章名」 |
+
+### 为什么 `driftedCount` 不并进 `mismatchCount`
+
+`mismatchCount` 的含义是「**声明**与折算不一致」—— 它假设双方都可疑。
+`driftedCount` 的含义是「**标题**与折算不一致」—— 这里只有折算可疑：
+标题是生成时写下的事实，折算才是那个会整体错位的东西。混在一起会让
+「结构漂移」的信号失去方向性（到底谁错了）。
+
+### 端到端验收要点
+
+新生成一批单元大纲后，检查三件事：
+
+1. 大纲正文的章标题形如 `## 第2卷第1单元第1章（全书第22章）：章名`；
+2. 该批的覆盖章数（`plotOutlineCoveredTo`）正常推进、检查点 `range` 回填正确；
+3. 大纲树里出现「N 章归属来自章标题」，且 `漂移` 为 0（单元按计划写完时）。
+
+⚠️ 模型若无视新格式、仍写 `## 第22章：章名`，**不会丢批**（双格式永久兼容），
+只是这些章继续标 `computed`。所以「格式没生效」是效果问题，不是数据事故。
