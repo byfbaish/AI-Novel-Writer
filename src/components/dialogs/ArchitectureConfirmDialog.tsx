@@ -498,8 +498,14 @@ export default function ArchitectureConfirmDialog({
                     >
                       <p className="m-0 font-medium" style={{ color: 'var(--color-text)' }}>
                         {text(
-                          `单元模式：第 ${unitMode.unitIndex} 个单元，从第 ${unitMode.from} 章起`,
-                          `Unit mode: unit ${unitMode.unitIndex}, starting at chapter ${unitMode.from}`,
+                          // 卷号必须露出来：只写「第 k 个单元」时，作者没法分辨自己在卷一还是卷二
+                          //（2026-10-20 实机就把它读成了「第二卷开始」）。
+                          `单元模式：第 ${unitPreview?.volume?.index ?? 1} 卷 · 第 ${unitMode.unitIndex} 个单元`
+                            + (unitPreview?.volume ? `（本卷共 ${unitPreview.volume.unitCount} 个）` : '')
+                            + `，从第 ${unitMode.from} 章起`,
+                          `Unit mode: volume ${unitPreview?.volume?.index ?? 1}, unit ${unitMode.unitIndex}`
+                            + (unitPreview?.volume ? ` of ${unitPreview.volume.unitCount}` : '')
+                            + `, starting at chapter ${unitMode.from}`,
                         )}
                       </p>
                       <p className="m-0" style={{ color: 'var(--color-text-secondary)' }}>
