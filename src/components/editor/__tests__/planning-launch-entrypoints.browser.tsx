@@ -130,8 +130,15 @@ it('sends a unit batch instead of a chapter range when the E3 probe flag is on',
   })
   await act(async () => root.render(<ArchFileViewer tabId="planning-outline-unit" filePath="ai-novel://core/synopsis" projectKey={project.path} content="" savedContent="" />))
   await act(async () => page.getByRole('button', { name: 'AI 生成', exact: true }).click())
+  // 单元模式下弹窗**不再显示章号区间**：它只显示本单元的起章与名义上界，
+  // 否则作者会以为「填了 1–10 就是按章跑」（2026-10-20 实机踩过）。
+  // ⚠️ 断言必须**限定在本弹窗内部**：本文件的 beforeEach 每次新建 container，
+  //    前序用例留下的 portal 还挂在 body 上，全局 getByRole 会命中那份旧的章号输入框。
+  const unitDialog = () => Array.from(document.querySelectorAll('[role="dialog"]'))
+    .find(el => el.textContent?.includes('单元模式：第 1 个单元'))
+  await vi.waitFor(() => expect(unitDialog()).toBeTruthy())
+  expect(unitDialog()!.querySelector('input[aria-label="本次生成范围的结束章"]')).toBeNull()
   await act(async () => {
-    await page.getByRole('spinbutton', { name: '本次生成范围的结束章' }).fill('10')
     await page.getByRole('button', { name: /确认生成/ }).click()
   })
   await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('generation:begin', expect.objectContaining({
