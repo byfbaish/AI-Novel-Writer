@@ -30,6 +30,7 @@ import {
 } from '../../prompt-templates'
 import { ArchitecturePromptBuilder } from '../../prompts/prompt-builder'
 import { getSynopsisTwoLevelSuffix } from '../../prompts/synopsis-two-level-suffix'
+import { getSynopsisUnitHeadingSection } from '../../prompts/synopsis-unit-heading'
 import { resolveRhythmProfile } from '../../prompts/rhythm-profiles'
 import { ipc } from '../../ipc-client'
 import { requireIpcSuccess } from '../../ipc-result'
@@ -967,10 +968,15 @@ function synopsisBatchInstruction(
  *
  * 与 `synopsisBatchInstruction` 的区别：不声明「第 from–to 章」区间，也不要求
  * 「to+1 起只写概览」——批次的自然边界是单元本身，不是章号。
+ *
+ * 章标题格式**不在**这里给：它是输出合同，放在 `systemSuffix` 末尾追加的一节
+ * （`getSynopsisUnitHeadingSection`），见下方 `withSystemSuffixOverride` 的接线。
+ * 原则是每个约束只出现一次 —— 这里给范围与数值，suffix 给写法。
  */
 export function synopsisUnitInstruction(
   writingLanguage: WritingLanguage,
   from: number,
+  volumeIndex: number,
   unitIndex: number,
   unitName: string,
   totalChapters: number,
@@ -979,17 +985,17 @@ export function synopsisUnitInstruction(
     writingLanguage,
     [
       '【本次生成范围（重要）】',
-      `本次只写【单元 ${unitIndex}：${unitName}】这一段，从第 ${from} 章开始（全书共 ${totalChapters} 章）。`,
+      `本次只写【第 ${volumeIndex} 卷第 ${unitIndex} 单元：${unitName}】这一段，从全书第 ${from} 章开始（全书共 ${totalChapters} 章）。`,
       '写到该单元的「离开状态」成立为止：不要为了凑章数继续写，也不要因为章数少就跳过必要情节。',
-      '写完本单元立即停笔：不得进入下一个单元，也不得展开后续单元的内容；如需收尾，只允许写一行「后续概览：……」（不超过 200 字），且不得使用「第N章」标题、不计入本批覆盖。',
-      '每章必须以独立行标题开头，严格使用「第N章：标题」或「第N–M章：标题」格式，并在标题下一行起写非空正文。',
+      '写完本单元立即停笔：不得进入下一个单元，也不得展开后续单元的内容；如需收尾，只允许写一行「后续概览：……」（不超过 200 字），且不得使用章标题行、不计入本批覆盖。',
+      '每章必须以独立行标题开头，并在标题下一行起写非空正文。',
     ].join('\n'),
     [
       '[Generation scope for this batch (important)]',
-      `Write only [Unit ${unitIndex}: ${unitName}], starting at chapter ${from} (the book has ${totalChapters} chapters).`,
+      `Write only [volume ${volumeIndex}, unit ${unitIndex}: ${unitName}], starting at book chapter ${from} (the book has ${totalChapters} chapters).`,
       'Stop when this unit\'s "exit state" holds: do not keep writing to pad the chapter count, and do not skip required events because the count is small.',
       'Stop immediately when this unit is done: do NOT enter the next unit or expand any later unit. If you need a closing note, write only one line "Later overview: ..." (200 characters or fewer); it must not use a "Chapter N" heading and does not count toward this batch\'s coverage.',
-      'Every chapter must start with its own heading line, strictly formatted as "Chapter N: Title" or "Chapters N-M: Title", followed by a non-empty body on the next line.',
+      'Every chapter must start with its own heading line, followed by a non-empty body on the next line.',
     ].join('\n'),
   )
 }
@@ -2793,8 +2799,33 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     // 缺小弧层时模型只能**自造结构位 ID**（2026-10-20 实证：覆盖：V1-U1-Start 等 5 个）。
     // 只换渲染用的 suffix，**不动模板对象** —— 模板整体进 `synopsisInputsFingerprint`，
     // 改内置会让所有已存在的大纲检查点判成「源事实已变化」。
-    if (parseArcStructure(core?.plotStructurePlan ?? '')?.naming === 'volume') {
-      promptBuilder.withSystemSuffixOverride(getSynopsisTwoLevelSuffix(writingLanguage))
+    const arcNaming = parseArcStructure(core?.plotStructurePlan ?? '')?.naming
+    // ⚠️ `naming === 'volume'` 只是**措辞**（卷/单元 vs 大弧/中弧），**不是层数**：
+    // 带单元的结构照样是 `volume` 命名（A/B 两个真实项目都是）。两者要分开处理 ——
+    // 措辞决定用哪套合同，`unitContext` 决定要不要追加章标题归属格式段。
+    const baseSuffix = arcNaming === 'volume' ? getSynopsisTwoLevelSuffix(writingLanguage) : null
+    // P2（2026-10-20）：单元批次的章标题带出「第V卷第U单元第C章（全书第N章）」。
+    // 归属写进标题 ⇒ `outline-tree` 有 `heading` 真值，不再只能按章数等分折算
+    //（单元一写超，后续章号与单元的对齐就整体错位且无从发现）。
+    const headingSection = unitContext
+      ? getSynopsisUnitHeadingSection(writingLanguage, {
+        volumeIndex: unitContext.cursor.volumeIndex,
+        unitIndex: unitContext.range.unitIndex,
+        from,
+      })
+      : null
+
+    if (baseSuffix && headingSection) {
+      promptBuilder.withSystemSuffixOverride(`${baseSuffix}\n\n${headingSection}`)
+    } else if (baseSuffix) {
+      promptBuilder.withSystemSuffixOverride(baseSuffix)
+    } else if (headingSection) {
+      // 内置那份有 70 行按「大弧 / 中弧 / 小弧」写的完整合同，复制一份只改 ① 一行
+      // 等于把它维护成两份。用**函数形态**在原文末尾追加，开场声明「取代上文任何
+      // 与之不同的写法」，把两条规则并存变成一条覆盖。
+      promptBuilder.withSystemSuffixOverride(
+        suffix => (suffix ? `${suffix}\n\n${headingSection}` : headingSection),
+      )
     }
 
     if (mode === 'resume') {
@@ -2873,6 +2904,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         ? synopsisUnitInstruction(
             writingLanguage,
             from,
+            unitContext.cursor.volumeIndex,
             unitContext.range.unitIndex,
             unitContext.stats?.unitName ?? '',
             totalChapters,

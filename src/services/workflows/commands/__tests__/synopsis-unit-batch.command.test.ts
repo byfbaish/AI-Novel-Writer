@@ -198,8 +198,11 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
       .execute({ step: {}, context, callbacks })
 
     const prompt = promptText(stream)
-    expect(prompt).toContain('【单元 1：门牌】')
-    expect(prompt).toContain('从第 1 章开始')
+    expect(prompt).toContain('【第 1 卷第 1 单元：门牌】')
+    expect(prompt).toContain('从全书第 1 章开始')
+    // P2：章标题带归属（suffix 末尾追加的格式段），本批第一章的示例行必须逐字出现。
+    expect(prompt).toContain('## 第1卷第1单元第1章（全书第1章）：章名')
+    expect(prompt).toContain('## 第1卷第1单元第2章（全书第2章）：章名')
     // 弧位按**游标**定位：不写本单元章号区间，也不给「章数以区间为给定条件」那条（与不凑章数冲突）
     expect(prompt).toContain('本次只写：卷 1【开局】· 单元 1【门牌】')
     expect(prompt).not.toContain('本批范围：第')
@@ -234,8 +237,10 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
       .execute({ step: {}, context, callbacks })
 
     const prompt = promptText(stream, 1)
-    expect(prompt).toContain('【单元 2：定价】')
-    expect(prompt).toContain('从第 6 章开始')
+    expect(prompt).toContain('【第 1 卷第 2 单元：定价】')
+    expect(prompt).toContain('从全书第 6 章开始')
+    // 卷号沿用游标（本批仍在卷一），章标题示例的「全书第N章」接着上一批的 5 章往后数。
+    expect(prompt).toContain('## 第1卷第2单元第1章（全书第6章）：章名')
     // 非 main-owned 走 seed 续写：已确认前缀随请求一起带上，不需要额外的"前缀"提示块。
     expect(prompt).toContain('第5章：核对第5笔账')
 
@@ -298,8 +303,8 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
     await makeCommand({ from: 10, unitIndex: 1, maxChapters: 30, volumeRemaining: 30 })
       .execute({ step: {}, context, callbacks })
 
-    expect(promptText(stream, 0)).toContain('【单元 1：配合】')
-    expect(promptText(stream, 0)).toContain('从第 10 章开始')
+    expect(promptText(stream, 0)).toContain('【第 2 卷第 1 单元：配合】')
+    expect(promptText(stream, 0)).toContain('从全书第 10 章开始')
     const saved = ipc.partialWrites.at(-1)!
     expect(saved.synopsis_range).toEqual({ from: 10, to: 13 })
     expect(saved.synopsis_covered_to).toBe(13)
