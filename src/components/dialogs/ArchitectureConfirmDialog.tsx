@@ -19,9 +19,11 @@ import { captureProjectSession } from '../project-session-gate'
 import {
   describeSynopsisUnitProbe,
   probeSynopsisUnitLaunchForProject,
-  synopsisUnitLaunchEnabled,
+  resetSynopsisCheckpoint,
   type SynopsisUnitProbeResult,
 } from '../../services/workflows/synopsis-unit-launch'
+import { confirm } from '../ui/Confirm'
+import { alertError } from '../ui/AlertDialog'
 
 type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'plotStructure' | 'synopsis'
 
@@ -175,7 +177,8 @@ export default function ArchitectureConfirmDialog({
   const [unitPreview, setUnitPreview] = useState<SynopsisUnitProbeResult | null>(null)
   const totalChapterCount = Number(currentProject?.novelConfig.totalChapters) || 0
   useEffect(() => {
-    if (!isOpen || !import.meta.env.DEV || !synopsisUnitLaunchEnabled()) {
+    // T11 起这是正式行为（开关在设置里，默认开）——不再有 DEV 锁，探针自己读配置。
+    if (!isOpen) {
       setUnitPreview(null)
       return
     }
@@ -201,6 +204,40 @@ export default function ArchitectureConfirmDialog({
     unitChainCapacity,
     Math.max(1, Math.floor(Number(unitChainTotal) || 1)),
   )
+
+  /** 重置检查点：作者显式要求「把检查点里记的进度扔掉」。只动检查点，不动数据库正文。 */
+  const [resettingCheckpoint, setResettingCheckpoint] = useState(false)
+  const handleResetCheckpoint = async () => {
+    const ok = await confirm(
+      text(
+        '会清掉检查点里记录的情节大纲进度（已覆盖到第几章、下一个单元在哪）。数据库里的大纲正文一个字都不动；重置后本次生成从全书起点（第1卷第1单元）开始。',
+        'This clears the plot-outline progress recorded in the checkpoint (how far it got, which unit comes next). The stored outline itself is untouched; this run will start over from the very beginning.',
+      ),
+      {
+        title: text('重置情节大纲检查点？', 'Reset the plot-outline checkpoint?'),
+        confirmText: text('重置', 'Reset'),
+        danger: true,
+      },
+    )
+    if (!ok) return
+    const session = captureProjectSession(currentProject)
+    if (!session) return
+    setResettingCheckpoint(true)
+    try {
+      const result = await resetSynopsisCheckpoint(session)
+      if (!result.ok) {
+        alertError(text(`重置失败：${result.error}`, `Reset failed: ${result.error}`), { title: text('重置失败', 'Reset failed') })
+        return
+      }
+      // 立刻重探：让作者在同一个弹窗里看到「现在按单元了」，而不是关掉再开一次。
+      setUnitPreview(await probeSynopsisUnitLaunchForProject({ projectSession: session, totalChapters: totalChapterCount }))
+      toast.info(text('已重置情节大纲检查点', 'Plot-outline checkpoint reset'))
+    } catch (error) {
+      alertError(error instanceof Error ? error.message : String(error), { title: text('重置失败', 'Reset failed') })
+    } finally {
+      setResettingCheckpoint(false)
+    }
+  }
 
   if (!currentProject) return null
   const config = currentProject.novelConfig
@@ -483,12 +520,35 @@ export default function ArchitectureConfirmDialog({
                   </p>
                 )}
                 {unitPreview && !unitMode && (
-                  <p role="status" className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>
-                    {text(
-                      `未按单元生成：${describeSynopsisUnitProbe(unitPreview)}`,
-                      `Not generating by unit (reason: ${unitPreview.reason}).`,
+                  <div role="status" className="space-y-1">
+                    <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>
+                      {text(
+                        `未按单元生成：${describeSynopsisUnitProbe(unitPreview)}`,
+                        `Not generating by unit (reason: ${unitPreview.reason}).`,
+                      )}
+                    </p>
+                    {/* 检查点挡路时，作者在这里**必须有**一个能点的地方。
+                        以前只能靠人跑去删 .ai-novel/partial_arch.json（2026-10-20 实机：清空大纲后
+                        到处找不到取消入口）。只删情节大纲的进度字段，数据库正文一个字不动。 */}
+                    {unitPreview.reason === 'incomplete' && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleResetCheckpoint()}
+                          disabled={resettingCheckpoint}
+                          className="text-xs underline disabled:opacity-60"
+                          style={{ color: 'var(--color-warning-text)' }}
+                        >
+                          {resettingCheckpoint
+                            ? text('正在重置…', 'Resetting…')
+                            : text('重置情节大纲检查点', 'Reset the plot-outline checkpoint')}
+                        </button>
+                        <span className="text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>
+                          {text('（检查点里的进度不要了，从全书起点重来）', '(drop the recorded progress and restart from the beginning)')}
+                        </span>
+                      </div>
                     )}
-                  </p>
+                  </div>
                 )}
                 {unitMode ? (
                   <div className="space-y-1.5">
@@ -523,8 +583,8 @@ export default function ArchitectureConfirmDialog({
                       </p>
                       <p className="m-0" style={{ color: 'var(--color-text-muted)' }}>
                         {text(
-                          '章号区间与「续写」在此模式下不生效；要按章生成请关掉 localStorage 开关。',
-                          'The chapter range and “Continue” do not apply in unit mode.',
+                          '章号区间与「续写」在此模式下不生效；要按章生成请到「设置 → 编辑器」关掉「按单元生成情节大纲」。',
+                          'The chapter range and “Continue” do not apply in unit mode. Turn off “Generate the plot outline unit by unit” in Settings → Editor to generate by chapter range.',
                         )}
                       </p>
                     </div>
