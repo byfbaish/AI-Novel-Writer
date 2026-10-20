@@ -28,6 +28,7 @@ import {
   resolvePromptTemplate,
 } from '../../prompt-templates'
 import { ArchitecturePromptBuilder } from '../../prompts/prompt-builder'
+import { getSynopsisTwoLevelSuffix } from '../../prompts/synopsis-two-level-suffix'
 import { resolveRhythmProfile } from '../../prompts/rhythm-profiles'
 import { ipc } from '../../ipc-client'
 import { requireIpcSuccess } from '../../ipc-result'
@@ -2738,6 +2739,14 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         || promptLanguageText(writingLanguage, '（未填写）', '(not provided)'))
       .withStepGuidance(effectiveStepGuidance)
 
+    // 两级结构（卷 / 单元）换成两级版输出合同：内置那份通篇按「大弧 / 中弧 / 小弧」讲话，
+    // 缺小弧层时模型只能**自造结构位 ID**（2026-10-20 实证：覆盖：V1-U1-Start 等 5 个）。
+    // 只换渲染用的 suffix，**不动模板对象** —— 模板整体进 `synopsisInputsFingerprint`，
+    // 改内置会让所有已存在的大纲检查点判成「源事实已变化」。
+    if (parseArcStructure(core?.plotStructurePlan ?? '')?.naming === 'volume') {
+      promptBuilder.withSystemSuffixOverride(getSynopsisTwoLevelSuffix(writingLanguage))
+    }
+
     if (mode === 'resume') {
       callbacks.log(text(
         `检测到中断检查点，正在续写第 ${from}–${to} 章（全书 ${totalChapters} 章）...`,
@@ -3194,6 +3203,11 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         sourceExpected.plotStructurePlan, sourceExpected.totalChapters, initial.range.from, initial.range.to, language))
       .withNarrativePov(getNarrativePOVLabel(config.narrativePOV || 'third_limited', language))
       .withGlobalGuidance(projectedGlobalGuidance).withStepGuidance(guidance)
+    // 两级结构换两级版输出合同（同 :2730 的说明；逐章 / 断点续写路径必须同口径，
+    // 否则同一份结构在两条路径上看到的「覆盖：」规则不一样）。
+    if (parseArcStructure(sourceExpected.plotStructurePlan ?? '')?.naming === 'volume') {
+      promptBuilder.withSystemSuffixOverride(getSynopsisTwoLevelSuffix(language))
+    }
     // ★ 这是段级标签的「第 7 个注入点」，不走模板变量，而是把**整份 config** JSON 直灌 prompt：
     //   不投影就会把打了【适用：架构】的参考作品/文风原样（含标签行）送进大纲请求 ——
     //   等于"大纲照样吃上层材料"，正是作者裁定 ① 要禁止的事（2026-10-13 实机取证发现）。
