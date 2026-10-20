@@ -1,9 +1,9 @@
 # E3 逐单元生成 · 工间交接（2026-10-20 收工）
 
 > **用途**：上下文过长时的接力点。**先读这一页，再读拆解稿**，防止目标漂移。
-> 分支：`exp/arc-tree-v2` · 代码 HEAD：`5f0f0742`（+ 本文档提交）· 工作区：干净
-> 进度：**T1/T2/T3/T5/T6/T7/T9 完成 + T4a 修订 + T4b 接线 + T4c 弧位按游标 + 章数双轨 + 界面冻结**；
-> **剩 T8 → T10（实机）→ T11（开关）**。
+> 分支：`exp/arc-tree-v2` · 代码 HEAD：`6e934150`（+ 本文档提交）· 工作区：干净
+> 进度：**T1–T9 全部完成**（含 T4a 修订 / T4b 接线 / T4c 弧位按游标 / T8 授权口径）+ 章数双轨 + 界面冻结；
+> **剩 T10（实机）→ T11（开关）**。
 > 主设计稿：[`docs/design/architecture/e3-unit-batch-implementation-plan.md`](../design/architecture/e3-unit-batch-implementation-plan.md)（T1–T11 + §9 决策 + §10 实施记录）
 > 口径稿：[`volume-quota-context-budget-design.md`](../design/architecture/volume-quota-context-budget-design.md) §6.2 / §7.1 · 实测：[`unit-budget-prompt-ab-test.md`](../design/architecture/unit-budget-prompt-ab-test.md) §13
 
@@ -39,6 +39,7 @@
 | 双轨 | `d0f2a24d` | 计划章数不动，另存偏离；实际预期 = 计划 ± 各卷偏离 |
 | 记账 | `cecbe479` | 偏离账改**按卷**（卷回滚可扣账），累计/预期现算 |
 | 界面 | `5f0f0742` | 蓝图范围**冻结在大纲已覆盖的章数内**（fail-open） |
+| T8 | `6e934150` | 上界校验 + 子 run 授权改比 `architecturePlanningRange`（`from + maxChapters − 1`） |
 
 **关键**：单元模式**仍没有生产调用方**（没人传 `synopsisUnit`），旧路径逐字节不变；开关在 T11。
 
@@ -61,25 +62,23 @@
 
 ---
 
-## 4. 下一步 T8：续批 / agent 子 run 的授权口径（**三处，已核实**）
+## 4. T8 已完成（含一处口径更正）
 
-单元模式下 `intent.synopsisRange` 是 `null`，而三处都在拿它比较——**现在接上开关，这三处会直接拒绝**：
+**先说更正**：交接稿原先断言「单元模式下续批必报 `GENERATION_PLANNING_CONTINUATION_RANGE_CHANGED`」——**不成立**。
+`planningContinuation(run)` 会先 `readPlotOutline(runId)`，而单元模式下 `plotOutlinePolicy` 返回 `null` ⇒
+`outline` 为空、`directoryRange` 也没有 ⇒ **直接 `return undefined`**，根本走不到那段 `remainingRange` 比较。
+语义上也没有对应物：「继续生成缺少的章节」在单元模式下等于"继续写下一个单元"，那是新的一次生成，不是同一次运行的续批。
+UI 的继续按钮已因 `!remainingRange` 处于禁用态。**所以续批不改**。
 
-| # | 位置 | 现状 | 后果（单元模式） |
-|---|---|---|---|
-| 1 | `main-generation-owner.ts` · `rangeEnd = scope.intent.synopsisRange?.to` | 只有 range 模式才校验上界 | 单元模式**跳过上界校验**（不炸，但少一道闸） |
-| 2 | 同文件 · `planningContinuation`：`range` 与 `current.remainingRange` 深比较 | 只认 `{from,to}` | **续批永远 `GENERATION_PLANNING_CONTINUATION_RANGE_CHANGED`** |
-| 3 | `agent-generation.ts` · 子 run 授权：`range` 与注册的 `{from,to}` 深比较 | 只认 `{from,to}` | **`GENERATION_AGENT_CHILD_NOT_AUTHORIZED`**（`registration.planning` 由 `start_chapter/chapter_count` 算出，只有 `{from,to,targetUnits}`） |
+**实际改了两处**（`6e934150`）：
 
-**T8 要做的**：三处都加单元模式分支，比较对象改成 `{from, cursor}` 或 `{from, unitIndex, maxChapters}`（**二者择一并写进文档**）。需要决定：
+| 位置 | 原来 | 现在 |
+|---|---|---|
+| `main-generation-owner.ts` · 上界 `rangeEnd` | `intent.synopsisRange?.to` ⇒ 单元模式 `undefined`，**越界校验被静默跳过** | `architecturePlanningRange(intent)?.to` |
+| `agent-generation.ts` · 子 run 授权 | 拿 `synopsisRange` 与注册的 `{from,to}` 比 ⇒ 单元模式 `null`，**必报 `CHILD_NOT_AUTHORIZED`** | 比 `architecturePlanningRange(intent)` |
 
-- `PlanningContinuationReceipt.remainingRange` 是否扩字段携带 `unitIndex`（扩字段 = 台账格式变化，旧记录要兼容）；
-- `registration.planning` 同理（agent 工具参数现在只有 `start_chapter` / `chapter_count`）；
-- 最小改动路线：单元模式**只深比较 `{from, unitIndex}`**，旧记录（没有该字段）回退旧比较。
-
-改完的验收：续批成功、子 run 授权成功、篡改游标/单元号被拒。
-
----
+新增 `architecturePlanningRange(intent)`（`generation-owner-contract.ts`）：range 模式原样；单元模式折算
+`boundTo = from + maxChapters − 1`；都没有/字段非法 ⇒ `null`（调用方跳过校验）。**只服务授权与上界，不写检查点、不进提示词。**
 
 ## 5. T10 实机清单
 
@@ -133,6 +132,14 @@ node scripts/check-doc-links.mjs
   用 `ELECTRON_RUN_AS_NODE=1 node_modules/electron/dist/electron.exe node_modules/vitest/vitest.mjs run <paths>` 即全绿）
 - `electron/services/__tests__/main-generation-{plan,unit-budget}` —— 94 + 7
 - `workflow-launch-dialogs.browser` —— 26
+- `src/shared/__tests__/architecture-planning-range.test.ts` —— 3
+
+**⚠️ 两个大文件要分批跑**（跑整文件会被环境噪声淹没，别误判成回归）：
+
+- `electron/services/__tests__/main-generation-owner.test.ts`（185 条）：整文件跑会在约 45 例后撞**沙箱 safe-delete 批量阈值**，
+  出现 ~139 条失败（错误栈落在 `fs.rmSync` cleanup，不是断言）。用 `-t "<describe 或用例名>"` 分批跑即绿；
+  另有 **2 条既有失败**（`frozen planning roots` 里两条 directory budget 用例，已 `git stash` 在基线上复现）。
+- `electron/services/__tests__/agent-generation.test.ts`（31 条）：整文件跑约 60s，正常全绿（需 Electron ABI）。
 
 ---
 
@@ -162,7 +169,6 @@ node scripts/check-doc-links.mjs
 ## 11. 接手动作
 
 1. 读拆解稿 §9（决策）+ §10（实施记录），确认 HEAD 与工作区。
-2. T8：按 §4 的三处改授权/续批口径（先定比较对象是 `{from, unitIndex}` 还是三元组）。
-3. T10：按 §5 实机跑（先备一个**旧检查点项目**和一个**新项目**）。
-4. T11：接开关 + 收口，顺带定 §6.2 的「从第 1 章重写」。
-5. 每步一 commit，提交信息写清「做了什么 / 验证了什么 / 没做什么」。
+2. **T10 实机**：按 §5 跑（先备一个**旧检查点项目**和一个**新项目**）。
+3. **T11 开关**：接 `synopsisUnit` 调用方 + 收口，顺带定 §6.2 的「从第 1 章重写」。
+4. 每步一 commit，提交信息写清「做了什么 / 验证了什么 / 没做什么」。
