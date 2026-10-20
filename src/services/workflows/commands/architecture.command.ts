@@ -16,7 +16,7 @@ import { projectScopedConfigFields, projectScopedText } from '../../../shared/te
 import { declareTraceScopeChapterRange } from '../../prompts/trace-scope'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
 import { formatChapterPosition } from '../../../shared/chapter-position'
-import { OUTLINE_TITLE_SEPARATORS, parseOutlineChapterHeading, type OutlineChapterHeadingFields } from '../../../shared/chapter-heading'
+import { outlineChapterHeading } from '../../../shared/chapter-heading'
 import {
   BaseWorkflowCommand,
   injectWritingSkillIntoSession,
@@ -464,22 +464,6 @@ class NonRecoverablePlotOutlineError extends Error {}
 
 
 /**
- * 单行 → 章标题字段。**本文件里所有「这行是不是章标题」都走这里**，
- * 宽容度是本文件原本那套：`#` 后必须有空白；章号后必须是分隔符或行尾。
- */
-function outlineHeadingOf(line: string): OutlineChapterHeadingFields | null {
-  const fields = parseOutlineChapterHeading(line)
-  if (!fields) return null
-  if (fields.hashLevel !== 0 && !fields.prefixSpaced) return null
-  if (fields.separator === null) {
-    if (fields.rest.trim() !== '') return null
-  } else if (!OUTLINE_TITLE_SEPARATORS.has(fields.separator)) {
-    return null
-  }
-  return fields
-}
-
-/**
  * 从正文中抽出「章标题 → 覆盖区间」。
  *
  * ⚠️ **这里曾经有第四份自写正则**（P0 收编 `plot-outline-contract` / `arc-node` /
@@ -494,7 +478,7 @@ export function findPlotOutlineTitleRanges(text: string): PlotOutlineTitleRange[
   let offset = 0
   for (const rawLine of text.split('\n')) {
     const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
-    const fields = outlineHeadingOf(line)
+    const fields = outlineChapterHeading(line)
     if (fields) {
       ranges.push({
         from: fields.chapter,
@@ -704,7 +688,7 @@ function listOutlineChapterLengths(body: string): { chapter: number; chars: numb
   let scan = 0
   for (const rawLine of body.split('\n')) {
     const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
-    const fields = outlineHeadingOf(line)
+    const fields = outlineChapterHeading(line)
     if (fields && fields.hashLevel === 2 && fields.arabic) chapterByLineStart.set(scan, fields.chapter)
     scan += rawLine.length + 1
   }

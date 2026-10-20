@@ -22,6 +22,11 @@ import {
   resetSynopsisCheckpoint,
   type SynopsisUnitProbeResult,
 } from '../../services/workflows/synopsis-unit-launch'
+import {
+  previewSynopsisUnitRewind,
+  rewindSynopsisUnit,
+  type SynopsisUnitRewindPlan,
+} from '../../services/workflows/synopsis-unit-rewind'
 import { confirm } from '../ui/Confirm'
 import { alertError } from '../ui/AlertDialog'
 
@@ -207,6 +212,75 @@ export default function ArchitectureConfirmDialog({
 
   /** 重置检查点：作者显式要求「把检查点里记的进度扔掉」。只动检查点，不动数据库正文。 */
   const [resettingCheckpoint, setResettingCheckpoint] = useState(false)
+  // P3b：整单元回退。预览在弹窗打开时就取（只读），作者看到章范围再决定点不点。
+  const [rewindPlan, setRewindPlan] = useState<SynopsisUnitRewindPlan | null>(null)
+  const [rewindError, setRewindError] = useState<string | null>(null)
+  const [rewinding, setRewinding] = useState(false)
+  useEffect(() => {
+    // 关闭弹窗/非单元模式时**不同步清状态**（effect 里同步 setState 会触发
+    // `react-hooks/set-state-in-effect`）；UI 只在 `unitMode` 分支渲染它，
+    // 下次打开时新预览会覆盖旧值。
+    if (!isOpen || !unitMode) return
+    const session = captureProjectSession(currentProject)
+    if (!session) return
+    let cancelled = false
+    void previewSynopsisUnitRewind(session).then(result => {
+      if (cancelled) return
+      setRewindPlan(result.ok ? result.plan ?? null : null)
+      // 「还没写过任何章」是常态，不该在界面上红着 —— 只有真异常才报。
+      setRewindError(result.ok ? null : (result.error && !result.error.includes('还没有任何章条目') ? result.error : null))
+    }).catch(() => {})
+    return () => { cancelled = true }
+    // unitMode.from 变了说明游标动了，预览必须重取
+  }, [isOpen, unitMode, currentProject])
+
+  const handleRewindUnit = async () => {
+    if (!rewindPlan) return
+    const session = captureProjectSession(currentProject)
+    if (!session) return
+    const position = formatChapterPosition({
+      chapter: rewindPlan.range.from,
+      volumeIndex: rewindPlan.volumeIndex,
+      unitIndex: rewindPlan.unitIndex,
+    }, 'zh-CN')
+    const ok = await confirm(
+      text(
+        `会把数据库里这一个单元的大纲正文整块删掉：${position}（全书第 ${rewindPlan.range.from}–${rewindPlan.range.to} 章，`
+          + `共 ${rewindPlan.removedChapters.length} 条、约 ${rewindPlan.removedChars} 字）。`
+          + `进度退回${rewindPlan.coveredTo === 0 ? '全书起点' : `第 ${rewindPlan.coveredTo} 章`}，下一次生成从这个单元重新整体规划。`
+          + `世界观、前提、角色、弧光结构一个字都不动。\n\n`
+          + `单元是整体规划的，所以不能只重写单元里的某几章。`,
+        `This removes the whole unit's outline body from the database: ${position} `
+          + `(chapters ${rewindPlan.range.from}-${rewindPlan.range.to}, ${rewindPlan.removedChapters.length} entries, ~${rewindPlan.removedChars} characters). `
+          + `Progress goes back to chapter ${rewindPlan.coveredTo} and the next run replans this unit as a whole. `
+          + `Worldbuilding, premise, characters and the arc structure are untouched.`,
+      ),
+      {
+        title: text('重写这一个单元？', 'Rewrite this unit?'),
+        confirmText: text('重写', 'Rewrite'),
+        danger: true,
+      },
+    )
+    if (!ok) return
+    setRewinding(true)
+    try {
+      const result = await rewindSynopsisUnit(session)
+      if (!result.ok) {
+        alertError(result.error ?? text('回退失败', 'Rewind failed'), { title: text('回退失败', 'Rewind failed') })
+        return
+      }
+      toast.info(text(
+        `已退回：下一次从第 ${result.plan?.range.from ?? rewindPlan.range.from} 章重新规划这个单元`,
+        `Rewound: the next run replans this unit from chapter ${result.plan?.range.from ?? rewindPlan.range.from}`,
+      ))
+      setUnitPreview(await probeSynopsisUnitLaunchForProject({ projectSession: session, totalChapters: totalChapterCount }))
+      setRewindPlan(null)
+    } catch (error) {
+      alertError(error instanceof Error ? error.message : String(error), { title: text('回退失败', 'Rewind failed') })
+    } finally {
+      setRewinding(false)
+    }
+  }
   const handleResetCheckpoint = async () => {
     const ok = await confirm(
       text(
@@ -615,6 +689,36 @@ export default function ArchitectureConfirmDialog({
                           )}
                         </span>
                       </label>
+                    )}
+                    {rewindPlan && (
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span style={{ color: 'var(--color-text-muted)' }}>
+                          {text(
+                            `已写：${formatChapterPosition({
+                              chapter: rewindPlan.range.from,
+                              volumeIndex: rewindPlan.volumeIndex,
+                              unitIndex: rewindPlan.unitIndex,
+                            }, 'zh-CN')}–第 ${rewindPlan.range.to} 章，约 ${rewindPlan.removedChars} 字`,
+                            `Written: chapters ${rewindPlan.range.from}-${rewindPlan.range.to} of this unit, ~${rewindPlan.removedChars} characters`,
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleRewindUnit()}
+                          disabled={rewinding || continuing}
+                          className="text-xs underline disabled:opacity-60"
+                          style={{ color: 'var(--color-warning-text)' }}
+                        >
+                          {rewinding
+                            ? text('正在回退…', 'Rewinding…')
+                            : text('重写这一个单元', 'Rewrite this unit')}
+                        </button>
+                      </div>
+                    )}
+                    {rewindError && (
+                      <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>
+                        {text(`无法整单元重写：${rewindError}`, `Cannot rewrite the unit: ${rewindError}`)}
+                      </p>
                     )}
                   </div>
                 ) : (
