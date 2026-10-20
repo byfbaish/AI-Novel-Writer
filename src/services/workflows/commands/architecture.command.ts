@@ -16,6 +16,7 @@ import { projectScopedConfigFields, projectScopedText } from '../../../shared/te
 import { declareTraceScopeChapterRange } from '../../prompts/trace-scope'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
 import { formatChapterPosition } from '../../../shared/chapter-position'
+import { OUTLINE_TITLE_SEPARATORS, parseOutlineChapterHeading, type OutlineChapterHeadingFields } from '../../../shared/chapter-heading'
 import {
   BaseWorkflowCommand,
   injectWritingSkillIntoSession,
@@ -461,63 +462,50 @@ interface PlotOutlineTitleRange {
 
 class NonRecoverablePlotOutlineError extends Error {}
 
-const CHINESE_CHAPTER_DIGITS: Readonly<Record<string, number>> = Object.freeze({
-  零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5,
-  六: 6, 七: 7, 八: 8, 九: 9,
-})
-const CHINESE_CHAPTER_UNITS: Readonly<Record<string, number>> = Object.freeze({ 十: 10, 百: 100, 千: 1000 })
-const CHAPTER_NUMBER_TOKEN = '[0-9零〇一二两三四五六七八九十百千]+'
-/**
- * 章标题（中文）。⚠️ 章号两侧必须容忍空格（`第 6 章`）：模型输出风格会漂，
- * 2026-10-20 实机整批写成「## 第 1 章：xxx」⇒ 这里与 `plot-outline-contract.headings`
- * 曾同时认不出，导致回填失败。两处必须保持一致（另有 `arc-node` / `synopsis-projection` 也认空格）。
- */
-const ZH_CHAPTER_TITLE_RE = new RegExp(
-  `^[\\t ]*(?:#{1,6}[\\t ]+|[-*+][\\t ]+)?第[\\t ]*(${CHAPTER_NUMBER_TOKEN})(?:[\\t ]*[–—-][\\t ]*(${CHAPTER_NUMBER_TOKEN}))?[\\t ]*章(?=[\\t ]*(?:[:：.．—-]|$))`,
-  'gmu',
-)
-const EN_CHAPTER_TITLE_RE = /^[\t ]*(?:#{1,6}[\t ]+|[-*+][\t ]+)?Chapters?[\t ]+(\d+)(?:[\t ]*[–—-][\t ]*(\d+))?(?=[\t ]*(?:[:.：—-]|$))/gimu
 
-function parseChapterNumberToken(token: string): number | null {
-  if (/^\d+$/u.test(token)) {
-    const value = Number(token)
-    return Number.isSafeInteger(value) ? value : null
+/**
+ * 单行 → 章标题字段。**本文件里所有「这行是不是章标题」都走这里**，
+ * 宽容度是本文件原本那套：`#` 后必须有空白；章号后必须是分隔符或行尾。
+ */
+function outlineHeadingOf(line: string): OutlineChapterHeadingFields | null {
+  const fields = parseOutlineChapterHeading(line)
+  if (!fields) return null
+  if (fields.hashLevel !== 0 && !fields.prefixSpaced) return null
+  if (fields.separator === null) {
+    if (fields.rest.trim() !== '') return null
+  } else if (!OUTLINE_TITLE_SEPARATORS.has(fields.separator)) {
+    return null
   }
-  let result = 0
-  let digit = 0
-  for (const char of token) {
-    if (char in CHINESE_CHAPTER_DIGITS) {
-      digit = CHINESE_CHAPTER_DIGITS[char]!
-      continue
-    }
-    const unit = CHINESE_CHAPTER_UNITS[char]
-    if (!unit) return null
-    result += (digit || 1) * unit
-    digit = 0
-  }
-  return result + digit
+  return fields
 }
 
-function findPlotOutlineTitleRanges(text: string): PlotOutlineTitleRange[] {
+/**
+ * 从正文中抽出「章标题 → 覆盖区间」。
+ *
+ * ⚠️ **这里曾经有第四份自写正则**（P0 收编 `plot-outline-contract` / `arc-node` /
+ * `outline-tree` 三处时漏了它）。后果是 2026-10-20 实机：P2 让单元批次改用
+ * `## 第1卷第1单元第1章（全书第1章）：…` 之后，本函数只认得出同批里漂成旧格式的
+ * 后半段（4–6 章），前半段（1–3 章）一条都认不出 ⇒ `assertPlotOutlineTitleCoverage`
+ * 报「缺失 3 章、乱序 1 处」，整批写完却入不了库。
+ */
+/** @internal 导出只为可单测。 */
+export function findPlotOutlineTitleRanges(text: string): PlotOutlineTitleRange[] {
   const ranges: PlotOutlineTitleRange[] = []
-  for (const regex of [ZH_CHAPTER_TITLE_RE, EN_CHAPTER_TITLE_RE]) {
-    regex.lastIndex = 0
-    for (const match of text.matchAll(regex)) {
-      const from = parseChapterNumberToken(match[1]!)
-      const to = parseChapterNumberToken(match[2] ?? match[1]!)
-      if (from !== null && to !== null) {
-        const index = match.index ?? 0
-        const lineEnd = text.indexOf('\n', index)
-        ranges.push({
-          from,
-          to,
-          index,
-          headingLineEnd: lineEnd < 0 ? text.length : lineEnd,
-        })
-      }
+  let offset = 0
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
+    const fields = outlineHeadingOf(line)
+    if (fields) {
+      ranges.push({
+        from: fields.chapter,
+        to: fields.chapterTo,
+        index: offset,
+        headingLineEnd: offset + rawLine.length,
+      })
     }
+    offset += rawLine.length + 1
   }
-  return ranges.sort((left, right) => left.index - right.index)
+  return ranges
 }
 
 /**
@@ -709,17 +697,29 @@ export function summarizeOutlineLength(
 
 /** 从大纲正文里逐章切出字数（不含标题行）。解析不出章标题时返回空数组。 */
 function listOutlineChapterLengths(body: string): { chapter: number; chars: number }[] {
-  const lines = body.split(/\r?\n/u);
+  // 原来这里是第五份自写正则 `/^##\s*第\s*([0-9]+)\s*章/`，同样认不出 P2 的归属标题 ——
+  // 后果是大纲字数体检在单元批次下恒为「无数据」而静默闭嘴（只提示不阻断，所以一直没人发现）。
+  // 现在走 `outlineHeadingOf`；仍然只认**恰好二级标题 + 阿拉伯数字章号**，与原正则同口径。
+  const chapterByLineStart = new Map<number, number>()
+  let scan = 0
+  for (const rawLine of body.split('\n')) {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine
+    const fields = outlineHeadingOf(line)
+    if (fields && fields.hashLevel === 2 && fields.arabic) chapterByLineStart.set(scan, fields.chapter)
+    scan += rawLine.length + 1
+  }
   const chapters: { chapter: number; chars: number }[] = [];
   let current: { chapter: number; chars: number } | null = null;
-  for (const line of lines) {
-    const heading = /^##\s*第\s*([0-9]+)\s*章/u.exec(line);
-    if (heading) {
+  let offset = 0;
+  for (const rawLine of body.split('\n')) {
+    const chapter = chapterByLineStart.get(offset)
+    if (chapter !== undefined) {
       if (current) chapters.push(current);
-      current = { chapter: Number(heading[1]), chars: 0 };
-      continue;
+      current = { chapter, chars: 0 };
+    } else if (current) {
+      current.chars += outlineLengthOf(rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine);
     }
-    if (current) current.chars += outlineLengthOf(line);
+    offset += rawLine.length + 1;
   }
   if (current) chapters.push(current);
   return chapters.filter(item => Number.isSafeInteger(item.chapter) && item.chapter >= 1);

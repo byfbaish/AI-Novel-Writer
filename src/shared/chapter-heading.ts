@@ -63,6 +63,15 @@ export type OutlineHeadingPrefix = typeof HASH_PREFIXES[number] | 'bullet' | 'no
 const SEPARATOR = /^[\t ]*([:：.．、·\-—])?[\t ]*/u
 
 /**
+ * 大纲类调用方共用的分隔符子集（`plot-outline-contract` / `architecture.command` /
+ * `synopsis-projection` 三处同一份）。
+ *
+ * ⚠️ 之所以要导出：这三个文件曾经**各写一个 Set**，加上各自的正则，等于三套独立标准；
+ * 2026-10-20 那次「6 章写完入不了库」就是其中一处漏了新格式。改集合就改这里一处。
+ */
+export const OUTLINE_TITLE_SEPARATORS: ReadonlySet<string> = new Set([':', '：', '.', '．', '-', '—'])
+
+/**
  * 组：1 hash / 2 bullet / 3 卷 / 4 单元 / 5 单元内章 / 6 全书章 /
  *     7 旧格式起始章 / 8 旧格式区间终点 / 9 英文起始章 / 10 英文区间终点 / 11 分隔符之后
  */

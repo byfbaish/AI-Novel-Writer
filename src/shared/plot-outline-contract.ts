@@ -3,7 +3,7 @@ import type { PhysicalAttempt } from './generation-contract'
 import type { VisibleCompositionReceipt, ArchitectureUnitRange } from './generation-owner-contract'
 import type { MainGenerationRunHandle } from '../services/generation/generation-runtime'
 import type { WritingLanguage } from './writing-language'
-import { parseOutlineChapterHeading } from './chapter-heading'
+import { OUTLINE_TITLE_SEPARATORS, parseOutlineChapterHeading } from './chapter-heading'
 
 export const DEFAULT_PLANNING_ACTION_CHAPTERS = 5
 export const PLANNING_ACTION_CHAPTER_LIMIT = 10
@@ -198,7 +198,8 @@ export function parsePlotOutlinePurpose(purpose: string): { chapterNumber: numbe
  * 容忍空格不会放宽别的判定：标题后仍必须是 `:`/`：`/`.`/`．`/`-`/`—` 或行尾，正文里
  * 「第 1 章到第 5 章」这种仍不匹配（`章` 后接「到」）。
  */
-const CONTRACT_SEPARATORS: ReadonlySet<string> = new Set([':', '：', '.', '．', '-', '—'])
+/** 与 `chapter-heading.OUTLINE_TITLE_SEPARATORS` 同一份（导出名保留，调用方不必改）。 */
+const CONTRACT_SEPARATORS = OUTLINE_TITLE_SEPARATORS
 
 function headings(text: string): { from: number; to: number; index: number; end: number; grouped: boolean }[] {
   const result: { from: number; to: number; index: number; end: number; grouped: boolean }[] = []
@@ -227,11 +228,26 @@ function headings(text: string): { from: number; to: number; index: number; end:
 
 export function validPlotOutlineEntry(text: string, chapter: number): boolean {
   if (/```|~~~|大纲批次进度|后续概览|Outline batch progress|Later overview/iu.test(text)) return false
-  if (!new RegExp(`^## (?:第[\\t ]*${chapter}[\\t ]*章|Chapter[\\t ]+${chapter})[:：][\\t ]*\\S[^\\r\\n]*\\r?\\n`, 'iu').test(text.trim())) return false
   const entries = headings(text)
   const heading = entries[0]
   if (entries.length !== 1 || !heading || heading.grouped || heading.from !== chapter || heading.to !== chapter
     || text.slice(0, heading.index).trim() || !text.slice(heading.end).trim()) return false
+  /**
+   * 首行的硬约束（原先是第二条自写正则 `^## (?:第N章|Chapter N)[:：]\S`）。
+   *
+   * ⚠️ 那份正则在 P2 之后认不出归属标题 `## 第1卷第1单元第1章（全书第1章）：…`，
+   * 而本文件 `headings()` 已经认得 —— 同一个文件里两套标准，结果是结构化的按章链路
+   * 会把合法条目判成无效。现在两边都走 `parseOutlineChapterHeading`，只保留
+   * **本函数原本更严**的那几条：恰好二级标题、章号后是冒号、章名非空。
+   */
+  const firstLine = text.trim().split('\n')[0] ?? ''
+  const fields = parseOutlineChapterHeading(firstLine.endsWith('\r') ? firstLine.slice(0, -1) : firstLine)
+  if (!fields || fields.hashLevel !== 2 || !fields.prefixSpaced) return false
+  // 章号必须是阿拉伯数字（原前置正则把 `${chapter}` 直接拼进模式，中文数字天然不匹配）。
+  // `headings()` 更宽，认「第一章」；这一层必须自己守住，否则会把作者手写风格判成机器条目。
+  if (!fields.arabic) return false
+  if (fields.separator !== ':' && fields.separator !== '：') return false
+  if (!fields.rest.trim()) return false
   const body = text.slice(heading.end)
   return !/^[\t ]*(?:#{1,6}[\t ]+|(?:[-*+][\t ]+)?(?:第[^\r\n]*章|Chapters?\b))/imu.test(body)
 }

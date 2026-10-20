@@ -1,4 +1,5 @@
 import type { WritingLanguage } from './writing-language'
+import { OUTLINE_TITLE_SEPARATORS, parseOutlineChapterHeading } from './chapter-heading'
 
 /**
  * 情节大纲 → 下游步骤的**章级投影**（2026-10-13，P0-0）。
@@ -45,16 +46,33 @@ type ChapterHeading = Readonly<{
   markdownLevel: number
 }>
 
-const CHAPTER_HEADING = /^\s*(?:(#{1,6})[\t ]+)?(?:第\s*([1-9]\d*)(?:\s*[–—-]\s*([1-9]\d*))?\s*章|Chapters?[\t ]+([1-9]\d*)(?:[\t ]*[–—-][\t ]*([1-9]\d*))?)(?=[\t ]*(?:[:：.．—-]|$))/iu
-
+/**
+ * ⚠️ 这里曾是第六份自写章标题正则。P2 之后单元批次写成
+ * `## 第1卷第1单元第1章（全书第1章）：…`，旧正则一条也认不出 ⇒ `parseOutline` 直接
+ * 返回 null ⇒ 投影**原样保留全文**（`projectSettingSections` 不再裁剪）。
+ *
+ * 那是 fail-safe，不会丢作者事实，但等于投影功能在 P2 格式下静默失效：蓝图批次又会
+ * 每批携带整份大纲（2026-10-13 修过一次的 15,917 字问题会复现）。现在走共享解析器。
+ *
+ * 严格度保持原样：只认阿拉伯数字章号；无 `#` 的裸标题必须紧跟冒号 + 非空标题。
+ */
 function parseChapterHeading(line: string, lineIndex: number): ChapterHeading | null {
-  const match = CHAPTER_HEADING.exec(line)
-  if (!match) return null
+  const fields = parseOutlineChapterHeading(line)
+  if (!fields) return null
+  // 投影**不认 bullet 前缀**（`- 第1章：…` 原正则就没认过）：那是作者手写列表，
+  // 与「机器生成的章节条目」不是一回事，认了会把设定层整段剔空。
+  if (fields.prefix === 'bullet') return null
+  if (fields.hashLevel !== 0 && !fields.prefixSpaced) return null
+  if (fields.separator === null) {
+    if (fields.rest.trim() !== '') return null
+  } else if (!OUTLINE_TITLE_SEPARATORS.has(fields.separator)) {
+    return null
+  }
+  if (!fields.arabic) return null
   // Bare headings must use the production outline's explicit title separator.
-  if (!match[1] && !/^[\t ]*[:：]\s*\S/u.test(line.slice(match[0].length))) return null
-  const from = Number(match[2] ?? match[4])
-  const to = Number(match[3] ?? match[5] ?? from)
-  return { lineIndex, from, to, markdownLevel: match[1]?.length ?? 0 }
+  if (fields.hashLevel === 0 && (fields.separator !== ':' && fields.separator !== '：')) return null
+  if (fields.hashLevel === 0 && !fields.rest.trim()) return null
+  return { lineIndex, from: fields.chapter, to: fields.chapterTo, markdownLevel: fields.hashLevel }
 }
 
 interface ParsedOutline {

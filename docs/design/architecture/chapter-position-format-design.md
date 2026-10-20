@@ -310,5 +310,81 @@ A/B 两个真实项目都是 `volume` 命名，且都有完整的单元层（`mi
 2. 该批的覆盖章数（`plotOutlineCoveredTo`）正常推进、检查点 `range` 回填正确；
 3. 大纲树里出现「N 章归属来自章标题」，且 `漂移` 为 0（单元按计划写完时）。
 
-⚠️ 模型若无视新格式、仍写 `## 第22章：章名`，**不会丢批**（双格式永久兼容），
-只是这些章继续标 `computed`。所以「格式没生效」是效果问题，不是数据事故。
+⚠️ 模型若无视新格式、仍写 `## 第22章：章名`，**这一章不会丢**（解析双格式永久兼容），
+只是它继续标 `computed`。所以「格式没生效」是效果问题，不是数据事故。
+
+⚠️ **但反过来会出事故**：P2 刚落地时，只要模型**真的用了**新格式，`assertPlotOutlineTitleCoverage`
+就认不出它 —— 见 §10。
+
+## 10. P2 合同放开后才暴露的事故：还有三份自写章标题正则
+
+### 现场（2026-10-20 深夜，B 项目第 1 卷第 1 单元）
+
+模型写完 6 章、末行还写着「大纲批次进度：已覆盖第1–6章」，却入不了库：
+
+```
+大纲正文未按顺序提供本批第 1–6 章的非空条目（缺失 3 章，空白、重复、乱序或越界 1 处），
+结果未按完成保存。…这种结构错误不能自动续写；请修正范围后重新生成。
+```
+
+`generation_artifacts` 里两段可见文本把真相说清了：
+
+| 段 | 章 | 标题实际形态 |
+|---|---|---|
+| 初始响应 | 1–3 | `## 第1卷第1单元第1章（全书第1章）：溃烂与空罐`（新格式） |
+| 自动续写第 1 轮 | 4–6 | `## 第4章：药渣堆里的气息`（**漂回旧格式**） |
+
+`assertPlotOutlineTitleCoverage` 只认出后半段 ⇒ `covered={4,5,6}`、`missing=[1,2,3]`、
+`invalid 1`（期望第 1 章、实际第 4 章）—— 与报错逐字吻合。
+
+### 根因：P0 只收编了三处，实际有六处
+
+`chapter-heading.ts` 头部那张表列了三个解析器，P0 把它们收编了。但同一件事在别处还有三份：
+
+| # | 位置 | 用途 | P2 后的后果 |
+|---|---|---|---|
+| ④ | `architecture.command.findPlotOutlineTitleRanges` | 批次覆盖区间校验（**就是这次的报错源**） | 新格式一条不认 ⇒ 整批不入库 |
+| ⑤ | `plot-outline-contract.validPlotOutlineEntry` 首行前置正则 | 结构化按章链路的合法性 | 合法条目被判无效 |
+| ⑥ | `synopsis-projection.parseChapterHeading` | 蓝图链的大纲投影 | 投影静默失效（原样带全文，退化成 2026-10-13 修过的 15,917 字问题） |
+| ⑦ | `architecture.command.listOutlineChapterLengths` | 大纲字数体检 | 体检恒为「无数据」而闭嘴（只提示，所以一直没人发现） |
+
+④⑤⑥⑦ 的共同点：**P0 当时只按「谁在解析章标题」去找，没按「谁写死了 `第…章` 这几个字」去找**。
+四份正则各自写死了 `^## ` + `第N章` + 分隔符集合，全部漏掉归属前缀。
+
+### 修法（`OUTLINE_TITLE_SEPARATORS` 单一来源）
+
+1. `chapter-heading.ts` 导出 `OUTLINE_TITLE_SEPARATORS`（原先 `plot-outline-contract` 与
+   `architecture.command` 各有一个同内容的私有 Set）。
+2. `architecture.command` 抽 `outlineHeadingOf(line)`，④⑦ 共用；④ 不再有正则。
+3. ⑤ 改用 `parseOutlineChapterHeading`，保留它**原本更严**的几条：恰好 `##`、章号是阿拉伯数字、
+   必须冒号、章名非空。
+4. ⑥ 同样改共享解析器，保留「只认阿拉伯数字」「不认 bullet 前缀」「裸标题必须冒号」三条原严格度。
+
+### 保留各自宽容度的对照（改完必须逐条对得上）
+
+| 调用方 | `#` 级 | bullet | 中文数字 | 分隔符集合 | 归属标题 |
+|---|---|---|---|---|---|
+| `plot-outline-contract.headings()` | 1–6 且 `#` 后需空白 | 认 | 认 | 6 个 | 认 |
+| `findPlotOutlineTitleRanges`（④） | 1–6 或 bullet 或无前缀 | 认 | 认 | 6 个 | 认 |
+| `validPlotOutlineEntry`（⑤） | **恰好 2** | 不认 | **不认** | 只认 `:`/`：` | 认 |
+| `synopsis-projection`（⑥） | 1–6 或裸标题 | **不认** | **不认** | 6 个 | 认 |
+| `listOutlineChapterLengths`（⑦） | **恰好 2** | 不认 | **不认** | 6 个 | 认 |
+
+### 附带修掉的第二个 bug：自动续写丢格式
+
+`bounded-completion.buildTextContinuationPrompt` 的硬性要求原本写着
+「只输出新增的可见文本，不要复述、总结、解释、**Markdown** 或思考过程」。
+「不要 Markdown」被模型理解成「标题别带格式」，于是续写那半段漂回 `## 第4章：`。
+
+改成显式要求：**标题层级、编号写法必须与【已完成可见文本末尾】完全一致，不得简化或换格式**，
+并把「不要 Markdown」从这句里删掉（这里本来就要输出 Markdown 结构）。
+
+⚠️ 这条是**降低复发概率**，不是保证：校验器侧（④）已经能同时认两种格式，所以即使再漂也不会丢批，
+只会让那一批的章继续标 `computed`。
+
+### 回归
+
+新增 `src/services/workflows/commands/__tests__/plot-outline-title-ranges.test.ts`（8 条），
+用现场那两段真实标题做混合用例；`chapter-heading.test.ts` 里 P2 写的
+「归属标题当前尚不通过（P2 改合同后才放开）」按合同反转成「通过，但章号必须对全书章号」。
+
