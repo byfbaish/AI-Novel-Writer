@@ -105,7 +105,7 @@ interface CheckpointSnapshot {
   synopsis_step_guidance?: string
 }
 
-function harness(checkpoint: CheckpointSnapshot = {}, dbSynopsis = '') {
+function harness(checkpoint: CheckpointSnapshot = {}, dbSynopsis = '', readFailure: string | null = null) {
   const partialWrites: CheckpointSnapshot[] = []
   let storedCheckpoint: CheckpointSnapshot = { ...checkpoint }
   let storedDbSynopsis = dbSynopsis
@@ -120,7 +120,10 @@ function harness(checkpoint: CheckpointSnapshot = {}, dbSynopsis = '') {
       storedDbSynopsis = request.synopsis
       return { success: true }
     }
-    if (channel === 'fs:read-json') return { success: true, data: storedCheckpoint }
+    if (channel === 'fs:read-json') {
+      if (readFailure) return { success: false, data: null, reason: readFailure }
+      return { success: true, data: storedCheckpoint }
+    }
     if (channel === 'fs:write-json') {
       storedCheckpoint = { ...(rest[1] as CheckpointSnapshot) }
       partialWrites.push(storedCheckpoint)
@@ -389,5 +392,33 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
     // 没有提交：没有一次落盘把 covered_to 推高，DB 正文也没被写
     expect(ipc.partialWrites.every(write => (write.synopsis_covered_to ?? 0) === 0)).toBe(true)
     expect(ipc.dbSynopsis()).toBe('')
+  })
+})
+
+/**
+ * 2026-10-20 实机事故：作者手改检查点（A6 把 writtenInVolume +3）之后，文件读数失败被当成
+ * 「全书未开始」，于是从第 1 章开写，把已完成的 21 章大纲覆盖成 4 章。
+ *
+ * 这两条锁的是命令侧的最后一道闸：**读不出来 / 读丢了都不许开工**。
+ */
+describe('GeneratePlotArchitectureCommand · 检查点不可信时 fail-closed', () => {
+  it('检查点读不出来（JSON / 编码）⇒ 中止，一次模型调用都不发', async () => {
+    const stream = responseStream([chapters(1, 5)])
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream: stream })
+    harness({}, '', 'invalid-json')
+
+    await expect(makeCommand({ from: 1, unitIndex: 1, maxChapters: 6, volumeRemaining: 30 })
+      .execute({ step: {}, context, callbacks })).rejects.toThrow('检查点读不出来')
+    expect(stream).not.toHaveBeenCalled()
+  })
+
+  it('检查点丢了但库里已有大纲 ⇒ 中止（继续下去唯一的结果就是覆盖重写）', async () => {
+    const stream = responseStream([chapters(1, 5)])
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream: stream })
+    harness({}, chapters(1, 21))
+
+    await expect(makeCommand({ from: 1, unitIndex: 1, maxChapters: 6, volumeRemaining: 30 })
+      .execute({ step: {}, context, callbacks })).rejects.toThrow('已有第 1–21 章')
+    expect(stream).not.toHaveBeenCalled()
   })
 })

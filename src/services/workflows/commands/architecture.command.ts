@@ -1270,6 +1270,13 @@ function assertArchitectureProjectSessionCurrent(
   }
 }
 
+/**
+ * 读架构检查点。
+ *
+ * **「文件不存在」与「文件读不出来」必须分开**：前者是新项目的正常形态（返回空对象），
+ * 后者若也当成空检查点，情节大纲就会从第 1 章重写。2026-10-20 实机事故即此：作者手改
+ * 检查点后文件编码/JSON 一变，21 章大纲被一次 4 章的批次覆盖。这里一律 fail-closed。
+ */
 async function loadPartialData(
   projectPath: string,
   projectSession: ProjectSessionContext,
@@ -1281,6 +1288,12 @@ async function loadPartialData(
     projectPath,
   )
   if (result.success && result.data) return result.data as PartialArchData
+  if (result.reason === 'invalid-json' || result.reason === 'unreadable' || result.reason === 'denied') {
+    throw new WorkflowGuardError(
+      `架构检查点读不出来：${CANONICAL_PROJECT_DIRECTORY}/partial_arch.json 在，但不是合法 JSON 或不是 UTF-8。`
+      + '为避免从第 1 章覆盖重写已生成的大纲，本次生成已中止。请先修好或恢复这个文件再重试。',
+    )
+  }
   return {}
 }
 
@@ -2489,6 +2502,24 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     context.data.partial = partial
     const coveredTo = partial.synopsis_covered_to ?? 0
     const interrupted = partial.synopsis_incomplete === true
+    /**
+     * 第二份进度事实：库里的正文。
+     *
+     * 检查点说「一章都没写过」而库里已有 N 章大纲 ⇒ 检查点丢了（被删、被换、被别的东西覆盖）。
+     * 此时照常从第 1 章开写，就是静默覆盖重写这 N 章 —— 2026-10-20 实机事故的另一种成因。
+     * 注意**不能**据此拦掉「作废重写」：那条路检查点仍在（`covered_to = N`），只是 `from = 1`。
+     */
+    const dbCoveredTo = plotOutlineCoveredTo(core?.synopsis ?? '')
+    if (coveredTo === 0 && dbCoveredTo > 0 && !interrupted) {
+      throw new WorkflowGuardError(text(
+        `数据库中已有第 1–${dbCoveredTo} 章的情节大纲，但检查点（${CANONICAL_PROJECT_DIRECTORY}/partial_arch.json）显示一章都没写过。`
+        + '这通常意味着检查点被删除或替换过；继续生成会把这部分大纲覆盖重写，因此已中止。'
+        + '请恢复检查点后重试；确实要从第 1 章重写，请先清空数据库中的情节大纲。',
+        `The database already holds a plot outline for chapters 1-${dbCoveredTo}, but the checkpoint reports nothing written. `
+        + 'The checkpoint was probably deleted or replaced; generating now would overwrite that outline, so the run was stopped. '
+        + 'Restore the checkpoint and retry, or clear the stored outline first if you really want to rewrite from chapter 1.',
+      ))
+    }
     // E3 迁移（2026-10-20）：旧检查点没有游标 → 一次性推导并落库；此后一律以游标为准。
     if (partial.synopsis_range && coveredTo >= 1 && !partial.synopsis_unit_cursor) {
       syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, totalChapters)

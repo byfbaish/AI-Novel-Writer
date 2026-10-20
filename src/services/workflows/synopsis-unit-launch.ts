@@ -33,6 +33,14 @@ export interface SynopsisUnitLaunchInput {
   readonly totalChapters: number
   /** 弧光结构正文（`db:project-core-get` 的 `plotStructurePlan`）；没有骨架就无法定位单元。 */
   readonly plotStructurePlan: string | undefined
+  /**
+   * 库内正文已覆盖到第几章（`plotOutlineCoveredTo(core.synopsis)`）。
+   *
+   * 这是检查点之外的第二份进度事实，只用来做**一致性反证**：检查点说「一章都没有」
+   * 而库里已经有 N 章大纲时，只有一个解释——检查点丢了或读不出来。此时若照常从第 1 章
+   * 开始，就是把这 N 章覆盖重写（2026-10-20 实机事故）。
+   */
+  readonly outlineCoveredTo?: number
   /** 便于测试注入；缺省读 `window.localStorage`。 */
   readonly storage?: Pick<Storage, 'getItem'> | null
 }
@@ -44,6 +52,10 @@ export type SynopsisUnitSkipReason =
   | 'incomplete'
   | 'no-cursor'
   | 'compute-null'
+  /** 检查点文件在、但读不出来（JSON 坏了 / 编码不是 UTF-8）。**绝不能当成新项目从第 1 章开写。** */
+  | 'checkpoint-broken'
+  /** 检查点说没写过，但库里已有大纲 —— 检查点遗失。同样不能当成新项目。 */
+  | 'checkpoint-lost'
   /** 探针自己抛了异常（**绝不能因此拦住生成**，但也必须被看见）。 */
   | 'probe-error'
 
@@ -90,9 +102,15 @@ export function synopsisUnitCheckpointPath(projectPath: string): string {
 export interface SynopsisUnitCheckpointRead {
   readonly checkpoint: SynopsisUnitCheckpoint
   readonly found: boolean
+  /**
+   * `missing` = 确实没有这个文件（新项目 / 已清理）；
+   * `broken` = 文件在，但读不出来（编码或 JSON 坏了）。
+   * **两者不可混用**：`broken` 时当成空检查点，就会从第 1 章覆盖重写。
+   */
+  readonly status: 'ok' | 'missing' | 'broken'
 }
 
-/** 读检查点；**不抛错**（读不到就是「全书未开始」，同时把 found 标出来供诊断用）。 */
+/** 读检查点；**不抛错**（读不到就是「全书未开始」，同时把 found / status 标出来供诊断与拦截用）。 */
 export async function readSynopsisUnitCheckpointWithStatus(
   projectSession: ProjectSessionContext,
 ): Promise<SynopsisUnitCheckpointRead> {
@@ -104,11 +122,14 @@ export async function readSynopsisUnitCheckpointWithStatus(
       projectSession.projectPath,
     )
     if (result.success && result.data && typeof result.data === 'object') {
-      return { checkpoint: result.data as SynopsisUnitCheckpoint, found: true }
+      return { checkpoint: result.data as SynopsisUnitCheckpoint, found: true, status: 'ok' }
     }
-    return { checkpoint: {}, found: false }
+    const broken = result.reason === 'invalid-json'
+      || result.reason === 'unreadable'
+      || result.reason === 'denied'
+    return { checkpoint: {}, found: false, status: broken ? 'broken' : 'missing' }
   } catch {
-    return { checkpoint: {}, found: false }
+    return { checkpoint: {}, found: false, status: 'broken' }
   }
 }
 
@@ -138,10 +159,16 @@ export async function probeSynopsisUnitLaunch(
   const totalChapters = Number(input.totalChapters)
   if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return skip('invalid-total')
 
-  const { checkpoint, found } = await readSynopsisUnitCheckpointWithStatus(input.projectSession)
+  const { checkpoint, found, status } = await readSynopsisUnitCheckpointWithStatus(input.projectSession)
+  // 文件在但读不出来 ⇒ 一律不进单元模式。**把它当成空检查点的后果是从第 1 章覆盖重写**，
+  // 而这里能做的只有「拦住 + 说清楚」，不该替作者猜他想不想要那个副作用。
+  if (status === 'broken') return skip('checkpoint-broken', 0, false)
   const coveredTo = Number.isSafeInteger(checkpoint.synopsis_covered_to)
     ? Number(checkpoint.synopsis_covered_to)
     : 0
+  // 第二份进度事实：库里的正文。检查点说「一章没有」而库里有大纲，只能是检查点丢了。
+  const outlineCoveredTo = Number.isSafeInteger(input.outlineCoveredTo) ? Number(input.outlineCoveredTo) : 0
+  if (coveredTo === 0 && outlineCoveredTo >= 1) return skip('checkpoint-lost', 0, found)
   // 有未完成批次时单元模式语义未定（中断续写走 resumeSynopsis，不是「再写一个单元」），
   // 探针阶段直接退回按章区间，避免重复生成同一单元。
   // ⚠️ 例外：批前预写的空标记（`covered_to=0` 且没有半成品正文）背后没有任何可续内容
@@ -220,9 +247,13 @@ export async function probeSynopsisUnitLaunchForProject(input: {
 }): Promise<SynopsisUnitProbeResult> {
   try {
     let plotStructurePlan: string | undefined
+    let outlineCoveredTo = 0
     try {
       const core = await ipc.invokeWithProjectSession(input.projectSession, 'db:project-core-get', input.projectSession.projectPath)
       plotStructurePlan = core?.plotStructurePlan ?? undefined
+      // 同一个请求里顺手取第二份进度事实，供「检查点是否丢了」反证用。
+      const { plotOutlineCoveredTo } = await import('../../shared/plot-outline-contract')
+      outlineCoveredTo = plotOutlineCoveredTo(core?.synopsis ?? '')
     } catch {
       plotStructurePlan = undefined
     }
@@ -230,6 +261,7 @@ export async function probeSynopsisUnitLaunchForProject(input: {
       projectSession: input.projectSession,
       totalChapters: input.totalChapters,
       plotStructurePlan,
+      outlineCoveredTo,
       storage: input.storage,
     })
   } catch (error) {
@@ -260,6 +292,12 @@ export function describeSynopsisUnitProbe(result: SynopsisUnitProbeResult): stri
       return '读不到有效的全书总章数（novelConfig.totalChapters），无法折算单元上界'
     case 'incomplete':
       return '检查点里有未完成批次（synopsis_incomplete=true）：中断续写语义未定，本次走按章区间'
+    case 'checkpoint-broken':
+      return `检查点读不出来：${CANONICAL_PROJECT_DIRECTORY}/partial_arch.json 存在，但不是合法 JSON 或不是 UTF-8`
+        + '——已拒绝进单元模式（当成空检查点会从第 1 章覆盖重写）。请先修好或恢复这个文件'
+    case 'checkpoint-lost':
+      return '库里已有大纲，但检查点说一章都没写过：检查点可能被删除或替换过'
+        + '——已拒绝进单元模式（否则会从第 1 章覆盖重写）。请恢复检查点后重试'
     case 'no-cursor':
       return `推不出单元游标：已覆盖第 ${result.coveredTo} 章，`
         + (result.checkpointFound ? '骨架里可能没有「### 单元」划界' : `且没读到 ${CANONICAL_PROJECT_DIRECTORY}/partial_arch.json`)

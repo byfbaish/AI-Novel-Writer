@@ -323,12 +323,47 @@ export function registerFSController(
         assertProjectFileOperation(context, filePath, expectedProjectPath, 'existing')
         return await withFileMutex(filePath, async () => {
           const target = assertProjectFileOperation(context, filePath, expectedProjectPath, 'existing')
-          const content = await fileSystem.readText(target)
+          let content: string
+          try {
+            content = await fileSystem.readText(target)
+          } catch (error) {
+            // 「读不出来」与「文件不存在」必须分开报：进度类检查点上二者语义相反
+            // ——前者从头开始就等于覆盖重写（2026-10-20 实机事故）。
+            const missing = isMissingFileError(error)
+            return {
+              success: false,
+              data: null,
+              reason: missing ? 'missing' : 'unreadable',
+              error: missing
+                ? text('项目数据不存在。', 'The project data does not exist.')
+                : text(
+                  '项目数据不是 UTF-8 文本，无法读取。请用编辑器另存为 UTF-8（无 BOM）后重试。',
+                  'The project data is not UTF-8 text and cannot be read. Re-save it as UTF-8 (no BOM) and try again.',
+                ),
+            }
+          }
           assertProjectFileOperation(context, filePath, expectedProjectPath, 'existing')
-          return { success: true, data: JSON.parse(content) }
+          try {
+            // 手工改过的文件常带 UTF-8 BOM（记事本 / 部分编辑器），JSON.parse 见到 \uFEFF 直接抛。
+            return { success: true, data: JSON.parse(content.replace(/^\uFEFF/, '')) }
+          } catch {
+            return {
+              success: false,
+              data: null,
+              reason: 'invalid-json',
+              error: text(
+                '项目数据不是合法的 JSON（可能被手工改坏）。',
+                'The project data is not valid JSON (it may have been edited by hand).',
+              ),
+            }
+          }
         })
-    } catch {
-      return { success: false, data: null, error: text('无法读取项目数据。', 'Could not read the project data.') }
+    } catch (error) {
+      const failure = projectFilesystemFailure('fs:read-json', error)
+      return {
+        ...(failure as { success: false; data: null; error: string }),
+        reason: isMissingFileError(error) ? 'missing' as const : 'denied' as const,
+      }
     }
   })
 
