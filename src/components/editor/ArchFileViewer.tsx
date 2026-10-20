@@ -1,7 +1,7 @@
 import { LegacyRosterRecoveryPanel } from './LegacyRosterRecoveryPanel'
 import { resourceWriteAllowed } from '../../shared/project-paths'
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { Save, RefreshCw, Sparkles, Loader2, AlertTriangle, FileText, ListTree } from 'lucide-react'
+import { Save, RefreshCw, Sparkles, Loader2, AlertTriangle, FileText, ListTree, X } from 'lucide-react'
 import { renderIcon } from '../panels/sidebar/sidebar-icons'
 
 import { registerEditorExitSaveHandler, useEditorStore, type PlanningRecoverySaveSnapshot } from '../../stores/editor-store'
@@ -39,8 +39,10 @@ import { globalEventBus } from '../../shared/event-bus'
 import {
   OUTLINE_CHARACTER_NUDGE_COPY,
   dismissOutlineCharacterNudge,
-  readOutlineCharacterNudgeDismissed,
+  publishOutlineCharacterNudgeConfig,
+  readOutlineCharacterNudgeDismissedVersion,
   shouldNudgeOutlineCharacterSupplement,
+  subscribeOutlineCharacterNudgeConfig,
 } from '../../services/architecture-character-nudge'
 import {
   ARCH_REFRESH_BLOCKED_MESSAGE,
@@ -313,18 +315,53 @@ function ArchFileViewerSession({
    * 作者定调（2026-10-11）：大纲先出、角色随后补。大纲已完成、而作者还没处理过
    * 这条提醒时，在「情节大纲」页常驻一条醒目提示 —— **只提示，绝不自动建卡**
    * （大纲可能还要修改，时机由作者决定）。
+   *
+   * 作者修订（2026-10-20）：不允许「点一次就永久消失」。三个出口：
+   * × 关闭只算这一稿处理过（大纲一更新就回来）；「不再提示」关的是全局开关，
+   * 在 设置 → 编辑器 里能重新打开。
    */
   const [outlineCharacterNudge, setOutlineCharacterNudge] = useState(false)
+  const [outlineNudgeGloballyDisabled, setOutlineNudgeGloballyDisabled] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void ipc.invoke('config:get')
+      .then((config) => {
+        if (!cancelled) setOutlineNudgeGloballyDisabled(config?.autoPromptOutlineCharacterSupplement === false)
+      })
+      .catch(() => { /* 读不到配置时按「开启」处理：宁可多提示一次，也别悄悄静音。 */ })
+    // 别处（toast / 设置面板）改了开关，这里要立刻跟上，免得横幅还挂在那里。
+    const unsubscribe = subscribeOutlineCharacterNudgeConfig(setOutlineNudgeGloballyDisabled)
+    return () => { cancelled = true; unsubscribe() }
+  }, [])
   useEffect(() => {
     if (stepKey !== 'synopsis' || !projectMatches) { setOutlineCharacterNudge(false); return }
     setOutlineCharacterNudge(shouldNudgeOutlineCharacterSupplement({
       synopsis: editorContent,
-      dismissed: readOutlineCharacterNudgeDismissed(projectKey),
+      dismissedVersion: readOutlineCharacterNudgeDismissedVersion(projectKey),
+      globallyDisabled: outlineNudgeGloballyDisabled,
     }))
-  }, [stepKey, projectMatches, editorContent, projectKey])
+  }, [stepKey, projectMatches, editorContent, projectKey, outlineNudgeGloballyDisabled])
+  /** 只处理「这一稿」：大纲更新后自动重新提示。 */
   const settleOutlineNudge = () => {
-    dismissOutlineCharacterNudge(projectKey)
+    dismissOutlineCharacterNudge(projectKey, editorContent)
     setOutlineCharacterNudge(false)
+  }
+  /** 真的不再显示：关全局开关，并告诉作者去哪儿打开回来。 */
+  const disableOutlineNudgeGlobally = async () => {
+    settleOutlineNudge()
+    const text = useLocaleStore.getState().text
+    try {
+      const result = await ipc.invoke('config:set', { autoPromptOutlineCharacterSupplement: false })
+      if (result && result.success === false) throw new Error(result.error || text('未知错误', 'Unknown error'))
+      setOutlineNudgeGloballyDisabled(true)
+      publishOutlineCharacterNudgeConfig(true)
+      toast.info(text(OUTLINE_CHARACTER_NUDGE_COPY.dismissedHint.zh, OUTLINE_CHARACTER_NUDGE_COPY.dismissedHint.en), 7000)
+    } catch (error) {
+      toast.error(text(
+        `关闭提示失败：${error instanceof Error ? error.message : String(error)}`,
+        `Could not turn the reminder off: ${error instanceof Error ? error.message : String(error)}`,
+      ))
+    }
   }
 
   // 脚状态（独立 state，不跟着 content 走）
@@ -967,10 +1004,21 @@ function ArchFileViewerSession({
             variant="ghost"
             size="sm"
             className="h-6 text-[0.68rem] flex-shrink-0"
-            onClick={settleOutlineNudge}
+            onClick={() => { void disableOutlineNudgeGlobally() }}
           >
             {text(OUTLINE_CHARACTER_NUDGE_COPY.dismiss.zh, OUTLINE_CHARACTER_NUDGE_COPY.dismiss.en)}
           </Button>
+          {/* 关闭 ≠ 不再提示：只对当前这一稿生效，大纲一更新就回来。 */}
+          <button
+            type="button"
+            className="flex-shrink-0 rounded p-0.5 mt-0.5"
+            style={{ color: 'color-mix(in srgb, var(--color-warning) 70%, var(--color-text))' }}
+            title={text(OUTLINE_CHARACTER_NUDGE_COPY.close.zh, OUTLINE_CHARACTER_NUDGE_COPY.close.en)}
+            aria-label={text(OUTLINE_CHARACTER_NUDGE_COPY.close.zh, OUTLINE_CHARACTER_NUDGE_COPY.close.en)}
+            onClick={settleOutlineNudge}
+          >
+            <X size={13} />
+          </button>
         </div>
       )}
 
