@@ -111,10 +111,11 @@ localStorage.getItem('aiNovel:e3-unit-batch') 返回 '1'
 - [x] **关掉应用**（运行中改会被内存态覆盖）
 - [x] 把 `synopsis_unit_cursor.writtenInVolume` 改成 `+3` 或 `−3`
   - **改完先在编辑器里确认这个文件仍是 UTF-8 无 BOM 的合法 JSON**（记事本另存会带 BOM / UTF-16）
-- [ ] 重开 → 弹窗应显示 `单元模式：第 2 卷 · 第 1 个单元（本卷共 5 个），从第 22 章起`
+- [x] 重开 → 弹窗应显示 `单元模式：第 2 卷 · 第 1 个单元（本卷共 5 个），从第 22 章起`
   - 期望：`from` 仍 = `covered_to + 1`（21 + 1 = 22），单元号仍来自游标
   - 期望：**不会**因为少写/多写被判成卡死、也不会跳到别的单元
-- [ ] **测完还原**：关应用 → 用备份覆盖 `partial_arch.json`（否则 +3 会带进卷二的按卷记账）
+  - ✅ **2026-10-20 22:0x 作者确认界面无误**
+- [x] **测完还原**：关应用 → 用备份覆盖 `partial_arch.json`（否则 +3 会带进卷二的按卷记账）
 
 ---
 
@@ -132,20 +133,24 @@ localStorage.getItem('aiNovel:e3-unit-batch') 返回 '1'
 
 ### B1 迁移
 
-- [ ] 点「生成情节大纲」→ 日志出现 `迁移情节大纲单元游标`（**只出现一次**）
-- [ ] `partial_arch.json` 里出现 `synopsis_unit_cursor`
-- [ ] 该游标定位到的单元与「含 `covered_to` 的单元」一致（`unitIndex` 对得上你记忆里正在写的那一个）
+- [x] 点「生成情节大纲」→ 日志出现 `迁移情节大纲单元游标`（**只出现一次**）
+- [x] `partial_arch.json` 里出现 `synopsis_unit_cursor`
+- [x] 该游标定位到的单元 = **含 `covered_to + 1` 的那个单元**（即"下一个要写的"）
+  - ⚠️ 判据改过一次：原清单写的是「含 `covered_to` 的单元」，那是**错的**（见 B3）。B 实测 `covered_to = 5`、
+    单元一 = 第 1–5 章 ⇒ 正解是 `unitIndex 2`，不是 1。
 
 ### B2 迁移后跑完
 
-- [ ] 本次生成正常跑完，**不报**「无法由单元游标定位本次单元」
-- [ ] 不报「本次请求的单元…与大纲进度…不一致，拒绝按过期请求生成」
-- [ ] 完成后 `synopsis_range.to` 按实际章数回填，游标继续推进
+- [x] 本次生成正常跑完，**不报**「无法由单元游标定位本次单元」
+- [x] 不报「本次请求的单元…与大纲进度…不一致，拒绝按过期请求生成」
+- [x] 完成后 `synopsis_range.to` 按实际章数回填，游标继续推进
 
 ### B3 边界情况（命中就记，不要现场改）
 
-- [ ] 若 `synopsis_covered_to` 正好停在某单元**最后一章**：记录实际 `unitIndex` 与 `from`
-  - 预期现象：`from` 指向下一单元开头，但 `unitIndex` 仍是被写完的那个（滞后一位）。**这是 T7 迁移口径的已知缺口**，记为「待定」，不要在这里改代码
+- [x] 「`covered_to` 正好停在某单元最后一章」这个边界**已由代码修掉**（`deriveSynopsisUnitCursor`，2026-10-20）
+  - 原清单记的「滞后一位是已知缺口」不再成立：修法就是取**含 `covered_to + 1` 的单元**，
+    `covered_to` 落在单元中间时它仍是同一单元（续写），落在末章时它自动前进一格（换单元/换卷/全书写完）。
+  - 跨卷时 `writtenInVolume` 归 0（新卷一个字都没写），不是「1」。
 
 ---
 
@@ -216,8 +221,26 @@ localStorage.getItem('aiNovel:e3-unit-batch') 返回 '1'
 - 按 B0 手删游标后实测迁移：推导游标 = `{1,1,5}`，弧位投影给的是
   `本次只写：卷 1【百日毒发的杂役房】· 单元 1【药渣堆里的毒草味】`，而这一批实际写的是第 6–10 章（单元 2 的内容）
 - 且**不是只偏一批**：该批完成后游标推进到 `{1,2,10}`，下一批仍把单元 3 的内容标成单元 2 —— 一直滞后一位
-- 结论：B3 记的现象属实且比清单写的更重。修法（待拍板）：`deriveSynopsisUnitCursor` 里若
-  `coveredTo` 正好等于该单元计划区间的末章，就前进一步（同卷下一个单元 / 下一卷首单元 / `null`）
+- 结论：B3 记的现象属实且比清单写的更重。修法（**2026-10-20 已落地**）：`deriveSynopsisUnitCursor`
+  改取「含 `covered_to + 1` 的单元」（`docs` 上面 B3）
+
+**B（迁移）——修法落地后的端到端复验（22:17，真跑模型）**
+
+> 环境：`node node_modules/vite/bin/vite.js` 起 dev（`pnpm dev` 在 Git Bash 下被 npm shim 弄坏），
+> renderer 经 CDP（`--remote-debugging-port`，验完已撤）驱动；B 先登记进 `recent-projects.json` 才能过授权。
+> B 的 `partial_arch.json` 备份在 `partial_arch.before-cursor-test.json`。
+
+- 删掉游标（`covered_to` 仍是 5）后跑探针：`cursorDerived = true`、`unit {from 6, unitIndex 2, maxChapters 6}`、
+  `volume {index 1, unitCount 4, remainingUnits 3}` —— **旧代码这里给 `unitIndex 1`**
+- 弹窗实测：`单元模式：第 1 卷 · 第 2 个单元（本卷共 4 个），从第 6 章起`
+  `本卷剩余 16 章，名义上界 6 章。篇幅由剧情决定，写完按实际章数落盘。`
+- 真跑一个单元（不连写）：第 6–8 章，落盘 `range {6,8}` · `covered_to 8` · `cursor {1,3,8}`
+  - 第 1–5 章**原样保留**，没有被覆盖（A6 的教训不再复发）
+  - 新写的 6–8 章**没有**「覆盖：V1-U1-xxx」这类自造 ID（两级版合同生效；存量 1–5 章的 5 个旧 ID 是历史产物，未回改）
+  - 模型自己写「后续概览：单元2落幕…」——它确实知道自己在写单元 2
+- 台账观察：本次**成功**的 run（`92d1a535`）与之前**失败**的 run 一样都是 `status='running'` + root `active`
+  ⇒ `running` 的语义是「本次会话内被打开过」，不是「正在跑」，也不是「失败残留」；重启时 `recoverInterrupted()` 统一收敛为 `paused`
+
 
 ---
 
