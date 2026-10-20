@@ -83,6 +83,31 @@ export type PlanningGenerationScope =
   | Readonly<{ kind: 'architecture'; intent: ArchitecturePlanningIntent; outlineProtocol: 'legacy-range-v1' }>
   | Readonly<{ kind: 'architecture'; intent: ArchitecturePlanningIntent; outlineProtocol: typeof import('./plot-outline-contract').PLOT_OUTLINE_PROTOCOL; outlineContent: typeof import('./plot-outline-contract').PLOT_OUTLINE_CONTENT }>
   | Readonly<{ kind: 'directory'; requestedRange: Readonly<{ mode: 'full' | 'append'; startChapter: number; endChapter: number }> }>
+
+/**
+ * 架构意图的**章号上界**（E3，2026-10-20）——只给「授权 / 上界校验」用，**不是请求范围**。
+ *
+ * 单元模式请求期**没有 `to`**（实际章数由模型写完再回填），但主进程仍需要一个上限来判断
+ * "这次要写的章号有没有越过全书"、以及子 run 有没有被授权写这一段。这里按 `起点 + 名义上界`
+ * 折算成 `boundTo`（与 `computeSynopsisUnitRange` 同一口径），**不写进检查点、也不进提示词**。
+ *
+ * 两种模式互斥：range 优先；都没有 ⇒ `null`（调用方据此跳过校验）。
+ */
+export function architecturePlanningRange(
+  intent: ArchitecturePlanningIntent | null | undefined,
+): { from: number; to: number } | null {
+  if (!intent) return null
+  if (intent.synopsisRange) {
+    const { from, to } = intent.synopsisRange
+    return Number.isSafeInteger(from) && Number.isSafeInteger(to) && from >= 1 && to >= from ? { from, to } : null
+  }
+  const unit = intent.synopsisUnit
+  if (!unit) return null
+  const { from, maxChapters } = unit
+  if (!Number.isSafeInteger(from) || from < 1) return null
+  if (!Number.isSafeInteger(maxChapters) || maxChapters < 1) return null
+  return { from, to: from + maxChapters - 1 }
+}
 export interface DirectoryGenerationProgress {
   operationId: string
   payloadHash: string

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import type { BeginGenerationRequest, ExecuteGenerationRequest, BeginGenerationBatchRequest, GenerationDraftCommitRequest, GenerationRecoveryContext, MaterialDecisionReceipt, VisibleCompositionAlgorithm, GenerationOwnerChannels, ShortOutlineRetry, PlanningContinuation } from '../../src/shared/generation-owner-contract'
 import { isDraftVisibleTextVersion } from '../../src/shared/draft-visible-text'
-import { generationOutputContract, type GenerationAuthorInput } from '../../src/shared/generation-owner-contract'
+import { architecturePlanningRange, generationOutputContract, type GenerationAuthorInput } from '../../src/shared/generation-owner-contract'
 import type { MainGenerationExecuteReceipt, MainGenerationRunHandle, MainGenerationRunView, MainGenerationSnapshot } from '../../src/services/generation/generation-runtime'
 import type { ModelProfile, ModelExecutionLeaseReceipt, LLMFinishReason } from '../../src/shared/ipc-channels'
 import type { CreativeStrategy } from '../../src/shared/reasoning-types'
@@ -411,7 +411,11 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       const parentRootActionId = continuation?.sourceHandle.rootActionId ?? selection.parentRootActionId
       const scope = planningGenerationScope(selection)
       if (scope) {
-        const rangeEnd = scope.kind === 'directory' ? scope.requestedRange.endChapter : scope.intent.synopsisRange?.to
+        // E3：单元模式没有 `to`，上界按「起点 + 名义上界」折算（`architecturePlanningRange`），
+        // 否则这里会静默跳过越界校验。
+        const rangeEnd = scope.kind === 'directory'
+          ? scope.requestedRange.endChapter
+          : architecturePlanningRange(scope.intent)?.to
         if (rangeEnd !== undefined && rangeEnd > (ProjectCoreRepository.get(deps.database)?.totalChapters ?? 0))
           throw new Error('GENERATION_PLANNING_RANGE_INVALID')
         const targets = selection.authorInputs?.filter(input => input.id === 'planning:target-units') ?? []
