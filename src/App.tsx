@@ -41,6 +41,10 @@ import {
   readOutlineCharacterNudgeDismissedVersion,
   shouldNudgeOutlineCharacterSupplement,
 } from './services/architecture-character-nudge'
+import { useSynopsisUnitChainStore } from './stores/synopsis-unit-chain-store'
+import { probeSynopsisUnitLaunchForProject } from './services/workflows/synopsis-unit-launch'
+import { decideUnitChainStep, UNIT_CHAIN_STOP_COPY, type UnitChainStopReason } from './services/workflows/synopsis-unit-chain'
+import { launchCreativeWorkflow } from './services/workflows/creative-workflow-launcher'
 import type { BlueprintCharacterSyncOperation } from '../electron/repositories/blueprint-repository'
 import type { SkinId } from './shared/skin-types'
 
@@ -49,6 +53,21 @@ export function resolveSkinBackgroundUrl(skinId: SkinId, customUrl: string | nul
   if (skinId === 'anime') return ANIME_SKIN_URL
   if (skinId === 'custom') return customUrl
   return null
+}
+
+/**
+ * E3 T12：批次之间必须等上一批**真正退出活跃列表**再发下一批。
+ *
+ * `WORKFLOW_COMPLETE` 是在清理 `activeRuns` **之前**同步广播的（workflow-store 里
+ * 那句注释写得很清楚），而资源冲突判定不看 run 状态 —— 立刻发下一批会撞上自己刚写完的那批。
+ */
+async function waitForRunReleased(runId: string, timeoutMs = 8000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    if (!useWorkflowStore.getState().activeRuns.some(run => run.id === runId)) return true
+    await new Promise(resolve => setTimeout(resolve, 120))
+  }
+  return false
 }
 
 /** The sole decorative skin layer at the App root. It never participates in accessibility. */
@@ -345,6 +364,78 @@ export default function App() {
       })()
     })
 
+    // E3 T12：连续单元（**链式新 run**）。每批写完都重新探一次检查点，算出下一个单元再发一批。
+    // 三条铁律：① 只认自己这一批的 runId（别的架构 run 不许推进这条链）；
+    // ② 每批重新读检查点（游标会动，不能缓存）；③ 换卷就停（v1 只连到本卷末）。
+    // 调度放 App 而不是大纲页：那个组件会被切走、会被卸载，链不能跟着断。
+    const unsubUnitChainStep = globalEventBus.on('WORKFLOW_COMPLETE', ({ projectSession, runId }) => {
+      const chain = useSynopsisUnitChainStore.getState().chain
+      if (!chain || chain.status !== 'running' || chain.runId !== runId) return
+      void (async () => {
+        const text = useLocaleStore.getState().text
+        const stopChain = (reason: UnitChainStopReason, detail: string | null) => {
+          useSynopsisUnitChainStore.getState().stop(reason, detail)
+          const copy = UNIT_CHAIN_STOP_COPY[reason]
+          actionToast.show({
+            type: 'info',
+            duration: 8000,
+            message: text(`连续生成结束：${copy.zh}`, `Unit chaining finished: ${copy.en}`),
+          })
+        }
+        if (!sameProjectSessionContext(
+          projectSession,
+          projectSessionContextFromProject(useProjectStore.getState().currentProject),
+        )) {
+          stopChain('project-changed', null)
+          return
+        }
+        try {
+          // 先等上一批退出活跃列表：资源冲突判定不看状态，抢跑必撞自己。
+          if (!await waitForRunReleased(runId)) {
+            stopChain('failed', '上一批没有退出活跃任务，本次未发起下一批')
+            return
+          }
+          const totalChapters = Number(useProjectStore.getState().currentProject?.novelConfig?.totalChapters)
+          const probe = await probeSynopsisUnitLaunchForProject({ projectSession, totalChapters })
+          // 探针期间作者可能点了「停止连写」：重新读一遍，别拿旧快照推进。
+          const live = useSynopsisUnitChainStore.getState().chain
+          if (!live || live.status !== 'running' || live.runId !== runId) return
+          const decision = decideUnitChainStep({
+            chain: live,
+            next: probe.unit ? { volumeIndex: probe.volume?.index ?? null } : null,
+            probeReason: probe.reason,
+          })
+          if (decision.action === 'stop') {
+            stopChain(decision.reason ?? 'no-unit', decision.detail)
+            return
+          }
+          const receipt = await launchCreativeWorkflow({
+            workflow: 'generate_architecture',
+            selectedSteps: ['synopsis'],
+            // 作者的补充指导与目标字数**每批都重放**，否则第二批起口径就变了。
+            stepGuidance: live.stepGuidance,
+            ...(live.targetUnits === null ? {} : { targetUnits: live.targetUnits }),
+            synopsisUnit: probe.unit!,
+          }, projectSession)
+          useSynopsisUnitChainStore.getState().advance(receipt.runId)
+          console.warn(`[E3] 连写：下一批已发起（第 ${probe.unit!.unitIndex} 个单元，从第 ${probe.unit!.from} 章起）`)
+        } catch (error) {
+          stopChain('failed', error instanceof Error ? error.message : String(error))
+        }
+      })()
+    })
+
+    // 失败与取消都不发 WORKFLOW_COMPLETE，只能盯 store：当前批次一失败就停链，
+    // 否则链会挂在那里等一个永远不来的完成事件。
+    const unsubUnitChainFailure = useWorkflowStore.subscribe((state) => {
+      const chain = useSynopsisUnitChainStore.getState().chain
+      if (!chain || chain.status !== 'running' || !chain.runId) return
+      const run = state.activeRuns.find(item => item.id === chain.runId)
+        ?? state.history.find(item => item.id === chain.runId)
+      if (!run || run.status !== 'failed') return
+      useSynopsisUnitChainStore.getState().stop('failed', run.error ?? null)
+    })
+
     return () => {
       // App 卸载时销毁 ProjectService（开发环境 HMR 时会触发）
       import('./services/project-service').then(({ disposeProjectService }) => {
@@ -354,6 +445,8 @@ export default function App() {
       unsubAutoOpenNextChapter()
       unsubBlueprintCharacterPrompt()
       unsubOutlineCharacterNudge()
+      unsubUnitChainStep()
+      unsubUnitChainFailure()
     }
   }, [initLocale, initTheme, initLLM, loadRecentProjects])
 

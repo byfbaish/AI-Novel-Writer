@@ -96,6 +96,8 @@ interface Props {
     stepGuidance: Record<string, string>,
     synopsisRange?: { from: number; to: number },
     targetUnits?: number,
+    /** 单元模式下「连写几个单元」（E3 T12）；缺省 1 = 一次一个单元。 */
+    synopsisUnitTotal?: number,
   ) => Promise<void>
 }
 
@@ -122,6 +124,8 @@ export default function ArchitectureConfirmDialog({
   /** 「续写」：从已覆盖章节的下一章开始，默认推进 PLANNING_ACTION_CHAPTER_LIMIT 章。 */
   const [synopsisContinue, setSynopsisContinue] = useState(false)
   const [targetUnits, setTargetUnits] = useState(String(DEFAULT_PLANNING_TARGET_UNITS))
+  /** E3 T12：单元模式下「连写几个单元」（1 = 一次一个，行为与改造前一致）。 */
+  const [unitChainTotal, setUnitChainTotal] = useState('1')
   const [preferenceLoading, setPreferenceLoading] = useState(true)
   const [isConfirming, setIsConfirming] = useState(false)
   const [guardError, setGuardError] = useState<string | null>(null)
@@ -141,6 +145,8 @@ export default function ArchitectureConfirmDialog({
   const resetChecked = useCallback(() => {
     const defaults = createDefaultArchitectureSelection(archStatus, initialSelectedSteps)
     setSynopsisContinue(false)
+    // 连写个数每次都回到 1：它是「这一次要多跑几批」的选择，不该记成默认值。
+    setUnitChainTotal('1')
     if (initialSynopsisRange) {
       defaults.synopsis = true
       setSynopsisFrom(String(initialSynopsisRange.from))
@@ -187,6 +193,13 @@ export default function ArchitectureConfirmDialog({
   }, [isOpen, currentProject, totalChapterCount])
   /** 本次走单元模式时，章号区间与「续写」都不再参与生成。 */
   const unitMode = unitPreview?.unit ?? null
+  /** 连写的硬上限 = 本卷还剩几个单元（v1 不跨卷）。读不到卷结构就只让写 1 个。 */
+  const unitChainCapacity = Math.max(1, unitPreview?.volume?.remainingUnits ?? 1)
+  /** 真正会发出去的个数：走单元模式且选了多个才算数。 */
+  const requestedUnitChain = Math.min(
+    unitChainCapacity,
+    Math.max(1, Math.floor(Number(unitChainTotal) || 1)),
+  )
 
   if (!currentProject) return null
   const config = currentProject.novelConfig
@@ -292,7 +305,7 @@ export default function ArchitectureConfirmDialog({
           return
         }
       }
-      await onConfirm(selectedSteps, stepGuidance, resolution.range, target)
+      await onConfirm(selectedSteps, stepGuidance, resolution.range, target, unitMode ? requestedUnitChain : undefined)
       onClose()
       const stepNames = selectedSteps.map(k => {
         const item = ARCH_FILES.find(f => f.key === k)
@@ -477,29 +490,59 @@ export default function ArchitectureConfirmDialog({
                   </p>
                 )}
                 {unitMode ? (
-                  <div
-                    role="status"
-                    className="rounded-md p-2 space-y-1 text-xs"
-                    style={{ backgroundColor: 'var(--color-bg)', border: '1px solid var(--color-accent)' }}
-                  >
-                    <p className="m-0 font-medium" style={{ color: 'var(--color-text)' }}>
-                      {text(
-                        `单元模式：第 ${unitMode.unitIndex} 个单元，从第 ${unitMode.from} 章起`,
-                        `Unit mode: unit ${unitMode.unitIndex}, starting at chapter ${unitMode.from}`,
-                      )}
-                    </p>
-                    <p className="m-0" style={{ color: 'var(--color-text-secondary)' }}>
-                      {text(
-                        `本卷剩余 ${unitMode.volumeRemaining} 章，名义上界 ${unitMode.maxChapters} 章。篇幅由剧情决定，写完按实际章数落盘。`,
-                        `${unitMode.volumeRemaining} chapters left in this volume, nominal cap ${unitMode.maxChapters}. The unit ends when the plot ends and the actual count is recorded afterwards.`,
-                      )}
-                    </p>
-                    <p className="m-0" style={{ color: 'var(--color-text-muted)' }}>
-                      {text(
-                        '章号区间与「续写」在此模式下不生效；要按章生成请关掉 localStorage 开关。',
-                        'The chapter range and “Continue” do not apply in unit mode.',
-                      )}
-                    </p>
+                  <div className="space-y-1.5">
+                    <div
+                      role="status"
+                      className="rounded-md p-2 space-y-1 text-xs"
+                      style={{ backgroundColor: 'var(--color-bg)', border: '1px solid var(--color-accent)' }}
+                    >
+                      <p className="m-0 font-medium" style={{ color: 'var(--color-text)' }}>
+                        {text(
+                          `单元模式：第 ${unitMode.unitIndex} 个单元，从第 ${unitMode.from} 章起`,
+                          `Unit mode: unit ${unitMode.unitIndex}, starting at chapter ${unitMode.from}`,
+                        )}
+                      </p>
+                      <p className="m-0" style={{ color: 'var(--color-text-secondary)' }}>
+                        {text(
+                          `本卷剩余 ${unitMode.volumeRemaining} 章，名义上界 ${unitMode.maxChapters} 章。篇幅由剧情决定，写完按实际章数落盘。`,
+                          `${unitMode.volumeRemaining} chapters left in this volume, nominal cap ${unitMode.maxChapters}. The unit ends when the plot ends and the actual count is recorded afterwards.`,
+                        )}
+                      </p>
+                      <p className="m-0" style={{ color: 'var(--color-text-muted)' }}>
+                        {text(
+                          '章号区间与「续写」在此模式下不生效；要按章生成请关掉 localStorage 开关。',
+                          'The chapter range and “Continue” do not apply in unit mode.',
+                        )}
+                      </p>
+                    </div>
+                    {/* E3 T12：连写个数。上限就是本卷剩余单元数 —— v1 不跨卷。 */}
+                    {unitChainCapacity > 1 && (
+                      <label className="flex flex-wrap items-center gap-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                        <span>{text('连写', 'Write')}</span>
+                        <select
+                          value={String(requestedUnitChain)}
+                          disabled={continuing}
+                          onChange={e => setUnitChainTotal(e.target.value)}
+                          aria-label={text('连续生成几个单元', 'How many units to generate in a row')}
+                          className="rounded-md px-2 py-1 text-xs outline-none transition-colors disabled:opacity-60"
+                          style={{
+                            color: 'var(--color-text)',
+                            backgroundColor: 'var(--color-bg)',
+                            border: '1px solid var(--color-border)',
+                          }}
+                        >
+                          {Array.from({ length: unitChainCapacity }, (_, index) => index + 1).map(count => (
+                            <option key={count} value={String(count)}>{String(count)}</option>
+                          ))}
+                        </select>
+                        <span>
+                          {text(
+                            `个单元（本卷还剩 ${unitChainCapacity} 个，连写只到本卷末）`,
+                            `unit(s) — ${unitChainCapacity} left in this volume; chaining stops at the volume end`,
+                          )}
+                        </span>
+                      </label>
+                    )}
                   </div>
                 ) : (
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">

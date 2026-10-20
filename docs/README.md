@@ -138,7 +138,7 @@ docs/
 | [`p8-fanqie-flavor-draft-quality-design.md`](design/prompt/p8-fanqie-flavor-draft-quality-design.md) | ✅ P1 生效 · ⏳ P2/P3 待复验 | 番茄向正文质量闸门：续写判定接回合格线 / 可判定 AI 味禁令 / 番茄 KPI 落点（§10 复验 #1） |
 | [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（36 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（37 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -178,6 +178,7 @@ docs/
 | [`volume-quota-context-budget-design.md`](design/architecture/volume-quota-context-budget-design.md) | 🟡 实施中（T2–T8 ✅ · E4 内：T11 优先/T9 后放/T10 确认搁置） | **大纲前缀预算（E4）**：每批都把整段已完成大纲塞进 prompt ⇒ 成本 O(已写章数)，长篇 666 章大纲 20 万字（133k–200k tokens）**数学上塞不进**；改三层投影（本卷全文 + **上一卷快照** + 最近 K 章），输入恒定 ≈2.6 万字；**卷末快照**按 agent compaction 语义只交接下一卷要用的物与债（生命周期止于下一卷）；**冻结与定稿同机制（作者触发、按卷冻、当前卷不冻）**，快照同时是回滚锚点（回滚单独立项）+ 弧光进全量清除；长卷单元**默认折叠可全量展开 + 可 pin 的卷/单元只读树 + Tab 实例 LRU4/墓碑（审稿对照场景）**；顺带解析 `cached_tokens`；E3 改「请求无 to、落库回填」 |
 | [`unit-budget-prompt-ab-test.md`](design/architecture/unit-budget-prompt-ab-test.md) | 🧪 E2 已完成 · 提示词层已验证 | **弹性配给的 A/B/C 微型 prompt**：同一结构只改「配给状态」块（不足/均衡/充足），验章数是否跟着变；三份各 <1,500 字、虚构数据；附判读表与「提示词无效就别动机制」的判定规则 |
 | [`e3-unit-batch-implementation-plan.md`](design/architecture/e3-unit-batch-implementation-plan.md) | 🟡 T1–T3 / T5–T7 / T4a 已实施 · T4b + T8–T10 待做 | **E3 实施拆解**：请求 `{from,unitIndex,maxChapters}`、落库 `{from,to}` + 游标三元组；预算按本卷剩余章数冻结；T1–T11 每步可独立验证 + 检查点回归清单 |
+| [`e3-unit-batch-chain-design.md`](design/architecture/e3-unit-batch-chain-design.md) | 🟡 T12 已实施 · 待实机复验 | **连续单元（链式新 run）**：一次确认连写 N 个，**只到本卷末**；判定顺序 卷界 > 配额；每批必须重读检查点 / 重探 / 重放 author inputs / 等上一批退出活跃列表；重启不续链 |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
 

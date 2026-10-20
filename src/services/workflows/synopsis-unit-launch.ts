@@ -58,6 +58,17 @@ export interface SynopsisUnitProbeResult {
   readonly checkpointFound: boolean
   /** 老检查点没有游标、本次是**预览推导**出来的（命令侧会落盘同一个值）。 */
   readonly cursorDerived: boolean
+  /**
+   * 游标所在卷的进度（E3 T12 连写用）。`null` = 没进单元模式或卷结构读不出来。
+   * **不参与生成**：只用来给「连写几个单元」定上限，真正写多少仍由游标决定。
+   */
+  readonly volume: {
+    readonly index: number
+    readonly name: string
+    readonly unitCount: number
+    /** 本卷还剩几个单元（含当前这个）。连写的硬上限：v1 不跨卷。 */
+    readonly remainingUnits: number
+  } | null
   /** `probe-error` 时的原始报错文本。 */
   readonly detail?: string
 }
@@ -121,7 +132,7 @@ export async function probeSynopsisUnitLaunch(
   input: SynopsisUnitLaunchInput,
 ): Promise<SynopsisUnitProbeResult> {
   const skip = (reason: SynopsisUnitSkipReason, coveredTo = 0, checkpointFound = false, cursorDerived = false): SynopsisUnitProbeResult =>
-    Object.freeze({ unit: null, reason, coveredTo, checkpointFound, cursorDerived })
+    Object.freeze({ unit: null, reason, coveredTo, checkpointFound, cursorDerived, volume: null })
 
   if (!synopsisUnitLaunchEnabled(input.storage)) return skip('flag-off')
   const totalChapters = Number(input.totalChapters)
@@ -150,7 +161,41 @@ export async function probeSynopsisUnitLaunch(
   if (!cursor) return skip('no-cursor', coveredTo, found)
   const unit = computeSynopsisUnitRange(input.plotStructurePlan, totalChapters, cursor, coveredTo)
   if (!unit) return skip('compute-null', coveredTo, found, explicitCursor === null)
-  return Object.freeze({ unit, reason: null, coveredTo, checkpointFound: found, cursorDerived: explicitCursor === null })
+  return Object.freeze({
+    unit,
+    reason: null,
+    coveredTo,
+    checkpointFound: found,
+    cursorDerived: explicitCursor === null,
+    volume: await describeUnitVolume(input.plotStructurePlan, totalChapters, cursor),
+  })
+}
+
+/**
+ * 游标所在卷的进度，只给「连写几个单元」定上限用。
+ *
+ * ⚠️ 刻意**复用 `planUnitStats`**（`computeSynopsisUnitRange` 用的同一份折算）：
+ * 自己再算一遍「卷内还有几个单元」就等于给单元定位开了第二套口径。
+ */
+async function describeUnitVolume(
+  plotStructurePlan: string | undefined,
+  totalChapters: number,
+  cursor: { volumeIndex: number; unitIndex: number; writtenInVolume: number },
+): Promise<SynopsisUnitProbeResult['volume']> {
+  try {
+    const { parseArcStructure, planUnitStats } = await import('../../shared/arc-position')
+    const stats = planUnitStats(parseArcStructure(plotStructurePlan ?? ''), totalChapters, cursor)
+    if (!stats) return null
+    return Object.freeze({
+      index: stats.volumeIndex,
+      name: stats.volumeName,
+      unitCount: stats.unitCount,
+      remainingUnits: stats.remainingUnits,
+    })
+  } catch {
+    // 卷进度只是「连写上限」的参考值：读不出来就按 1 个单元处理（宁可少写，不可越权）。
+    return null
+  }
 }
 
 /**
@@ -194,6 +239,7 @@ export async function probeSynopsisUnitLaunchForProject(input: {
       coveredTo: 0,
       checkpointFound: false,
       cursorDerived: false,
+      volume: null,
       detail: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
     })
   }
@@ -204,7 +250,9 @@ export function describeSynopsisUnitProbe(result: SynopsisUnitProbeResult): stri
   switch (result.reason) {
     case null:
       return `已进单元模式：第 ${result.unit!.unitIndex} 个单元，从第 ${result.unit!.from} 章起`
-        + `（名义上界 ${result.unit!.maxChapters} 章 / 本卷剩余 ${result.unit!.volumeRemaining} 章）`
+        + `（名义上界 ${result.unit!.maxChapters} 章 / 本卷剩余 ${result.unit!.volumeRemaining} 章`
+        + (result.volume ? ` / 本卷还剩 ${result.volume.remainingUnits} 个单元` : '')
+        + '）'
         + (result.cursorDerived ? '｜游标按已写章推导（命令侧会落盘）' : '')
     case 'flag-off':
       return `开关没打开：localStorage['${SYNOPSIS_UNIT_LAUNCH_FLAG}'] 不是 "1"`

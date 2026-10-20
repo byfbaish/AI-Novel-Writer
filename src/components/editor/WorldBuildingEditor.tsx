@@ -19,6 +19,7 @@ import {
   reportSynopsisUnitProbe,
 } from '../../services/workflows/synopsis-unit-launch'
 import type { ArchitectureUnitRange } from '../../shared/generation-owner-contract'
+import { useSynopsisUnitChainStore } from '../../stores/synopsis-unit-chain-store'
 import { globalEventBus } from '../../shared/event-bus'
 import {
   createProjectArchTabId,
@@ -369,6 +370,7 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
     stepGuidance: Record<string, string>,
     synopsisRange?: { from: number; to: number },
     targetUnits?: number,
+    unitChainTotal?: number,
   ) => {
     const projectSession = captureProjectSession(currentProject)
     if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) throw new Error(text('项目会话已切换，未启动架构生成', 'The project session changed, so architecture generation was not started.'))
@@ -376,6 +378,8 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
     // E3 探针（T10）：**第二个入口**（架构总览面板）。与 ArchFileViewer 走同一份探针，
     // 免得「从哪个入口点」决定行为。开关关掉 / 算不出单元一律原样退回按章区间。
     let synopsisUnit: ArchitectureUnitRange | null = null
+    let synopsisUnitVolume: number | null = null
+    let synopsisUnitCapacity = 1
     if (import.meta.env.DEV && selectedSteps.includes('synopsis')) {
       const probe = await probeSynopsisUnitLaunchForProject({
         projectSession,
@@ -383,14 +387,32 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
       })
       reportSynopsisUnitProbe(probe)
       synopsisUnit = probe.unit
+      synopsisUnitVolume = probe.volume?.index ?? null
+      synopsisUnitCapacity = Math.max(1, probe.volume?.remainingUnits ?? 1)
     }
-    await launchCreativeWorkflow({
+    const receipt = await launchCreativeWorkflow({
       workflow: 'generate_architecture',
       selectedSteps,
       stepGuidance,
       ...(synopsisUnit ? { synopsisUnit } : { synopsisRange }),
       targetUnits,
     }, projectSession)
+    // E3 T12：连写 N 个单元。起链就交给 App 调度（每批完成时重新探针再发新 run）。
+    const requestedChain = synopsisUnit
+      ? Math.min(synopsisUnitCapacity, Math.max(1, Math.floor(unitChainTotal ?? 1)))
+      : 1
+    if (synopsisUnit && requestedChain > 1 && receipt?.runId) {
+      useSynopsisUnitChainStore.getState().start({
+        projectPath: projectSession.projectPath,
+        total: requestedChain,
+        volumeIndex: synopsisUnitVolume,
+        runId: receipt.runId,
+        targetUnits: targetUnits ?? null,
+        stepGuidance,
+      })
+    } else {
+      useSynopsisUnitChainStore.getState().clear()
+    }
   }
 
   /** 从上次输出长度中断的检查点继续生成情节大纲（断点续写当前批） */
