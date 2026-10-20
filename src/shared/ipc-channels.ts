@@ -491,7 +491,11 @@ export interface FileChannels {
   }
   'fs:read-json': {
     args: [filePath: string, expectedProjectPath: string]
-    return: { success: boolean; data: unknown; error?: string }
+    /**
+     * `reason` 让调用方能区分「文件不存在（新项目）」与「文件在但读不出来（手工改坏 / 编码不是 UTF-8）」。
+     * 这两者在进度类检查点上是**相反**的语义：前者可以从头开始，后者从头开始就等于覆盖重写。
+     */
+    return: { success: boolean; data: unknown; error?: string; reason?: 'missing' | 'unreadable' | 'invalid-json' | 'denied' }
   }
   'fs:write-json': {
     args: [filePath: string, data: unknown, expectedProjectPath: string]

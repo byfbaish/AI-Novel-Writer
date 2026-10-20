@@ -39,6 +39,9 @@ const PLAN = [
 const doubles = vi.hoisted(() => ({
   checkpoint: {} as SynopsisUnitCheckpoint,
   readFails: false,
+  /** 文件在、但读不出来（手工改坏 / 编码不是 UTF-8）——必须与「文件不存在」分开。 */
+  readBroken: false,
+  core: null as { synopsis?: string; plotStructurePlan?: string } | null,
   invokeWithProjectSession: vi.fn(),
 }))
 
@@ -66,9 +69,13 @@ function resolve(
 beforeEach(() => {
   doubles.checkpoint = {}
   doubles.readFails = false
+  doubles.readBroken = false
+  doubles.core = null
   doubles.invokeWithProjectSession.mockReset()
   doubles.invokeWithProjectSession.mockImplementation(async (_context: unknown, channel: string) => {
+    if (channel === 'db:project-core-get') return doubles.core
     if (channel !== 'fs:read-json') return { success: false }
+    if (doubles.readBroken) return { success: false, data: null, reason: 'invalid-json' }
     if (doubles.readFails) return { success: false }
     return { success: true, data: doubles.checkpoint }
   })
@@ -208,6 +215,39 @@ describe('probeSynopsisUnitLaunch', () => {
     // 检查点读不到 + 没有骨架：话里必须点出「没读到 partial_arch.json」，否则现场只会以为骨架坏了
     doubles.readFails = true
     expect(describeSynopsisUnitProbe(await probe({ plotStructurePlan: undefined }))).toContain('partial_arch.json')
+  })
+
+  /**
+   * 2026-10-20 实机事故：作者手改检查点（A6 把 writtenInVolume +3）之后，文件读数失败被
+   * 当成了「全书未开始」，于是从第 1 章开写，把已完成的 21 章大纲覆盖成 4 章。
+   * 这两条锁的就是「读不出来 ≠ 新项目」。
+   */
+  it('检查点文件坏了（JSON / 编码）⇒ 拒绝进单元模式，绝不从第 1 章开写', async () => {
+    doubles.readBroken = true
+    const result = await probe()
+    expect(result.reason).toBe('checkpoint-broken')
+    expect(result.unit).toBeNull()
+    expect(describeSynopsisUnitProbe(result)).toContain('覆盖重写')
+  })
+
+  it('检查点丢了但库里有大纲 ⇒ 拒绝（用第二份进度事实反证）', async () => {
+    doubles.checkpoint = {}
+    const result = await probeSynopsisUnitLaunch({
+      projectSession,
+      totalChapters: 60,
+      plotStructurePlan: PLAN,
+      outlineCoveredTo: 21,
+      storage: enabledStorage(),
+    })
+    expect(result.reason).toBe('checkpoint-lost')
+    expect(result.unit).toBeNull()
+  })
+
+  it('组件入口自己取库内进度：检查点丢了也拦得住', async () => {
+    doubles.checkpoint = {}
+    doubles.core = { synopsis: '## 第1章：甲\n## 第2章：乙', plotStructurePlan: PLAN }
+    const result = await probeSynopsisUnitLaunchForProject({ projectSession, totalChapters: 60, storage: enabledStorage() })
+    expect(result.reason).toBe('checkpoint-lost')
   })
 
   it('reportSynopsisUnitProbe 用 warn 上报（不会被 Info 过滤吃掉）并挂到 globalThis', async () => {
