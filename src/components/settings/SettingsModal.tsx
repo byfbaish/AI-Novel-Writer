@@ -27,6 +27,7 @@ import { Label } from '../ui/Label'
 import { NativeSelect } from '../ui/NativeSelect'
 import { cn } from '../../lib/utils'
 import { ipc } from '../../services/ipc-client'
+import { publishOutlineCharacterNudgeConfig, rearmAllOutlineCharacterNudges } from '../../services/architecture-character-nudge'
 import { Switch } from '../ui/Switch'
 import { APP_BRAND } from '../../shared/brand'
 import { useLayoutStore, type SettingsSection } from '../../stores/layout-store'
@@ -1336,6 +1337,9 @@ function EditorSection() {
     try {
       const result = await ipc.invoke('config:set', { autoPromptOutlineCharacterSupplement: checked })
       if (!result.success) throw new Error(result.error || text('未知错误', 'Unknown error'))
+      // 打开开关时清掉各项目的「这一稿已处理」记录，否则横幅要等大纲下次更新才回来。
+      if (checked) rearmAllOutlineCharacterNudges()
+      publishOutlineCharacterNudgeConfig(!checked)
     } catch (error) {
       setAutoPromptOutlineCharacterSupplementState(previous)
       setAutoPromptOutlineError(text(

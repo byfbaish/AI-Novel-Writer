@@ -37,8 +37,8 @@ import { pendingBlueprintCandidates } from './services/character-card-generation
 import {
   OUTLINE_CHARACTER_NUDGE_COPY,
   dismissOutlineCharacterNudge,
-  rearmOutlineCharacterNudge,
-  readOutlineCharacterNudgeDismissed,
+  publishOutlineCharacterNudgeConfig,
+  readOutlineCharacterNudgeDismissedVersion,
   shouldNudgeOutlineCharacterSupplement,
 } from './services/architecture-character-nudge'
 import type { BlueprintCharacterSyncOperation } from '../electron/repositories/blueprint-repository'
@@ -255,7 +255,13 @@ export default function App() {
     })
 
     // 情节大纲生成后：**强烈建议**补一次角色卡，但绝不自动执行（大纲可能还要改）。
-    // 与蓝图那条提示同构；差别是不可自动消失（duration 0），直到作者行动或明确推迟。
+    //
+    // 收尾三档（作者 2026-10-20 定调：点一次就永久消失不符合常理）：
+    //   · 「去补角色卡」：这一稿算处理过了，跳到角色管理；
+    //   · 「稍后」：这一稿先放一放 —— 大纲一旦更新（新批次 / 改章节）会再来；
+    //   · 「不再提示」：关掉全局开关 `autoPromptOutlineCharacterSupplement`，
+    //     与 设置 → 编辑器 里那个开关是同一份状态，随时能在那里打开回来。
+    // 判据是「大纲稿本指纹」，所以同一份大纲不会被反复打扰，改过的大纲才会重新提示。
     const unsubOutlineCharacterNudge = globalEventBus.on('WORKFLOW_COMPLETE', ({ projectSession, runId }) => {
       void (async () => {
         try {
@@ -276,13 +282,39 @@ export default function App() {
             projectSession.projectPath,
           ) as { synopsis?: string } | null
           if (!isCurrentProjectSession()) return
+          const projectPath = projectSession.projectPath
+          const synopsis = core?.synopsis
           if (!shouldNudgeOutlineCharacterSupplement({
-            synopsis: core?.synopsis,
-            dismissed: readOutlineCharacterNudgeDismissed(projectSession.projectPath),
+            synopsis,
+            dismissedVersion: readOutlineCharacterNudgeDismissedVersion(projectPath),
           })) return
-          // 新的大纲 → 重新武装：这次不应沿用上一次「已推迟」的记录。
-          rearmOutlineCharacterNudge(projectSession.projectPath)
           const text = useLocaleStore.getState().text
+          /** 只处理「这一稿」：大纲更新后自动重新提示。 */
+          const settleThisDraft = () => dismissOutlineCharacterNudge(projectPath, synopsis)
+          /** 真的不再显示：关全局开关 + 告诉作者去哪儿打开回来。 */
+          const turnOffEverywhere = async () => {
+            settleThisDraft()
+            try {
+              const result = await ipc.invoke('config:set', { autoPromptOutlineCharacterSupplement: false })
+              if (result && result.success === false) throw new Error(result.error || text('未知错误', 'Unknown error'))
+              publishOutlineCharacterNudgeConfig(true)
+              actionToast.show({
+                type: 'info',
+                duration: 8000,
+                message: text(OUTLINE_CHARACTER_NUDGE_COPY.dismissedHint.zh, OUTLINE_CHARACTER_NUDGE_COPY.dismissedHint.en),
+              })
+            } catch (error) {
+              console.warn('[OutlineCharacterNudge] 关闭全局提示失败:', error)
+              actionToast.show({
+                type: 'warning',
+                duration: 8000,
+                message: text(
+                  `关闭提示失败：${error instanceof Error ? error.message : String(error)}`,
+                  `Could not turn the reminder off: ${error instanceof Error ? error.message : String(error)}`,
+                ),
+              })
+            }
+          }
           actionToast.show({
             type: 'warning',
             duration: 0,
@@ -291,14 +323,19 @@ export default function App() {
               {
                 label: text(OUTLINE_CHARACTER_NUDGE_COPY.action.zh, OUTLINE_CHARACTER_NUDGE_COPY.action.en),
                 onClick: () => {
-                  dismissOutlineCharacterNudge(projectSession.projectPath)
+                  settleThisDraft()
                   useLayoutStore.getState().setSidebarView('characters')
                 },
               },
               {
                 label: text(OUTLINE_CHARACTER_NUDGE_COPY.later.zh, OUTLINE_CHARACTER_NUDGE_COPY.later.en),
                 variant: 'ghost',
-                onClick: () => dismissOutlineCharacterNudge(projectSession.projectPath),
+                onClick: settleThisDraft,
+              },
+              {
+                label: text(OUTLINE_CHARACTER_NUDGE_COPY.dismiss.zh, OUTLINE_CHARACTER_NUDGE_COPY.dismiss.en),
+                variant: 'ghost',
+                onClick: turnOffEverywhere,
               },
             ],
           })
