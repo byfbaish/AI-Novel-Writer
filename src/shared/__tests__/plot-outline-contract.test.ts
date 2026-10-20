@@ -79,6 +79,30 @@ describe('plot outline coverage (续写起点)', () => {
     expect(plotOutlineCoveredTo('## Chapter 7: 标题\n正文。')).toBe(7)
   })
 
+  /**
+   * 章号两侧的空格（2026-10-20 实机故障）：模型整批写成「第 6 章：昏迷的边缘」，
+   * 旧解析只认紧排 ⇒ 覆盖=0 ⇒ 单元回填判「没写出本章标题」，整批丢弃。
+   * 这里锁住「空格不影响识别」，同时锁住「正文里提到章号不算标题」。
+   */
+  it('tolerates spaces around the chapter number', () => {
+    const spaced = ['第 1 章：矿洞口', '正文。', '', '第 6 章：昏迷的边缘', '正文。'].join('\n')
+    expect(plotOutlineCoveredTo(spaced)).toBe(6)
+    expect(plotOutlineCoveredTo('## 第 12 章：标题\n正文。')).toBe(12)
+    expect(plotOutlineCoveredTo('第12 章：标题\n正文。')).toBe(12)
+    expect(plotOutlineCoveredTo('第 12章：标题\n正文。')).toBe(12)
+    expect(plotOutlineCoveredTo('第 1–3 章：组\n正文。')).toBe(3)
+    expect(plotOutlineCoveredTo('Chapters 4 – 6: Group\nBody.')).toBe(6)
+    // 正文里提章号不是标题（章号后接「到」「至」或括号/文字都不算）
+    expect(plotOutlineCoveredTo('## 第1章：起\n本批覆盖第 1 章到第 5 章。')).toBe(1)
+    expect(plotOutlineCoveredTo('## 第1章：起\n> 已覆盖至第 9 章（全书 845 章）。')).toBe(1)
+  })
+
+  it('accepts a spaced single-chapter entry as a valid artifact', () => {
+    expect(validPlotOutlineEntry('## 第 2 章：起点\n正文。', 2)).toBe(true)
+    expect(validPlotOutlineEntry('## Chapter 2: Beginning\nBody.', 2)).toBe(true)
+    expect(validPlotOutlineEntry('## 第 3 章：错章\n正文。', 2)).toBe(false)
+  })
+
   it('starts the next batch right after the covered chapter', () => {
     // 还没有任何章级条目时从头开始（对话框只在已覆盖 > 0 时才提供勾选项）。
     expect(plotOutlineContinuationStart('', 845)).toBe(1)
