@@ -281,7 +281,8 @@ export async function probeSynopsisUnitLaunchForProject(input: {
 export function describeSynopsisUnitProbe(result: SynopsisUnitProbeResult): string {
   switch (result.reason) {
     case null:
-      return `已进单元模式：第 ${result.unit!.unitIndex} 个单元，从第 ${result.unit!.from} 章起`
+      // 卷号一起报：只说「第 k 个单元」时，现场分不清是在卷一还是卷二（2026-10-20 踩过）。
+      return `已进单元模式：${result.volume ? `第 ${result.volume.index} 卷 · ` : ''}第 ${result.unit!.unitIndex} 个单元，从第 ${result.unit!.from} 章起`
         + `（名义上界 ${result.unit!.maxChapters} 章 / 本卷剩余 ${result.unit!.volumeRemaining} 章`
         + (result.volume ? ` / 本卷还剩 ${result.volume.remainingUnits} 个单元` : '')
         + '）'
