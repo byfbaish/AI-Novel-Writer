@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { planSynopsisUnitRewind } from '../synopsis-unit-rewind'
+import { archStepCheckpointKeys } from '../arch-step-checkpoint'
 import { isUsableSynopsisCheckpoint, synopsisFactsFingerprint } from '../commands/architecture.command'
 import { renderPlotOutlineSynopsis } from '../../../shared/plot-outline-contract'
 
@@ -155,5 +156,40 @@ describe('回滚后的检查点必须能通过续写校验（2026-10-21 实机 b
     const { db, partial } = checkpoint()
     delete (partial as { synopsis_result?: string }).synopsis_result
     expect(isUsableSynopsisCheckpoint(partial, db, 'zh-CN', 150)).toBe(false)
+  })
+})
+
+describe('清空架构项时级联作废检查点进度（2026-10-21 实机）', () => {
+  it('清前提 ⇒ 前提自己 + 世界观 + 大纲全部作废（链是级联的）', () => {
+    const keys = archStepCheckpointKeys('premise')
+    expect(keys).toContain('premise_result')
+    expect(keys).toContain('world_building_result')
+    expect(keys).toContain('synopsis_covered_to')
+    expect(keys).toContain('synopsis_unit_cursor')
+  })
+
+  it('清世界观 ⇒ 不碰前提，但要清世界观与大纲', () => {
+    const keys = archStepCheckpointKeys('worldbuilding')
+    expect(keys).not.toContain('premise_result')
+    expect(keys).toContain('world_building_result')
+    expect(keys).toContain('synopsis_covered_to')
+  })
+
+  it('清情节大纲 ⇒ 只清大纲自己的 12 个进度键', () => {
+    const keys = archStepCheckpointKeys('synopsis')
+    expect(keys.length).toBe(12)
+    expect(keys).toContain('synopsis_result')
+    expect(keys).toContain('synopsis_db_hash')
+    expect(keys).not.toContain('premise_result')
+  })
+
+  it('清角色图谱：检查点里没有它的进度，但大纲必须作废（角色也是源事实）', () => {
+    const keys = archStepCheckpointKeys('characters')
+    expect(keys).toContain('synopsis_covered_to')
+    expect(keys).not.toContain('premise_result')
+  })
+
+  it('清卷/单元结构 ⇒ 大纲作废', () => {
+    expect(archStepCheckpointKeys('plotStructure')).toContain('synopsis_unit_cursor')
   })
 })
