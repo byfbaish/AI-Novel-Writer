@@ -57,3 +57,40 @@ export function formatChapterPosition(position: ChapterPosition, language: Writi
   }
   return english ? `Chapter ${chapter}` : `第${chapter}章`
 }
+
+/** 一个**单元区间**的位置（不是某一点）：重写/回滚这类动作要报的是「哪一段」。 */
+export interface UnitRangePosition {
+  /** 卷号；读不到传 `null`/省略 */
+  volumeIndex?: number | null
+  /** 单元号；两级结构（无单元层）传 `null`/省略 */
+  unitIndex?: number | null
+  /** 起始全书章号（含） */
+  from: number
+  /** 终止全书章号（含） */
+  to: number
+}
+
+/**
+ * 把「一个单元」格式化成 `第1卷第1单元（全书第1–5章）`。
+ *
+ * 与 `formatChapterPosition` 的分工：那个表达**某一点**（本批从哪开始），
+ * 这个表达**一段**（重写哪一整个单元）。两者都只从结构取层级，缺层就退化，不瞎补。
+ */
+export function formatUnitRange(position: UnitRangePosition, language: WritingLanguage): string {
+  const english = language === 'en-US'
+  const from = positiveOrNull(position.from)
+  const to = positiveOrNull(position.to) ?? from
+  if (from === null) return english ? 'chapters ?' : '第 ? 章'
+  const volume = positiveOrNull(position.volumeIndex)
+  const unit = positiveOrNull(position.unitIndex)
+  const chapters = from === to
+    ? (english ? `Book Ch ${from}` : `全书第${from}章`)
+    : (english ? `Book Ch ${from}-${to}` : `全书第${from}–${to}章`)
+  if (volume !== null && unit !== null) {
+    return english ? `Vol ${volume} Unit ${unit} (${chapters})` : `第${volume}卷第${unit}单元（${chapters}）`
+  }
+  if (volume !== null) {
+    return english ? `Vol ${volume} (${chapters})` : `第${volume}卷（${chapters}）`
+  }
+  return chapters
+}

@@ -142,7 +142,9 @@ export function planSynopsisUnitRewind(input: {
   const writtenInVolume = Math.max(0, coveredTo - (volumeFirst - 1))
 
   const removal = removeOutlineChapterEntries(body, { from, to })
-  const nextBody = removal.text
+  // trim 一次就固定下来：检查点里的 `synopsis_result` 会按 trim 后的值做镜像比对
+  //（`assertCheckpointDbMirrorCurrent` 先 trim 再比对），两边口径必须一致。
+  const nextBody = removal.text.trim()
   const outlineText = renderPlotOutlineSynopsis(nextBody, coveredTo, {
     ...input.expected,
     writingLanguage: input.writingLanguage,
@@ -330,6 +332,32 @@ async function writeCheckpoint(
 ): Promise<void> {
   // 先把与本动作相关的键清干净（旧 handle 不清，下次续写会接到一个已经不存在的 run 上）。
   for (const key of REWIND_CHECKPOINT_KEYS) delete partial[key]
+  /**
+   * 回退到**全书起点**时不留任何进度字段 —— 那时「剩下的正文」是空的，
+   * 写一个 `synopsis_result: ''` 的检查点只会让续写校验报「检查点缺少正文」。
+   * 清成「从未开始」才是这个状态的正确表达；`synopsis_facts_fingerprint` 与
+   * `synopsis_step_guidance` 不在清空名单里，作者本批的指导语不会丢。
+   */
+  if (plan.coveredTo === 0) {
+    const write = await ipc.invokeWithProjectSession(
+      projectSession,
+      'fs:write-json',
+      checkpointPath(projectSession.projectPath),
+      partial,
+      projectSession.projectPath,
+    )
+    if (write?.success === false) throw new Error(write.error || '写入情节大纲检查点失败')
+    return
+  }
+  /**
+   * ⚠️ `synopsis_result` **必须写**，而且是「回退后仍保留的那部分正文」。
+   *
+   * `assertCheckpointDbMirrorCurrent` 的硬性要求是
+   * `renderSynopsisDbText(synopsis_result, …) === 库里的大纲`，且 `synopsis_result` 不能为空。
+   * 第一版把它一起删了，结果是点完重写再去生成就报
+   * 「情节大纲检查点缺少正文，无法安全续写」——2026-10-21 实机踩到。
+   */
+  partial.synopsis_result = plan.bodyText
   partial.synopsis_covered_to = plan.coveredTo
   partial.synopsis_incomplete = false
   partial.synopsis_range = { from: plan.range.from, to: plan.range.to }
