@@ -55,6 +55,10 @@ const mocks = vi.hoisted(() => {
       exit: vi.fn(),
       dock: { setIcon: vi.fn() },
     },
+    Menu: {
+      buildFromTemplate: vi.fn((template: unknown[]) => template),
+      setApplicationMenu: vi.fn(),
+    },
   }
 })
 
@@ -63,6 +67,7 @@ vi.mock('electron', () => ({
   BrowserWindow: mocks.BrowserWindow,
   ipcMain: { removeHandler: vi.fn(), handle: vi.fn() },
   shell: { openExternal: mocks.openExternal },
+  Menu: mocks.Menu,
 }))
 vi.mock('../ipc-handlers', () => ({ registerIPCHandlers: mocks.registerIPCHandlers }))
 vi.mock('../services/skin-service', () => ({ skinService: { initialize: mocks.initializeSkin, getStartupSnapshot: mocks.skinSnapshot } }))
@@ -118,6 +123,8 @@ describe('interactive Electron startup', () => {
     mocks.isMacUpdateReminderEnabled.mockReturnValue(false)
     mocks.openExternal.mockClear()
     mocks.BrowserWindow.mockClear()
+    mocks.Menu.setApplicationMenu.mockClear()
+    mocks.Menu.buildFromTemplate.mockClear()
     mocks.app.requestSingleInstanceLock.mockReturnValue(true)
     mocks.initializeSkin.mockReset().mockImplementation(() => mocks.calls.push('skin'))
     mocks.skinSnapshot.mockReset().mockImplementation(generation => ({ globalGeneration: generation, skinRevision: 0, backgroundSkin: 'classic' }))
@@ -151,6 +158,18 @@ describe('interactive Electron startup', () => {
     expect(fs.readFileSync(path.join(legacy, 'config.json'), 'utf8')).toBe('{}')
     expect(fs.readFileSync(path.join(mocks.userData, 'retained.json'), 'utf8')).toBe('original Chromium profile')
     expect(mocks.windows[0]?.on).toHaveBeenCalledWith('close', expect.any(Function))
+  })
+
+  it('installs an application menu before the window exists so edit shortcuts reach DevTools', async () => {
+    await import('../main')
+    await vi.waitFor(() => expect(mocks.BrowserWindow).toHaveBeenCalledOnce())
+
+    // 自绘标题栏没有可见菜单栏，但菜单本身必须在：Ctrl+C / Ctrl+V 靠它的 accelerator
+    // 分发到聚焦的 webContents（DevTools 控制台也是 webContents），移除菜单会让控制台粘不进内容。
+    expect(mocks.Menu.setApplicationMenu).toHaveBeenCalledOnce()
+    const template = mocks.Menu.buildFromTemplate.mock.calls[0]?.[0] as Array<{ role?: string }>
+    expect(template.map(item => item.role)).toContain('editMenu')
+    expect(mocks.windows[0]?.setMenuBarVisibility).toHaveBeenCalledWith(false)
   })
 
   it('passes Electron appData to migration when no canonical override is configured', async () => {
