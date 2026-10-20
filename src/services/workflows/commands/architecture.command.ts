@@ -450,8 +450,13 @@ const CHINESE_CHAPTER_DIGITS: Readonly<Record<string, number>> = Object.freeze({
 })
 const CHINESE_CHAPTER_UNITS: Readonly<Record<string, number>> = Object.freeze({ 十: 10, 百: 100, 千: 1000 })
 const CHAPTER_NUMBER_TOKEN = '[0-9零〇一二两三四五六七八九十百千]+'
+/**
+ * 章标题（中文）。⚠️ 章号两侧必须容忍空格（`第 6 章`）：模型输出风格会漂，
+ * 2026-10-20 实机整批写成「## 第 1 章：xxx」⇒ 这里与 `plot-outline-contract.headings`
+ * 曾同时认不出，导致回填失败。两处必须保持一致（另有 `arc-node` / `synopsis-projection` 也认空格）。
+ */
 const ZH_CHAPTER_TITLE_RE = new RegExp(
-  `^[\\t ]*(?:#{1,6}[\\t ]+|[-*+][\\t ]+)?第(${CHAPTER_NUMBER_TOKEN})(?:[–—-](${CHAPTER_NUMBER_TOKEN}))?章(?=[\\t ]*(?:[:：.．—-]|$))`,
+  `^[\\t ]*(?:#{1,6}[\\t ]+|[-*+][\\t ]+)?第[\\t ]*(${CHAPTER_NUMBER_TOKEN})(?:[\\t ]*[–—-][\\t ]*(${CHAPTER_NUMBER_TOKEN}))?[\\t ]*章(?=[\\t ]*(?:[:：.．—-]|$))`,
   'gmu',
 )
 const EN_CHAPTER_TITLE_RE = /^[\t ]*(?:#{1,6}[\t ]+|[-*+][\t ]+)?Chapters?[\t ]+(\d+)(?:[\t ]*[–—-][\t ]*(\d+))?(?=[\t ]*(?:[:.：—-]|$))/gimu
@@ -2923,10 +2928,16 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       throw error
     }
 
-    if (!merged.trim()) throw new Error(text(
-      '情节大纲生成失败，AI 返回空内容',
-      'Plot outline generation failed because the AI returned empty content.',
-    ))
+    if (!merged.trim()) {
+      // 预写的 `synopsis_incomplete` 检查点必须回滚：留着它，下一批连单元模式都进不去。
+      if (previousBatchPartial && stagedBatchPartial) {
+        await this.rollbackSynopsisCheckpoint(expectedProjectPath, projectSession, context, previousBatchPartial, stagedBatchPartial)
+      }
+      throw new Error(text(
+        '情节大纲生成失败，AI 返回空内容',
+        'Plot outline generation failed because the AI returned empty content.',
+      ))
+    }
     if (previousBatchPartial && stagedBatchPartial
       && stripPlotOutlineProgressLine(merged).trim() === confirmedPrefix.trim()) {
       await this.rollbackSynopsisCheckpoint(expectedProjectPath, projectSession, context, previousBatchPartial, stagedBatchPartial)
@@ -2940,10 +2951,18 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     let nextVolumeDeviations: VolumeDeviationRecord[] | undefined
     if (unitContext) {
       const backfill = backfillUnitBatch(merged, from, totalChapters)
-      if (!backfill) throw new Error(text(
-        `本次输出没有写出从第 ${from} 章起的章节条目标题，无法确定本单元完成到哪里，结果未保存。`,
-        `The output has no chapter heading starting at chapter ${from}, so the end of this unit cannot be determined; the result was not saved.`,
-      ))
+      if (!backfill) {
+        // ⚠️ 必须回滚预写的检查点：批前 `persistInterruptedSynopsis` 已经把
+        // `synopsis_incomplete=true` 写进 partial_arch.json，不回滚就会留在盘上，
+        // 于是下一批「探针看到未完成批次」直接退回按章区间（2026-10-20 实机踩过）。
+        if (previousBatchPartial && stagedBatchPartial) {
+          await this.rollbackSynopsisCheckpoint(expectedProjectPath, projectSession, context, previousBatchPartial, stagedBatchPartial)
+        }
+        throw new Error(text(
+          `本次输出没有写出从第 ${from} 章起的章节条目标题（能认出的最大章号：${plotOutlineCoveredTo(merged)}），无法确定本单元完成到哪里，结果未保存。`,
+          `The output has no chapter heading starting at chapter ${from} (highest chapter recognized: ${plotOutlineCoveredTo(merged)}), so the end of this unit cannot be determined; the result was not saved.`,
+        ))
+      }
       to = backfill.to
       if (backfill.overflow) callbacks.log(text(
         `本单元写过了全书末尾（写到第 ${from + backfill.actualChapters - 1} 章，全书计划 ${totalChapters} 章）；只记录，不阻断。`,

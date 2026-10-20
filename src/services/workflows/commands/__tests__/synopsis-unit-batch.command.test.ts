@@ -214,8 +214,7 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
     expect(saved.synopsis_facts_fingerprint).toBe(currentFingerprint({ from: 1, to: 5 }))
   })
 
-  it('单元 1 少写（5 章 vs 计划 15 章）后，单元 2 仍从第 6 章起接上且不被指纹拒绝', async () => {
-    // 两次真实运行串起来：单元 1 的检查点与 DB 正文都是它自己写出来的，不是手工编的。
+  it('单元 1 少写（5 章 vs 计划 15 章）后，单元 2 仍从第 6 章起接上且不被指纹拒绝', async () => {    // 两次真实运行串起来：单元 1 的检查点与 DB 正文都是它自己写出来的，不是手工编的。
     const stream = responseStream([chapters(1, 5), chapters(6, 9)])
     useLLMStore.setState({ defaultModelId: 'model-1', generateStream: stream })
     const ipc = harness()
@@ -351,5 +350,44 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
     await expect(makeCommand({ from: 6, unitIndex: 1, maxChapters: 15, volumeRemaining: 25 })
       .execute({ step: {}, context, callbacks })).rejects.toThrow('不一致')
     expect(stream).not.toHaveBeenCalled()
+  })
+
+  /**
+   * 实机故障（2026-10-20）：模型把标题写成「## 第 1 章：xxx」（章号两侧带空格），
+   * 旧解析只认紧排 ⇒ 覆盖=0 ⇒ 回填判「没写出本章标题」整批丢弃。
+   */
+  it('章号两侧带空格也能回填（第 1 章 与 第1章 同等对待）', async () => {
+    const spaced = Array.from({ length: 6 }, (_, index) =>
+      `## 第 ${index + 1} 章：核对第${index + 1}笔账\r\n周岚翻开账本核对这一笔赊欠，把来路和去处都对上。`,
+    ).join('\r\n\r\n')
+    const stream = responseStream([spaced])
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream: stream })
+    const ipc = harness()
+
+    await makeCommand({ from: 1, unitIndex: 1, maxChapters: 6, volumeRemaining: 30 })
+      .execute({ step: {}, context, callbacks })
+
+    const saved = ipc.partialWrites.at(-1)!
+    expect(saved.synopsis_range).toEqual({ from: 1, to: 6 })
+    expect(saved.synopsis_covered_to).toBe(6)
+    expect(saved.synopsis_unit_cursor).toEqual({ volumeIndex: 1, unitIndex: 2, writtenInVolume: 6 })
+  })
+
+  /**
+   * 同一故障的第二层：回填失败必须**整批不落库**，并在报错里说清「能认出的最大章号」。
+   * （主进程托管运行时的批前预写与回滚走 `previousBatchPartial`，本夹具不是 main-owned，
+   *   那一段由实机 T10 覆盖；这里锁住的是「失败即不提交」和报错可诊断。）
+   */
+  it('回填失败：整批不落库，报错带上能认出的最大章号', async () => {
+    const stream = responseStream(['这一段完全没有章标题，只是一段自由文本。'])
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream: stream })
+    const ipc = harness({ synopsis_covered_to: 0, synopsis_incomplete: false })
+
+    await expect(makeCommand({ from: 1, unitIndex: 1, maxChapters: 6, volumeRemaining: 30 })
+      .execute({ step: {}, context, callbacks })).rejects.toThrow('能认出的最大章号：0')
+
+    // 没有提交：没有一次落盘把 covered_to 推高，DB 正文也没被写
+    expect(ipc.partialWrites.every(write => (write.synopsis_covered_to ?? 0) === 0)).toBe(true)
+    expect(ipc.dbSynopsis()).toBe('')
   })
 })

@@ -198,8 +198,17 @@ function chapterNumber(token: string): number {
   return result + digit
 }
 
+/**
+ * 章标题识别。
+ *
+ * ⚠️ **章号两侧必须容忍空格**（`第 6 章` / `第6 章` / `第 6章`）：模型输出风格会漂，
+ * 2026-10-20 实机就出现过整批写成「第 6 章：昏迷的边缘」，而 `headings` 只认紧排的
+ * 「第6章」，于是 `plotOutlineCoveredTo` 返回 0 ⇒ 单元回填判「没写出本章标题」并整批丢弃。
+ * 容忍空格不会放宽别的判定：标题后仍必须是 `:`/`：`/`.`/`-` 或行尾，正文里
+ * 「第 1 章到第 5 章」这种仍不匹配（`章` 后接「到」）。
+ */
 function headings(text: string): { from: number; to: number; index: number; end: number; grouped: boolean }[] {
-  const pattern = new RegExp(`^[\\t ]*(?:#{1,6}[\\t ]+|[-*+][\\t ]+)?(?:第(${NUMBER})(?:[–—-](${NUMBER}))?章|Chapters?[\\t ]+(\\d+)(?:[\\t ]*[–—-][\\t ]*(\\d+))?)(?=[\\t ]*(?:[:：.．—-]|$))[^\\r\\n]*`, 'gimu')
+  const pattern = new RegExp(`^[\\t ]*(?:#{1,6}[\\t ]+|[-*+][\\t ]+)?(?:第[\\t ]*(${NUMBER})(?:[\\t ]*[–—-][\\t ]*(${NUMBER}))?[\\t ]*章|Chapters?[\\t ]+(\\d+)(?:[\\t ]*[–—-][\\t ]*(\\d+))?)(?=[\\t ]*(?:[:：.．—-]|$))[^\\r\\n]*`, 'gimu')
   return [...text.matchAll(pattern)].map(match => ({ from: chapterNumber(match[1] ?? match[3]),
     to: chapterNumber(match[2] ?? match[4] ?? match[1] ?? match[3]), index: match.index,
     end: match.index + match[0].length, grouped: !!(match[2] ?? match[4]) || /Chapters\s/iu.test(match[0]) }))
@@ -207,7 +216,7 @@ function headings(text: string): { from: number; to: number; index: number; end:
 
 export function validPlotOutlineEntry(text: string, chapter: number): boolean {
   if (/```|~~~|大纲批次进度|后续概览|Outline batch progress|Later overview/iu.test(text)) return false
-  if (!new RegExp(`^## (?:第${chapter}章|Chapter ${chapter})[:：][\\t ]*\\S[^\\r\\n]*\\r?\\n`, 'iu').test(text.trim())) return false
+  if (!new RegExp(`^## (?:第[\\t ]*${chapter}[\\t ]*章|Chapter[\\t ]+${chapter})[:：][\\t ]*\\S[^\\r\\n]*\\r?\\n`, 'iu').test(text.trim())) return false
   const entries = headings(text)
   const heading = entries[0]
   if (entries.length !== 1 || !heading || heading.grouped || heading.from !== chapter || heading.to !== chapter

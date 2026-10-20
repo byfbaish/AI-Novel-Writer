@@ -19,6 +19,8 @@ export const SYNOPSIS_UNIT_LAUNCH_FLAG = 'aiNovel:e3-unit-batch'
 export interface SynopsisUnitCheckpoint {
   readonly synopsis_covered_to?: number
   readonly synopsis_incomplete?: boolean
+  /** 中断批次的半成品正文；只用来判断「这个 incomplete 标记背后到底有没有东西可续」。 */
+  readonly synopsis_result?: string | null
   readonly synopsis_unit_cursor?: {
     readonly volumeIndex: number
     readonly unitIndex: number
@@ -126,13 +128,18 @@ export async function probeSynopsisUnitLaunch(
   if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return skip('invalid-total')
 
   const { checkpoint, found } = await readSynopsisUnitCheckpointWithStatus(input.projectSession)
-  // 有未完成批次时单元模式语义未定（中断续写走 resumeSynopsis，不是「再写一个单元」），
-  // 探针阶段直接退回按章区间，避免重复生成同一单元。
-  if (checkpoint.synopsis_incomplete === true) return skip('incomplete', 0, found)
-
   const coveredTo = Number.isSafeInteger(checkpoint.synopsis_covered_to)
     ? Number(checkpoint.synopsis_covered_to)
     : 0
+  // 有未完成批次时单元模式语义未定（中断续写走 resumeSynopsis，不是「再写一个单元」），
+  // 探针阶段直接退回按章区间，避免重复生成同一单元。
+  // ⚠️ 例外：批前预写的空标记（`covered_to=0` 且没有半成品正文）背后没有任何可续内容
+  //    ——那是「刚才那批一个字都没落库」留下的，视同未开始，否则一次失败就会把单元模式锁死。
+  if (checkpoint.synopsis_incomplete === true) {
+    const resumable = (typeof checkpoint.synopsis_result === 'string' && checkpoint.synopsis_result.trim().length > 0)
+      || coveredTo > 0
+    if (resumable) return skip('incomplete', coveredTo, found)
+  }
   const { computeSynopsisUnitRange, deriveSynopsisUnitCursor, INITIAL_SYNOPSIS_UNIT_CURSOR } =
     await import('./commands/architecture.command')
   const explicitCursor = checkpoint.synopsis_unit_cursor ?? null

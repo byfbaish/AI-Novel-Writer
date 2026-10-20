@@ -27,6 +27,8 @@
 ```js
 localStorage.setItem('aiNovel:e3-unit-batch', '1')   // 开
 localStorage.removeItem('aiNovel:e3-unit-batch')     // 关（恢复逐字节旧行为）
+localStorage.getItem('aiNovel:e3-unit-batch') 返回 '1'
+
 ```
 
 - [x] 开启后点「生成情节大纲」，DevTools 先出现 `[E3] 确认生成已抵达：步骤=…，单元开关=on`
@@ -54,16 +56,16 @@ localStorage.removeItem('aiNovel:e3-unit-batch')     // 关（恢复逐字节旧
 
 - [x] 新建项目，`pnpm dev` 里走完「故事前提 / 角色 / 世界观 / **弧光结构**」四个步骤
   - ⚠️ 弧光结构必须有 `### 单元一：` 或 `【小弧名】` 划界，否则单元模式**一步都跑不了**
-- [x] 记下 `novelConfig.totalChapters` = \__\_150\__\_（后面所有判据都拿它当分母）
+- [x] 记下 `novelConfig.totalChapters` = \_*\_150\_*_（后面所有判据都拿它当分母）
 - [x] 记下弧光结构里有几卷、每卷几个单元 =7 卷，第 1 卷 4 个单元；第 2 卷 5 个单元；第 3 卷 3 个单元；第 4 卷 4 个单元；第 5 卷 5 个单元；第 6 卷 4 个单元；第 7 卷 3 个单元
 - [x] 确认 `.ai-novel/partial_arch.json` 里**没有** `synopsis_covered_to`（或为 0）
 
 ### A1 首单元
 
-- [ ] 打开「AI 生成故事架构」弹窗时，情节大纲那一块**不再出现章号输入框**，而是一行
-      `单元模式：第 k 个单元，从第 N 章起` + `本卷剩余 X 章，名义上界 Y 章`
+- [x] 打开「AI 生成故事架构」弹窗时，情节大纲那一块**不再出现章号输入框**，而是一行  
+  `单元模式：第 k 个单元，从第 N 章起` + `本卷剩余 X 章，名义上界 Y 章`
   - 若仍看到「第 1 章 到第 5 章」的输入框，说明弹窗里的探针没拿到单元；下面一行灰字会写原因
-- [ ] 勾「情节大纲」→ 确认 → 日志 `正在写【单元 1：名】，从第 1 章起（全书 M 章）`
+- [x] 勾「情节大纲」→ 确认 → 日志 `正在写【单元 1：名】，从第 1 章起（全书 M 章）`
 - [ ] 完成 → 日志 `本单元实际写 N 章（第 1–N 章）`
 - [ ] `.ai-novel/partial_arch.json`：`synopsis_range.to` = **实际** N（不是名义上界）
 - [ ] 同文件 `synopsis_unit_cursor` 是「下一个单元」
@@ -168,7 +170,11 @@ t10-evidence/
 
 1. **旧项目没有结构化骨架就定位不到单元。** `computeSynopsisUnitRange` 第一步是 `parseArcStructure(plotStructurePlan)`，为空直接返回 `null` ⇒ 「无法由单元游标定位本次单元」。先把弧光结构重跑成带「### 单元一：」的形态再验 B。
 2. **旧检查点停在单元边界时 `unitIndex` 会滞后一位**（见 B3）。发射侧与命令侧同源，所以不会被拒绝，但语义错位。属 T7 迁移口径缺口，T10 只记录。
-3. **中断态会退回按章区间。** `synopsis_incomplete = true` 时单元模式显式让位给旧的 `resumeSynopsis`，因为「中断续写是接着写同一单元还是算下一个」尚未定。日志里走 range 是预期。
+3. **中断态会退回按章区间。** `synopsis_incomplete = true` 且**盘上真有半成品正文**时，单元模式显式让位给旧的 `resumeSynopsis`，因为「中断续写是接着写同一单元还是算下一个」尚未定。日志里走 range 是预期。
+   - 例外（2026-10-20 修）：`incomplete=true` 但 `synopsis_result` 为空、`covered_to=0` —— 这是批前预写留下的空标记，背后没有可续内容，**视同未开始**，照常进单元模式。
+4. **章标题里章号两侧可能带空格**（`## 第 6 章：xxx`）。2026-10-20 实机整批因为这个被判「没写出章节条目标题」而丢弃（解析只认紧排的「第6章」）。现已修：`plot-outline-contract.headings`、`validPlotOutlineEntry` 与 `architecture.command` 的 `ZH_CHAPTER_TITLE_RE` 都容忍空格；`arc-node` / `synopsis-projection` 本来就容忍。**若再看到该报错，报错里会带上「能认出的最大章号」**，先看这个数：
+   - `0` ⇒ 一个标题都没认出来（格式又漂了，把那段原文发我）
+   - `> from` ⇒ 认出来了但起点不对（模型跳章或写成章组）
 
 ---
 

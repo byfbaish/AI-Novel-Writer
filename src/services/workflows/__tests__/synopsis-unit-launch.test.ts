@@ -119,6 +119,16 @@ describe('resolveSynopsisUnitLaunch', () => {
   it('有未完成批次时退回按章区间（中断续写不是「再写一个单元」）', async () => {
     doubles.checkpoint = { synopsis_covered_to: 10, synopsis_incomplete: true, synopsis_unit_cursor: { volumeIndex: 1, unitIndex: 1, writtenInVolume: 10 } }
     expect(await resolve()).toBeNull()
+    // 有半成品正文 ⇒ 真的可续，必须退回
+    doubles.checkpoint = { synopsis_covered_to: 0, synopsis_incomplete: true, synopsis_result: '## 第1章：半截' }
+    expect(await resolve()).toBeNull()
+  })
+
+  it('空的中断标记（什么都没写进库）视同未开始，不锁死单元模式', async () => {
+    // 实机故障：批前预写 incomplete=true，随后回填失败未回滚 ⇒ 下一批若直接退回按章，
+    // 作者会拿对话框里第 1 章起的区间去覆盖已有大纲。
+    doubles.checkpoint = { synopsis_covered_to: 0, synopsis_incomplete: true, synopsis_result: '' }
+    expect(await resolve()).toEqual({ from: 1, unitIndex: 1, maxChapters: 15, volumeRemaining: 30 })
   })
 
   it('读不到检查点文件时按「全书未开始」处理', async () => {
