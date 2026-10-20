@@ -29,6 +29,7 @@ import {
   type ParsedArcStructure,
 } from './arc-position'
 import { parseChapterArcCovers } from './arc-node'
+import { parseOutlineChapterHeading } from './chapter-heading'
 import { buildArcTree, type ArcTree, type ArcTreeUnit, type ArcTreeVolume } from './arc-tree'
 
 export type ChapterUnitSource = 'declared' | 'computed' | 'mismatch'
@@ -73,11 +74,10 @@ function unitIndexFromCoverId(id: string): number | null {
 function scanChapterLines(synopsis: string): Map<number, number> {
   const lines = new Map<number, number>();
   for (const [index, raw] of synopsis.split(/\r?\n/u).entries()) {
-    const heading = /^##\s*第\s*([0-9]+)\s*章/u.exec(raw.trim());
-    if (!heading) continue;
-    const chapter = Number(heading[1]);
-    if (!Number.isSafeInteger(chapter) || chapter < 1) continue;
-    if (!lines.has(chapter)) lines.set(chapter, index);
+    const fields = parseOutlineChapterHeading(raw.trim());
+    // 本模块的约束：恰好 `##`、单章、章号阿拉伯数字、只认「第N章」（不认 `Chapter N`）。
+    if (!fields || fields.hashLevel !== 2 || fields.grouped || !fields.arabic || fields.style !== 'cn') continue;
+    if (!lines.has(fields.chapter)) lines.set(fields.chapter, index);
   }
   return lines;
 }
