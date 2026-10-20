@@ -199,6 +199,31 @@ describe('planning authorization before confirmation', () => {
   expect(f.db.prepare('SELECT COUNT(*) FROM generation_runs').pluck().get()).toBe(1)
   expect(f.spy).toHaveBeenCalledTimes(1)
  })
+ it('E3 单元模式：子 run 授权按「起点 + 名义上界」比对，对不上即拒绝', async () => {
+  const f=fixture(planningDispatch({workflow:'generate_architecture',start_chapter:11,chapter_count:5,target_units:600}))
+  f.db.prepare('UPDATE project_core SET total_chapters=200').run()
+  const result=await f.round(),action=result.rounds[0]!.actions[0]!
+  f.owner.agents.claimTool({ref:action.ref,confirmed:true})
+  const registration=f.owner.agents.registerWorkflow(action.ref)
+  expect(registration.planning).toEqual({from:11,to:15,targetUnits:600})
+  const unitIntent={version:'architecture-action-v1',priorSteps:[],synopsisRange:null,
+   synopsisUnit:{from:11,unitIndex:2,maxChapters:5,volumeRemaining:10}}
+  const selection:BeginGenerationRequest={operation:'generate-plot-outline',uiActionNonce:'unit-child',modelId:'synthetic',promptKeys:['synopsis'],
+   skillStages:['planning'],selectedDraftIds:[],selectedFinalizedDraftIds:[],output:'visible-text',authorInputs:[
+    {id:'architecture:author-config',text:'{"totalChapters":200}'},
+    {id:'architecture:planning-intent',text:JSON.stringify(unitIntent)},
+    {id:'planning:target-units',text:'600'},
+   ]}
+  // 名义上界改成 4（boundTo=14）与注册的 11–15 对不上 ⇒ 必须拒绝（先做这步：一旦建立了子 run，
+  // 后续同 operation 的 begin 会复用已有子 run、不再走授权比对）
+  const stale={...selection,uiActionNonce:'unit-child-stale',authorInputs:selection.authorInputs!.map(input =>
+   input.id==='architecture:planning-intent'?{...input,text:JSON.stringify({...unitIntent,synopsisUnit:{...unitIntent.synopsisUnit,maxChapters:4}})}:input)}
+  expect(()=>f.owner.begin({...stale,parentRootActionId:result.handle.rootActionId,agentWorkflowRegistrationId:registration.registrationId}))
+   .toThrow('GENERATION_AGENT_CHILD_NOT_AUTHORIZED')
+  const child=f.owner.begin({...selection,parentRootActionId:result.handle.rootActionId,agentWorkflowRegistrationId:registration.registrationId})
+  expect(child.handle.rootActionId).toBe(result.handle.rootActionId)
+ })
+
  it.each([16384,32768,65536])('uses the same physical %i output cap and frozen English target for ordinary and registered children', async maxTokens => {
   const f=fixture(planningDispatch({workflow:'generate_blueprint',chapter_count:10,target_units:1000}))
   Object.assign(f.model,{provider:'deepseek',baseUrl:'https://api.deepseek.com',modelName:'deepseek-v4-flash',maxTokens,

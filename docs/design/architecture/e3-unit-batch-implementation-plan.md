@@ -278,6 +278,27 @@
   P18 让标题可以不带章数之后，这段投影对所有无章数的弧光**静默退化成原文**（P0-0b 的分级裁剪成了 no-op）。
   改为 `if (majorMatch)` / `if (midMatch && …)`，与 `parseArcStructure` 的判据一致。
 
+### 2026-10-20 · T8 授权口径：单元模式的上界与子 run（完成）
+
+**先更正一处误判**：交接稿曾写「续批在单元模式下必报 `GENERATION_PLANNING_CONTINUATION_RANGE_CHANGED`」——**不成立**。
+`planningContinuation(run)` 先读 `repository.readPlotOutline(runId)`，而单元模式下 `plotOutlinePolicy` 返回 `null` ⇒
+`outline` 为 `null`、`directoryRange` 也没有 ⇒ 直接 `return undefined`，**根本走不到那段比较**。
+语义上也确实没有对应物：「继续生成缺少的章节」在单元模式下等于"继续写下一个单元"，那是新的一次生成，不是同一次运行的续批。
+现状是 UI 的继续按钮已因 `!remainingRange` 禁用，动作不会被触发。**T8 不改这里**。
+
+**实际改的两处**
+
+| 位置 | 改动 |
+|---|---|
+| `main-generation-owner.ts` · 上界校验 `rangeEnd` | 原来只取 `intent.synopsisRange?.to`，单元模式下是 `undefined` ⇒ **静默跳过越界校验**。改取 `architecturePlanningRange(intent)?.to`（单元模式 = `from + maxChapters − 1`） |
+| `agent-generation.ts` · 子 run 授权 | 原来拿 `intent.synopsisRange` 与注册的 `{from,to}` 比；单元模式是 `null` ⇒ **必报 `GENERATION_AGENT_CHILD_NOT_AUTHORIZED`**。改比 `architecturePlanningRange(intent)` |
+
+- 新增纯函数 `architecturePlanningRange(intent)`（`generation-owner-contract.ts`）：range 模式原样；单元模式折算 `boundTo`；
+  两者都没有或字段非法 ⇒ `null`（调用方跳过校验，不猜）。**它只服务授权/上界，不写检查点、不进提示词。**
+- 单测：`architecture-planning-range.test.ts` 3 条；`main-generation-owner.test.ts` 加一条（配置 250 / 库 200：
+  单元 196 起 10 章 ⇒ 越界拒绝；190 起 10 章 ⇒ 放行）；`agent-generation.test.ts` 加一条
+  （注册 11–15 时子 run 放行；把 `maxChapters` 改成 4 与注册不符 ⇒ `CHILD_NOT_AUTHORIZED`）。
+
 ### 2026-10-20 · 界面上界：冻结没有大纲的章节（完成）
 
 **作者口径**：把蓝图批次上界改成「计划 + 累计偏离」**没有意义**——那只是个展示。真正的约束来自

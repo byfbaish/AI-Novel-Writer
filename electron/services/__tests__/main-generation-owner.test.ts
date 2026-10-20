@@ -695,6 +695,21 @@ describe('frozen planning roots', () => {
     expect(f.db.prepare('SELECT COUNT(*) FROM generation_runs').pluck().get()).toBe(1)
   })
 
+  it('E3 单元模式：上界按「起点 + 名义上界」折算，越界照样拒绝（不再静默跳过）', () => {
+    const f = planningFixture()
+    const unitIntent = (from: number, maxChapters: number): ArchitecturePlanningIntent => ({
+      version: 'architecture-action-v1', priorSteps: [], synopsisRange: null,
+      synopsisUnit: { from, unitIndex: 2, maxChapters, volumeRemaining: 20 },
+    })
+    // 配置写 250 章，库里是 200 章 —— 请求期没有 `to`，越界只能靠 boundTo 发现。
+    const overflow = architectureSelection(f, unitIntent(196, 10), 'generate-plot-outline')
+    overflow.authorInputs![0].text = JSON.stringify({ totalChapters: 250 })
+    expect(() => f.owner.begin({ ...overflow, uiActionNonce: 'unit-overflow' })).toThrow('GENERATION_PLANNING_RANGE_INVALID')
+    const inside = architectureSelection(f, unitIntent(190, 10), 'generate-plot-outline')
+    inside.authorInputs![0].text = JSON.stringify({ totalChapters: 250 })
+    expect(() => f.owner.begin({ ...inside, uiActionNonce: 'unit-inside' })).not.toThrow()
+  })
+
   it('refuses unknown saved policies and a root ledger that disagrees with its frozen planning budget', async () => {
     const fetch = syntheticStream(), f = planningFixture()
     const run = f.owner.begin(architectureSelection(f, fullIntent))

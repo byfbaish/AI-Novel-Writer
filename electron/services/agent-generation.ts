@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from 'node:util'
 import type Database from 'better-sqlite3'
 import type { AgentGenerationContext, AgentGenerationInput, AgentGenerationRecovery, AgentGenerationRound, AgentToolAction, AgentToolActionRef, AgentWorkflowRegistration, AgentAuthorBlueprintProposal, AgentToolClaim, AgentDomainToolReceipt } from '../../src/shared/agent-generation'
-import { ARCHITECTURE_STEP_OPERATIONS, type BeginGenerationRequest } from '../../src/shared/generation-owner-contract'
+import { ARCHITECTURE_STEP_OPERATIONS, architecturePlanningRange, type ArchitecturePlanningIntent, type BeginGenerationRequest } from '../../src/shared/generation-owner-contract'
 import type { MainGenerationExecuteReceipt, MainGenerationRunHandle, MainGenerationRunView } from '../../src/services/generation/generation-runtime'
 import type { GenerationTask } from '../../src/services/generation/generation-harness'
 import { GenerationRunRepository, textHash, type DurableGenerationRun, type RunBinding } from '../repositories/generation-run-repository'
@@ -333,7 +333,12 @@ export class AgentGeneration {
         if (registration.workflow === 'generate_blueprint') {
           const value = JSON.parse(input('directory:requested-range') ?? 'null')
           range = value && { from: value.startChapter, to: value.endChapter }
-        } else range = JSON.parse(input('architecture:planning-intent') ?? 'null')?.synopsisRange
+        } else {
+          // E3：单元模式请求期没有 `to`，按「起点 + 名义上界」折算后再比对——否则子 run 会被误拒。
+          range = architecturePlanningRange(
+            JSON.parse(input('architecture:planning-intent') ?? 'null') as ArchitecturePlanningIntent | null,
+          ) ?? undefined
+        }
       } catch { throw new Error('GENERATION_AGENT_CHILD_NOT_AUTHORIZED') }
       if (!isDeepStrictEqual(range, { from, to }) || Number(input('planning:target-units')) !== targetUnits) throw new Error('GENERATION_AGENT_CHILD_NOT_AUTHORIZED')
     }
