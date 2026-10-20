@@ -13,7 +13,7 @@ import { useLocaleStore } from '../../stores/locale-store'
 import { AUDIENCE_EN, GENRE_EN } from '../editor/novel-config-labels'
 import { ipc } from '../../services/ipc-client'
 import { resolveWritingLanguage } from '../../shared/writing-language'
-import { formatChapterPosition } from '../../shared/chapter-position'
+import { formatChapterPosition, formatUnitRange } from '../../shared/chapter-position'
 import { assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS, DEFAULT_PLANNING_TARGET_UNITS, parsePlanningTargetUnits, PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../shared/plot-outline-contract'
 import { captureProjectSession } from '../project-session-gate'
 import {
@@ -238,20 +238,21 @@ export default function ArchitectureConfirmDialog({
     if (!rewindPlan) return
     const session = captureProjectSession(currentProject)
     if (!session) return
-    const position = formatChapterPosition({
-      chapter: rewindPlan.range.from,
+    const position = formatUnitRange({
+      from: rewindPlan.range.from,
+      to: rewindPlan.range.to,
       volumeIndex: rewindPlan.volumeIndex,
       unitIndex: rewindPlan.unitIndex,
     }, 'zh-CN')
     const ok = await confirm(
       text(
-        `会把数据库里这一个单元的大纲正文整块删掉：${position}（全书第 ${rewindPlan.range.from}–${rewindPlan.range.to} 章，`
-          + `共 ${rewindPlan.removedChapters.length} 条、约 ${rewindPlan.removedChars} 字）。`
+        `会把数据库里这一个单元的大纲正文整块删掉：${position}，`
+          + `共 ${rewindPlan.removedChapters.length} 条、约 ${rewindPlan.removedChars} 字。`
           + `进度退回${rewindPlan.coveredTo === 0 ? '全书起点' : `第 ${rewindPlan.coveredTo} 章`}，下一次生成从这个单元重新整体规划。`
           + `世界观、前提、角色、弧光结构一个字都不动。\n\n`
           + `单元是整体规划的，所以不能只重写单元里的某几章。`,
-        `This removes the whole unit's outline body from the database: ${position} `
-          + `(chapters ${rewindPlan.range.from}-${rewindPlan.range.to}, ${rewindPlan.removedChapters.length} entries, ~${rewindPlan.removedChars} characters). `
+        `This removes the whole unit's outline body from the database: ${position}, `
+          + `${rewindPlan.removedChapters.length} entries, ~${rewindPlan.removedChars} characters. `
           + `Progress goes back to chapter ${rewindPlan.coveredTo} and the next run replans this unit as a whole. `
           + `Worldbuilding, premise, characters and the arc structure are untouched.`,
       ),
@@ -691,15 +692,24 @@ export default function ArchitectureConfirmDialog({
                       </label>
                     )}
                     {rewindPlan && (
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
                         <span style={{ color: 'var(--color-text-muted)' }}>
                           {text(
-                            `已写：${formatChapterPosition({
-                              chapter: rewindPlan.range.from,
+                            // 「已写」会被读成"当前进度"，而它真正指的是**下一个会被重写的单元**
+                            //（单元模式那一行说的是"接下来写哪个"）。所以直接写成动作句，
+                            // 并把层级与章区间都报全（2026-10-21 作者反馈文案看不懂）。
+                            `重写最近写完的单元：${formatUnitRange({
+                              from: rewindPlan.range.from,
+                              to: rewindPlan.range.to,
                               volumeIndex: rewindPlan.volumeIndex,
                               unitIndex: rewindPlan.unitIndex,
-                            }, 'zh-CN')}–第 ${rewindPlan.range.to} 章，约 ${rewindPlan.removedChars} 字`,
-                            `Written: chapters ${rewindPlan.range.from}-${rewindPlan.range.to} of this unit, ~${rewindPlan.removedChars} characters`,
+                            }, 'zh-CN')}，约 ${rewindPlan.removedChars} 字`,
+                            `Rewrite the last finished unit: ${formatUnitRange({
+                              from: rewindPlan.range.from,
+                              to: rewindPlan.range.to,
+                              volumeIndex: rewindPlan.volumeIndex,
+                              unitIndex: rewindPlan.unitIndex,
+                            }, 'en-US')}, ~${rewindPlan.removedChars} characters`,
                           )}
                         </span>
                         <button
@@ -711,7 +721,20 @@ export default function ArchitectureConfirmDialog({
                         >
                           {rewinding
                             ? text('正在回退…', 'Rewinding…')
-                            : text('重写这一个单元', 'Rewrite this unit')}
+                            : text(
+                                `重写${formatUnitRange({
+                                  from: rewindPlan.range.from,
+                                  to: rewindPlan.range.to,
+                                  volumeIndex: rewindPlan.volumeIndex,
+                                  unitIndex: rewindPlan.unitIndex,
+                                }, 'zh-CN')}`,
+                                `Rewrite ${formatUnitRange({
+                                  from: rewindPlan.range.from,
+                                  to: rewindPlan.range.to,
+                                  volumeIndex: rewindPlan.volumeIndex,
+                                  unitIndex: rewindPlan.unitIndex,
+                                }, 'en-US')}`,
+                              )}
                         </button>
                       </div>
                     )}

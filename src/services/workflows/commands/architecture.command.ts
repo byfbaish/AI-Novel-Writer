@@ -1022,11 +1022,21 @@ function assertCheckpointDbMirrorCurrent(
 ): string {
   const range = partial.synopsis_range
   const coveredTo = partial.synopsis_covered_to ?? 0
+  /**
+   * **本批尚未开始**：`range` 记的是接下来要写的单元，`coveredTo` 停在它前面一章。
+   *
+   * 2026-10-21 实机：P3b「重写这一个单元」把进度退回单元起点后，正是这个形态
+   * （`covered_to = from - 1` + `range = 该单元` + `incomplete = false`）。
+   * 原来的不变式只认「本批已完成 ⇒ coveredTo === range.to」和
+   * 「本批中断 ⇒ coveredTo < range.to 且 incomplete」，于是把回退后的合法状态
+   * 判成「章节范围或进度已损坏」，点完重写就再也续不上。
+   */
+  const pendingBatch = Boolean(range) && coveredTo === (range as { from: number }).from - 1
   if (!range
     || !Number.isSafeInteger(range.from) || !Number.isSafeInteger(range.to)
     || range.from < 1 || range.from > range.to || range.to > totalChapters
     || !Number.isSafeInteger(coveredTo) || coveredTo < 0 || coveredTo > totalChapters
-    || (partial.synopsis_incomplete !== true && coveredTo !== range.to)
+    || (partial.synopsis_incomplete !== true && !pendingBatch && coveredTo !== range.to)
     || (partial.synopsis_incomplete === true && coveredTo >= range.to)
   ) {
     throw new Error(uiText(

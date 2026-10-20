@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { planSynopsisUnitRewind } from '../synopsis-unit-rewind'
+import { isUsableSynopsisCheckpoint, synopsisFactsFingerprint } from '../commands/architecture.command'
+import { renderPlotOutlineSynopsis } from '../../../shared/plot-outline-contract'
 
 const expected = {
   synopsis: '',
@@ -107,5 +109,51 @@ describe('planSynopsisUnitRewind', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.plan.outlineText.match(/已覆盖至第/g)?.length).toBe(1)
+  })
+})
+
+describe('回滚后的检查点必须能通过续写校验（2026-10-21 实机 bug 回归）', () => {
+  // 真实形态：重写单元后 covered_to 停在目标单元前一章、range 记目标单元、incomplete=false。
+  // 第一版把 `synopsis_result` 一起删了、且旧不变式只认 coveredTo === range.to ⇒
+  // 点完重写再去生成就报「检查点缺少正文 / 章节范围或进度已损坏」。
+  const body = [
+    '## 第1卷第1单元第1章（全书第1章）：甲',
+    '选择：拖 —— 他请求宽限三日，借口去药渣堆寻药缓解毒性。'.repeat(8),
+    '收尾：未决。',
+  ].join('\n')
+
+  function checkpoint(overrides: Record<string, unknown> = {}) {
+    const expectedForBody = { ...expected, synopsis: body }
+    const db = renderPlotOutlineSynopsis(body, 5, expectedForBody)
+    return {
+      db,
+      partial: {
+        synopsis_range: { from: 6, to: 7 },
+        synopsis_covered_to: 5,
+        synopsis_incomplete: false,
+        synopsis_result: body,
+        synopsis_facts_fingerprint: 'x',
+        synopsis_unit_cursor: { volumeIndex: 1, unitIndex: 2, writtenInVolume: 5 },
+        synopsis_db_hash: synopsisFactsFingerprint([db]),
+        synopsis_body_hash: synopsisFactsFingerprint([body]),
+        ...overrides,
+      },
+    }
+  }
+
+  it('「本批尚未开始」（coveredTo = range.from − 1）是合法状态', () => {
+    const { db, partial } = checkpoint()
+    expect(isUsableSynopsisCheckpoint(partial, db, 'zh-CN', 150)).toBe(true)
+  })
+
+  it('真损坏仍然拒绝：coveredTo 与 range 完全对不上', () => {
+    const { db, partial } = checkpoint({ synopsis_covered_to: 3 })
+    expect(isUsableSynopsisCheckpoint(partial, db, 'zh-CN', 150)).toBe(false)
+  })
+
+  it('缺 synopsis_result 仍然拒绝（正文镜像无从校验）', () => {
+    const { db, partial } = checkpoint()
+    delete (partial as { synopsis_result?: string }).synopsis_result
+    expect(isUsableSynopsisCheckpoint(partial, db, 'zh-CN', 150)).toBe(false)
   })
 })

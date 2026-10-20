@@ -194,6 +194,25 @@ export function formatChapterPosition(pos: ChapterPosition, language: WritingLan
 **已知未做**：`synopsis_volume_deviations` 不回退（它只是信号带提示；要回退得按正文
 重算该单元真实字数，留到卷回滚时一起做）。
 
+#### 首版的三个坑（2026-10-21 实机反馈，`4e5856ea` 之后修的）
+
+| 坑 | 现象 | 根因 |
+|---|---|---|
+| ① 删了 `synopsis_result` | 点完重写再去生成：「检查点缺少正文，无法安全续写」 | `assertCheckpointDbMirrorCurrent` 硬要求 `renderSynopsisDbText(result) === 库里正文`，**result 不能为空**。回滚时必须写入「剩下的那部分正文」 |
+| ② 不变式只认「已完成」 | 同上，或「章节范围或进度已损坏」 | `coveredTo !== range.to` 时必须有 `incomplete === true`；而回退后的状态是 `coveredTo = range.from − 1` + `incomplete = false`（本批尚未开始）。已加 `pendingBatch` 分支，**真损坏（coveredTo 与 range 完全对不上）仍然拒绝** |
+| ③ 回退到起点时写了空正文 | 回退第 1 单元后必炸 | 那时 `synopsis_result` 会是空串。改为**直接清掉进度字段**（等价「从未开始」），只保留 `facts_fingerprint` 与 `step_guidance` |
+
+**这三点合起来是一条**：检查点不只是「进度数字」，它必须能**原样渲染回库里的正文**。
+任何绕开 `persistInterruptedSynopsis` 去改检查点的动作，都要满足
+`renderSynopsisDbText(synopsis_result, …, { covered_to, incomplete }) === 库内 synopsis`。
+
+**文案**（同批修的）：「已写：…」会被读成「当前进度」，而它指的其实是**下一个会被重写的单元**
+（单元模式那一行说的是「接下来写哪个」）。改成动作句「重写最近写完的单元：
+`第1卷第1单元（全书第1–5章）`，约 N 字」，按钮也带上单元名。
+为此新增 `formatUnitRange`（`chapter-position.ts`）—— 与 `formatChapterPosition` 的分工：
+那个表达**某一点**，这个表达**一段**。
+
+
 
 ### 4.6 检查点挡路：为什么只能显式重置
 
