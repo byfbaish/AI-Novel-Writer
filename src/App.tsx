@@ -43,6 +43,7 @@ import {
 } from './services/architecture-character-nudge'
 import { useSynopsisUnitChainStore } from './stores/synopsis-unit-chain-store'
 import { probeSynopsisUnitLaunchForProject } from './services/workflows/synopsis-unit-launch'
+import { formatChapterPosition } from './shared/chapter-position'
 import { decideUnitChainStep, UNIT_CHAIN_STOP_COPY, type UnitChainStopReason } from './services/workflows/synopsis-unit-chain'
 import { launchCreativeWorkflow } from './services/workflows/creative-workflow-launcher'
 import type { BlueprintCharacterSyncOperation } from '../electron/repositories/blueprint-repository'
@@ -418,7 +419,11 @@ export default function App() {
             synopsisUnit: probe.unit!,
           }, projectSession)
           useSynopsisUnitChainStore.getState().advance(receipt.runId)
-          console.warn(`[E3] 连写：下一批已发起（第 ${probe.unit!.unitIndex} 个单元，从第 ${probe.unit!.from} 章起）`)
+          console.warn(`[E3] 连写：下一批已发起（${formatChapterPosition({
+            chapter: probe.unit!.from,
+            volumeIndex: probe.volume?.index,
+            unitIndex: probe.unit!.unitIndex,
+          }, 'zh-CN')}）`)
         } catch (error) {
           stopChain('failed', error instanceof Error ? error.message : String(error))
         }

@@ -31,6 +31,7 @@ import {
   synopsisUnitLaunchEnabled,
 } from '../../services/workflows/synopsis-unit-launch'
 import type { ArchitectureUnitRange } from '../../shared/generation-owner-contract'
+import { formatChapterPosition } from '../../shared/chapter-position'
 import { createArchitectureWorkflow } from '../../services/workflows/architecture-workflow'
 import { renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix, plotOutlineCoveredTo } from '../../shared/plot-outline-contract'
 import { useWorkflowStore } from '../../stores/workflow-store'
@@ -713,7 +714,11 @@ function ArchFileViewerSession({
         synopsisUnitVolume = probe.volume?.index ?? null
         synopsisUnitCapacity = Math.max(1, probe.volume?.remainingUnits ?? 1)
         if (probe.unit) {
-          toast.info(`[E3] 单元批次：第 ${probe.unit.unitIndex} 个单元，从第 ${probe.unit.from} 章起（上界 ${probe.unit.maxChapters} 章）`)
+          toast.info(`[E3] 单元批次：${formatChapterPosition({
+            chapter: probe.unit.from,
+            volumeIndex: probe.volume?.index,
+            unitIndex: probe.unit.unitIndex,
+          }, 'zh-CN')}（上界 ${probe.unit.maxChapters} 章）`)
         } else {
           toast.warning(`[E3] 本次走按章区间：${describeSynopsisUnitProbe(probe)}`)
         }

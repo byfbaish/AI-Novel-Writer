@@ -210,7 +210,9 @@ describe('probeSynopsisUnitLaunch', () => {
 
   it('describeSynopsisUnitProbe 给人话，且带上真实数值', async () => {
     doubles.checkpoint = { synopsis_covered_to: 10 }
-    expect(describeSynopsisUnitProbe(await probe())).toContain('第 11 章起')
+    // 位置统一写成「第V卷第U单元第C章（全书第N章）」：层级必须报全（A6 事故里
+    // 作者把「第 2 个单元」读成了「第二卷开始」），全书章号仍可直接核对。
+    expect(describeSynopsisUnitProbe(await probe())).toContain('第1卷第1单元第1章（全书第11章）')
     expect(describeSynopsisUnitProbe(await probe({ storage: { getItem: () => null } }))).toContain(SYNOPSIS_UNIT_LAUNCH_FLAG)
     // 检查点读不到 + 没有骨架：话里必须点出「没读到 partial_arch.json」，否则现场只会以为骨架坏了
     doubles.readFails = true
