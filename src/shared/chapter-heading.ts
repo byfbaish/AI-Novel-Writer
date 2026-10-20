@@ -72,6 +72,28 @@ const SEPARATOR = /^[\t ]*([:：.．、·\-—])?[\t ]*/u
 export const OUTLINE_TITLE_SEPARATORS: ReadonlySet<string> = new Set([':', '：', '.', '．', '-', '—'])
 
 /**
+ * 大纲类调用方共用的**整行判定**：`#` 后必须有空白；章号后必须是分隔符或行尾。
+ * 返回 `null` 表示「这行不是大纲章条目」。
+ *
+ * 为什么连这一步也要共享：`parseOutlineChapterHeading` 只管**能不能解析**，各调用方的
+ * **宽容度**（要不要 bullet、`##` 后没空白算不算）本来散在四处。2026-10-21 那次
+ * 「6 章写完入不了库」的教训是：解析器统一了、判定没统一，照样会有一处漏掉新格式。
+ * 现在本函数 + `OUTLINE_TITLE_SEPARATORS` 是唯一来源，调用方只在自己的
+ * **更严处**再补一刀（如「只认恰好 `##`」「只认阿拉伯数字」）。
+ */
+export function outlineChapterHeading(line: string): OutlineChapterHeadingFields | null {
+  const fields = parseOutlineChapterHeading(line)
+  if (!fields) return null
+  if (fields.hashLevel !== 0 && !fields.prefixSpaced) return null
+  if (fields.separator === null) {
+    if (fields.rest.trim() !== '') return null
+  } else if (!OUTLINE_TITLE_SEPARATORS.has(fields.separator)) {
+    return null
+  }
+  return fields
+}
+
+/**
  * 组：1 hash / 2 bullet / 3 卷 / 4 单元 / 5 单元内章 / 6 全书章 /
  *     7 旧格式起始章 / 8 旧格式区间终点 / 9 英文起始章 / 10 英文区间终点 / 11 分隔符之后
  */

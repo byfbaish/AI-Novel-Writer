@@ -3,7 +3,7 @@ import type { PhysicalAttempt } from './generation-contract'
 import type { VisibleCompositionReceipt, ArchitectureUnitRange } from './generation-owner-contract'
 import type { MainGenerationRunHandle } from '../services/generation/generation-runtime'
 import type { WritingLanguage } from './writing-language'
-import { OUTLINE_TITLE_SEPARATORS, parseOutlineChapterHeading } from './chapter-heading'
+import { outlineChapterHeading, parseOutlineChapterHeading } from './chapter-heading'
 
 export const DEFAULT_PLANNING_ACTION_CHAPTERS = 5
 export const PLANNING_ACTION_CHAPTER_LIMIT = 10
@@ -198,8 +198,7 @@ export function parsePlotOutlinePurpose(purpose: string): { chapterNumber: numbe
  * 容忍空格不会放宽别的判定：标题后仍必须是 `:`/`：`/`.`/`．`/`-`/`—` 或行尾，正文里
  * 「第 1 章到第 5 章」这种仍不匹配（`章` 后接「到」）。
  */
-/** 与 `chapter-heading.OUTLINE_TITLE_SEPARATORS` 同一份（导出名保留，调用方不必改）。 */
-const CONTRACT_SEPARATORS = OUTLINE_TITLE_SEPARATORS
+
 
 function headings(text: string): { from: number; to: number; index: number; end: number; grouped: boolean }[] {
   const result: { from: number; to: number; index: number; end: number; grouped: boolean }[] = []
@@ -207,12 +206,10 @@ function headings(text: string): { from: number; to: number; index: number; end:
   for (const line of text.split('\n')) {
     // 逐行喂解析器：行尾的 `\r` 先剥掉，`end` 才不会把它算进去（原正则 `[^\r\n]*` 同口径）。
     const body = line.endsWith('\r') ? line.slice(0, -1) : line
-    const fields = parseOutlineChapterHeading(body)
-    // 本调用方额外要求：`#` 后必须有空白（`##第5章` 不认），章号后必须有分隔符或到行尾。
-    const terminated = fields !== null
-      && (fields.hashLevel === 0 || fields.prefixSpaced)
-      && (fields.separator === null ? fields.rest.trim() === '' : CONTRACT_SEPARATORS.has(fields.separator))
-    if (fields && terminated) {
+    // 本调用方的宽容度（`#` 后必须有空白、章号后必须有分隔符或到行尾）已收敛进
+    // `outlineChapterHeading`，与 `architecture.command` / `synopsis-projection` 同一份。
+    const fields = outlineChapterHeading(body)
+    if (fields) {
       result.push({
         from: fields.chapter,
         to: fields.chapterTo,
@@ -306,6 +303,27 @@ export function renderPlotOutlineSynopsis(body: string, coveredTo: number, expec
     ? `> This outline covers chapters 1-${coveredTo} of ${expected.totalChapters}; the remaining chapters will be generated in later batches.`
     : `> 本大纲已覆盖至第 ${coveredTo} 章（全书 ${expected.totalChapters} 章），其余章节将在后续批次继续生成。` : ''
   return `# ${english ? 'Plot Outline' : '情节大纲'}\n\n${joinPlotOutlineEntries(body, tail)}`.trim()
+}
+
+/**
+ * `renderPlotOutlineSynopsis` 的逆操作：从落库正文里剥掉标题行与尾部提示。
+ *
+ * 用途只有一个 —— **重写某个单元**时要拿回纯 body 再重新渲染（P3b，2026-10-21）。
+ * 不剥就会把旧的「已覆盖至第 N 章」留在正文里，与新渲染的那行重复。
+ *
+ * 只认自己写出去的那几种形态，认不出就原样返回（宁可多留，不猜着切）：
+ * - 标题：`# 情节大纲` / `# Plot Outline`
+ * - 进度提示：`> 本大纲已覆盖至第 N 章…` / `> This outline covers chapters 1-N…`
+ * - 未完成标记：`> ⚠️ **本大纲未完成**…` / `> ⚠ **This outline is incomplete**…`
+ */
+export function stripPlotOutlineWrapper(text: string, writingLanguage: WritingLanguage): string {
+  const english = writingLanguage === 'en-US'
+  let body = text.trim()
+  const title = `# ${english ? 'Plot Outline' : '情节大纲'}`
+  if (body.startsWith(title)) body = body.slice(title.length).replace(/^\n+/u, '')
+  body = body.replace(/\n*> (?:本大纲已覆盖至第|This outline covers chapters 1-)[^\n]*$/u, '')
+  body = body.replace(/\n*> \[?(?:⚠️|⚠|WARNING)?\]?\s*\**(?:本大纲未完成|This outline is incomplete)[\s\S]*$/u, '')
+  return body.trim()
 }
 
 export function plotOutlineConfirmedPrefix(expected: ProjectCoreSynopsisExpected, range: PlotOutlineRange): string {
