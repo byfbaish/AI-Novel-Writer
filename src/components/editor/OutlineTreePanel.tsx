@@ -148,6 +148,9 @@ export default function OutlineTreePanel(props: OutlineTreeProps) {
         {tree && (
           <div className="px-3 pb-1.5 text-[11px] space-y-0.5" style={{ color: 'var(--color-text-muted)' }}>
             <p>{text(`${tree.volumes.length} 卷 · ${chapterCount} 章`, `${tree.volumes.length} volumes · ${chapterCount} chapters`)}</p>
+            {tree.headingCount > 0 && (
+              <p>{text(`${tree.headingCount} 章归属来自章标题`, `${tree.headingCount} chapters attributed by their headings`)}</p>
+            )}
             {tree.computedCount > 0 && (
               <p className="flex items-start gap-1" title={text('这些章的卷/单元归属是按计划等分折算的，不是正文声明。某个单元写超后，后续章号会整体错位。', 'These chapters are mapped to a unit by even division, not by a declaration in the outline. If one unit runs long, later chapter numbers drift.')}>
                 <Info size={10} className="mt-0.5 flex-shrink-0" />
@@ -157,6 +160,11 @@ export default function OutlineTreePanel(props: OutlineTreeProps) {
             {tree.mismatchCount > 0 && (
               <p style={{ color: 'var(--color-warning-text)' }}>
                 {text(`${tree.mismatchCount} 章声明与折算不一致`, `${tree.mismatchCount} chapters disagree with the division`)}
+              </p>
+            )}
+            {tree.driftedCount > 0 && (
+              <p style={{ color: 'var(--color-warning-text)' }} title={text('标题是生成时写下的事实，折算才是会错的 —— 有这一行说明该单元的篇幅已经偏离计划，折算不能再用来判断归属。', 'The heading is what was written at generation time; the division is the part that can be wrong. This line means the unit has drifted from plan, so division can no longer be trusted.')}>
+                {text(`${tree.driftedCount} 章标题归属与折算不一致`, `${tree.driftedCount} chapter headings disagree with the division`)}
               </p>
             )}
           </div>
@@ -208,11 +216,13 @@ export default function OutlineTreePanel(props: OutlineTreeProps) {
                         disabled={chapter.line === null}
                         className={cn('w-full flex items-start gap-1 pl-9 pr-2 py-0.5 text-left hover:bg-[var(--color-hover)]',
                           chapter.line === null && 'opacity-50 cursor-default')}
-                        title={chapter.source === 'computed'
-                          ? text('归属按等分折算，不是正文声明', 'Mapped by division, not declared in the outline')
-                          : chapter.source === 'mismatch'
-                            ? text('声明与折算不一致——结构可能已漂移', 'Declaration disagrees with the division — the structure may have drifted')
-                            : text('跳到此章', 'Jump to this chapter')}
+                        title={chapter.source === 'heading'
+                          ? text('归属来自章标题自带的「第V卷第U单元」—— 生成时写下的事实', 'Attribution comes from the shift in the heading itself — written at generation time')
+                          : chapter.source === 'computed'
+                            ? text('归属按等分折算，不是正文声明', 'Mapped by division, not declared in the outline')
+                            : chapter.source === 'mismatch'
+                              ? text('声明与折算不一致——结构可能已漂移', 'Declaration disagrees with the division — the structure may have drifted')
+                              : text('跳到此章', 'Jump to this chapter')}
                       >
                         {chapter.source === 'mismatch'
                           ? <span className="mt-1.5 w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: 'var(--color-warning-text)' }} />

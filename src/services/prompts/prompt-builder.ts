@@ -21,17 +21,31 @@ export class BasePromptBuilder {
    * **只在拼 prompt 时生效，不改模板对象** —— `synopsisInputsFingerprint` 对模板整体
    * 做 `JSON.stringify`，内置 suffix 在里面。直接改内置会让所有已存在的大纲检查点
    * 判成「源事实已变化」。需要按结构命名换一套输出合同时走这里。
+   *
+   * 传**字符串** = 整段换掉（两级结构版合同走这条）；
+   * 传**函数** = 在内置原文上做增量改写（只补一节、不复制整段），
+   * 这样内置 suffix 改一个字的措辞都不会让这里静默失效。
    */
-  protected systemSuffixOverride?: string;
+  protected systemSuffixOverride?: string | ((builtin: string) => string);
 
   constructor(template: PromptTemplate, private readonly writingLanguage: WritingLanguage) {
     this.template = template;
   }
 
   /** 替换本次渲染的输出合同（见 `systemSuffixOverride` 的说明）。 */
-  public withSystemSuffixOverride(text: string): this {
+  public withSystemSuffixOverride(text: string | ((builtin: string) => string)): this {
     this.systemSuffixOverride = text;
     return this;
+  }
+
+  /** 本次渲染实际使用的输出合同：内置原文 → 覆盖（字符串整段替换 / 函数增量改写）。 */
+  private resolveSystemSuffix(): string | undefined {
+    const builtin = getBuiltinPromptTemplate(this.template.key, this.writingLanguage)?.systemSuffix;
+    const override = this.systemSuffixOverride;
+    if (override === undefined) return builtin;
+    if (typeof override === 'string') return override;
+    // 函数形态：没有内置原文时以空串为底，函数自己负责补全。
+    return override(builtin ?? '');
   }
 
   /** 获取模板定义的 system role（LLM system message 角色定位） */
@@ -73,8 +87,7 @@ export class BasePromptBuilder {
     }
 
     // 始终从内置模板取 systemSuffix，与 build() 行为对齐（项目覆盖改不到这一段）。
-    const suffix = this.systemSuffixOverride
-      ?? getBuiltinPromptTemplate(this.template.key, this.writingLanguage)?.systemSuffix
+    const suffix = this.resolveSystemSuffix()
     if (suffix) parts.push(this.renderVariables(suffix, variables))
 
     // 与 build() 同一套空变量段落裁剪：被清空的变量连带其标题一起消失。
@@ -95,8 +108,7 @@ export class BasePromptBuilder {
     }
 
     // 自动追加 systemSuffix（始终从内置模板获取，与 renderPrompt 行为对齐）
-    const builtinTemplate = getBuiltinPromptTemplate(this.template.key, this.writingLanguage)
-    const suffix = this.systemSuffixOverride ?? builtinTemplate?.systemSuffix
+    const suffix = this.resolveSystemSuffix()
     if (suffix) {
       result = result + '\n\n' + this.renderVariables(suffix, variables)
     }
