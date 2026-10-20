@@ -287,9 +287,19 @@ t10-evidence/
      它只删 `.ai-novel/partial_arch.json` 里的 `synopsis_*` 字段，**数据库正文一个字不动**。
      为什么不自动判过期见 [`chapter-position-format-design.md`](../design/architecture/chapter-position-format-design.md) §4.6
      —— 真正中断的批次和「作者清空了大纲」在文件上完全同形，只能由作者拍板。
-4. **章标题里章号两侧可能带空格**（`## 第 6 章：xxx`）。2026-10-20 实机整批因为这个被判「没写出章节条目标题」而丢弃（解析只认紧排的「第6章」）。现已修：`plot-outline-contract.headings`、`validPlotOutlineEntry` 与 `architecture.command` 的 `ZH_CHAPTER_TITLE_RE` 都容忍空格；`arc-node` / `synopsis-projection` 本来就容忍。**若再看到该报错，报错里会带上「能认出的最大章号」**，先看这个数：
+4. **章标题里章号两侧可能带空格**（`## 第 6 章：xxx`）。2026-10-20 实机整批因为这个被判「没写出章节条目标题」而丢弃（解析只认紧排的「第6章」）。现已修：所有解析点统一走 `chapter-heading.parseOutlineChapterHeading`；**若再看到该报错，报错里会带上「能认出的最大章号」**，先看这个数：
    - `0` ⇒ 一个标题都没认出来（格式又漂了，把那段原文发我）
    - `> from` ⇒ 认出来了但起点不对（模型跳章或写成章组）
+
+5. **「整批写完却入不了库」= 有章标题解析点没认新格式**（2026-10-20 深夜实际踩到）。
+   现象：末行明确写着「大纲批次进度：已覆盖第1–6章」，仍报
+   「缺失 3 章，空白、重复、乱序或越界 1 处」并判「不能自动续写」。
+   原因：P2 之后模型前半段用 `## 第1卷第1单元第1章（全书第1章）：…`、自动续写那半段漂回
+   `## 第4章：…`，而 `assertPlotOutlineTitleCoverage` 用的那份正则不认归属前缀。
+   已收编 4 处（`findPlotOutlineTitleRanges` / `validPlotOutlineEntry` /
+   `synopsis-projection` / `listOutlineChapterLengths`），详见
+   [`chapter-position-format-design.md`](../design/architecture/chapter-position-format-design.md) §10。
+   **以后再有人写「`^## 第N章`」这种正则，一律先问它属于这张表里的哪一处。**
 
 ---
 

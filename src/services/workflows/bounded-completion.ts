@@ -209,13 +209,20 @@ function buildTextContinuationPrompt(
       + `【原始任务】\n${originalPrompt}\n\n`
       + `【已完成可见文本末尾】\n${visibleTail || '（没有可用输出）'}\n\n`
       + `【硬性要求】\n`
-      + `- 只输出新增的可见文本，不要复述、总结、解释、Markdown 或思考过程。\n`
+      + `- 只输出新增的可见文本，不要复述、总结、解释或输出思考过程。\n`
+      // ⚠️ 原来这里写的是「不要…Markdown」，被模型理解成「标题别带格式」。2026-10-20 实机：
+      // 单元批次前半段写成 `## 第1卷第1单元第1章（全书第1章）：…`，自动续写那半段漂回
+      // `## 第4章：…`，同一批两种标题写法。改成显式要求**格式跟着已完成部分走**。
+      + `- 标题层级、编号写法必须与【已完成可见文本末尾】完全一致（例如章标题沿用它已有的`
+      + `「第N卷第N单元第N章（全书第N章）」这类写法），不得简化、补全省略或换一种格式。\n`
       + `- 从已完成文本的末尾自然续写，完成原始任务。`,
     `The previous text stopped at the length limit. Continue and complete the original task.\n\n`
       + `[Original task]\n${originalPrompt}\n\n`
       + `[End of the completed visible text]\n${visibleTail || '(no visible output)'}\n\n`
       + `[Requirements]\n`
-      + `- Output only new visible prose. Do not repeat, summarize, explain, use Markdown, or reveal reasoning.\n`
+      + `- Output only new visible prose. Do not repeat, summarize, explain, or reveal reasoning.\n`
+      + `- Match the heading levels and numbering exactly as they appear at the end of the completed text `
+      + `(e.g. keep a chapter heading such as "Ch.3 Vol.2 Unit 3 (Ch.45 overall)" in the same form); do not simplify, expand, or switch formats.\n`
       + `- Continue naturally from the end of the completed text and finish the original task.`,
   )
 }

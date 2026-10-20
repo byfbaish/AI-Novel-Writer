@@ -126,7 +126,11 @@ describe('validPlotOutlineEntry：入库仍是严格单章', () => {
     expect(validPlotOutlineEntry('## 第5章：甲\n正文内容。', 5)).toBe(true)
   })
 
-  it('归属标题当前尚不通过（P2 改合同后才放开）', () => {
-    expect(validPlotOutlineEntry('## 第3卷第2单元第3章（全书第45章）：甲\n正文内容。', 45)).toBe(false)
+  it('归属标题通过（P2 放开的合同：章号对全书章号）', () => {
+    expect(validPlotOutlineEntry('## 第3卷第2单元第3章（全书第45章）：甲\n正文内容。', 45)).toBe(true)
+    // 两级结构（无单元层）同样通过
+    expect(validPlotOutlineEntry('## 第3卷第3章（全书第45章）：甲\n正文内容。', 45)).toBe(true)
+    // 但章号仍必须对得上：拿单元内序号当全书章号不行
+    expect(validPlotOutlineEntry('## 第3卷第2单元第3章（全书第45章）：甲\n正文内容。', 3)).toBe(false)
   })
 })
