@@ -727,6 +727,10 @@ export function summarizeArcCoverFindings(
   to: number,
   uiText: UiText,
 ): string | null {
+  // 两级结构（卷 / 单元）**不做覆盖对账**：输出合同已明确禁止写「覆盖：」行
+  // （见 `prompts/synopsis-two-level-suffix.ts`），对账因此没有任何输入。
+  // 继续跑只会把每一章都报成「没有写『覆盖：』声明」—— 噪声会淹没真信号。
+  if (parseArcStructure(plan ?? '')?.naming === 'volume') return null
   const nodes = listArcNodes(plan, totalChapters)
   if (nodes.length === 0) return null
   const chapters = parseChapterArcCovers(body)

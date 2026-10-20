@@ -305,3 +305,25 @@ describe('summarizeArcDensity（P17：位置行必须点名兑现它的小弧）
     expect(note).not.toContain('没有点名由哪个小弧兑现')
   })
 })
+
+describe('summarizeArcCoverFindings · 两级结构', () => {
+  it('卷 / 单元结构下闭嘴 —— 输出合同已禁止写「覆盖：」，对账没有输入', () => {
+    // 2026-10-20：两级结构的分叉合同删掉了「覆盖：」整节。若不在这里闭嘴，
+    // 每批都会报「本批有 N 章没有写『覆盖：』声明」，把真信号淹掉。
+    const twoLevel = `# 卷 / 单元结构
+
+## 卷一：杂役房
+- 卷叙事任务：建立倒计时。
+- 离开状态：出了宗门。
+
+### 单元一：药渣堆
+- 叙事任务：找到半株草。
+- 逼法：王德发用断供丹药逼他。
+
+### 单元二：后山石阶
+- 叙事任务：第一次生死冲突。
+`
+    const body = ['## 第1章：开篇', '## 第2章：接着', '## 第3章：再接着'].join('\n')
+    expect(summarizeArcCoverFindings(body, twoLevel, 150, 1, 3, zh)).toBeNull()
+  })
+})
