@@ -1,4 +1,5 @@
 import { arcWeight, isTurnField, minorRanges, parseArcStructure, scaledBoundaries } from './arc-position'
+import { parseOutlineChapterHeading } from './chapter-heading'
 
 /**
  * 弧光结构位（P12-0a）。
@@ -294,8 +295,26 @@ export function validateArcCovers(  nodes: readonly ArcNode[],
 // P12-1：大纲里的「覆盖：<ID>」声明
 // ============================================================
 
-/** `## 第12章：标题` / `## Chapter 12: Title`（允许 `#`~`####`、全角冒号、无分隔符）。 */
-const CHAPTER_HEADING = /^#{1,4}[\t ]*(?:第[\t ]*([0-9]+)[\t ]*章|Chapter[\t ]+([0-9]+))[\t ]*[：:、.·\-—]?[\t ]*(.*)$/iu
+/**
+ * 本模块的章标题约束（正则本体在 `chapter-heading.ts`）：
+ * `#`~`####`、单章（不认 `第N–M章` 章组）、章号必须是阿拉伯数字。
+ *
+ * `CHAPTER_LIKE` 用来区分「形状像章标题但章号非法」（`第0章`、超安全整数）——
+ * 那种行要**断开** `覆盖：` 行的归属，不能让作者以为它挂在了上一章。
+ */
+const CHAPTER_LIKE = /^#{1,4}[\t ]*(?:第[\t ]*[0-9零〇一二两三四五六七八九十百千]+[\t ]*章|Chapter[\t ]+[0-9]+)/iu
+
+/**
+ * 本模块的分隔符集合 —— **比共享解析器的并集窄**：不含全角句点 `．`。
+ * 所以 `title` 必须从 `fields.after` 自己切，不能用并集版的 `fields.rest`
+ * （`## 第5章．甲` 在本模块的 `title` 是 `．甲`，不是 `甲`）。
+ */
+const SEPARATOR = /^[\t ]*([：:、.·\-—])?[\t ]*/u
+
+function titleOf(after: string): string {
+  const matched = SEPARATOR.exec(after)
+  return after.slice(matched?.[0].length ?? 0).trim()
+}
 /** `覆盖：M1-1/转折` / `**Covers:** M1-1/转折`。 */
 const COVER_LINE = /^[*_\s]*(?:覆盖|Covers)[*_\s]*[\t ]*[：:][\t ]*(.+?)[\t ]*$/iu
 /** 声明「本章不兑现任何结构位」的写法。 */
@@ -345,15 +364,18 @@ export function parseChapterArcCovers(synopsis: string | null | undefined): Chap
   const lines = synopsis.split(/\r?\n/u)
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]!.trim()
-    const heading = CHAPTER_HEADING.exec(line)
+    const fields = parseOutlineChapterHeading(line)
+    const heading = fields && fields.hashLevel >= 1 && fields.hashLevel <= 4 && !fields.grouped && fields.arabic
+      ? fields
+      : null
     if (heading) {
-      const chapterNumber = Number(heading[1] ?? heading[2])
-      if (!Number.isSafeInteger(chapterNumber) || chapterNumber < 1) {
-        current = null
-        continue
-      }
-      current = { chapterNumber, title: (heading[3] ?? '').trim(), covers: [], coverLine: null }
+      current = { chapterNumber: heading.chapter, title: titleOf(heading.after), covers: [], coverLine: null }
       result.push(current)
+      continue
+    }
+    // 形状是章标题、章号却非法 —— 断开归属（与旧实现 `current = null` 同口径）。
+    if (CHAPTER_LIKE.test(line)) {
+      current = null
       continue
     }
     if (!current || current.coverLine !== null) continue

@@ -3,6 +3,7 @@ import type { PhysicalAttempt } from './generation-contract'
 import type { VisibleCompositionReceipt, ArchitectureUnitRange } from './generation-owner-contract'
 import type { MainGenerationRunHandle } from '../services/generation/generation-runtime'
 import type { WritingLanguage } from './writing-language'
+import { parseOutlineChapterHeading } from './chapter-heading'
 
 export const DEFAULT_PLANNING_ACTION_CHAPTERS = 5
 export const PLANNING_ACTION_CHAPTER_LIMIT = 10
@@ -185,33 +186,43 @@ export function parsePlotOutlinePurpose(purpose: string): { chapterNumber: numbe
   return { chapterNumber: Number(match[1]), attempt: match[2] as PlotOutlineAttemptKind }
 }
 
-const DIGITS: Readonly<Record<string, number>> = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 }
-const UNITS: Readonly<Record<string, number>> = { 十: 10, 百: 100, 千: 1000 }
-const NUMBER = '[0-9零〇一二两三四五六七八九十百千]+'
-function chapterNumber(token: string): number {
-  if (/^\d+$/u.test(token)) return Number(token)
-  let result = 0, digit = 0
-  for (const char of token) {
-    if (char in DIGITS) digit = DIGITS[char]!
-    else { result += (digit || 1) * UNITS[char]!; digit = 0 }
-  }
-  return result + digit
-}
-
 /**
  * 章标题识别。
  *
+ * 正则本体在 `chapter-heading.ts`（与 `arc-node` / `outline-tree` 共用一份）；
+ * 这里只保留**本调用方独有的严格约束**：
+ *
  * ⚠️ **章号两侧必须容忍空格**（`第 6 章` / `第6 章` / `第 6章`）：模型输出风格会漂，
- * 2026-10-20 实机就出现过整批写成「第 6 章：昏迷的边缘」，而 `headings` 只认紧排的
+ * 2026-10-20 实机就出现过整批写成「第 6 章：昏迷的边缘」，而当时的 `headings` 只认紧排的
  * 「第6章」，于是 `plotOutlineCoveredTo` 返回 0 ⇒ 单元回填判「没写出本章标题」并整批丢弃。
- * 容忍空格不会放宽别的判定：标题后仍必须是 `:`/`：`/`.`/`-` 或行尾，正文里
+ * 容忍空格不会放宽别的判定：标题后仍必须是 `:`/`：`/`.`/`．`/`-`/`—` 或行尾，正文里
  * 「第 1 章到第 5 章」这种仍不匹配（`章` 后接「到」）。
  */
+const CONTRACT_SEPARATORS: ReadonlySet<string> = new Set([':', '：', '.', '．', '-', '—'])
+
 function headings(text: string): { from: number; to: number; index: number; end: number; grouped: boolean }[] {
-  const pattern = new RegExp(`^[\\t ]*(?:#{1,6}[\\t ]+|[-*+][\\t ]+)?(?:第[\\t ]*(${NUMBER})(?:[\\t ]*[–—-][\\t ]*(${NUMBER}))?[\\t ]*章|Chapters?[\\t ]+(\\d+)(?:[\\t ]*[–—-][\\t ]*(\\d+))?)(?=[\\t ]*(?:[:：.．—-]|$))[^\\r\\n]*`, 'gimu')
-  return [...text.matchAll(pattern)].map(match => ({ from: chapterNumber(match[1] ?? match[3]),
-    to: chapterNumber(match[2] ?? match[4] ?? match[1] ?? match[3]), index: match.index,
-    end: match.index + match[0].length, grouped: !!(match[2] ?? match[4]) || /Chapters\s/iu.test(match[0]) }))
+  const result: { from: number; to: number; index: number; end: number; grouped: boolean }[] = []
+  let offset = 0
+  for (const line of text.split('\n')) {
+    // 逐行喂解析器：行尾的 `\r` 先剥掉，`end` 才不会把它算进去（原正则 `[^\r\n]*` 同口径）。
+    const body = line.endsWith('\r') ? line.slice(0, -1) : line
+    const fields = parseOutlineChapterHeading(body)
+    // 本调用方额外要求：`#` 后必须有空白（`##第5章` 不认），章号后必须有分隔符或到行尾。
+    const terminated = fields !== null
+      && (fields.hashLevel === 0 || fields.prefixSpaced)
+      && (fields.separator === null ? fields.rest.trim() === '' : CONTRACT_SEPARATORS.has(fields.separator))
+    if (fields && terminated) {
+      result.push({
+        from: fields.chapter,
+        to: fields.chapterTo,
+        index: offset,
+        end: offset + body.length,
+        grouped: fields.grouped,
+      })
+    }
+    offset += line.length + 1
+  }
+  return result
 }
 
 export function validPlotOutlineEntry(text: string, chapter: number): boolean {
