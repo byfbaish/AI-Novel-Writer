@@ -2,14 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import {
-  SYNOPSIS_UNIT_LAUNCH_FLAG,
   describeSynopsisUnitProbe,
   probeSynopsisUnitLaunch,
   probeSynopsisUnitLaunchForProject,
+  resetSynopsisCheckpoint,
   reportSynopsisUnitProbe,
   resolveSynopsisUnitLaunch,
   synopsisUnitCheckpointPath,
-  synopsisUnitLaunchEnabled,
+  synopsisUnitModeEnabled,
   type SynopsisUnitCheckpoint,
 } from '../synopsis-unit-launch'
 
@@ -51,18 +51,14 @@ vi.mock('../../ipc-client', () => ({
 
 const projectSession = { projectPath: projectAPath } as unknown as ProjectSessionContext
 
-function enabledStorage(): Pick<Storage, 'getItem'> {
-  return { getItem: key => (key === SYNOPSIS_UNIT_LAUNCH_FLAG ? '1' : null) }
-}
-
 function resolve(
-  overrides: Partial<{ totalChapters: number; plotStructurePlan: string | undefined; storage: Pick<Storage, 'getItem'> | null }> = {},
+  overrides: Partial<{ totalChapters: number; plotStructurePlan: string | undefined; unitMode: boolean }> = {},
 ) {
   return resolveSynopsisUnitLaunch({
     projectSession,
     totalChapters: overrides.totalChapters ?? 60,
     plotStructurePlan: 'plotStructurePlan' in overrides ? overrides.plotStructurePlan : PLAN,
-    storage: 'storage' in overrides ? overrides.storage : enabledStorage(),
+    unitMode: 'unitMode' in overrides ? overrides.unitMode : true,
   })
 }
 
@@ -81,12 +77,19 @@ beforeEach(() => {
   })
 })
 
-describe('synopsisUnitLaunchEnabled', () => {
-  it('只认显式的 1，读不到或抛错都算关闭', () => {
-    expect(synopsisUnitLaunchEnabled({ getItem: () => '1' })).toBe(true)
-    expect(synopsisUnitLaunchEnabled({ getItem: () => 'true' })).toBe(false)
-    expect(synopsisUnitLaunchEnabled({ getItem: () => null })).toBe(false)
-    expect(synopsisUnitLaunchEnabled({ getItem: () => { throw new Error('denied') } })).toBe(false)
+describe('synopsisUnitModeEnabled', () => {
+  it('读用户设置：只有显式 false 才算关掉，缺省（新装 / 未写过）就是开', async () => {
+    expect(await synopsisUnitModeEnabled(true)).toBe(true)
+    expect(await synopsisUnitModeEnabled(false)).toBe(false)
+    expect(await synopsisUnitModeEnabled(async () => true)).toBe(true)
+    expect(await synopsisUnitModeEnabled(async () => false)).toBe(false)
+  })
+
+  it('读不到配置时按开启兜底，绝不把探针变成生成拦路虎', async () => {
+    // 注入的读取器抛错 = 现场读配置失败；默认行为不该因为一次抖动退回旧路径
+    expect(await synopsisUnitModeEnabled(async () => { throw new Error('DB_BUSY') })).toBe(true)
+    // 没注入 = 自己走 config:get；这里没有 mock 该通道 ⇒ 抛错 ⇒ 同样兜底为开
+    expect(await synopsisUnitModeEnabled()).toBe(true)
   })
 })
 
@@ -98,7 +101,7 @@ describe('synopsisUnitCheckpointPath', () => {
 
 describe('resolveSynopsisUnitLaunch', () => {
   it('开关关闭时既不读检查点也不返回单元', async () => {
-    expect(await resolve({ storage: { getItem: () => null } })).toBeNull()
+    expect(await resolve({ unitMode: false })).toBeNull()
     expect(doubles.invokeWithProjectSession).not.toHaveBeenCalled()
   })
 
@@ -156,12 +159,16 @@ describe('resolveSynopsisUnitLaunch', () => {
  * 这些断言锁的是「原因不会退化成静默 null」——现场真机踩过的坑就是「点了没反应、控制台也没字」。
  */
 describe('probeSynopsisUnitLaunch', () => {
-  function probe(overrides: Partial<{ totalChapters: number; plotStructurePlan: string | undefined; storage: Pick<Storage, 'getItem'> | null }> = {}) {
+  function probe(overrides: Partial<{
+    totalChapters: number
+    plotStructurePlan: string | undefined
+    unitMode: boolean
+  }> = {}) {
     return probeSynopsisUnitLaunch({
       projectSession,
       totalChapters: overrides.totalChapters ?? 60,
       plotStructurePlan: 'plotStructurePlan' in overrides ? overrides.plotStructurePlan : PLAN,
-      storage: 'storage' in overrides ? overrides.storage : enabledStorage(),
+      unitMode: 'unitMode' in overrides ? overrides.unitMode : true,
     })
   }
 
@@ -196,7 +203,7 @@ describe('probeSynopsisUnitLaunch', () => {
   })
 
   it('每个退回分支都有自己的 reason，不会退化成静默 null', async () => {
-    expect((await probe({ storage: { getItem: () => null } })).reason).toBe('flag-off')
+    expect((await probe({ unitMode: false })).reason).toBe('flag-off')
     expect((await probe({ totalChapters: 0 })).reason).toBe('invalid-total')
     doubles.checkpoint = { synopsis_covered_to: 10, synopsis_incomplete: true }
     expect((await probe()).reason).toBe('incomplete')
@@ -213,7 +220,7 @@ describe('probeSynopsisUnitLaunch', () => {
     // 位置统一写成「第V卷第U单元第C章（全书第N章）」：层级必须报全（A6 事故里
     // 作者把「第 2 个单元」读成了「第二卷开始」），全书章号仍可直接核对。
     expect(describeSynopsisUnitProbe(await probe())).toContain('第1卷第1单元第1章（全书第11章）')
-    expect(describeSynopsisUnitProbe(await probe({ storage: { getItem: () => null } }))).toContain(SYNOPSIS_UNIT_LAUNCH_FLAG)
+    expect(describeSynopsisUnitProbe(await probe({ unitMode: false }))).toContain('设置')
     // 检查点读不到 + 没有骨架：话里必须点出「没读到 partial_arch.json」，否则现场只会以为骨架坏了
     doubles.readFails = true
     expect(describeSynopsisUnitProbe(await probe({ plotStructurePlan: undefined }))).toContain('partial_arch.json')
@@ -239,16 +246,39 @@ describe('probeSynopsisUnitLaunch', () => {
       totalChapters: 60,
       plotStructurePlan: PLAN,
       outlineCoveredTo: 21,
-      storage: enabledStorage(),
+      unitMode: true,
     })
     expect(result.reason).toBe('checkpoint-lost')
     expect(result.unit).toBeNull()
   })
 
+  /**
+   * 中断批次里只要有**半成品正文**，就一律按「中断」退回（不是单元模式）。
+   * 这条与「作者清空大纲」在文件上无法区分，所以不自动判过期，只由作者显式重置。
+   */
+  it('有半成品正文 / 有进度时按「中断」退回，不擅自作废', async () => {
+    doubles.checkpoint = {
+      synopsis_covered_to: 0,
+      synopsis_incomplete: true,
+      synopsis_result: '## 第1章：半截',
+      synopsis_db_hash: '1upvfjc',
+    }
+    expect((await probe({})).reason).toBe('incomplete')
+    doubles.checkpoint = {
+      synopsis_covered_to: 8,
+      synopsis_incomplete: true,
+      synopsis_unit_cursor: { volumeIndex: 1, unitIndex: 3, writtenInVolume: 8 },
+      synopsis_db_hash: '1upvfjc',
+    }
+    expect((await probe({})).reason).toBe('incomplete')
+    expect((await probe({})).reason).toBe('incomplete')
+  })
+
+
   it('组件入口自己取库内进度：检查点丢了也拦得住', async () => {
     doubles.checkpoint = {}
     doubles.core = { synopsis: '## 第1章：甲\n## 第2章：乙', plotStructurePlan: PLAN }
-    const result = await probeSynopsisUnitLaunchForProject({ projectSession, totalChapters: 60, storage: enabledStorage() })
+    const result = await probeSynopsisUnitLaunchForProject({ projectSession, totalChapters: 60, unitMode: true })
     expect(result.reason).toBe('checkpoint-lost')
   })
 
@@ -262,8 +292,78 @@ describe('probeSynopsisUnitLaunch', () => {
   })
 })
 
-describe('probeSynopsisUnitLaunchForProject', () => {
-  it('自己读弧光结构，不再要调用方发一次 project-core-get', async () => {
+/**
+ * 2026-10-20 实机：作者清空大纲后，检查点仍记着「已覆盖 8 章 + 未完成批次」，
+ * 探针据此退回按章区间，而界面上**没有任何地方**能取消它。
+ *
+ * 自动判过期不可行：真正中断的批次和「作者清空大纲」在文件上形态完全一样
+ * （区别只在 handle 背后的 run 还活着没有，那是运行期事实）。所以只做**显式重置**，
+ * 由作者自己触发 —— 这个块锁的就是「它只删该删的」。
+ */
+describe('resetSynopsisCheckpoint', () => {
+  const checkpoint = {
+    synopsis_covered_to: 8,
+    synopsis_incomplete: true,
+    synopsis_result: '## 第6章：甲',
+    synopsis_range: { from: 6, to: 8 },
+    synopsis_unit_cursor: { volumeIndex: 1, unitIndex: 3, writtenInVolume: 8 },
+    synopsis_volume_deviations: [{ volumeIndex: 1, planned: 30, actual: 9 }],
+    synopsis_generation_handle: { runId: '旧run' },
+    synopsis_db_hash: 'abc1234',
+    synopsis_body_hash: 'def5678',
+    // 世界观 / 前提的候选必须原样保留
+    world_building_partial_result: '世界观候选正文',
+    world_building_incomplete: true,
+    premise_result: '前提候选正文',
+  }
+
+  function harness(read: unknown, writeOk = true) {
+    const written: Record<string, unknown>[] = []
+    doubles.invokeWithProjectSession.mockImplementation(async (_context: unknown, channel: string, ...rest: unknown[]) => {
+      if (channel === 'fs:read-json') return read
+      if (channel === 'fs:write-json') {
+        if (!writeOk) return { success: false, error: 'EACCES' }
+        written.push(rest[1] as Record<string, unknown>)
+        return { success: true }
+      }
+      return { success: false }
+    })
+    return written
+  }
+
+  it('只清 synopsis_* 字段，世界观 / 前提候选原样保留（数据库正文一个字不动）', async () => {
+    const written = harness({ success: true, data: { ...checkpoint } })
+    expect(await resetSynopsisCheckpoint(projectSession)).toEqual({ ok: true, cleared: 9 })
+    expect(written).toHaveLength(1)
+    expect(written[0]).toEqual({
+      world_building_partial_result: '世界观候选正文',
+      world_building_incomplete: true,
+      premise_result: '前提候选正文',
+    })
+    // 写出去的只有检查点文件：不得去动 DB 正文
+    expect(doubles.invokeWithProjectSession.mock.calls.map(([, channel]) => channel))
+      .not.toContain('db:project-core-update')
+  })
+
+  it('检查点文件坏了 / 不存在时覆盖成一个干净对象，不让作者去手改文件', async () => {
+    const broken = harness({ success: false, data: null, reason: 'invalid-json' })
+    expect(await resetSynopsisCheckpoint(projectSession)).toEqual({ ok: true, cleared: 0 })
+    expect(broken[0]).toEqual({})
+
+    const missing = harness({ success: false, reason: 'missing' })
+    expect(await resetSynopsisCheckpoint(projectSession)).toEqual({ ok: true, cleared: 0 })
+    expect(missing[0]).toEqual({})
+  })
+
+  it('写失败如实回报，不假装成功', async () => {
+    harness({ success: true, data: { ...checkpoint } }, false)
+    const result = await resetSynopsisCheckpoint(projectSession)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toContain('EACCES')
+  })
+})
+
+describe('probeSynopsisUnitLaunchForProject', () => {  it('自己读弧光结构，不再要调用方发一次 project-core-get', async () => {
     doubles.checkpoint = { synopsis_covered_to: 10 }
     doubles.invokeWithProjectSession.mockImplementation(async (_context: unknown, channel: string) => {
       if (channel === 'db:project-core-get') return { plotStructurePlan: PLAN }
@@ -271,7 +371,7 @@ describe('probeSynopsisUnitLaunchForProject', () => {
       return null
     })
     const result = await probeSynopsisUnitLaunchForProject({
-      projectSession, totalChapters: 60, storage: enabledStorage(),
+      projectSession, totalChapters: 60, unitMode: true,
     })
     expect(result.unit).toEqual({ from: 11, unitIndex: 1, maxChapters: 10, volumeRemaining: 20 })
     expect(doubles.invokeWithProjectSession).toHaveBeenCalledWith(projectSession, 'db:project-core-get', projectAPath)
@@ -284,7 +384,7 @@ describe('probeSynopsisUnitLaunchForProject', () => {
       return null
     })
     const result = await probeSynopsisUnitLaunchForProject({
-      projectSession, totalChapters: 60, storage: enabledStorage(),
+      projectSession, totalChapters: 60, unitMode: true,
     })
     expect(result.unit).toBeNull()
     expect(result.reason).toBe('compute-null')

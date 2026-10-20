@@ -206,6 +206,13 @@ export interface GlobalConfig {
    * 只提示、不自动建卡：大纲可能还要修改，何时补角色由作者决定。
    */
   autoPromptOutlineCharacterSupplement?: boolean
+  /**
+   * 按「单元」生成情节大纲（默认开启）。
+   *
+   * 一次生成 = 一个完整单元，范围由落库游标决定，作者不再手填章号区间。
+   * 关掉退回按章区间生成（作者自己控制第几章到第几章），用于对照排查或特殊写法。
+   */
+  synopsisUnitMode?: boolean
   editorFontSize: number
   editorFontFamily: string
   autoSaveInterval: number

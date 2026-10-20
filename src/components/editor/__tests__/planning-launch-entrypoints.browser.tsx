@@ -12,7 +12,6 @@ import ConfirmCard from '../../panels/agent/ConfirmCard'
 import { useAgentStore } from '../../../stores/agent-store'
 import { useLLMStore } from '../../../stores/llm-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
-import { SYNOPSIS_UNIT_LAUNCH_FLAG } from '../../../services/workflows/synopsis-unit-launch'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -66,7 +65,6 @@ afterEach(async () => {
   container.remove()
   Reflect.deleteProperty(window, 'aiNovelAPI')
   setActiveProjectSessionContext(null)
-  window.localStorage.removeItem(SYNOPSIS_UNIT_LAUNCH_FLAG)
   useProjectStore.setState(originalProject)
   useLocaleStore.setState(originalLocale)
   useAgentStore.setState(originalAgent)
@@ -108,10 +106,10 @@ const UNIT_PLAN = [
   '- 叙事任务：把销档变成交易。',
 ].join('\n')
 
-it('sends a unit batch instead of a chapter range when the E3 probe flag is on', async () => {
-  window.localStorage.setItem(SYNOPSIS_UNIT_LAUNCH_FLAG, '1')
+it('sends a unit batch instead of a chapter range when the setting is on', async () => {
+  // T11：开关是用户设置 `synopsisUnitMode`（默认开启），不再是 localStorage。
   invoke.mockImplementation(async (channel: string) => {
-    if (channel === 'config:get') return { outlineTargetUnits: 650 }
+    if (channel === 'config:get') return { outlineTargetUnits: 650, synopsisUnitMode: true }
     if (channel === 'config:set') return { success: true }
     if (channel === 'generation:list' || channel === 'skills:list-user') return []
     if (channel === 'fs:check-exists') return false

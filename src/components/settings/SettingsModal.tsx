@@ -1301,12 +1301,18 @@ function EditorSection() {
   const [autoPromptOutlineCharacterSupplement, setAutoPromptOutlineCharacterSupplementState] = useState(true)
   const [autoPromptOutlineSaving, setAutoPromptOutlineSaving] = useState(false)
   const [autoPromptOutlineError, setAutoPromptOutlineError] = useState<string | null>(null)
+  // T11：单元批次开关正式化。**默认开**——它是产品的默认生成方式，关掉只是退回按章区间。
+  const [synopsisUnitMode, setSynopsisUnitModeState] = useState(true)
+  const [synopsisUnitSaving, setSynopsisUnitSaving] = useState(false)
+  const [synopsisUnitError, setSynopsisUnitError] = useState<string | null>(null)
 
   useEffect(() => {
     ipc.invoke('config:get').then((config) => {
       setAutoOpenNextChapterAfterFinalize(config.autoOpenNextChapterAfterFinalize === true)
       setAutoPromptBlueprintCharacterSyncState(config.autoPromptBlueprintCharacterSync !== false)
       setAutoPromptOutlineCharacterSupplementState(config.autoPromptOutlineCharacterSupplement !== false)
+      // 未写过 = 开：与 `synopsisUnitModeEnabled` 的兜底保持一致，两处口径必须相同。
+      setSynopsisUnitModeState(config.synopsisUnitMode !== false)
     }).catch(() => {})
   }, [])
 
@@ -1348,6 +1354,25 @@ function EditorSection() {
       ))
     } finally {
       setAutoPromptOutlineSaving(false)
+    }
+  }
+
+  const applySynopsisUnitMode = async (checked: boolean) => {
+    const previous = synopsisUnitMode
+    setSynopsisUnitModeState(checked)
+    setSynopsisUnitSaving(true)
+    setSynopsisUnitError(null)
+    try {
+      const result = await ipc.invoke('config:set', { synopsisUnitMode: checked })
+      if (!result.success) throw new Error(result.error || text('未知错误', 'Unknown error'))
+    } catch (error) {
+      setSynopsisUnitModeState(previous)
+      setSynopsisUnitError(text(
+        `按单元生成设置保存失败：${error instanceof Error ? error.message : String(error)}`,
+        `Could not save the unit-by-unit setting: ${error instanceof Error ? error.message : String(error)}`,
+      ))
+    } finally {
+      setSynopsisUnitSaving(false)
     }
   }
 
@@ -1446,6 +1471,20 @@ function EditorSection() {
         <Switch checked={autoPromptOutlineCharacterSupplement} onCheckedChange={(checked) => void setAutoPromptOutlineSupplement(checked)} disabled={autoPromptOutlineSaving} aria-label={text('情节大纲后提示补角色卡', 'Prompt for character cards after the plot outline')} />
       </div>
       {autoPromptOutlineError && <p role="alert" className="text-xs" style={{ color: 'var(--color-error-text)' }}>{autoPromptOutlineError}</p>}
+
+      <div className="flex items-center justify-between gap-4 rounded-xl p-4" style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-panel)' }}>
+        <div>
+          <p className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>{text('按单元生成情节大纲', 'Generate the plot outline unit by unit')}</p>
+          <p className="text-[0.68rem] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+            {text(
+              '一次生成写完一个完整单元，范围由大纲进度自动决定，不用再手填章号区间；单元篇幅由剧情决定，写完按实际章数记账。关掉则退回按章区间生成。',
+              'Each run writes one complete unit; its scope follows the outline progress automatically, so there is no chapter range to fill in, and the unit ends when its plot ends. Turn this off to generate by chapter range instead.',
+            )}
+          </p>
+        </div>
+        <Switch checked={synopsisUnitMode} onCheckedChange={(checked) => void applySynopsisUnitMode(checked)} disabled={synopsisUnitSaving} aria-label={text('按单元生成情节大纲', 'Generate the plot outline unit by unit')} />
+      </div>
+      {synopsisUnitError && <p role="alert" className="text-xs" style={{ color: 'var(--color-error-text)' }}>{synopsisUnitError}</p>}
 
       {/* 说明 */}
       <div

@@ -28,7 +28,6 @@ import {
   describeSynopsisUnitProbe,
   probeSynopsisUnitLaunchForProject,
   reportSynopsisUnitProbe,
-  synopsisUnitLaunchEnabled,
 } from '../../services/workflows/synopsis-unit-launch'
 import type { ArchitectureUnitRange } from '../../shared/generation-owner-contract'
 import { formatChapterPosition } from '../../shared/chapter-position'
@@ -699,29 +698,24 @@ function ArchFileViewerSession({
     // 连写用：卷号 + 本卷还剩几个单元（探针给不出就按「1 个单元、不判卷界」处理）。
     let synopsisUnitVolume: number | null = null
     let synopsisUnitCapacity = 1
-    if (import.meta.env.DEV) {
-      console.warn(
-        `[E3] 确认生成已抵达：步骤=${selectedSteps.join(',') || '（空）'}`
-        + `，单元开关=${synopsisUnitLaunchEnabled() ? 'on' : 'off'}`,
-      )
-      if (selectedSteps.includes('synopsis')) {
-        const probe = await probeSynopsisUnitLaunchForProject({
-          projectSession,
-          totalChapters: Number(currentProject?.novelConfig?.totalChapters),
-        })
-        reportSynopsisUnitProbe(probe)
-        synopsisUnit = probe.unit
-        synopsisUnitVolume = probe.volume?.index ?? null
-        synopsisUnitCapacity = Math.max(1, probe.volume?.remainingUnits ?? 1)
-        if (probe.unit) {
-          toast.info(`[E3] 单元批次：${formatChapterPosition({
-            chapter: probe.unit.from,
-            volumeIndex: probe.volume?.index,
-            unitIndex: probe.unit.unitIndex,
-          }, 'zh-CN')}（上界 ${probe.unit.maxChapters} 章）`)
-        } else {
-          toast.warning(`[E3] 本次走按章区间：${describeSynopsisUnitProbe(probe)}`)
-        }
+    // T11 起这是正式行为（开关在设置里，默认开）：不再有 DEV 锁，探针自己读配置。
+    if (selectedSteps.includes('synopsis')) {
+      const probe = await probeSynopsisUnitLaunchForProject({
+        projectSession,
+        totalChapters: Number(currentProject?.novelConfig?.totalChapters),
+      })
+      reportSynopsisUnitProbe(probe)
+      synopsisUnit = probe.unit
+      synopsisUnitVolume = probe.volume?.index ?? null
+      synopsisUnitCapacity = Math.max(1, probe.volume?.remainingUnits ?? 1)
+      if (probe.unit) {
+        toast.info(`[E3] 单元批次：${formatChapterPosition({
+          chapter: probe.unit.from,
+          volumeIndex: probe.volume?.index,
+          unitIndex: probe.unit.unitIndex,
+        }, 'zh-CN')}（上界 ${probe.unit.maxChapters} 章）`)
+      } else {
+        toast.info(`本次按章区间生成：${describeSynopsisUnitProbe(probe)}`)
       }
     }
     // 启动前后各留一条：现场「点了没反应」时能立刻分辨是「没走到这里」「启动抛错」还是「启动了但没回执」。

@@ -14,7 +14,6 @@ import { ipc } from '../ipc-client'
  *
  * 开关关掉时本模块不产生任何行为，调用方原样走 `synopsisRange`。
  */
-export const SYNOPSIS_UNIT_LAUNCH_FLAG = 'aiNovel:e3-unit-batch'
 
 /** 检查点里本模块真正读的字段（其余字段由命令侧拥有，这里不看）。 */
 export interface SynopsisUnitCheckpoint {
@@ -22,6 +21,14 @@ export interface SynopsisUnitCheckpoint {
   readonly synopsis_incomplete?: boolean
   /** 中断批次的半成品正文；只用来判断「这个 incomplete 标记背后到底有没有东西可续」。 */
   readonly synopsis_result?: string | null
+  /**
+   * 检查点自称绑定的正文指纹（`synopsisFactsFingerprint([synopsis])`）。
+   *
+   * 只用来判定**检查点是否过期**：它非空 = 这份检查点曾经对着一份真实正文写的。
+   * 配合「库内正文变成空串」，就是「作者把大纲清空了」的铁证。
+   * 旧检查点没有这个字段时不判定（保持旧行为，不擅自作废别人的进度）。
+   */
+  readonly synopsis_db_hash?: string
   readonly synopsis_unit_cursor?: {
     readonly volumeIndex: number
     readonly unitIndex: number
@@ -42,8 +49,8 @@ export interface SynopsisUnitLaunchInput {
    * 开始，就是把这 N 章覆盖重写（2026-10-20 实机事故）。
    */
   readonly outlineCoveredTo?: number
-  /** 便于测试注入；缺省读 `window.localStorage`。 */
-  readonly storage?: Pick<Storage, 'getItem'> | null
+  /** 便于测试注入；缺省读用户设置 `synopsisUnitMode`（默认开启）。 */
+  readonly unitMode?: boolean | (() => Promise<boolean> | boolean)
 }
 
 /** 探针跳过单元模式的原因。**每个分支都必须能在界面上说清楚**，否则现场只会看到「没反应」。 */
@@ -86,13 +93,31 @@ export interface SynopsisUnitProbeResult {
   readonly detail?: string
 }
 
-/** 开关读取失败（隐私模式 / 非浏览器环境）一律视为关闭。 */
-export function synopsisUnitLaunchEnabled(storage?: Pick<Storage, 'getItem'> | null): boolean {
+/**
+ * 单元批次开关：读用户设置 `synopsisUnitMode`，**默认开启**（T11 起它是产品的默认行为）。
+ *
+ * 这里刻意做成 async 且**永不抛错**：探针只是个探针，读配置失败必须退化成一个确定的
+ * 布尔值，绝不能把整次生成拦住。读不到时按**开启**处理 —— 「默认行为」不该因为一次
+ * IPC 抖动退回旧路径，那会让作者看到时好时坏的结果。
+ *
+ * `injected` 供测试与已读过配置的调用方注入（不传即自己去读）。
+ */
+export async function synopsisUnitModeEnabled(
+  injected?: boolean | (() => Promise<boolean> | boolean),
+): Promise<boolean> {
+  if (injected !== undefined) {
+    if (typeof injected === 'boolean') return injected
+    try {
+      return (await injected()) !== false
+    } catch {
+      return true
+    }
+  }
   try {
-    const store = storage ?? (typeof window === 'undefined' ? null : window.localStorage)
-    return store?.getItem(SYNOPSIS_UNIT_LAUNCH_FLAG) === '1'
+    const config = await ipc.invoke('config:get') as { synopsisUnitMode?: boolean } | null
+    return config?.synopsisUnitMode !== false
   } catch {
-    return false
+    return true
   }
 }
 
@@ -140,6 +165,77 @@ export async function readSynopsisUnitCheckpoint(
   return (await readSynopsisUnitCheckpointWithStatus(projectSession)).checkpoint
 }
 
+/** 检查点里属于**情节大纲**的字段前缀。重置只碰这些，世界观 / 前提的候选一律不动。 */
+const SYNOPSIS_CHECKPOINT_KEYS = [
+  'synopsis_result',
+  'synopsis_incomplete',
+  'synopsis_covered_to',
+  'synopsis_range',
+  'synopsis_unit_cursor',
+  'synopsis_volume_deviations',
+  'synopsis_generation_handle',
+  'synopsis_facts_fingerprint',
+  'synopsis_body_hash',
+  'synopsis_db_hash',
+  'synopsis_protocol',
+  'synopsis_step_guidance',
+] as const
+
+export type SynopsisCheckpointResetResult =
+  | { readonly ok: true; readonly cleared: number }
+  | { readonly ok: false; readonly error: string }
+
+/**
+ * **显式重置情节大纲检查点**（作者主动触发，绝不自动执行）。
+ *
+ * ## 为什么需要它
+ *
+ * 作者把库里的情节大纲清空后，`.ai-novel/partial_arch.json` 里的进度记录还在：
+ * `synopsis_covered_to=8`、`synopsis_incomplete=true`、游标指向第 3 个单元。
+ * 这份记录无法和「真正中断的批次」区分开 —— 两者的文件形态一模一样，
+ * 区别只在「handle 背后的 run 还活着没有」，那是运行期事实，静态读文件看不出来。
+ * 所以系统不能替作者猜。但**必须给出一个能点的地方**：
+ * 2026-10-20 实机作者清空大纲后，在原地找不到任何取消它的入口。
+ *
+ * ## 行为
+ *
+ * 只删 `synopsis_*` 字段，**不动数据库正文**，也**不动**世界观 / 前提的候选。
+ * 删完之后探针按「全书未开始」处理：游标回初始、按章区间从第 1 章起。
+ */
+export async function resetSynopsisCheckpoint(
+  projectSession: ProjectSessionContext,
+): Promise<SynopsisCheckpointResetResult> {
+  const path = synopsisUnitCheckpointPath(projectSession.projectPath)
+  let raw: Record<string, unknown>
+  try {
+    const read = await ipc.invokeWithProjectSession(projectSession, 'fs:read-json', path, projectSession.projectPath)
+    if (read?.reason === 'invalid-json' || read?.reason === 'unreadable' || read?.reason === 'denied') {
+      // 文件坏了：直接覆盖成空对象，比让作者去手改文件安全。
+      raw = {}
+    } else if (read.success && read.data && typeof read.data === 'object') {
+      raw = { ...(read.data as Record<string, unknown>) }
+    } else {
+      raw = {}
+    }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+  let cleared = 0
+  for (const key of SYNOPSIS_CHECKPOINT_KEYS) {
+    if (key in raw) {
+      delete raw[key]
+      cleared += 1
+    }
+  }
+  try {
+    const write = await ipc.invokeWithProjectSession(projectSession, 'fs:write-json', path, raw, projectSession.projectPath)
+    if (write?.success === false) return { ok: false, error: write.error ?? '写入检查点失败' }
+    return { ok: true, cleared }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
 /**
  * 探针主体：把「为什么没进单元模式」也带出来（`resolveSynopsisUnitLaunch` 只关心结果）。
  *
@@ -156,7 +252,7 @@ export async function probeSynopsisUnitLaunch(
   const skip = (reason: SynopsisUnitSkipReason, coveredTo = 0, checkpointFound = false, cursorDerived = false): SynopsisUnitProbeResult =>
     Object.freeze({ unit: null, reason, coveredTo, checkpointFound, cursorDerived, volume: null })
 
-  if (!synopsisUnitLaunchEnabled(input.storage)) return skip('flag-off')
+  if (!(await synopsisUnitModeEnabled(input.unitMode))) return skip('flag-off')
   const totalChapters = Number(input.totalChapters)
   if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return skip('invalid-total')
 
@@ -172,8 +268,10 @@ export async function probeSynopsisUnitLaunch(
   if (coveredTo === 0 && outlineCoveredTo >= 1) return skip('checkpoint-lost', 0, found)
   // 有未完成批次时单元模式语义未定（中断续写走 resumeSynopsis，不是「再写一个单元」），
   // 探针阶段直接退回按章区间，避免重复生成同一单元。
-  // ⚠️ 例外：批前预写的空标记（`covered_to=0` 且没有半成品正文）背后没有任何可续内容
+  // ⚠️ 例外一：批前预写的空标记（`covered_to=0` 且没有半成品正文）背后没有任何可续内容
   //    ——那是「刚才那批一个字都没落库」留下的，视同未开始，否则一次失败就会把单元模式锁死。
+  // ⚠️ 例外二：检查点已被作者显式重置（`resetSynopsisCheckpoint` 会把进度写回 0
+  //    并清掉 incomplete），所以这里读到的 incomplete 一定还是真的。
   if (checkpoint.synopsis_incomplete === true) {
     const resumable = (typeof checkpoint.synopsis_result === 'string' && checkpoint.synopsis_result.trim().length > 0)
       || coveredTo > 0
@@ -244,7 +342,7 @@ export async function resolveSynopsisUnitLaunch(
 export async function probeSynopsisUnitLaunchForProject(input: {
   readonly projectSession: ProjectSessionContext
   readonly totalChapters: number
-  readonly storage?: Pick<Storage, 'getItem'> | null
+  readonly unitMode?: boolean | (() => Promise<boolean> | boolean)
 }): Promise<SynopsisUnitProbeResult> {
   try {
     let plotStructurePlan: string | undefined
@@ -263,7 +361,7 @@ export async function probeSynopsisUnitLaunchForProject(input: {
       totalChapters: input.totalChapters,
       plotStructurePlan,
       outlineCoveredTo,
-      storage: input.storage,
+      unitMode: input.unitMode,
     })
   } catch (error) {
     return Object.freeze({
@@ -293,7 +391,7 @@ export function describeSynopsisUnitProbe(result: SynopsisUnitProbeResult): stri
         + '）'
         + (result.cursorDerived ? '｜游标按已写章推导（命令侧会落盘）' : '')
     case 'flag-off':
-      return `开关没打开：localStorage['${SYNOPSIS_UNIT_LAUNCH_FLAG}'] 不是 "1"`
+      return '按单元生成已在设置里关掉（设置 → 编辑器 →「按单元生成情节大纲」）'
     case 'invalid-total':
       return '读不到有效的全书总章数（novelConfig.totalChapters），无法折算单元上界'
     case 'incomplete':

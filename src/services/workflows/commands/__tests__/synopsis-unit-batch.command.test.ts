@@ -342,8 +342,7 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
     expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('回到计划章数 60 章为基准'))
   })
 
-  it('过期请求（单元序号与游标不符）fail-closed，不生成', async () => {
-    const stream = responseStream([])
+  it('过期请求（单元序号与游标不符）fail-closed，不生成', async () => {    const stream = responseStream([])
     useLLMStore.setState({ defaultModelId: 'model-1', generateStream: stream })
     harness({
       synopsis_result: chapters(1, 5),
