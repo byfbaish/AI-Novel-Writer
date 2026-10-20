@@ -3,6 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import {
   SYNOPSIS_UNIT_LAUNCH_FLAG,
+  describeSynopsisUnitProbe,
+  probeSynopsisUnitLaunch,
+  probeSynopsisUnitLaunchForProject,
+  reportSynopsisUnitProbe,
   resolveSynopsisUnitLaunch,
   synopsisUnitCheckpointPath,
   synopsisUnitLaunchEnabled,
@@ -127,5 +131,99 @@ describe('resolveSynopsisUnitLaunch', () => {
     expect(await resolve({ totalChapters: 0 })).toBeNull()
     doubles.checkpoint = { synopsis_covered_to: 60, synopsis_unit_cursor: { volumeIndex: 2, unitIndex: 1, writtenInVolume: 30 } }
     expect(await resolve()).toBeNull()
+  })
+})
+
+/**
+ * 探针存在的唯一理由：**让「没进单元模式」这件事在界面上说得清**。
+ * 这些断言锁的是「原因不会退化成静默 null」——现场真机踩过的坑就是「点了没反应、控制台也没字」。
+ */
+describe('probeSynopsisUnitLaunch', () => {
+  function probe(overrides: Partial<{ totalChapters: number; plotStructurePlan: string | undefined; storage: Pick<Storage, 'getItem'> | null }> = {}) {
+    return probeSynopsisUnitLaunch({
+      projectSession,
+      totalChapters: overrides.totalChapters ?? 60,
+      plotStructurePlan: 'plotStructurePlan' in overrides ? overrides.plotStructurePlan : PLAN,
+      storage: 'storage' in overrides ? overrides.storage : enabledStorage(),
+    })
+  }
+
+  it('算得出单元时 reason 为 null，并标出用了推导游标', async () => {
+    doubles.checkpoint = { synopsis_covered_to: 10 }
+    const result = await probe()
+    expect(result.reason).toBeNull()
+    expect(result.unit).toEqual({ from: 11, unitIndex: 1, maxChapters: 10, volumeRemaining: 20 })
+    expect(result.coveredTo).toBe(10)
+    expect(result.checkpointFound).toBe(true)
+    expect(result.cursorDerived).toBe(true)
+  })
+
+  it('显式游标不算推导；读不到检查点时 found=false', async () => {
+    doubles.checkpoint = { synopsis_covered_to: 10, synopsis_unit_cursor: { volumeIndex: 1, unitIndex: 1, writtenInVolume: 10 } }
+    expect((await probe()).cursorDerived).toBe(false)
+    doubles.readFails = true
+    const missing = await probe()
+    expect(missing.checkpointFound).toBe(false)
+    expect(missing.coveredTo).toBe(0)
+  })
+
+  it('每个退回分支都有自己的 reason，不会退化成静默 null', async () => {
+    expect((await probe({ storage: { getItem: () => null } })).reason).toBe('flag-off')
+    expect((await probe({ totalChapters: 0 })).reason).toBe('invalid-total')
+    doubles.checkpoint = { synopsis_covered_to: 10, synopsis_incomplete: true }
+    expect((await probe()).reason).toBe('incomplete')
+    // 已写到第 10 章但没有骨架 ⇒ 推不出游标
+    doubles.checkpoint = { synopsis_covered_to: 10 }
+    expect((await probe({ plotStructurePlan: undefined })).reason).toBe('no-cursor')
+    // 全书未开始 + 没有骨架 ⇒ 有初始游标（不推导）但算不出区间
+    doubles.checkpoint = {}
+    expect((await probe({ plotStructurePlan: undefined })).reason).toBe('compute-null')
+  })
+
+  it('describeSynopsisUnitProbe 给人话，且带上真实数值', async () => {
+    doubles.checkpoint = { synopsis_covered_to: 10 }
+    expect(describeSynopsisUnitProbe(await probe())).toContain('第 11 章起')
+    expect(describeSynopsisUnitProbe(await probe({ storage: { getItem: () => null } }))).toContain(SYNOPSIS_UNIT_LAUNCH_FLAG)
+    // 检查点读不到 + 没有骨架：话里必须点出「没读到 partial_arch.json」，否则现场只会以为骨架坏了
+    doubles.readFails = true
+    expect(describeSynopsisUnitProbe(await probe({ plotStructurePlan: undefined }))).toContain('partial_arch.json')
+  })
+
+  it('reportSynopsisUnitProbe 用 warn 上报（不会被 Info 过滤吃掉）并挂到 globalThis', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = await probe()
+    reportSynopsisUnitProbe(result)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('[E3]'))
+    expect((globalThis as Record<string, unknown>).__e3UnitProbe).toEqual(result)
+    warn.mockRestore()
+  })
+})
+
+describe('probeSynopsisUnitLaunchForProject', () => {
+  it('自己读弧光结构，不再要调用方发一次 project-core-get', async () => {
+    doubles.checkpoint = { synopsis_covered_to: 10 }
+    doubles.invokeWithProjectSession.mockImplementation(async (_context: unknown, channel: string) => {
+      if (channel === 'db:project-core-get') return { plotStructurePlan: PLAN }
+      if (channel === 'fs:read-json') return { success: true, data: doubles.checkpoint }
+      return null
+    })
+    const result = await probeSynopsisUnitLaunchForProject({
+      projectSession, totalChapters: 60, storage: enabledStorage(),
+    })
+    expect(result.unit).toEqual({ from: 11, unitIndex: 1, maxChapters: 10, volumeRemaining: 20 })
+    expect(doubles.invokeWithProjectSession).toHaveBeenCalledWith(projectSession, 'db:project-core-get', projectAPath)
+  })
+
+  it('读弧光结构失败按「没有骨架」处理，抛错也不会打断生成', async () => {
+    doubles.invokeWithProjectSession.mockImplementation(async (_context: unknown, channel: string) => {
+      if (channel === 'db:project-core-get') throw new Error('DB_BUSY')
+      if (channel === 'fs:read-json') return { success: true, data: doubles.checkpoint }
+      return null
+    })
+    const result = await probeSynopsisUnitLaunchForProject({
+      projectSession, totalChapters: 60, storage: enabledStorage(),
+    })
+    expect(result.unit).toBeNull()
+    expect(result.reason).toBe('compute-null')
   })
 })

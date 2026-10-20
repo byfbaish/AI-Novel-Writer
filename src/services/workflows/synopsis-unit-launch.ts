@@ -35,6 +35,31 @@ export interface SynopsisUnitLaunchInput {
   readonly storage?: Pick<Storage, 'getItem'> | null
 }
 
+/** 探针跳过单元模式的原因。**每个分支都必须能在界面上说清楚**，否则现场只会看到「没反应」。 */
+export type SynopsisUnitSkipReason =
+  | 'flag-off'
+  | 'invalid-total'
+  | 'incomplete'
+  | 'no-cursor'
+  | 'compute-null'
+  /** 探针自己抛了异常（**绝不能因此拦住生成**，但也必须被看见）。 */
+  | 'probe-error'
+
+export interface SynopsisUnitProbeResult {
+  /** 算出的单元；`null` = 本次不走单元模式。 */
+  readonly unit: ArchitectureUnitRange | null
+  /** `null` = 进了单元模式。 */
+  readonly reason: SynopsisUnitSkipReason | null
+  /** 检查点里的已覆盖章数（读不到文件时为 0）。 */
+  readonly coveredTo: number
+  /** 是否真的读到了 `<项目>/.ai-novel/partial_arch.json`。路径/项目格式不对时是 `false`。 */
+  readonly checkpointFound: boolean
+  /** 老检查点没有游标、本次是**预览推导**出来的（命令侧会落盘同一个值）。 */
+  readonly cursorDerived: boolean
+  /** `probe-error` 时的原始报错文本。 */
+  readonly detail?: string
+}
+
 /** 开关读取失败（隐私模式 / 非浏览器环境）一律视为关闭。 */
 export function synopsisUnitLaunchEnabled(storage?: Pick<Storage, 'getItem'> | null): boolean {
   try {
@@ -49,24 +74,39 @@ export function synopsisUnitCheckpointPath(projectPath: string): string {
   return `${projectPath}/${CANONICAL_PROJECT_DIRECTORY}/partial_arch.json`
 }
 
+export interface SynopsisUnitCheckpointRead {
+  readonly checkpoint: SynopsisUnitCheckpoint
+  readonly found: boolean
+}
+
+/** 读检查点；**不抛错**（读不到就是「全书未开始」，同时把 found 标出来供诊断用）。 */
+export async function readSynopsisUnitCheckpointWithStatus(
+  projectSession: ProjectSessionContext,
+): Promise<SynopsisUnitCheckpointRead> {
+  try {
+    const result = await ipc.invokeWithProjectSession(
+      projectSession,
+      'fs:read-json',
+      synopsisUnitCheckpointPath(projectSession.projectPath),
+      projectSession.projectPath,
+    )
+    if (result.success && result.data && typeof result.data === 'object') {
+      return { checkpoint: result.data as SynopsisUnitCheckpoint, found: true }
+    }
+    return { checkpoint: {}, found: false }
+  } catch {
+    return { checkpoint: {}, found: false }
+  }
+}
+
 export async function readSynopsisUnitCheckpoint(
   projectSession: ProjectSessionContext,
 ): Promise<SynopsisUnitCheckpoint> {
-  const result = await ipc.invokeWithProjectSession(
-    projectSession,
-    'fs:read-json',
-    synopsisUnitCheckpointPath(projectSession.projectPath),
-    projectSession.projectPath,
-  )
-  if (result.success && result.data && typeof result.data === 'object') {
-    return result.data as SynopsisUnitCheckpoint
-  }
-  return {}
+  return (await readSynopsisUnitCheckpointWithStatus(projectSession)).checkpoint
 }
 
 /**
- * 由落库检查点算出「本次要写的单元」。返回 `null` 表示**本次不走单元模式**，
- * 调用方应原样退回按章区间（fail-open：开关只是探针，不能把生成拦死）。
+ * 探针主体：把「为什么没进单元模式」也带出来（`resolveSynopsisUnitLaunch` 只关心结果）。
  *
  * 与命令侧同源的三处：
  * 1. `coveredTo` 直接取检查点的 `synopsis_covered_to`（命令侧同样读它，不拿正文重算）；
@@ -75,27 +115,115 @@ export async function readSynopsisUnitCheckpoint(
  *    命令侧在真正执行时会用同一个函数把游标**落盘**（`syncSynopsisUnitCursor`），
  *    这里只是不落盘地算出同一结果，好让 `approveUnitContext` 的复核通过。
  */
-export async function resolveSynopsisUnitLaunch(
+export async function probeSynopsisUnitLaunch(
   input: SynopsisUnitLaunchInput,
-): Promise<ArchitectureUnitRange | null> {
-  if (!synopsisUnitLaunchEnabled(input.storage)) return null
-  const totalChapters = Number(input.totalChapters)
-  if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return null
+): Promise<SynopsisUnitProbeResult> {
+  const skip = (reason: SynopsisUnitSkipReason, coveredTo = 0, checkpointFound = false, cursorDerived = false): SynopsisUnitProbeResult =>
+    Object.freeze({ unit: null, reason, coveredTo, checkpointFound, cursorDerived })
 
-  const checkpoint = await readSynopsisUnitCheckpoint(input.projectSession)
+  if (!synopsisUnitLaunchEnabled(input.storage)) return skip('flag-off')
+  const totalChapters = Number(input.totalChapters)
+  if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return skip('invalid-total')
+
+  const { checkpoint, found } = await readSynopsisUnitCheckpointWithStatus(input.projectSession)
   // 有未完成批次时单元模式语义未定（中断续写走 resumeSynopsis，不是「再写一个单元」），
   // 探针阶段直接退回按章区间，避免重复生成同一单元。
-  if (checkpoint.synopsis_incomplete === true) return null
+  if (checkpoint.synopsis_incomplete === true) return skip('incomplete', 0, found)
 
   const coveredTo = Number.isSafeInteger(checkpoint.synopsis_covered_to)
     ? Number(checkpoint.synopsis_covered_to)
     : 0
   const { computeSynopsisUnitRange, deriveSynopsisUnitCursor, INITIAL_SYNOPSIS_UNIT_CURSOR } =
     await import('./commands/architecture.command')
-  const cursor = checkpoint.synopsis_unit_cursor
+  const explicitCursor = checkpoint.synopsis_unit_cursor ?? null
+  const cursor = explicitCursor
     ?? (coveredTo >= 1
       ? deriveSynopsisUnitCursor(input.plotStructurePlan, totalChapters, coveredTo)
       : INITIAL_SYNOPSIS_UNIT_CURSOR)
-  if (!cursor) return null
-  return computeSynopsisUnitRange(input.plotStructurePlan, totalChapters, cursor, coveredTo)
+  if (!cursor) return skip('no-cursor', coveredTo, found)
+  const unit = computeSynopsisUnitRange(input.plotStructurePlan, totalChapters, cursor, coveredTo)
+  if (!unit) return skip('compute-null', coveredTo, found, explicitCursor === null)
+  return Object.freeze({ unit, reason: null, coveredTo, checkpointFound: found, cursorDerived: explicitCursor === null })
+}
+
+/**
+ * 由落库检查点算出「本次要写的单元」。返回 `null` 表示**本次不走单元模式**，
+ * 调用方应原样退回按章区间（fail-open：开关只是探针，不能把生成拦死）。
+ */
+export async function resolveSynopsisUnitLaunch(
+  input: SynopsisUnitLaunchInput,
+): Promise<ArchitectureUnitRange | null> {
+  return (await probeSynopsisUnitLaunch(input)).unit
+}
+
+/**
+ * 组件侧便捷版：连弧光结构一起读（调用方不必自己再发一次 `db:project-core-get`）。
+ * **永不抛错**——探针只是探针，任何异常都必须退化成 `probe-error` 并让人看见，
+ * 绝不允许它把整次生成拦住（这正是 2026-10-20 实机「点了没反应」的教训）。
+ */
+export async function probeSynopsisUnitLaunchForProject(input: {
+  readonly projectSession: ProjectSessionContext
+  readonly totalChapters: number
+  readonly storage?: Pick<Storage, 'getItem'> | null
+}): Promise<SynopsisUnitProbeResult> {
+  try {
+    let plotStructurePlan: string | undefined
+    try {
+      const core = await ipc.invokeWithProjectSession(input.projectSession, 'db:project-core-get', input.projectSession.projectPath)
+      plotStructurePlan = core?.plotStructurePlan ?? undefined
+    } catch {
+      plotStructurePlan = undefined
+    }
+    return await probeSynopsisUnitLaunch({
+      projectSession: input.projectSession,
+      totalChapters: input.totalChapters,
+      plotStructurePlan,
+      storage: input.storage,
+    })
+  } catch (error) {
+    return Object.freeze({
+      unit: null,
+      reason: 'probe-error' as const,
+      coveredTo: 0,
+      checkpointFound: false,
+      cursorDerived: false,
+      detail: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+    })
+  }
+}
+
+/** 原因 → 给人看的一句话（探针阶段唯一的解释来源，别再让现场「看不到任何信息」）。 */
+export function describeSynopsisUnitProbe(result: SynopsisUnitProbeResult): string {
+  switch (result.reason) {
+    case null:
+      return `已进单元模式：第 ${result.unit!.unitIndex} 个单元，从第 ${result.unit!.from} 章起`
+        + `（名义上界 ${result.unit!.maxChapters} 章 / 本卷剩余 ${result.unit!.volumeRemaining} 章）`
+        + (result.cursorDerived ? '｜游标按已写章推导（命令侧会落盘）' : '')
+    case 'flag-off':
+      return `开关没打开：localStorage['${SYNOPSIS_UNIT_LAUNCH_FLAG}'] 不是 "1"`
+    case 'invalid-total':
+      return '读不到有效的全书总章数（novelConfig.totalChapters），无法折算单元上界'
+    case 'incomplete':
+      return '检查点里有未完成批次（synopsis_incomplete=true）：中断续写语义未定，本次走按章区间'
+    case 'no-cursor':
+      return `推不出单元游标：已覆盖第 ${result.coveredTo} 章，`
+        + (result.checkpointFound ? '骨架里可能没有「### 单元」划界' : `且没读到 ${CANONICAL_PROJECT_DIRECTORY}/partial_arch.json`)
+    case 'compute-null':
+      return `单元定位失败：已覆盖第 ${result.coveredTo} 章`
+        + (result.checkpointFound ? '' : `（没读到 ${CANONICAL_PROJECT_DIRECTORY}/partial_arch.json）`)
+    case 'probe-error':
+      return `探针自身报错，已退回按章区间：${result.detail ?? '未知错误'}`
+  }
+}
+
+/** 探针结果上报：`console.warn`（不会被 Info 级别过滤器吃掉）+ 挂到 `window` 便于现场自查。 */
+export function reportSynopsisUnitProbe(result: SynopsisUnitProbeResult): void {
+  try {
+    const message = `[E3] ${describeSynopsisUnitProbe(result)}`
+    if (result.reason === null) console.warn(message)
+    else console.warn(`${message}（reason=${result.reason}）`)
+    ;(globalThis as Record<string, unknown>).__e3UnitProbe = result
+  } catch {
+    // 诊断失败不影响生成
+  }
 }

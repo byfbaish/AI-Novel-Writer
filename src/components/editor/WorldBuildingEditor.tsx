@@ -14,6 +14,11 @@ import { EmptyState } from '../ui/EmptyState'
 import { ipc } from '../../services/ipc-client'
 
 import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
+import {
+  probeSynopsisUnitLaunchForProject,
+  reportSynopsisUnitProbe,
+} from '../../services/workflows/synopsis-unit-launch'
+import type { ArchitectureUnitRange } from '../../shared/generation-owner-contract'
 import { globalEventBus } from '../../shared/event-bus'
 import {
   createProjectArchTabId,
@@ -368,11 +373,22 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
     const projectSession = captureProjectSession(currentProject)
     if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) throw new Error(text('项目会话已切换，未启动架构生成', 'The project session changed, so architecture generation was not started.'))
     if (!isProjectSessionCurrent(projectSession)) throw new Error(text('项目会话已切换，未启动架构生成', 'The project session changed, so architecture generation was not started.'))
+    // E3 探针（T10）：**第二个入口**（架构总览面板）。与 ArchFileViewer 走同一份探针，
+    // 免得「从哪个入口点」决定行为。开关关掉 / 算不出单元一律原样退回按章区间。
+    let synopsisUnit: ArchitectureUnitRange | null = null
+    if (import.meta.env.DEV && selectedSteps.includes('synopsis')) {
+      const probe = await probeSynopsisUnitLaunchForProject({
+        projectSession,
+        totalChapters: Number(currentProject?.novelConfig?.totalChapters),
+      })
+      reportSynopsisUnitProbe(probe)
+      synopsisUnit = probe.unit
+    }
     await launchCreativeWorkflow({
       workflow: 'generate_architecture',
       selectedSteps,
       stepGuidance,
-      synopsisRange,
+      ...(synopsisUnit ? { synopsisUnit } : { synopsisRange }),
       targetUnits,
     }, projectSession)
   }
@@ -823,6 +839,7 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
         isOpen={showArchDialog}
         onClose={() => setShowArchDialog(false)}
         archStatus={archStatus}
+        synopsisCoveredTo={synopsisCoveredTo}
         initialSynopsisRange={pendingSynopsisRange}
         onConfirm={handleConfirm}
       />
