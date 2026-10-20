@@ -455,13 +455,38 @@ function ArchFileRow({
       return
     }
 
+    /**
+     * **只清产物、不清与它绑定的进度**会留下两个必现症状（2026-10-21 实机）：
+     * 1. 界面状态不跟着变（大纲已「待生成」，生成弹窗还写着「第2卷第1单元」）；
+     * 2. 一生成就报「项目源事实自上次生成后已变化，既有大纲不能与新的源事实拼接」。
+     * 因为检查点里还留着 `covered_to` / 旧游标 / 绑在旧源事实上的指纹。
+     * 所以清任何一步都要把它与**下游**的检查点进度一并作废（链是级联的）。
+     */
+    const { ARCH_STEP_ORDER, clearArchStepCheckpoint } = await import('../../../services/workflows/arch-step-checkpoint')
+    const step = ARCH_STEP_ORDER.find(candidate => candidate === f.key)
+    let droppedProgress = 0
+    if (step) {
+      const cleared = await clearArchStepCheckpoint(projectSession, step)
+      if (cleared.ok) droppedProgress = cleared.cleared
+      else toast.warning(text(
+        `「${f.label}」已清空，但它留下的生成进度没能一并作废：${cleared.error}。下次生成可能提示源事实已变化。`,
+        `“${english.label}” was cleared, but its recorded progress could not be dropped: ${cleared.error}.`,
+      ))
+    }
+    if (!isProjectSessionCurrent(projectSession)) return
+
     const store = useEditorStore.getState()
     const tabId = createProjectArchTabId(projectKey, filePath)
     store.syncTabContent(tabId, '')
     store.markTabSaved(tabId, '')
     await onCleared()
     if (!isProjectSessionCurrent(projectSession)) return
-    toast.success(text(`已清空「${f.label}」`, `Cleared “${english.label}”`))
+    toast.success(droppedProgress > 0
+      ? text(
+          `已清空「${f.label}」，同时作废了 ${droppedProgress} 项依赖它的生成进度`,
+          `Cleared “${english.label}” and dropped ${droppedProgress} dependent progress record(s)`,
+        )
+      : text(`已清空「${f.label}」`, `Cleared “${english.label}”`))
   }
 
   return (

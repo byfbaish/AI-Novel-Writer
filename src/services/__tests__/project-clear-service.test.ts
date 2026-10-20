@@ -144,7 +144,20 @@ describe('clearProjectData', () => {
       generatedText: false,
     }, projectSession)
 
-    expect(ipc.invokeWithProjectSession).toHaveBeenCalledOnce()
+    // 一次清库 + 一次读检查点（清故事架构必须把`partial_arch.json`里的进度一并作废，
+    // 否则会留下「产物没了、生成弹窗还说要写第 22 章」的矛盾态，2026-10-21 实机）。
+    expect(ipc.invokeWithProjectSession).toHaveBeenCalledWith(
+      projectSession,
+      'db:project-clear-generated-data',
+      { creativeFields: true, blueprints: false, generatedText: false },
+      projectPath,
+    )
+    expect(ipc.invokeWithProjectSession).toHaveBeenCalledWith(
+      projectSession,
+      'fs:read-json',
+      expect.stringContaining('partial_arch.json'),
+      projectPath,
+    )
     expect(draftReset).not.toHaveBeenCalled()
     expect(openProject).not.toHaveBeenCalled()
   })
@@ -222,7 +235,12 @@ describe('clearProjectData', () => {
     await expect(clearProjectData({ creativeFields: true }, projectSession)).resolves.toEqual({
       cleared: ['generatedText'],
     })
-    expect(ipc.invokeWithProjectSession).toHaveBeenCalledOnce()
+    expect(ipc.invokeWithProjectSession).toHaveBeenCalledWith(
+      projectSession,
+      'fs:read-json',
+      expect.stringContaining('partial_arch.json'),
+      projectPath,
+    )
   })
 
   it('blocks creative-field clearing while character cards have unsaved edits, and reloads cards after clearing', async () => {

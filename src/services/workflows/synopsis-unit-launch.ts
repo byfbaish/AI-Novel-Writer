@@ -76,6 +76,15 @@ export interface SynopsisUnitProbeResult {
   readonly coveredTo: number
   /** 是否真的读到了 `<项目>/.ai-novel/partial_arch.json`。路径/项目格式不对时是 `false`。 */
   readonly checkpointFound: boolean
+  /**
+   * 库里情节大纲的实际覆盖章数（第二份进度事实）。
+   *
+   * 只给界面用：`checkpointFound && coveredTo > 0 && outlineCoveredTo === 0` 说明
+   * 「检查点记着写过 N 章、库里一个字都没有」—— 2026-10-21 实机：作者清空了某一项
+   * 故事架构，产物没了但进度还在，界面于是显示「单元模式：第2卷第1单元（第22章）」，
+   * 而一生成就报「源事实已变化」。
+   */
+  readonly outlineCoveredTo?: number
   /** 老检查点没有游标、本次是**预览推导**出来的（命令侧会落盘同一个值）。 */
   readonly cursorDerived: boolean
   /**
@@ -166,7 +175,8 @@ export async function readSynopsisUnitCheckpoint(
 }
 
 /** 检查点里属于**情节大纲**的字段前缀。重置只碰这些，世界观 / 前提的候选一律不动。 */
-const SYNOPSIS_CHECKPOINT_KEYS = [
+/** 情节大纲检查点里属于「进度」的全部键（重置、级联作废共用一份）。 */
+export const SYNOPSIS_CHECKPOINT_KEYS = [
   'synopsis_result',
   'synopsis_incomplete',
   'synopsis_covered_to',
@@ -292,6 +302,7 @@ export async function probeSynopsisUnitLaunch(
     reason: null,
     coveredTo,
     checkpointFound: found,
+    outlineCoveredTo,
     cursorDerived: explicitCursor === null,
     volume: await describeUnitVolume(input.plotStructurePlan, totalChapters, cursor),
   })

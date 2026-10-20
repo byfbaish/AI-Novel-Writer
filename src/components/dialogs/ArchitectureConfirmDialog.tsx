@@ -605,7 +605,10 @@ export default function ArchitectureConfirmDialog({
                     {/* 检查点挡路时，作者在这里**必须有**一个能点的地方。
                         以前只能靠人跑去删 .ai-novel/partial_arch.json（2026-10-20 实机：清空大纲后
                         到处找不到取消入口）。只删情节大纲的进度字段，数据库正文一个字不动。 */}
-                    {unitPreview.reason === 'incomplete' && (
+                    {/* 出口不能只挂在 `incomplete` 上：清空某一项故事架构后，检查点会以
+                        `checkpoint-lost` / 游标残留等形态挡路，而作者恰恰最需要那个按钮
+                        （2026-10-21 实机：按钮"消失了"）。只要检查点里还有进度就给他。 */}
+                    {unitPreview.checkpointFound && (
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
@@ -662,6 +665,32 @@ export default function ArchitectureConfirmDialog({
                           'The chapter range and “Continue” do not apply in unit mode. Turn off “Generate the plot outline unit by unit” in Settings → Editor to generate by chapter range.',
                         )}
                       </p>
+                      {/* 库里一个字都没有、检查点却记着写过 N 章 = 矛盾态。
+                          多半是作者刚清空了某一项故事架构（产物清了、进度没清）。
+                          不说清楚的话，作者只会看到「从第 22 章开始」然后生成失败。 */}
+                      {unitPreview && unitPreview.coveredTo > 0 && unitPreview.outlineCoveredTo === 0 && (
+                        <div className="space-y-1 pt-1" style={{ borderTop: '1px dashed var(--color-border)' }}>
+                          <p className="m-0" style={{ color: 'var(--color-warning-text)' }}>
+                            {text(
+                              `检查点记着已写到第 ${unitPreview.coveredTo} 章，但数据库里的大纲是空的`
+                                + `（多半是刚清空了某一项故事架构）。这样生成会报「项目源事实自上次生成后已变化」。`,
+                              `The checkpoint says chapter ${unitPreview.coveredTo} is done, but the stored outline is empty. `
+                                + `Generation would fail with “source facts changed”.`,
+                            )}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => void handleResetCheckpoint()}
+                            disabled={resettingCheckpoint}
+                            className="text-xs underline disabled:opacity-60"
+                            style={{ color: 'var(--color-warning-text)' }}
+                          >
+                            {resettingCheckpoint
+                              ? text('正在重置…', 'Resetting…')
+                              : text('重置情节大纲检查点（从全书起点重来）', 'Reset the plot-outline checkpoint (start over)')}
+                          </button>
+                        </div>
+                      )}
                     </div>
                     {/* E3 T12：连写个数。上限就是本卷剩余单元数 —— v1 不跨卷。 */}
                     {unitChainCapacity > 1 && (

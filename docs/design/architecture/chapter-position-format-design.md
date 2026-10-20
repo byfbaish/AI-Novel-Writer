@@ -243,6 +243,39 @@ export function formatChapterPosition(pos: ChapterPosition, language: WritingLan
 > 这条与红线 21 同源：「读不出来 ≠ 不存在」。区别在于这里连"读出来是空"都不够，
 > 因为中断态的库内正文**本来就该是空的**。
 
+#### 4.6.1 第二个入口：清空某一步故事架构（2026-10-21）
+
+`resetSynopsisCheckpoint` 只解决「作者在编辑器里手动清空大纲」。作者实际更常用的是
+**左侧项目树每行的垃圾桶**，那条路走 `writeCoreContent(file, '')` —— **只清产物，不碰检查点**。
+后果是同一个矛盾态的另一种表现：
+
+| 症状 | 原因 |
+|---|---|
+| 大纲已经是「待生成」，生成弹窗却还写「单元模式：第2卷第1单元第1章（全书第22章）」 | 检查点里 `covered_to=21` + 旧游标还在，探针据此算 |
+| 一生成就报「项目源事实自上次生成后已变化，既有大纲不能与新的源事实拼接」 | `synopsisInputsFingerprint` 拿检查点绑定的旧指纹比现在的源事实，必然不等 |
+| 「重置情节大纲检查点」按钮不见了 | 它只挂在 `reason === 'incomplete'` 上，而这里的 reason 是成功进单元模式 / `checkpoint-lost` |
+
+**修法两层：**
+
+1. **清的时候级联作废**（`services/workflows/arch-step-checkpoint.ts`）。
+   架构链是 `前提 → 角色 → 世界观 → 卷/单元 → 情节大纲`，每一步都进了大纲检查点的源事实指纹。
+   所以清任何一步，**它自己 + 全部下游**的进度都要作废：
+   | 清哪一步 | 作废哪些键 |
+   |---|---|
+   | 前提 | `premise_result` + 世界观 + 大纲（全链） |
+   | 角色 | 检查点里没有它的字段，但大纲仍要作废（角色也是源事实） |
+   | 世界观 | `world_building_result` / `_generation_handle` + 大纲 |
+   | 卷 / 单元结构 | 大纲 |
+   | 情节大纲 | 12 个 `synopsis_*` |
+
+   「清除全部」走另一条路径（`project-clear-service`），同样补了 `clearAllArchProgress`。
+   **只清检查点里的进度键，数据库里已写好的产物一个字不动。**
+
+2. **界面兜底**：重置按钮不再只认 `incomplete` —— 只要 `checkpointFound` 就给；
+   单元模式区块里若出现「检查点说有 N 章、库里一个字都没有」，直接明说并给按钮
+   （探针结果新增 `outlineCoveredTo` 就是为这件事）。
+
+
 ## 5. 分期与状态
 
 | 期 | 内容 | 风险 | 状态 |
