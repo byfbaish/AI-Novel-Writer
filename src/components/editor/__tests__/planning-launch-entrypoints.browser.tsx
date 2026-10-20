@@ -136,9 +136,9 @@ it('sends a unit batch instead of a chapter range when the E3 probe flag is on',
   //    前序用例留下的 portal 还挂在 body 上，全局 getByRole 会命中那份旧的章号输入框。
   const unitDialog = () => Array.from(document.querySelectorAll('[role="dialog"]'))
     .find(el => el.textContent?.includes('单元模式：')
-      && el.textContent?.includes('第 1 个单元')
-      // 卷号必须一起显示：只写「第 k 个单元」时，作者会把卷一第 2 个单元读成「第二卷开始」。
-      && el.textContent?.includes('第 1 卷'))
+      // 位置统一写成「第V卷第U单元第C章（全书第N章）」：层级必须报全（只写「第 k 个单元」时，
+      // 作者把卷一第 2 个单元读成了「第二卷开始」）。
+      && el.textContent?.includes('第1卷第1单元'))
   await vi.waitFor(() => expect(unitDialog()).toBeTruthy())
   expect(unitDialog()!.querySelector('input[aria-label="本次生成范围的结束章"]')).toBeNull()
   await act(async () => {

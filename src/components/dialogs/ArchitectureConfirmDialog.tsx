@@ -13,6 +13,7 @@ import { useLocaleStore } from '../../stores/locale-store'
 import { AUDIENCE_EN, GENRE_EN } from '../editor/novel-config-labels'
 import { ipc } from '../../services/ipc-client'
 import { resolveWritingLanguage } from '../../shared/writing-language'
+import { formatChapterPosition } from '../../shared/chapter-position'
 import { assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS, DEFAULT_PLANNING_TARGET_UNITS, parsePlanningTargetUnits, PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../shared/plot-outline-contract'
 import { captureProjectSession } from '../project-session-gate'
 import {
@@ -498,14 +499,20 @@ export default function ArchitectureConfirmDialog({
                     >
                       <p className="m-0 font-medium" style={{ color: 'var(--color-text)' }}>
                         {text(
-                          // 卷号必须露出来：只写「第 k 个单元」时，作者没法分辨自己在卷一还是卷二
+                          // 层级必须报全：只写「第 k 个单元」时，作者没法分辨自己在卷一还是卷二
                           //（2026-10-20 实机就把它读成了「第二卷开始」）。
-                          `单元模式：第 ${unitPreview?.volume?.index ?? 1} 卷 · 第 ${unitMode.unitIndex} 个单元`
-                            + (unitPreview?.volume ? `（本卷共 ${unitPreview.volume.unitCount} 个）` : '')
-                            + `，从第 ${unitMode.from} 章起`,
-                          `Unit mode: volume ${unitPreview?.volume?.index ?? 1}, unit ${unitMode.unitIndex}`
-                            + (unitPreview?.volume ? ` of ${unitPreview.volume.unitCount}` : '')
-                            + `, starting at chapter ${unitMode.from}`,
+                          `单元模式：${formatChapterPosition({
+                            chapter: unitMode.from,
+                            volumeIndex: unitPreview?.volume?.index,
+                            unitIndex: unitMode.unitIndex,
+                          }, 'zh-CN')}`
+                            + (unitPreview?.volume ? `（本卷共 ${unitPreview.volume.unitCount} 个单元）` : ''),
+                          `Unit mode: ${formatChapterPosition({
+                            chapter: unitMode.from,
+                            volumeIndex: unitPreview?.volume?.index,
+                            unitIndex: unitMode.unitIndex,
+                          }, 'en-US')}`
+                            + (unitPreview?.volume ? ` (${unitPreview.volume.unitCount} units in this volume)` : ''),
                         )}
                       </p>
                       <p className="m-0" style={{ color: 'var(--color-text-secondary)' }}>

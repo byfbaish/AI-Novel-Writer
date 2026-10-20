@@ -15,6 +15,7 @@ import { withSpaceConstraints } from '../../../shared/space-constraints'
 import { projectScopedConfigFields, projectScopedText } from '../../../shared/text-scope-tags'
 import { declareTraceScopeChapterRange } from '../../prompts/trace-scope'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
+import { formatChapterPosition } from '../../../shared/chapter-position'
 import {
   BaseWorkflowCommand,
   injectWritingSkillIntoSession,
@@ -2821,9 +2822,17 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       const unitName = unitContext.stats?.unitName ?? ''
       const exhausted = (unitContext.stats?.remaining ?? 1) <= 0
       callbacks.log(text(
-        `正在写【单元 ${unitContext.range.unitIndex}：${unitName}】，从第 ${from} 章起（全书 ${totalChapters} 章）`
+        `正在写【单元 ${unitContext.range.unitIndex}：${unitName}】，起点 ${formatChapterPosition({
+          chapter: from,
+          volumeIndex: unitContext.cursor.volumeIndex,
+          unitIndex: unitContext.range.unitIndex,
+        }, 'zh-CN')}；全书 ${totalChapters} 章`
           + `${exhausted ? '；本卷预算已写满，超出部分只在卷末汇总' : ''}...`,
-        `Writing [Unit ${unitContext.range.unitIndex}: ${unitName}] from chapter ${from} (book total ${totalChapters})`
+        `Writing [Unit ${unitContext.range.unitIndex}: ${unitName}] starting at ${formatChapterPosition({
+          chapter: from,
+          volumeIndex: unitContext.cursor.volumeIndex,
+          unitIndex: unitContext.range.unitIndex,
+        }, 'en-US')}; ${totalChapters} chapters in total`
           + `${exhausted ? '; this volume’s budget is used up, overruns are only reported at volume end' : ''}...`,
       ))
     }
@@ -3017,8 +3026,16 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
           await this.rollbackSynopsisCheckpoint(expectedProjectPath, projectSession, context, previousBatchPartial, stagedBatchPartial)
         }
         throw new Error(text(
-          `本次输出没有写出从第 ${from} 章起的章节条目标题（能认出的最大章号：${plotOutlineCoveredTo(merged)}），无法确定本单元完成到哪里，结果未保存。`,
-          `The output has no chapter heading starting at chapter ${from} (highest chapter recognized: ${plotOutlineCoveredTo(merged)}), so the end of this unit cannot be determined; the result was not saved.`,
+          `本次输出没有写出从 ${formatChapterPosition({
+            chapter: from,
+            volumeIndex: unitContext.cursor.volumeIndex,
+            unitIndex: unitContext.range.unitIndex,
+          }, 'zh-CN')} 起的章节条目标题（能认出的最大章号：${plotOutlineCoveredTo(merged)}），无法确定本单元完成到哪里，结果未保存。`,
+          `The output has no chapter heading starting at ${formatChapterPosition({
+            chapter: from,
+            volumeIndex: unitContext.cursor.volumeIndex,
+            unitIndex: unitContext.range.unitIndex,
+          }, 'en-US')} (highest chapter recognized: ${plotOutlineCoveredTo(merged)}), so the end of this unit cannot be determined; the result was not saved.`,
         ))
       }
       to = backfill.to
