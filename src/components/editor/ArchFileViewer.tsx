@@ -34,6 +34,8 @@ import type { ArchitectureUnitRange } from '../../shared/generation-owner-contra
 import { createArchitectureWorkflow } from '../../services/workflows/architecture-workflow'
 import { renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix, plotOutlineCoveredTo } from '../../shared/plot-outline-contract'
 import { useWorkflowStore } from '../../stores/workflow-store'
+import { useSynopsisUnitChainStore } from '../../stores/synopsis-unit-chain-store'
+import { UNIT_CHAIN_STOP_COPY } from '../../services/workflows/synopsis-unit-chain'
 import { useLayoutStore } from '../../stores/layout-store'
 import { globalEventBus } from '../../shared/event-bus'
 import {
@@ -322,6 +324,8 @@ function ArchFileViewerSession({
    */
   const [outlineCharacterNudge, setOutlineCharacterNudge] = useState(false)
   const [outlineNudgeGloballyDisabled, setOutlineNudgeGloballyDisabled] = useState(false)
+  /** E3 T12：连续生成的进度（调度在 App，这里只读来显示）。 */
+  const unitChain = useSynopsisUnitChainStore(s => s.chain)
   useEffect(() => {
     let cancelled = false
     void ipc.invoke('config:get')
@@ -680,6 +684,7 @@ function ArchFileViewerSession({
     stepGuidance: Record<string, string>,
     synopsisRange?: { from: number; to: number },
     targetUnits?: number,
+    unitChainTotal?: number,
   ) => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) {
@@ -690,6 +695,9 @@ function ArchFileViewerSession({
     // 对话框里的章号区间不再生效。开关关掉 / 算不出单元（旧骨架、无检查点）一律原样退回按章区间。
     // ⚠️ 探针**必须把结论说出来**（控制台 + toast + window.__e3UnitProbe）：否则现场只看到「点了没反应」。
     let synopsisUnit: ArchitectureUnitRange | null = null
+    // 连写用：卷号 + 本卷还剩几个单元（探针给不出就按「1 个单元、不判卷界」处理）。
+    let synopsisUnitVolume: number | null = null
+    let synopsisUnitCapacity = 1
     if (import.meta.env.DEV) {
       console.warn(
         `[E3] 确认生成已抵达：步骤=${selectedSteps.join(',') || '（空）'}`
@@ -702,6 +710,8 @@ function ArchFileViewerSession({
         })
         reportSynopsisUnitProbe(probe)
         synopsisUnit = probe.unit
+        synopsisUnitVolume = probe.volume?.index ?? null
+        synopsisUnitCapacity = Math.max(1, probe.volume?.remainingUnits ?? 1)
         if (probe.unit) {
           toast.info(`[E3] 单元批次：第 ${probe.unit.unitIndex} 个单元，从第 ${probe.unit.from} 章起（上界 ${probe.unit.maxChapters} 章）`)
         } else {
@@ -712,15 +722,33 @@ function ArchFileViewerSession({
     // 启动前后各留一条：现场「点了没反应」时能立刻分辨是「没走到这里」「启动抛错」还是「启动了但没回执」。
     if (import.meta.env.DEV) console.warn('[E3] 提交工作流…', synopsisUnit ? '单元模式' : '按章区间')
     try {
-      await launchCreativeWorkflow({
+      const receipt = await launchCreativeWorkflow({
         workflow: 'generate_architecture',
         selectedSteps,
         stepGuidance,
         ...(synopsisUnit ? { synopsisUnit } : { synopsisRange }),
         targetUnits,
       }, projectSession)
+      // E3 T12：连写 N 个单元。这里只负责「起链」——后续批次由 App 在每批完成时
+      // 重新探针、算下一个单元再发新 run；本组件随时可能被卸载，不能拿它当调度器。
+      const requestedChain = synopsisUnit ? Math.min(synopsisUnitCapacity, Math.max(1, Math.floor(unitChainTotal ?? 1))) : 1
+      if (synopsisUnit && requestedChain > 1 && receipt?.runId) {
+        useSynopsisUnitChainStore.getState().start({
+          projectPath: projectSession.projectPath,
+          total: requestedChain,
+          volumeIndex: synopsisUnitVolume,
+          runId: receipt.runId,
+          // 作者对这批大纲的要求必须对后续每一批都成立，否则前后几批口径不一致。
+          targetUnits: targetUnits ?? null,
+          stepGuidance,
+        })
+        toast.info(`连续生成已开始：本次连写 ${requestedChain} 个单元，只到本卷末`)
+      } else {
+        useSynopsisUnitChainStore.getState().clear()
+      }
       if (import.meta.env.DEV) console.warn('[E3] 工作流已启动')
     } catch (error) {
+      useSynopsisUnitChainStore.getState().stop('failed', '首批没有启动成功')
       console.warn('[E3] 工作流启动失败', error)
       throw error
     }
@@ -976,6 +1004,57 @@ function ArchFileViewerSession({
         <details><summary>{text('原始候选', 'Original candidate')}</summary><pre className="whitespace-pre-wrap max-h-40 overflow-auto">{recoveryTab?.originalContent}</pre></details>
         {recoveryError && <p role="alert">{recoveryError}</p>}
       </div>}
+
+      {/* E3 T12：连续生成单元 —— 进度 + 停止入口。
+          「停止」只表示不再发下一批，当前这一批会写完（半路砍掉等于白烧一次生成）。 */}
+      {projectMatches && unitChain && unitChain.projectPath === projectKey && (
+        <div
+          role="status"
+          className="flex items-start gap-2 px-3 py-2 text-xs flex-shrink-0"
+          style={{
+            color: 'var(--color-text-secondary)',
+            backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
+            borderBottom: '1px solid color-mix(in srgb, var(--color-accent) 25%, transparent)',
+          }}
+        >
+          <Loader2 size={13} className={`flex-shrink-0 mt-0.5${unitChain.status === 'running' ? ' animate-spin' : ''}`} />
+          <span className="flex-1">
+            {unitChain.status === 'running'
+              ? text(
+                `连续生成中：第 ${Math.min(unitChain.launched, unitChain.total)}/${unitChain.total} 个单元 —— 这一批写完会自动接着写下一批，只到本卷末。`,
+                `Chaining units: ${Math.min(unitChain.launched, unitChain.total)}/${unitChain.total} — the next batch starts automatically and stops at the volume end.`,
+              )
+              : text(
+                `连续生成已停止（${Math.min(unitChain.launched, unitChain.total)}/${unitChain.total}）：`
+                  + `${UNIT_CHAIN_STOP_COPY[unitChain.stopReason ?? 'manual'].zh}`,
+                `Unit chaining stopped (${Math.min(unitChain.launched, unitChain.total)}/${unitChain.total}): `
+                  + `${UNIT_CHAIN_STOP_COPY[unitChain.stopReason ?? 'manual'].en}`,
+              )}
+            {import.meta.env.DEV && unitChain.stopDetail ? `｜${unitChain.stopDetail}` : ''}
+          </span>
+          {unitChain.status === 'running' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-[0.68rem] flex-shrink-0"
+              onClick={() => useSynopsisUnitChainStore.getState().stop('manual')}
+            >
+              {text('停止连写', 'Stop chaining')}
+            </Button>
+          )}
+          {unitChain.status !== 'running' && (
+            <button
+              type="button"
+              className="flex-shrink-0 rounded p-0.5 mt-0.5"
+              title={text('收起这条提示', 'Hide this notice')}
+              aria-label={text('收起这条提示', 'Hide this notice')}
+              onClick={() => useSynopsisUnitChainStore.getState().clear()}
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 大纲已完成但尚未系统补过角色 → 常驻醒目提示（可关闭；绝不自动执行）。 */}
       {projectMatches && stepKey === 'synopsis' && !recovery && outlineCharacterNudge && (

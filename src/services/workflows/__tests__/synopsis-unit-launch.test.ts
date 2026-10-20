@@ -168,6 +168,17 @@ describe('probeSynopsisUnitLaunch', () => {
     expect(result.cursorDerived).toBe(true)
   })
 
+  it('带出本卷剩余单元数（连写上限），与 planUnitStats 同源', async () => {
+    doubles.checkpoint = { synopsis_covered_to: 10 }
+    const first = await probe()
+    expect(first.volume).toMatchObject({ index: 1, unitCount: 2, remainingUnits: 2 })
+    // 卷 1 的第二个单元：本卷只剩 1 个（连写不该再多给）
+    doubles.checkpoint = { synopsis_covered_to: 10, synopsis_unit_cursor: { volumeIndex: 1, unitIndex: 2, writtenInVolume: 10 } }
+    expect((await probe()).volume?.remainingUnits).toBe(1)
+    // 没进单元模式时不给卷进度（避免 UI 拿它当「可以连写」的信号）
+    expect((await probe({ totalChapters: 0 })).volume).toBeNull()
+  })
+
   it('显式游标不算推导；读不到检查点时 found=false', async () => {
     doubles.checkpoint = { synopsis_covered_to: 10, synopsis_unit_cursor: { volumeIndex: 1, unitIndex: 1, writtenInVolume: 10 } }
     expect((await probe()).cursorDerived).toBe(false)
