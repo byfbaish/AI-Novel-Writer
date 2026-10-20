@@ -179,6 +179,7 @@ docs/
 | [`unit-budget-prompt-ab-test.md`](design/architecture/unit-budget-prompt-ab-test.md) | 🧪 E2 已完成 · 提示词层已验证 | **弹性配给的 A/B/C 微型 prompt**：同一结构只改「配给状态」块（不足/均衡/充足），验章数是否跟着变；三份各 <1,500 字、虚构数据；附判读表与「提示词无效就别动机制」的判定规则 |
 | [`e3-unit-batch-implementation-plan.md`](design/architecture/e3-unit-batch-implementation-plan.md) | 🟡 T1–T3 / T5–T7 / T4a 已实施 · T4b + T8–T10 待做 | **E3 实施拆解**：请求 `{from,unitIndex,maxChapters}`、落库 `{from,to}` + 游标三元组；预算按本卷剩余章数冻结；T1–T11 每步可独立验证 + 检查点回归清单 |
 | [`e3-unit-batch-chain-design.md`](design/architecture/e3-unit-batch-chain-design.md) | 🟡 T12 已实施 · 待实机复验 | **连续单元（链式新 run）**：一次确认连写 N 个，**只到本卷末**；判定顺序 卷界 > 配额；每批必须重读检查点 / 重探 / 重放 author inputs / 等上一批退出活跃列表；重启不续链 |
+| [`chapter-position-format-design.md`](design/architecture/chapter-position-format-design.md) | 📝 待裁定（2026-10-20） | **章节位置表达统一**：`## 第3卷第2单元第3章（全书第45章）：章名`——把「属哪卷哪单元」从**事后折算**变成**生成时写进标题**，给 `outline-tree` 补第四种 source（`heading`），终结「单元写超 ⇒ 后续章号与单元整体错位」；三个各写各的章标题正则先抽成共享解析器（P0 零行为变化），存量永久双格式兼容 |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
 
