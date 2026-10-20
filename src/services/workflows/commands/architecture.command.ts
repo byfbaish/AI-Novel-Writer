@@ -175,6 +175,15 @@ function restoreSynopsisCheckpoint(
 /**
  * 由「最后完成的章」推导游标。**只用于旧检查点的一次性迁移**——
  * 新检查点一律使用写入时的显式游标（实际章数偏离计划后，章号→单元的等分映射会整体错位）。
+ *
+ * **取「含 `coveredTo + 1` 的单元」而不是「含 `coveredTo` 的单元」**：游标的语义是
+ * 「下一个要写的单元」（见 `synopsis_unit_cursor`），而 `coveredTo` 是**已经**写到的章。
+ * 两者只在「`coveredTo` 恰好是某单元的末章」时不同——而那正是旧写法出错的地方：
+ * 它把刚写完的单元当成下一个单元，于是下一批从 `coveredTo + 1` 起、却挂在旧单元名下，
+ * 单元序号少 1 且**不会自愈**（2026-10-20 B 项目实测：删游标后迁移成 `{1,1,5}`，
+ * 把属于单元 2 的内容标成单元 1）。`coveredTo` 落在单元中间时两者一致，仍是续写同一单元。
+ *
+ * 卷内已写按**含 `coveredTo+1` 的那个卷**算：跨卷时归 0（新卷一个字都还没写）。
  */
 export function deriveSynopsisUnitCursor(
   plan: string | undefined,
@@ -183,13 +192,18 @@ export function deriveSynopsisUnitCursor(
 ): SynopsisUnitCursor | null {
   if (!Number.isSafeInteger(totalChapters) || totalChapters < 1) return null
   if (!Number.isSafeInteger(coveredTo) || coveredTo < 1 || coveredTo > totalChapters) return null
+  // 全书已经写完 ⇒ 没有「下一个单元」。
+  if (coveredTo >= totalChapters) return null
   const parsed = parseArcStructure(plan ?? '')
   if (!parsed) return null
-  const span = arcSpanForChapters(parsed, totalChapters, coveredTo, coveredTo)
-  if (!span) return null
-  const writtenInVolume = coveredTo - span.majorRange[0] + 1
-  if (!Number.isSafeInteger(writtenInVolume) || writtenInVolume < 1) return null
-  return Object.freeze({ volumeIndex: span.majorIndex, unitIndex: span.midIndex, writtenInVolume })
+  const last = arcSpanForChapters(parsed, totalChapters, coveredTo, coveredTo)
+  const next = arcSpanForChapters(parsed, totalChapters, coveredTo + 1, coveredTo + 1)
+  if (!last || !next) return null
+  const writtenInVolume = next.majorIndex === last.majorIndex
+    ? coveredTo - last.majorRange[0] + 1
+    : 0
+  if (!Number.isSafeInteger(writtenInVolume) || writtenInVolume < 0) return null
+  return Object.freeze({ volumeIndex: next.majorIndex, unitIndex: next.midIndex, writtenInVolume })
 }
 
 /**
