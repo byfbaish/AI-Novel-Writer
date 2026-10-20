@@ -66,11 +66,15 @@ localStorage.getItem('aiNovel:e3-unit-batch') 返回 '1'
   `单元模式：第 k 个单元，从第 N 章起` + `本卷剩余 X 章，名义上界 Y 章`
   - 若仍看到「第 1 章 到第 5 章」的输入框，说明弹窗里的探针没拿到单元；下面一行灰字会写原因
 - [x] 勾「情节大纲」→ 确认 → 日志 `正在写【单元 1：名】，从第 1 章起（全书 M 章）`
-- [ ] 完成 → 日志 `本单元实际写 N 章（第 1–N 章）`
-- [ ] `.ai-novel/partial_arch.json`：`synopsis_range.to` = **实际** N（不是名义上界）
-- [ ] 同文件 `synopsis_unit_cursor` 是「下一个单元」
-  - 单元 1 写完且卷内还有单元 2 ⇒ `unitIndex` = 2、`writtenInVolume` = N
-  - 单元 1 是全卷唯一单元 ⇒ `volumeIndex` 已是下一卷、`unitIndex` = 1、`writtenInVolume` = 0
+- [x] 完成 → 日志 `本单元实际写 N 章（第 1–N 章）`
+- [x] `.ai-novel/partial_arch.json`：`synopsis_range.to` = **实际** N（不是名义上界）
+- [ ] 同文件 `synopsis_unit_cursor` 指向「**下一个要写的**单元」（不是刚写完的那个）
+  - 判据只看 **A0 里记下的「本卷有几个单元」**，分两种情形，别混：
+    - **本卷还有下一个单元**（本卷单元数 ≥ 2）⇒ `volumeIndex` **不变**，`unitIndex` = 2，`writtenInVolume` = 本单元实际章数
+      　首单元实测 5 章 ⇒ 应该读到 `{ volumeIndex: 1, unitIndex: 2, writtenInVolume: 5 }`
+    - **本卷只有这一个单元**（本卷单元数 = 1）⇒ `volumeIndex` 进下一卷，`unitIndex` = 1，`writtenInVolume` = 0
+  - ⚠️ 「全卷唯一单元」这个前提**只在本卷真的只有 1 个单元时**成立。本项目第 1 卷有 4 个单元，
+    所以首单元写完后仍然是**同一卷的第 2 个单元**，`volumeIndex` 不会变 —— 本轮实测即为 `{1, 2, 5}`。
 
 ### A2 连续第二单元（**A 的核心**）
 
