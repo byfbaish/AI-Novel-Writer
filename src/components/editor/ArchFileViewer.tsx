@@ -24,6 +24,7 @@ import { SaveFeedback, type SaveOutcome } from './save-feedback'
 import { useProjectStore } from '../../stores/project-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
+import { resolveSynopsisUnitLaunch, synopsisUnitLaunchEnabled } from '../../services/workflows/synopsis-unit-launch'
 import { createArchitectureWorkflow } from '../../services/workflows/architecture-workflow'
 import { renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix, plotOutlineCoveredTo } from '../../shared/plot-outline-contract'
 import { useWorkflowStore } from '../../stores/workflow-store'
@@ -642,11 +643,30 @@ function ArchFileViewerSession({
       throw new Error('项目会话已切换，未启动架构生成')
     }
     if (!isProjectSessionCurrent(projectSession)) throw new Error('项目会话已切换，未启动架构生成')
+    // E3 探针（T10）：开关打开且本次勾了情节大纲 ⇒ 「点一次 = 一个单元」，范围由落库游标决定，
+    // 对话框里的章号区间不再生效。开关关掉 / 算不出单元（旧骨架、无检查点）一律原样退回按章区间。
+    const synopsisUnit = import.meta.env.DEV && selectedSteps.includes('synopsis') && synopsisUnitLaunchEnabled()
+      ? await resolveSynopsisUnitLaunch({
+        projectSession,
+        totalChapters: Number(currentProject?.novelConfig?.totalChapters),
+        plotStructurePlan: (await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:project-core-get',
+          projectSession.projectPath,
+        ))?.plotStructurePlan,
+      })
+      : null
+    if (synopsisUnit) {
+      console.info(
+        `[E3] 单元批次：第 ${synopsisUnit.unitIndex} 个单元，从第 ${synopsisUnit.from} 章起`
+        + `（名义上界 ${synopsisUnit.maxChapters} 章 / 本卷剩余 ${synopsisUnit.volumeRemaining} 章）`,
+      )
+    }
     await launchCreativeWorkflow({
       workflow: 'generate_architecture',
       selectedSteps,
       stepGuidance,
-      synopsisRange,
+      ...(synopsisUnit ? { synopsisUnit } : { synopsisRange }),
       targetUnits,
     }, projectSession)
   }

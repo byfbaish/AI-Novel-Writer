@@ -12,6 +12,7 @@ import ConfirmCard from '../../panels/agent/ConfirmCard'
 import { useAgentStore } from '../../../stores/agent-store'
 import { useLLMStore } from '../../../stores/llm-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
+import { SYNOPSIS_UNIT_LAUNCH_FLAG } from '../../../services/workflows/synopsis-unit-launch'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -65,6 +66,7 @@ afterEach(async () => {
   container.remove()
   Reflect.deleteProperty(window, 'aiNovelAPI')
   setActiveProjectSessionContext(null)
+  window.localStorage.removeItem(SYNOPSIS_UNIT_LAUNCH_FLAG)
   useProjectStore.setState(originalProject)
   useLocaleStore.setState(originalLocale)
   useAgentStore.setState(originalAgent)
@@ -97,8 +99,56 @@ it.each(['architecture-page', 'outline-file'] as const)('passes the confirmed ra
   expect(invoke.mock.calls.some(([channel]) => channel === 'generation:execute')).toBe(false)
 })
 
-it.each(['generate_architecture', 'generate_blueprint'] as const)('shows the approved %s range and target without replacing them with defaults', async workflow => {
-  const resolveToolConfirmation = vi.fn()
+/** 20 章、一卷两单元：卷内剩余 20 章摊到 2 个单元 ⇒ 名义上界 10 章。 */
+const UNIT_PLAN = [
+  '## 卷一：开头',
+  '### 单元一：门牌',
+  '- 叙事任务：立规则。',
+  '### 单元二：定价',
+  '- 叙事任务：把销档变成交易。',
+].join('\n')
+
+it('sends a unit batch instead of a chapter range when the E3 probe flag is on', async () => {
+  window.localStorage.setItem(SYNOPSIS_UNIT_LAUNCH_FLAG, '1')
+  invoke.mockImplementation(async (channel: string) => {
+    if (channel === 'config:get') return { outlineTargetUnits: 650 }
+    if (channel === 'config:set') return { success: true }
+    if (channel === 'generation:list' || channel === 'skills:list-user') return []
+    if (channel === 'fs:check-exists') return false
+    if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
+    if (channel === 'db:project-core-get') {
+      return {
+        premise: '故事前提'.repeat(20), worldbuilding: '世界设定'.repeat(20), synopsis: '',
+        plotStructurePlan: UNIT_PLAN, totalChapters: 20,
+      }
+    }
+    if (channel === 'db:character-roster-read') return { status: 'ready', renderedMarkdown: '角色名单'.repeat(20), entries: [] }
+    if (channel === 'db:blueprint-get-all') return []
+    if (channel === 'fs:read-json') return { success: true, data: { synopsis_covered_to: 0 } }
+    if (channel === 'generation:begin') throw new Error('PLANNING_ENTRY_BOUNDARY_OBSERVED')
+    throw new Error(`Unexpected IPC ${channel}`)
+  })
+  await act(async () => root.render(<ArchFileViewer tabId="planning-outline-unit" filePath="ai-novel://core/synopsis" projectKey={project.path} content="" savedContent="" />))
+  await act(async () => page.getByRole('button', { name: 'AI 生成', exact: true }).click())
+  await act(async () => {
+    await page.getByRole('spinbutton', { name: '本次生成范围的结束章' }).fill('10')
+    await page.getByRole('button', { name: /确认生成/ }).click()
+  })
+  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('generation:begin', expect.objectContaining({
+    authorInputs: expect.arrayContaining([
+      expect.objectContaining({ id: 'architecture:planning-intent', text: expect.stringContaining('"synopsisUnit"') }),
+    ]),
+  }), expect.anything()))
+  const begin = invoke.mock.calls.find(([channel]) => channel === 'generation:begin')?.[1] as unknown as {
+    authorInputs: Array<{ id: string; text: string }>
+  }
+  const intent = begin.authorInputs.find(input => input.id === 'architecture:planning-intent')!.text
+  // 单元模式下没有按章区间（显式 null）：`to` 由模型写完再回填。
+  expect(intent).toContain('"synopsisRange":null')
+  expect(intent).toContain('"synopsisUnit":{"from":1,"unitIndex":1,"maxChapters":10,"volumeRemaining":20}')
+})
+
+it.each(['generate_architecture', 'generate_blueprint'] as const)('shows the approved %s range and target without replacing them with defaults', async workflow => {  const resolveToolConfirmation = vi.fn()
   useAgentStore.setState({ resolveToolConfirmation })
   await act(async () => root.render(<ConfirmCard toolCall={{
     id: 'confirmed-planning', toolName: 'start_workflow', status: 'waiting_confirm',
