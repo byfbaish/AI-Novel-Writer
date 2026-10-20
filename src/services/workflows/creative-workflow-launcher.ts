@@ -40,6 +40,11 @@ export type CreativeIntent =
       stepGuidance?: Record<string, string>
       /** 情节大纲本次生成范围 [from..to]（缺省 = 第 1 章到全书）。 */
       synopsisRange?: ArchitectureWorkflowParams['synopsisRange']
+      /**
+       * E3 逐单元批次（与 `synopsisRange` 互斥）：由调用方用**落库游标**构造，
+       * 见 `synopsis-unit-launch.ts`。请求期没有 `to`，实际章数由模型决定后回填。
+       */
+      synopsisUnit?: ArchitectureWorkflowParams['synopsisUnit']
       /** 从输出长度中断的检查点续写情节大纲。 */
       resumeSynopsis?: ArchitectureWorkflowParams['resumeSynopsis']
       /** 从输出长度中断的候选续写世界观。 */
@@ -131,6 +136,7 @@ async function definitionFor(
       selectedSteps: intent.selectedSteps,
       stepGuidance: intent.stepGuidance,
       synopsisRange: intent.synopsisRange ?? null,
+      synopsisUnit: intent.synopsisUnit ?? null,
       resumeSynopsis: intent.resumeSynopsis,
       resumeWorldBuilding: intent.resumeWorldBuilding,
       expectedRecoveryHandle: intent.expectedRecoveryHandle,
