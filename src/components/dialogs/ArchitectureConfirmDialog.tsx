@@ -14,6 +14,13 @@ import { AUDIENCE_EN, GENRE_EN } from '../editor/novel-config-labels'
 import { ipc } from '../../services/ipc-client'
 import { resolveWritingLanguage } from '../../shared/writing-language'
 import { assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS, DEFAULT_PLANNING_TARGET_UNITS, parsePlanningTargetUnits, PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../shared/plot-outline-contract'
+import { captureProjectSession } from '../project-session-gate'
+import {
+  describeSynopsisUnitProbe,
+  probeSynopsisUnitLaunchForProject,
+  synopsisUnitLaunchEnabled,
+  type SynopsisUnitProbeResult,
+} from '../../services/workflows/synopsis-unit-launch'
 
 type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'plotStructure' | 'synopsis'
 
@@ -153,6 +160,34 @@ export default function ArchitectureConfirmDialog({
     wasOpen.current = isOpen
   }, [isOpen, resetChecked])
 
+  /**
+   * E3 探针（T10）：打开弹窗就先探一次「这次点下去会不会按单元写」。
+   * 弹窗里必须**如实显示**——否则界面上还留着章号区间，作者会以为按章跑（2026-10-20 现场踩过）。
+   * 这里只是展示；真正的判定仍在确认时（父组件）与命令侧 `approveUnitContext`。
+   */
+  const [unitPreview, setUnitPreview] = useState<SynopsisUnitProbeResult | null>(null)
+  const totalChapterCount = Number(currentProject?.novelConfig.totalChapters) || 0
+  useEffect(() => {
+    if (!isOpen || !import.meta.env.DEV || !synopsisUnitLaunchEnabled()) {
+      setUnitPreview(null)
+      return
+    }
+    const session = captureProjectSession(currentProject)
+    if (!session) {
+      setUnitPreview(null)
+      return
+    }
+    let disposed = false
+    // 先清空：弹窗重开时不能先闪一下上一轮的单元信息
+    setUnitPreview(null)
+    void probeSynopsisUnitLaunchForProject({ projectSession: session, totalChapters: totalChapterCount })
+      .then(result => { if (!disposed) setUnitPreview(result) })
+      .catch(() => { if (!disposed) setUnitPreview(null) })
+    return () => { disposed = true }
+  }, [isOpen, currentProject, totalChapterCount])
+  /** 本次走单元模式时，章号区间与「续写」都不再参与生成。 */
+  const unitMode = unitPreview?.unit ?? null
+
   if (!currentProject) return null
   const config = currentProject.novelConfig
   const genre = [text(config.genre, GENRE_EN[config.genre] ?? config.genre), config.subGenre]
@@ -216,7 +251,15 @@ export default function ArchitectureConfirmDialog({
       }
 
       // 范围合法性（超出总章数或起大于止）
-      const resolution = resolveSynopsisRange()
+      // 单元模式下章号区间不参与生成，但仍要给出一个**合理的兜底区间**：
+      // 万一确认时的探针退回按章（状态在弹窗期间变了），用的会是「从本单元起点连推一批」，
+      // 而不是输入框里那个可能过期的手填值。
+      const unitFallbackRange = unitMode
+        ? { from: unitMode.from, to: Math.min(totalChapters, unitMode.from + PLANNING_ACTION_CHAPTER_LIMIT - 1) }
+        : null
+      const resolution = unitFallbackRange
+        ? { ok: true as const, range: unitFallbackRange }
+        : resolveSynopsisRange()
       if (!resolution.ok) {
         setGuardError(text(
           `情节大纲范围无效。请选择第 1–${totalChapters} 章内连续的 1–${PLANNING_ACTION_CHAPTER_LIMIT} 章。`,
@@ -384,7 +427,7 @@ export default function ArchitectureConfirmDialog({
                   <AlertTriangle size={13} />
                   {text('情节大纲 · 本次生成范围', 'Plot outline · batch scope')}
                 </div>
-                {coveredTo > 0 && (
+                {coveredTo > 0 && !unitMode && (
                   <label
                     className="flex items-center gap-1.5 text-xs cursor-pointer select-none"
                     title={canContinue
@@ -410,7 +453,7 @@ export default function ArchitectureConfirmDialog({
               >
                   {text(`全书共 ${totalChapters} 章，每次最多生成 ${PLANNING_ACTION_CHAPTER_LIMIT} 章。完成后可继续下一批。`, `The book has ${totalChapters} chapters. Generate up to ${PLANNING_ACTION_CHAPTER_LIMIT} chapters per action, then continue with the next batch.`)}
                 </p>
-                {coveredTo > 0 && (
+                {coveredTo > 0 && !unitMode && (
                   <p role="status" className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>
                     {canContinue
                       ? continuing
@@ -425,6 +468,40 @@ export default function ArchitectureConfirmDialog({
                       : text(`已覆盖至第 ${coveredTo} 章，全书章节均已覆盖。`, `Covered through chapter ${coveredTo}; every chapter is covered.`)}
                   </p>
                 )}
+                {unitPreview && !unitMode && (
+                  <p role="status" className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>
+                    {text(
+                      `未按单元生成：${describeSynopsisUnitProbe(unitPreview)}`,
+                      `Not generating by unit (reason: ${unitPreview.reason}).`,
+                    )}
+                  </p>
+                )}
+                {unitMode ? (
+                  <div
+                    role="status"
+                    className="rounded-md p-2 space-y-1 text-xs"
+                    style={{ backgroundColor: 'var(--color-bg)', border: '1px solid var(--color-accent)' }}
+                  >
+                    <p className="m-0 font-medium" style={{ color: 'var(--color-text)' }}>
+                      {text(
+                        `单元模式：第 ${unitMode.unitIndex} 个单元，从第 ${unitMode.from} 章起`,
+                        `Unit mode: unit ${unitMode.unitIndex}, starting at chapter ${unitMode.from}`,
+                      )}
+                    </p>
+                    <p className="m-0" style={{ color: 'var(--color-text-secondary)' }}>
+                      {text(
+                        `本卷剩余 ${unitMode.volumeRemaining} 章，名义上界 ${unitMode.maxChapters} 章。篇幅由剧情决定，写完按实际章数落盘。`,
+                        `${unitMode.volumeRemaining} chapters left in this volume, nominal cap ${unitMode.maxChapters}. The unit ends when the plot ends and the actual count is recorded afterwards.`,
+                      )}
+                    </p>
+                    <p className="m-0" style={{ color: 'var(--color-text-muted)' }}>
+                      {text(
+                        '章号区间与「续写」在此模式下不生效；要按章生成请关掉 localStorage 开关。',
+                        'The chapter range and “Continue” do not apply in unit mode.',
+                      )}
+                    </p>
+                  </div>
+                ) : (
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
                   <span style={{ color: 'var(--color-text-muted)' }}>{text('第', 'From ch.')}</span>
                   <input
@@ -468,6 +545,7 @@ export default function ArchitectureConfirmDialog({
                       : text('章', 'chapter')}
                   </span>
                 </div>
+                )}
                 <label className="block text-xs">
                   {resolveWritingLanguage(config.writingLanguage) === 'zh-CN'
                     ? text('每章大纲目标字数', 'Outline target characters per chapter')

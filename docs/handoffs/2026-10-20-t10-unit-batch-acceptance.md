@@ -29,13 +29,13 @@ localStorage.setItem('aiNovel:e3-unit-batch', '1')   // 开
 localStorage.removeItem('aiNovel:e3-unit-batch')     // 关（恢复逐字节旧行为）
 ```
 
-- [ ] 开启后点「生成情节大纲」，DevTools 先出现 `[E3] 确认生成已抵达：步骤=…，单元开关=on`
+- [x] 开启后点「生成情节大纲」，DevTools 先出现 `[E3] 确认生成已抵达：步骤=…，单元开关=on`
   - **没有这一行 = 点击根本没走到确认处理**（按钮被禁用/前一版代码没重载），后面的观测点全部无意义
-- [ ] 紧接着出现 `[E3] 已进单元模式：第 k 个单元，从第 N 章起（名义上界 X 章 / 本卷剩余 Y 章）`
+- [x] 紧接着出现 `[E3] 已进单元模式：第 k 个单元，从第 N 章起（名义上界 X 章 / 本卷剩余 Y 章）`
   - 若是 `[E3] 本次走按章区间：<原因>（reason=…）`，说明探针退回了，**原因就在这句话里**，别猜
-- [ ] 界面上会同时弹一个 toast（`[E3] 单元批次…` 或 `[E3] 本次走按章区间：…`），不依赖控制台级别过滤
-- [ ] 想看结构化结果：控制台输入 `__e3UnitProbe`，会打印 `{unit, reason, coveredTo, checkpointFound, cursorDerived}`
-- [ ] 关掉后同一操作仍走按章区间（`architecture:planning-intent` 里是 `synopsisRange`，不是 `synopsisUnit`）
+- [x] 界面上会同时弹一个 toast（`[E3] 单元批次…` 或 `[E3] 本次走按章区间：…`），不依赖控制台级别过滤
+- [x] 想看结构化结果：控制台输入 `__e3UnitProbe`，会打印 `{unit, reason, coveredTo, checkpointFound, cursorDerived}`
+- [x] 关掉后同一操作仍走按章区间（`architecture:planning-intent` 里是 `synopsisRange`，不是 `synopsisUnit`）
 
 > ⚠️ **控制台级别过滤**：DevTools 的级别下拉若停在上次的「自定义级别」并关掉了 Info，`console.log/info` 全被隐藏（表现为「应用一条日志都没有」）。2026-10-20 就因此误判过一次「点了没反应」。选「默认级别」（或勾上「信息」）即可；新日志一律走 `console.warn`（警告级），默认不会被吃。
 
@@ -43,8 +43,8 @@ localStorage.removeItem('aiNovel:e3-unit-batch')     // 关（恢复逐字节旧
 
 ## 2. 环境（两个项目都要）
 
-- [ ] `pnpm run rebuild:electron` —— `better-sqlite3` 常被 node 侧测试翻成 Node ABI，不重建 `pnpm dev` 直接崩
-- [ ] `pnpm dev`，等日志出现 `[AI Novel IPC] 所有 Controller 已注册完成` 再动手
+- [x] `pnpm run rebuild:electron` —— `better-sqlite3` 常被 node 侧测试翻成 Node ABI，不重建 `pnpm dev` 直接崩
+- [x] `pnpm dev`，等日志出现 `[AI Novel IPC] 所有 Controller 已注册完成` 再动手
 
 ---
 
@@ -52,14 +52,17 @@ localStorage.removeItem('aiNovel:e3-unit-batch')     // 关（恢复逐字节旧
 
 ### A0 准备
 
-- [ ] 新建项目，`pnpm dev` 里走完「故事前提 / 角色 / 世界观 / **弧光结构**」四个步骤
+- [x] 新建项目，`pnpm dev` 里走完「故事前提 / 角色 / 世界观 / **弧光结构**」四个步骤
   - ⚠️ 弧光结构必须有 `### 单元一：` 或 `【小弧名】` 划界，否则单元模式**一步都跑不了**
-- [ ] 记下 `novelConfig.totalChapters` = \_____\_（后面所有判据都拿它当分母）
-- [ ] 记下弧光结构里有几卷、每卷几个单元 = \______
-- [ ] 确认 `.ai-novel/partial_arch.json` 里**没有** `synopsis_covered_to`（或为 0）
+- [x] 记下 `novelConfig.totalChapters` = \__\_150\__\_（后面所有判据都拿它当分母）
+- [x] 记下弧光结构里有几卷、每卷几个单元 =7 卷，第 1 卷 4 个单元；第 2 卷 5 个单元；第 3 卷 3 个单元；第 4 卷 4 个单元；第 5 卷 5 个单元；第 6 卷 4 个单元；第 7 卷 3 个单元
+- [x] 确认 `.ai-novel/partial_arch.json` 里**没有** `synopsis_covered_to`（或为 0）
 
 ### A1 首单元
 
+- [ ] 打开「AI 生成故事架构」弹窗时，情节大纲那一块**不再出现章号输入框**，而是一行
+      `单元模式：第 k 个单元，从第 N 章起` + `本卷剩余 X 章，名义上界 Y 章`
+  - 若仍看到「第 1 章 到第 5 章」的输入框，说明弹窗里的探针没拿到单元；下面一行灰字会写原因
 - [ ] 勾「情节大纲」→ 确认 → 日志 `正在写【单元 1：名】，从第 1 章起（全书 M 章）`
 - [ ] 完成 → 日志 `本单元实际写 N 章（第 1–N 章）`
 - [ ] `.ai-novel/partial_arch.json`：`synopsis_range.to` = **实际** N（不是名义上界）
