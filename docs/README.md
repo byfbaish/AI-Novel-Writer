@@ -131,6 +131,7 @@ docs/
 | [`outline-setting-compatibility-guard-design.md`](design/prompt/outline-setting-compatibility-guard-design.md) | 待裁定 R5 | 大纲/蓝图层「设定相容性」守卫 |
 | [`outline-structure-marker-assessment.md`](design/prompt/outline-structure-marker-assessment.md) | 评估（替代已实施） | 大纲要不要加「标记行」；诊断对、处方错层 |
 | [`global-guidance-scope-lint-design.md`](design/prompt/global-guidance-scope-lint-design.md) | ⏸ 搁置 | 全局写作要求章节越界静态校验（作者裁定不进框架） |
+| [`refine-chapter-base-alignment-design.md`](design/prompt/refine-chapter-base-alignment-design.md) | ✅ 已实施 | 精修基座定位失准（三方指令打架 / 同源摘要 27%）重构为「改写动作 + 不可动边界」 |
 | [`contract-first-reassessment.md`](design/prompt/contract-first-reassessment.md) | 存档 | 《全链路 Prompt 架构重构评估》复核；结论已折进上位稿 |
 | [`prompt-cache-evaluation.md`](design/prompt/prompt-cache-evaluation.md) | ⏸ 挂起 | 提示词缓存命中率评估 |
 | [`debug-prompt-trace-design.md`](design/prompt/debug-prompt-trace-design.md) | 设计稿 | Debug 开关：Prompt 片段追踪 + 输入输出落盘 |
@@ -154,6 +155,8 @@ docs/
 | [`l3-arc-gap-verification.md`](design/architecture/l3-arc-gap-verification.md) | 定论 | 为什么剧情树/叙事线索都不构成 L3 |
 | [`layered-generation-assessment.md`](design/architecture/layered-generation-assessment.md) | 评估 | 分层/增量生成；仅篇幅约束可采纳 |
 | [`architecture-consistency-design.md`](design/architecture/architecture-consistency-design.md) | 评估（已进台账） | 五层一致性校验 → AC1/AC2/AC3 三段走 |
+| [`ac5-numeric-resource-consistency-design.md`](design/architecture/ac5-numeric-resource-consistency-design.md) | ⛔ 部分否决 | AC5 数值一致性：**机读数值行已否决**，保留判据 CJ–CM 与覆盖版阻断项 |
+| [`world-state-review-and-wiring-plan.md`](design/architecture/world-state-review-and-wiring-plan.md) | 📝 待裁定（W 线） | 世界状态：**状态已在库里、两条消费链都不读**（正文 `.withCharacterStates('')`、审稿只放行 `kind=author`）；W0 接线可证伪 |
 | [`blueprint-key-events-structuring-design.md`](design/architecture/blueprint-key-events-structuring-design.md) | 初稿 v2 · 待裁定 | 蓝图 `keyEvents` 结构化 |
 | [`phase2-keyevents-bprime-implementation-plan.md`](design/architecture/phase2-keyevents-bprime-implementation-plan.md) | 待过目 · 未动代码 | 阶段 2 + B′（含 R6）实施清单 |
 | [`p11-plan-validity-and-fact-registry-design.md`](design/architecture/p11-plan-validity-and-fact-registry-design.md) | 📝 待裁定 | 计划的有效期与事实登记：水位列 / `attacks` / 复核五步 / 章级「前提」 |
@@ -189,14 +192,15 @@ docs/
 | [`c1-review-architecture-declaration-design.md`](design/review/c1-review-architecture-declaration-design.md) | ✅ 已实施 | 审稿链「远期设定使用规则」声明（路子 B） |
 | [`consistency-check-ordinal-claim-guard-design.md`](design/review/consistency-check-ordinal-claim-guard-design.md) | ✅ 已实施 | 序数/全称断言独立复核 |
 
-### 4.4 角色 · [`design/characters/`](design/characters/)（2 篇）
+### 4.4 角色 · [`design/characters/`](design/characters/)（3 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
 | [`p1-blueprint-roster-sync.md`](design/characters/p1-blueprint-roster-sync.md) | ✅ 已实施 | 蓝图角色 ↔ 角色卡 roster 同步 |
 | [`p2-character-card-ai-generation.md`](design/characters/p2-character-card-ai-generation.md) | ✅ 已实施 | 角色卡管理界面的 AI 生成增强 |
+| [`character-proposal-adoption-merge-design.md`](design/characters/character-proposal-adoption-merge-design.md) | ✅ 已实施 | 采用到已有角色时改为字段合并（不覆盖已引用设定）+ 候选→已有卡的关系可直接采用 |
 
-### 4.5 功能与设置 · [`design/features/`](design/features/)（4 篇）
+### 4.5 功能与设置 · [`design/features/`](design/features/)（5 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -204,6 +208,7 @@ docs/
 | [`p1-2b-settings-period-authoring-guide.md`](design/features/p1-2b-settings-period-authoring-guide.md) | 草案 v1 | 世界观期次标注的作者操作手册 |
 | [`system-notification-design.md`](design/features/system-notification-design.md) | 待裁定 | 系统级 OS 通知 + 声音提醒（主进程发通知/渲染进程播音/聚焦抑制/注册表热插拔；N1–N3 分期） |
 | [`task-completion-notify-design.md`](design/features/task-completion-notify-design.md) | 已列入待办（顺延） | 应用内 toast 统一宿主 + 热插拔注册表（作者裁先做系统级；将来可合并为双输出） |
+| [`ai-output-live-render-design.md`](design/features/ai-output-live-render-design.md) | ✅ 已实施 | AI 输出面板运行态只给状态行、不渲染流式文本（原文：审稿把渲染进程推到 10GB 的 O(n²) 取证与参数） |
 
 ---
 
