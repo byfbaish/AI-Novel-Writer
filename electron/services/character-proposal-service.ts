@@ -41,6 +41,53 @@ function historyLabel(group: CharacterProposalHistoryEntry['sourceGroup'], itemC
             : '来自旧角色名单'
   return `${base} · ${itemCount} 个角色`
 }
+/** 可以「原文保留 + 追加候选」的叙述性字段。标识类字段不在此列。 */
+const MERGE_TEXT_FIELDS = new Set([
+  'appearance', 'personality', 'background', 'abilities', 'motivation', 'arc', 'notes',
+])
+/** 标识类字段：已有非空值时一律以现有卡为准，绝不覆盖、也不拼接。 */
+const IDENTITY_FIELDS = new Set(['name', 'gender', 'age', 'role'])
+
+/** 去空白与常见标点后比较，用于判断「候选是否已经写在现有文本里」。 */
+function normalizeForMerge(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\s+/gu, '')
+    .replace(/[，。；、,.;:：!！?？"'“”‘’（）()【】[\]]/gu, '')
+}
+
+/**
+ * 采用到已有角色时的字段合并策略。
+ *
+ * 背景（2026-10-21 作者裁定）：初始角色面板里的内容**已经被正文引用**，直接覆盖会让已写好的
+ * 正文与角色卡对不上。因此改成合并：
+ * - 现有为空 → 采用候选（补全照旧生效）；
+ * - 值相同 / 候选已经包含在现有文本里 → 不写（保证重复导入幂等）；
+ * - 叙述性字段 → 保留原文并在末尾追加候选，中间空一行；
+ * - 标识字段（姓名/性别/年龄/定位）→ 保留现有值，不覆盖也不拼接。
+ *
+ * 导出以便纯函数单测；调用方只负责把它算出的差异写进 changes。
+ */
+export function mergeAdoptedCharacterFields(
+  existing: Readonly<Record<string, string>>,
+  candidate: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const merged: Record<string, string> = {}
+  for (const [key, rawCandidate] of Object.entries(candidate)) {
+    const value = typeof rawCandidate === 'string' ? rawCandidate.trim() : ''
+    const current = typeof existing[key] === 'string' ? existing[key] : ''
+    if (!value) continue
+    if (!current.trim()) { merged[key] = value; continue }
+    if (current.trim() === value) continue
+    if (IDENTITY_FIELDS.has(key) || !MERGE_TEXT_FIELDS.has(key)) continue
+    const normalizedCurrent = normalizeForMerge(current)
+    const normalizedCandidate = normalizeForMerge(value)
+    if (!normalizedCandidate || normalizedCurrent.includes(normalizedCandidate)) continue
+    merged[key] = `${current.trimEnd()}\n\n${value}`
+  }
+  return merged
+}
+
 export class CharacterProposalService {
   constructor(private readonly db: Database.Database, private readonly projectId: string,
     private readonly prove: (source: CharacterProposalSource, forWrite: boolean, version: ArchitectureDerivationVersion) => CharacterProposalProof) {}
@@ -461,12 +508,11 @@ export class CharacterProposalService {
         if (selection.action === 'map' && batch.source.kind !== 'finalized-generation') {
           const existing = existingCharacters.find(character => character.characterId === selection.characterId && !character.retired)
           if (!existing) throw new Error('CHARACTER_ID_UNKNOWN')
-          const provenance = existing.provenance as { kind?: string; fields?: Record<string, { kind?: string }> }
-          const adopted = Object.fromEntries(Object.entries(item.fields).filter(([key, value]) => {
-            const current = existing.fields[key as keyof CharacterStaticFields] ?? ''
-            const origin = provenance.fields?.[key]?.kind ?? provenance.kind
-            return current !== value && (!current.trim() || origin !== 'author' && origin !== 'legacy')
-          }))
+          // 合并而非覆盖：初始角色/已定稿正文引用过的字段不能被候选直接冲掉。
+          const adopted = mergeAdoptedCharacterFields(
+            existing.fields as unknown as Record<string, string>,
+            item.fields as unknown as Record<string, string>,
+          )
           if (Object.keys(adopted).length) identityRequest.changes.push({ characterId: selection.characterId, fields: adopted })
         }
         if (selection.action === 'map' && batch.source.kind === 'finalized-generation'

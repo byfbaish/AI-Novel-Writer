@@ -4,7 +4,7 @@ import { act, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
 import { CharacterProposalSelectionPanel } from '../CharacterProposalSelectionPanel'
-import { createCharacterProposalChoices } from '../../../services/character-proposal-choices'
+import { createCharacterProposalChoices, toApproveCharacterProposalRequest, type CharacterProposalChoices } from '../../../services/character-proposal-choices'
 import type { CharacterProposalBatch } from '../../../shared/character-proposal'
 import { useLocaleStore } from '../../../stores/locale-store'
 
@@ -32,17 +32,21 @@ const batch: CharacterProposalBatch = {
   ],
 }
 
-async function mount() {
+async function mount(options: {
+  identities?: Array<{ characterId: string; name: string; role?: string }>
+  onChoices?: (choices: CharacterProposalChoices) => void
+} = {}) {
   useLocaleStore.setState({ locale: 'zh-CN' })
   host = document.createElement('div')
   document.body.append(host)
   root = createRoot(host)
   const choices = createCharacterProposalChoices(batch)
+  const identities = options.identities ?? [{ characterId: '卡-陈默', name: '陈默', role: 'protagonist' }]
   // 受控宿主：决策变化必须回灌，否则测不到"选项随决策收窄"。
   const Host = () => {
     const [current, setCurrent] = useState(choices)
-    return <CharacterProposalSelectionPanel batch={batch} identities={[{ characterId: '卡-陈默', name: '陈默', role: 'protagonist' }]}
-      choices={current} onChange={setCurrent} />
+    return <CharacterProposalSelectionPanel batch={batch} identities={identities}
+      choices={current} onChange={next => { options.onChoices?.(next); setCurrent(next) }} />
   }
   await act(async () => { root?.render(<Host />) })
   return host
@@ -77,6 +81,40 @@ describe('候选面板的分组与滚动', () => {
     expect(host.textContent).toContain('已有角色之间的关系提议（1）')
     host.querySelectorAll('details')[1]!.open = true
     await expect.element(edge).toBeVisible()
+  })
+
+  it('目标唯一命中已有卡时可以直接采用到那张卡，并产出 targetCharacterId 的关系', async () => {
+    let latest: CharacterProposalChoices | undefined
+    const host = await mount({
+      identities: [
+        { characterId: '卡-陈默', name: '陈默', role: 'protagonist' },
+        { characterId: '卡-李慧兰', name: '李慧兰', role: 'minor' },
+      ],
+      onChoices: next => { latest = next },
+    })
+    host.querySelectorAll('details')[1]!.open = true
+    const edge = page.getByLabelText('关系处理：陈默 → 李慧兰')
+    await expect.element(edge).toBeVisible()
+    // 2026-10-21：此前这里被 `!targetSelectionKey` 整行禁用，只剩灰掉的「暂不采用」。
+    expect((edge.element() as HTMLSelectElement).disabled).toBe(false)
+    const optionValues = () => Array.from(edge.element().querySelectorAll('option')).map(option => option.value)
+    expect(optionValues()).toContain('bind:卡-李慧兰')
+    // 起点先采用到已有卡，否则关系无处可写（与主进程校验同规则）。
+    await act(async () => {
+      const source = host!.querySelector<HTMLSelectElement>('select[aria-label="采用方式：陈默 · a"]')!
+      source.value = 'map:卡-陈默'
+      source.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    await act(async () => {
+      const fresh = page.getByLabelText('关系处理：陈默 → 李慧兰').element() as HTMLSelectElement
+      fresh.value = 'bind:卡-李慧兰'
+      fresh.dispatchEvent(new Event('change', { bubbles: true }))
+    })
+    expect(latest?.relationships).toContainEqual({ sourceSelectionKey: 'a', targetCharacterId: '卡-李慧兰', relation: '母子' })
+    // 合同层：主进程按 source(候选)/target(已有卡) 的混搭形态收这条边。
+    expect(toApproveCharacterProposalRequest(latest!, 'op').relationships).toContainEqual({
+      sourceSelectionKey: 'a', targetCharacterId: '卡-李慧兰', relation: '母子',
+    })
   })
 
   it('端点不产生角色时「采用这条关系」消失，并显式说明原因', async () => {

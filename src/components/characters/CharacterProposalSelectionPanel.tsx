@@ -40,6 +40,7 @@ export function CharacterProposalSelectionPanel({ batch, identities, choices, on
   const rowProps = { batch, identities, choices, onChange, disabled }
   return <section className="space-y-3" aria-label={text('批量选择角色采用方式', 'Choose character adoption in one batch')}>
     <p className="text-xs text-[var(--color-text-secondary)]">{text('新面孔在上；与已有角色同名的候选和已有角色之间的关系折叠在下方（同名不会自动合并）。可选择对应角色、新建、登记为功能配角或暂不采用；最后一次确认统一保存。', 'New faces first; candidates sharing a name with an existing card and edges between existing cards are collapsed below (names are never merged automatically). Choose a character, create one, register an anchored supporting role, or keep unresolved, then confirm the batch once.')}</p>
+    <p className="text-xs text-[var(--color-text-secondary)]">{text('采用到已有角色时不会覆盖已有内容：背景/性格/外貌等叙述字段与候选合并（重复内容自动去重），姓名/性别/年龄/定位以现有卡为准。', 'Adopting onto an existing card never overwrites it: narrative fields (background, personality, appearance…) are merged with the candidate and duplicates are dropped; name, gender, age and role keep the existing card values.')}</p>
     <div className="max-h-80 space-y-1 overflow-y-auto pr-1">
       {freshItems.map(item => <CandidateItem key={item.selectionKey} item={item} {...rowProps} />)}
       {freshRelations.map((relation, index) => <RelationshipBinding key={`${relation.sourceSelectionKey}:${relation.targetSelectionKey ?? relation.targetName}:${index}`}
@@ -161,37 +162,77 @@ function RelationshipBinding({ relation, batch, identities, choices, onChange, d
   const blocked = disabled || batch.status !== 'pending-approval'
   const sourceName = batch.items.find(item => item.selectionKey === relation.sourceSelectionKey)?.fields.name ?? relation.sourceSelectionKey
   const targetName = batch.items.find(item => item.selectionKey === relation.targetSelectionKey)?.fields.name ?? relation.targetName ?? text('未知目标', 'Unknown target')
-  const key = (value: CharacterProposalRelationshipChoice) => JSON.stringify([value.sourceSelectionKey ?? value.sourceCharacterId, value.targetSelectionKey ?? value.targetCharacterId, value.relation])
-  const adopted = choices.relationships.find(value => key(value) === key({ sourceSelectionKey: relation.sourceSelectionKey, targetSelectionKey: relation.targetSelectionKey, relation: relation.relation }))
+  /**
+   * 目标端点有两种合法形态（主进程合同：source / target 各二选一，见
+   * `electron/services/character-proposal-service.ts` 的关系校验）：
+   * - `targetSelectionKey`：目标是本批候选（之后新建或映射到已有卡）；
+   * - `targetCharacterId`：目标就是名册里**已有**的卡。
+   *
+   * 此前只要 `targetSelectionKey` 为空就整行禁用（`disabled={… || !relation.targetSelectionKey}`），
+   * 于是「候选 → 已有卡」的提议（以及纯已有角色之间的关系）显示成灰掉的「暂不采用」，
+   * 连原因都不写。现在按名字在名册里唯一命中时，直接给出「采用到已有角色卡」这一项。
+   */
+  const matchedTargets = relation.targetSelectionKey
+    ? []
+    : identities.filter(identity => identity.name === relation.targetName)
+  const existingTargetId = matchedTargets.length === 1 ? matchedTargets[0].characterId : undefined
+  const ambiguousTarget = matchedTargets.length > 1
+  const targetKey = relation.targetSelectionKey ?? existingTargetId
+  const keyOf = (source: string | undefined, target: string | undefined, edge: string) =>
+    JSON.stringify([source, target, edge])
+  const proposalKey = keyOf(relation.sourceSelectionKey, targetKey, relation.relation)
+  const adopted = choices.relationships.find(value => keyOf(
+    value.sourceSelectionKey ?? value.sourceCharacterId,
+    value.targetSelectionKey ?? value.targetCharacterId,
+    value.relation,
+  ) === proposalKey)
   const pendingKey = JSON.stringify(['blueprint-pending', relation.sourceSelectionKey, relation.targetName])
   const marked = choices.blueprintPendingRelations?.some(value => JSON.stringify(['blueprint-pending', value.sourceSelectionKey, value.targetName]) === pendingKey) ?? false
   // 关系只能在"会产生角色"的端点之间成立（主进程同规则校验）：暂不采用/功能配角没有卡，
   // 边无处可写 —— 选项必须随当前决策收窄，否则作者一保存就炸。
   const decisionOf = (key: string | undefined) => key ? choices.selections.find(item => item.selectionKey === key)?.action : undefined
-  const endpointsAdopted = isAdoptedCharacterDecision(decisionOf(relation.sourceSelectionKey) ?? 'keep-unresolved')
-    && (!relation.targetSelectionKey || isAdoptedCharacterDecision(decisionOf(relation.targetSelectionKey) ?? 'keep-unresolved'))
-  const mode = adopted?.targetCharacterId ? `bind:${adopted.targetCharacterId}` : adopted && endpointsAdopted ? 'adopt' : marked ? 'blueprint-pending' : 'skip'
+  const sourceAdopted = isAdoptedCharacterDecision(decisionOf(relation.sourceSelectionKey) ?? 'keep-unresolved')
+  const targetAdopted = relation.targetSelectionKey
+    ? isAdoptedCharacterDecision(decisionOf(relation.targetSelectionKey) ?? 'keep-unresolved')
+    // 已命中名册的卡本身就有卡，无需再"采用"。
+    : Boolean(existingTargetId)
+  const endpointsAdopted = sourceAdopted && targetAdopted
+  const mode = adopted
+    ? (adopted.targetCharacterId ? `bind:${adopted.targetCharacterId}` : 'adopt')
+    : marked ? 'blueprint-pending' : 'skip'
   const replace = (next: CharacterProposalRelationshipChoice | null, nextMarked: boolean) => onChange({ ...choices,
-    relationships: choices.relationships.filter(value => key(value) !== key({ sourceSelectionKey: relation.sourceSelectionKey, targetSelectionKey: relation.targetSelectionKey, relation: relation.relation })).concat(next ? [next] : []),
+    relationships: choices.relationships.filter(value => keyOf(
+      value.sourceSelectionKey ?? value.sourceCharacterId,
+      value.targetSelectionKey ?? value.targetCharacterId,
+      value.relation,
+    ) !== proposalKey).concat(next ? [next] : []),
     blueprintPendingRelations: (choices.blueprintPendingRelations ?? []).filter(value => JSON.stringify(['blueprint-pending', value.sourceSelectionKey, value.targetName]) !== pendingKey)
       .concat(nextMarked ? [{ sourceSelectionKey: relation.sourceSelectionKey, targetName: relation.targetName ?? targetName }] : []) })
   return <div className="flex flex-wrap items-center gap-2 text-xs">
     <span className="min-w-0 flex-1 truncate">{sourceName} → {targetName}：{relation.relation}</span>
     <NativeSelect aria-label={text(`关系处理：${sourceName} → ${targetName}`, `Relationship: ${sourceName} → ${targetName}`)}
-      disabled={blocked || !relation.targetSelectionKey || !sourceName} value={mode}
+      disabled={blocked || !sourceName || ambiguousTarget} value={mode}
       onChange={event => {
         const value = event.target.value
         if (value === 'skip') return replace(null, false)
         if (value === 'blueprint-pending') return replace(null, true)
-        if (value === 'adopt') return endpointsAdopted ? replace({ sourceSelectionKey: relation.sourceSelectionKey, targetSelectionKey: relation.targetSelectionKey, relation: relation.relation }, false) : replace(null, false)
+        if (value === 'adopt') return endpointsAdopted && relation.targetSelectionKey
+          ? replace({ sourceSelectionKey: relation.sourceSelectionKey, targetSelectionKey: relation.targetSelectionKey, relation: relation.relation }, false)
+          : replace(null, false)
         replace({ sourceSelectionKey: relation.sourceSelectionKey, targetCharacterId: value.slice(5), relation: relation.relation }, false)
       }}>
       <option value="skip">{text('暂不采用', 'Do not adopt')}</option>
       {relation.targetSelectionKey && endpointsAdopted && <option value="adopt">{text('采用这条关系', 'Adopt this relationship')}</option>}
+      {existingTargetId && <option value={`bind:${existingTargetId}`}>
+        {text(`采用到已有角色卡：${targetName}`, `Adopt onto the existing card: ${targetName}`)}
+      </option>}
       <option value="blueprint-pending">{text('标记为「蓝图待建角色」', 'Mark as a blueprint-pending character')}</option>
-      {identities.map(identity => <option key={identity.characterId} value={`bind:${identity.characterId}`}>{text('绑定到已有角色卡：', 'Bind to an existing card: ')}{identity.name}</option>)}
+      {identities.filter(identity => identity.characterId !== existingTargetId).map(identity => <option key={identity.characterId} value={`bind:${identity.characterId}`}>{text('绑定到已有角色卡：', 'Bind to an existing card: ')}{identity.name}</option>)}
     </NativeSelect>
-    {relation.targetSelectionKey && !endpointsAdopted && <span className="w-full text-[var(--color-text-secondary)]">
+    {ambiguousTarget && <span className="w-full text-[var(--color-text-secondary)]">
+      {text('名册里有多个同名角色，无法自动判定目标；请用下方「同时为已有角色添加边」手填。', 'Several cards share that name, so the target is ambiguous; add the edge manually below.')}
+    </span>}
+    {!ambiguousTarget && targetKey && !endpointsAdopted && <span className="w-full text-[var(--color-text-secondary)]">
       {text('关系两端都需「新建」或「采用到已有角色」才能写入；当前有一端是暂不采用/功能配角（没有卡，关系无处可写）。', 'Both ends must create or adopt a character; one end is unresolved or an anchored supporting role, so the edge has nowhere to be written.')}
     </span>}
   </div>
