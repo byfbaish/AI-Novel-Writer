@@ -2,6 +2,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle,
+  ChevronDown,
+  ChevronRight,
   CircleMinus,
   FileCheck2,
   HelpCircle,
@@ -496,6 +498,7 @@ function ReviewReportSession({
   const [rechecking, setRechecking] = useState(false)
   const [recheckMessage, setRecheckMessage] = useState<{ kind: 'error' | 'success'; text: string } | null>(null)
   const [showLegend, setShowLegend] = useState(false)
+  const [showPassed, setShowPassed] = useState(false)
   const sourceReviewId = confirmationSourceReviewId(initialSnapshot, reviewId)
   const summary = initialSnapshot?.summary ?? parsedReport.summary
   const goalReview = confirmed?.snapshot.goalReview ?? initialSnapshot?.goalReview ?? parsedReport.goalReview
@@ -544,12 +547,15 @@ function ReviewReportSession({
     }
   }, [chapterDir, cycle, draftPath, initialSnapshot, projectKey, reviewId])
 
-  // 按分类分组
-  const categories = new Map<string, EditableReviewItem[]>()
+  // 按分类分组。「检查通过」单独成区并默认折叠：复核时要知道的是还没解决的问题，
+  // 一堆「未见矛盾」散在各分类里会把真正的指摘挤散。
+  const issueCategories = new Map<string, EditableReviewItem[]>()
+  const passCategories = new Map<string, EditableReviewItem[]>()
   for (const item of items) {
-    const list = categories.get(item.category) || []
+    const target = item.severity === 'pass' ? passCategories : issueCategories
+    const list = target.get(item.category) || []
     list.push(item)
-    categories.set(item.category, list)
+    target.set(item.category, list)
   }
 
   // 统计
@@ -942,9 +948,212 @@ function ReviewReportSession({
     }
   }
 
+  /**
+   * 单项渲染：未解决指摘与「检查通过」共用同一套卡片，否则两处样式会各自漂移。
+   */
+  const renderItem = (item: EditableReviewItem) => {
+    const meta = SEVERITY_META[item.severity]
+    const copy = severityCopy(item.severity, text)
+    const isPass = item.severity === 'pass'
+    const goal = goalReview?.items.find(goal => goal.id === item.goalId)
+    const isEmptyAuthorIssue = item.origin === 'author' && !item.description.trim()
+    const projectedFinding = cycle?.findings.find(finding => (
+      item.findingId
+        ? finding.findingId === item.findingId
+        : finding.reviewItemIndex === item.reviewItemIndex
+    ))
+    const findingId = item.findingId ?? projectedFinding?.findingId
+    const findingStatus = item.decision === 'waive'
+      ? 'author-waived'
+      : projectedFinding?.status ?? item.findingStatus
+    const findingStatusLabel = findingStatus === 'resolved'
+      ? text('已解决', 'Resolved')
+      : findingStatus === 'unresolved'
+        ? text('未解决', 'Unresolved')
+        : findingStatus === 'unknown'
+          ? text('待核实', 'Unknown')
+          : findingStatus === 'author-waived'
+            ? text('作者带建议完成', 'Author waived')
+            : findingStatus === 'unverified'
+              ? text('未验证', 'Unverified')
+              : null
+    return (
+      <div
+        key={item.id}
+        className={cn(
+          'px-3 py-2 rounded-md border text-xs leading-relaxed',
+          meta.borderClass, meta.bgClass
+        )}
+      >
+        <div className="flex items-start gap-2">
+          <SeverityIcon severity={item.severity} />
+          <div className="flex-1 min-w-0 space-y-2">
+            {findingStatusLabel && (
+              <span
+                data-review-finding-status={findingStatus}
+                className="inline-flex rounded border border-[var(--color-border)] px-2 py-0.5 text-[0.7rem] text-[var(--color-text-secondary)]"
+              >
+                {findingStatusLabel}
+              </span>
+            )}
+            {goal && (
+              <div className="space-y-1" aria-label={text('本章目标与证据', 'Chapter goal and evidence')}>
+                <p className="font-medium">
+                  {text('本章目标：', 'Chapter goal: ')}{goal.text}
+                  {' — '}{goal.status === 'completed' ? text('已完成', 'Completed') : goal.status === 'unmet' ? text('未完成', 'Unmet') : text('待核实', 'Needs verification')}
+                </p>
+                {goal.evidence.map((evidence, index) => (
+                  <blockquote key={index} className="border-l-2 border-[var(--color-border)] pl-2">
+                    <Quote size={10} className="inline mr-1" />{evidence.quote}
+                  </blockquote>
+                ))}
+                {goal.evidence.length === 0 && <p>{text('暂无可定位正文证据', 'No locatable chapter evidence')}</p>}
+              </div>
+            )}
+            {editingChecklist && !isPass ? (
+              <>
+                <div className="grid grid-cols-[minmax(0,1fr)_130px] gap-2">
+                  <Input
+                    aria-label={text('问题分类', 'Issue category')}
+                    value={item.category}
+                    onChange={(event) => updateItem(item.id, { category: event.target.value })}
+                  />
+                  <NativeSelect
+                    aria-label={text('严重程度', 'Severity')}
+                    value={item.severity}
+                    onChange={(event) => {
+                      const severity = normalizeSeverity(event.target.value)
+                      updateItem(item.id, {
+                        severity,
+                        ...(severity === 'unknown' ? { decision: 'ignore' } : {}),
+                      })
+                    }}
+                  >
+                    <option value="error">{text('严重问题', 'Critical issue')}</option>
+                    <option value="warning">{text('改进建议', 'Improvement')}</option>
+                    <option value="unknown">{text('待核实', 'Needs verification')}</option>
+                  </NativeSelect>
+                </div>
+                <Textarea
+                  aria-label={text('审稿问题', 'Review issue')}
+                  aria-invalid={isEmptyAuthorIssue || undefined}
+                  aria-describedby={isEmptyAuthorIssue ? `author-issue-hint-${item.id}` : undefined}
+                  value={item.description}
+                  placeholder={item.origin === 'author' ? text(
+                    '请填写需要纳入本次修稿的具体问题',
+                    'Describe the specific issue to include in this revision',
+                  ) : undefined}
+                  onChange={(event) => updateItem(item.id, { description: event.target.value })}
+                />
+                {isEmptyAuthorIssue && (
+                  <p
+                    id={`author-issue-hint-${item.id}`}
+                    className="text-[0.7rem] text-[var(--color-warning-text)]"
+                  >
+                    {text(
+                      '请填写具体问题，或移除这一项。',
+                      'Describe the issue, or remove this item.',
+                    )}
+                  </p>
+                )}
+                <Input
+                  aria-label={text('相关原文（可选）', 'Related text (optional)')}
+                  value={item.quote ?? ''}
+                  placeholder={text('相关原文（可选）', 'Related text (optional)')}
+                  onChange={(event) => updateItem(item.id, { quote: event.target.value })}
+                />
+              </>
+            ) : (
+              <div>
+                <span className="text-[var(--color-text-secondary)]">{item.description}</span>
+                <span className={cn('ml-2 text-[0.65rem] opacity-70', meta.colorClass)}>
+                  [{copy.actionLabel}]
+                </span>
+              </div>
+            )}
+            {item.sourceChapter && (
+              <p className="text-[0.7rem] text-[var(--color-text-muted)]">
+                {text(
+                  `来源：第${item.sourceChapter}章`,
+                  `Source: Chapter ${item.sourceChapter}`,
+                )}
+              </p>
+            )}
+            {!isPass && editingChecklist && (
+              <div className="flex items-center justify-between gap-2">
+                <span className={cn('text-[0.7rem]', meta.colorClass)}>
+                  {item.decision === 'apply'
+                    ? text('已纳入本次修稿', 'Included in this revision')
+                    : item.decision === 'waive'
+                      ? text('作者已带建议完成，不会传给模型', 'Author waived; not sent to the model')
+                      : text('已忽略，不会传给模型', 'Ignored; not sent to the model')}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => updateItem(item.id, {
+                      decision: item.decision === 'apply' ? 'ignore' : 'apply',
+                    })}
+                  >
+                    {item.decision === 'apply'
+                      ? <CircleMinus size={12} />
+                      : <RotateCcw size={12} />}
+                    {item.decision === 'apply'
+                      ? text('忽略', 'Ignore')
+                      : item.goalId || item.severity === 'unknown' ? text('明确纳入修稿', 'Explicitly include in revision') : text('恢复', 'Restore')}
+                  </Button>
+                  {item.origin === 'ai' && findingId && findingStatus !== 'resolved' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      title={text('作者显式豁免（waive）', 'Explicit author waiver')}
+                      onClick={() => updateItem(item.id, {
+                        decision: item.decision === 'waive' ? 'ignore' : 'waive',
+                      })}
+                    >
+                      <FileCheck2 size={12} />
+                      {item.decision === 'waive'
+                        ? text('取消带建议完成', 'Cancel waiver')
+                        : text('带建议完成', 'Complete with advisory note')}
+                    </Button>
+                  )}
+                  {item.origin === 'author' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setItems(current => current.filter(candidate => candidate.id !== item.id))}
+                      title={text('移除人工问题', 'Remove author issue')}
+                    >
+                      <X size={12} />
+                      {text('移除', 'Remove')}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        {/* 引用原文（如有） */}
+        {!editingChecklist && item.quote && (
+          <div
+            className="mt-1.5 ml-5 pl-2 text-[0.7rem] italic"
+            style={{
+              borderLeft: '2px solid var(--color-border)',
+              color: 'var(--color-text-muted)',
+            }}
+          >
+            <Quote size={10} className="inline mr-1 opacity-60" />
+            {item.quote}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="h-full overflow-y-auto" ref={scrollContainerRef}>
-      <div className="max-w-2xl mx-auto px-6 py-4">
+      <div className="max-w-4xl mx-auto px-6 py-4">
         {/* 统计栏 */}
         <div className="flex items-center gap-4 mb-4 pb-3 border-b border-[var(--color-border)]">
           <h3 className="text-base font-bold text-[var(--color-text)]">{text('审稿报告', 'Review report')}</h3>
@@ -1076,215 +1285,39 @@ function ReviewReportSession({
           </div>
         ) : (
           <div className="space-y-4">
-            {Array.from(categories.entries()).map(([category, items]) => (
+            {Array.from(issueCategories.entries()).map(([category, items]) => (
               <div key={category}>
                 <h4 className="text-sm font-semibold text-[var(--color-text)] mb-2 flex items-center gap-1.5">
                   <Info size={14} className="text-[var(--color-text-muted)]" />
                   {category}
                 </h4>
                 <div className="space-y-1.5 pl-1">
-                  {items.map((item) => {
-                    const meta = SEVERITY_META[item.severity]
-                    const copy = severityCopy(item.severity, text)
-                    const isPass = item.severity === 'pass'
-                    const goal = goalReview?.items.find(goal => goal.id === item.goalId)
-                    const isEmptyAuthorIssue = item.origin === 'author' && !item.description.trim()
-                    const projectedFinding = cycle?.findings.find(finding => (
-                      item.findingId
-                        ? finding.findingId === item.findingId
-                        : finding.reviewItemIndex === item.reviewItemIndex
-                    ))
-                    const findingId = item.findingId ?? projectedFinding?.findingId
-                    const findingStatus = item.decision === 'waive'
-                      ? 'author-waived'
-                      : projectedFinding?.status ?? item.findingStatus
-                    const findingStatusLabel = findingStatus === 'resolved'
-                      ? text('已解决', 'Resolved')
-                      : findingStatus === 'unresolved'
-                        ? text('未解决', 'Unresolved')
-                        : findingStatus === 'unknown'
-                          ? text('待核实', 'Unknown')
-                          : findingStatus === 'author-waived'
-                            ? text('作者带建议完成', 'Author waived')
-                            : findingStatus === 'unverified'
-                              ? text('未验证', 'Unverified')
-                              : null
-                    return (
-                      <div
-                        key={item.id}
-                        className={cn(
-                          'px-3 py-2 rounded-md border text-xs leading-relaxed',
-                          meta.borderClass, meta.bgClass
-                        )}
-                      >
-                        <div className="flex items-start gap-2">
-                          <SeverityIcon severity={item.severity} />
-                          <div className="flex-1 min-w-0 space-y-2">
-                            {findingStatusLabel && (
-                              <span
-                                data-review-finding-status={findingStatus}
-                                className="inline-flex rounded border border-[var(--color-border)] px-2 py-0.5 text-[0.7rem] text-[var(--color-text-secondary)]"
-                              >
-                                {findingStatusLabel}
-                              </span>
-                            )}
-                            {goal && (
-                              <div className="space-y-1" aria-label={text('本章目标与证据', 'Chapter goal and evidence')}>
-                                <p className="font-medium">
-                                  {text('本章目标：', 'Chapter goal: ')}{goal.text}
-                                  {' — '}{goal.status === 'completed' ? text('已完成', 'Completed') : goal.status === 'unmet' ? text('未完成', 'Unmet') : text('待核实', 'Needs verification')}
-                                </p>
-                                {goal.evidence.map((evidence, index) => (
-                                  <blockquote key={index} className="border-l-2 border-[var(--color-border)] pl-2">
-                                    <Quote size={10} className="inline mr-1" />{evidence.quote}
-                                  </blockquote>
-                                ))}
-                                {goal.evidence.length === 0 && <p>{text('暂无可定位正文证据', 'No locatable chapter evidence')}</p>}
-                              </div>
-                            )}
-                            {editingChecklist && !isPass ? (
-                              <>
-                                <div className="grid grid-cols-[minmax(0,1fr)_130px] gap-2">
-                                  <Input
-                                    aria-label={text('问题分类', 'Issue category')}
-                                    value={item.category}
-                                    onChange={(event) => updateItem(item.id, { category: event.target.value })}
-                                  />
-                                  <NativeSelect
-                                    aria-label={text('严重程度', 'Severity')}
-                                    value={item.severity}
-                                    onChange={(event) => {
-                                      const severity = normalizeSeverity(event.target.value)
-                                      updateItem(item.id, {
-                                        severity,
-                                        ...(severity === 'unknown' ? { decision: 'ignore' } : {}),
-                                      })
-                                    }}
-                                  >
-                                    <option value="error">{text('严重问题', 'Critical issue')}</option>
-                                    <option value="warning">{text('改进建议', 'Improvement')}</option>
-                                    <option value="unknown">{text('待核实', 'Needs verification')}</option>
-                                  </NativeSelect>
-                                </div>
-                                <Textarea
-                                  aria-label={text('审稿问题', 'Review issue')}
-                                  aria-invalid={isEmptyAuthorIssue || undefined}
-                                  aria-describedby={isEmptyAuthorIssue ? `author-issue-hint-${item.id}` : undefined}
-                                  value={item.description}
-                                  placeholder={item.origin === 'author' ? text(
-                                    '请填写需要纳入本次修稿的具体问题',
-                                    'Describe the specific issue to include in this revision',
-                                  ) : undefined}
-                                  onChange={(event) => updateItem(item.id, { description: event.target.value })}
-                                />
-                                {isEmptyAuthorIssue && (
-                                  <p
-                                    id={`author-issue-hint-${item.id}`}
-                                    className="text-[0.7rem] text-[var(--color-warning-text)]"
-                                  >
-                                    {text(
-                                      '请填写具体问题，或移除这一项。',
-                                      'Describe the issue, or remove this item.',
-                                    )}
-                                  </p>
-                                )}
-                                <Input
-                                  aria-label={text('相关原文（可选）', 'Related text (optional)')}
-                                  value={item.quote ?? ''}
-                                  placeholder={text('相关原文（可选）', 'Related text (optional)')}
-                                  onChange={(event) => updateItem(item.id, { quote: event.target.value })}
-                                />
-                              </>
-                            ) : (
-                              <div>
-                                <span className="text-[var(--color-text-secondary)]">{item.description}</span>
-                                <span className={cn('ml-2 text-[0.65rem] opacity-70', meta.colorClass)}>
-                                  [{copy.actionLabel}]
-                                </span>
-                              </div>
-                            )}
-                            {item.sourceChapter && (
-                              <p className="text-[0.7rem] text-[var(--color-text-muted)]">
-                                {text(
-                                  `来源：第${item.sourceChapter}章`,
-                                  `Source: Chapter ${item.sourceChapter}`,
-                                )}
-                              </p>
-                            )}
-                            {!isPass && editingChecklist && (
-                              <div className="flex items-center justify-between gap-2">
-                                <span className={cn('text-[0.7rem]', meta.colorClass)}>
-                                  {item.decision === 'apply'
-                                    ? text('已纳入本次修稿', 'Included in this revision')
-                                    : item.decision === 'waive'
-                                      ? text('作者已带建议完成，不会传给模型', 'Author waived; not sent to the model')
-                                      : text('已忽略，不会传给模型', 'Ignored; not sent to the model')}
-                                </span>
-                                <div className="flex items-center gap-1">
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => updateItem(item.id, {
-                                      decision: item.decision === 'apply' ? 'ignore' : 'apply',
-                                    })}
-                                  >
-                                    {item.decision === 'apply'
-                                      ? <CircleMinus size={12} />
-                                      : <RotateCcw size={12} />}
-                                    {item.decision === 'apply'
-                                      ? text('忽略', 'Ignore')
-                                      : item.goalId || item.severity === 'unknown' ? text('明确纳入修稿', 'Explicitly include in revision') : text('恢复', 'Restore')}
-                                  </Button>
-                                  {item.origin === 'ai' && findingId && findingStatus !== 'resolved' && (
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      title={text('作者显式豁免（waive）', 'Explicit author waiver')}
-                                      onClick={() => updateItem(item.id, {
-                                        decision: item.decision === 'waive' ? 'ignore' : 'waive',
-                                      })}
-                                    >
-                                      <FileCheck2 size={12} />
-                                      {item.decision === 'waive'
-                                        ? text('取消带建议完成', 'Cancel waiver')
-                                        : text('带建议完成', 'Complete with advisory note')}
-                                    </Button>
-                                  )}
-                                  {item.origin === 'author' && (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => setItems(current => current.filter(candidate => candidate.id !== item.id))}
-                                      title={text('移除人工问题', 'Remove author issue')}
-                                    >
-                                      <X size={12} />
-                                      {text('移除', 'Remove')}
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        {/* 引用原文（如有） */}
-                        {!editingChecklist && item.quote && (
-                          <div
-                            className="mt-1.5 ml-5 pl-2 text-[0.7rem] italic"
-                            style={{
-                              borderLeft: '2px solid var(--color-border)',
-                              color: 'var(--color-text-muted)',
-                            }}
-                          >
-                            <Quote size={10} className="inline mr-1 opacity-60" />
-                            {item.quote}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
+                  {items.map(renderItem)}
                 </div>
               </div>
             ))}
+            {passCount > 0 && (
+              <div>
+                <button
+                  onClick={() => setShowPassed(value => !value)}
+                  aria-expanded={showPassed}
+                  className="flex items-center gap-1.5 text-sm font-semibold text-[var(--color-text-secondary)] hover:text-[var(--color-text)] transition-colors"
+                >
+                  {showPassed ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  {text(`检查通过（${passCount}）`, `Passed checks (${passCount})`)}
+                </button>
+                {showPassed && (
+                  <div className="mt-2 space-y-3">
+                    {Array.from(passCategories.entries()).map(([category, passedItems]) => (
+                      <div key={category}>
+                        <h4 className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 pl-1">{category}</h4>
+                        <div className="space-y-1.5 pl-1">{passedItems.map(renderItem)}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
