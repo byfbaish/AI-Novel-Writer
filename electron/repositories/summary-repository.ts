@@ -365,9 +365,11 @@ const reviewObservationKey = (characterId: string, field: CharacterStateTextFiel
 /**
  * 把本章审稿的 v3 差分按「角色 + 字段」归位到已冻结的正文坐标里。
  *
- * 只有 `ok` 才交叉：`absent`（没审过）/ `legacy`（v2 报告）/ `stale`（审的是另一版正文）/
- * `unreadable`（报告体解析不了）都拿不出可信引文。它们**不等于「审稿没意见」**，
- * 但也都不该被当成反对意见 —— 用旧正文的引文去否新正文，比不交叉更坏。
+ * 只有 `ok` 才交叉：`absent`（没审过）/ `legacy`（v2 报告）/ `unreadable`（报告体解析不了）
+ * 都拿不出可信引文。它们**不等于「审稿没意见」**，但也不该被当成反对意见。
+ *
+ * 正文被改过（合并修订是原地写回同一 draft，所以几乎必然）**不再**整体否决交叉：
+ * 逐条看引文在定稿正文里还在不在。还在就判；被修订掉就跳过（正常修订）。
  */
 function reviewStateObservations(context: FinalizedCharacterContext, db: BetterSqlite3.Database): ReviewObservationIndex {
   const index: ReviewObservationIndex = new Map()
@@ -383,7 +385,12 @@ function reviewStateObservations(context: FinalizedCharacterContext, db: BetterS
       idsByName.set(label, ids)
     }
   }
-  for (const observation of locateReviewStateObservations(lookup.items, context.content)) {
+  // 同一版正文时不必再拿审稿正文比一次：定稿里定位不到就只可能是报告体坏了。
+  const observations = locateReviewStateObservations(lookup.items, context.content,
+    lookup.sameContent ? undefined : lookup.sourceContent)
+  for (const observation of observations) {
+    // 引文已被修订掉：审稿当时那句话不在了，拿它去否现在的正文没有意义。
+    if (observation.origin === 'revised-away') continue
     const ids = idsByName.get(observation.characterName.trim())
     // 对不上任何一张卡的名字不交叉（这类名字归判据 CX：没有卡可写）；对得上多位则
     // 根本认不出是谁 —— 两种情况都不猜，因为本条更新的 characterId 本身是确定的。
@@ -403,7 +410,7 @@ function reviewConflict(index: ReviewObservationIndex, characterId: string, fiel
   // 这本身就说明「是不是同一次变化」不确定 ⇒ 不判，交作者。
   if (observations.length > 1) return { observed: observations[0]!.observed, quote: observations[0]!.quote }
   const observation = observations[0]!
-  // 锚点定位不到/不唯一：证据坏掉不等于没有证据（判据 CS）。按判不了处理，不按没意见。
+  // 两版正文都定位不到：报告体本身坏了，不等于没有证据（判据 CS）。按判不了处理，不按没意见。
   if (!observation.span) return { observed: observation.observed, quote: observation.quote }
   return judgeReviewStateConflict({ observed: observation.observed, span: observation.span }, { value, span: evidence }) === 'conflict'
     ? { observed: observation.observed, quote: observation.quote } : null

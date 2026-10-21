@@ -253,12 +253,18 @@ function parseSavedReport(body: string): SavedReport {
  * 也不该有。按 id 取最新，拿到的必然是复核报告 ⇒ 每次修订过的章节都读成 `unreadable`，
  * 交叉一次都不触发 —— 一个永远不生效的判据比没有判据更坏。
  *
- * `reviews.base_draft_id` 是它审的那一稿，`source_content` 是当时读的正文。定稿期拿到的是
- * `FinalizedSourceIdentity`，其中 `contentHash` 是**不可变正文**的哈希 —— 两者不等就说明
- * 审稿之后正文又被改过（审稿→精修→合并是原地写回同一 draft），引文指向的段落可能已经不
- * 存在，此时任何交叉判定都是拿旧证据评新正文。
+ * `reviews.base_draft_id` 是它审的那一稿，`source_content` 是当时读的正文。
  *
- * 所以返回**分状态**而不是「有无」：`stale` / `unreadable` 都不是「审稿没意见」，
+ * **正文会不会被改**：会，而且必然。合并修订是**原地写回同一 draft**
+ * （`merged_to_draft_id === base_draft_id`），所以审稿冻结的 `source_content` 与定稿正文
+ * 几乎从不相等。早先的做法是「整篇哈希不等 ⇒ 判为 stale ⇒ 完全不交叉」，结果是真实主链路
+ * 上一章都不触发 —— 一个永远不生效的判据比没有判据更坏。
+ *
+ * 所以闸门下沉到**逐条引文**：把 `sourceContent` 一起交给调用方，由
+ * `locateReviewStateObservations` 判断每条引文在定稿正文里还在不在。还在就照判；被
+ * 修订掉就静默跳过（那是正常修订，不是坏证据）；两版都定位不到才降级为待裁决。
+ *
+ * 返回**分状态**而不是「有无」：`absent` / `legacy` / `unreadable` 都不是「审稿没意见」，
  * 把它们折成空数组就等于把一份坏证据当成沉默（判据 CS 与判据 CZ 同一个坑）。
  */
 export type ReviewStateDeltaLookup =
@@ -266,11 +272,17 @@ export type ReviewStateDeltaLookup =
   | { status: 'absent' }
   /** 审过，但所有报告都产生于 v3 之前（v1/v2 无差分字段）。 */
   | { status: 'legacy' }
-  /** 有差分，但审的是另一版正文 —— 引文坐标不可信。 */
-  | { status: 'stale' }
   /** 有报告体，但没有一份能解析成审稿报告。 */
   | { status: 'unreadable' }
-  | { status: 'ok'; reviewId: number; items: ReviewStateDeltaItem[] }
+  | {
+    status: 'ok'
+    reviewId: number
+    items: ReviewStateDeltaItem[]
+    /** 审稿当时读的正文，用来区分「正文改过了」与「报告坏了」。 */
+    sourceContent: string
+    /** `sourceContent` 与定稿正文同一版：此时不可能出现 `revised-away`。 */
+    sameContent: boolean
+  }
 
 export function readReviewStateDeltaForDraft(draftId: number, contentHash: string, db: Database.Database): ReviewStateDeltaLookup {
   if (!integer(draftId, 1) || !HASH.test(contentHash)) return { status: 'absent' }
@@ -288,8 +300,10 @@ export function readReviewStateDeltaForDraft(draftId: number, contentHash: strin
     parsedAny = true
     if (report.stateDelta === undefined) continue
     if (typeof row.sourceContent !== 'string') continue
-    if (hash(row.sourceContent) !== contentHash) return { status: 'stale' }
-    return { status: 'ok', reviewId: row.reviewId, items: report.stateDelta }
+    return {
+      status: 'ok', reviewId: row.reviewId, items: report.stateDelta,
+      sourceContent: row.sourceContent, sameContent: hash(row.sourceContent) === contentHash,
+    }
   }
   return { status: parsedAny ? 'legacy' : 'unreadable' }
 }

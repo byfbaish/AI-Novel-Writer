@@ -78,7 +78,8 @@ describe('locateReviewStateObservations', () => {
 
   it('returns the exact span in the finalized prose and keeps trimmed quotes as-is', () => {
     expect(locateReviewStateObservations([{ ...item, quote: '  揣着六枚灵石  ' }], content)).toEqual([
-      { ...item, quote: '揣着六枚灵石', span: { start: content.indexOf('揣着六枚灵石'), end: content.indexOf('揣着六枚灵石') + 6 } },
+      { ...item, quote: '揣着六枚灵石', span: { start: content.indexOf('揣着六枚灵石'), end: content.indexOf('揣着六枚灵石') + 6 },
+        origin: 'finalized' },
     ])
   })
 
@@ -90,5 +91,30 @@ describe('locateReviewStateObservations', () => {
     ], content)
     expect(observations).toHaveLength(2)
     expect(observations.map(observation => observation.span)).toEqual([null, null])
+    expect(observations.map(observation => observation.origin)).toEqual(['unlocatable', 'unlocatable'])
+  })
+
+  // 合并修订是原地写回同一 draft ⇒ 审稿正文与定稿正文几乎从不相等。整篇比哈希就一章都不触发，
+  // 所以闸门下沉到逐条：引文还在就判，被修订掉就跳过。
+  it('still locates a quote that survived a rewrite of the surrounding prose', () => {
+    const revised = '清晨出门时他怀里揣着六枚灵石。傍晚回到药铺，灵石只剩四枚。（本节已精修）'
+    expect(locateReviewStateObservations([item], revised, content)).toEqual([
+      { ...item, quote: '揣着六枚灵石', span: { start: revised.indexOf('揣着六枚灵石'), end: revised.indexOf('揣着六枚灵石') + 6 },
+        origin: 'finalized' },
+    ])
+  })
+
+  it('reports a quote that only the reviewed version had as revised-away, not as broken evidence', () => {
+    const revised = '清晨出门时他怀里揣着六枚灵石。傍晚回到药铺，灵石全换成了丹药。'
+    expect(locateReviewStateObservations([{ ...item, quote: '灵石只剩四枚' }], revised, content)).toEqual([
+      { ...item, quote: '灵石只剩四枚', span: null, origin: 'revised-away' },
+    ])
+  })
+
+  // 两版都定位不到 = 报告体本身坏了：这不是「改过了」，是证据不可用（判据 CS）。
+  it('keeps a quote locatable in neither version as unlocatable', () => {
+    const revised = '清晨出门时他怀里揣着六枚灵石。'
+    expect(locateReviewStateObservations([{ ...item, quote: '这句话两版里都没有' }], revised, content))
+      .toEqual([{ ...item, quote: '这句话两版里都没有', span: null, origin: 'unlocatable' }])
   })
 })

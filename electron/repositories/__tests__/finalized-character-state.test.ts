@@ -470,10 +470,23 @@ describe('review state crossings (W3 unit 2)', () => {
     }
   })
 
-  // 审稿之后正文又被改过（审稿→精修→合并）：引文坐标已经不可信，拿旧证据否新正文比不交叉更坏。
-  it('ignores a review whose frozen prose differs from the finalized content', () => {
+  // 审稿之后正文又被改过（审稿→精修→合并是原地写回同一 draft，所以几乎必然）。
+  // 但**引文还在**：坐标由定稿正文重新定位，判据照样生效。整篇比哈希会一章都不触发。
+  it('still crosses when the prose was revised but the quoted passage survived', () => {
     const f = fixture()
     review(f.db, { stateDelta: observation('一把铜钥匙', '林岚走进北塔'), content: `${prose}（精修前）` })
+    f.saveNotes()
+    const context = f.context()
+    expect(SummaryRepository.commitFinalizedCharacterStates(context, f.response(context, { keyItems: '半块木牌' }), f.db))
+      .toMatchObject({ applied: 0, candidates: [{ reason: 'review-conflict', reviewObserved: '一把铜钥匙' }] })
+    expect(f.row().cs_key_items).toBe('')
+  })
+
+  // 反过来：修订把被引用的那句改掉了。那是正常修订，不是坏证据 —— 静默跳过，不打扰作者。
+  it('skips an observation whose quoted passage the revision removed', () => {
+    const f = fixture()
+    review(f.db, { stateDelta: observation('一把铜钥匙', '林岚推开北塔的门'),
+      content: '🌙林岚推开北塔的门。周研留在旧站。' })
     f.saveNotes()
     const context = f.context()
     expect(SummaryRepository.commitFinalizedCharacterStates(context, f.response(context, { keyItems: '半块木牌' }), f.db))

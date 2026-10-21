@@ -63,33 +63,62 @@ export function judgeReviewStateConflict(
 }
 
 /**
- * 一审稿差分条目 + 它在**定稿正文**里的精确位置。
+ * 引文定位的三种结局 —— 分开不是为了好看，是因为它们要求的**动作**完全不同。
  *
- * `span` 为 null = 这条 quote 在正文里定位不到或不唯一。调用方**不得**把它当成
- * 「没有观测」：那是一份存在但不可用的证据，按判据 CS 应显式降级为待裁决，
- * 而不是当成「审稿没意见」。
+ * - `finalized`：在定稿正文里唯一定位到。可判。
+ * - `revised-away`：只在审稿那一版正文里定位到 ⇒ 审稿之后正文被改过（合并修订是
+ *   原地写回同一 draft）。这是**正常流程**，不是坏证据：审稿提的那句话已经不在了，
+ *   拿它去否现在的正文没有意义。静默跳过。
+ * - `unlocatable`：两版都定位不到/不唯一 ⇒ 报告体本身坏了。按判据 CS 显式降级为
+ *   待裁决，不能当成「审稿没意见」。
+ *
+ * 把后两者混成一个 `span: null` 就会二选一地错：要么把正常修订全变成待裁决（作者
+ * 每章被问一堆已经改好的事），要么把坏报告当沉默吃掉（AC5 的静默失效）。
+ */
+export type ReviewStateObservationOrigin = 'finalized' | 'revised-away' | 'unlocatable'
+
+/**
+ * 一审稿差分条目 + 它的定位结局。
+ *
+ * `span` 非 null 时是**定稿正文**里的坐标。`origin` 决定调用方动作，见上。
  */
 export interface ReviewStateObservation extends ReviewStateDeltaItem {
   span: StateEvidenceSpan | null
+  origin: ReviewStateObservationOrigin
+}
+
+function uniqueSpanIn(content: string, quote: string): StateEvidenceSpan | null {
+  const start = quote ? content.indexOf(quote) : -1
+  if (!quote || start < 0) return null
+  // 能定位到两处的引文不是弱证据，是错证据。
+  if (content.indexOf(quote, start + 1) >= 0) return null
+  return { start, end: start + quote.length }
 }
 
 /**
  * 把 v3 差分条目逐条定位到正文。定位规则与生成侧保持一致（`locateGoalEvidence`
  * 的 requireUnique 口径）：**能定位到两处的引文不是弱证据，是错证据。**
  *
+ * `previousContent` = 审稿当时读的那一版正文。给了它才能把「正文改过了」和
+ * 「报告坏了」分开；不给则两者都落到 `unlocatable`（保守，但会多问作者）。
+ *
  * 与生成侧不同的是这里**不丢弃** —— 生成侧丢弃是因为报告要落盘成事实记录；
  * 交叉裁决阶段丢弃等于把「审稿提过这个字段、但锚点坏了」静默吃掉，作者永远不会
- * 知道有条观测没被判。所以保留 `span: null`，由调用方降级。
+ * 知道有条观测没被判。所以保留 `span: null`，由调用方按 `origin` 处置。
  */
 export function locateReviewStateObservations(
   items: readonly ReviewStateDeltaItem[],
   content: string,
+  previousContent?: string,
 ): ReviewStateObservation[] {
   return items.map(item => {
     const quote = item.quote.trim()
-    const start = quote ? content.indexOf(quote) : -1
-    if (!quote || start < 0 || content.indexOf(quote, start + 1) >= 0) return { ...item, span: null }
+    const span = uniqueSpanIn(content, quote)
     // quote 归一成正文的精确切片：报告体里带的可能与正文只差空白，回写/比对要用正文那份。
-    return { ...item, quote: content.slice(start, start + quote.length), span: { start, end: start + quote.length } }
+    if (span) return { ...item, quote: content.slice(span.start, span.end), span, origin: 'finalized' }
+    if (previousContent !== undefined && previousContent !== content && uniqueSpanIn(previousContent, quote)) {
+      return { ...item, span: null, origin: 'revised-away' }
+    }
+    return { ...item, span: null, origin: 'unlocatable' }
   })
 }
