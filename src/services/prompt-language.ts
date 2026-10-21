@@ -284,13 +284,14 @@ Return exactly one JSON object whose fields are strictly equal to the field cont
 - Project-wide writing guidance: {{global_guidance}}
 
 [Deliverable]
-Build four connected dimensions. The first three each need a concrete source of conflict; the fourth is a spatial index that gives the plot and the arc structure stable place names.
+Build five connected dimensions. The first three each need a concrete source of conflict; the fourth is a spatial index that gives the plot and the arc structure stable place names; the fifth is the calendar that gives every chapter a computable day order.
 
-★ **Your output must contain these four headings in order** (copy the heading text; do not merge, omit, or reorder them):
+★ **Your output must contain these five headings in order** (copy the heading text; do not merge, omit, or reorder them):
 ### 1. Core rules and exploitable asymmetry
 ### 2. Factions, hierarchy, and scarce resources
 ### 3. Hidden history and deep crisis
 ### 4. Spatial structure (map and regions)
+### 5. Calendar (day order and cycles)
 
 1. Core rules and exploitable asymmetry
 - Define the rules that govern power, technology, institutions, or the supernatural.
@@ -299,6 +300,7 @@ Build four connected dimensions. The first three each need a concrete source of 
 2. Factions, hierarchy, and scarce resources
 - Identify irreconcilable faction or class interests.
 - Define the scarce resource, its allocation, the protagonist's current position, and the party they must challenge.
+- ★ Whenever you state a concrete amount (wage, monthly allowance, price, tax, rent), state its **settlement period and payment method in the same sentence**: settled per day / per month / per dose, paid by whom, paid when, and whether it can be advanced or deducted. One quantity gets exactly one period — later chapters do their arithmetic from that sentence, and a second period is a bug planted in advance.
 
 3. Hidden history and deep crisis
 - Define the ultimate disaster or central mystery behind the world.
@@ -328,12 +330,20 @@ Build four connected dimensions. The first three each need a concrete source of 
   Old Chen｜breakfast-stall owner at Chen's Corner｜"Same as always, extra chili?"｜the protagonist's regular breakfast vendor
   A name that appears only inside a space entry and never on its own line here counts as **unregistered**; later layers (arcs / outline / chapter blueprints) cannot reference it.
 
+5. Calendar (day order and cycles)
+- How does this world count years? Give the notation (era name / epoch / CE — any one is fine). How many months per year and days per month? State how leap remainders are handled; if there are none, use a plain integer structure. **Do not leave it as "depends"** — the day order must be addable and subtractable.
+- How is a day divided? Keep 24 hours, twelve double-hours, or invent a scale? Name the units, state how they map to conventional time, and fix the wording for one or two key clock points (roll call, market open, curfew, evening class). The prose may only use this set of names for time.
+- Attach **every recurring event** to this calendar: what happens at a fixed time each day, and on which days of the month (gathering, settlement, garden opening, rest day, patrol, accounts delivery). State the interval and duration.
+- ★ **Story start day (t0)**: the year, month, day, and time of day of the very first scene in Chapter 1. This is the only origin for day order in the whole book — every later "how many days have passed" is derived from it, so it must be a **concrete date you can add to**, never a placeholder such as "some year, some month" or "when the story begins".
+- ★ **Every countable statement must close on the spot**: whenever the text says how much per day / per month is earned, exchanged, or consumed, the arithmetic has to work — the time blocks of one day cannot exceed one natural day; a period and a total must not differ by an order of magnitude; and the same quantity must not carry both a per-day and a per-month period. This dimension is not meant to look good; it is meant to **compute**.
+- Format: explain the calendar in plain prose (three to six lines), then put the origin on its own final line: "Origin: <this world's own date>, <time of day>".
+
 [Requirements]
 1. Every setting must support the core appeal of {{genre}} and be usable in scenes.
 2. Make the advantage's interaction with the world rules specific and actionable.
 3. Preserve explicit author facts from the story premise and protagonist profile together with the project-wide guidance. Facts unrelated to world mechanics need not be repeated, but the world must not contradict them.
 4. The World foundation supplied by the author is authoritative and is injected verbatim into every chapter. Do not restate or rewrite entries already present in it — supply only what it does not cover.
-5. The **four-dimension structure must still be complete**: even when part of a dimension already appears in the World foundation, fill in the parts that dimension does not cover — in particular dimension 4 (spatial structure / map and regions) must at least list the main spaces and their entry or restriction rules. **Returning only the first three dimensions is a failure.**
+5. The **five-dimension structure must still be complete**: even when part of a dimension already appears in the World foundation, fill in the parts that dimension does not cover — in particular dimension 4 (spatial structure / map and regions) must at least list the main spaces and their entry or restriction rules, and dimension 5 (calendar / day order and cycles) must at least give the year notation, days per month, the division of a day, and the **origin day**. **Returning only the first three dimensions is a failure.**
 6. The two kinds of names fixed in dimension 4 are the single key for later references; do not use multiple aliases for one entity: (a) space names; (b) named people listed on their own line in the [Named cast registry]. **A registered person matters as much as a space name** — the arc structure, plot outline, and chapter blueprints will reference them by the same name.
 7. [Named cast registry] Register only anchored supporting roles with a fixed identity who will recur (stall owner, gatekeeper, receptionist, permanent colleague). Do not register one-off passers-by or crowd members. If there are none, write "none".
 8. Return the world-building text only, with no code, analysis, or explanation.
@@ -701,7 +711,8 @@ Output the complete revised manuscript as plain prose only. Do not include Markd
 5. Explicit required goals for this chapter: check the original goals supplied with the request under the existing goalReviews contract. Identify the original goal when it is missing or lacks evidence; do not invent a manuscript quotation or repeat the same goal issue in items.
 6. Prior-event retelling: locate passages that completely retell an event that already happened without providing necessary new information, action or change. Explain which prior event is repeated and why the passage adds no new progression.
 7. Ordinal and universal claims: ordinal or universal claims in the author materials (blueprint key events, frozen goals, this chapter's author guidance, etc.), such as "the first", "the only", "every time" or "never", are claims to verify rather than established facts. Recheck each of them independently against the chapter under review; never accept the assertion itself as evidence, and never treat "the chapter does state it" as proof that "it holds".
-8. Time and day order: when the world building provides a [Calendar (day order and cycles)] section, every date, relative time ("today", "yesterday", "tomorrow morning", "three days later"), time of day and recurring event in the chapter must resolve to a concrete date on that calendar and must add up across the chapter; the calendar's start date is the only origin, and every interval must be derivable from it. The same interval must not be given contradictory lengths in different chapters. When the world building has no such section, only check internal consistency of time within this chapter and never report an error for the absence of an external calendar.`,
+8. Time and day order: when the world building provides a [Calendar (day order and cycles)] section, every date, relative time ("today", "yesterday", "tomorrow morning", "three days later"), time of day and recurring event in the chapter must resolve to a concrete date on that calendar and must add up across the chapter; the calendar's start date is the only origin, and every interval must be derivable from it. The same interval must not be given contradictory lengths in different chapters. When the world building has no such section, only check internal consistency of time within this chapter and never report an error for the absence of an external calendar.
+9. Settlement period: whenever a count of a resource, currency, wage, or price appears, that quantity must carry exactly one settlement period (per day / per month / per dose / per three days) that agrees with the allocation rule stated in the world building and with the same quantity in finalized chapters. If a figure works under both a per-day and a per-month reading, or the period changes between passages, that is an objective contradiction: quote both passages and state the gap. When neither the world building nor the quantity declares a period, only check internal consistency of that figure inside this chapter and never report an error for the missing period.`,
     systemSuffix: `[Author-requested review focus — prioritize when present]
 {{review_focus}}
 
@@ -737,6 +748,14 @@ Chapter {{chapter_number}}: {{chapter_title}}
 Organize explicitly supported manuscript facts under the following Markdown headings, with no additional explanation. Leave a section empty or omit it when the manuscript states no corresponding fact; do not invent content to fill the structure:
 
 # Chapter {{chapter_number}} Notes
+
+## Time anchor
+(Place this chapter on a **single integer**: the opening day is day 0, and each further day adds 1. Write it only when the manuscript states it, or when an explicitly stated interval makes it unambiguous; if it cannot be derived, write "undetermined" instead of guessing from the chapter number.)
+- Story day: 7
+- In-world label: the 27th of the second month
+- Basis: the sentence in the manuscript that pins this day
+
+The "Story day" value must be one Arabic numeral only. Do not write a calendar date, a range, or "about 7"; put the calendar wording in "In-world label".
 
 ## Plot Events
 List irreversible developments with a type marker.

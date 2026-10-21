@@ -18,7 +18,7 @@
   ],
   "m06Tables": ["review_cycle_merges"],
   "m08Tables": ["character_cast_decisions"],
-  "optionalFields": ["characters.avatar", "project_core.rhythm_profile"],
+  "optionalFields": ["characters.avatar", "project_core.rhythm_profile", "summary_snapshots.story_day_offset", "summary_snapshots.story_day_label"],
   "deltaCharacterFields": ["character_id", "legacy_key", "static_provenance", "identity_revision", "retired"],
   "signedOverrides": {
     "chapter_deletion_operations.knowledge_status": "non-executable-history",
@@ -123,7 +123,7 @@
     "review_findings": {"cycle_id":"H","finding_id":"H","source_project_id":"H","source_epoch":"H","source_id":"H","source_revision":"H","source_content_hash":"H","span_start":"H","span_end":"H","span_unit":"H","excerpt_hash":"H","occurrence":"H","category":"H","target_id":"H","kind":"H","problem_text":"H","expected_text":"H","status":"H","evidence_hash":"H","confirmation_item_index":"H"},
     "reviews": {"id":"D","base_draft_id":"D","review_index":"D","source_draft_chapter_number":"D","source_draft_version":"D","source_draft_status":"D","source_content":"D","content_id":"D","created_at":"D"},
     "revisions": {"id":"D","base_draft_id":"D","revision_index":"D","revision_type":"D","status":"D","merged_to_draft_id":"D","user_prompt":"D","review_source_id":"D","source_draft_chapter_number":"D","source_draft_version":"D","source_draft_status":"D","source_content":"D","content_id":"D","word_count":"D","created_at":"D","updated_at":"D"},
-    "summary_snapshots": {"id":"D","draft_id":"D","chapter_number":"D","character_states":"D","chapter_notes":"D","continuity_facts":"D","character_state_candidates":"D","source_finalization_id":"D","source_content_hash":"D","projection_generation":"D","created_at":"D"},
+    "summary_snapshots": {"id":"D","draft_id":"D","chapter_number":"D","character_states":"D","chapter_notes":"D","continuity_facts":"D","character_state_candidates":"D","source_finalization_id":"D","source_content_hash":"D","projection_generation":"D","story_day_offset":"D","story_day_label":"D","created_at":"D"},
     "text_metric_versions": {"metric":"B","version":"B","updated_at":"B"}
   }
 }
