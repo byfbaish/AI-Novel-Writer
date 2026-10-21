@@ -589,7 +589,12 @@ describe('RunFinalizePostProcessCommand character-state persistence', () => {
     })).rejects.toThrow('next-chapter-prompt-captured')
     expect(nextChapterPrompt).toContain('Lin Lan (protagonist)')
     expect(nextChapterPrompt).toContain('keyItems@chapter1: brass key')
-    expect(nextChapterPrompt).not.toContain('handed the brass key to Zhou Yan')
+    // 派生状态注入并标「·derived」（2026-10-21 W0 口径变更）：它是上一章定稿的抽取结果，
+    // 对「写下一章」恰恰是最有用的当前值（伤势、余量、持有物）。标注来源章与派生身份，
+    // 让它可以被后文修正，而不是被当成永久人设。旧口径把 derived 整条挡在正文之外，
+    // 于是正文里从来没有真实状态 —— 数值逐章漂移正是这么长出来的。
+    expect(nextChapterPrompt).toContain('recentEvents@chapter2·derived: handed the brass key to Zhou Yan')
+    expect(nextChapterPrompt).toContain('location@chapter2·derived: harbor')
   })
 
   it('keeps protected author and legacy state while retaining source-only lookup candidates', async () => {

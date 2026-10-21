@@ -5,7 +5,7 @@ import type { PrepareReviewRevisionRequest, ReviewMaterialIdentity, ReviewRevisi
 import { parseHumanConfirmedReviewSnapshot, serializeHumanConfirmedReviewSnapshot } from '../../src/shared/human-confirmed-review'
 import { freezeChapterGoals } from '../../src/shared/chapter-goal-review'
 import { findBlueprintContinuityRisks } from '../../src/shared/consistency-preflight'
-import { CHARACTER_STATE_TEXT_FIELDS } from '../../src/shared/character-roster'
+import { formatCharacterStateLines } from '../../src/shared/character-state-lines'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
 import { CharacterRepository } from '../repositories/character-repository'
 import { BlueprintRepository } from '../repositories/blueprint-repository'
@@ -130,21 +130,20 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
     }
     const activeIds = new Set((db.prepare('SELECT character_id FROM characters WHERE retired=0').all() as { character_id: string }[]).map(row => row.character_id))
     const authorCards = CharacterRepository.getAll(db).filter(card => card.characterId && activeIds.has(card.characterId))
-    const stateLines = authorCards.flatMap(card => {
-      const state = card.currentState
-      if (!state) return []
-      const fields = Object.fromEntries(CHARACTER_STATE_TEXT_FIELDS.flatMap(field => {
-        const provenance = state.provenance?.[field]
-        return provenance?.kind === 'author' && state[field] ? [[field, `${state[field]} @ch${provenance.chapterNumber}`]] : []
-      }))
-      if (!Object.keys(fields).length) return []
-      return [core.writingLanguage === 'en-US'
-        ? `${card.name} (${card.role || 'unknown'}) author state (time-bound to the annotated chapter, not permanent): ${JSON.stringify(fields)}`
-        : `${card.name}（${card.role || '未知'}）作者状态（按标注章节理解，非永久约束）: ${JSON.stringify(fields)}`]
+    // 审稿侧要判「这一章有没有把状态写错」，因此需要**全量快照（含派生项）**。
+    // 2026-10-21 之前这里只放行 `kind === 'author'`，而库内状态全部是 `derived`
+    // （定稿抽取的产物）⇒ 实测审稿 input 拿到的是「（暂无）」，等于没有状态可校，
+    // 而正文里恰恰写着「四枚灵石、三天量活气散」这类可核对的值。
+    //
+    // 现在：author 与 derived 都注入，derived 逐字段标「·派生」；legacy 仍跳过。
+    // 章号过滤在 formatCharacterStateLines 内完成 —— 晚于本章的状态不注入。
+    const stateLines = formatCharacterStateLines(authorCards, {
+      writingLanguage: core.writingLanguage,
+      upToChapter: source.chapterNumber,
     })
     return { version: 1, operation: request.operation, source, sourceHash: textHash(source.content), config,
       writingLanguage: core.writingLanguage, uiLocale: request.uiLocale, authorInputs: structuredClone(request.authorInputs),
-      characterStates: stateLines.join('\n') || (core.writingLanguage === 'en-US' ? '(none)' : '（暂无）'),
+      characterStates: stateLines || (core.writingLanguage === 'en-US' ? '(none)' : '（暂无）'),
       worldbuilding: core.worldbuilding, history, blueprints, ...(predecessor ? { predecessor } : {}),
       frozenGoals: freezeChapterGoals(source.chapterNumber, currentBlueprint?.keyEvents,
         // 作者可在大纲 / 世界观设定 / 角色备注里，用独占一行的

@@ -57,7 +57,7 @@ import type { NarrativeThreadView } from '../../../shared/narrative-thread'
 import { promptLanguageText } from '../../prompt-language'
 import { countDraftUnits, draftAimLowUnits, draftTargetUnitRange } from '../../../shared/draft-units'
 import type { RecoveryChapterSource } from '../../../shared/recovery-candidate'
-import { CHARACTER_STATE_TEXT_FIELDS } from '../../../shared/character-roster'
+import { characterStateFacts } from '../../../shared/character-state-lines'
 import {
   assembleChapterMaterials,
   ChapterMaterialCapacityError,
@@ -863,6 +863,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       // 覆盖版模板若不含该块，由 `appendRequiredPromptContext` 兜底追加，仍恰好一次。
       .withChapterInfo(toBlueprintProjection(writerChapterInfo, { dropUserGuidance: true, dropSuspenseHook: true }))
       .withSuspenseHook(this.chapterInfo.suspenseHook?.trim() || '')
+      // 这一格**刻意留空**：角色状态并进了作者材料块（`readCharacterProfiles` 的
+      // 注释里写了原因 —— 续写轮不带模板变量，只带材料块）。留空也让下面的
+      // 「空段裁剪」照常生效：整段【剧情记忆库】在没有 global_summary 时被一起裁掉，
+      // 不会留下一个只有标签的空行。
       .withCharacterStates('')
       .withFutureBlueprints('')
       .withFilteredContext('')
@@ -2005,11 +2009,18 @@ ${params.candidate.text}`,
   }
 
   /**
-   * 读取本章出场角色的作者档案。
+   * 读取本章出场角色的作者档案与**当前状态**。
    *
    * 返回注入文本，以及「蓝图点名但名册里没有卡片 / 无法唯一匹配」的角色名，
    * 供调用方给出软提示 —— 章节蓝图可能提到尚无卡片的人物，这是数据缺口而非组装错误，
    * 因此不阻断生成，只把缺口显式告知作者，避免静默跳过。
+   *
+   * 状态为什么走这里、而不是模板变量 `character_states`（2026-10-21）：
+   * 续写轮（写长后接续）的请求正文是 `draftAuthorMaterialBlock(...)`，它带作者材料块，
+   * **不带**模板变量。状态若只注入 `character_states`，续写轮就没有任何状态可用 ——
+   * 而续写轮恰恰是最容易把伤势、余量、持有物写错的地方。所以状态并进档案事实，
+   * 两个请求都覆盖。代价是它要跟材料块一起过 8k 预算裁剪，这在语义上也是对的：
+   * 状态是「可省信息」，蓝图与必现项才是「不可省信息」。
    */
   private async readCharacterProfiles(
     projectPath: string,
@@ -2074,13 +2085,13 @@ ${params.candidate.text}`,
             `relationship (legacy provenance unknown): ${legacyRelationshipNotes}`,
           ))
         }
-        for (const field of CHARACTER_STATE_TEXT_FIELDS) {
-          const provenance = card.currentState?.provenance?.[field]
-          const value = card.currentState?.[field]?.trim()
-          if (provenance?.kind === 'author' && value) {
-            facts.push(`${field}@chapter${provenance.chapterNumber}: ${value}`)
-          }
-        }
+        // 当前状态（author 与 derived 都注入，derived 标「·派生」；晚于本章的不注入）。
+        // 2026-10-21 之前这里只放行 author，而库内状态全是定稿抽取的 derived ⇒
+        // 正文 prompt 里从来没有真实状态，模型只能按印象补伤势与余量。
+        facts.push(...characterStateFacts(card.currentState, {
+          writingLanguage,
+          upToChapter: this.chapterInfo.chapterNumber,
+        }))
         profiles.push(`${card.name} (${card.role || 'unknown'})${facts.length ? ` | ${facts.join(' | ')}` : ''}`)
       }
       return {
