@@ -1,5 +1,6 @@
 import { redactVisibleCompletionText } from '../bounded-completion'
 import { reviewTimeContinuity } from '../../../shared/chapter-time-continuity'
+import { reviewExecutionContract } from '../../../shared/review-execution-contract'
 import { reviewFarTermSettingRule } from '../../../shared/review-far-term-setting'
 import type { CommandExecuteParams, WorkflowGenerationRuntimeDependencies } from './base-command'
 import type { PreparedReviewRevisionContext, ReviewRevisionRecovery } from '../../../shared/review-revision-generation'
@@ -84,6 +85,11 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
       promptLanguageText(language,
         '【作者设定优先】【作者确认项目配置】与【世界观设定】是权威事实；作者角色状态按标注时点理解；历史派生摘要不能覆盖作者事实。报告矛盾前，须说明作者设定或其必然前提与正文对同一对象、时点及条件的陈述为何不能同时成立，并纳入正文已有的兼容描述。正文未再次说明、未触碰或未明确位置，不证明权威状态已改变；存在合理兼容解释时，不得将推断当作事实矛盾要求修稿。新进展可以发生在同一时段或地点；作者未明确要求更换时点或场景时，不得强加，也不能因未更换就断言没有推进。若正文确实与作者事实或由其必然推出的前提矛盾，必须报告为 error 或 warning；即使蓝图、章节计划或冻结目标写法相反，也不得因此放过。',
         '[Author settings take priority] The author-confirmed project configuration and the worldbuilding settings are authoritative facts; author character states apply at their annotated time; historical derived summaries cannot override author facts. Before reporting a contradiction, explain why the author setting or its necessary premise and the draft cannot both be true for the same subject, time and conditions, considering compatible descriptions already present in the draft. Mere omission, lack of contact or an unstated location does not establish that an authoritative state has changed. Where a reasonable compatible interpretation exists, do not demand revision based on an inferred factual contradiction. New progress can occur within the same time period or location; do not require a time or scene change that the author has not specified, or infer no progress merely because neither changed. If the draft truly contradicts an author fact or a premise that necessarily follows from it, report it as an error or warning, even when a blueprint, chapter plan or frozen goal says otherwise.'),
+      // W1（2026-10-21）：执行口径进审稿。此前生成侧有整套执行合同，审稿侧一条都没有，
+      // 实测 trace 里「执行合同」出现 0 次 —— 审稿只能报「两处不一样」，报不出
+      // 「违反了哪条规则、该改哪一边」。这里给的是**判定标准**而非写作义务，
+      // 与生成侧文本刻意不同形（见 shared/review-execution-contract.ts 头注）。
+      reviewExecutionContract(language),
       // C1 路子 B：审稿保留完整世界观（判剧透需要），但限定远期设定不得被当成本章必须兑现的事实。
       reviewFarTermSettingRule(language),
       promptLanguageText(language,
