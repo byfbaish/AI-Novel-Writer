@@ -1,6 +1,6 @@
 # 世界状态：评审与接线方案（W 线）
 
-> **状态**：⚙️ W0 + W1 + **W2 已落地**；历法维已上线；三处历法/口径冲突已修（`exp/world-state`）；**§4.4 已收口**（判据 CX）；W3/W4 待做
+> **状态**：⚙️ W0 + W1 + W2 已落地；**W3 第一单元已落地**（审稿报告 v3 + 判据 CY/CZ，见 §16）；W3 第二单元（定稿期交叉，判据 DA）与 W4 待做；W5（只读可视化）已登记、不排期
 > **日期**：2026-10-21 · 分支 `exp/world-state`（由 `exp/arc-tree-v2` 切出，14+4 个改动已先收口）
 > **缘起**：作者四问（Q1 泛用性 / Q2 还缺什么维度 / Q3 设定是否=初始值+维护规则 / Q4 是否该给状态而不是背景资料）+ 外部收敛稿《世界状态方案》
 > **样本**：《师父派我来除魔，幕后真凶竟是小师妹》第 1–4 章（库内原文 + trace `20261021-135755-068-正文-ch4` / `20261021-191749-711-审稿`）
@@ -675,3 +675,116 @@ M07（`plot_structure_plan`）/ M08（`structured_refs`）/ M09（`rhythm_profil
 `character-cast-decision` / `character-proposal-declined` / `character-proposal-reopen` /
 `finalized-character-generation-proof` / `finalization-generation` 合计 85 例全绿。
 
+
+---
+
+## 16. W3：审稿状态差分（v3 报告）· 2026-10-22
+
+> **状态**：**第一单元已落地**（契约 + 五个下游 + 提示词契约）；**第二单元（定稿期交叉）未做**，见 §16.7。
+
+### 16.1 与预案的分歧：差分落不进 `finalized_continuity_facts`
+
+§9.2 把 W3 写成「审稿输出 `stateDelta` → 落 `finalized_continuity_facts` → 写回 `cs_*`」。实测中间那段走不通：
+
+| 链路 | 要求 | 审稿期是否有 |
+|---|---|---|
+| `finalized_continuity_facts` 写入 | `evidence` 在**已定稿**正文里精确定位；整条绑定 `FinalizedSourceIdentity`（`draftId` + `finalizationId` + `contentHash`） | ❌ 审稿发生在定稿之前 |
+| `PendingFinalizedCharacterStateCandidate` | `source: FinalizedSourceIdentity` | ❌ 同上 |
+
+审稿期的 `reviews` 只绑定 `draft_id + version + status`，此刻既没有 finalization 回执，也没有不可变正文哈希。硬塞只能造假锚点 —— 而假锚点会被下游当成证据，这比不写回更糟（§6.4 的同一条理）。
+
+⇒ **差分落在审稿报告体（v3）**，定稿期再消费。好处是引文锚点在同一次调用的**同一份 `source_content`** 里天然成立，不多花一次模型调用。
+
+### 16.2 形状：一条观测，不是一个判断
+
+```
+{ characterName, field, observed, quote }
+```
+
+| 字段 | 约束 | 为什么 |
+|---|---|---|
+| `characterName` | 正文里出现的名字，原样照抄 | 对齐 `characterId` 是定稿期的事；在审稿期猜 ID 会把重名问题固化 |
+| `field` | 必须是 `CHARACTER_STATE_TEXT_FIELDS` 之一（6 个） | 与 `cs_*` 一一对应，否则定稿期无处回写，差分就是死数据 |
+| `observed` | 正文写出的**新值**，**不得抄档案旧值** | 抄了就变成「正文与档案一致」的假信号，而它会被当成「本章确认了旧值」消费 |
+| `quote` | 必须能唯一定位 | 定位不了 / 能定位到两处的引文是**错证据**，会把 A 段的行为记到 B 段头上 |
+
+**不做的事**：审稿不裁决「谁对」。裁决需要权威值 + 时效性，那两样在定稿期才有。审稿只记观测。
+
+上限 12 条；同一人物同一字段只留一条（报告体是 append-only 的事实记录，不允许自带矛盾）。
+
+### 16.3 判据 CY：审稿期的产出不得伪造定稿身份的锚点
+
+> 任何要求 `FinalizedSourceIdentity` 的表，在审稿期都不能写 —— 哪怕「先写进去以后再补锚点」看起来更省事。
+> 一个定位不到、或定位到别处的锚点，下游无法与「真的是在这一段」区分。
+
+这条同时解释了为什么 §9.2 的原始表述必须改：不是工程上做不到，是做到了就是错的。
+
+### 16.4 判据 CZ：附加产出的失败只能丢自己，必须计数
+
+审稿的**主产物是 items**（作者逐条采纳/驳回），`stateDelta` 是附加观测。
+
+- `quote` 定位失败 ⇒ **丢弃该条**，报告仍有效；`stateDelta` 的**形状**非法（字段越界、超限、重复）⇒ 整份报告无效（那是模型没按契约产出，该重试）。
+- 丢弃必须**计数**（`diagnostics.stateDeltaDropped` 出参），否则「模型引文质量变差」永远不可见 —— 判据 CL 的老坑。
+- 反过来若让一条坏锚点作废整次审稿，等于用附加功能的失败惩罚主产物。
+
+### 16.5 版本号是一处契约，牵动五个下游
+
+改 `ReviewReportVersion` 时**一个都不能漏**（与判据 CT 同源）：
+
+| # | 位置 | 改什么 |
+|---|---|---|
+| 1 | `src/shared/review-generation-report.ts` | `REVIEW_TOP_LEVEL_KEYS` 按版本分档；v1/v2 见到 `stateDelta` 必须拒收 |
+| 2 | `electron/repositories/review-cycle-repository.ts` | `parseSavedReport` 放行 + 形状校验（报告体里**没有**版本字段，读侧只能看形状） |
+| 3 | `electron/migrations/m03-review-cycle.ts` | `proveEffect` 认全当前版本集合 + 重建时按 `stored.reportVersion` 传 |
+| 4 | `electron/services/project-archive-service.ts` | 便携投影放行（放行不了 ⇒ 导入方算不出同一份正文 ⇒ 哈希分叉） |
+| 5 | `src/services/builtin-prompt-templates.ts` | 输出契约（含 JSON 示例 —— 示例即形态，不给示例等于不给契约） |
+
+### 16.6 一个被实测推翻的判断（必读）
+
+我一开始判断：「M03 是一次性迁移，只证明历史 receipt，历史 receipt 只有 v1/v2，所以它不需要认 v3」。
+
+**实测错**：`verifyM03ReviewCycle` 会在**每次** `ReviewCycleRepository.create` 与 `commitRecheck` 时对**全库** receipt 重跑 `proveEffect`。不认 v3 ⇒ 每一份新审稿都被自己的完整性校验判死。症状是 15 例 `REVIEW_CYCLE_INPUT_INVALID`，失败点停在 `create` 末尾的 `verify`，**看起来完全不像版本问题**。
+
+⇒ 教训：判断「这段代码只跑一次」之前，先 grep 它有没有被 verify / 校验路径复用。
+
+### 16.7 v2 与 v3 在无差分时重建出同样的字节
+
+模型没输出 `stateDelta` 时，v2 与 v3 的正文**逐字节相同**（同一份文本、同一套裁剪规则）。所以：
+
+- 把 receipt 的 `reportVersion` 从 2 改成 3 **查不出来**，而这个「伪造」本身没改变任何东西；
+- 若强制 v3 必须带 `stateDelta` 键，模板被旧版全局覆盖时整份审稿会作废 —— 那是拿「可检出的无害伪造」换「真实的用户故障」。
+
+**选择**：允许缺失，缺失 = 未产出；`[]` = 判过了、无差异。两者在 JSON 层天然可分，不需要 status 字段。
+
+### 16.8 未做：定稿期交叉（第二单元）
+
+`stateDelta` 现在**存下来了，但还没有消费者** —— 这正是 W0 批判过的形态（「不是没有状态，是两条链都不读」）。第二单元的落点与判据：
+
+- **落点**：`SummaryRepository.commitFinalizedCharacterStates`，在 `decideDerivedPatch` 返回 `apply-derived` 之后再加一道「审稿侧是否反对」。
+- **判据 DA：冲突判定必须用 span 重叠，不能靠字符串比较。**
+  `observed` 与定稿抽取值都是自然语言，字符串不等不等于矛盾（「北塔」与「北塔三层」说的是同一件事）。只有当**两边指的是同一段原文**时，取值不同才是真冲突 —— 那是「同一句话被读出两个结果」的机械证据。
+  若按字符串比，要么几乎全冲突（作者每章处理一堆待裁决 ⇒ 判据 CX 的队列爆炸），要么几乎不冲突（等于没做）。
+- **代价**：`receipt.candidates` 的 `reason` 要加一档（`review-conflict`），UI 文案与筛选要跟着走；`commitFinalizedCharacterStates` 加一个入参；调用方要读「与本次定稿同版本的最新审稿报告」。
+
+**未做并不是忘了**：这一步会把「待裁决」真的推到作者面前，值得单独一次确认。
+
+---
+
+## 17. W5：世界状态的只读可视化（2026-10-22 登记 · 不排期）
+
+> **作者原话**：「以后可能需要世界状态的可视化管理。」
+> 台账条目与三档目标在 [`prompt-assembly-backlog.md`](../../plans/prompt-assembly-backlog.md) 的 `W5` 段（那里是唯一 TODO 台账，本节只记设计约束）。
+
+### 17.1 定位：只读视图，不是第五个事实源
+
+数据已经在库里（`characters.cs_*` + `cs_provenance` · `summary_snapshots.story_day_*` · `continuity_facts` · `character_cast_decisions`），缺的是「随时间变化」的呈现。作者现在只能看到**当前值**，看不到「第 3 章末 6 枚、第 5 章剩 2 枚」这条线 —— 于是比对基准本身不可见。
+
+**硬边界**：
+
+- ❌ 视图层不出现 UPDATE / INSERT。要改状态走角色管理页（那里有 `cs_provenance` 区分 author / derived）。
+- ❌ 不用折线图代替待裁决。冲突必须能逐条处置。
+- ❌ 缺数据不能画成 0（判据 CJ/CK/CL 的同一要求）：`story_day_offset` 为 NULL 就是「日序未知」，不是「第 0 日」。
+
+### 17.2 前置
+
+**W3 第二单元必须先落地**。没有可回写的差分，视图只能画一条没有来源的现状线 —— 那正是 §3.2③ 批判的「快照就是死数据」。

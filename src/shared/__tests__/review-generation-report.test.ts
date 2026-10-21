@@ -250,3 +250,70 @@ describe('buildReviewGenerationReport', () => {
     expect(() => build({ content: JSON.stringify({ ...passing, items: [{ ...passingItem, goalId: goals.items[0]!.id }] }) })).toThrow('invalid review contract')
   })
 })
+
+/**
+ * W3：审稿报告 v3 带状态差分。
+ *
+ * 这一组测的是「版本号 → 形状」这条契约本身，不是业务判断：
+ * v3 允许一个附加顶层键，v1/v2 不允许；附加产出的失败只能丢自己，不能拖垮 items。
+ */
+describe('review report v3 · stateDelta', () => {
+  const delta = { characterName: '顾长风', field: 'location' as const, observed: '南坡', quote: '两人约定周三再搬设备。' }
+  const v3 = (overrides: Record<string, unknown> = {}) => JSON.stringify({ ...passing, stateDelta: [delta], ...overrides })
+
+  it('accepts stateDelta only under report version 3', () => {
+    expect(parseReviewGenerationResult(v3(), 3)).toMatchObject({ stateDelta: [delta] })
+    // v2 的白名单不含 stateDelta：同一份文本在 v2 下必须被拒。否则「版本号决定形状」
+    // 就退化成「读侧碰运气」，而 saved() 与便携投影都会用版本号重算正文再比哈希。
+    expect(() => parseReviewGenerationResult(v3(), 2)).toThrow('invalid review contract')
+    expect(() => parseReviewGenerationResult(v3(), 1)).toThrow('invalid review contract')
+  })
+
+  it('distinguishes "not produced" from "checked, nothing changed"', () => {
+    // 缺键 = 本次未产出（例如模板被旧版全局覆盖）；空数组 = 判过了、本章无变化。
+    // 用 ?? [] 把两者抹平，就等于让「没判」永远显示成「判过没问题」。
+    expect(parseReviewGenerationResult(JSON.stringify(passing), 3)).not.toHaveProperty('stateDelta')
+    expect(parseReviewGenerationResult(v3({ stateDelta: [] }), 3)).toEqual({ ...passing, stateDelta: [] })
+  })
+
+  it('rejects a field outside the character state vocabulary', () => {
+    // field 必须落在 cs_* 的 6 个文本字段内，否则定稿期无处回写，差分就是死数据。
+    expect(() => parseReviewGenerationResult(v3({ stateDelta: [{ ...delta, field: 'mood' }] }), 3))
+      .toThrow('invalid review contract')
+  })
+
+  it('rejects two observations of the same character and field', () => {
+    expect(() => parseReviewGenerationResult(v3({ stateDelta: [delta, { ...delta, observed: '北塔' }] }), 3))
+      .toThrow('invalid review contract')
+  })
+
+  it('rejects more than twelve observations and any unknown key', () => {
+    const many = Array.from({ length: 13 }, (_, index) => ({ ...delta, characterName: `角色${index}` }))
+    expect(() => parseReviewGenerationResult(v3({ stateDelta: many }), 3)).toThrow('invalid review contract')
+    expect(() => parseReviewGenerationResult(v3({ stateDelta: [{ ...delta, confidence: 0.9 }] }), 3))
+      .toThrow('invalid review contract')
+  })
+
+  it('drops an unlocatable or ambiguous quote instead of failing the whole review', () => {
+    const diagnostics = { stateDeltaDropped: 0 }
+    const report = build({ content: v3({ stateDelta: [delta, { ...delta, characterName: '王德发', quote: '这句话不在正文里。' }] }),
+      reportVersion: 3, diagnostics })
+    expect(report.stateDelta).toHaveLength(1)
+    expect(diagnostics.stateDeltaDropped).toBe(1)
+    // 主产物不受影响：模型给的那条 item 仍在（后面几条是目标核对与预检生成的）。
+    expect(report.items[0]).toEqual(passingItem)
+  })
+
+  it('drops a quote that occurs twice because it cannot be anchored', () => {
+    const diagnostics = { stateDeltaDropped: 0 }
+    const report = build({ content: v3({ stateDelta: [{ ...delta, quote: '她合上相册。' }] }),
+      sourceContent: '她合上相册。她合上相册。', reportVersion: 3, diagnostics })
+    expect(report.stateDelta).toEqual([])
+    expect(diagnostics.stateDeltaDropped).toBe(1)
+  })
+
+  it('normalizes the quote to the exact source slice, dropping the model-added quotation pair', () => {
+    const report = build({ content: v3({ stateDelta: [{ ...delta, quote: '「两人约定周三再搬设备。」' }] }), reportVersion: 3 })
+    expect((report.stateDelta as Array<{ quote: string }>)[0]?.quote).toBe('两人约定周三再搬设备。')
+  })
+})

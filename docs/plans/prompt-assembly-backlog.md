@@ -52,6 +52,7 @@
 | 12 | **AC3（中）** | **弧加入后的一致性校验** | **L3 校验层** | ⚠️ **依赖第五层落地**（`stage-structure-layer.md`）；弧引用完整性 |
 | 12.5 | **AC5（⛔ 部分否决）** | ★ 数值与资源一致性（原案：世界观第 2 维「机读数值行」+ 纯算术闭合） | — | ⛔ **2026-10-21 晚部分否决**：机读数值行与 `unit/mech/earn` 字段集属题材专用，且「让世界适配解析器」在本项目空间机读行上已实测失败（8 条里 4 条**静默失效**：`24:00` 越界、`每月N日` 不可解析）。**保留**：判据 CJ（无权威值只能产出待裁决）/ CK（相对量必须带分母）/ CL（无机读行须显式说明未判）/ CM（设计强度≠一致性）+ 覆盖版遮蔽阻断项。见 [`ac5-numeric-resource-consistency-design.md`](../design/architecture/ac5-numeric-resource-consistency-design.md) |
 | 12.6 | **W（高·待裁定）** | ★★ **世界状态：先接线、再补元数据、最后建槽** | **L4 事实层 + L1 Prompt** | 🆕 2026-10-21 立项。**实测**：`characters.cs_*`（8 字段 + `cs_provenance` + 更新章号）**已在更新**（顾长风已到第 3 章），但正文链 `generate-draft.command.ts:866` **`.withCharacterStates('')` 硬编码空串**；审稿链只放行 `provenance.kind==='author'`，库内全是 `derived` ⇒ 实测审稿 input = 「（暂无）」。⇒ **不是没有状态，是两条消费链都不读**。顺序 W0 接线（半天·可证伪）→ W1 执行合同进审稿 → W2 日序 + 口径两个元数据 → W3 审稿 `stateDelta` 写回 → W4 归位表/六槽（**schema 后置**，三槽已存在）。见 [`world-state-review-and-wiring-plan.md`](../design/architecture/world-state-review-and-wiring-plan.md) |
+| 12.7 | **W5（低·待议）** | ★ **世界状态的只读可视化**（时间轴 + 差分视图） | **UI + L4 只读** | 🆕 2026-10-22 作者提出：「以后可能需要世界状态的可视化管理」。**定位是只读视图，不是第五个事实源** —— 数据已在库里（`characters.cs_*` + `cs_provenance`、`summary_snapshots.story_day_*`、`finalized_continuity_facts`、`character_cast_decisions`），缺的是「随时间变化」的呈现：作者现在只能看到**当前值**，看不到「第 3 章是 6 枚、第 5 章剩 4 枚」这条线。⚠️ **前置**：W3 必须先产出可回写的差分，否则视图只能画一条没有来源的现状线。参考 [`world-state-review-and-wiring-plan.md`](../design/architecture/world-state-review-and-wiring-plan.md) §6.4 / §13 / §14（口径与判据）+ §17（W5 定位与硬边界） |
 | 13 | ~~**W1**~~ | ~~内置模板升级：检测/提示被遮蔽的全局覆盖~~ | — | ✅ **已实施**（2026-10-11，作者拍板按建议方案）：`PromptTemplate.builtinRevision` 版本戳 + `prompt-builtin-revision.ts` 摘要（只哈希用户不可编辑的部分）+ PromptSettings「内置已更新」徽标与说明。**只提示，绝不自动改**。见下方「W1 详述」 |
 | 14 | **C1（中）** | **角色管理：批量删除 + 剧情相关性筛选 + 重生成前提示** | **L5 数据层 + UI** | 🆕 2026-10-11：**批量删除已完成**（`CharactersView` 多选 + `character-store.deleteCharacters` 单次 roster 提交）。**剩两项待办**：① 按"是否与当前设定/大纲挂钩"筛选；② 重新生成角色图谱前提示"同名将覆盖、异名是否删除"。②依赖图谱生成工作流的确认面，见下方「C1 详述」 |
 | 15 | ~~**C2**~~ | ~~弧光结构纳入「AI 生成角色卡」来源~~ | — | 🏁 **已撤回**（2026-10-11，作者定调）：**弧光不该作为建卡来源**。正确顺序是**大纲先出、角色随后补**，因此改为「大纲生成后的显著提示」（见下方「C2 详述（已撤回，替代方案已实施）」）。弧光阶段的角色由既有 P1 蓝图通路按需产生 |
@@ -1192,3 +1193,56 @@ P1 只做**逐字重复**消除。作者明确区分：
 
 **剩余待作者确认**（不阻塞施工）：卷/单元树 pin 状态的记忆粒度（项目级 vs 全局）。
 **明确不做**（见设计稿 §12）：回滚 + 定稿撤销单独立项、优先级往后；窄屏并排（自动退回抽屉）。
+
+---
+
+## W5 · 世界状态的只读可视化（2026-10-22 作者提出 · 待议）
+
+> **作者原话**：「以后可能需要世界状态的可视化管理。」
+> **定位**：**只读视图**。不新建事实源、不新增写回路径、不动 schema（W3 的差分落库是唯一的写入口）。
+
+### 缘起（为什么现有界面不够）
+
+作者现在能看到的只有**当前值**：角色管理页显示 `cs_location` / `cs_condition` / `cs_key_items`… 的最后一次写入。它不显示这个值**怎么演变来的** —— 第 3 章末是 6 枚药，第 5 章剩 2 枚，中间花在哪、哪一章算错的，界面上无处对照。
+
+于是「一致性」只能靠人眼逐章比对正文，而比对用的基准本身不可见。W3 做完后库里会有「每章的差分」，但**差分不等于视图**：不呈现，作者仍然只能靠翻章节。
+
+### 现状：数据已经在库里，缺的是读
+
+| 数据 | 位置 | 粒度 | 能否画时间轴 |
+|---|---|---|---|
+| 角色状态现值 | `characters.cs_*`（8 字段）+ `cs_provenance` + 更新章号 | 当前值 | ❌ 只有最后一格 |
+| 日序 | `summary_snapshots.story_day_offset` / `story_day_label`（M10） | 每快照 | ✅ |
+| 连续性事实 | `summary_snapshots.continuity_facts`（JSON：`category` / `entities` / `characterRefs`） | 每快照 | ✅（需按实体聚合） |
+| 角色身份决定 | `character_cast_decisions`（`register` / `revoke` 追加日志） | 追加型 | ✅ |
+| 状态差分 | **W3 产出**（尚未落地） | 每章 | ✅ ← W5 的前置 |
+
+### 目标（三档，按成本递增）
+
+| 档 | 内容 | 依赖 |
+|---|---|---|
+| V1（最小） | **单角色时间轴**：选中一个角色，按章列出「该章结束时它的状态 + 支撑原文片段」 | W3 差分落库；日序可读 |
+| V2 | **章节断面**：选一章，列出本章所有角色的状态（谁在哪、伤到什么程度、持有什么） | V1 + 实体对齐（判据 CX 的登记表） |
+| V3 | **漂移高亮**：某字段在相邻两章之间发生「无正文支撑的跳变」时标出来 | V2 + 判据 CJ 的待裁决队列 |
+
+### 明确不做
+
+- ❌ **不在这里编辑状态**。要改走角色管理页（那里已有 `cs_provenance` 区分 author / derived）。视图一旦可编辑，就成了第五个事实源。
+- ❌ **不做全局世界地图 / 资源图**。属 P5 评估范围，且已判定动态地图节点会成第三个空间事实源。
+- ❌ **不用折线图代替待裁决**。冲突必须能被逐条处置，画成曲线不算完成。
+
+### 验收（将来真做时）
+
+1. 任取一章，视图给出的每个状态值都能点回**具体原文片段**（quote 能唯一定位）；
+2. 状态来源（author 手设 / derived 派生 / 未定）**在界面上可区分** —— 这是 §6.4 的可见化；
+3. **没有任何写路径**：视图层不出现 UPDATE / INSERT。
+
+### 参考文档
+
+- [`world-state-review-and-wiring-plan.md`](../design/architecture/world-state-review-and-wiring-plan.md) —— **主参考**。§6.4（无权威值即错误固化）· §13（路径 A 口径）· §14（W2 实现 + 判据 CU–CW）· §16（W3 差分形状与判据 CY/CZ/DA）· §17（W5 定位与硬边界）
+- [`state-tracking-assessment.md`](../design/architecture/state-tracking-assessment.md) —— 分层框架与外部稿的对照
+- [`ac5-numeric-resource-consistency-design.md`](../design/architecture/ac5-numeric-resource-consistency-design.md) —— 判据 CJ/CK/CL/CM（可视化必须能显示「未判」，不能把缺数据画成 0）
+
+### 状态
+
+⬜ **待议，不排期**。W3 收口前不谈实现。

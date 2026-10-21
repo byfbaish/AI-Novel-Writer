@@ -140,7 +140,7 @@ describe('review and revision generation through the actual owner and SQLite', (
     const row = f.db.prepare('SELECT attempt_id,usage_receipt_json FROM generation_attempts').get() as {
       attempt_id: string; usage_receipt_json: string }
     const usage = JSON.parse(row.usage_receipt_json)
-    expect(usage.reviewRevisionEffect.reportVersion).toBe(2)
+    expect(usage.reviewRevisionEffect.reportVersion).toBe(3)
     let expected = saved
     if (version === 1) {
       // Retained v1 bytes are constructed independently of the new parser.
@@ -163,7 +163,11 @@ describe('review and revision generation through the actual owner and SQLite', (
       expect(reopened.commitReview(request)).toEqual(expected)
       expect(verifyM03ReviewCycle(f.db)).toBe(true)
       expect(f.spy).toHaveBeenCalledTimes(1)
-      for (const changedVersion of [version === 1 ? 2 : undefined, 3]) {
+      // 改版本号必须被拒：body 是按某一个版本裁出来的字节，换版本重算必然对不上；
+      // 未知版本（如 4）连重建规则都没有。对 v3 而言「删掉版本号」是把它伪装成 v1，
+      // 同样属于篡改 —— 三种形状都不能被当成「兼容」放行。
+      const tampered: Array<2 | 3 | 4 | undefined> = version === 1 ? [2, 3, 4] : [undefined, 4]
+      for (const changedVersion of tampered) {
         const changed = structuredClone(usage)
         if (changedVersion === undefined) delete changed.reviewRevisionEffect.reportVersion
         else changed.reviewRevisionEffect.reportVersion = changedVersion
@@ -700,7 +704,7 @@ describe('review and revision generation through the actual owner and SQLite', (
         .toThrow('GENERATION_REVIEW_RECHECK_NOT_REQUIRED')
       const usage = JSON.parse(f.db.prepare('SELECT usage_receipt_json FROM generation_attempts WHERE attempt_id=?')
         .pluck().get(recheckArtifact.attemptId) as string)
-      expect(usage.reviewRevisionEffect.reportVersion).toBe(2)
+      expect(usage.reviewRevisionEffect.reportVersion).toBe(3)
       let expectedSaved = savedRecheck
       if (reportVersion === 1) {
         // Historical strict parsing kept this complete wrapped artifact but saved an invalid-output report.
@@ -723,7 +727,13 @@ describe('review and revision generation through the actual owner and SQLite', (
         expect(verifyM03ReviewCycle(f.db)).toBe(true)
         expect(JSON.parse(f.db.prepare('SELECT artifact_json FROM generation_artifacts WHERE artifact_id=?')
           .pluck().get(recheckArtifact.artifactId) as string).text).toBe(recheckOutput)
-        for (const version of [3, reportVersion === 1 ? 2 : undefined]) {
+        // 篡改候选按报告版本分档。**v2 → 3 这一档查不出来，这是刻意的**：
+        // 模型没输出 stateDelta 时，v2 与 v3 的重建字节完全相同（同一份文本、同一套裁剪规则），
+        // 所以把 receipt 的版本号从 2 改成 3 不改变任何字节，也就没有可检测的差异 ——
+        // 而这个「伪造」本身什么也没改。反过来若强制 v3 必须带 stateDelta 键，模板被旧版
+        // 全局覆盖时整份审稿会作废；那是把可检出的无害伪造，换成真实的用户故障。
+        const tampered: Array<2 | 3 | 4 | undefined> = reportVersion === 1 ? [2, 3, 4] : [undefined, 4]
+        for (const version of tampered) {
           const changed = structuredClone(usage)
           if (version === undefined) delete changed.reviewRevisionEffect.reportVersion
           else changed.reviewRevisionEffect.reportVersion = version
