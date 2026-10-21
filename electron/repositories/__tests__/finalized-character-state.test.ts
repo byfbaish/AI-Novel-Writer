@@ -503,6 +503,21 @@ describe('review state crossings (W3 unit 2)', () => {
     expect(receipt.candidates[0]!.evidence).toMatchObject({ start: 2, end: 9 })
   })
 
+  // `reviews` 里混着复核报告（形状不同、没有 stateDelta）。按 id 取最新会读到它 ⇒
+  // 每个修订过的章节都读成 unreadable，判据永远不触发。所以取「最新一份带差分的」。
+  it('reads the newest review that carries a delta instead of a newer recheck report', () => {
+    const f = fixture()
+    review(f.db, { stateDelta: observation('一把铜钥匙', '林岚走进北塔') })
+    f.db.prepare('INSERT INTO contents(id,body) VALUES(?,?)').run(910, JSON.stringify({ summary: '复核通过。',
+      items: [{ category: '连贯性', severity: 'unknown', findingId: 'f1', targetId: null, description: '复核未提供唯一且可验证的新证据。' }] }))
+    f.db.prepare(`INSERT INTO reviews(id,base_draft_id,review_index,source_draft_chapter_number,source_draft_version,
+      source_draft_status,source_content,content_id) VALUES(902,1,2,1,1,'finalized',?,910)`).run(prose)
+    f.saveNotes()
+    const context = f.context()
+    expect(SummaryRepository.commitFinalizedCharacterStates(context, f.response(context, { keyItems: '半块木牌' }), f.db))
+      .toMatchObject({ applied: 0, candidates: [{ reason: 'review-conflict', reviewObserved: '一把铜钥匙' }] })
+  })
+
   it('round-trips the review evidence through the candidate store so the panel can show it', () => {
     const f = fixture()
     review(f.db, { stateDelta: observation('一把铜钥匙', '林岚走进北塔') })
