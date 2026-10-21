@@ -515,7 +515,7 @@
 
 | 层 | 文件 | 做了什么 |
 |---|---|---|
-| schema | `electron/migrations/baseline-schema.ts` | 建表加 `story_day_offset INTEGER NULL` / `story_day_label TEXT NULL`；迁移段两条幂等 `ALTER`（存量项目升级后为 NULL） |
+| schema | `electron/migrations/m10-story-day.ts`（新 lane M10，v10→v11） | 两条幂等 `ALTER` 加 `story_day_offset INTEGER NULL` / `story_day_label TEXT NULL`；**基线 `baseline-schema.ts` 一行未改**（见 §14.7 判据 CU） |
 | 产出 | `generate_chapter_notes`（zh `builtin-prompt-templates.ts` + en `prompt-language.ts`） | 新增 `## 时间定位` / `## Time anchor`：开篇当日 = 0，冒号后**只写一个阿拉伯数字**，推不出来写「未定」；日期写法放「书中写法」 |
 | 解析 | `src/shared/story-day-anchor.ts` `parseStoryDayAnchor()` | 只在栏目内找、只认「冒号 → 可选『第』→ 整数」；「2月27日」判缺失而不是抓成 2 |
 | 写入 | `finalize-chapter.command.ts` + 主进程 `finalization-generation.ts` | 解析结果随 `SaveFinalizedContinuityRequest` 落库 |
@@ -540,11 +540,37 @@
 
 回填时顺带把 `## 时间定位` 小节插进第 1–3 章的要点头部，让库内笔记与两列自洽。
 
-### 14.4 判据 CT：新增列必须同步便携字段策略
+### 14.4 判据 CT：新增列要同步三个下游，一个都不能少
 
-实测踩到：加两列后 `portable-project-format`（3 例）与 `generation-source-binding`（2 例）共 5 个测试红，错码 `PORTABLE_SCHEMA_UNSUPPORTED`。原因是 `electron/services/portable-project-field-policy.json` 的字段白名单是**双向精确**的（库里多一列、策略里少一条即 fail closed）。
+初版只想到便携策略，实测漏了两个，结果是一条**真回归**被当成"预先存在的失败"报了。
 
-固定两步：① `tables.summary_snapshots` 加列；② 若属「新版可选、旧库可缺」，登记进 `optionalFields`（照 `project_core.rhythm_profile` 先例）⇒ origin = `registered-donor`，不污染 S01 基线与 M01–M05 delta 计数。另需同步 `portable-project-format.test.ts` 的 `493 → 495`、`138 → 140`。
+| 下游 | 踩了什么 | 固定动作 |
+|---|---|---|
+| 便携字段策略 | `portable-project-format` 3 例 + `generation-source-binding` 2 例红，`PORTABLE_SCHEMA_UNSUPPORTED`。白名单**双向精确**（库里多一列、策略少一条即 fail closed） | ① `tables.summary_snapshots` 加列；② 属「新版可选、旧库可缺」则登记进 `optionalFields`（照 `project_core.rhythm_profile` 先例）⇒ origin = `registered-donor`，不污染 S01 基线与 delta 计数 |
+| 基线字段签名 | `runner.test.ts`「matches the signed field set」红：基线实际 358 列 vs 签名契约 356 列 | 不要动签名契约。基线是**冻结**的，新列走 M 迁移（判据 CU） |
+| 老库导入列比对 | `copyQualifiedLegacy` 要求「源库列集 == 基线列集」，基线一多列，**整条离线导入全线阻断**（`PROJECT_MIGRATION_LEGACY_SCHEMA_MISMATCH`，39 例） | 同上：基线不动，问题自然消失。切勿用「放宽为子集」绕过 —— 那会把「源库有我们不认识的列」这条真风险一起放过 |
+
+### 14.7 判据 CU：基线冻结 —— 新列只能走 M 迁移，不能改 `CREATE TABLE`
+
+M07（`plot_structure_plan`）/ M08（`structured_refs`）/ M09（`rhythm_profile`）三次都走新 lane，基线一行没动。W2 初版把两列直接写进 `baseline-schema.ts` 的 `CREATE TABLE`，立刻在三处爆炸（上表），其中老库导入是**用户可见的回归**：导入 v1.0/v1.1 老项目会直接失败。
+
+判据：**`baseline-schema.ts` 是已签署的 S01 基线的物化，它的列集 = 签名契约的 356 项；要加列就新建 M 迁移步骤（含 `from/to/owner` 槽位、幂等 apply、`verify`），并同步 `CURRENT_DESKTOP_SCHEMA_VERSION` / `LATEST_SCHEMA_VERSION` / `MIGRATION_IDS`。** 本次落地 M10（v10→v11），lane 测试见 `m10-installed-lane.test.ts`。
+
+### 14.8 判据 CV：状态机的前置断言不能被「为下游准备数据」的副作用先行破坏
+
+老库离线的整条导入流程里，`adoptCopiedLegacyCards` 无条件调了一次 `refreshCharacterIdentityProjection(db)`。这个函数会把 `character_roster_meta.migration_state` 直接写成 `'ready'`，而紧接着的 `adoptLegacyCards` 要求它仍是 `'legacy_cards_preserved'` —— 用自己的副作用废掉了下一步的前置条件，13 例必挂 `LEGACY_ROSTER_CARDS_REQUIRED`。
+
+修法不是放宽断言，而是**只在真正需要刷新时刷新**（`if (readySource)`：源名单已 ready 才需要重建投影；旧卡待采纳的分支由 `adoptLegacyCards` 自己在内部刷）。
+
+判据：**任何「为了让下游能用」的准备工作，都要先确认它不会改写下游的前置判据字段。** 一个函数如果既改数据又改状态枚举，它就不能无条件地插在状态机中间。
+
+### 14.9 判据 CW：读新列也要能读旧库
+
+`listFinalizedContinuityBefore` 一度直接 `SELECT summary_snapshots.story_day_offset`。基线冻结后，任何**尚未升到 M10** 的库（包括停在版本 0 的测试库、只读探测路径）都会 `no such column` 整条查询失败。
+
+修法：读侧先查 `PRAGMA table_info`，缺列时把两列选成 `NULL`。语义正好对得上判据 CS —— **缺列 = 日序未知**，而不是报错，也不是第 0 日。
+
+配套改了一处测试夹具的口径：`generation-source-binding` 的 fixture 刻意停在裸基线（它靠「没有身份表」来跳过冻结校验），所以不能给它补跑全量迁移（那会让 `sourceStatus` 从 `current` 变 `legacy`，属于另一个测试的职责）。
 
 ### 14.5 顺带修掉的上轮遗漏
 
