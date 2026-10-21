@@ -9,6 +9,7 @@ import type { FinalizedCharacterGenerationCommit, FinalizedCharacterGenerationRe
 import { SummaryRepository } from '../repositories/summary-repository'
 import { GenerationRunRepository, textHash } from '../repositories/generation-run-repository'
 import type { CharacterProposalService } from './character-proposal-service'
+import { needsFinalizedOccurrenceBatch } from './character-proposal-service'
 import { proveFinalizedCharacterGeneration } from './finalized-character-generation-proof'
 
 export class FinalizedCharacterGeneration {
@@ -69,6 +70,8 @@ export class FinalizedCharacterGeneration {
     const context = this.contexts.get(request.contextId)
     if (!context || request.handle.projectId !== this.scope.projectId || request.handle.epoch !== this.scope.epoch)
       throw new Error('GENERATION_CHARACTER_CONTEXT_REQUIRED')
+    // 判据 CX：登记集合在事务外取一次（`declinedCandidateNames()` 自己会开一层事务）。
+    const declined = new Set(characters.declinedCandidateNames())
     return this.db.transaction(() => {
       assertSources(request.handle)
       const proof = proveFinalizedCharacterGeneration(this.db, this.runs, this.scope.projectId, request.handle, request.artifact)
@@ -76,7 +79,10 @@ export class FinalizedCharacterGeneration {
       // transferOrigin 同步读取已验证的转移凭据，与本事务同属一次同步执行；凭据被篡改只会读出 null/抛错，趋向冲突而非放行。
       const receipt = SummaryRepository.commitFinalizedCharacterStates(context, proof.response, this.db, this.transferOrigin())
       // Nameless occurrences remain visible in the durable artifact; never invent a name for adoption.
-      const batch = proof.response.unresolved.some(item => item.displayName.trim())
+      // 判据 CX：作者已登记为锚点人物（无卡）的名字不再产生待确认批次 —— 那些项没有卡可写，
+      // 永远无法应用。若本章的「有出现、无卡」全是已登记的名字，整批不 stage：留下一个零项的
+      // 空批次等于把同一个噪声换个形状继续占着待确认队列。
+      const batch = needsFinalizedOccurrenceBatch(declined, proof.response.unresolved)
         ? characters.stage({ kind: 'finalized-generation', handle: request.handle, artifact: request.artifact }) : undefined
       return { ...receipt, unresolved: structuredClone(proof.response.unresolved), ...(batch ? { proposalBatchId: batch.proposalBatchId } : {}) }
     }).immediate()

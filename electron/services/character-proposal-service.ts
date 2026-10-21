@@ -18,6 +18,27 @@ export interface CharacterProposalProof {
   /** An unproven legacy/import candidate remains readable; it cannot be silently adopted. */
   provenance: CharacterStaticProvenance | null
 }
+
+/**
+ * 判据 CX：这批「有出现、无卡」里是否还有**未登记为锚点人物**的名字。
+ *
+ * 实测缺陷（2026-10-21 第 3 章）：`小郑` 与 `跛脚老管事` 在采纳界面被明确判为
+ * `functional`（有引用键、无卡槽），但定稿后处理仍为这两个名字抽出了完整状态，并
+ * stage 成 `update:2` / `update:3` 两条待确认项 —— 它们**没有卡可写**，永远无法应用，
+ * 只会让待确认队列每章加长一次、永远清不空。
+ *
+ * 两个调用点（`finalization-generation` 定稿主链、`finalized-character-generation`
+ * 单独重跑链）都必须走这一处判断，否则同一条规则会在两条链上漂移。
+ *
+ * 收的是**已算好的名字集合**而不是 service：这两个调用点都在自己的事务里，把
+ * `declinedCandidateNames()`（它自己会开一层事务）留在这里等于逼调用方在事务内嵌套读取。
+ */
+export function needsFinalizedOccurrenceBatch(
+  declined: ReadonlySet<string>,
+  unresolved: readonly { displayName: string }[],
+): boolean {
+  return unresolved.some(item => Boolean(item.displayName.trim()) && !declined.has(item.displayName.trim()))
+}
 interface Envelope {
   version: 1
   architectureDerivationVersion?: 2
@@ -165,15 +186,39 @@ export class CharacterProposalService {
     }
     return envelope
   }
+  /**
+   * 作者已判定「有引用键、无卡槽」的名字集合（`character_cast_decisions` 当前态）。
+   *
+   * 与公开的 `declinedCandidateNames()` 是同一条规则的**事务内**形态：后者自己开
+   * `.immediate()` 事务，而 `resolveItems` 已经跑在 `stage`/`read` 的事务里，
+   * 这里只做「回填（幂等）+ 读当前态」，不再嵌套一层事务。
+   */
+  private declinedNameSet(): Set<string> {
+    if (!hasCharacterCastDecisionSchema(this.db)) {
+      return new Set(this.legacyFunctionalNames().map(item => item.name))
+    }
+    this.backfillLegacyCastDecisions()
+    return new Set(CharacterCastDecisionRepository.declinedNames(this.db))
+  }
   private resolveItems(proof: CharacterProposalProof, source: CharacterProposalSource, snapshot: CharacterIdentitySnapshot): CharacterProposalItem[] {
     const aliases = snapshot.aliases.filter(alias => snapshot.characters.some(character => character.characterId === alias.characterId && !character.retired))
       .map(alias => ({ ...alias, projectId: this.projectId }))
-    return proof.items.map(item => {
+    // 判据 CX（实测，2026-10-21 第 3 章）：已登记为锚点人物（无卡）的名字**不再进入定稿候选**。
+    // 实测缺陷：`小郑` 与 `跛脚老管事` 在采纳界面被判为 `functional`，但定稿后处理仍为这两个
+    // 名字抽出了完整状态，并 stage 成 `update:2`/`update:3` 两条待确认项 —— 它们没有卡可写，
+    // **永远无法应用**，只会让待确认队列每章加长一次、永远清不空。`declinedCandidateNames`
+    // 的注释早就写明这条规则（"否则那个集合永远清不空"），只是 `resolveItems` 没执行它。
+    //
+    // 只对定稿这条链生效：架构/旧名单/导入声明的是「要建哪些人」，不受登记影响 ——
+    // 那些批次的项本来就是建卡机会，不是「有出现、无卡」的残留。
+    const declined = source.kind === 'finalized-generation' ? this.declinedNameSet() : new Set<string>()
+    return proof.items.flatMap(item => {
+      if (declined.has(item.fields.name.trim())) return []
       let resolution = resolveScopedCharacterIdentity(aliases,
         { name: item.fields.name, projectId: this.projectId, sourceKey: item.sourceId, revision: snapshot.revision })
       if (source.kind !== 'finalized-generation' && resolution.status === 'unresolved') resolution = resolveScopedCharacterIdentity(aliases,
         { name: item.fields.name, projectId: this.projectId, revision: snapshot.revision })
-      return { ...structuredClone(item), resolution }
+      return [{ ...structuredClone(item), resolution }]
     })
   }
   read(proposalBatchId: string): CharacterProposalBatch {
