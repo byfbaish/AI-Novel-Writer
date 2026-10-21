@@ -151,6 +151,8 @@ export const PROMPT_VARIABLE_DESCRIPTIONS_EN: Readonly<Record<string, string>> =
   first_chapter: 'Opening chapter sample',
   latest_chapter: 'Latest chapter sample',
   total_chapters: 'Existing number of chapters',
+  // M09（rhythm_profile）引入时漏登记英文说明，同一审计因此长期为红。
+  rhythm_profile: 'Platform pacing recommendation (optional; injected from the project profile, omitted when empty)',
   mode_instruction: 'Current assistant mode instruction',
 })
 

@@ -293,9 +293,13 @@ async function adoptCopiedLegacyCards(db: import('better-sqlite3').Database, old
       // projection_hash / fact_hash 仍是迁移时从旧库复制的旧投影。character_relationships
       // 以随机 UUID 为主键，渲染顺序不可能与旧库 relationships 文本列的原始顺序一致
       // （即使字符数相同），所以旧投影与新事实对不上，终检必然判 inconsistent。
-      // 投影是由事实派生的只读视图，按当前事实重建不丢失任何作者事实；
-      // adoptLegacyCards 在同位置也是这样刷新的。
-      refreshCharacterIdentityProjection(db)
+      // 投影是由事实派生的只读视图，按当前事实重建不丢失任何作者事实。
+      //
+      // 判据 CV：这次刷新只在「源库名单已是 ready」时需要。refresh 会把
+      // migration_state 直接置为 'ready'，而下面的 adoptLegacyCards 要求源仍是
+      // 'legacy_cards_preserved' —— 无条件刷新等于用自己的副作用废掉下一步的前置条件
+      // （实测整条离线导入在这一行之后必挂 LEGACY_ROSTER_CARDS_REQUIRED）。
+      if (readySource) refreshCharacterIdentityProjection(db)
       const source = readLegacyRosterSource(db)
       if (readySource) {
         if (source.snapshot.migrationState !== 'ready' || source.snapshot.status !== 'ready') reject()

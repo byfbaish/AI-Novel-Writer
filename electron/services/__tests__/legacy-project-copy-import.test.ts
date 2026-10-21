@@ -9,6 +9,7 @@ import * as lance from '@lancedb/lancedb'
 import { Field, Int32, Schema, Utf8 } from 'apache-arrow'
 import { importLegacyProjectCopy } from '../legacy-project-copy-import'
 import { verifyProjectSqlite } from '../sqlite-project-migration'
+import { CURRENT_DESKTOP_SCHEMA_VERSION } from '../../migrations/desktop-registry'
 import { readPortableRuntimeFreeze } from '../portable-runtime-freeze'
 import { closeProjectDatabase, getProjectDb, initProjectDatabase } from '../../database'
 import { ChapterDeletionService } from '../chapter-deletion-service'
@@ -355,9 +356,10 @@ it.each(['missing', 'stale-source', 'ambiguous', 'missing-origin'] as const)('v1
       } finally { staging.close() }
     } : undefined,
   })
+  // ambiguous 与 missing-origin 都是「导入产物的身份证据与迁移结果对不上」，由终检拦；
+  // MIGRATION_VERIFICATION_FAILED 是迁移步骤自身的验签码，数据行缺失不会走到那里。
   expect(result).toEqual({ state: 'blocked', code: problem === 'missing' || problem === 'stale-source'
-    ? 'LEGACY_IMPORT_ROSTER_UNAVAILABLE'
-    : problem === 'ambiguous' ? 'LEGACY_IMPORT_SQLITE_VERIFICATION_FAILED' : 'MIGRATION_VERIFICATION_FAILED' })
+    ? 'LEGACY_IMPORT_ROSTER_UNAVAILABLE' : 'LEGACY_IMPORT_SQLITE_VERIFICATION_FAILED' })
   expect(fs.existsSync(f.target)).toBe(false)
   expect(sourceState(f)).toEqual(before)
   if (problem !== 'missing' && problem !== 'stale-source') return
@@ -440,7 +442,6 @@ it.each([
   '与甲是同门', '[{"target":" 甲","relation":"同门"}]', '[{"target":"不存在","relation":"同门"}]',
   '[{"target":"乙","relation":"自指"}]', '[{"target":"甲","relation":""}]',
   '[{"target":"甲","relation":"同门","confidence":1}]',
-  '[{"target":"甲","relation":"同门"},{"target":"甲","relation":"友人"}]',
   '{"target":"甲","relation":"同门"}',
 ])('旧卡关系不满足完整主键边契约时阻断且保全：%s', async relationships => {
   const f = fixture('v110', '')
@@ -461,6 +462,29 @@ it.each([
     expect(staging.prepare('SELECT COUNT(*) FROM character_identity_approvals').pluck().get()).toBe(0)
     expect(CharacterRosterRepository.read(staging).migrationState).toBe('legacy_cards_preserved')
   } finally { staging.close() }
+})
+
+// 旧版允许同一对角色带多条不同 relation（例如既是「潜在盟友」又是「潜在竞争者」）。
+// character_relationships 只有 relationship_id 主键、没有 (source,target) 唯一约束，
+// 按 target 单值判重会把这类旧项目整体判成无法映射，等于静默丢掉作者写下的关系 ——
+// 与 ADR 0020「保留角色原始资料与关系」相悖。故单独钉死「保留而不是阻断」。
+it('旧卡同一对角色带多条不同 relation 时保留全部边而不阻断', async () => {
+  const f = fixture('v110', '')
+  addLegacyCards(f)
+  const old = new Database(path.join(f.legacy, 'vela.db'))
+  try {
+    old.prepare('UPDATE characters SET relationships=? WHERE name=?')
+      .run('[{"target":"甲","relation":"同门"},{"target":"甲","relation":"友人"}]', '乙')
+  } finally { old.close() }
+  const before = sourceState(f)
+  expect(await importLegacyProjectCopy({ sourceRoot: f.source, targetRoot: f.target, preflightOptions }))
+    .toMatchObject({ state: 'ready' })
+  expect(sourceState(f)).toEqual(before)
+  const db = new Database(path.join(f.target, '.ai-novel', 'project.db'), { readonly: true })
+  try {
+    expect(new Set(db.prepare('SELECT relation FROM character_relationships').pluck().all()))
+      .toEqual(new Set(['同门', '友人']))
+  } finally { db.close() }
 })
 
 it.each(['v100', 'v110'] as const)('%s 非空旧原文与卡片无法证明无损时仍拒绝发布并保留 staging', async version => {
@@ -495,7 +519,7 @@ it.each(['v100', 'v110'] as const)('%s 合法空角色名单的离线完整副�
   expect(fs.readFileSync(path.join(f.target, 'outline.md'), 'utf8')).toBe('作者目录级大纲')
   expect(fs.readFileSync(path.join(f.target, '.ai-novel', 'prompts', 'author.txt'), 'utf8')).toBe('作者项目级提示词')
   expect(fs.readFileSync(path.join(f.target, '.ai-novel', 'skills', 'author.md'), 'utf8')).toBe('作者项目级 Skill 原文')
-  expect(verifyProjectSqlite({ databasePath: path.join(f.target, '.ai-novel', 'project.db') }).schemaVersion).toBe(8)
+  expect(verifyProjectSqlite({ databasePath: path.join(f.target, '.ai-novel', 'project.db') }).schemaVersion).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
   const db = new Database(path.join(f.target, '.ai-novel', 'project.db'), { readonly: true })
   try {
     expect(db.prepare('SELECT characters_arch FROM project_core WHERE id=?').pluck().get('main')).toBe('')
@@ -649,7 +673,7 @@ it.each(['sqlite-converted', 'renamed'] as const)('%s 子进程终止后源保�
     expect(await importLegacyProjectCopy({ sourceRoot: f.source, targetRoot: f.target, preflightOptions }))
       .toMatchObject({ state: 'ready', targetRoot: f.target })
   } else {
-    expect(verifyProjectSqlite({ databasePath: path.join(f.target, '.ai-novel', 'project.db') }).schemaVersion).toBe(8)
+    expect(verifyProjectSqlite({ databasePath: path.join(f.target, '.ai-novel', 'project.db') }).schemaVersion).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
     const access = new ProjectAccessService(preflightOptions)
     const trusted = access.adoptLegacyProject(access.probeExistingProject(f.target))
     expect(trusted.projectId).not.toBe(f.sourceProjectId)
