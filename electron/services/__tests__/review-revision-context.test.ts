@@ -77,14 +77,27 @@ describe('审修上下文实际 SQLite 捕获', () => {
     const f = fixture(); f.request.authorInputs = [{ id, text: '候选不能冒充作者' }]
     expect(f.capture).toThrow('GENERATION_REVIEW_CONTEXT_INVALID')
   })
-  it('只采纳活跃 ID 的作者状态，不采纳派生或退休状态', () => {
+  it('只采纳活跃角色卡的状态：作者声明与派生都注入，退休与 legacy 跳过', () => {
     const f = fixture()
-    for (const [id, retired, kind, location] of [['active', 0, 'author', '北塔'], ['retired', 1, 'author', '旧站'], ['derived', 0, 'legacy', '猜测地点']] as const) {
+    const derivedSource = { draftId: 1, finalizationId: 'fin-1', chapterNumber: 1, contentHash: 'hash-1' }
+    const rows: [string, number, unknown, string][] = [
+      ['active', 0, { location: { kind: 'author', chapterNumber: 1 } }, '北塔'],
+      ['retired', 1, { location: { kind: 'author', chapterNumber: 1 } }, '旧站'],
+      ['legacy', 0, { location: { kind: 'legacy' } }, '猜测地点'],
+      ['derived', 0, { location: { kind: 'derived', source: derivedSource } }, '南巷口'],
+    ]
+    for (const [id, retired, provenance, location] of rows) {
       f.db.prepare('INSERT INTO characters(character_id,name,retired,cs_updated_at_chapter,cs_location,cs_provenance) VALUES(?,?,?,1,?,?)')
-        .run(id, id, retired, location, JSON.stringify({ location: { kind, chapterNumber: 1 } }))
+        .run(id, id, retired, location, JSON.stringify(provenance))
     }
     const context = f.capture()
-    expect(context.characterStates).toContain('北塔'); expect(context.characterStates).not.toContain('旧站'); expect(context.characterStates).not.toContain('猜测地点')
+    expect(context.characterStates).toContain('北塔')
+    // 派生状态是定稿抽取的产物：审稿要拿它判断「这一章有没有把状态写错」，
+    // 所以必须注入；但逐字段标注「·派生」—— 它可被后文修正，不是作者权威声明。
+    expect(context.characterStates).toContain('南巷口')
+    expect(context.characterStates).toContain('·派生')
+    expect(context.characterStates).not.toContain('旧站')
+    expect(context.characterStates).not.toContain('猜测地点')
   })
   it('冻结当前及后五章蓝图和目标，历史原文无凭据不变成事实', () => {
     const f = fixture()
