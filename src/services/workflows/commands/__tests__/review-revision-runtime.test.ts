@@ -288,6 +288,13 @@ describe('review/revision consumers using the main contract (synthetic transport
         expect(prompt).toContain('PERSISTED_TEMPLATE')
         expect(prompt).toContain(language === 'zh-CN' ? '【时间一致性检查】' : '[Temporal consistency checks]')
         expect(prompt).toContain(language === 'zh-CN' ? 'pass 简述实际核对的对象、来源与对照结果即可' : 'Briefly state the actual subject, source checked and comparison result for a pass')
+        // W1：执行口径进审稿（判定标准，不是写作义务）。
+        expect(prompt).toContain(language === 'zh-CN' ? '【本章执行口径｜用于判定，不是写作指令】' : '[Execution criteria for this chapter | for judging, not writing instructions]')
+        expect(prompt).toContain(language === 'zh-CN' ? '以定稿事实为准' : 'the finalized facts prevail')
+      }
+      if (operation === 'recheck') {
+        // recheck 只裁决既有 finding，刻意不加执行口径，避免两套判据互相干扰。
+        expect(prompt).not.toContain(language === 'zh-CN' ? '【本章执行口径' : '[Execution criteria for this chapter')
       }
       if (operation === 'refine-from-review') expect(prompt).toContain(reviewRevisionAiBrief(f.fixture.prepared!.context))
       if (operation === 'recheck') expect(prompt).toContain(language === 'zh-CN' ? '不能判为 resolved' : 'must not be marked resolved')
