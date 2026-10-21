@@ -17,7 +17,6 @@ import {
 import { useLayoutStore } from '../../stores/layout-store'
 import { openPlanningRecoveryDraft, useEditorStore } from '../../stores/editor-store'
 import { useProjectStore } from '../../stores/project-store'
-import { useWorkflowReasoningStore } from '../../stores/workflow-reasoning-store'
 import {
   projectSessionContextFromProject,
   sameProjectPathKey,
@@ -541,7 +540,9 @@ function ActiveRunView({
   onSwitchRun: (id: string) => void
 }) {
   const locale = run.uiLocale
-  const transientReasoning = useWorkflowReasoningStore(state => state.entries[run.id]?.text ?? '')
+  // ⚠️ 运行态**不再订阅** reasoning store：分片可能每秒上百个，订阅它等于让整棵子树
+  //    每片重渲染一次 + 每片强制布局一次（2026-10-21 实机把渲染进程推到 10GB）。
+  //    思考文本只在诊断路径保留尾部，见 docs/design/features/ai-output-live-render-design.md。
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
   const isActive = run.status === 'running' || run.status === 'waiting' || run.status === 'paused' || run.status === 'cancelling'
@@ -671,7 +672,6 @@ function ActiveRunView({
               total={run.steps.length}
               isActiveRun={isActive}
               isCurrentStep={i === run.currentStepIndex}
-              transientReasoning={isActive && i === run.currentStepIndex ? transientReasoning : ''}
               locale={locale}
             />
           ))}
@@ -747,7 +747,7 @@ function ActiveRunView({
 
 
 // ===== 新版渲染单步结果（支持查看所有历史步骤数据） =====
-function StepOutputBlock({ step, index, total, isActiveRun, isCurrentStep, transientReasoning, locale }: { step: WorkflowStep; index: number; total: number; isActiveRun: boolean; isCurrentStep: boolean; transientReasoning: string; locale: Locale }) {
+function StepOutputBlock({ step, index, total, isActiveRun, isCurrentStep, locale }: { step: WorkflowStep; index: number; total: number; isActiveRun: boolean; isCurrentStep: boolean; locale: Locale }) {
   const isRunning = step.status === 'running'
   const isCompleted = step.status === 'completed'
   const isFailed = step.status === 'failed'
@@ -769,7 +769,7 @@ function StepOutputBlock({ step, index, total, isActiveRun, isCurrentStep, trans
       content = ''
     }
   }
-  const displayedThinking = transientReasoning || thinking
+  const displayedThinking = thinking
   const hasOutput = Boolean(rawText || displayedThinking)
 
   // 当前激活的步骤默认展开，过去/未来的默认折叠（只有产生了内容的步骤才允许展开）
@@ -844,41 +844,89 @@ function StepOutputBlock({ step, index, total, isActiveRun, isCurrentStep, trans
         )}
       </div>
 
-      {isRunning && isActiveRun && step.generationActivity?.operation === 'review-chapter' && <ReviewWaitStatus step={step} locale={locale} />}
+      {/* 运行中：只回答「还在不在干活」，不渲染流式文本（2026-10-21 性能决定）
+          见 docs/design/features/ai-output-live-render-design.md */}
+      {isRunning && isActiveRun && (
+        <div className="pl-[4px] pr-1 pt-0.5 pb-2 text-xs w-full max-w-full">
+          <RunningStepStatus step={step} locale={locale} />
+          <LiveOutputPeek content={content} locale={locale} />
+        </div>
+      )}
 
-      {/* 展开的对应输出数据 */}
-      {expanded && hasOutput && (
+      {/* 已结束的步骤：一次性渲染完整输出（含思考过程）。运行中绝不走这里。 */}
+      {!isRunning && expanded && hasOutput && (
         <div className="pl-[4px] pr-1 pt-1 pb-3 text-xs w-full max-w-full break-words">
-          {/* 思维链区域 */}
+          {/* 思维链区域（已结束，静态内容，不再有光标动画） */}
           {displayedThinking && (
             <ThinkingBlock
               thinking={displayedThinking}
-              showCursor={isRunning && isActiveRun && !content && step.generationActivity?.operation !== 'review-chapter'}
+              showCursor={false}
               hasContent={!!content}
               locale={locale}
             />
           )}
-          
+
           {/* 实际正文区域 */}
           {content && (
             <div className="mt-1">
-              <MarkdownContent content={content} streaming={isRunning && isActiveRun} />
+              <MarkdownContent content={content} />
             </div>
           )}
-        </div>
-      )}
-
-      {/* 如果是单一正在执行等待，则显示一个等待骨架 */}
-      {!hasOutput && isRunning && isActiveRun && (
-        <div className="pl-[4px] pr-1 pt-1 pb-3 text-xs text-center" style={{ color: 'var(--color-text-muted)', opacity: 0.7 }}>
-          {runText(locale, '等待指令响应...', 'Waiting for the workflow step...')}
         </div>
       )}
     </div>
   )
 }
 
-function ReviewWaitStatus({ step, locale }: { step: WorkflowStep; locale: Locale }) {
+/** 运行态查看窗口：默认折叠、展开后每 1.5 秒刷新一次、只保留尾部，避免跟着分片抖动。 */
+const LIVE_OUTPUT_TAIL_CHARS = 8_192
+const LIVE_OUTPUT_REFRESH_MS = 1_500
+
+function useLowFrequencyValue<T>(value: T, intervalMs: number): T {
+  const [slow, setSlow] = useState(value)
+  const latest = useRef(value)
+  useEffect(() => { latest.current = value }, [value])
+  useEffect(() => {
+    const timer = window.setInterval(() => setSlow(latest.current), intervalMs)
+    return () => window.clearInterval(timer)
+  }, [intervalMs])
+  return slow
+}
+
+function LiveOutputPeek({ content, locale }: { content: string; locale: Locale }) {
+  const [open, setOpen] = useState(false)
+  const slow = useLowFrequencyValue(content, LIVE_OUTPUT_REFRESH_MS)
+  const tail = slow.length > LIVE_OUTPUT_TAIL_CHARS ? slow.slice(-LIVE_OUTPUT_TAIL_CHARS) : slow
+  return (
+    <div className="px-2 pt-1">
+      <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        className="flex items-center gap-1 text-[0.68rem]"
+        style={{ color: 'var(--color-text-muted)' }}
+      >
+        <ChevronRight
+          size={11}
+          style={{ transition: 'transform 0.2s', transform: open ? 'rotate(90deg)' : 'none', opacity: 0.6 }}
+        />
+        {open
+          ? runText(locale, '收起当前输出', 'Hide current output')
+          : runText(locale, '查看当前输出（低频）', 'Show current output (low frequency)')}
+      </button>
+      {open && (
+        <pre
+          className="mt-1 max-h-48 overflow-y-auto whitespace-pre-wrap break-words text-[0.68rem] leading-relaxed"
+          style={{ color: 'var(--color-text-muted)', fontFamily: 'var(--font-mono)' }}
+        >
+          {tail || runText(locale, '（尚无输出）', '(no output yet)')}
+        </pre>
+      )}
+    </div>
+  )
+}
+
+/** 极简运行状态：已用时 + 距最近有效输出。不展示任何流式文本。 */
+function RunningStepStatus({ step, locale }: { step: WorkflowStep; locale: Locale }) {
   const diagnostics = step.generationActivity?.diagnostics
   const [clock, setClock] = useState({ source: diagnostics, elapsed: diagnostics?.elapsedMs ?? 0 })
   useEffect(() => {
@@ -889,16 +937,29 @@ function ReviewWaitStatus({ step, locale }: { step: WorkflowStep; locale: Locale
   }, [diagnostics])
   const elapsed = clock.source === diagnostics ? clock.elapsed : diagnostics?.elapsedMs ?? 0
   const seconds = (ms: number) => `${Math.floor(Math.max(0, ms) / 1000)}${locale === 'en-US' ? 's' : '秒'}`
-  const response = diagnostics?.lastResponseMs
   const output = diagnostics?.lastOutputMs
-  return <div className="px-2 py-1 text-xs" role="status" style={{ color: 'var(--color-text-secondary)' }}>
-    <p>{runText(locale, `已等待 ${seconds(elapsed)}`, `Waited ${seconds(elapsed)}`)}</p>
-    <p>{!diagnostics ? runText(locale, '响应时间暂不可用。', 'Response timing is unavailable.') : response == null ? runText(locale, '尚未收到响应。', 'No response received yet.')
-      : runText(locale, `距最近响应 ${seconds(elapsed - response)}`, `Last response ${seconds(elapsed - response)} ago`)}</p>
-    <p>{!diagnostics ? runText(locale, '有效输出时间暂不可用。', 'Output timing is unavailable.') : output == null ? runText(locale, '尚未收到有效输出；连接心跳不代表审稿进度。', 'No output yet; connection heartbeats do not indicate review progress.')
-      : runText(locale, `距最近有效输出 ${seconds(elapsed - output)}（含思考）`, `Last output ${seconds(elapsed - output)} ago (including reasoning)`)}</p>
-    <p>{runText(locale, '尚无完整审稿报告。等待期间可随时中止。', 'No complete review report yet. You can stop while waiting.')}</p>
-  </div>
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 py-1" role="status"
+        style={{ color: 'var(--color-text-secondary)' }}>
+        <Loader2 size={11} className="animate-spin" style={{ color: 'var(--color-accent)' }} />
+        <span>{runText(locale, '正在工作', 'Working')}</span>
+        <span style={{ color: 'var(--color-text-muted)' }}>·</span>
+        <span>{runText(locale, `已用 ${seconds(elapsed)}`, `Elapsed ${seconds(elapsed)}`)}</span>
+        {output != null && (
+          <>
+            <span style={{ color: 'var(--color-text-muted)' }}>·</span>
+            <span>{runText(locale, `距最近有效输出 ${seconds(elapsed - output)}`, `Last output ${seconds(elapsed - output)} ago`)}</span>
+          </>
+        )}
+      </div>
+      {step.generationActivity?.operation === 'review-chapter' && (
+        <p className="px-2 pb-1 text-[0.68rem]" style={{ color: 'var(--color-text-muted)' }}>
+          {runText(locale, '尚无完整审稿报告。等待期间可随时中止。', 'No complete review report yet. You can stop while waiting.')}
+        </p>
+      )}
+    </div>
+  )
 }
 
 function WorkflowFailureNotice({

@@ -14,6 +14,7 @@ import type {
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import { getActiveProjectSessionContext } from '../shared/project-session-context'
 import type { AiNovelAPI } from '../shared/desktop-api'
+import { noteIpcInvoke } from './debug/ipc-rate-meter'
 
 /** 获取唯一桌面接口；旧接口不是新运行时的写入后备通道。 */
 function getAPI(): AiNovelAPI {
@@ -65,6 +66,8 @@ function invokeWithSession<C extends InvokeChannel>(
   args: AllInvokeChannels[C]['args'],
   context?: ProjectSessionContext,
 ): Promise<AllInvokeChannels[C]['return']> {
+  // 速率统计（仅 dev）：逐条 console.log 会把真实的报错淹掉，且本身是上万条/秒级的开销。
+  noteIpcInvoke(channel)
   if (!isProjectScopedChannel(channel)) {
     return getAPI().invoke(channel, ...args) as Promise<AllInvokeChannels[C]['return']>
   }
@@ -87,10 +90,7 @@ export const ipc = {
     channel: C,
     ...args: AllInvokeChannels[C]['args']
   ): Promise<AllInvokeChannels[C]['return']> => {
-    console.log('[ipc-client.invoke] 调用通道:', channel, '参数数量:', args.length)
-    const result = await invokeWithSession(channel, args)
-    console.log('[ipc-client.invoke] 调用完成:', channel)
-    return result
+    return invokeWithSession(channel, args)
   },
 
   /** 工作流/工具在启动处冻结会话后，必须使用此入口而不是重新读取 currentProject。 */

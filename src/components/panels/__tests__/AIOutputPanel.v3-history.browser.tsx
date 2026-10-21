@@ -68,7 +68,9 @@ it('V3 可在当前生成中选择旧历史正文及终态，再返回取消入�
   expect(host.textContent).toContain('旧章已保存的正文。')
   expect(host.textContent).toContain('整个工作流已全部完成')
   await act(async () => button('当前生成')?.click())
-  expect(host.textContent).toContain('当前正在生成。')
+  // 运行态：只给状态行，不渲染流式正文（2026-10-21 决定）。
+  expect(host.textContent).toContain('正在工作')
+  expect(host.textContent).not.toContain('当前正在生成。')
   expect(host.textContent).toContain('中止生成')
 })
 
@@ -96,7 +98,10 @@ it('V3 切换到 B 项目后不展示 A 项目历史或已选正文', async () =
     useWorkflowStore.setState({ activeRuns: [active], currentRun: active })
   })
   await vi.waitFor(() => expect(host?.textContent).toContain('中止生成'))
-  expect(host.textContent).toContain('B的正文。')
+  // 运行态只给状态行、不渲染流式正文（2026-10-21 决定，
+  // 见 docs/design/features/ai-output-live-render-design.md）：正文在步骤结束后一次性展示。
+  expect(host.textContent).toContain('正在工作')
+  expect(host.textContent).not.toContain('B的正文。')
   expect(host.textContent).not.toContain('A的私密章节')
   expect(host.textContent).not.toContain('A专属正文。')
   expect(button('A的私密章节')).toBeUndefined()
