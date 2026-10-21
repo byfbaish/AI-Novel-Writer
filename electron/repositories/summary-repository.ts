@@ -29,6 +29,8 @@ import {
 import { decideDerivedPatch, type CharacterFieldSnapshot, type DerivedSourceOrder } from '../../src/shared/character-identity'
 import { parseFinalizedCharacterStateResponse } from '../../src/shared/finalized-continuity'
 import { storyDayRegression } from '../../src/shared/story-day-anchor'
+import { judgeReviewStateConflict, locateReviewStateObservations, type ReviewStateObservation } from '../../src/shared/review-state-conflict'
+import { readReviewStateDeltaForDraft } from './review-cycle-repository'
 import { hasCharacterIdentitySchema } from './character-repository'
 import { refreshCharacterStateProjection } from './character-roster-repository'
 import type { ProjectEpoch } from '../../src/shared/source-ref'
@@ -159,7 +161,12 @@ function parseCharacterStateCandidates(value: string): FinalizedCharacterStateCa
             ...(typeof candidate.selectionKey === 'string' ? { selectionKey: candidate.selectionKey } : {}),
             ...(typeof candidate.displayName === 'string' ? { displayName: candidate.displayName } : {}),
             ...(candidate.rawValue !== undefined ? { rawValue: structuredClone(candidate.rawValue) } : {}),
-            ...(candidate.reason === 'author-protected' || candidate.reason === 'legacy-protected' ? { reason: candidate.reason } : {}),
+            ...(candidate.reason === 'author-protected' || candidate.reason === 'legacy-protected'
+              || candidate.reason === 'review-conflict' ? { reason: candidate.reason } : {}),
+            ...(typeof candidate.reviewObserved === 'string' && candidate.reviewObserved
+              ? { reviewObserved: candidate.reviewObserved } : {}),
+            ...(typeof candidate.reviewQuote === 'string' && candidate.reviewQuote
+              ? { reviewQuote: candidate.reviewQuote } : {}),
             ...(typeof candidate.candidateKey === 'string' ? { candidateKey: candidate.candidateKey } : {}),
             ...(isFinalizedSource(candidate.source) ? { source: structuredClone(candidate.source) } : {}),
             ...(Number.isSafeInteger(candidate.expectedFieldRevision) && (candidate.expectedFieldRevision as number) >= 0
@@ -351,6 +358,57 @@ function readCurrentCharacterStateCandidateRow(db: BetterSqlite3.Database, draft
   return row
 }
 
+type ReviewObservationIndex = Map<string, ReviewStateObservation[]>
+
+const reviewObservationKey = (characterId: string, field: CharacterStateTextField) => `${characterId}\u0000${field}`
+
+/**
+ * 把本章审稿的 v3 差分按「角色 + 字段」归位到已冻结的正文坐标里。
+ *
+ * 只有 `ok` 才交叉：`absent`（没审过）/ `legacy`（v2 报告）/ `stale`（审的是另一版正文）/
+ * `unreadable`（报告体解析不了）都拿不出可信引文。它们**不等于「审稿没意见」**，
+ * 但也都不该被当成反对意见 —— 用旧正文的引文去否新正文，比不交叉更坏。
+ */
+function reviewStateObservations(context: FinalizedCharacterContext, db: BetterSqlite3.Database): ReviewObservationIndex {
+  const index: ReviewObservationIndex = new Map()
+  const lookup = readReviewStateDeltaForDraft(context.source.draftId, context.source.contentHash, db)
+  if (lookup.status !== 'ok') return index
+  const idsByName = new Map<string, string[]>()
+  for (const character of context.characters) {
+    for (const name of [character.displayNameSnapshot, ...character.aliases]) {
+      const label = name.trim()
+      if (!label) continue
+      const ids = idsByName.get(label) ?? []
+      if (!ids.includes(character.characterId)) ids.push(character.characterId)
+      idsByName.set(label, ids)
+    }
+  }
+  for (const observation of locateReviewStateObservations(lookup.items, context.content)) {
+    const ids = idsByName.get(observation.characterName.trim())
+    // 对不上任何一张卡的名字不交叉（这类名字归判据 CX：没有卡可写）；对得上多位则
+    // 根本认不出是谁 —— 两种情况都不猜，因为本条更新的 characterId 本身是确定的。
+    if (!ids || ids.length !== 1) continue
+    const key = reviewObservationKey(ids[0]!, observation.field)
+    index.set(key, [...index.get(key) ?? [], observation])
+  }
+  return index
+}
+
+/** 返回非 null = 该字段降级为待裁决，并带上审稿侧读到的值与原句。 */
+function reviewConflict(index: ReviewObservationIndex, characterId: string, field: CharacterStateTextField, value: string,
+  evidence: { start: number; end: number }): { observed: string; quote: string } | null {
+  const observations = index.get(reviewObservationKey(characterId, field))
+  if (!observations?.length) return null
+  // 同一张卡同一字段两条观测：报告体已禁同键重复，只有别名把两个名字映到同一张卡时才会出现。
+  // 这本身就说明「是不是同一次变化」不确定 ⇒ 不判，交作者。
+  if (observations.length > 1) return { observed: observations[0]!.observed, quote: observations[0]!.quote }
+  const observation = observations[0]!
+  // 锚点定位不到/不唯一：证据坏掉不等于没有证据（判据 CS）。按判不了处理，不按没意见。
+  if (!observation.span) return { observed: observation.observed, quote: observation.quote }
+  return judgeReviewStateConflict({ observed: observation.observed, span: observation.span }, { value, span: evidence }) === 'conflict'
+    ? { observed: observation.observed, quote: observation.quote } : null
+}
+
 function pendingCharacterStateCandidate(db: BetterSqlite3.Database, row: CharacterStateCandidateRow,
   candidate: FinalizedCharacterStateCandidate): PendingFinalizedCharacterStateCandidate | null {
   const source = { draftId: row.draftId, finalizationId: row.finalizationId,
@@ -435,6 +493,8 @@ export class SummaryRepository {
       const verified = parseFinalizedCharacterStateResponse(JSON.stringify({ updates: response.updates }), context)
       if (verified.unresolved.length) throw new Error('FINALIZED_CHARACTER_IDENTITY_REQUIRED')
       const receipt: FinalizedCharacterStateCommitReceipt = { applied: 0, unchanged: 0, candidates: [] }
+      // 审稿差分只读一次：整批更新共用一个坐标系（同一份不可变正文）。
+      const reviewObservations = reviewStateObservations(context, db)
       for (const update of verified.updates) {
         const captured = context.characters.find(item => item.characterId === update.characterId)!
         const currentCharacter = current.characters.find(item => item.characterId === update.characterId)!
@@ -451,6 +511,20 @@ export class SummaryRepository {
             source: context.source, sourceOrder: context.sourceOrder }, { source: current.source, order: current.sourceOrder, originProjectId })
           if (decision === 'source-conflict' || decision === 'field-conflict') throw new Error(`FINALIZED_CHARACTER_${decision === 'source-conflict' ? 'SOURCE' : 'FIELD'}_CONFLICT`)
           if (decision === 'already-applied') { receipt.unchanged++; continue }
+          // 判据 DA：写回之前问一次审稿。定稿后处理与审稿是两个独立读者，读同一段正文
+          // 得出不同值时，静默写回的其实是「我们选了一个读者」——而回写值带的是
+          // `provenance.kind='derived'`，从外观上与高置信度派生值毫无区别。
+          const conflict = decision === 'apply-derived' ? reviewConflict(reviewObservations, update.characterId, field, value, update.evidence) : null
+          if (conflict) {
+            receipt.candidates.push({ candidateKey: characterStateCandidateKey(context.source, update.characterId, field, value), source: structuredClone(context.source),
+              expectedFieldRevision: actual.revision, expectedFieldValueHash: actual.valueHash,
+              characterId: update.characterId, characterName: captured.displayNameSnapshot, displayName: captured.displayNameSnapshot,
+              selectionKey: `state:${update.characterId}:${field}`, field, value, evidence: update.evidence, rawValue: structuredClone(update),
+              reason: 'review-conflict',
+              ...(conflict.observed === undefined ? {} : { reviewObserved: conflict.observed }),
+              ...(conflict.quote === undefined ? {} : { reviewQuote: conflict.quote }) })
+            continue
+          }
           if (decision === 'proposal-required') {
             if (value === actual.value) { receipt.unchanged++; continue }
             receipt.candidates.push({ candidateKey: characterStateCandidateKey(context.source, update.characterId, field, value), source: structuredClone(context.source),

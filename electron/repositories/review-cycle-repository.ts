@@ -244,6 +244,42 @@ function parseSavedReport(body: string): SavedReport {
   return { items, goals, ...(report.stateDelta === undefined ? {} : { stateDelta: report.stateDelta }) }
 }
 
+/**
+ * 从一份已落盘的审稿报告里取出 v3 状态差分，供定稿期交叉裁决（W3 第二单元）。
+ *
+ * 取**这一稿最新的一条审稿**：`reviews.base_draft_id` 是它审的那一稿，`source_content` 是
+ * 当时读的正文。定稿期拿到的是 `FinalizedSourceIdentity`，其中 `contentHash` 是**不可变
+ * 正文**的哈希 —— 两者不等就说明审稿之后正文又被改过（例如审稿→精修→合并），此时审稿
+ * 引文指向的段落可能已经不存在，任何交叉判定都是拿旧证据评新正文。
+ *
+ * 所以返回**分状态**而不是「有无」：`stale` / `unreadable` 都不是「审稿没意见」，
+ * 把它们折成空数组就等于把一份坏证据当成沉默（判据 CS 与判据 CZ 同一个坑）。
+ */
+export type ReviewStateDeltaLookup =
+  /** 这一稿没审过。 */
+  | { status: 'absent' }
+  /** 审过，但报告产生于 v3 之前（v1/v2 无差分字段）。 */
+  | { status: 'legacy' }
+  /** 有差分，但审的是另一版正文 —— 引文坐标不可信。 */
+  | { status: 'stale' }
+  /** 有报告体，但解析不了（不是本仓库认识的形状）。 */
+  | { status: 'unreadable' }
+  | { status: 'ok'; reviewId: number; items: ReviewStateDeltaItem[] }
+
+export function readReviewStateDeltaForDraft(draftId: number, contentHash: string, db: Database.Database): ReviewStateDeltaLookup {
+  if (!integer(draftId, 1) || !HASH.test(contentHash)) return { status: 'absent' }
+  const row = db.prepare(`SELECT r.id AS reviewId, r.source_content AS sourceContent, c.body AS body
+    FROM reviews r JOIN contents c ON c.id=r.content_id
+    WHERE r.base_draft_id=? ORDER BY r.id DESC LIMIT 1`).get(draftId) as {
+      reviewId: number; sourceContent: string | null; body: string | null } | undefined
+  if (!row || typeof row.sourceContent !== 'string' || typeof row.body !== 'string') return { status: 'absent' }
+  let report: SavedReport
+  try { report = parseSavedReport(row.body) } catch { return { status: 'unreadable' } }
+  if (report.stateDelta === undefined) return { status: 'legacy' }
+  if (hash(row.sourceContent) !== contentHash) return { status: 'stale' }
+  return { status: 'ok', reviewId: row.reviewId, items: report.stateDelta }
+}
+
 function locateUnique(source: string, quote: string): { start: number; end: number } | null {
   const start = source.indexOf(quote)
   return start >= 0 && source.indexOf(quote, start + 1) < 0 ? { start, end: start + quote.length } : null

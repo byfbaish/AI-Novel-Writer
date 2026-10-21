@@ -404,3 +404,120 @@ describe('finalized character identities and derived state in the M02 database',
     expect(f.db.prepare('SELECT body FROM contents WHERE id=1').pluck().get()).toBe(prose)
   })
 })
+
+describe('review state crossings (W3 unit 2)', () => {
+  const reportBody = (stateDelta?: unknown) => JSON.stringify({
+    summary: '整体通过。',
+    items: [{ category: '连贯性', severity: 'pass', description: '未见矛盾。' }],
+    goalReview: { version: 1, chapterNumber: 1, coverage: 'not_configured', items: [] },
+    ...(stateDelta === undefined ? {} : { stateDelta }),
+  })
+  /** 往 draft 1 上挂一条审稿报告（body 是报告 JSON，source_content 是当时读的正文）。 */
+  function review(db: Db, options: { stateDelta?: unknown; content?: string } = {}) {
+    db.prepare('INSERT INTO contents(id,body) VALUES(?,?)').run(900, reportBody(options.stateDelta))
+    db.prepare(`INSERT INTO reviews(id,base_draft_id,review_index,source_draft_chapter_number,source_draft_version,
+      source_draft_status,source_content,content_id) VALUES(901,1,1,1,1,'finalized',?,900)`).run(options.content ?? prose)
+  }
+  const observation = (observed: string, quote: string) => [{ characterName: '林岚', field: 'keyItems', observed, quote }]
+  // '🌙林岚走进北塔。周研留在旧站。'：0-1 是 emoji，2..8 「林岚走进北塔」，9..16 「周研留在旧站。」
+  const laterEvidence = { start: 9, end: 16, text: prose.slice(9, 16) }
+
+  it('downgrades a derived write to a pending decision when both readers read different values from one passage', () => {
+    const f = fixture()
+    review(f.db, { stateDelta: observation('一把铜钥匙', '林岚走进北塔') })
+    f.saveNotes()
+    const context = f.context()
+    const receipt = SummaryRepository.commitFinalizedCharacterStates(context, f.response(context, { keyItems: '半块木牌' }), f.db)
+    expect(receipt).toMatchObject({ applied: 0, unchanged: 0, candidates: [{
+      field: 'keyItems', reason: 'review-conflict', reviewObserved: '一把铜钥匙', reviewQuote: '林岚走进北塔',
+      value: '半块木牌', characterId: f.ids[0],
+    }] })
+    // 判据 DA 的落点：宁可不写，也不在两个读者之间静默选一边。列默认值是空串，保持原样。
+    expect(f.row().cs_key_items).toBe('')
+    expect(JSON.parse(f.row().cs_provenance as string).keyItems).toBeUndefined()
+  })
+
+  it('lets the finalization win when it read a later passage than the review did', () => {
+    const f = fixture()
+    review(f.db, { stateDelta: observation('空手', '林岚走进北塔') })
+    f.saveNotes()
+    const context = f.context()
+    const receipt = SummaryRepository.commitFinalizedCharacterStates(context,
+      f.response(context, { keyItems: '半块木牌' }, f.ids[0], { evidence: laterEvidence }), f.db)
+    expect(receipt).toMatchObject({ applied: 1, unchanged: 0, candidates: [] })
+    expect(f.row().cs_key_items).toBe('半块木牌')
+  })
+
+  it('raises a conflict when the review read a later passage than the finalization did', () => {
+    const f = fixture()
+    review(f.db, { stateDelta: observation('空手', '周研留在旧站') })
+    f.saveNotes()
+    const context = f.context()
+    const receipt = SummaryRepository.commitFinalizedCharacterStates(context, f.response(context, { keyItems: '半块木牌' }), f.db)
+    expect(receipt).toMatchObject({ applied: 0, candidates: [{ reason: 'review-conflict' }] })
+    expect(f.row().cs_key_items).toBe('')
+  })
+
+  it('applies as usual when both readers agree, when the report predates v3, and when no review exists', () => {
+    for (const stateDelta of [observation('半块木牌', '林岚走进北塔'), undefined]) {
+      const f = fixture()
+      if (stateDelta) review(f.db, { stateDelta })
+      f.saveNotes()
+      const context = f.context()
+      expect(SummaryRepository.commitFinalizedCharacterStates(context, f.response(context, { keyItems: '半块木牌' }), f.db))
+        .toMatchObject({ applied: 1, candidates: [] })
+      expect(f.row().cs_key_items).toBe('半块木牌')
+    }
+  })
+
+  // 审稿之后正文又被改过（审稿→精修→合并）：引文坐标已经不可信，拿旧证据否新正文比不交叉更坏。
+  it('ignores a review whose frozen prose differs from the finalized content', () => {
+    const f = fixture()
+    review(f.db, { stateDelta: observation('一把铜钥匙', '林岚走进北塔'), content: `${prose}（精修前）` })
+    f.saveNotes()
+    const context = f.context()
+    expect(SummaryRepository.commitFinalizedCharacterStates(context, f.response(context, { keyItems: '半块木牌' }), f.db))
+      .toMatchObject({ applied: 1, candidates: [] })
+    expect(f.row().cs_key_items).toBe('半块木牌')
+  })
+
+  it('does not cross-check a name that resolves to no single card', () => {
+    const f = fixture()
+    review(f.db, { stateDelta: [{ characterName: '程雨', field: 'keyItems', observed: '一把铜钥匙', quote: '林岚走进北塔' }] })
+    f.saveNotes()
+    const context = f.context()
+    expect(SummaryRepository.commitFinalizedCharacterStates(context, f.response(context, { keyItems: '半块木牌' }), f.db))
+      .toMatchObject({ applied: 1, candidates: [] })
+  })
+
+  // 锚点坏掉不等于没有证据（判据 CS）：这条观测存在，只是没法定位，仍然要问作者。
+  it('downgrades an observation whose quote cannot be located in the prose', () => {
+    const f = fixture()
+    review(f.db, { stateDelta: observation('一把铜钥匙', '正文里没有这句话') })
+    f.saveNotes()
+    const context = f.context()
+    const receipt = SummaryRepository.commitFinalizedCharacterStates(context, f.response(context, { keyItems: '半块木牌' }), f.db)
+    // 引文照样带上：作者需要看到「审稿当时引的是哪一句」，定位失败是正文侧的事实，不是审稿侧的。
+    expect(receipt).toMatchObject({ applied: 0, candidates: [{ reason: 'review-conflict',
+      reviewObserved: '一把铜钥匙', reviewQuote: '正文里没有这句话' }] })
+    expect(receipt.candidates[0]!.evidence).toMatchObject({ start: 2, end: 9 })
+  })
+
+  it('round-trips the review evidence through the candidate store so the panel can show it', () => {
+    const f = fixture()
+    review(f.db, { stateDelta: observation('一把铜钥匙', '林岚走进北塔') })
+    f.saveNotes()
+    const context = f.context()
+    SummaryRepository.commitFinalizedCharacterStates(context, f.response(context, { keyItems: '半块木牌' }), f.db)
+    const [summary] = SummaryRepository.listPendingFinalizedCharacterStateCandidates(f.db)
+    const candidate = SummaryRepository.readPendingFinalizedCharacterStateCandidate(1, summary!.candidateKey, f.db)
+    expect(candidate).toMatchObject({ field: 'keyItems', value: '半块木牌', reason: 'review-conflict',
+      reviewObserved: '一把铜钥匙', reviewQuote: '林岚走进北塔', characterName: '林岚' })
+    // 作者裁决后才成为作者值：说明这是「谁都没赢」的那条，不是被自动采纳的派生值。
+    SummaryRepository.decideFinalizedCharacterStateCandidate({ draftId: 1, candidateKey: candidate.candidateKey,
+      characterId: candidate.characterId, field: candidate.field, expectedFieldRevision: candidate.expectedFieldRevision,
+      expectedFieldValueHash: candidate.expectedFieldValueHash, operationId: 'decide-review-conflict', decision: 'accept' }, f.db)
+    expect(f.row().cs_key_items).toBe('半块木牌')
+    expect(JSON.parse(f.row().cs_provenance as string).keyItems).toMatchObject({ kind: 'author' })
+  })
+})
