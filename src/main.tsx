@@ -1,3 +1,6 @@
+// 必须排在 react-dom 之前：ESM 按导入顺序求值，React 在模块求值时就捕获了 queueMicrotask。
+import './services/debug/microtask-probe'
+
 import { installMainGenerationTransport } from './services/generation/generation-runtime'
 import { mainGenerationTransport } from './services/generation/main-generation-transport'
 import { installPromptTraceFromDebugStore } from './services/prompts/install-prompt-trace'

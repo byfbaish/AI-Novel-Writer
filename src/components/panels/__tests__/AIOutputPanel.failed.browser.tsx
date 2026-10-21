@@ -192,9 +192,10 @@ describe('AIOutputPanel failed chapter draft', () => {
     })
 
     expect(container?.textContent).toContain('AI output')
-    expect(container?.textContent).toContain('Waiting for the workflow step...')
+    // 运行态只给状态行（旧的「等待指令响应」骨架已并入 RunningStepStatus）。
+    expect(container?.textContent).toContain('Working')
     expect(container?.textContent).toContain('Stop generation')
-    expect(container?.textContent).not.toMatch(/AI 输出|等待指令响应|中止生成/u)
+    expect(container?.textContent).not.toMatch(/AI 输出|正在工作|中止生成/u)
   })
 
   it('renders English history chrome and timestamps from the frozen run locale', async () => {
@@ -386,10 +387,13 @@ it('shows review waiting and output age without a percentage and keeps stop imme
   const cancel = vi.fn()
   useWorkflowStore.setState({ activeRuns: [run], currentRun: run, history: [], cancelWorkflow: cancel })
   await act(async () => root!.render(<AIOutputPanel />))
-  expect(container!.textContent).toContain('已等待 60秒')
-  expect(container!.textContent).toContain('距最近响应 50秒')
-  expect(container!.textContent).toContain('距最近有效输出 55秒（含思考）')
+  // 运行态只给状态（2026-10-21 决定：不渲染流式文本/思考，见
+  // docs/design/features/ai-output-live-render-design.md）。
+  expect(container!.textContent).toContain('正在工作')
+  expect(container!.textContent).toContain('已用 60秒')
+  expect(container!.textContent).toContain('距最近有效输出 55秒')
   expect(container!.textContent).toContain('尚无完整审稿报告')
+  expect(container!.textContent).not.toContain('持续思考的展示内容')
   expect(container!.textContent).not.toContain('10%')
   expect(container!.textContent).not.toContain('思考中...')
   expect(cancel).not.toHaveBeenCalled()
@@ -397,7 +401,7 @@ it('shows review waiting and output age without a percentage and keeps stop imme
     generationActivity: { operation: 'review-chapter', diagnostics: { ...run.steps[0].generationActivity!.diagnostics!,
       elapsedMs: 70000, lastResponseMs: 70000, lastOutputMs: 70000, reasoningEvents: 20 } },
   }] }] }))
-  expect(container!.textContent).toContain('距最近有效输出 0秒（含思考）')
+  expect(container!.textContent).toContain('距最近有效输出 0秒')
   const stop = [...container!.querySelectorAll('button')].find(button => button.textContent?.includes('中止生成'))!
   await act(async () => stop.click())
   expect(cancel).toHaveBeenCalledExactlyOnceWith(run.id)
