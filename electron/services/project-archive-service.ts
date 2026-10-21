@@ -695,7 +695,11 @@ function projectReviewUsage(value: unknown): Record<string, unknown> | null {
     'kind', 'id', 'index', 'contentHash', 'contextHash', 'artifact', 'compositionHash', 'reportVersion',
   ])
   if (effect.kind !== 'review' && effect.kind !== 'revision') fail('PORTABLE_UNSAFE_PROJECTION')
-  if (effect.reportVersion !== undefined && (effect.reportVersion !== 2 || effect.kind !== 'review')) fail('PORTABLE_UNSAFE_PROJECTION')
+  // 便携投影只放行**能确定性重算**的报告版本。v3 的重算入口与 v2 同一个函数
+  // （`buildReviewGenerationReport` 收 reportVersion），所以加档是安全的；未知版本
+  // 仍然 fail-closed —— 导出一份「导入方算不出同一份正文」的工程等于制造哈希分叉。
+  if (effect.reportVersion !== undefined
+    && (![2, 3].includes(effect.reportVersion as number) || effect.kind !== 'review')) fail('PORTABLE_UNSAFE_PROJECTION')
   const projected: Record<string, unknown> = {
     artifactIdentity: { artifactId: safeId(identity.artifactId), epoch: safeId(identity.epoch),
       fingerprint: projectReviewFingerprint(identity.fingerprint) },
@@ -703,7 +707,7 @@ function projectReviewUsage(value: unknown): Record<string, unknown> | null {
     reviewRevisionEffect: { kind: effect.kind, id: safeInteger(effect.id, 1), index: safeInteger(effect.index, 1),
       contentHash: contentHash(effect.contentHash), contextHash: contentHash(effect.contextHash),
       artifact: projectReviewArtifactRef(effect.artifact),
-      ...(effect.reportVersion === 2 ? { reportVersion: 2 } : {}),
+      ...(effect.reportVersion === 2 || effect.reportVersion === 3 ? { reportVersion: effect.reportVersion } : {}),
       ...(effect.kind === 'revision' ? { compositionHash: contentHash(effect.compositionHash) } : {}) },
   }
   if (usage.visibleComposition !== undefined) {

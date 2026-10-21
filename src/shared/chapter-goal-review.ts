@@ -82,14 +82,36 @@ function record(value: unknown): Record<string, unknown> | null {
 }
 function nonempty(value: unknown): value is string { return typeof value === 'string' && Boolean(value.trim()) }
 
-/** Permit only an extra enclosing quotation pair, never punctuation or whitespace rewriting. */
-function locateGoalEvidence(quote: unknown, draft: string): ChapterGoalEvidence | null {
+/**
+ * 允许模型多包一层引用符号。
+ *
+ * 中文写作里 `「」` / `『』` 与弯引号一样常见，只认弯引号会让这类引文整条被丢弃 ——
+ * 丢的是正文事实，不是格式。识别到引号对之后仍然做唯一定位，安全性不变。
+ */
+const QUOTE_PAIRS = [['“', '”'], ['"', '"'], ['「', '」'], ['『', '』']] as const
+
+/**
+ * Permit only an extra enclosing quotation pair, never punctuation or whitespace rewriting.
+ *
+ * `requireUnique` 是**调用方的代价选择**，不是安全等级：
+ * - 目标核对（默认 false）保留「完全逐字命中时取首个偏移」的既有行为 —— 一个常见短语
+ *   在正文里重复两次就判整条证据无效，会让目标核对成片失败，代价远大于偏移偏差。
+ * - 状态差分（W3，传 true）必须唯一 —— 下游要拿这个 span 去回写字段，锚点指错段落
+ *   等于把 A 段的行为记到 B 段头上。
+ */
+export function locateGoalEvidence(
+  quote: unknown,
+  draft: string,
+  options: { requireUnique?: boolean } = {},
+): ChapterGoalEvidence | null {
   if (!nonempty(quote)) return null
   let candidate = quote
   let start = draft.indexOf(candidate)
+  if (start >= 0 && options.requireUnique && draft.indexOf(candidate, start + 1) >= 0) return null
   if (start < 0) {
-    if (!((quote.startsWith('“') && quote.endsWith('”')) || (quote.startsWith('"') && quote.endsWith('"')))) return null
-    candidate = quote.slice(1, -1)
+    const pair = QUOTE_PAIRS.find(([open, close]) => quote.startsWith(open) && quote.endsWith(close))
+    if (!pair) return null
+    candidate = quote.slice(pair[0].length, quote.length - pair[1].length)
     if (!nonempty(candidate)) return null
     start = draft.indexOf(candidate)
     if (start < 0 || draft.indexOf(candidate, start + 1) >= 0) return null

@@ -1384,12 +1384,37 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
 
 请严格输出以下 JSON 格式：
 
-{"items":[{"category":"剧情连贯性","description":"[实际核对的对象与来源，以及对照结果；不得照抄本占位说明]","severity":"pass"},{"category":"剧情合理性","quote":"原文中的具体句子","description":"具体客观缺陷及其成立依据","severity":"error"},{"category":"角色状态","quote":"原文句子","description":"具体轻微不一致及其成立依据","severity":"warning"}],"summary":"一句话总体评价"}
+{"items":[{"category":"剧情连贯性","description":"[实际核对的对象与来源，以及对照结果；不得照抄本占位说明]","severity":"pass"},{"category":"剧情合理性","quote":"原文中的具体句子","description":"具体客观缺陷及其成立依据","severity":"error"},{"category":"角色状态","quote":"原文句子","description":"具体轻微不一致及其成立依据","severity":"warning"}],"summary":"一句话总体评价","stateDelta":[{"characterName":"[正文里的名字]","field":"location","observed":"[正文写出的新值，不得抄档案旧值]","quote":"[支撑原文，必须能唯一定位]"}]}
 
 items 按 category、quote、description、severity 顺序输出：先核对正文引文与原材料，在 description 说明判断依据，最后确定 severity。description 必须说明当前正文的具体客观缺陷才可标为 error/warning，并解释该问题为何成立；若结论为合理、符合要求或未发现问题，该项应为 pass 或省略。全文未发现具体问题时，保留一条 pass；确有客观问题仍须按严重程度报告 error/warning。
 
 severity 取值：error=严重的上述客观问题，强烈建议修复；warning=较轻或局部的上述客观问题，酌情修复；pass=该维度未发现具体问题。
-全部 items 必须为 1–10 条；不要求每个检查维度单列一项，不得为覆盖类别而凑 pass 项，同一问题不得重复。每项 quote 不超过 160 字，description 不超过 200 字；summary 不超过 120 字。quote 字段在 pass 时可省略。`,
+全部 items 必须为 1–10 条；不要求每个检查维度单列一项，不得为覆盖类别而凑 pass 项，同一问题不得重复。每项 quote 不超过 160 字，description 不超过 200 字；summary 不超过 120 字。quote 字段在 pass 时可省略。
+
+## 状态差分（stateDelta）
+
+在同一个 JSON 里**始终**输出 stateDelta 数组（可以是空数组 []，但不要省略这个键）。
+
+**记什么**：只记正文**已经把变化写出来**的角色状态 —— 换了所在、伤势加重或好转、能力升降、
+失去或获得关键物品、重大情绪转向。判据是「正文里有具体的动作或结果」，不是推测、不是
+「按计划应该会」、不是作者材料里的安排。本章没有发生这种变化，就是 []。
+
+**不要记什么**：
+- 不要记「与【角色状态】一致」这一结论。一致不需要记账，只有变化需要。
+- 不要把【角色状态】里的旧值抄进 observed。抄了就等于宣称「正文显示它还是旧值」，
+  而那条记录会被当成「本章确认了旧值」消费 —— 这是最容易造出来的假信号。
+- 措辞上的差异不算变化。同一件事换个说法、语气更重、更细的描写，都不记。
+
+每条四个字段，缺一不可：
+
+- characterName：正文里出现的名字，**原样照抄**（不要改写成档案里的名字，不要加头衔）。
+- field：只能是 location / powerLevel / physicalState / mentalState / keyItems / recentEvents 之一。
+- observed：正文写出的**新值**，简短（不超过 200 字）。
+- quote：支撑它的原文，必须能在待审正文里**唯一定位**（同一句话在正文里只出现一次）。
+
+上限 12 条；同一人物同一字段只留一条，取本章最后一次明确变化。
+**如果某条你找不到能唯一定位的原文，就不要输出这一条** —— 定位不了的引文会被下游当作
+核对失败的记录丢弃，写进去只会让这一批记录看起来比实际更完整。`,
   },
 
   // ================================================================

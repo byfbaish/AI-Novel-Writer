@@ -4,6 +4,7 @@ import { canonicalM03FindingSetHash, verifyM03ReviewCycle, type M03FindingDescri
 import { parseHumanConfirmedReviewSnapshot, type HumanConfirmedReviewSnapshot } from '../../src/shared/human-confirmed-review'
 import { classifyFindingEvidenceChange, unshownMustShowRecheckFindings, type ReviewCycleRecheckContext,
   type ReviewCycleRecheckFinding, type ReviewCycleProjection } from '../../src/shared/review-cycle'
+import { isStateDelta, type ReviewStateDeltaItem } from '../../src/shared/review-generation-report'
 
 const HASH = /^[a-f0-9]{64}$/u
 const hash = (value: string) => createHash('sha256').update(value).digest('hex')
@@ -170,6 +171,12 @@ interface SavedGoal {
 interface SavedReport {
   items: SavedItem[]
   goals: SavedGoal[]
+  /**
+   * v3 报告带的状态差分。**缺失与空数组不是一回事**：
+   * 缺失 = 本次未产出（模板没要求 / 模型没给）；空数组 = 判过了、本章无差异。
+   * 读侧据此区分「没判」与「判过没问题」——判据 CL 的老坑，不能用 `?? []` 抹平。
+   */
+  stateDelta?: ReviewStateDeltaItem[]
 }
 
 function invalid(): never { throw new Error('REVIEW_CYCLE_INPUT_INVALID') }
@@ -179,8 +186,12 @@ function parseSavedReport(body: string): SavedReport {
   let raw: unknown
   try { raw = JSON.parse(body) } catch { invalid() }
   const report = record(raw)
-  if (!report || !exactKeys(report, ['summary', 'items', 'goalReview'])
+  // 报告体里**没有** reportVersion 字段（版本只活在 effect receipt 里），所以读侧只能看形状：
+  // 有 `stateDelta` 就必须合法，没有就按 v1/v2 读。加键后旧报告照旧能解析 —— 这正是
+  // 版本号要解决的问题（v1→v2 时也是「键从无到有」），不是靠猜。
+  if (!report || Object.keys(report).some(key => !['summary', 'items', 'goalReview', 'stateDelta'].includes(key))
     || !nonempty(report.summary) || !Array.isArray(report.items) || report.items.length === 0) invalid()
+  if (report.stateDelta !== undefined && !isStateDelta(report.stateDelta)) invalid()
   const goalReview = record(report.goalReview)
   if (!goalReview || !exactKeys(goalReview, ['version', 'chapterNumber', 'coverage', 'items'])
     || goalReview.version !== 1 || !integer(goalReview.chapterNumber, 1)
@@ -230,7 +241,7 @@ function parseSavedReport(body: string): SavedReport {
     if (projections.length !== 1 || projections[0]!.severity !== expectedSeverity
       || projections[0]!.quote !== expectedQuote) invalid()
   }
-  return { items, goals }
+  return { items, goals, ...(report.stateDelta === undefined ? {} : { stateDelta: report.stateDelta }) }
 }
 
 function locateUnique(source: string, quote: string): { start: number; end: number } | null {

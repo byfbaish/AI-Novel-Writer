@@ -18,11 +18,21 @@ import { captureReviewRevisionContext, reviewRevisionRequest, REVIEW_REVISION_OP
 type ArtifactRef = ReviewGenerationCommitRequest['artifact']
 interface Effect {
   kind: 'review' | 'revision'; id: number; index: number; contentHash: string; contextHash: string
-  artifact: ArtifactRef; compositionHash?: string; reportVersion?: 2
+  artifact: ArtifactRef; compositionHash?: string; reportVersion?: 2 | 3
 }
 interface AttemptRow { attempt_id: string; run_id: string; usage_receipt_json: string }
 const handleOf = (run: DurableGenerationRun): MainGenerationRunHandle => ({ projectId: run.binding.projectId,
   epoch: run.binding.epoch, rootActionId: run.rootActionId, runId: run.runId })
+/**
+ * 当前审稿报告版本。**提升它必须同时改内置模板的输出契约**（`consistency_check` 的
+ * `stateDelta` 段）：版本号决定形状门，模板决定模型会不会产出那个形状。
+ *
+ * 两者脱钩时的行为是「安全降级」而不是失败 —— 模板被全局旧版覆盖时不产出 `stateDelta`，
+ * 报告里该键缺失，v3 解析照旧通过（缺失 ≠ 空数组，见 `SavedReport.stateDelta`）。
+ * 反过来，模板要求了但代码仍停在 v2，则会因「v2 不允许 stateDelta 键」**整份报告作废**，
+ * 所以这里宁可先升版本、模板随后跟上。
+ */
+const CURRENT_REVIEW_REPORT_VERSION = 3 as const
 const contextHash = (context: ReviewRevisionContext) => textHash(JSON.stringify(context))
 
 /** Admission contexts are disposable; recovery and formal-effect truth live in the existing run ledger. */
@@ -96,7 +106,7 @@ export class ReviewRevisionGeneration {
     if (!rows[0]) return undefined
     const effect = JSON.parse(rows[0].usage_receipt_json).reviewRevisionEffect as Effect
     const context = this.context(run), proof = this.proveArtifact(run, effect.artifact)
-    if (effect.reportVersion !== undefined && (effect.reportVersion !== 2 || effect.kind !== 'review'))
+    if (effect.reportVersion !== undefined && (![2, 3].includes(effect.reportVersion) || effect.kind !== 'review'))
       throw new Error('GENERATION_REVIEW_RECEIPT_INVALID')
     if (proof.row.attempt_id !== rows[0].attempt_id || effect.contextHash !== contextHash(context)
       || effect.kind !== (context.operation === 'review-chapter' ? 'review' : 'revision')) throw new Error('GENERATION_REVIEW_RECEIPT_INVALID')
@@ -200,11 +210,11 @@ export class ReviewRevisionGeneration {
       }
       this.assertPrepared(request.contextId, run); assertSources(request.handle)
       const proof = this.proveArtifact(run, request.artifact)
-      const content = this.reviewBody(run, request.artifact)
+      const content = this.reviewBody(run, request.artifact, CURRENT_REVIEW_REPORT_VERSION)
       const result = ReviewRepository.create({ baseDraftId: context.source.id, content, expectedSource: context.source }, this.db)
       const contentHash = textHash(content)
       const receipt = this.record(run, request.artifact, { kind: 'review', id: result.id, index: result.reviewIndex, contentHash,
-        reportVersion: 2 })
+        reportVersion: CURRENT_REVIEW_REPORT_VERSION })
       if (context.recheck) {
         const policy = { ...context.recheck, version: 2 } as const
         const built = buildReviewCycleRecheckReport(proof.artifact.text, context.source.content, policy, context.uiLocale)
