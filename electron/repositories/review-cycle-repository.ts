@@ -247,10 +247,16 @@ function parseSavedReport(body: string): SavedReport {
 /**
  * 从一份已落盘的审稿报告里取出 v3 状态差分，供定稿期交叉裁决（W3 第二单元）。
  *
- * 取**这一稿最新的一条审稿**：`reviews.base_draft_id` 是它审的那一稿，`source_content` 是
- * 当时读的正文。定稿期拿到的是 `FinalizedSourceIdentity`，其中 `contentHash` 是**不可变
- * 正文**的哈希 —— 两者不等就说明审稿之后正文又被改过（例如审稿→精修→合并），此时审稿
- * 引文指向的段落可能已经不存在，任何交叉判定都是拿旧证据评新正文。
+ * 取**这一稿最新一条「带差分的」审稿报告**，不是最新一条审稿。
+ * 原因不是口味：`reviews` 里混着**复核报告**（审稿→生成修订→合并→复核，`commitRecheck`
+ * 那条链），复核报告的 body 是另一套形状（`findingId` / `targetId`），既没有 `stateDelta`
+ * 也不该有。按 id 取最新，拿到的必然是复核报告 ⇒ 每次修订过的章节都读成 `unreadable`，
+ * 交叉一次都不触发 —— 一个永远不生效的判据比没有判据更坏。
+ *
+ * `reviews.base_draft_id` 是它审的那一稿，`source_content` 是当时读的正文。定稿期拿到的是
+ * `FinalizedSourceIdentity`，其中 `contentHash` 是**不可变正文**的哈希 —— 两者不等就说明
+ * 审稿之后正文又被改过（审稿→精修→合并是原地写回同一 draft），引文指向的段落可能已经不
+ * 存在，此时任何交叉判定都是拿旧证据评新正文。
  *
  * 所以返回**分状态**而不是「有无」：`stale` / `unreadable` 都不是「审稿没意见」，
  * 把它们折成空数组就等于把一份坏证据当成沉默（判据 CS 与判据 CZ 同一个坑）。
@@ -258,26 +264,34 @@ function parseSavedReport(body: string): SavedReport {
 export type ReviewStateDeltaLookup =
   /** 这一稿没审过。 */
   | { status: 'absent' }
-  /** 审过，但报告产生于 v3 之前（v1/v2 无差分字段）。 */
+  /** 审过，但所有报告都产生于 v3 之前（v1/v2 无差分字段）。 */
   | { status: 'legacy' }
   /** 有差分，但审的是另一版正文 —— 引文坐标不可信。 */
   | { status: 'stale' }
-  /** 有报告体，但解析不了（不是本仓库认识的形状）。 */
+  /** 有报告体，但没有一份能解析成审稿报告。 */
   | { status: 'unreadable' }
   | { status: 'ok'; reviewId: number; items: ReviewStateDeltaItem[] }
 
 export function readReviewStateDeltaForDraft(draftId: number, contentHash: string, db: Database.Database): ReviewStateDeltaLookup {
   if (!integer(draftId, 1) || !HASH.test(contentHash)) return { status: 'absent' }
-  const row = db.prepare(`SELECT r.id AS reviewId, r.source_content AS sourceContent, c.body AS body
+  // 有界倒序扫描：同一稿的审稿条数是个位数，20 条足够覆盖「多次审稿 + 多次复核」。
+  const rows = db.prepare(`SELECT r.id AS reviewId, r.source_content AS sourceContent, c.body AS body
     FROM reviews r JOIN contents c ON c.id=r.content_id
-    WHERE r.base_draft_id=? ORDER BY r.id DESC LIMIT 1`).get(draftId) as {
-      reviewId: number; sourceContent: string | null; body: string | null } | undefined
-  if (!row || typeof row.sourceContent !== 'string' || typeof row.body !== 'string') return { status: 'absent' }
-  let report: SavedReport
-  try { report = parseSavedReport(row.body) } catch { return { status: 'unreadable' } }
-  if (report.stateDelta === undefined) return { status: 'legacy' }
-  if (hash(row.sourceContent) !== contentHash) return { status: 'stale' }
-  return { status: 'ok', reviewId: row.reviewId, items: report.stateDelta }
+    WHERE r.base_draft_id=? ORDER BY r.id DESC LIMIT 20`).all(draftId) as Array<{
+      reviewId: number; sourceContent: string | null; body: string | null }>
+  if (!rows.length) return { status: 'absent' }
+  let parsedAny = false
+  for (const row of rows) {
+    if (typeof row.body !== 'string') continue
+    let report: SavedReport
+    try { report = parseSavedReport(row.body) } catch { continue }
+    parsedAny = true
+    if (report.stateDelta === undefined) continue
+    if (typeof row.sourceContent !== 'string') continue
+    if (hash(row.sourceContent) !== contentHash) return { status: 'stale' }
+    return { status: 'ok', reviewId: row.reviewId, items: report.stateDelta }
+  }
+  return { status: parsedAny ? 'legacy' : 'unreadable' }
 }
 
 function locateUnique(source: string, quote: string): { start: number; end: number } | null {
