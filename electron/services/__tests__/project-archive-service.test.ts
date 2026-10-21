@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { closeProjectDatabase, createProjectDatabase, initProjectDatabase } from '../../database'
 import { BlueprintRepository } from '../../repositories/blueprint-repository'
 import { initializeLegacyBaselineSchema } from '../../migrations/baseline-schema'
-import { getDesktopMigrationRegistry } from '../../migrations/desktop-registry'
+import { CURRENT_DESKTOP_SCHEMA_VERSION, getDesktopMigrationRegistry } from '../../migrations/desktop-registry'
 import { migrateSchema } from '../../migrations/runner'
 import { SqliteSchemaAdapter } from '../../migrations/sqlite-schema-adapter'
 import { verifyM03ReviewCycle, canonicalM03FindingSetHash } from '../../migrations/m03-review-cycle'
@@ -610,8 +610,9 @@ describe('portable project export service', { timeout: 20_000 }, () => {
       originProjectId: f.projectId,
       snapshotGeneration: 'generation-test-1',
       requiresRuntimeFreezeGuard: true,
-      // M08 迁移（2026-10-15, `6dfea726`）把基线推到 v9 并新增 10 列，此期望同步更新。
-      sourceEvidence: { schemaVersion: 10, tableCount: 52, fieldCount: 493 },
+      // M08（`6dfea726`）把基线推到 v9 并新增 10 列；M10 推到 v11 再加 2 列
+      // （`story_day_offset` / `story_day_label`，均为可空）。此期望随迁移同步更新。
+      sourceEvidence: { schemaVersion: 11, tableCount: 52, fieldCount: 495 },
     })
     expect(contextCalls).toEqual(['lease-current', 'lease-current', 'lease-current'])
     expect(fs.readFileSync(f.databasePath)).toEqual(before)
@@ -638,7 +639,7 @@ describe('portable project export service', { timeout: 20_000 }, () => {
     })
     const portable = new Database(path.join(unpacked.stagingPath, 'project.db'), { readonly: true })
     try {
-      expect(portable.pragma('user_version', { simple: true })).toBe(10)
+      expect(portable.pragma('user_version', { simple: true })).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
       expect(portable.prepare('SELECT COUNT(*) FROM review_cycle_merges').pluck().get()).toBe(0)
       expect(portable.prepare('SELECT body FROM contents WHERE id=1').pluck().get()).toBe(seeded.body)
       expect(portable.prepare('SELECT relation FROM character_relationships').pluck().get()).toBe('盟友')
@@ -671,14 +672,15 @@ describe('portable project export service', { timeout: 20_000 }, () => {
     const before = fs.readFileSync(f.databasePath)
 
     const receipt = await exportPortableProject(input(f))
-    expect(receipt.sourceEvidence).toMatchObject({ schemaVersion: 10, tableCount: 52, fieldCount: 494 })
+    // 与上一条同源：M10 的两列同样计入 donor 夹具（比上一条多 1 个字段）。
+    expect(receipt.sourceEvidence).toMatchObject({ schemaVersion: 11, tableCount: 52, fieldCount: 496 })
     const targetProjectRoot = path.join(f.base, 'restored-donor')
     await restorePortableProject({ archivePath: f.target, targetProjectRoot })
 
     const restoredStorage = path.join(targetProjectRoot, '.ai-novel')
     const restored = new Database(path.join(restoredStorage, 'project.db'), { readonly: true })
     try {
-      expect(restored.pragma('user_version', { simple: true })).toBe(10)
+      expect(restored.pragma('user_version', { simple: true })).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
       expect(restored.prepare('SELECT avatar FROM characters').pluck().all()).toEqual(['', ''])
       expect(restored.prepare('SELECT body FROM contents WHERE id=1').pluck().get()).toBe(seeded.body)
       const avatarPath = restored.prepare('SELECT relative_path FROM character_avatar_assets').pluck().get() as string
