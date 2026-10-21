@@ -12,6 +12,7 @@ import { buildFinalizedContinuityFacts } from '../../src/shared/finalized-contin
 import { parseStoryDayAnchor } from '../../src/shared/story-day-anchor'
 import { proveFinalizedCharacterGeneration } from './finalized-character-generation-proof'
 import type { CharacterProposalService } from './character-proposal-service'
+import { needsFinalizedOccurrenceBatch } from './character-proposal-service'
 
 interface SavedEffect { version: 1; artifact: FinalizedCharacterArtifact; contextHash: string; receipt: FinalizationGenerationEffect; receiptHash: string }
 export class FinalizationGeneration {
@@ -85,6 +86,9 @@ export class FinalizationGeneration {
     if (this.find(readFinalizationGenerationContext(run).slot)?.runId !== run.runId) throw new Error('GENERATION_FINALIZATION_SUPERSEDED')
   }
   commit(handle: MainGenerationRunHandle, reference: FinalizedCharacterArtifact, characters: CharacterProposalService, assertSources: (run: DurableGenerationRun) => void): FinalizationGenerationEffect {
+    // 判据 CX：登记集合在事务外取一次。`declinedCandidateNames()` 自己会开一层事务，
+    // 放进下面那个 `.immediate()` 里就是事务套事务；这里先算好，事务内只做集合判断。
+    const declined = new Set(characters.declinedCandidateNames())
     return this.db.transaction(() => {
       const run = this.require(handle), context = readFinalizationGenerationContext(run), proof = this.artifact(run, reference)
       const usage = JSON.parse(this.db.prepare('SELECT usage_receipt_json FROM generation_attempts WHERE attempt_id=?').pluck().get(proof.attemptId) as string) as Record<string, unknown>
@@ -111,7 +115,7 @@ export class FinalizationGeneration {
         const characterProof = proveFinalizedCharacterGeneration(this.db, this.runs, this.projectId, handle, reference)
         // transferOrigin 同步读取已验证的转移凭据，与本事务同属一次同步执行；凭据被篡改只会读出 null/抛错，趋向冲突而非放行。
         const applied = SummaryRepository.commitFinalizedCharacterStates(characterProof.context, characterProof.response, this.db, this.transferOrigin())
-        const batch = characterProof.response.unresolved.some(item => item.displayName.trim())
+        const batch = needsFinalizedOccurrenceBatch(declined, characterProof.response.unresolved)
           ? characters.stage({ kind: 'finalized-generation', handle: characterProof.currentHandle, artifact: reference }) : undefined
         receipt = { success: true, stepKey: 'character_cards', ...applied, unresolved: structuredClone(characterProof.response.unresolved), ...(batch ? { proposalBatchId: batch.proposalBatchId } : {}) }
       }

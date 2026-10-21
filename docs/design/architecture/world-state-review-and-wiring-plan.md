@@ -1,6 +1,6 @@
 # 世界状态：评审与接线方案（W 线）
 
-> **状态**：⚙️ W0 + W1 + **W2 已落地**；历法维已上线；三处历法/口径冲突已修（`exp/world-state`）；W3/W4 待做
+> **状态**：⚙️ W0 + W1 + **W2 已落地**；历法维已上线；三处历法/口径冲突已修（`exp/world-state`）；**§4.4 已收口**（判据 CX）；W3/W4 待做
 > **日期**：2026-10-21 · 分支 `exp/world-state`（由 `exp/arc-tree-v2` 切出，14+4 个改动已先收口）
 > **缘起**：作者四问（Q1 泛用性 / Q2 还缺什么维度 / Q3 设定是否=初始值+维护规则 / Q4 是否该给状态而不是背景资料）+ 外部收敛稿《世界状态方案》
 > **样本**：《师父派我来除魔，幕后真凶竟是小师妹》第 1–4 章（库内原文 + trace `20261021-135755-068-正文-ch4` / `20261021-191749-711-审稿`）
@@ -142,11 +142,26 @@
 
 ### 4.4 第四位（外部稿没提）：具名登记本身已失效
 
+> ⚠️ **本节初稿的三条断言已被实测推翻**（2026-10-21 逐库核对）。原文留在下面作对照，
+> **不要按初稿去"修数据"** —— 初稿说的"重名两张"是一张**已退休的空壳**，而正文真正缺卡的是另外三个名字。
+
+初稿原文（**作废**）：
+
 - 世界观第 4 维收尾块【具名人物登记】= **无**
 - 而正文已出现 7 个有名有姓的角色：王德发、刘三、小郑、老张头、赵无妄、林小禾、玄真子
 - 库里 7 张角色卡，其中 **「刘三」重名两张**
+- ⇒ AC1 / AC2 从第 1 章起就有洞，且没人发现
 
-**⇒ AC1（群像↔角色卡对齐）/ AC2（具名实体引用）从第 1 章起就有洞，且没人发现。** 这两项不要等"世界状态"做完再做，它们是独立的低成本项。
+实测事实（4 章正文 × `characters` 7 行 × 蓝图 6 章）：
+
+| 初稿断言 | 实测 | 影响 |
+|---|---|---|
+| 「刘三」重名两张，`retired` 均 0 | 7 行 = **6 个名字**。`刘三` 是「一张 `retired=1` 的**空壳**（全字段为空，22:34:03 建）+ 一张 `retired=0` 的完整卡（22:36:34 建）」。冻结快照用 `SELECT … WHERE retired=0`（`summary-repository.ts:54`），且 `continuity_facts` 里**没有任何 characterRef 指向那张空壳** | **无缺陷**。这不是重名冲突，是「建卡 → 补全 → 退休」的正常过程 |
+| 正文已出现 7 个具名角色（含林小禾、玄真子，不含顾长风） | 正文实际：顾长风、刘三、王德发、赵无妄（**有卡**）；小郑（29 次）、老张头（15 次）、老赵（5 次）（**无卡**）。林小禾、玄真子**正文 0 次**（只在大纲/蓝图里，属计划角色） | AC2 的洞在**小郑/老张头/老赵**，不在初稿点的那两个 |
+| 没人发现 | 机制其实存在且被消费：`小郑`/`跛脚老管事` 在采纳界面被作者明确判为 `functional`，已落 `character_cast_decisions`（`register`），并对 `character-proposal:list-declined` 生效 | 真正的洞不是「没有机制」，而是机制只接了一半 —— 见 §15 判据 CX |
+
+**⇒ AC1/AC2 的真洞只有一处，且是泛用的**：作者已判定「无卡」的名字，定稿后处理仍在为它产生**永远无法应用**的状态更新候选（§15 判据 CX）。「世界观第 4 维【具名人物登记】为空」这条**成立**，但属于生成侧要求，与 W3 的 `stateDelta` 同批处理。
+
 
 ### 4.5 已有 vs 空白的诚实盘点
 
@@ -232,9 +247,16 @@
 `next_chapter_draft` 的 `override-systemRole` 生效于 `global`，说明作者全局根里有一份为《…程实…》那本写的 systemRole。
 **与 AC5 §5.1 同源**（单本内容进了全局根），但影响面更大：它给**所有项目**的主角定了名。
 
-### 8.3 数据缺陷：`characters` 里「刘三」重名两张
+### 8.3 ~~数据缺陷：`characters` 里「刘三」重名两张~~ → **已澄清，非缺陷**
 
-`character_id` 不同、`retired` 均 0。会让 AC2/知情边界这类"按名字 join"的检查全部失效。
+初稿写的是「`character_id` 不同、`retired` 均 0。会让 AC2/知情边界这类"按名字 join"的检查全部失效。」
+
+实测（2026-10-21）：`retired` **不是均 0** —— 一张是 `retired=1` 的空壳（全字段为空，22:34:03 建），
+一张是 `retired=0` 的完整卡（22:36:34 建）。冻结快照本身就带 `WHERE retired=0` 过滤
+（`summary-repository.ts:54`），`continuity_facts` 里也没有任何 `characterRef` 指向空壳，
+**按名字 join 的检查不会因此失效**。判据依据的原文与对照表见 §4.4。
+
+真正需要盯的不是这张空壳，而是 §15 的判据 CX。
 
 ---
 
@@ -582,3 +604,74 @@ M07（`plot_structure_plan`）/ M08（`structured_refs`）/ M09（`rhythm_profil
 - `~/.vela/prompts/world_building.zh-CN.json` 仍是三维旧版（§10-8 未决），正式版口径下本书拿不到第 5 维。
 - 世界观第 2 维的「口径写作要求」只对**新生成**的世界观生效；存量项目靠审稿第 9 条抓。
 - 日序只在「定稿后处理」产出：只写不审的章（未定稿）拿不到日序，这是刻意的（未定稿正文还会改，锚点会失真）。
+
+---
+
+## 15. §4.4 落地记录：一个永远清不空的待确认队列（判据 CX）
+
+### 15.1 症状与证据链
+
+第 3 章定稿后，`character_identity_proposals` 里躺着一个自 2026-10-20 23:11 起就没动过的批次：
+
+| 项 | 名字 | 内容 | `candidateIds` |
+|---|---|---|---|
+| `update:2` | 老张头 | 位置「药铺柜台后」、身体状态、心理状态、关键道具、最近事件 —— **完整** | `[]` |
+| `update:3` | 小郑 | 位置「药铺柜台内，门槛里侧」、完整状态 | `[]` |
+
+追溯该批次的来源与作者决定：
+
+| 事实 | 出处 |
+|---|---|
+| 蓝图第 3 章声明 `characters: ["顾长风","小郑","跛脚老管事"]`，其中后两个进了 `newCharacterCandidates` | `blueprint_character_sync_operations.character_sync_input` |
+| 作者在采纳界面对这两项的动作是 **`functional`**（有引用键、无卡槽），只有刘三是 `create` | 批次 `cpb:fdf2bb9d…` 的 `decision.selections` |
+| `functional` 已固化为可查状态：`character_cast_decisions` 两行 `register`（小郑、跛脚老管事） | `character_cast_decisions` |
+| 但定稿后处理仍为这两人生成了状态候选 | 批次 `cpb:377b20aa43…`，`source.kind='finalized-generation'` |
+
+**⇒ 缺陷定义**：`register` 这条决定只被「新建卡候选集」消费（`character-proposal:list-declined`），
+**没有**被「定稿后状态更新候选」消费。于是为没有卡的名字反复产出**永远无法应用**的候选 ——
+`update:N` 要靠角色卡落库，没有卡就永远 pending。每定稿一章再来一批，队列只增不减。
+
+> **判据 CX：一个「作者已判定无需处理」的名字，不得在任何下游继续生成需要他处理的项目。**
+> 这不是"少做一件事"，而是"制造一个永远清不空的队列" —— 队列一旦可被训练成"忽略"，真正的待办也会被忽略。
+
+### 15.2 落点
+
+| 位置 | 改动 |
+|---|---|
+| `character-proposal-service.ts` `resolveItems` | 对 `source.kind === 'finalized-generation'` 的批次，`proof.items` 里名字命中 `declinedNameSet()` 的项**不进入候选**。其余来源（架构/旧名单/导入）不受影响 —— 它们声明的是「要建哪些人」，本来就是建卡机会 |
+| 新增 `declinedNameSet()`（私有） | `declinedCandidateNames()` 的事务内形态：回填（幂等）+ 读当前态，不自开事务 |
+| 新增导出 `needsFinalizedOccurrenceBatch(declined, unresolved)` | 两个 stage 调用点共用一条判断，避免规则在两条链上漂移 |
+| `finalization-generation.ts:88`（定稿主链） | 事务外先取 `declined`，事务内只做集合判断；全是被登记的名字时不 stage |
+| `finalized-character-generation.ts`（单独重跑链） | 同上 |
+
+**不过滤 `unresolved` 本身**：回执里的 `unresolved` 记的是「本章出现了谁、为什么没绑上卡」，
+那是定稿事实，照旧上报。过滤的只是**待确认项**。
+
+### 15.3 为什么不采用「无卡就报警」
+
+朴素做法是「`continuity_facts` 里的实体系不到卡 ⇒ 报一条 warning」。**本条否决**，理由是它正好踩中判据 CL：
+
+- `facts.entities` 同时含**人物、物件、地点**（`summary-repository.ts` 的注释明写这一点）。无卡实体绝大多数是物件；
+- 而「作者判过是功能性角色」与「作者漏了建卡」在数据上**同形**，除非读 `character_cast_decisions`；
+- 读它之后，剩下的真缺口只有「正文点名、蓝图未列、也从未登记」这一类（现存一例：老张头）。
+
+所以这一条留给**人工一次性裁决**，不做成每次生成都刷的 warning：作者在待确认批次里对 老张头 选
+`create`（补卡）或 `functional`（登记），两条路都会让它出队。
+
+### 15.4 已存在的悬挂批次怎么处理
+
+`cpb:377b20aa43…` 里的 `小郑` 项属于已登记名字，但**已落库的批次不会自动回缩** ——
+`read()` 只在 revision 变化时重解析。作者只需对这一批做一次决定（`老张头` 是唯一真选项），
+或在界面上取消该批次；之后再定稿不会再有 `小郑` 的项。
+
+### 15.5 测试
+
+| 用例 | 钉住什么 |
+|---|---|
+| `skips staging an occurrence whose name the author already registered as an anchored role` | 全部名字都被登记 ⇒ **不产生批次**（`proposalBatchId` 为空、库里没有信封），而 `unresolved` 照旧如实上报 |
+| `keeps an unregistered name while dropping a registered one from the same chapter` | 同一章两名：已登记的 林岚 被丢、未登记的 赵四 保留；撤销登记后名字回到候选集 |
+
+`electron/services/__tests__/finalized-character-generation.test.ts` 15 例全绿；
+`character-cast-decision` / `character-proposal-declined` / `character-proposal-reopen` /
+`finalized-character-generation-proof` / `finalization-generation` 合计 85 例全绿。
+

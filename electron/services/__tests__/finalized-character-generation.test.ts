@@ -27,7 +27,7 @@ const cleanup: (() => void)[] = []
 afterEach(() => { for (const dispose of cleanup.splice(0)) dispose(); vi.restoreAllMocks() })
 const prose = '林岚走进了北塔。'
 
-function fixture(dispatch?: GenerationRunServiceDependencies['dispatch']) {
+function fixture(dispatch?: GenerationRunServiceDependencies['dispatch'], proseText = prose) {
   const base = path.resolve('.runtime/.cache/novel-quality-modernization/s09b-owner-tests')
   fs.mkdirSync(base, { recursive: true })
   const root = fs.mkdtempSync(path.join(base, 'owner-'))
@@ -38,13 +38,13 @@ function fixture(dispatch?: GenerationRunServiceDependencies['dispatch']) {
   migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
   db.exec("INSERT INTO project_core(id,project_name) VALUES('main','合成定稿'); INSERT INTO blueprints(chapter_number,title) VALUES(1,'北塔'); INSERT INTO contents(id,body) VALUES(1,'旧稿'); INSERT INTO drafts(id,chapter_number,version,status,content_id,word_count) VALUES(1,1,1,'draft',1,2)")
   FinalizationRepository.commit({ finalizationId: 'finalized-1', draftId: 1, chapterNumber: 1, chapterTitle: '北塔',
-    content: prose, contentHash: textHash(prose), contentRevision: 1, targetFileName: '第一章.txt' })
+    content: proseText, contentHash: textHash(proseText), contentRevision: 1, targetFileName: '第一章.txt' })
   db.transaction(() => refreshCharacterIdentityProjection(db))()
   const characterId = db.prepare("SELECT character_id FROM characters WHERE name='林岚'").pluck().get() as string
   const model: ModelProfile = { id: 'synthetic', name: '合成模型', provider: 'openai', protocol: 'openai', modelName: 'gpt-4.1',
     apiKey: 'synthetic-fixture-key', baseUrl: 'https://api.openai.com/v1', temperature: 0.7, maxTokens: 2048, purposes: ['generation'],
     capabilities: { contextWindowTokens: 32768, maxOutputTokens: 2048, reasoning: false, structuredOutput: true, usage: true } }
-  const response = (updates = [{ characterId, currentState: { location: '北塔' }, evidence: { start: 0, end: prose.length, text: prose } }]) => JSON.stringify({ updates })
+  const response = (updates = [{ characterId, currentState: { location: '北塔' }, evidence: { start: 0, end: proseText.length, text: proseText } }]) => JSON.stringify({ updates })
   const dispatchSpy = vi.fn<GenerationRunServiceDependencies['dispatch']>(dispatch ?? (async (_request, options) => {
     options.onVisible({ kind: 'delta', text: response() }); return { finishReason: 'stop', usage: null }
   }))
@@ -197,6 +197,55 @@ describe('finalized character extraction through the main owner', () => {
     f.db.prepare('UPDATE contents SET body=? WHERE id=1').run('作者改过的定稿')
     expect(() => f.owner.characterProposals.approve(decision)).toThrow('CHARACTER_PROPOSAL_SOURCE_CHANGED')
   })
+  /**
+   * 判据 CX（实测：第 3 章 `小郑` / `跛脚老管事`）。
+   *
+   * 这两个名字在采纳界面被明确判为 `functional`（有引用键、无卡槽），但定稿后处理仍为它们
+   * 抽出了完整状态并 stage 成 `update:2` / `update:3` 两条待确认项 —— 没有卡可写，
+   * 永远无法应用，只会让待确认队列每章加长一次。
+   *
+   * 这条用例同时钉住两件事：① 过滤的是**待确认项**，不是「本章出现了谁」—— 回执里的
+   * `unresolved` 照旧如实上报；② 过滤是**按名字**的，未登记的名字不受牵连。
+   */
+  it('skips staging an occurrence whose name the author already registered as an anchored role', async () => {
+    const f = fixture(async (_request, options) => {
+      options.onVisible({ kind: 'delta', text: JSON.stringify({ updates: [{ name: '林岚', currentState: { location: '北塔' }, evidence: { start: 0, end: prose.length, text: prose } }] }) })
+      return { finishReason: 'stop', usage: null }
+    })
+    f.owner.characterProposals.registerCastDecision({ name: '林岚', anchorRole: 'minor', operationId: 'cast-anchor-1' })
+    expect(f.owner.characterProposals.declinedCandidateNames()).toEqual(['林岚'])
+    const receipt = f.owner.commitFinalizationGeneration(await f.run())
+    if (receipt.stepKey !== 'character_cards') throw new Error('角色回执类型错误')
+    expect(receipt).toMatchObject({ applied: 0, unresolved: [{ originalText: '林岚', reason: 'name-only' }] })
+    // 定稿事实照旧如实上报：过滤的是「待确认项」，不是「本章出现了谁」。
+    expect(receipt.unresolved.map(item => item.displayName)).toEqual(['林岚'])
+    expect(receipt.proposalBatchId).toBeUndefined()
+    // 零项批次正是要避免的产物：既没有可用的候选，也不许留下一个空壳信封占着队列。
+    const batches = (f.db.prepare('SELECT raw_value FROM character_identity_proposals').all() as Array<{ raw_value: string }>)
+      .map(row => JSON.parse(row.raw_value) as { batch?: unknown }).filter(value => value.batch)
+    expect(batches).toHaveLength(0)
+  })
+
+  it('keeps an unregistered name while dropping a registered one from the same chapter', async () => {
+    const twoNames = '林岚走进了北塔。赵四跟在后面。'
+    const f = fixture(async (_request, options) => {
+      options.onVisible({ kind: 'delta', text: JSON.stringify({ updates: [
+        { name: '林岚', currentState: { location: '北塔' }, evidence: { start: 0, end: 2, text: '林岚' } },
+        { name: '赵四', currentState: { location: '塔下' }, evidence: { start: 8, end: 10, text: '赵四' } },
+      ] }) })
+      return { finishReason: 'stop', usage: null }
+    }, twoNames)
+    f.owner.characterProposals.registerCastDecision({ name: '林岚', anchorRole: 'minor', operationId: 'cast-anchor-2' })
+    const receipt = f.owner.commitFinalizationGeneration(await f.run())
+    if (receipt.stepKey !== 'character_cards') throw new Error('角色回执类型错误')
+    expect(receipt.unresolved.map(item => item.originalText)).toEqual(['林岚', '赵四'])
+    const batch = f.owner.characterProposals.read(receipt.proposalBatchId!)
+    expect(batch.items.map(item => item.fields.name)).toEqual(['赵四'])
+    // `functional` 不等于「不许写状态」：作者撤销登记后，这个名字重新回到候选集。
+    f.owner.characterProposals.revokeCastDecision({ name: '林岚', operationId: 'cast-anchor-3' })
+    expect(f.owner.characterProposals.declinedCandidateNames()).toEqual([])
+  })
+
   it.each(['length', 'bad-json'] as const)('does not turn %s output into a state update', async kind => {
     const f = fixture(async (_request, options) => {
       options.onVisible({ kind: 'delta', text: kind === 'bad-json' ? '{' : '{"updates":[]}' })
