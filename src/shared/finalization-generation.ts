@@ -24,6 +24,10 @@ export type FinalizationGenerationEffect = {
   chapterNotes: string
   factCount: number
   blueprintUpdated: boolean
+  /** 本章距 t0 的天数（t0 = 0）；null = 未取到，不等于 0。 */
+  storyDayOffset?: number | null
+  /** 取不到日序时置真，供 UI 显式提示作者去补，而不是静默留空。 */
+  storyDayMissing?: boolean
 } | (FinalizedCharacterGenerationReceipt & { success: true; stepKey: 'character_cards' })
 export interface FinalizationGenerationRecovery {
   attemptCount: number

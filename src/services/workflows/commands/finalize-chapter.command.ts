@@ -34,6 +34,7 @@ import {
   type FinalizedCharacterContext,
   type FinalizedSourceIdentity,
 } from '../../../shared/finalized-continuity'
+import { parseStoryDayAnchor } from '../../../shared/story-day-anchor'
 import { readWorkflowDraftMeta } from '../workflow-draft-meta'
 import {
   requireWorkflowProjectSession,
@@ -183,6 +184,14 @@ export function buildFinalizePostProcessSteps(
         if (generation.finalizedStage) {
           const effect = await generation.finalizedStage('chapter_notes', context)
           if (effect.stepKey !== 'chapter_notes') throw new Error('FINALIZATION_GENERATION_EFFECT_MISMATCH')
+          if (effect.storyDayMissing) {
+            callbacks.log(text(
+              `  提示：第 ${chapterNumber} 章未能确定故事日序（要点「时间定位」缺失或写「未定」），已记为未知，`
+                + '不按章号推算。需要日期算术时请补上世界观历法或本章的「时间定位」。',
+              `  Notice: Chapter ${chapterNumber} has no computable story-day offset; it is recorded as unknown, `
+                + 'never inferred from the chapter number.',
+            ))
+          }
           callbacks.log(workflowUiText(context, `已投影连续性事实：${effect.factCount} 条`, `Projected continuity facts: ${effect.factCount}`))
           return
         }
@@ -211,6 +220,17 @@ export function buildFinalizePostProcessSteps(
             chapterEntities,
             identityContext,
           )
+          // 日序：从要点里取那个整数。取不到就是 null（不填 0），并且**要说出来**，
+          // 否则缺失会伪装成「第 0 日」，下游的倒计时与药量算术全跟着错。
+          const storyDay = parseStoryDayAnchor(cleanNotes)
+          if (!storyDay) {
+            callbacks.log(text(
+              `  提示：第 ${chapterNumber} 章未能从正文确定故事日序（要点「时间定位」缺失或写「未定」），`
+                + '已按「未知」记录，不会按章号推算。需要算术时请在世界观历法或本章要点里补上。',
+              `  Notice: Chapter ${chapterNumber} has no computable story-day offset (the "Time anchor" section is missing `
+                + 'or undetermined). It is recorded as unknown, never inferred from the chapter number.',
+            ))
+          }
           const continuityResult = await ipc.invokeWithProjectSession(
             projectSession,
             'db:continuity-save-finalized',
@@ -219,6 +239,8 @@ export function buildFinalizePostProcessSteps(
               chapterNumber,
               chapterNotes: cleanNotes,
               facts,
+              storyDayOffset: storyDay?.offset ?? null,
+              storyDayLabel: storyDay?.label ?? null,
               projectionGeneration: projectionGeneration!,
               source: finalizedSource!,
             },

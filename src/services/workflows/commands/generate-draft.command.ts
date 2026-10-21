@@ -1,4 +1,5 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
+import { formatStoryDayAnchorLine, type StoryDaySource } from '../../../shared/story-day-anchor'
 import { keyEventsText } from '../../../shared/blueprint-key-events'
 import { buildBoundaryNotice } from '../../../shared/chapter-boundary'
 import { projectArchitectureForDraft } from '../../../shared/architecture-projection'
@@ -877,6 +878,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       ))
 
     let finalizedSources: FinalizedMaterialSource[] = []
+    let storyDayAnchorLine = ''
     let activeThreadContext = ''
     if (!isFirstChapter) {
       const finalized = await this.readFinalizedMaterials(
@@ -886,6 +888,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         this.chapterInfo.characters,
       )
       finalizedSources = finalized.sources
+      // W2：把「上一章是第几天」作为一条可算术的锚点并进作者资料。
+      // 缺日序时它写明「缺失」，不让模型退回按章号推算。
+      storyDayAnchorLine = formatStoryDayAnchorLine(finalized.storyDayAnchors, {
+        writingLanguage,
+        currentChapter: this.chapterInfo.chapterNumber,
+      })
       callbacks.log(uiText(
         `  已定位定稿连续性原文（${finalized.locatedFactCandidates} 条候选）`,
         `  Located finalized continuity excerpts (${finalized.locatedFactCandidates} candidates)`,
@@ -939,7 +947,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         identity: { projectId: projectSession.projectId, epoch: projectSession.leaseId },
         writingLanguage,
         budgetChars: 8_000,
-        authorProjectFacts: authoredConfigFacts,
+        authorProjectFacts: storyDayAnchorLine ? [...authoredConfigFacts, storyDayAnchorLine] : authoredConfigFacts,
         characterProfiles,
         futurePlans: futureBlueprintsStr,
         references: [
@@ -2115,7 +2123,12 @@ ${params.candidate.text}`,
     currentChapter: number,
     projectSession: ProjectSessionContext,
     currentEntities: readonly string[],
-  ): Promise<{ sources: FinalizedMaterialSource[]; locatedFactCandidates: number }> {
+  ): Promise<{
+    sources: FinalizedMaterialSource[]
+    locatedFactCandidates: number
+    /** 每章日序锚（含缺失章的 null）：正文侧据此给出「第几天」，缺失就明说。 */
+    storyDayAnchors: StoryDaySource[]
+  }> {
     const FULL_WINDOW = 5
     let finalizedContinuity: FinalizedContinuityProjection[] = []
     try {
@@ -2261,7 +2274,17 @@ ${params.candidate.text}`,
         }
       } catch { /* Existing guard owns absence; do not invent a source identity. */ }
     }
-    return { sources, locatedFactCandidates: selected.reduce((sum, item) => sum + item.evidence.length, 0) }
+    return {
+      sources,
+      locatedFactCandidates: selected.reduce((sum, item) => sum + item.evidence.length, 0),
+      // 日序锚：保留全部快照（含 offset 为 null 的章）—— 若最近一章缺失，
+      // 应当如实说「这一章缺失」，不能悄悄退回到更早一章的日序当锚（W2）。
+      storyDayAnchors: finalizedContinuity.map(projection => ({
+        chapterNumber: projection.chapterNumber,
+        storyDayOffset: projection.storyDayOffset ?? null,
+        storyDayLabel: projection.storyDayLabel ?? null,
+      })),
+    }
   }
 
   private async readActiveNarrativeThreads(

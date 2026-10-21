@@ -434,4 +434,74 @@ describe('finalized continuity projection', () => {
       },
     })).toThrow(/无法在绑定定稿正文中精确定位/u)
   })
+
+  it('stores the story-day offset and label and reads them back with the projection', () => {
+    const content = '陈默在码头数完最后一袋米。'
+    const receipt = FinalizedDraftImportRepository.commit(projectRoot, {
+      operationId: 'story-day-store',
+      chapters: [{ chapterNumber: 1, title: '码头', content, wordCount: countDraftUnits(content) }],
+    })
+    const draft = receipt.drafts[0]!
+    SummaryRepository.saveFinalizedContinuity({
+      draftId: draft.draftId,
+      chapterNumber: 1,
+      chapterNotes: '## 时间定位\n- 故事日：0\n- 书中写法：三月初一\n',
+      storyDayOffset: 0,
+      storyDayLabel: '三月初一',
+      projectionGeneration: projectionGeneration(),
+      source: { draftId: draft.draftId, finalizationId: draft.finalizationId, chapterNumber: 1, contentHash: draft.contentHash },
+    })
+
+    // 0 是合法值（开篇当日），必须能被读出来 —— 它不能和「没算出来」同形。
+    expect(SummaryRepository.listFinalizedContinuityBefore(2)[0]).toMatchObject({ storyDayOffset: 0, storyDayLabel: '三月初一' })
+  })
+
+  it('rejects a story-day offset that runs backwards against an earlier chapter', () => {
+    const first = '第一日正文。'
+    const second = '第二日正文。'
+    const receipt = FinalizedDraftImportRepository.commit(projectRoot, {
+      operationId: 'story-day-regression',
+      chapters: [
+        { chapterNumber: 1, title: '第一日', content: first, wordCount: countDraftUnits(first) },
+        { chapterNumber: 2, title: '第二日', content: second, wordCount: countDraftUnits(second) },
+      ],
+    })
+    const [chapterOne, chapterTwo] = receipt.drafts
+    SummaryRepository.saveFinalizedContinuity({
+      draftId: chapterOne!.draftId,
+      chapterNumber: 1,
+      chapterNotes: '## 时间定位\n- 故事日：6\n',
+      storyDayOffset: 6,
+      projectionGeneration: projectionGeneration(),
+      source: { draftId: chapterOne!.draftId, finalizationId: chapterOne!.finalizationId, chapterNumber: 1, contentHash: chapterOne!.contentHash },
+    })
+
+    expect(() => SummaryRepository.saveFinalizedContinuity({
+      draftId: chapterTwo!.draftId,
+      chapterNumber: 2,
+      chapterNotes: '## 时间定位\n- 故事日：5\n',
+      storyDayOffset: 5,
+      projectionGeneration: projectionGeneration(),
+      source: { draftId: chapterTwo!.draftId, finalizationId: chapterTwo!.finalizationId, chapterNumber: 2, contentHash: chapterTwo!.contentHash },
+    })).toThrow(/故事日序倒退/u)
+  })
+
+  it('accepts a missing story-day offset without turning it into day zero', () => {
+    const content = '第一日正文，未写日期。'
+    const receipt = FinalizedDraftImportRepository.commit(projectRoot, {
+      operationId: 'story-day-missing',
+      chapters: [{ chapterNumber: 1, title: '无日期', content, wordCount: countDraftUnits(content) }],
+    })
+    const draft = receipt.drafts[0]!
+    SummaryRepository.saveFinalizedContinuity({
+      draftId: draft.draftId,
+      chapterNumber: 1,
+      chapterNotes: '## 时间定位\n- 故事日：未定\n',
+      storyDayOffset: null,
+      projectionGeneration: projectionGeneration(),
+      source: { draftId: draft.draftId, finalizationId: draft.finalizationId, chapterNumber: 1, contentHash: draft.contentHash },
+    })
+
+    expect(SummaryRepository.listFinalizedContinuityBefore(2)[0]).not.toHaveProperty('storyDayOffset')
+  })
 })

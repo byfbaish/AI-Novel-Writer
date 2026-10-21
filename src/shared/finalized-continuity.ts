@@ -232,6 +232,10 @@ export interface FinalizedContinuityProjection {
   facts?: FinalizedContinuityFact[]
   /** Used only to locate the bound finalized prose, never rendered as a fact. */
   characterStateCandidates?: FinalizedCharacterStateCandidate[]
+  /** 距开篇 t0 的天数（t0 = 0）。NULL / 缺省 = 未取到，**不等于 0**。 */
+  storyDayOffset?: number | null
+  /** 书中写法（如「二月廿七」），只用于展示与审稿比对。 */
+  storyDayLabel?: string | null
   /** Missing only for pre-v2 rows whose source cannot be safely reconstructed. */
   source?: FinalizedSourceIdentity
   /** Missing legacy callers must be treated exactly like `legacy`, never current. */
@@ -243,6 +247,14 @@ export interface SaveFinalizedContinuityRequest {
   chapterNumber: number
   chapterNotes: string
   facts?: FinalizedContinuityFact[]
+  /**
+   * 本章距 t0 的天数（t0 = 0）。缺省 / null = 未取到。
+   *
+   * 主进程不接受「倒退」的日序：本章值早于任一更早章的有值快照时直接拒绝保存，
+   * 因为那意味着模型算错了一次，而错值会顺着下游继续漂（判据：显式失败优于静默错误）。
+   */
+  storyDayOffset?: number | null
+  storyDayLabel?: string | null
   /** Watermark frozen before extraction; stale in-flight results must not advance it. */
   projectionGeneration: number
   /** Frozen before extraction; the main process revalidates it at commit time. */

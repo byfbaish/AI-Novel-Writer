@@ -68,6 +68,11 @@ export interface ReviewRevisionContext {
   uiLocale: Locale
   authorInputs: GenerationAuthorInput[]
   characterStates: string
+  /**
+   * 故事日序块（W2）：每章的「第几天」取自定稿要点，不按章号推算。
+   * 缺省 = 没有可用快照（旧项目 / 首次审稿前尚未定稿），此时不渲染这一段。
+   */
+  storyDayAnchors?: string
   worldbuilding: string
   history: ReviewFinalizedMaterial[]
   /** Exact saved predecessor bound by the source draft, never an inferred latest version. */
@@ -171,6 +176,9 @@ export function reviewRevisionAuthorMaterial(
     ...(omit.has('characterStates')
       ? []
       : [text('【作者角色状态｜以标注时点为准】', '[Author character state | scoped to its annotated time]'), context.characterStates]),
+    // 日序块**不受 omit 影响**：它不是世界观或角色状态，模板里也没有别的变量承载它。
+    // 审稿要判「这一章的时间和前面能不能算上」，没有它就只能凭印象。
+    ...(context.storyDayAnchors ? [context.storyDayAnchors] : []),
     text('【本章作者指导｜约束】', '[Current chapter author guidance | constraints]'),
     // `keyEvents` 是结构化事件清单，但**进 prompt 必须收敛为文本**：否则会把代码账目
     // （`id` / `estimatedUnits`）暴露给模型，且与正文路径（`keyEventsText`）不一致。

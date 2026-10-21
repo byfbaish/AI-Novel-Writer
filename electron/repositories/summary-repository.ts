@@ -28,6 +28,7 @@ import {
 } from '../../src/shared/character-roster'
 import { decideDerivedPatch, type CharacterFieldSnapshot, type DerivedSourceOrder } from '../../src/shared/character-identity'
 import { parseFinalizedCharacterStateResponse } from '../../src/shared/finalized-continuity'
+import { storyDayRegression } from '../../src/shared/story-day-anchor'
 import { hasCharacterIdentitySchema } from './character-repository'
 import { refreshCharacterStateProjection } from './character-roster-repository'
 import type { ProjectEpoch } from '../../src/shared/source-ref'
@@ -579,11 +580,42 @@ export class SummaryRepository {
       || input.projectionGeneration < 0
       || !chapterNotes
     ) throw new Error('连续性投影参数无效')
+    // 日序：null / 缺省 = 未取到（允许），但一旦给出就必须是 ≥ 0 的整数。
+    // 非法值不静默转 0 —— 那会让「没算出来」和「开篇当日」同形。
+    const storyDayOffset = input.storyDayOffset === undefined || input.storyDayOffset === null
+      ? null
+      : input.storyDayOffset
+    if (storyDayOffset !== null && (!Number.isSafeInteger(storyDayOffset) || storyDayOffset < 0)) {
+      throw new Error('故事日序必须是大于等于 0 的整数')
+    }
+    const storyDayLabel = typeof input.storyDayLabel === 'string' && input.storyDayLabel.trim()
+      ? input.storyDayLabel.trim()
+      : null
 
     db.transaction(() => {
       const snapshot = readFinalizedSourceFromDb(db, input.draftId)
       if (!snapshot || !sameSource(snapshot.source, input.source) || input.chapterNumber !== snapshot.source.chapterNumber) {
         throw new Error('连续性投影来源已失效，已拒绝过期结果')
+      }
+      // 日序倒退是硬矛盾：正文可以写「昨日」，但一章的绝对日序不能早于更早的章。
+      // 这里拒绝而不是夹紧，因为夹紧会把模型的算错变成一个「看起来正常」的错误事实。
+      if (storyDayOffset !== null) {
+        const previous = db.prepare(`
+          SELECT chapter_number AS chapterNumber, story_day_offset AS storyDayOffset
+          FROM summary_snapshots
+          WHERE draft_id IS NOT NULL AND chapter_number < ? AND story_day_offset IS NOT NULL
+          ORDER BY chapter_number DESC, id DESC LIMIT 1
+        `).get(input.chapterNumber) as { chapterNumber: number; storyDayOffset: number } | undefined
+        const regression = storyDayRegression(
+          previous ? { chapterNumber: previous.chapterNumber, storyDayOffset: previous.storyDayOffset } : undefined,
+          { chapterNumber: input.chapterNumber, storyDayOffset },
+        )
+        if (regression) {
+          throw new Error(
+            `故事日序倒退：第${input.chapterNumber}章为第${regression.currentOffset}日，`
+            + `早于第${regression.previousChapter}章的第${regression.previousOffset}日。请先核对历法与正文时间表述。`,
+          )
+        }
       }
       if (normalized.some(fact => !snapshot.content.includes(fact.evidence))) {
         throw new Error('连续性事实引文无法在绑定定稿正文中精确定位')
@@ -613,6 +645,7 @@ export class SummaryRepository {
       const updated = db.prepare(`
         UPDATE summary_snapshots
         SET chapter_number = ?, chapter_notes = ?, continuity_facts = ?,
+            story_day_offset = ?, story_day_label = ?,
             source_finalization_id = ?, source_content_hash = ?, projection_generation = ?,
             created_at = datetime('now')
         WHERE draft_id = ?
@@ -620,6 +653,8 @@ export class SummaryRepository {
         input.chapterNumber,
         chapterNotes,
         facts,
+        storyDayOffset,
+        storyDayLabel,
         input.source.finalizationId,
         input.source.contentHash,
         input.projectionGeneration,
@@ -629,13 +664,16 @@ export class SummaryRepository {
         db.prepare(`
           INSERT INTO summary_snapshots (
             draft_id, chapter_number, chapter_notes, continuity_facts,
+            story_day_offset, story_day_label,
             source_finalization_id, source_content_hash, projection_generation
-          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           input.draftId,
           input.chapterNumber,
           chapterNotes,
           facts,
+          storyDayOffset,
+          storyDayLabel,
           input.source.finalizationId,
           input.source.contentHash,
           input.projectionGeneration,
@@ -716,6 +754,8 @@ export class SummaryRepository {
              summary_snapshots.source_finalization_id AS sourceFinalizationId,
              summary_snapshots.source_content_hash AS sourceContentHash,
              summary_snapshots.projection_generation AS projectionGeneration,
+             summary_snapshots.story_day_offset AS storyDayOffset,
+             summary_snapshots.story_day_label AS storyDayLabel,
              current_drafts.id AS currentDraftId,
              current_drafts.status AS currentDraftStatus,
              current_outbox.finalization_id AS currentFinalizationId,
@@ -754,6 +794,8 @@ export class SummaryRepository {
       sourceFinalizationId: string
       sourceContentHash: string
       projectionGeneration: number
+      storyDayOffset: number | null
+      storyDayLabel: string | null
       currentDraftId: number | null
       currentDraftStatus: string | null
       currentFinalizationId: string | null
@@ -807,6 +849,10 @@ export class SummaryRepository {
         chapterTitle: row.chapterTitle,
         chapterNotes: row.chapterNotes,
         facts,
+        // 只有真取到日序时才带字段：缺失用「没有这个键」表示，
+        // 既不会让既有消费方的严格相等断言意外变宽，也不会把 null 误读成第 0 日。
+        ...(typeof row.storyDayOffset === 'number' ? { storyDayOffset: row.storyDayOffset } : {}),
+        ...(typeof row.storyDayLabel === 'string' && row.storyDayLabel ? { storyDayLabel: row.storyDayLabel } : {}),
         ...(candidates.length > 0 ? { characterStateCandidates: candidates } : {}),
         ...(hasBoundSource ? {
           source: {

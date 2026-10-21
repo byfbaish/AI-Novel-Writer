@@ -9,6 +9,7 @@ import { finalizationSlotKey, readFinalizationGenerationContext, finalizationNot
 import { SummaryRepository } from '../repositories/summary-repository'
 import { BlueprintRepository } from '../repositories/blueprint-repository'
 import { buildFinalizedContinuityFacts } from '../../src/shared/finalized-continuity-facts'
+import { parseStoryDayAnchor } from '../../src/shared/story-day-anchor'
 import { proveFinalizedCharacterGeneration } from './finalized-character-generation-proof'
 import type { CharacterProposalService } from './character-proposal-service'
 
@@ -99,9 +100,13 @@ export class FinalizationGeneration {
         if (!isDeepStrictEqual(finalizationNotesBaseline(this.db, context.slot), context.notesBaseline)) throw new Error('GENERATION_FINALIZATION_NOTES_CHANGED')
         const chapterNotes = proof.artifact.text.trim(), { source } = context.slot
         const facts = buildFinalizedContinuityFacts(source.chapterNumber, chapterNotes, context.identity.content, context.chapterEntities, context.identity)
-        SummaryRepository.saveFinalizedContinuity({ draftId: source.draftId, chapterNumber: source.chapterNumber, source, chapterNotes, facts, projectionGeneration: context.identity.projectionGeneration }, this.db)
+        // 日序取不到就是 null；不填 0，也不按章号推。
+        const storyDay = parseStoryDayAnchor(chapterNotes)
+        SummaryRepository.saveFinalizedContinuity({ draftId: source.draftId, chapterNumber: source.chapterNumber, source, chapterNotes, facts,
+          storyDayOffset: storyDay?.offset ?? null, storyDayLabel: storyDay?.label ?? null, projectionGeneration: context.identity.projectionGeneration }, this.db)
         const blueprintUpdated = BlueprintRepository.updateNotes(source.chapterNumber, chapterNotes, this.db)
-        receipt = { success: true, stepKey: 'chapter_notes', chapterNotes, factCount: facts.length, blueprintUpdated }
+        receipt = { success: true, stepKey: 'chapter_notes', chapterNotes, factCount: facts.length, blueprintUpdated,
+          storyDayOffset: storyDay?.offset ?? null, storyDayMissing: !storyDay }
       } else {
         const characterProof = proveFinalizedCharacterGeneration(this.db, this.runs, this.projectId, handle, reference)
         // transferOrigin 同步读取已验证的转移凭据，与本事务同属一次同步执行；凭据被篡改只会读出 null/抛错，趋向冲突而非放行。

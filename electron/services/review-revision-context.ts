@@ -6,6 +6,7 @@ import { parseHumanConfirmedReviewSnapshot, serializeHumanConfirmedReviewSnapsho
 import { freezeChapterGoals } from '../../src/shared/chapter-goal-review'
 import { findBlueprintContinuityRisks } from '../../src/shared/consistency-preflight'
 import { formatCharacterStateLines } from '../../src/shared/character-state-lines'
+import { formatStoryDayAnchorLines } from '../../src/shared/story-day-anchor'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
 import { CharacterRepository } from '../repositories/character-repository'
 import { BlueprintRepository } from '../repositories/blueprint-repository'
@@ -141,9 +142,22 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
       writingLanguage: core.writingLanguage,
       upToChapter: source.chapterNumber,
     })
+    // W2：日序锚块。只列**已定稿且有日序**的章 —— 本章尚未定稿，所以它自己的日序
+    // 只能由审稿从正文推、再和第 1 章的 t0 对齐。缺失的章显式标「缺失」，不是 0。
+    const storyDayAnchors = formatStoryDayAnchorLines(
+      history.flatMap(item => (item.projection
+        ? [{
+            chapterNumber: item.projection.chapterNumber,
+            storyDayOffset: item.projection.storyDayOffset ?? null,
+            storyDayLabel: item.projection.storyDayLabel ?? null,
+          }]
+        : [])),
+      { writingLanguage: core.writingLanguage, currentChapter: source.chapterNumber },
+    )
     return { version: 1, operation: request.operation, source, sourceHash: textHash(source.content), config,
       writingLanguage: core.writingLanguage, uiLocale: request.uiLocale, authorInputs: structuredClone(request.authorInputs),
       characterStates: stateLines || (core.writingLanguage === 'en-US' ? '(none)' : '（暂无）'),
+      ...(storyDayAnchors ? { storyDayAnchors } : {}),
       worldbuilding: core.worldbuilding, history, blueprints, ...(predecessor ? { predecessor } : {}),
       frozenGoals: freezeChapterGoals(source.chapterNumber, currentBlueprint?.keyEvents,
         // 作者可在大纲 / 世界观设定 / 角色备注里，用独占一行的

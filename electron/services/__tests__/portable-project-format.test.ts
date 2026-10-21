@@ -74,8 +74,8 @@ describe('portable v7 field policy', () => {
       .all() as Array<{ name: string }>
     const fieldCount = tables.reduce((count, table) => count
       + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 52, fields: 493 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 52, fields: 493 })
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 52, fields: 495 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 52, fields: 495 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -106,7 +106,8 @@ describe('portable v7 field policy', () => {
     const added = listPortableFieldPolicyKeys().filter(key => !baseline.has(key))
     // 126（M01-M05 + 头像 + M06）+ M07 漏登记的 project_core.plot_structure_plan
     // + M08 的 1 列（blueprints.structured_refs）+ 1 表 9 列
-    expect(added).toHaveLength(138)
+    // + W2 的 2 列（summary_snapshots.story_day_offset / story_day_label，走 optionalFields）
+    expect(added).toHaveLength(140)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -182,7 +183,7 @@ describe('portable v7 field policy', () => {
         .all() as Array<{ name: string }>
       const fields = tables.reduce((count, table) => count
         + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-      expect({ tables: tables.length, fields }).toEqual({ tables: 52, fields: 493 })
+      expect({ tables: tables.length, fields }).toEqual({ tables: 52, fields: 495 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)
