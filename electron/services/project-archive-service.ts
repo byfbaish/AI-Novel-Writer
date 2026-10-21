@@ -531,10 +531,10 @@ function reviewHistoryItem(value: unknown): void {
     if (projection.characterStateCandidates !== undefined) {
       for (const candidateValue of reviewArray(projection.characterStateCandidates)) {
         const candidate = object(candidateValue, ['characterId', 'characterName', 'field', 'value', 'evidence',
-          'selectionKey', 'displayName', 'rawValue', 'reason', 'candidateKey', 'source',
+          'selectionKey', 'displayName', 'rawValue', 'reason', 'reviewObserved', 'reviewQuote', 'candidateKey', 'source',
           'expectedFieldRevision', 'expectedFieldValueHash'])
         reviewTextFields(candidate, ['characterId', 'characterName', 'field', 'value', 'selectionKey',
-          'displayName', 'reason', 'candidateKey', 'expectedFieldValueHash'])
+          'displayName', 'reason', 'reviewObserved', 'reviewQuote', 'candidateKey', 'expectedFieldValueHash'])
         if (candidate.rawValue !== undefined) {
           if (typeof candidate.rawValue === 'string') safeString(candidate.rawValue)
           else {

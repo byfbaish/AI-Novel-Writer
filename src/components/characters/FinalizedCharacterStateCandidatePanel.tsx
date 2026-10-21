@@ -97,6 +97,16 @@ function SessionPanel({ session }: { session: ProjectSessionContext }) {
         <div className="font-medium">{candidate.characterName} · {text(...labels[candidate.field])}</div>
         <div>{text('当前：', 'Current: ')}{current || text('空', 'Empty')}</div>
         <div>{text('建议：', 'Suggested: ')}{candidate.value}</div>
+        {candidate.reason === 'review-conflict' && <>
+          <div>{text('审稿读到：', 'Review read: ')}{candidate.reviewObserved || text('（引文不可用）', '(quote unavailable)')}</div>
+          {candidate.reviewQuote && <blockquote className="border-l-2 border-[var(--color-warning)] pl-2 text-[var(--color-text-secondary)]">
+            {candidate.reviewQuote}
+          </blockquote>}
+          <p className="text-[var(--color-warning-text)]">
+            {text('审稿与定稿后处理读同一段正文得出了不同结果，需要你裁决。',
+              'The review and the finalization pass read the same passage differently; your decision is required.')}
+          </p>
+        </>}
       </div>
       <div className="flex gap-2">
         <Button variant="outline" size="sm" disabled={busy} onClick={() => void decide('decline')}>

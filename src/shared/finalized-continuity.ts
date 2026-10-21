@@ -63,7 +63,19 @@ export interface FinalizedCharacterStateCandidate {
   selectionKey?: string
   displayName?: string
   rawValue?: unknown
-  reason?: 'author-protected' | 'legacy-protected'
+  /**
+   * 为什么这条没被自动写回。三种原因**互斥且不可合并**：
+   * - `author-protected` / `legacy-protected`：目标字段已被作者（或历史作者值）占住。
+   * - `review-conflict`：审稿在正文里读到的值与定稿后处理读到的值不一致（W3 第二单元）。
+   *   它不是「定稿读错了」的断言 —— 两个读者至少有一个错了，谁错只有作者能判。
+   */
+  reason?: 'author-protected' | 'legacy-protected' | 'review-conflict'
+  /**
+   * 仅 `review-conflict` 时存在：审稿侧读到的值与它的引文。
+   * 没有这两项，作者看到的只有「当前值 vs 定稿建议值」，等于要他去翻正文第三遍才能裁决。
+   */
+  reviewObserved?: string
+  reviewQuote?: string
   /** Present on current source-bound decisions; omitted only by preserved legacy rows. */
   candidateKey?: string
   source?: FinalizedSourceIdentity
