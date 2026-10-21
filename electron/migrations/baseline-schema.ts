@@ -334,9 +334,6 @@ export function applyBaselineTables(db: BetterSqlite3.Database): void {
       source_finalization_id TEXT NOT NULL DEFAULT '',
       source_content_hash TEXT NOT NULL DEFAULT '',
       projection_generation INTEGER NOT NULL DEFAULT 0,
-      -- 故事日序：距开篇 t0 的天数（t0 = 0）。NULL 表示未取到，**不等于 0**。
-      story_day_offset INTEGER DEFAULT NULL,
-      story_day_label TEXT DEFAULT NULL,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE
     );
@@ -613,14 +610,6 @@ export function initializeLegacyBaselineSchema(db: BetterSqlite3.Database, impor
   }
   if (!summaryColumns.has('projection_generation')) {
     db.exec('ALTER TABLE summary_snapshots ADD COLUMN projection_generation INTEGER NOT NULL DEFAULT 0')
-  }
-  // 日序两列：可空是语义的一部分 —— NULL = 没算出来，不是「第 0 日」。
-  // 既有项目升级后为 NULL，由作者按实算的结果显式回填（W2 回填四章 0/3/6/7）。
-  if (!summaryColumns.has('story_day_offset')) {
-    db.exec('ALTER TABLE summary_snapshots ADD COLUMN story_day_offset INTEGER DEFAULT NULL')
-  }
-  if (!summaryColumns.has('story_day_label')) {
-    db.exec('ALTER TABLE summary_snapshots ADD COLUMN story_day_label TEXT DEFAULT NULL')
   }
   db.exec(`
     CREATE TABLE IF NOT EXISTS continuity_projection_meta (

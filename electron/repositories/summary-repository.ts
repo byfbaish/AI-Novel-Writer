@@ -744,6 +744,15 @@ export class SummaryRepository {
     if (!Number.isSafeInteger(chapterNumber) || chapterNumber < 1) {
       throw new Error('连续性投影目标章节无效')
     }
+    // 判据 CS 的读侧：M10 之前的库没有日序两列。缺列时取 NULL 而不是让整条
+    // 连续性查询报 no such column —— NULL 在这里的含义正是「日序未知」，
+    // 与「第 0 日」不同形，所以降级不会伪造出锚点。
+    const hasStoryDayColumns = (db.prepare('PRAGMA table_info(summary_snapshots)').all() as Array<{ name: string }>)
+      .some(column => column.name === 'story_day_offset')
+    const storyDaySelect = hasStoryDayColumns
+      ? `summary_snapshots.story_day_offset AS storyDayOffset,
+             summary_snapshots.story_day_label AS storyDayLabel,`
+      : 'NULL AS storyDayOffset, NULL AS storyDayLabel,'
     const rows = db.prepare(`
       SELECT summary_snapshots.draft_id AS draftId,
              summary_snapshots.chapter_number AS chapterNumber,
@@ -754,8 +763,7 @@ export class SummaryRepository {
              summary_snapshots.source_finalization_id AS sourceFinalizationId,
              summary_snapshots.source_content_hash AS sourceContentHash,
              summary_snapshots.projection_generation AS projectionGeneration,
-             summary_snapshots.story_day_offset AS storyDayOffset,
-             summary_snapshots.story_day_label AS storyDayLabel,
+             ${storyDaySelect}
              current_drafts.id AS currentDraftId,
              current_drafts.status AS currentDraftStatus,
              current_outbox.finalization_id AS currentFinalizationId,

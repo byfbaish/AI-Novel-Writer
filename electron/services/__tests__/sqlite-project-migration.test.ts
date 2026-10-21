@@ -8,6 +8,7 @@ import { initializeLegacyBaselineSchema } from '../../migrations/baseline-schema
 import { ensureBaselineBlueprintTables } from '../../migrations/baseline-blueprint-schema'
 import { sqliteSchemaFingerprint } from '../../migrations/sqlite-schema-adapter'
 import { backupProjectSqlite, probeProjectSqlite, verifyProjectSqlite, upgradeProjectSqlite } from '../sqlite-project-migration'
+import { CURRENT_DESKTOP_SCHEMA_VERSION } from '../../migrations/desktop-registry'
 import { CharacterRosterRepository } from '../../repositories/character-roster-repository'
 import { ProjectCoreRepository } from '../../repositories/project-core-repository'
 
@@ -127,6 +128,11 @@ describe('real SQLite schema probe and WAL staging backup', () => {
       VALUES ('main',1,7,'legacy_markdown_pending',?,'old-projection','old-facts','2026-01-01 00:00:00')`).run(raw)
     const originalMeta = f.db.prepare('SELECT rowid,* FROM character_roster_meta').get()
     const originalCore = f.db.prepare('SELECT rowid,* FROM project_core').get()
+    // 判据 CU 的测试侧：基线表允许比老库多出后来新增的列（rhythm_profile /
+    // plot_structure_plan …），所以只能按「老库有的列」逐列比 —— 整行深比会把
+    // 新增的空列当成作者内容被改写。要钉的是老库每一列都原样搬过来了。
+    const coreColumns = (f.db.prepare('PRAGMA table_info(project_core)').all() as { name: string }[])
+      .map(column => `"${column.name}"`).join(',')
     const sequences = f.db.prepare('SELECT name,seq FROM sqlite_sequence ORDER BY name').all()
     const before = bytes(f.root)
     const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Migration must not invoke a model'))
@@ -138,7 +144,7 @@ describe('real SQLite schema probe and WAL staging backup', () => {
         revision: kind === 'existing' ? 7 : 0,
         ...(kind === 'empty' ? {} : { legacyMarkdown: raw }),
       })
-      expect(target.prepare('SELECT rowid,* FROM project_core').get()).toEqual(originalCore)
+      expect(target.prepare(`SELECT rowid,${coreColumns} FROM project_core`).get()).toEqual(originalCore)
       expect(target.prepare('SELECT name,seq FROM sqlite_sequence ORDER BY name').all()).toEqual(sequences)
       expect(target.prepare('SELECT COUNT(*) FROM llm_calls').pluck().get()).toBe(0)
       if (originalMeta) expect(target.prepare('SELECT rowid,* FROM character_roster_meta').get()).toEqual(originalMeta)
@@ -156,13 +162,13 @@ describe('real SQLite schema probe and WAL staging backup', () => {
     expect(target.prepare('SELECT COUNT(*) FROM character_roster_meta').pluck().get()).toBe(0)
   })
 
-  it('imports the exact early v1.1.0 schema0 rows through schema7 without touching the source', async () => {
+  it('imports the exact early v1.1.0 schema0 rows through the current schema without touching the source', async () => {
     const f = earlyV110Fixture(), before = bytes(f.root)
     expect(probeProjectSqlite({ databasePath: f.source })).toMatchObject({
       schemaVersion: 0, fingerprint: '2504dde08865f758f654d38ae3d972420c28fa60d1f747e92898390455272de6',
     })
     const result = await backupProjectSqlite({ sourceDatabasePath: f.source, targetDatabasePath: f.target })
-    expect(result.schemaVersion).toBe(7)
+    expect(result.schemaVersion).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
     expect(verifyProjectSqlite({ databasePath: f.target })).toEqual(result)
     const target = new Database(f.target, { readonly: true, fileMustExist: true }); handles.push(target)
     expect(target.prepare('SELECT rowid,project_name,genre,global_guidance,characters_arch FROM project_core').get())
@@ -197,10 +203,10 @@ describe('real SQLite schema probe and WAL staging backup', () => {
     })
     expect(bytes(f.root)).toEqual(before)
   })
-  it('copies qualified v1.0.0 old columns, rowids, and sequence into schema7 staging', async () => {
+  it('copies qualified v1.0.0 old columns, rowids, and sequence into current-schema staging', async () => {
     const f = legacyV100Fixture(), before = bytes(f.root)
     const result = await backupProjectSqlite({ sourceDatabasePath: f.source, targetDatabasePath: f.target })
-    expect(result.schemaVersion).toBe(7)
+    expect(result.schemaVersion).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
     expect(verifyProjectSqlite({ databasePath: f.target })).toEqual(result)
     const target = new Database(f.target, { readonly: true, fileMustExist: true }); handles.push(target)
     expect(target.prepare('SELECT rowid FROM project_core WHERE id=?').pluck().get('main')).toBe(7)
@@ -237,7 +243,7 @@ describe('real SQLite schema probe and WAL staging backup', () => {
       schemaVersion: 0, fingerprint: 'c536a35e30f51f681843a2a07a48592cc80e9840abeb7898fcd463297128ccf8',
     })
     const result = await backupProjectSqlite({ sourceDatabasePath: f.source, targetDatabasePath: f.target })
-    expect(result.schemaVersion).toBe(7)
+    expect(result.schemaVersion).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
     expect(verifyProjectSqlite({ databasePath: f.target })).toEqual(result)
     const target = new Database(f.target, { fileMustExist: true }); handles.push(target)
     expect(target.prepare('SELECT rowid,core_outline,world_setting,protagonist_profile FROM project_core').get())
@@ -274,10 +280,10 @@ describe('real SQLite schema probe and WAL staging backup', () => {
     })
     expect(bytes(f.root)).toEqual(before)
   })
-  it('copies qualified v1.1.0 rows and sequence through canonical staging to schema7 without writing the source', async () => {
+  it('copies qualified v1.1.0 rows and sequence through canonical staging to the current schema without writing the source', async () => {
     const f = legacyV110Fixture(), before = bytes(f.root)
     const result = await backupProjectSqlite({ sourceDatabasePath: f.source, targetDatabasePath: f.target })
-    expect(result.schemaVersion).toBe(7)
+    expect(result.schemaVersion).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
     expect(verifyProjectSqlite({ databasePath: f.target })).toEqual(result)
     const target = new Database(f.target, { readonly: true, fileMustExist: true }); handles.push(target)
     expect(target.prepare('SELECT rowid FROM project_core WHERE id=?').pluck().get('main')).toBe(7)
@@ -344,13 +350,21 @@ describe('real SQLite schema probe and WAL staging backup', () => {
   })
 })
 
-it('upgrades a qualified schema 6 file to schema 7 without changing author content', async () => {
+it('upgrades a qualified schema 6 file to the current schema without changing author content', async () => {
  const f=fixture()
  const before=await backupProjectSqlite({sourceDatabasePath:f.source,targetDatabasePath:f.target,targetVersion:6})
  expect(before.schemaVersion).toBe(6)
  const upgraded=upgradeProjectSqlite({databasePath:f.target})
- expect(upgraded.schemaVersion).toBe(7)
- expect(upgraded.domain).toEqual(before.domain)
+ expect(upgraded.schemaVersion).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
+ // 6 → 当前版本的迁移会新增可空列（rhythm_profile / plot_structure_plan …）。
+ // domain 是按「当前列集合」取整行算的哈希，加了列哈希必变 —— 那不是作者内容被改写。
+ // 所以这里钉住真正该钉的两件事：行数不变、作者正文与作者设定一字不改。
+ expect(upgraded.domain.tableCounts).toEqual(before.domain.tableCounts)
+ const upgradedDb = new Database(f.target, { readonly: true, fileMustExist: true }); handles.push(upgradedDb)
+ expect(upgradedDb.prepare('SELECT body FROM contents ORDER BY id').pluck().all())
+   .toEqual(['窗外下着雨。\r\nLiteral C:\\author\\notes is prose.'])
+ expect(upgradedDb.prepare("SELECT project_name,characters_arch FROM project_core WHERE id='main'").get())
+   .toEqual({ project_name: '合成项目', characters_arch: '# 作者原文\r\n勿改' })
  expect(verifyProjectSqlite({databasePath:f.target})).toEqual(upgraded)
 })
 it('resolves a trusted system scratch junction before validating its private snapshot', () => {

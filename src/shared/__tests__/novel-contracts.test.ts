@@ -217,7 +217,11 @@ describe('S01共享契约（纯合成，不是生产持久化资格）', () => {
     for (const span of [{ start: -9, end: -1, unit: 'utf16-code-unit' }, { start: 2, end: 1, unit: 'utf16-code-unit' }, { start: 0, end: 1, unit: 'bytes' }]) expect(() => findingAnchorKey({ ...finding, source: { ...finding.source, span } } as ReviewFinding)).toThrow('UNVERIFIED_FINDING')
   })
   it('存储业务lane仅ID，不允许根相交或未证明reparse；mainReady先于appearance', () => {
-    expect(MIGRATION_IDS).toEqual(['M00', 'M01', 'M02', 'M03', 'M04', 'M05', 'M06', 'M07', 'M08'])
+    // 钉的是「只有 ID、且从 M00 起连续编号」，不是「一共几个」——
+    // 新增 lane 不该让这条测试变红，跳号/插队/混进非 ID 才该红。
+    expect(MIGRATION_IDS).toEqual(
+      Array.from({ length: MIGRATION_IDS.length }, (_, index) => `M${String(index).padStart(2, '0')}`),
+    )
     const proof = { canonicalRealPath: 'C:\\合成\\来源', platform: 'win32' as const, authorized: true, reparseFree: true }
     expect(() => assertDistinctStorageRoots([proof, { ...proof, canonicalRealPath: 'c:\\合成\\来源\\子目录' }])).toThrow()
     expect(() => assertDistinctStorageRoots([{ ...proof, reparseFree: false }])).toThrow()
