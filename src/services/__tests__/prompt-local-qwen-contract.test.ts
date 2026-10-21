@@ -308,9 +308,46 @@ describe('built-in model-neutral prompt contract', () => {
     expect(nextChapter).toContain('文风要求')
 
     const refineChapter = compact(promptText('refine_chapter'))
-    expect(refineChapter).toContain('精修与细节填充')
-    expect(refineChapter).toContain('目标字数控制在')
+    expect(refineChapter).toContain('定向改写')
+    expect(refineChapter).toContain('不可动')
+    expect(refineChapter).toContain('待精修原稿')
     expect(refineChapter).toContain('段落与段落之间必须保留一个空行')
+  })
+
+  /**
+   * 精修基座的定位口径（2026-10-21 重构，触发：`20261021-143750-201-精修` trace）。
+   *
+   * 旧版正文写死了「五感强化环境 / 金手指融入战斗 / 给足爽感 / 镜头感词汇 /
+   * 检查结尾钩子」，与本 prompt 里作者自己的文风要求（少比喻、少通感、
+   * 环境只服务氛围、禁止摄像头描写）正面冲突，弱模型两边都不敢碰，
+   * 退化成删助词校对：净删 94 字符 / 新增 34 字符，零新画面，还把原稿
+   * 已有的「同段精确数字 ≤2」违规从 5 处推到 9 处。
+   *
+   * ① 基座不得预设题材与章位：金手指 / 战斗 / 爽感 / 反派这类词只对
+   *    特定题材特定章位成立，必须留在 `chapter_info` / `writing_style` /
+   *    `global_guidance`，不进基座。`first_chapter_draft` 早就按
+   *    「仅当明确要求时才展现」处理过金手指，这里是把同一口径推到精修。
+   * ② 基座不得捆绑具体修辞手法：五感、镜头感与作者的克制文风互斥，
+   *    写进基座就等于要求模型违反作者文风。这里只描述改写动作本身
+   *    与不可动边界。
+   * ③ 同源摘要不得再进精修正文：`refine-draft.command.ts:75-76` 把同一个
+   *    `historySummary` 喂给 `global_summary` 与 `short_summary`，渲染出来
+   *    是两段逐字相同的全文（实测各 4575 字符，约占请求 27%）。两个变量
+   *    仍保留在 `variables`（builder 仍在注入），恢复线索见模板注释。
+   */
+  it('keeps the revision base free of genre-bound craft demands and duplicate summaries', () => {
+    const refineChapter = promptText('refine_chapter')
+
+    for (const banned of ['金手指', '爽感', '镜头感', '五感', '欲扬先抑', '战斗']) {
+      expect(refineChapter, `refine_chapter 基座不应预设「${banned}」`).not.toContain(banned)
+    }
+
+    expect(refineChapter).not.toContain('{{global_summary}}')
+    expect(refineChapter).not.toContain('{{short_summary}}')
+
+    const template = getBuiltinPromptTemplate('refine_chapter', 'zh-CN')!
+    expect(Object.keys(template.variables)).toContain('global_summary')
+    expect(Object.keys(template.variables)).toContain('short_summary')
   })
 
   it('keeps authoritative project facts in both opening and continuation drafts', () => {

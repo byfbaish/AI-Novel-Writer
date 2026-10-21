@@ -423,7 +423,8 @@ describe('RefineDraftCommand bounded visible completion', () => {
       await expect(target.execute({ step: {}, context, callbacks: callbacks() })).rejects.toThrow()
     }
 
-    expect(observed.get('refine-draft')).toContain('Revise the chapter manuscript')
+    expect(observed.get('refine-draft')).toContain('Perform one targeted revision (refinement)')
+    expect(observed.get('refine-draft')).toContain('The story in the draft already holds; improve how it is written, never rewrite it.')
     expect(observed.get('review-chapter')).toContain('Review the chapter for objectively verifiable continuity')
     expect(observed.get('refine-from-review')).toContain('Resolve the selected issues established by the sources')
     for (const request of observed.values()) {
@@ -1618,7 +1619,7 @@ describe('修稿路径不再整段拼接（S10B-2）', () => {
     })
   }
 
-  it('keeps every finalized chapter in both summary slots when the admitted set is unchanged', async () => {
+  it('carries the admitted finalized history exactly once, without a duplicated summary slot', async () => {
     const completeWithLease = vi.fn<GenerationRuntimeEnvironment['completeWithLease']>()
       .mockResolvedValue({ content: REVISION, finishReason: 'stop' })
     stubIpc(historyIpc([
@@ -1629,9 +1630,11 @@ describe('修稿路径不再整段拼接（S10B-2）', () => {
     await refineCommand(completeWithLease, 3).execute({ step: {}, context: workflowContext(), callbacks: callbacks() })
 
     const prompt = completeWithLease.mock.calls[0]?.[0].messages.map(message => message.content).join('\n') ?? ''
-    expect(prompt).toContain('第一章定稿原文。')
-    // 全文摘要与近章摘要仍逐字携带同一份拼接结果。
-    expect(prompt.match(/第二章定稿原文。/gu)).toHaveLength(2)
+    // 2026-10-21：两个同源摘要变量（{{global_summary}} / {{short_summary}}）停用，
+    // 定稿历史改由材料块递送 —— 每章必须**恰好出现一次**，不许再重复两份。
+    expect(prompt.match(/第一章定稿原文。/gu)).toHaveLength(1)
+    expect(prompt.match(/第二章定稿原文。/gu)).toHaveLength(1)
+    expect(prompt).toContain('【第2章定稿历史】')
   })
 
   it('omits an over-budget optional history block while the required previous chapter survives', async () => {
@@ -1647,6 +1650,7 @@ describe('修稿路径不再整段拼接（S10B-2）', () => {
     await refineCommand(completeWithLease, 3).execute({ step: {}, context: workflowContext(), callbacks: callbacks() })
 
     const prompt = completeWithLease.mock.calls[0]?.[0].messages.map(message => message.content).join('\n') ?? ''
+    // 必需前驱整块存活，超额的可选历史块整体省略（不是截断）—— 语义与审稿链一致。
     expect(prompt).toContain('第二章定稿原文。')
     expect(prompt).not.toContain('第一章超长标记')
   })

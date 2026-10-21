@@ -628,28 +628,35 @@ The following are already-finalized prior chapters (brief excerpts, to prevent d
 {{pacing_guidance}}`,
   },
   refine_chapter: {
-    systemRole: 'You are an expert fiction editor who performs precise chapter-level revisions. Use concrete edits, stable pacing, and clear paragraphs.',
-    content: `Revise the chapter manuscript without replacing its story.
+    systemRole: 'You are a revision editor for long-form fiction. Perform targeted revision on an existing draft: the plot stays exactly as written, and only the prose changes into something a reader can perceive. The revised chapter must stay on the same order of magnitude as the source; do not add or remove events.',
+    content: `The text below is a finished draft for this chapter. Perform one targeted revision (refinement). The story in the draft already holds; improve how it is written, never rewrite it.
 
-[Story context]
-- Overall progress: {{global_summary}}
-- Recent chapter context: {{short_summary}}
+[Immutable]
+- Events, causality, character choices, the order in which information is revealed, the final ownership of foreshadowing and objects, and scene positions all stay exactly as the draft has them.
+- Add no event, action, scene, character, or setting. Delete no sentence that carries information.
+- The chapter target is {{word_number}} words. Word count is only a check on whether the content has been thinned out; it is never a reason to cut. When the chapter falls short, deepen details inside events the draft already has; never add events to reach the count.
+
+[Required]
+1. Turn statements into things that can be seen, heard, touched, or smelled. Any sentence of the form "he felt X" or "the atmosphere was Y" must become an action or object reaction that lets the reader reach that conclusion alone.
+2. Turn result-only quantities into perceivable sequences: when the draft writes an outcome number such as "eighteen coins in total", write the process instead (one coin counted, one number spoken, eighteen of them).
+3. Finish what the draft already started but left half-written: an action that stops halfway gets where it stops and why; a reaction that gives only the outcome gets the physical step before it.
+4. Cut only two things: adjacent sentences carrying the same information, and ornament that serves no emotion, foreshadowing, or conflict. Whatever you cut must be replaced at the same spot with an equally concrete detail, so the chapter never shrinks net.
+
+[Rewrites that are not allowed]
+- Downgrading a word: swap a precise word for a vague one (an instant → a moment, press firmly → press on). Where the draft's word is more precise, keep the draft.
+- Deleting functional qualifiers: removing a phrase such as "within reach" that carries purpose, position, or intent is damage, not trimming.
+- Reverse precision: add no number, size, duration, or count of sounds that the draft does not have. Precision stays only where the draft already gave it weight.
+- Adding metaphor, synesthesia, personification, or scenery padding in the name of atmosphere.
+- Rewriting punctuation style: where the draft uses commas for a list, do not split it into full-stop short sentences, and do not merge paragraphs.
+- Skip what does not apply: when the chapter contains no such scene, skip the matching instruction instead of inventing an event or reshaping the plot to use it.
 
 [Chapter brief]
 {{chapter_info}}
 
-[Revision requirements]
-1. Improve scene presence with specific sensory and spatial details only where they serve the action.
-2. Integrate the protagonist's distinctive advantage through concrete choices and consequences.
-3. Strengthen emotional pressure and the force of each response without melodramatic inflation.
-4. Prefer precise, visual verbs and show emotion through behavior.
-5. Preserve or strengthen the ending hook and forward momentum.
-6. Improve clarity and texture without padding. Keep the revised chapter near {{word_number}} words and remove repetitive action or exposition.
-
 [Project-wide writing guidance]
 {{global_guidance}}
 
-[Source manuscript — preserve facts and intent]
+[Source manuscript]
 {{draft_content}}
 
 [Writing style]
