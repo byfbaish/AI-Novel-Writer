@@ -13,6 +13,14 @@ import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../sh
 import { composeGenreLabel } from '../../../shared/genre-label'
 import { withSpaceConstraints } from '../../../shared/space-constraints'
 import { describeWorldBuildingCompleteness, inspectWorldBuildingCompleteness } from '../../../shared/worldbuilding-completeness'
+import {
+  describeWorldBuildingNumericAudit,
+  inspectWorldBuildingNumeric,
+} from '../../../shared/worldbuilding-numeric-audit'
+import {
+  auditSpaceLocations,
+  describeSpaceReviewChecklist,
+} from '../../../shared/space-machine-line'
 import { projectScopedConfigFields, projectScopedText } from '../../../shared/text-scope-tags'
 import { declareTraceScopeChapterRange } from '../../prompts/trace-scope'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
@@ -2248,6 +2256,19 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
       writingLanguage,
     )
     if (completenessHint) callbacks.log(completenessHint)
+    // W6a-1：世界观里的数值口径检查（A-1 每日时间量 ≥ 24h / A-2 相对量缺分母）。
+    // 与五维检查同一姿态：只记一句、不 throw、不改 result、不阻断生成。
+    const numericHint = describeWorldBuildingNumericAudit(
+      inspectWorldBuildingNumeric(result),
+      writingLanguage,
+    )
+    if (numericHint) callbacks.log(numericHint)
+    // S-空间（试行）：表格规则 × 机读行对账。只报结构问题 + 人工复核固定项，
+    // 未识别到空间结构时保持沉默（不制造"本次未检查"的噪声）。
+    const spaceAudit = auditSpaceLocations(result)
+    if (!spaceAudit.unreadable) {
+      callbacks.log(describeSpaceReviewChecklist(spaceAudit, writingLanguage))
+    }
     return result
   }
 

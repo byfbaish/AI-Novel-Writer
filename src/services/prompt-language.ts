@@ -757,6 +757,11 @@ Organize explicitly supported manuscript facts under the following Markdown head
 
 The "Story day" value must be one Arabic numeral only. Do not write a calendar date, a range, or "about 7"; put the calendar wording in "In-world label".
 
+## Scene anchors
+(Scenes in this chapter, in order of appearance, at most 3. Each space name must be **copied verbatim** from the spaces registered in dimension 4 (spatial structure); do not paraphrase, invent, or abbreviate. "Time" must be 24-hour \`HH:MM\` — when the manuscript only says "dawn", "dusk" or "at night", **omit the Time item entirely** and never convert it into a clock time. If the manuscript does not make the place or the time clear, omit that whole scene rather than infer it.)
+- Scene: Old Chen's stall | Time: 07:10
+- Scene: Hall of Discipline | Time: 14:30
+
 ## Plot Events
 List irreversible developments with a type marker.
 - [Trigger] ...

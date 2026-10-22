@@ -13,6 +13,8 @@
  * 本模块是纯函数，无 IO、无副作用（守「绝不自动执行」）。
  */
 
+import { parseSpaceHours } from './space-machine-line'
+
 /** 分钟数（自 00:00 起）。区间跨零点时 `start > end`。 */
 export interface TimeWindow {
   start: number
@@ -22,7 +24,11 @@ export interface TimeWindow {
 /** 设定层登记的一个空间（第 4 维的机读行）。 */
 export interface SpaceRule {
   space: string
-  /** 未声明 `hours=` 时为 undefined —— 该空间的钟点不可判定。 */
+  /**
+   * 可判定的每日窗口。以下情况为 undefined（该空间的钟点不可判定）：
+   * 未声明 `hours=`；或声明的是按月/跨日窗口（`每月D日…`）—— 那需要月历换算，
+   * 本系统不做历法推演，因此显式未判而不是硬算。
+   */
   hours?: TimeWindow
   /** 声明原文，仅用于 finding 取证。 */
   hoursRaw?: string
@@ -162,7 +168,11 @@ export function parseSpaceRules(worldBuildingText: string | null | undefined): S
       const value = match[2]!.trim()
       if (match[1] === 'hours') {
         rule.hoursRaw = value
-        rule.hours = parseTimeWindow(value)
+        // 只有「每日 / 当日 HH:MM-HH:MM」能落到 TimeWindow。
+        // `每月D日…` 与跨日区间需要「当月第几日」，本系统不做历法推演 ⇒ 保持 undefined，
+        // 由判定层产出 info「未提供可判定形式」，而不是把它当成缺失或当成合规。
+        const parsed = parseSpaceHours(value)
+        rule.hours = parsed.kind === 'daily' ? { start: parsed.start, end: parsed.end } : undefined
       } else if (value) rule.entry = value
     }
     // 没有 `hours=` / `entry=` 的行不是机读行 —— 不收，避免把散文当成登记。
@@ -272,6 +282,13 @@ export function findSpaceTimeConflicts(input: SpaceTimeValidationInput): SpaceTi
     }
     // 缺任一结构化字段 ⇒ 没有可判定形式：只记 info，绝不判冲突（判据 ⑫）。
     if (rule.hours === undefined || ref.timeRef === undefined) {
+      // 三种「不可判定」必须分开说，否则作者会照着错的提示去补一个本来就在的东西：
+      // ① 世界观完全没声明 hours=；
+      // ② 声明了，但写的是「每月D日…」这类按月/跨日窗口 —— 需要「故事第几日 → 当月第几日」的
+      //    月历换算。本项目不做历法推演（背景是为剧情服务，不是模拟世界），所以显式未判；
+      // ③ 世界观给了每日窗口，蓝图没给 timeRef。
+      const missingHours = rule.hoursRaw === undefined
+      const monthlyWindow = !missingHours && rule.hours === undefined
       return [{
         stableFactKey: spaceTimeStableFactKey(['undecidable-time', String(chapterNumber), ref.space, ref.timeRefRaw ?? '']),
         severity: 'info' as const,
@@ -279,16 +296,20 @@ export function findSpaceTimeConflicts(input: SpaceTimeValidationInput): SpaceTi
         sourceLayer: rule.hours === undefined ? 'world-building' as const : 'blueprint' as const,
         evidence: `space=${ref.space}｜hours=${rule.hoursRaw ?? '(未声明)'}｜timeRef=${ref.timeRefRaw ?? '(未声明)'}`,
         issue: {
-          zhCN: `空间「${ref.space}」的钟点无法判定：${rule.hours === undefined ? '世界观未给该空间的 `hours=`' : '蓝图未给该引用的 `timeRef`'}。未提供可判定形式，因此不判冲突。`,
-          enUS: `The time window for “${ref.space}” cannot be judged: ${rule.hours === undefined ? 'the world setting declares no `hours=` for this space' : 'the blueprint declares no `timeRef` for this reference'}. No decidable form was provided, so no conflict is reported.`,
+          zhCN: `空间「${ref.space}」的钟点无法判定：${missingHours ? '世界观未给该空间的 `hours=`' : monthlyWindow ? `该空间登记的是按月窗口（${rule.hoursRaw}），判断它需要月历换算，本系统不做历法推演` : '蓝图未给该引用的 `timeRef`'}。未提供可判定的每日窗口，因此不判冲突。`,
+          enUS: `The time window for “${ref.space}” cannot be judged: ${missingHours ? 'the world setting declares no `hours=` for this space' : monthlyWindow ? `this space is registered with a monthly window (${rule.hoursRaw}), which would need calendar conversion; this system does not simulate calendars` : 'the blueprint declares no `timeRef` for this reference'}. No decidable daily window was provided, so no conflict is reported.`,
         },
         suggestion: {
-          zhCN: rule.hours === undefined
+          zhCN: missingHours
             ? `若确实需要判定，请在世界观第 4 维给「${ref.space}」补一行 \`${ref.space}｜hours=HH:MM-HH:MM\`；不需要判定则忽略本条。`
-            : `若确实需要判定，请在本章蓝图给该引用补 \`timeRef\`（24 小时制「HH:MM」或「HH:MM-HH:MM」）；不需要判定则忽略本条。`,
-          enUS: rule.hours === undefined
+            : monthlyWindow
+              ? `这条不用补 —— 按月窗口本来就不做自动判定，请作者自己盯「${ref.space}」在剧情里被使用的日期；若希望它变成可判定的，把它改成每日窗口 \`hours=HH:MM-HH:MM\`。`
+              : `若确实需要判定，请在本章蓝图给该引用补 \`timeRef\`（24 小时制「HH:MM」或「HH:MM-HH:MM」）；不需要判定则忽略本条。`,
+          enUS: missingHours
             ? `If a check is actually wanted, add \`${ref.space}｜hours=HH:MM-HH:MM\` in dimension 4 of the world setting; otherwise ignore this.`
-            : `If a check is actually wanted, add a \`timeRef\` to this reference in the blueprint (\`HH:MM\` or \`HH:MM-HH:MM\`, 24-hour); otherwise ignore this.`,
+            : monthlyWindow
+              ? `Nothing to add here — monthly windows are deliberately not auto-judged; keep an eye on when “${ref.space}” is used in the story. To make it checkable, rewrite it as a daily window (\`hours=HH:MM-HH:MM\`).`
+              : `If a check is actually wanted, add a \`timeRef\` to this reference in the blueprint (\`HH:MM\` or \`HH:MM-HH:MM\`, 24-hour); otherwise ignore this.`,
         },
       }]
     }
