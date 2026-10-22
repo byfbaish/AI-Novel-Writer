@@ -473,16 +473,38 @@ export function createFinalizeWorkflow(
   }
 }
 
+/** 创建时冻结的双语文案（与既有做法一致：locale 只在创建期读一次）。 */
+type BilingualCopy = readonly [zhCN: string, enUS: string]
+
+interface FinalizedPostProcessCopy {
+  titleSuffix: BilingualCopy
+  stepName: BilingualCopy
+  stepDescription: BilingualCopy
+  projectSwitched: BilingualCopy
+  /** 「修复未完成」/「回填未完成」里的那个词。 */
+  failureWord: BilingualCopy
+  completedSuffix: BilingualCopy
+}
+
+interface FinalizedPostProcessRunOptions {
+  chapterNumber: number
+  projectPath: string
+  sourceProjectSession: ProjectSessionContext
+  stepKey?: string
+  /** true = 只补跑失败步骤（修复）；false = 另开跑批强制重扫（回填）。 */
+  onlyFailed: boolean
+  copy: FinalizedPostProcessCopy
+}
+
 /**
- * 修复定稿后处理工作流 — 当定稿后的三路推演失败时可重跑
- * 从 manuscript/ 读取已定稿内容，重新执行 FinalizeChapterCommand 的后处理部分
+ * 定稿后处理的「按章重跑」工作流（修复 / 回填共用一套）。
+ *
+ * **不经过定稿流程**：从数据库读已定稿正文，校验 `finalization` 来源收据，然后只跑
+ * `RunFinalizePostProcessCommand` 的后处理部分。两条公开入口（修复、回填）只在
+ * `onlyFailed` 与文案上不同 —— 抽取步骤、解析函数、写入口都是同一份。
  */
-export function createRepairFinalizeWorkflow(
-  chapterNumber: number,
-  projectPath: string,
-  sourceProjectSession: ProjectSessionContext,
-  stepKey?: string,
-): WorkflowDefinition {
+function createFinalizedPostProcessWorkflow(options: FinalizedPostProcessRunOptions): WorkflowDefinition {
+  const { chapterNumber, projectPath, sourceProjectSession, stepKey, onlyFailed, copy } = options
   const uiLocale = chapterWorkflowLocale()
   const text = (zhCNText: string, enUSText: string) => localize(uiLocale, zhCNText, enUSText)
   return {
@@ -492,17 +514,11 @@ export function createRepairFinalizeWorkflow(
     uiLocale,
     resourceKeys: finalizeWriteResourceKeys(chapterNumber),
     readResourceKeys: CHAPTER_CONTEXT_READ_RESOURCE_KEYS,
-    title: text(
-      `第 ${chapterNumber} 章 · 修复后处理`,
-      `Chapter ${chapterNumber} · Repair post-processing`,
-    ),
+    title: `${text(`第 ${chapterNumber} 章 · `, `Chapter ${chapterNumber} · `)}${text(...copy.titleSuffix)}`,
     steps: [
       {
-        name: text('重建后处理', 'Rebuild post-processing'),
-        description: text(
-          '从定稿正文重新生成章节要点、连续性事实和角色状态',
-          'Regenerate chapter notes, continuity facts, and character state from the finalized manuscript',
-        ),
+        name: text(...copy.stepName),
+        description: text(...copy.stepDescription),
         executor: async (_step, context, callbacks) => {
           const { useProjectStore } = await import('../../stores/project-store')
           const { ipc } = await import('../ipc-client')
@@ -511,10 +527,7 @@ export function createRepairFinalizeWorkflow(
           const projectSession = requireWorkflowProjectSession(context)
           const project = useProjectStore.getState().currentProject
           if (!project || !sameProjectSessionContext(projectSession, projectSessionContextFromProject(project))) {
-            throw new Error(text(
-              '当前项目已切换，修复已停止',
-              'The project changed, so repair was stopped.',
-            ))
+            throw new Error(text(...copy.projectSwitched))
           }
 
           // 使用数据库定稿源
@@ -556,9 +569,9 @@ export function createRepairFinalizeWorkflow(
             if (Array.isArray(bp?.characters)) chapterEntities = bp.characters
           } catch { /* 蓝图读取失败时使用默认标题 */ }
 
-          // 修复运行也冻结一次模型租约，全部 LLM 后处理共享一个预算。
+          // 重跑也冻结一次模型租约，全部 LLM 后处理共享一个预算。
           const { RunFinalizePostProcessCommand } = await import('./commands/finalize-chapter.command')
-          const repairStatus = await new RunFinalizePostProcessCommand({
+          const rerunStatus = await new RunFinalizePostProcessCommand({
             project,
             chapterNumber,
             chapterTitle,
@@ -569,12 +582,12 @@ export function createRepairFinalizeWorkflow(
               `第${chapterNumber}章定稿`,
               `Chapter ${chapterNumber} finalized manuscript`,
             ),
-            onlyFailed: true,
+            onlyFailed,
             stepKey,
             chapterEntities,
           }).execute({ step: {}, context, callbacks })
 
-          // 后处理修复不会产生新定稿快照，只请求项目资源刷新。
+          // 重跑不会产生新定稿快照，只请求项目资源刷新。
           const { globalEventBus } = await import('../../shared/event-bus')
           globalEventBus.emit('REFRESH_RESOURCE', {
             resources: ['fileTree', 'characterCards', 'drafts'],
@@ -583,11 +596,11 @@ export function createRepairFinalizeWorkflow(
           })
 
           // 非关键步骤失败时 runPostProcessPipeline 不会抛错（stopOnFailure=false），
-          // 于是工作流会"成功"结束、UI 提示"修复完成"，而状态卡仍显示失败 —— 用户看到的是自相矛盾的
+          // 于是工作流会"成功"结束、UI 提示"完成"，而状态卡仍显示失败 —— 用户看到的是自相矛盾的
           // 两个结论（实测 2026-10-17：角色状态更新第四次失败，toast 仍报已完成）。
-          // 修复工作流的唯一职责就是把这些步骤补上，所以残留失败必须显式失败，不能静默成功。
-          const residualFailures = repairStatus?.steps
-            ? Object.values(repairStatus.steps).filter(step => !step.ok)
+          // 这条工作流的唯一职责就是把这些步骤补上，所以残留失败必须显式失败，不能静默成功。
+          const residualFailures = rerunStatus?.steps
+            ? Object.values(rerunStatus.steps).filter(step => !step.ok)
             : []
           if (residualFailures.length > 0) {
             const detail = residualFailures
@@ -597,9 +610,9 @@ export function createRepairFinalizeWorkflow(
             // 反复点"重试失败步骤"不可能成功，必须直接告诉用户原因。
             const terminal = residualFailures.some(step => /SOURCE_CONFLICT|FIELD_CONFLICT|SOURCE_CHANGED/u.test(step.error ?? ''))
             throw new Error(text(
-              `修复未完成：${detail}。`
+              `${copy.failureWord[0]}未完成：${detail}。`
                 + (terminal ? '该步骤已被后续章节提交的角色状态超越，重复重试不会成功；可忽略该步骤，或先回退后续章节再修。' : '可稍后再次重试。'),
-              `Repair incomplete: ${detail}.`
+              `${copy.failureWord[1]} incomplete: ${detail}.`
                 + (terminal ? ' A later chapter has already committed newer character state, so retrying cannot succeed; ignore this step or roll back the later chapter first.' : ' You can retry later.'),
             ))
           }
@@ -608,10 +621,75 @@ export function createRepairFinalizeWorkflow(
     ],
     onComplete: {
       mode: 'open',
-      message: text(
-        `第${chapterNumber}章后处理修复完成`,
-        `Chapter ${chapterNumber} post-processing repair completed`,
-      ),
+      message: text(`第${chapterNumber}章`, `Chapter ${chapterNumber}`) + text(...copy.completedSuffix),
     },
   }
+}
+
+/**
+ * 修复定稿后处理工作流 — 当定稿后的三路推演失败时可重跑
+ * 从数据库读取已定稿内容，重新执行 FinalizeChapterCommand 的后处理部分
+ */
+export function createRepairFinalizeWorkflow(
+  chapterNumber: number,
+  projectPath: string,
+  sourceProjectSession: ProjectSessionContext,
+  stepKey?: string,
+): WorkflowDefinition {
+  return createFinalizedPostProcessWorkflow({
+    chapterNumber,
+    projectPath,
+    sourceProjectSession,
+    stepKey,
+    onlyFailed: true,
+    copy: {
+      titleSuffix: ['修复后处理', 'Repair post-processing'],
+      stepName: ['重建后处理', 'Rebuild post-processing'],
+      stepDescription: [
+        '从定稿正文重新生成章节要点、连续性事实和角色状态',
+        'Regenerate chapter notes, continuity facts, and character state from the finalized manuscript',
+      ],
+      projectSwitched: ['当前项目已切换，修复已停止', 'The project changed, so repair was stopped.'],
+      failureWord: ['修复', 'Repair'],
+      completedSuffix: ['后处理修复完成', ' post-processing repair completed'],
+    },
+  })
+}
+
+/**
+ * 资源账本按章回填工作流（W6b，作者 2026-10-22 裁定）。
+ *
+ * 为什么需要它：本书第 2–4 章早已定稿，而账本只在**定稿当时**抽取，不回填就永远是空的。
+ * 入口刻意和「修复后处理」共用同一个构建器 ⇒ 抽取提示词、`parseResourceMovementExtraction`、
+ * `db:resource-movements-replace-chapter` 三件都是同一份实现（判据 DM 的同型要求：
+ * 两处实现必然漂移，一处改了另一处不会报错）。
+ *
+ * 与修复唯一的差别是 `onlyFailed: false`：重修只补失败步骤，**回填必须无条件重扫**
+ * （它要处理的恰是「当年根本没有这一步」的章）。整章重建保证连扫两次余额不变。
+ *
+ * UI 入口留给 W6c（资源页按钮）；本波只交付这条工作流工厂本身。
+ */
+export function createResourceLedgerBackfillWorkflow(
+  chapterNumber: number,
+  projectPath: string,
+  sourceProjectSession: ProjectSessionContext,
+): WorkflowDefinition {
+  return createFinalizedPostProcessWorkflow({
+    chapterNumber,
+    projectPath,
+    sourceProjectSession,
+    stepKey: 'resource-ledger',
+    onlyFailed: false,
+    copy: {
+      titleSuffix: ['回填资源账本', 'Backfill resource ledger'],
+      stepName: ['重扫资源账本', 'Rescan resource ledger'],
+      stepDescription: [
+        '只从定稿正文重跑资源变动抽取，整章重建本章变动（不改正文、不改其它后处理结果）',
+        'Re-run only the resource-movement extraction from the finalized manuscript and rebuild this chapter (the prose and every other post-processing result stay untouched)',
+      ],
+      projectSwitched: ['当前项目已切换，回填已停止', 'The project changed, so the backfill was stopped.'],
+      failureWord: ['回填', 'Backfill'],
+      completedSuffix: ['资源账本回填完成', ' resource ledger backfilled'],
+    },
+  })
 }

@@ -35,6 +35,7 @@ beforeEach(() => {
   invoke = vi.fn(async (channel: string) => {
     if (channel === 'db:project-core-get') return { synopsis: '', worldbuilding: '', totalChapters: 20 }
     if (channel === 'fs:read-json') return { success: true, data: partial }
+    if (channel === 'db:resources-list') return { success: true, resources: [] }
     if (channel === 'generation:read-visible-composition') {
       if (readFails) throw new Error('SOURCE_CHANGED')
       return composition
@@ -101,4 +102,26 @@ describe('首次架构候选恢复', () => {
       })
     }
   }
+})
+
+describe('资源登记挂在世界观步骤下', () => {
+  it('worldbuilding 卡片下能看到资源登记区，且没有新增任何写通道', async () => {
+    await act(async () => root.render(<WorldBuildingEditor projectKey={session.projectPath} />))
+    await vi.waitFor(() => expect(
+      container.querySelector('[data-testid="resource-registry-panel"]'),
+    ).not.toBeNull())
+
+    // 面板必须落在「世界观」那一组卡片里，而不是别处的一块。
+    const worldGroup = [...container.querySelectorAll('div.space-y-2')]
+      .find(group => group.textContent?.includes('世界观'))
+    expect(worldGroup).toBeTruthy()
+    expect(worldGroup?.querySelector('[data-testid="resource-registry-panel"]')).not.toBeNull()
+    expect(worldGroup?.textContent).toContain('资源登记')
+    expect(worldGroup?.textContent).toContain('先登记本书的资源')
+
+    // 只读一次定义清单；渲染本身不产生任何写调用。
+    const channels = invoke.mock.calls.map(([channel]) => String(channel))
+    expect(channels).toContain('db:resources-list')
+    expect(channels.filter(channel => /upsert|delete|commit|write|movement/.test(channel))).toEqual([])
+  })
 })

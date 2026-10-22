@@ -70,7 +70,9 @@ import type { RecoveryCandidateRecordInput } from '../../src/shared/recovery-can
 import {
   deleteResource,
   hasResourceLedgerSchema,
+  listMovementsThrough,
   listResources,
+  listScannedLedgerChapters,
   replaceChapterMovements,
   upsertResource,
 } from '../repositories/resource-repository'
@@ -1313,6 +1315,27 @@ export function registerDatabaseController() {
       if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
       const result = replaceChapterMovements(db, chapterNumber, rows ?? [], source)
       return result.success ? { success: true, inserted: result.inserted } : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // 账本读视图：一次取回「资源定义 + 截至本章的变动 + 已扫章号」。
+  // 中断判定必须和余额同一个快照，否则中间插入一次抽取会让 UI 显示「余额已变、中断未变」。
+  ipcMain.handle('db:resource-ledger-read', async (_event, throughChapter: number, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      // M11 之前的库 / 未打开：降级成空视图，不报错（设计稿 §9）。
+      if (!db || !hasResourceLedgerSchema(db)) {
+        return { success: true, resources: [], movements: [], scannedChapters: [] }
+      }
+      return {
+        success: true,
+        resources: listResources(db),
+        movements: listMovementsThrough(db, throughChapter),
+        scannedChapters: listScannedLedgerChapters(db),
+      }
     } catch (err) {
       return { success: false, error: String(err) }
     }
