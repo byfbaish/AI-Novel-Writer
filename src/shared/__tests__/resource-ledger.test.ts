@@ -143,8 +143,11 @@ describe('resource ledger arithmetic (§5.3)', () => {
     expect(interrupted).toContain('第 2 章起账本中断')
     expect(interrupted).not.toContain('0 枚')
 
+    // 没有起点说「未登记开篇余额」，不说「中断」：两者修法不同
+    // （补一条第 0 章登记 vs 补扫那一章），而 W7 的注入文本会直接引用这句。
     const missingOrigin = summarizeLedger(resource, movements.slice(1), scan(1, 2), 2)
-    expect(missingOrigin).toContain('第 1 章起账本中断')
+    expect(missingOrigin).toContain('未登记开篇余额')
+    expect(missingOrigin).not.toContain('中断：')
     expect(missingOrigin).toContain('不是 0')
 
     const conflict = summarizeLedger(

@@ -188,13 +188,15 @@ describe('label tables', () => {
     }
   })
 
-  it('keeps the five sections in fixed order with the space check appended last', () => {
-    // 既有四区顺序不动：追加而不是插队，避免作者的使用习惯被打断。
-    expect(WORLD_STATE_SECTION_ORDER).toEqual(['cast', 'timeline', 'characters', 'facts', 'space'])
+  it('keeps the six sections in fixed order: people, things, events, then the space check last', () => {
+    // 「人 / 物 / 事」并列（设计稿 §6）：resources（物）紧跟 characters（人）；
+    // space 是检查结果而非世界状态本身，仍在末尾。
+    expect(WORLD_STATE_SECTION_ORDER).toEqual(['cast', 'timeline', 'characters', 'resources', 'facts', 'space'])
     for (const section of WORLD_STATE_SECTION_ORDER) {
       expect(WORLD_STATE_SECTION_LABELS[section].zh.length).toBeGreaterThan(0)
       expect(WORLD_STATE_SECTION_LABELS[section].en.length).toBeGreaterThan(0)
     }
+    expect(WORLD_STATE_SECTION_LABELS.resources).toEqual({ zh: '资源', en: 'Resources' })
     expect(WORLD_STATE_SECTION_LABELS.space).toEqual({ zh: '空间检查', en: 'Space check' })
   })
 

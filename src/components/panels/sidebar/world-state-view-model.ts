@@ -194,16 +194,17 @@ export function groupCastLedgerEntries(
 // ============================================================
 
 /**
- * 主区页面的五个分类。左栏导航与主区渲染共用同一份枚举，
+ * 主区页面的六个分类。左栏导航与主区渲染共用同一份枚举，
  * 类型本体放在 store（它才是这份 UI 状态的所有者），这里只负责文案与分组。
  *
- * `space`（空间检查）追加在末尾：既有四区的顺序与计数语义不动，
- * 避免影响已经按顺序断言的用例与作者的使用习惯。
+ * 顺序是设计稿 §6 的「人 / 物 / 事」并列：`resources`（物）紧跟 `characters`（人）；
+ * `space`（空间检查）仍在末尾 —— 它是检查结果，不是世界状态本身，追加在最后不动。
  */
 export const WORLD_STATE_SECTION_ORDER: readonly WorldStateSection[] = [
   'cast',
   'timeline',
   'characters',
+  'resources',
   'facts',
   'space',
 ]
@@ -212,6 +213,7 @@ export const WORLD_STATE_SECTION_LABELS: Record<WorldStateSection, { zh: string;
   cast: { zh: '归位表', en: 'Cast ledger' },
   timeline: { zh: '时间线', en: 'Timeline' },
   characters: { zh: '角色', en: 'Characters' },
+  resources: { zh: '资源', en: 'Resources' },
   facts: { zh: '连续性事实', en: 'Continuity facts' },
   space: { zh: '空间检查', en: 'Space check' },
 }

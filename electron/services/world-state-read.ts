@@ -18,11 +18,12 @@ import { CHARACTER_STATE_TEXT_FIELDS, type CharacterStateTextField } from '../..
 import type { FinalizedSourceIdentity } from '../../src/shared/finalized-continuity'
 import { emptyWorldStateView, WORLD_STATE_NOTES, type CastLedgerView,
   type WorldStateChapter, type WorldStateCharacter, type WorldStateFieldProvenance,
-  type WorldStateNote, type WorldStateObservation, type WorldStateView } from '../../src/shared/world-state-view'
+  type WorldStateNote, type WorldStateObservation, type WorldStateResources, type WorldStateView } from '../../src/shared/world-state-view'
 import { isFinalizedSourceIdentity } from '../../src/shared/source-ref'
 import { auditSpaceLocations } from '../../src/shared/space-machine-line'
 import { CharacterCastDecisionRepository, hasCharacterCastDecisionSchema } from '../repositories/character-cast-decision-repository'
 import { ProjectCoreRepository } from '../repositories/project-core-repository'
+import { hasResourceLedgerSchema, listResources } from '../repositories/resource-repository'
 import { listCurrentReviewStateDeltaMentions } from '../repositories/review-cycle-repository'
 import { SummaryRepository } from '../repositories/summary-repository'
 
@@ -170,6 +171,24 @@ function readWorldbuilding(db: Database.Database): string | null {
 }
 
 /**
+ * 资源登记表的定义侧（W6c）。
+ *
+ * 缺表 / 查询失败一律 `unreadable: true`：资源页据此显示「本次没读到资源登记表」，
+ * 而不是「0 个资源」—— 后者会被作者读成「这本书没有资源」，与「这本书有资源但这个库读不出来」
+ * 是两种完全不同的处置（判据 DJ 的同型问题：空白不等于零）。
+ */
+function readResourceDefinitions(db: Database.Database, projectPath: string | null): WorldStateResources {
+  // 没有项目上下文 = 没读过资源表。不能因为手里有一个 db 句柄就说「已读、0 个资源」。
+  if (projectPath === null) return { unreadable: true, items: [] }
+  try {
+    if (!hasResourceLedgerSchema(db)) return { unreadable: true, items: [] }
+    return { unreadable: false, items: listResources(db) }
+  } catch {
+    return { unreadable: true, items: [] }
+  }
+}
+
+/**
  * 读取 W5 世界状态视图。纯只读，不打开/切换数据库，不抛业务错误。
  * @param db 已迁移到当前版本的项目库；调用方负责项目上下文校验。
  * @param projectPath 当前项目根目录；无项目时传 null，得到空视图。
@@ -292,6 +311,7 @@ export function readWorldState(db: Database.Database, projectPath: string | null
     chapters,
     characters,
     continuityFacts,
+    resources: readResourceDefinitions(db, projectPath),
     unreadableMentions: {
       review: reviewDelta.unreadableChapters.length,
       finalized: finalizedUnreadable,

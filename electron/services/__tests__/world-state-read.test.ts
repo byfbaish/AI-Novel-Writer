@@ -290,4 +290,35 @@ describe('W5 world state read service', () => {
     // 关键：不能退化成「0 个 issue」——没检查过和查过没问题必须分开。
     expect(view.spaceAudit).toEqual({ tableSpaces: 0, machineLines: 0, issues: [], unreadable: true })
   })
+
+  it('读取资源登记表；缺表时标记 unreadable 而不是「0 个资源」', () => {
+    const { db } = fixture()
+    db.prepare(`INSERT INTO resources(resource_id,family_id,name,tier,unit,anchor_value,period)
+      VALUES(?,?,?,?,?,?,?)`).run('res:stone-low', '灵石', '下品灵石', 0, '枚', null, '卷')
+    db.prepare(`INSERT INTO resources(resource_id,family_id,name,tier,unit,anchor_value,period)
+      VALUES(?,?,?,?,?,?,?)`).run('res:stone-high', '灵石', '上品灵石', 2, '枚', 100, '卷')
+
+    const readable = readWorldState(db, 'C:/projects/A')
+
+    expect(readable.resources.unreadable).toBe(false)
+    // 读取层已按族、品阶排序（同族相邻），W6c 直接按族分组。
+    expect(readable.resources.items.map(item => item.name)).toEqual(['下品灵石', '上品灵石'])
+    expect(readable.resources.items[0]).toMatchObject({ unit: '枚', familyId: '灵石' })
+    // 不可通兑是 null，不是 0。
+    expect(readable.resources.items[0].anchorValue).toBeNull()
+    expect(readable.resources.items[1].anchorValue).toBe(100)
+
+    // M11 之前的库：两张表都没有。必须显式不可读。
+    db.exec('DROP TABLE resource_movements')
+    db.exec('DROP TABLE resources')
+    const unreadable = readWorldState(db, 'C:/projects/A')
+
+    expect(unreadable.resources).toEqual({ unreadable: true, items: [] })
+  })
+
+  it('没有项目上下文时资源侧是「未登记」，不是已读到的空表', () => {
+    const { db } = fixture()
+
+    expect(readWorldState(db, null).resources).toEqual({ unreadable: true, items: [] })
+  })
 })
