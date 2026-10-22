@@ -303,7 +303,8 @@ it('V3 active project section marks the editor canvas without replacing the edit
   expect(getComputedStyle(paper, '::after').content).toBe('"02"')
   expect(getComputedStyle(paper, '::before').width).toBe('4px')
   await act(async () => host.querySelector<HTMLButtonElement>('.writer-left-rail button[title="角色"]')!.click())
-  expect(getComputedStyle(paper, '::after').content).toBe('"03"')
+  // 2026-10-22 起序号按视觉顺序连续编号：首页01 项目02 小说03 角色04 …
+  expect(getComputedStyle(paper, '::after').content).toBe('"04"')
   expect(host.querySelector('[aria-label="合成正文"]')).toBe(body)
 })
 

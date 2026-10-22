@@ -116,9 +116,9 @@ export default function LeftToolWindowBar() {
         />
         <LeftNavButton
           icon={Globe2}
-          label={text('世界', 'World')}
+          label={text('故事架构', 'Story')}
           active={activeRailItem === 'world'}
-          title={text('世界观', 'World building')}
+          title={text('故事架构', 'Story architecture')}
           onClick={() => {
             setSidebarView('project', 'world')
             openBuiltinEditor('world-building-editor', text('故事架构', 'Story architecture'), 'world-building')
@@ -162,9 +162,9 @@ export default function LeftToolWindowBar() {
 
       {/*
         弹性间隔。
-        这里原本还有「任务 / 日志 / 模型 / 设置」四个按钮 —— 前三个与下方工具窗
-        左侧的 28px 图标栏完全重复（BottomToolWindowBar），设置与右上角标题栏重复，
-        已全部移除：底部工具窗才是唯一入口，左栏只留视图导航。
+        这里原本还有「任务 / 日志 / 模型 / 设置」四个按钮 —— 已全部移除：
+        任务/日志/模型的唯一入口在底部状态栏左下角（StatusBar），设置只在标题栏。
+        左栏只留视图导航。
       */}
       <div className="flex-1" />
     </div>

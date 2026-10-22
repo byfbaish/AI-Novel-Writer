@@ -16,13 +16,13 @@ describe('LeftToolWindowBar', () => {
   it('renders visible Chinese labels for every left navigation item', () => {
     const html = renderToString(<LeftToolWindowBar />)
 
-    for (const label of ['首页', '项目', '小说', '蓝图', '角色', '世界', '世界状态', '剧情']) {
+    for (const label of ['首页', '项目', '小说', '蓝图', '角色', '故事架构', '世界状态', '剧情']) {
       expect(html).toContain(label)
     }
   })
 
   it('keeps bottom-panel tabs and settings out of the left rail', () => {
-    // 任务 / 日志 / 模型 的唯一入口是下方 BottomToolWindowBar（28px 图标栏）；
+    // 任务 / 日志 / 模型 的唯一入口在底部状态栏左下角（StatusBar）；
     // 设置只在标题栏。左栏再放一份既挤占扩展位，又让两个入口指向同一视图。
     const html = renderToString(<LeftToolWindowBar />)
 

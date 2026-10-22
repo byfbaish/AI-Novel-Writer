@@ -114,7 +114,7 @@ it('U07.A01 Writer 首页和小说栏目从真实侧栏进入（部分证据）'
 it('U07.A01 Writer 世界观入口打开当前核心的故事架构编辑器', async () => {
   useProjectStore.setState({ currentProject: project })
   await render()
-  await click(host.querySelector<HTMLButtonElement>('.writer-left-rail button[title="世界观"]'))
+  await click(host.querySelector<HTMLButtonElement>('.writer-left-rail button[title="故事架构"]'))
   expect(useLayoutStore.getState()).toMatchObject({ sidebarView: 'project', activeRailItem: 'world' })
   const activeTab = useEditorStore.getState().tabs.find(tab => tab.id === useEditorStore.getState().activeTabId)
   expect(activeTab).toMatchObject({ name: '故事架构', type: 'world-building', projectKey: project.path })
@@ -180,7 +180,7 @@ it('Writer 草稿标签切换后点击角色栏目不会被旧标签 effect 拉�
 
 it('does not create orphan builtin tabs and keeps project navigation open for History', async () => {
   await render()
-  for (const title of ['世界观', '章节蓝图', '剧情树']) {
+  for (const title of ['故事架构', '章节蓝图', '剧情树']) {
     await click(host.querySelector(`.writer-left-rail button[title="${title}"]`))
     expect(useEditorStore.getState().tabs).toEqual([])
   }
