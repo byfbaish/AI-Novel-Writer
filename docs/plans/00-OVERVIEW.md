@@ -190,7 +190,7 @@
 | 7 | **弧间因果必须写出来**（不是章号契约，是语义要求，缺了就是废层） | `arc-nesting-design.md §5.2` |
 | 8 | ★ **不删 `plotStructure` 枚举**——只降级为"起手模板"（短篇/新手/旧项目的兜底，删除收益为零） | `arc-granularity-and-enum.md §2.5` |
 | 9 | ★ **弧生成不拆 DB 步骤**——一步出整段 + Prompt 内分节（拆步 = 管线 ×3、回归面大） | `arc-granularity-and-enum.md §1.3` |
-| 10 | ★★ **M00 基线 DDL 一个字节都不能改**（注释/空白也算）。新增列一律新建 lane 步骤（Mxx），并同步 `MIGRATION_IDS` / `LATEST_SCHEMA_VERSION` / `CURRENT_DESKTOP_SCHEMA_VERSION` / `CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED` 白名单 | `98b73ac`（2026-10-11 旧项目打不开的根因） |
+| 10 | ★★ **M00 基线 DDL 一个字节都不能改**（注释/空白也算）。新增列一律新建 lane 步骤（Mxx），并同步 `MIGRATION_IDS` / `LATEST_SCHEMA_VERSION` / `CURRENT_DESKTOP_SCHEMA_VERSION`。**~~`CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED` 白名单~~ 已不需要手动同步** —— 2026-10-22 改为从 registry 已安装的 lane 反推（`isSupportedUpgradeOrigin`），加 lane 即自动放行；漏它的表现是**所有旧项目都打不开**（M09 与 M10/M11 各踩过一次） | `98b73ac`（2026-10-11 旧项目打不开的根因）· `d1e092f4`（2026-10-22 白名单改为派生） |
 
 ---
 
