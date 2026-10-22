@@ -31,13 +31,28 @@
  * 全部 findings 级别固定为「不可判定」（undecidable）：不阻断、不判 error、
  * **不给"应该改成什么"**（判据 CJ：没有权威值时不产出可执行修改）。
  *
+ * ## A-3 / A-4（W6a-3）为什么必须等资源登记表
+ *
+ * A-3（同资源双单位）与 A-4（资源名疑似重复定义）都要比对「资源名」。
+ * 没有 `resources` 表时，资源名只能靠"单位词 + 前文名词"猜 —— 猜错就产出一批**假问题**，
+ * 而假问题会直接变成作者要一条条处理却永远无法应用的待办（判据 CX）。
+ * 所以这两条规则**只在调用方给出资源清单时**运行：清单为空 / 读不出来 ⇒ 直接不跑，
+ * 零 finding、零噪声，**绝不退化成猜**（`usableResources` 是唯一的入口闸门）。
+ * A-1 / A-2 不依赖资源，任何情况下照常输出。
+ *
  * ## fail-open
  *
  * 空文本 ⇒ `unreadable=true`，describe 返回 undefined（没内容可判，不提示）。
  */
 
 /** 一条数值口径问题。 */
-export type WorldBuildingNumericKind = 'daily-hours' | 'ratio-without-base'
+export type WorldBuildingNumericKind =
+  | 'daily-hours'
+  | 'ratio-without-base'
+  /** A-3：同一段内同一资源名后跟了两个不同单位词。 */
+  | 'dual-unit'
+  /** A-4：同一维内两个疑似同一资源的名字各自被"定义"。 */
+  | 'duplicate-resource-definition'
 
 export interface WorldBuildingNumericFinding {
   kind: WorldBuildingNumericKind
@@ -45,11 +60,32 @@ export interface WorldBuildingNumericFinding {
   quote: string
   /** 仅 A-1：换算后该句声称的每日小时数。 */
   dailyHours?: number
+  /** 仅 A-3：命中的资源名（取自登记表，非猜测）。 */
+  resourceName?: string
+  /** 仅 A-3：同段内出现过的单位词，按首次出现排序。 */
+  units?: string[]
+  /** 仅 A-4：被判为疑似重复定义的两个名字。 */
+  resourceNames?: string[]
   /**
    * 稳定键：同一句同一规则恒定，供作者豁免用
    * （`consistency_exemptions.stable_fact_key` 是项目级表，可直接复用）。
    */
   key: string
+}
+
+/**
+ * A-3 / A-4 需要的资源登记信息（`db:resources-list` 的子集）。
+ *
+ * 只取这四项：`name` / `unit` 用于单位比对，`familyId` / `tier` 用于同族判定。
+ * **不接受**"从正文里现推的资源名"—— 那正是本模块拒绝做的事。
+ */
+export interface NumericAuditResource {
+  name: string
+  unit: string
+  /** 资源族；null / 缺省 = 单例资源。 */
+  familyId?: string | null
+  /** 品阶；缺省按 0 处理。 */
+  tier?: number
 }
 
 export interface WorldBuildingNumericAudit {
@@ -187,12 +223,307 @@ function lacksRatioBase(sentence: string): boolean {
   return !BASE_WORDS.some((word) => sentence.includes(word))
 }
 
+// ============================================================================
+// A-3 / A-4 —— 需要资源登记表（W6a-3）
+// ============================================================================
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+}
+
+/** 单位归一：`枚` / `枚/日` / `枚 每天` 都取斜杠前的量词部分。 */
+function normalizeUnit(raw: string): string {
+  const compact = raw.replace(/\s+/gu, '')
+  return compact.split(/[/／|]/u)[0] ?? compact
+}
+
+/** 登记表里真正能参与比对的一条资源（名字与单位都已归一，缺一即剔除）。 */
+interface UsableResource {
+  name: string
+  /** 归一后的登记单位，用于比对。 */
+  normalizedUnit: string
+  familyId: string | null
+  tier: number
+}
+
 /**
- * 检查世界观正文里的两类数值口径问题（A-1 每日时长、A-2 相对量缺分母）。
+ * 唯一闸门（判据 CX）：**资源清单为空 / 全部残缺 ⇒ 返回空数组**，
+ * 上层 A-3 / A-4 由此整体不运行 —— 没有资源名就闭嘴，不靠单位词猜。
+ */
+function usableResources(resources: readonly NumericAuditResource[] | undefined): UsableResource[] {
+  if (!resources || resources.length === 0) return []
+  const seen = new Set<string>()
+  const usable: UsableResource[] = []
+  for (const resource of resources) {
+    const name = (resource?.name ?? '').trim()
+    const unit = (resource?.unit ?? '').trim()
+    // 名字或单位缺失 ⇒ 这条没法比对。跳过，不补、不猜。
+    if (!name || !unit) continue
+    if (seen.has(name)) continue
+    seen.add(name)
+    usable.push({
+      name,
+      normalizedUnit: normalizeUnit(unit),
+      familyId: resource.familyId ?? null,
+      tier: typeof resource.tier === 'number' && Number.isFinite(resource.tier) ? resource.tier : 0,
+    })
+  }
+  return usable
+}
+
+/** 段：空行分隔的块；块内的 markdown 标题行先剔除（标题不是正文证据）。 */
+function splitParagraphs(normalized: string): string[] {
+  return normalized
+    .split(/\n[ \t]*\n/u)
+    .map((block) => block
+      .split('\n')
+      .filter((line) => !/^\s{0,3}#{1,6}\s/u.test(line))
+      .join('\n')
+      .trim())
+    .filter(Boolean)
+}
+
+/** 维：以 markdown 标题为界的一节（A-4 的作用域）。没有标题时整篇算一维。 */
+function splitSections(normalized: string): string[] {
+  const sections: string[][] = [[]]
+  for (const line of normalized.split('\n')) {
+    if (/^\s{0,3}#{1,6}\s/u.test(line)) {
+      sections.push([])
+      continue
+    }
+    sections[sections.length - 1]?.push(line)
+  }
+  return sections
+    .map((lines) => lines.join('\n').trim())
+    .filter(Boolean)
+}
+
+/**
+ * 把"更长的已登记资源名"抹成等长占位符，避免短名在长名内部误命中
+ * （「下品灵石（块）」不该被判成「灵石」用了「块」）。
+ */
+function maskLongerNames(text: string, names: readonly string[]): string {
+  let masked = text
+  for (const name of names) {
+    if (!name) continue
+    masked = masked.split(name).join('·'.repeat(name.length))
+  }
+  return masked
+}
+
+interface UnitMention {
+  unit: string
+  sentence: string
+}
+
+/** 括注里允许当单位的外形：短、无空白、无句读。 */
+const PAREN_UNIT_BODY = '[^\\s（）()，。；、：:！？!?“”‘’"《》]{1,8}'
+/** 数量前缀：中文数字 / 阿拉伯数字（只要挨着单位，就说明那是个量词）。 */
+const COUNT_PREFIX = '[一二两三四五六七八九十百千零几数十\\d]+'
+
+/**
+ * 收集一段里"明确挂在这个资源名上的单位词"。
+ *
+ * 只认两种外形，其余一律不认（多认一种外形就多一批误报）：
+ * 1. `<资源名>（<单位>）`：括注紧跟名字，如「灵石（枚）」；
+ * 2. 数量 + **已登记单位** 紧贴名字：「三百枚灵石」「灵石三百枚」。
+ *    —— 单位词必须出现在登记表里，正文自创的词不会被当单位（判据 CX）。
+ */
+function collectUnitMentions(
+  sentences: readonly string[],
+  resource: UsableResource,
+  knownUnits: readonly string[],
+  longerNames: readonly string[],
+): UnitMention[] {
+  const namePattern = escapeRegExp(resource.name)
+  const parenForm = new RegExp(
+    `${namePattern}[ \\t]*[（(][ \\t]*(${PAREN_UNIT_BODY})[ \\t]*[)）]`,
+    'gu',
+  )
+  const unitAlt = knownUnits.length > 0 ? knownUnits.map(escapeRegExp).join('|') : null
+  // 单位放在捕获组里：不靠 `includes` 反查，避免单位词恰好是资源名的一部分时认错。
+  const beforeForm = unitAlt
+    ? new RegExp(`${COUNT_PREFIX}[ \\t]*(${unitAlt})[ \\t]*的?[ \\t]*${namePattern}`, 'gu')
+    : null
+  const afterForm = unitAlt
+    ? new RegExp(`${namePattern}[ \\t]*${COUNT_PREFIX}[ \\t]*(${unitAlt})`, 'gu')
+    : null
+
+  const mentions: UnitMention[] = []
+  for (const sentence of sentences) {
+    const masked = maskLongerNames(sentence, longerNames)
+    for (const match of masked.matchAll(parenForm)) {
+      const unit = normalizeUnit(match[1] ?? '')
+      if (unit) mentions.push({ unit, sentence })
+    }
+    for (const pattern of [beforeForm, afterForm]) {
+      if (!pattern) continue
+      for (const match of masked.matchAll(pattern)) {
+        const unit = normalizeUnit(match[1] ?? '')
+        if (unit) mentions.push({ unit, sentence })
+      }
+    }
+  }
+  return mentions
+}
+
+/**
+ * A-3：同一段内，同一个资源名挂了两个不同单位词。
+ *
+ * 判据是「两个」而不是「一个与登记不符」：只出现一个单位时无法区分
+ * "作者改了单位"与"这一段只提到了另一种计量"，报出来就是假问题。
+ */
+function inspectResourceUnits(
+  paragraphs: readonly string[],
+  resources: readonly UsableResource[],
+): WorldBuildingNumericFinding[] {
+  const knownUnits = [...new Set(resources.map((resource) => resource.normalizedUnit).filter(Boolean))]
+  const findings: WorldBuildingNumericFinding[] = []
+
+  for (const paragraph of paragraphs) {
+    const sentences = splitSentences(paragraph)
+    if (sentences.length === 0) continue
+    for (const resource of resources) {
+      const longerNames = resources
+        .filter((other) => other.name.length > resource.name.length)
+        .map((other) => other.name)
+      const mentions = collectUnitMentions(sentences, resource, knownUnits, longerNames)
+
+      const units: string[] = []
+      for (const mention of mentions) {
+        if (!units.includes(mention.unit)) units.push(mention.unit)
+      }
+      if (units.length < 2) continue
+
+      // 引用"第二个不同单位"出现的那一句 —— 它才是把两种单位摆在一起的地方。
+      const secondUnit = units[1]
+      const evidence = mentions.find((mention) => mention.unit === secondUnit)?.sentence
+        ?? mentions[0]?.sentence
+        ?? ''
+      const quote = clipQuote(evidence)
+      findings.push({
+        kind: 'dual-unit',
+        quote,
+        resourceName: resource.name,
+        units,
+        key: findingKey('dual-unit', `${resource.name}|${units.join('|')}`),
+      })
+    }
+  }
+  return findings
+}
+
+/** 资源名左侧边界：行首 / 标点 / 空白 / markdown 记号都算，汉字不算（避免长名内部命中）。 */
+function isNameBoundary(char: string | undefined): boolean {
+  if (char === undefined) return true
+  return !/[\u3400-\u4dbf\u4e00-\u9fff]/u.test(char)
+}
+
+/** 名字后面直接跟的定义式：`：` / `是` / `指的是`（不认 `不是` `是否`）。 */
+const DEFINE_AFTER_NAME = /^[ \t]*(?:[：:]|(?:指的?是|是)(?![否非不]))/u
+/** 名字后面出现的分类式：`分为` / `分成` / `包括` / `共 N 种`。 */
+const DEFINE_SPLIT = /(?:分为|分成|包括|共[一二两三四五六七八九十百千零\d]+种)/u
+
+/**
+ * 这一句是不是在**定义**这个资源。
+ *
+ * 保守判定（判据 CX：宁可漏，不把正常引用报成定义）：
+ * - 名字必须落在左边界上（`下品灵石：…` 不算"灵石"的定义）；
+ * - 只认两种句式：「名字 + 冒号 / 是」，或「名字 … 分为 / 包括 / 共 N 种」
+ *   （分类式，名字必须在标记之前）。其余叙述一律不算。
+ */
+function isDefinitionSentence(
+  sentence: string,
+  resource: UsableResource,
+  longerNames: readonly string[],
+): boolean {
+  const masked = maskLongerNames(sentence, longerNames)
+  const namePattern = new RegExp(escapeRegExp(resource.name), 'gu')
+  const splitMatch = DEFINE_SPLIT.exec(masked)
+  const splitIndex = splitMatch?.index ?? -1
+
+  for (const match of masked.matchAll(namePattern)) {
+    const index = match.index
+    if (index === undefined) continue
+    if (!isNameBoundary(masked[index - 1])) continue
+
+    const rest = masked.slice(index + resource.name.length)
+    if (DEFINE_AFTER_NAME.test(rest)) return true
+    if (splitIndex >= 0 && index < splitIndex) return true
+  }
+  return false
+}
+
+/** 两个名字是不是"疑似同一个资源"：同族不同阶，或一个名字包含另一个。 */
+function relatedResourceNames(a: UsableResource, b: UsableResource): boolean {
+  if (a.name === b.name) return false
+  // 同族 + 阶不同：登记表已经承认它们是同一资源的两级，正文却各给了一段定义。
+  if (a.familyId !== null && a.familyId === b.familyId && a.tier !== b.tier) return true
+  const [shorter, longer] = a.name.length <= b.name.length ? [a.name, b.name] : [b.name, a.name]
+  // 单字名不参与包含判定（「力」会被「灵力」吃掉，全是噪音）。
+  return shorter.length >= 2 && longer.includes(shorter)
+}
+
+/**
+ * A-4：同一维内，两个疑似同一资源的名字**各自都被定义**。
+ *
+ * 只有"双方都有定义式"才报 —— 一方定义、另一方只是引用，是最正常的层级写法
+ * （「灵石：硬通货。下品灵石最便宜。」），报它等于制造假问题。
+ */
+function inspectResourceDefinitions(
+  sections: readonly string[],
+  resources: readonly UsableResource[],
+): WorldBuildingNumericFinding[] {
+  const findings: WorldBuildingNumericFinding[] = []
+
+  for (const section of sections) {
+    const sentences = splitSentences(section)
+    if (sentences.length === 0) continue
+
+    const defined = new Map<UsableResource, string>()
+    for (const resource of resources) {
+      const longerNames = resources
+        .filter((other) => other.name.length > resource.name.length)
+        .map((other) => other.name)
+      const hit = sentences.find((sentence) => isDefinitionSentence(sentence, resource, longerNames))
+      if (hit) defined.set(resource, hit)
+    }
+
+    const definedList = [...defined.keys()]
+    for (let left = 0; left < definedList.length; left += 1) {
+      for (let right = left + 1; right < definedList.length; right += 1) {
+        const a = definedList[left]
+        const b = definedList[right]
+        if (!a || !b || !relatedResourceNames(a, b)) continue
+        const quote = clipQuote(defined.get(a) ?? defined.get(b) ?? '')
+        findings.push({
+          kind: 'duplicate-resource-definition',
+          quote,
+          resourceNames: [a.name, b.name],
+          key: findingKey(
+            'duplicate-resource-definition',
+            [a.name, b.name].sort().join('|'),
+          ),
+        })
+      }
+    }
+  }
+  return findings
+}
+
+/**
+ * 检查世界观正文里的数值 / 资源口径问题。
+ *
+ * - A-1 每日时长 ≥ 24h、A-2 相对量缺分母：始终运行，不依赖任何外部数据；
+ * - A-3 同资源双单位、A-4 资源名疑似重复定义：**只在 `resources` 非空时运行**
+ *   （判据 CX：没有资源登记表就闭嘴，绝不靠"单位词 + 前文名词"猜资源名）。
  *
  * 纯函数：不读文件、不写文件、不访问数据库、不调用模型。
  */
-export function inspectWorldBuildingNumeric(text: string): WorldBuildingNumericAudit {
+export function inspectWorldBuildingNumeric(
+  text: string,
+  resources?: readonly NumericAuditResource[],
+): WorldBuildingNumericAudit {
   const normalized = text.replace(/\r\n?/gu, '\n')
   if (!normalized.trim()) return { findings: [], unreadable: true }
 
@@ -232,6 +563,18 @@ export function inspectWorldBuildingNumeric(text: string): WorldBuildingNumericA
     if (findings.length >= MAX_FINDINGS) break
   }
 
+  // A-3 / A-4：**资源未登记 ⇒ 这里整块不执行**，findings 与只跑 A-1/A-2 时逐字相同。
+  // 这是判据 CX 的落点：宁可一条都不报，也不拿单位词去猜"这大概是个资源名"。
+  const usable = usableResources(resources)
+  if (usable.length > 0) {
+    const resourceFindings = [
+      ...inspectResourceUnits(splitParagraphs(normalized), usable),
+      ...inspectResourceDefinitions(splitSections(normalized), usable),
+    ]
+    const room = Math.max(0, MAX_FINDINGS - findings.length)
+    findings.push(...resourceFindings.slice(0, room))
+  }
+
   // 同一句同一规则只留一条（规则之间互不影响）。
   const deduped: WorldBuildingNumericFinding[] = []
   const seen = new Set<string>()
@@ -251,6 +594,19 @@ function describeFinding(finding: WorldBuildingNumericFinding, language: Languag
       ? `this line claims ${hours} hours per day; confirm whether that is intended.`
       : `该句声称每日占用 ${hours} 小时，请确认是否为设定。`
   }
+  if (finding.kind === 'dual-unit') {
+    const name = finding.resourceName ?? ''
+    const units = (finding.units ?? []).join(' / ')
+    return language === 'en-US'
+      ? `"${name}" is written with two different units (${units}); confirm whether both are intended.`
+      : `「${name}」在设定里出现了两种单位（${units}），请确认是否都为设定本意。`
+  }
+  if (finding.kind === 'duplicate-resource-definition') {
+    const names = (finding.resourceNames ?? []).join('」与「')
+    return language === 'en-US'
+      ? `"${names}" are each given their own definition in the same part of the setting; confirm whether they are one resource (or two tiers of it).`
+      : `「${names}」在同一维里各自都有一段定义，请确认是否为同一资源（或同一资源的不同品阶）。`
+  }
   return language === 'en-US'
     ? 'this line uses a ratio but never says what the base is (income, expenses, or monthly allowance), so it cannot be checked.'
     : '这里用了比例但没写分母（占收入、占支出还是占月例），无法核对。'
@@ -269,8 +625,8 @@ export function describeWorldBuildingNumericAudit(
   if (result.unreadable || result.findings.length === 0) return undefined
 
   const head = language === 'en-US'
-    ? `Numeric check: ${result.findings.length} statement(s) need a stated basis (this run is not blocked).`
-    : `数值口径检查：有 ${result.findings.length} 处数值需要确认口径（本次不影响使用）。`
+    ? `Numeric & resource check: ${result.findings.length} statement(s) need a stated basis or a single unit (this run is not blocked).`
+    : `数值与资源口径检查：有 ${result.findings.length} 处需要确认口径或单位（本次不影响使用）。`
 
   const visible = result.findings.slice(0, 3)
     .map((finding) => (language === 'en-US'

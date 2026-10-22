@@ -13,8 +13,14 @@ import { create } from 'zustand'
 import { ipc } from '../services/ipc-client'
 import type { WorldStateView } from '../shared/world-state-view'
 
-/** 左栏导航的分类（空间检查为 2026-10-22 新增的第五类，追加在末尾）。 */
-export type WorldStateSection = 'cast' | 'timeline' | 'characters' | 'facts' | 'space'
+/**
+ * 左栏导航的分类。
+ *
+ * `space`（空间检查，2026-10-22）追加在末尾；`resources`（资源账本，W6c）
+ * 插在 `characters` 之后 —— 设计稿 §6 把「人 / 物 / 事」并列，资源属于「物」，
+ * 与角色相邻才符合阅读顺序。
+ */
+export type WorldStateSection = 'cast' | 'timeline' | 'characters' | 'resources' | 'facts' | 'space'
 
 export interface WorldStateSnapshot {
   /** 这份快照属于哪个项目；与当前项目不一致时调用方必须当作「尚未读取」。 */

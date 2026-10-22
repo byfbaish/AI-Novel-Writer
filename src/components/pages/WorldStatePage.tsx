@@ -21,6 +21,8 @@ import { useLLMStore } from '../../stores/llm-store'
 import { useWorkflowStore, workflowResourceConflictMessage } from '../../stores/workflow-store'
 import { useWorldStateStore, selectWorldStateSnapshot } from '../../stores/world-state-store'
 import { createCastLedgerCompletionWorkflow } from '../../services/workflows/cast-ledger-completion-workflow'
+import { createResourceLedgerBackfillWorkflow } from '../../services/workflows/chapter-workflow'
+import { ipc } from '../../services/ipc-client'
 import { appErrorMessage } from '../../i18n/app-errors'
 import { Button } from '../ui/Button'
 import { confirm } from '../ui/Confirm'
@@ -29,6 +31,14 @@ import { toast } from '../ui/Toast'
 import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../shared/character-roster'
 import {
+  balanceAt,
+  buildLedgerSeries,
+  type LedgerBalance,
+  type LedgerSeriesPoint,
+  type ResourceDefinition,
+  type ResourceMovement,
+} from '../../shared/resource-ledger'
+import {
   WORLD_STATE_NOTES,
   type WorldStateChapter,
   type WorldStateCharacter,
@@ -36,8 +46,17 @@ import {
   type WorldStateObservation,
   type WorldStateView as WorldStateViewData,
 } from '../../shared/world-state-view'
+import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import type { CastLedgerEntry, CastLedgerStatus } from '../../shared/cast-ledger'
 import type { SpaceAuditIssueKind, SpaceLocationAudit } from '../../shared/space-machine-line'
+import {
+  RESOURCE_MOVEMENT_SOURCE_LABELS,
+  describeJump,
+  describeResourceBalance,
+  detectResourceJumps,
+  formatMovementDelta,
+  groupResourcesByFamily,
+} from '../panels/sidebar/resource-ledger-view-model'
 import {
   STATE_FIELD_LABELS,
   SPACE_AUDIT_KIND_LABELS,
@@ -579,6 +598,587 @@ function FactsSection({ facts }: { facts: readonly WorldStateContinuityFact[] })
 }
 
 // ============================================================
+// 资源（W6c 第六类）
+// ============================================================
+
+/**
+ * 账本读视图的三种状态。
+ *
+ * `failed` 必须和「已读、但没有变动」分开：前者说明这次没读到，
+ * 后者才允许说「本章程内没有变动」。混成一种就会把「读失败」画成「余额 0」。
+ */
+type LedgerRead =
+  | { status: 'loading' }
+  | { status: 'failed'; error: string }
+  | { status: 'ready'; movements: ResourceMovement[]; scannedChapters: number[]; throughChapter: number }
+
+/** `db:resource-ledger-read` 的一次读取；失败也只返回状态，不抛错。 */
+async function readLedger(projectPath: string, throughChapter: number): Promise<LedgerRead> {
+  if (throughChapter <= 0) {
+    // 一章都没定稿：账本无从判定。空数组在这里是「没有可读的章」，不是「读到 0 枚」。
+    return { status: 'ready', movements: [], scannedChapters: [], throughChapter }
+  }
+  try {
+    const result = await ipc.invoke('db:resource-ledger-read', throughChapter, projectPath)
+    if (!result.success) return { status: 'failed', error: result.error?.trim() || 'UNKNOWN' }
+    return {
+      status: 'ready',
+      movements: result.movements ?? [],
+      scannedChapters: result.scannedChapters ?? [],
+      throughChapter,
+    }
+  } catch (error) {
+    return { status: 'failed', error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+const BALANCE_TONE_COLOR: Record<LedgerBalance['kind'], string> = {
+  known: 'var(--color-text)',
+  unknown: 'var(--color-warning-text)',
+  conflict: 'var(--color-error-text)',
+}
+
+/**
+ * 逐章走势（迷你条形）。
+ *
+ * `value === null` 的章**不画柱子**，只留一个虚线空槽：画成 0 高的柱子会让
+ * 「账本中断」在图上长成「余额归零」的断崖，作者会把它当成事实写进下一章。
+ * 高度按序列内的最大绝对值归一 —— 这张图只看形状，精确数字在余额行和变动列表里。
+ */
+function LedgerSparkline({ points, gapReason, text }: {
+  points: readonly LedgerSeriesPoint[]
+  /** 空槽的原因：中断 / 未登记起点 / 单位冲突 —— 三种「不知道」的修法完全不同，提示不能混。 */
+  gapReason: 'not-scanned' | 'no-origin' | 'conflict'
+  text: LocaleText
+}) {
+  const known = points.filter((point): point is { chapterNumber: number; value: number } => point.value !== null)
+  const max = known.reduce((peak, point) => Math.max(peak, Math.abs(point.value)), 0)
+  const hasGap = known.length < points.length
+
+  if (points.length === 0) return null
+
+  return (
+    <div className="mt-1.5">
+      <div className="flex h-9 items-end gap-px overflow-x-auto pb-0.5" role="img"
+        aria-label={text('逐章余额走势', 'Balance by chapter')}>
+        {points.map((point) => (
+          point.value === null ? (
+            <div
+              key={`gap:${point.chapterNumber}`}
+              className="h-full flex-shrink-0 rounded-sm"
+              style={{
+                flex: '1 0 3px',
+                border: '1px dashed var(--color-border)',
+                opacity: 0.6,
+              }}
+              title={text(
+                `第 ${point.chapterNumber} 章：未知（${gapReason === 'no-origin'
+                  ? '未登记开篇余额'
+                  : gapReason === 'conflict' ? '单位不一致，未合并' : '该章未扫描'}）`,
+                `Ch. ${point.chapterNumber}: unknown (${gapReason === 'no-origin'
+                  ? 'no opening balance'
+                  : gapReason === 'conflict' ? 'unit mismatch, not merged' : 'chapter not scanned'})`,
+              )}
+              data-ledger-gap={point.chapterNumber}
+            />
+          ) : (
+            <div
+              key={`bar:${point.chapterNumber}`}
+              className="flex-shrink-0 rounded-sm"
+              style={{
+                flex: '1 0 3px',
+                // 0 值给 2px 的底：0 是真实余额，必须与「未知空槽」区分开。
+                height: `${max === 0 ? 4 : Math.max(4, Math.round(Math.abs(point.value) / max * 100))}%`,
+                backgroundColor: point.value < 0 ? 'var(--color-error-text)' : 'var(--color-accent)',
+              }}
+              title={text(
+                `第 ${point.chapterNumber} 章：${point.value}`,
+                `Ch. ${point.chapterNumber}: ${point.value}`,
+              )}
+              data-ledger-bar={point.chapterNumber}
+            />
+          )
+        ))}
+      </div>
+      <div className="flex items-center justify-between text-[0.6rem]" style={{ color: 'var(--color-text-muted)' }}>
+        <span>{text(`第 ${points[0].chapterNumber} 章`, `Ch. ${points[0].chapterNumber}`)}</span>
+        {hasGap && <span>{text('虚线 = 该章未知，不是 0', 'Dashed = unknown, not zero')}</span>}
+        <span>{text(`第 ${points[points.length - 1].chapterNumber} 章`, `Ch. ${points[points.length - 1].chapterNumber}`)}</span>
+      </div>
+    </div>
+  )
+}
+
+function MovementRow({ movement, resource, language, text }: {
+  movement: ResourceMovement
+  resource: ResourceDefinition
+  language: WorldStateLanguage
+  text: LocaleText
+}) {
+  const chapterLabel = movement.chapterNumber === 0
+    ? text('开篇（第 0 章）', 'Opening (ch. 0)')
+    : text(`第 ${movement.chapterNumber} 章`, `Ch. ${movement.chapterNumber}`)
+  const sourceLabel = language === 'zh-CN'
+    ? RESOURCE_MOVEMENT_SOURCE_LABELS[movement.source].zh
+    : RESOURCE_MOVEMENT_SOURCE_LABELS[movement.source].en
+
+  return (
+    <div className="rounded px-1.5 py-1" style={{ backgroundColor: 'var(--color-hover)' }}>
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[0.65rem]">
+        <span className="tabular-nums" style={{ color: 'var(--color-text)' }}>{chapterLabel}</span>
+        <span
+          className="tabular-nums"
+          style={{ color: movement.delta > 0 ? 'var(--color-success-text)' : 'var(--color-error-text)' }}
+        >
+          {formatMovementDelta(movement.delta)} {movement.unit}
+        </span>
+        <span style={{ color: 'var(--color-text-muted)' }}>{sourceLabel}</span>
+        {/* 单位快照与当前单位不同：这一行就是「单位不一致」的来源，必须点名，不能静默换单位。 */}
+        {movement.unit !== resource.unit && (
+          <span
+            className="rounded px-1"
+            style={{ color: 'var(--color-error-text)', border: '1px solid var(--color-border)' }}
+          >
+            {text(`单位 ${movement.unit} ≠ 当前 ${resource.unit}`, `Unit ${movement.unit} ≠ current ${resource.unit}`)}
+          </span>
+        )}
+      </div>
+      {movement.evidence && (
+        <details className="mt-0.5">
+          <summary className="cursor-pointer text-[0.6rem]" style={{ color: 'var(--color-text-muted)' }}>
+            {text(`${chapterLabel} · 引文`, `${chapterLabel} · quote`)}
+          </summary>
+          <div
+            className="mt-0.5 whitespace-pre-wrap text-[0.65rem] leading-relaxed"
+            style={{ color: 'var(--color-text-secondary)' }}
+          >
+            {movement.evidence}
+          </div>
+        </details>
+      )}
+    </div>
+  )
+}
+
+function ResourceCard({ resource, read, throughChapter }: {
+  resource: ResourceDefinition
+  read: Extract<LedgerRead, { status: 'ready' }> | null
+  throughChapter: number
+}) {
+  const { text, language } = useViewText()
+  const balance = read
+    ? balanceAt(resource, read.movements, throughChapter, { scannedChapters: read.scannedChapters })
+    : null
+  const balanceText = balance ? describeResourceBalance(balance, resource.unit, language) : null
+  const points = read ? buildLedgerSeries(resource, read.movements, { scannedChapters: read.scannedChapters }, throughChapter) : []
+  const jumps = detectResourceJumps(points)
+  /**
+   * 「最近一个可算章」。未知时只作为**已过时**的参照显示：
+   * 把它写成「当前余额」正是判据 DJ 要防的那件事（作者会拿旧数字写下一章）。
+   */
+  const lastKnown = [...points].reverse().find((point): point is { chapterNumber: number; value: number } => point.value !== null)
+  const own = read ? read.movements.filter((movement) => movement.resourceId === resource.resourceId) : []
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="truncate text-xs font-medium" style={{ color: 'var(--color-text)' }}>{resource.name}</span>
+        <span
+          className="flex-shrink-0 rounded px-1 text-[0.6rem] tabular-nums"
+          style={{ color: 'var(--color-text-muted)', border: '1px solid var(--color-border)' }}
+          title={text('品阶', 'Tier')}
+        >
+          {text(`品阶 ${resource.tier}`, `T${resource.tier}`)}
+        </span>
+        <span className="text-[0.6rem]" style={{ color: 'var(--color-text-muted)' }}>
+          {text(`单位：${resource.unit}`, `Unit: ${resource.unit}`)}
+        </span>
+      </div>
+
+      <div className="mt-1.5">
+        <div className="text-[0.6rem]" style={{ color: 'var(--color-text-muted)' }}>
+          {text('当前余额', 'Current balance')}
+        </div>
+        {balanceText && balance ? (
+          <>
+            <div
+              className="text-sm font-semibold leading-snug tabular-nums"
+              style={{ color: BALANCE_TONE_COLOR[balance.kind] }}
+              data-ledger-state={balance.kind}
+            >
+              {balanceText.primary}
+            </div>
+            <div className="text-[0.62rem] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+              {balanceText.secondary}
+            </div>
+            {balance.kind === 'unknown' && lastKnown && (
+              <div className="text-[0.6rem] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+                {text(
+                  `最后一次可算：第 ${lastKnown.chapterNumber} 章 ${lastKnown.value} ${resource.unit}（已过时，不是当前余额）`,
+                  `Last computable: ch. ${lastKnown.chapterNumber} = ${lastKnown.value} ${resource.unit} (stale, not the current balance)`,
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-[0.7rem]" style={{ color: 'var(--color-warning-text)' }}>
+            {text('账本未读取：余额与走势暂不可用（不是 0）', 'Ledger not read: balance and trend unavailable (not zero)')}
+          </div>
+        )}
+      </div>
+
+      {read && (
+        <LedgerSparkline
+          points={points}
+          gapReason={balance?.kind === 'conflict'
+            ? 'conflict'
+            : balance?.kind === 'unknown' && balance.reason === 'no-origin' ? 'no-origin' : 'not-scanned'}
+          text={text}
+        />
+      )}
+
+      {jumps.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {jumps.map((jump) => (
+            <span
+              key={`jump:${jump.chapterNumber}`}
+              className="rounded px-1 text-[0.6rem]"
+              style={{
+                color: jump.delta > 0 ? 'var(--color-warning-text)' : 'var(--color-error-text)',
+                border: '1px solid var(--color-border)',
+              }}
+            >
+              {describeJump(jump, language)}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {read && own.length === 0 && (
+        <div className="mt-1.5 text-[0.62rem]" style={{ color: 'var(--color-text-muted)' }}>
+          {text('第 1 章起没有变动记录（开篇起点也缺）', 'No movements from chapter 1 (no opening entry either)')}
+        </div>
+      )}
+
+      {own.length > 0 && (
+        <details className="mt-1.5">
+          <summary className="cursor-pointer text-[0.62rem]" style={{ color: 'var(--color-text-muted)' }}>
+            {text(`${own.length} 条变动`, `${own.length} movement(s)`)}
+          </summary>
+          <div className="mt-1 space-y-1">
+            {own.map((movement) => (
+              <MovementRow
+                key={`movement:${movement.id}`}
+                movement={movement}
+                resource={resource}
+                language={language}
+                text={text}
+              />
+            ))}
+          </div>
+        </details>
+      )}
+    </Card>
+  )
+}
+
+/** 族分组：同族多品阶并排，**不合计**（族级余额是派生展示，见设计稿 §3.3）。 */
+function ResourcesSection({ view, projectPath }: { view: WorldStateViewData; projectPath: string }) {
+  const { text } = useViewText()
+  const project = useProjectStore((s) => s.currentProject)
+  const locale = useLocaleStore((s) => s.locale)
+
+  const chapters = useMemo(
+    () => [...view.chapters].map((chapter) => chapter.chapterNumber).sort((left, right) => left - right),
+    [view.chapters],
+  )
+  const throughChapter = chapters.at(-1) ?? 0
+  const families = useMemo(() => groupResourcesByFamily(view.resources.items), [view.resources.items])
+
+  const [ledger, setLedger] = useState<LedgerRead>({ status: 'loading' })
+  const [run, setRun] = useState<{ scope: 'chapter' | 'range'; from: number; to: number; current: number } | null>(null)
+  /** 逐章结果行。tone 单独存，避免渲染时去匹配文案里的「未完成 / 停在第」（改一个字就会掉色）。 */
+  const [report, setReport] = useState<{ tone: 'info' | 'error'; text: string }[]>([])
+  /** 补扫后手动加一：只重读账本，不重读整页快照（资源定义没变，余额变了）。 */
+  const [reloadToken, setReloadToken] = useState(0)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const next = await readLedger(projectPath, throughChapter)
+      if (!cancelled) setLedger(next)
+    })()
+    return () => { cancelled = true }
+  }, [projectPath, throughChapter, reloadToken, view.fetchedAt])
+
+  const busy = run !== null
+
+  async function runOneChapter(chapter: number, session: ProjectSessionContext): Promise<{ ok: true } | { ok: false; error: string }> {
+    const workflow = createResourceLedgerBackfillWorkflow(chapter, projectPath, session)
+    const store = useWorkflowStore.getState()
+    const conflict = store.getResourceConflict(workflow)
+    if (conflict) return { ok: false, error: workflowResourceConflictMessage(locale, conflict.title) }
+
+    let runId: string
+    try {
+      runId = await store.startWorkflow(workflow, true)
+    } catch (error) {
+      return { ok: false, error: appErrorMessage(locale, error) }
+    }
+
+    // 结束后 run 会被移出 activeRuns 进 history；两处都翻，避免误判成「没跑」。
+    const after = useWorkflowStore.getState()
+    const finished = [...after.history, ...after.activeRuns].find((item) => item.id === runId)
+    if (finished?.status === 'completed') return { ok: true }
+    const stepError = finished?.steps.find((step) => step.error?.trim())?.error?.trim()
+    return {
+      ok: false,
+      error: finished?.error?.trim() || stepError
+        || text('没有拿到运行结果（工作流可能被取消或项目已切换）', 'No run result (the workflow may have been cancelled or the project switched)'),
+    }
+  }
+
+  function appendReport(line: string, tone: 'info' | 'error' = 'info') {
+    useWorkflowStore.getState().addLog(tone === 'error' ? 'error' : 'info', line, locale)
+    setReport((previous) => [...previous, { tone, text: line }])
+  }
+
+  async function backfillChapter(chapter: number) {
+    if (busy) return
+    const session = captureProjectSession(project)
+    if (!session) return
+    setReport([])
+    setRun({ scope: 'chapter', from: chapter, to: chapter, current: chapter })
+    try {
+      const result = await runOneChapter(chapter, session)
+      if (result.ok) {
+        appendReport(text(`第 ${chapter} 章重扫完成。`, `Chapter ${chapter} rescanned.`))
+        toast.success(text(`第 ${chapter} 章的资源账本已重扫。`, `Resource ledger for chapter ${chapter} was rescanned.`))
+      } else {
+        const line = text(`第 ${chapter} 章未完成：${result.error}`, `Chapter ${chapter} failed: ${result.error}`)
+        appendReport(line, 'error')
+        toast.error(line)
+      }
+    } finally {
+      setRun(null)
+      setReloadToken((token) => token + 1)
+    }
+  }
+
+  async function backfillRange() {
+    if (busy || chapters.length === 0) return
+    /**
+     * 起点固定是第 1 章，不是「最小定稿章」：账本的已知性是 `interruptedSince` 从 1 逐章检查出来的，
+     * 从第 5 章开始补会让第 1–4 章永远显示中断。中间章缺定稿时由工作流报错并停下（说明停在哪一章），
+     * 这里不猜、不跳章。
+     */
+    const from = 1
+    const to = throughChapter
+    const total = to - from + 1
+
+    const allowed = await confirm(text(
+      `将按顺序重扫第 ${from}–${to} 章（共 ${total} 章）的资源变动：每章都会读已定稿正文并调用模型抽取，耗时可能较长。只重写资源变动，不改正文与其它后处理结果；任何一章失败会立刻停下并说明停在哪一章。\n\n补扫期间请不要切换项目。`,
+      `This rescans resource movements for chapters ${from}–${to} (${total} chapters) in order: each chapter reads the finalized prose and calls the model, so it may take a while. Only resource movements are rewritten; the prose and every other post-processing result stay untouched. If any chapter fails, the run stops and reports where.\n\nDo not switch projects while it runs.`,
+    ), { title: text('补扫资源账本', 'Rescan resource ledger'), confirmText: text('开始补扫', 'Start') })
+    if (!allowed) return
+
+    const session = captureProjectSession(project)
+    if (!session) return
+
+    setReport([])
+    let done = 0
+    let stopped: { chapter: number; error: string } | null = null
+
+    for (let chapter = from; chapter <= to; chapter += 1) {
+      if (!isProjectSessionCurrent(session)) {
+        stopped = {
+          chapter,
+          error: text('项目已切换，补扫已停止', 'The project switched, so the rescan stopped'),
+        }
+        break
+      }
+      setRun({ scope: 'range', from, to, current: chapter })
+      const result = await runOneChapter(chapter, session)
+      if (!result.ok) {
+        stopped = { chapter, error: result.error }
+        break
+      }
+      done += 1
+      appendReport(text(
+        `第 ${chapter} 章完成（${done}/${total}）。`,
+        `Chapter ${chapter} done (${done}/${total}).`,
+      ))
+    }
+
+    setRun(null)
+    setReloadToken((token) => token + 1)
+
+    if (stopped) {
+      const line = text(
+        `补扫停在第 ${stopped.chapter} 章：${stopped.error}。已完成的 ${done} 章保留，后面的章没有动。`,
+        `Rescan stopped at chapter ${stopped.chapter}: ${stopped.error}. The ${done} finished chapter(s) are kept; later chapters were not touched.`,
+      )
+      appendReport(line, 'error')
+      toast.error(line)
+      return
+    }
+    appendReport(text(`补扫完成：第 ${from}–${to} 章共 ${done} 章。`, `Rescan finished: ${done} chapter(s) from ${from} to ${to}.`))
+    toast.success(text(`补扫完成：第 ${from}–${to} 章共 ${done} 章。`, `Rescan finished: ${done} chapter(s) from ${from} to ${to}.`))
+  }
+
+  if (view.resources.unreadable) {
+    return (
+      <NoticeRow tone="warning">
+        {text(
+          '本次没读到资源登记表（库版本较早或尚未读到项目库），这不是「0 个资源」。',
+          'The resource registry could not be read this time (older schema or the project library is not ready). This is not "zero resources".',
+        )}
+      </NoticeRow>
+    )
+  }
+
+  if (view.resources.items.length === 0) {
+    return (
+      <div className="space-y-1">
+        <SectionHint>{text('尚未登记资源。', 'No resource registered yet.')}</SectionHint>
+        <SectionHint>
+          {text(
+            '到「世界观」编辑页的「资源登记」区添加资源（名称 / 单位 / 口径），登记后这里会自动读取余额与逐章变动。',
+            'Add resources (name / unit / period) in the "Resource registry" area of the world-building editor; balances and movements show up here automatically.',
+          )}
+        </SectionHint>
+      </div>
+    )
+  }
+
+  const read = ledger.status === 'ready' ? ledger : null
+
+  return (
+    <div className="space-y-3">
+      {ledger.status === 'loading' && (
+        <SectionHint>{text('正在读取账本…', 'Reading the ledger…')}</SectionHint>
+      )}
+
+      {ledger.status === 'failed' && (
+        <NoticeRow tone="warning">
+          {text('账本读取失败：', 'Failed to read the ledger: ')}{ledger.error}
+          {text('（本次没有余额，不是 0 枚）', ' (no balance this time — not zero)')}
+        </NoticeRow>
+      )}
+
+      {/* 两个回填入口都只启动工作流：写入仍走既有的后处理落库路径，页面自身不写库。 */}
+      <div className="rounded-md px-2.5 py-2" style={{ border: '1px solid var(--color-border)' }}>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>
+              {text('账本回填', 'Ledger backfill')}
+            </div>
+            <div className="text-[0.62rem] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+              {text(
+                '本页只读；这两个按钮只启动「按章重跑资源抽取」的工作流，写入仍由后处理任务完成。重扫不改正文与其它后处理结果。账本从第 1 章逐章判定：少扫一章，本章及之后都会显示中断。',
+                'This page is read-only; these two buttons only start the per-chapter resource-extraction rerun — the post-processing job still does the writing. A rescan never touches the prose or other results. The ledger is judged chapter by chapter from 1: one unscanned chapter makes it and everything after unknown.',
+              )}
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 flex-shrink-0 px-2 text-[0.65rem]"
+            disabled={busy || chapters.length === 0}
+            title={text('按章顺序补扫，任何一章失败即停止', 'Rescan in chapter order; stop on the first failure')}
+            onClick={() => void backfillRange()}
+          >
+            {throughChapter <= 1
+              ? text('补扫第 1 章', 'Rescan ch. 1')
+              : text(`补扫第 1–${throughChapter} 章`, `Rescan ch. 1–${throughChapter}`)}
+          </Button>
+        </div>
+
+        {chapters.length === 0 ? (
+          <div className="mt-2 text-[0.62rem]" style={{ color: 'var(--color-text-muted)' }}>
+            {text('还没有定稿章节，无法补扫。', 'No finalized chapter yet, so nothing can be rescanned.')}
+          </div>
+        ) : (
+          <div className="mt-2 max-h-28 overflow-y-auto pr-1">
+            <div className="grid gap-1" style={gridStyle(8)}>
+              {chapters.map((chapter) => (
+                <div key={`backfill:${chapter}`} className="rounded px-1.5 py-1" style={{ backgroundColor: 'var(--color-hover)' }}>
+                  <div className="text-[0.6rem] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+                    {text(`第 ${chapter} 章`, `Ch. ${chapter}`)}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-0.5 h-5 w-full px-1 text-[0.6rem]"
+                    disabled={busy}
+                    onClick={() => void backfillChapter(chapter)}
+                  >
+                    {text('重扫本章变动', 'Rescan chapter')}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {busy && (
+          <div className="mt-1.5 text-[0.62rem] tabular-nums" style={{ color: 'var(--color-warning-text)' }}>
+            {run.scope === 'range'
+              ? text(
+                `正在补扫第 ${run.current} 章（第 ${run.from}–${run.to} 章，已完成 ${run.current - run.from} 章）…`,
+                `Rescanning chapter ${run.current} (of ${run.from}–${run.to}, ${run.current - run.from} done)…`,
+              )
+              : text(`正在重扫第 ${run.current} 章…`, `Rescanning chapter ${run.current}…`)}
+          </div>
+        )}
+
+        {report.length > 0 && (
+          <div className="mt-1 space-y-0.5">
+            {report.slice(-6).map((entry, index) => (
+              <div
+                key={`report:${index}`}
+                className="text-[0.6rem] leading-relaxed"
+                style={{ color: entry.tone === 'error' ? 'var(--color-error-text)' : 'var(--color-text-muted)' }}
+              >
+                {entry.text}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {families.map((group) => (
+        <section key={group.key} className="space-y-1.5">
+          {group.title && group.items.length > 1 && (
+            <div className="flex flex-wrap items-baseline gap-x-1.5">
+              <span className="text-xs font-medium" style={{ color: 'var(--color-text-secondary)' }}>
+                {text(`族：${group.title}`, `Family: ${group.title}`)}
+              </span>
+              <SectionHint>
+                {text(
+                  `${group.items.length} 个品阶 · 不合计（族级余额是派生展示，不单独存）`,
+                  `${group.items.length} tier(s) · no total (a family balance is a derived view, never stored)`,
+                )}
+              </SectionHint>
+            </div>
+          )}
+          <div className="grid gap-2" style={gridStyle(18)}>
+            {group.items.map((resource) => (
+              <ResourceCard
+                key={resource.resourceId}
+                resource={resource}
+                read={read}
+                throughChapter={throughChapter}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  )
+}
+
+// ============================================================
 // 空间检查
 // ============================================================
 
@@ -840,6 +1440,7 @@ export default function WorldStatePage() {
             <TimelineSection chapters={data.chapters} language={language} text={text} />
           )}
           {data && section === 'characters' && <CharactersSection characters={data.characters} />}
+          {data && section === 'resources' && <ResourcesSection view={data} projectPath={projectPath} />}
           {data && section === 'facts' && <FactsSection facts={data.continuityFacts} />}
           {data && section === 'space' && <SpaceSection audit={data.spaceAudit} />}
         </div>

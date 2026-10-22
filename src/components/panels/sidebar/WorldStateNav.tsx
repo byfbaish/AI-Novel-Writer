@@ -56,11 +56,15 @@ export default function WorldStateNav() {
     cast: data?.castLedger.entries.length ?? 0,
     timeline: data?.chapters.length ?? 0,
     characters: data?.characters.length ?? 0,
+    // 资源计数是「已登记的资源条数」，不是余额、也不是变动条数。
+    resources: data?.resources.items.length ?? 0,
     facts: data?.continuityFacts.length ?? 0,
     // 空间检查的计数是「待确认处数」，不是条目数。
     space: data?.spaceAudit.issues.length ?? 0,
   }
   const spaceUnreadable = data?.spaceAudit.unreadable ?? true
+  // 资源表没读到 ≠ 0 个资源：左栏同样显示「—」，与空间检查同一条规矩。
+  const resourcesUnreadable = data?.resources.unreadable ?? true
   const orphanCount = data?.castLedger.counts.orphan ?? 0
 
   const fetchedLine = data
@@ -129,13 +133,17 @@ export default function WorldStateNav() {
                   }}
                   title={key === 'space' && spaceUnreadable
                     ? text('世界观里没识别到空间结构，本次未检查', 'No space structure recognized; not checked')
-                    : undefined}
+                    : key === 'resources' && resourcesUnreadable
+                      ? text('资源登记表本次未读取', 'The resource registry was not read')
+                      : undefined}
                 >
                   {/*
                     空间检查未检查时显示「—」而不是 0：0 会被读成「检查过、没问题」，
-                    这两件事必须能分开。
+                    这两件事必须能分开。资源表同理：没读到不能显示成「0 个资源」。
                   */}
-                  {key === 'space' && spaceUnreadable ? '—' : counts[key]}
+                  {(key === 'space' && spaceUnreadable) || (key === 'resources' && resourcesUnreadable)
+                    ? '—'
+                    : counts[key]}
                 </span>
               </span>
             </button>

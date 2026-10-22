@@ -16,6 +16,7 @@ import { describeWorldBuildingCompleteness, inspectWorldBuildingCompleteness } f
 import {
   describeWorldBuildingNumericAudit,
   inspectWorldBuildingNumeric,
+  type NumericAuditResource,
 } from '../../../shared/worldbuilding-numeric-audit'
 import {
   describeWorldBuildingSelfReview,
@@ -2281,9 +2282,13 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
     )
     if (completenessHint) callbacks.log(completenessHint)
     // W6a-1：世界观里的数值口径检查（A-1 每日时间量 ≥ 24h / A-2 相对量缺分母）。
+    // W6a-3 追加 A-3（同资源双单位）/ A-4（资源名疑似重复定义）—— 这两条要资源清单。
     // 与五维检查同一姿态：只记一句、不 throw、不改 result、不阻断生成。
+    // 资源清单读不到时 `listNumericAuditResources` 返回 undefined ⇒ A-3/A-4 整块不跑，
+    // A-1/A-2 照常出结论（判据 CX：宁可少报，也不让一次读库失败吞掉整行提示）。
+    const numericResources = await this.listNumericAuditResources(projectSession, expectedProjectPath)
     const numericHint = describeWorldBuildingNumericAudit(
-      inspectWorldBuildingNumeric(result),
+      inspectWorldBuildingNumeric(result, numericResources),
       writingLanguage,
     )
     if (numericHint) callbacks.log(numericHint)
@@ -2306,6 +2311,32 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
       result,
     })
     return result
+  }
+
+  /**
+   * 给 A-3/A-4 取资源登记清单。
+   *
+   * **读不到就返回 `undefined`，不抛错、不降级成"猜资源名"**（判据 CX）：
+   * - 通道失败 / `success:false` / 返回值形状不对 ⇒ undefined，两条规则整体沉默；
+   * - 登记表为空 ⇒ 返回空数组，同样零输出（新项目本来就还没登记资源）。
+   *
+   * 调用方拿到 undefined 不会少掉 A-1/A-2 —— 那两条不依赖资源清单。
+   */
+  private async listNumericAuditResources(
+    projectSession: ProjectSessionContext,
+    expectedProjectPath: string,
+  ): Promise<NumericAuditResource[] | undefined> {
+    try {
+      const listed = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:resources-list',
+        expectedProjectPath,
+      )
+      if (!listed?.success || !Array.isArray(listed.resources)) return undefined
+      return listed.resources.map(({ name, unit, familyId, tier }) => ({ name, unit, familyId, tier }))
+    } catch {
+      return undefined
+    }
   }
 
   /**

@@ -252,9 +252,12 @@ export function summarizeLedger(
       : `第 ${balance.fromChapter} 章起单位冲突（${units}）：不合并、不换算，余额未知`
   }
   if (balance.reason === 'no-origin') {
+    // 这里**不写「中断」**：没有起点是「还没登记」，不是「有一章没扫」。
+    // 两者修法完全不同（补一条开篇登记 vs 补扫那一章），而 W7 的注入文本会直接引用这句 ——
+    // 说成「中断」会让模型以为中间漏了数据，而不是缺一个开头。
     return english
-      ? 'The ledger is interrupted from chapter 1: the opening balance (a chapter-0 author entry) is missing, so the balance is unknown — not zero.'
-      : '第 1 章起账本中断：缺少开篇起点（第 0 章的作者登记），余额未知——不是 0'
+      ? 'Opening balance is not registered: the chapter-0 author entry is missing, so the balance is unknown — not zero. This is a registration gap, not a scan interruption.'
+      : '未登记开篇余额：缺少第 0 章的作者登记行，余额未知——不是 0（这是登记缺口，不是扫描中断）'
   }
   return english
     ? `The ledger is interrupted from chapter ${balance.fromChapter}: the balance is unknown — not zero.`

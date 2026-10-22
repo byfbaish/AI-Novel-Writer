@@ -10,6 +10,7 @@
  */
 import type { CastLedgerEntry, CastLedgerStatus } from './cast-ledger'
 import type { CharacterStateTextField } from './character-roster'
+import type { ResourceDefinition } from './resource-ledger'
 import type { SpaceLocationAudit } from './space-machine-line'
 
 /**
@@ -93,6 +94,21 @@ export interface WorldStateContinuityFact {
   text: string
 }
 
+/**
+ * 资源账本的**定义侧**（W6c 第六类）。
+ *
+ * 余额、逐章走势、引文都不在这里：
+ * - 它们必须按「读到第几章」重算，属于 `db:resource-ledger-read` 的载荷；
+ * - 把「变动行」塞进世界状态快照会让这个只读视图背上几百章的流水。
+ *
+ * `unreadable` 与 `items: []` 是两件事：`unreadable` = 资源表没读到（空视图 / 缺表 /
+ * 查询失败），**不得**显示成「0 个资源」；能读到但没有登记才是「尚未登记资源」。
+ */
+export interface WorldStateResources {
+  unreadable: boolean
+  items: ResourceDefinition[]
+}
+
 export interface WorldStateView {
   /** 读取时刻（ISO 8601）；渲染层可用于「数据可能过期」的提示。 */
   fetchedAt: string
@@ -103,6 +119,8 @@ export interface WorldStateView {
   /** 未退休角色卡（退休卡的落点语义由归位表体现）。 */
   characters: WorldStateCharacter[]
   continuityFacts: WorldStateContinuityFact[]
+  /** 资源登记表的定义侧；余额与走势由 `db:resource-ledger-read` 按章重算。 */
+  resources: WorldStateResources
   /** 三来源里读不出来的条数：review=整章不可采信，finalized/blueprint=JSON 坏行数。 */
   unreadableMentions: { review: number; finalized: number; blueprint: number }
   /**
@@ -126,6 +144,8 @@ export function emptyWorldStateView(projectPath: string | null = null, notes: Wo
     chapters: [],
     characters: [],
     continuityFacts: [],
+    // 空视图 = 资源表没读过 ⇒ 未登记 / 未读取。既不是「0 枚」，也不是「已读、0 个资源」。
+    resources: { unreadable: true, items: [] },
     unreadableMentions: { review: 0, finalized: 0, blueprint: 0 },
     // 空视图 = 没读过世界观 ⇒ 空间检查标记为「未检查」，不是「0 个问题」。
     spaceAudit: { tableSpaces: 0, machineLines: 0, issues: [], unreadable: true },
