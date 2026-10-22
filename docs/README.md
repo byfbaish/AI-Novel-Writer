@@ -158,7 +158,7 @@ docs/
 | [`ac5-numeric-resource-consistency-design.md`](design/architecture/ac5-numeric-resource-consistency-design.md) | ⛔ 部分否决 | AC5 数值一致性：**机读数值行已否决**，保留判据 CJ–CM 与覆盖版阻断项 |
 | [`world-state-review-and-wiring-plan.md`](design/architecture/world-state-review-and-wiring-plan.md) | ⚙️ 已实施至 W5 | 世界状态：**状态已在库里、两条消费链都不读**（正文 `.withCharacterStates('')`、审稿只放行 `kind=author`）；W0 接线可证伪。**W0–W3 已完结 · W4a 流水线 + W5 只读视图已落地**；W4b 已移交 W6 · §19 一人多身份（未开工） |
 | [`world-state-w4a-wiring-plan.md`](design/architecture/world-state-w4a-wiring-plan.md) | ✅ 已实施 | 上一稿的**施工子稿**：§11.7 五维齐备性检查 + W4a 三段流水线 + W5 视图一轮做完；含「先生成后 stage」裁决、偏差全表与验证命令 |
-| [`w6-resource-ledger-design.md`](design/architecture/w6-resource-ledger-design.md) | 🚧 W6a-1 已落地 | 资源账本（灵石案）：权威值 `resources` 表 · **生成期自检（防下一本，A-1/A-2 已落地）** · 账本中断显式 · 并入世界状态第五类；判据 **DI–DL**；**W4b 并入其 M11**。§6.1 交代只覆盖六槽里的「资源」一半 |
+| [`w6-resource-ledger-design.md`](design/architecture/w6-resource-ledger-design.md) | 🚧 W6a-1 / M11 / W6a-2 已落地 | 资源账本（灵石案）：权威值 `resources` 表 · **生成期自检（防下一本，A-1/A-2 + B 层自审）** · 账本中断显式 · 并入世界状态**第六类**（空间先占第五）；判据 **DI–DL**；§9.1 是波 1 落地记录，§6.1 交代只覆盖六槽里的「资源」一半 |
 | [`w7-world-state-injection-design.md`](design/architecture/w7-world-state-injection-design.md) | 📝 立项待裁定 | 世界状态**前置注入**（闭环的另一半）：最小集经作者材料块注入 · 卷切片复用 E4 三层投影 · 未知不填 0 · 注入即划期界；判据 **DM–DP** |
 | [`blueprint-key-events-structuring-design.md`](design/architecture/blueprint-key-events-structuring-design.md) | 初稿 v2 · 待裁定 | 蓝图 `keyEvents` 结构化 |
 | [`phase2-keyevents-bprime-implementation-plan.md`](design/architecture/phase2-keyevents-bprime-implementation-plan.md) | 待过目 · 未动代码 | 阶段 2 + B′（含 R6）实施清单 |

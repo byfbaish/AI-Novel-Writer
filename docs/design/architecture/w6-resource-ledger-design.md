@@ -376,8 +376,8 @@ W6 只动其中一类的一半：
 | 期 | 内容 | 动 schema | 优先级 | 验收 |
 |---|---|---|---|---|
 | **W6a-1** ✅ | 生成期规则层 **A-1 每日时间量 ≥ 24h / A-2 相对量缺分母** + 落库后提示 | ❌ | ★ 最高（防下一本） | ✅ **已落地（2026-10-22）**：`src/shared/worldbuilding-numeric-audit.ts`（18 例）+ `architecture.command.ts:2251` 追加一行 log；`typecheck` 0 · `eslint` 0 · `architecture.command.test.ts` 47 例全绿 |
-| **W6a-2** | B 层模型自审 + 结果落 `partial.world_building_*` + 编辑面提示条 | ❌ | 高 | 自审只输出引文、不输出算术；无 finding 时不打扰；刷新后仍在 |
-| **M11** | `resources` + `resource_movements` + **W4b 的六槽补齐与设计意图栏（已裁定并入）** + **仓储读 API 与 IPC 通道** | ✅ v11→v12 | 高 | 老库升级成功；`resources` 空时全链路降级为"未登记资源"，不报错 |
+| **W6a-2** ✅ | B 层模型自审 + 结果落 `partial.world_building_self_review` + 编辑面提示条 | ❌ | 高 | ✅ **已落地（2026-10-22）**：`src/shared/worldbuilding-self-review.ts`（23 例）+ 模板 `world_building_self_review` + `architecture.command.ts` 的 `attachWorldBuildingSelfReview`；引文必须逐字命中原文，命不中即丢弃；`typecheck` 0 · `eslint` 0 · `architecture.command.test.ts` 49 例全绿 |
+| **M11** ✅ | `resources` + `resource_movements` + **W4b 六槽（核实已齐备，零改动）与设计意图栏（`scarcity_note`）** + **仓储读 API 与 IPC 通道** | ✅ v11→v12 | 高 | ✅ **已落地（2026-10-22）**：`electron/migrations/m11-resource-ledger.ts` + `electron/repositories/resource-repository.ts` + 四条 IPC；M11 5 例 + 仓储 5 例；老库升级、幂等、`delta` 无默认值、外键 RESTRICT 均有用例 |
 | **W6a-0** 🆕 | **资源登记界面**（世界观页「资源登记」表格 CRUD） | ❌ | 高 | 登记 3 条（同族两品阶 + 单例）⇒ 世界状态页能列全；重名就地拒绝；有账本记录的资源不许删 |
 | **W6a-3** | A-3 同资源双单位 / A-4 资源名重复定义（此期才做，因为有表可精确比对） | ❌ | 中 | 双单位、层级混淆各命中一次；**干净设定零误报**；资源未登记 ⇒ 零噪声 |
 | **W6b** | `resource-ledger` 抽取 step + 纯算术 + 中断语义 + **幂等** + **按章回填重扫** | — | 中 | 三章样本：抽到变动 ⇒ 余额对；故意跳过一章 ⇒ 后续 unknown；同一章连抽两次余额不变；模糊表述不产生行 |
@@ -389,6 +389,20 @@ W6 只动其中一类的一半：
 > ★ **施工顺序改成三波**（详见批准的实施计划）：
 > 波 1 = M11 ∥ W6a-2（自审不依赖 schema，可与 M11 并行）→ 波 2 = W6a-0 ∥ W6b → 波 3 = W6c ∥ W6a-3。
 > **M11 必须连 IPC 一起交付**，否则波 2 的两条线会同时往 IPC 注册表里加通道（同一个文件，串起来就白并行了）。
+
+### 9.1 波 1 落地记录（2026-10-22）
+
+| 项 | 结论 |
+|---|---|
+| 六槽「补齐」 | **零改动**。核实：`CHARACTER_STATE_TEXT_FIELDS` 六项全在（`src/shared/character-roster.ts:44-51`），六个 `cs_*` 列 + `cs_provenance` + `cs_updated_at_chapter` 都在基线里（`electron/migrations/baseline-schema.ts:88-95`）。W4b 真正新增的只有「设计意图栏」，落在 `resources.scarcity_note` |
+| `listMovementsBefore` → **`listMovementsThrough`** | 语义是 `chapter_number <= n`（含端点，余额公式直接吃它）；旧名读起来像严格小于，波 2 极可能按 `<` 理解导致差一章 ⇒ 改名而不是加注释 |
+| `chapter_number=0` 只许 `source='author'` | **只在仓储层拦**（`RESOURCE_INVALID:origin-source`），不加表级 CHECK：写入口只有这一个，加 CHECK 会让指纹多一处不可回退的形状，而收益只是多一道同义保险 |
+| 取消时是否落自审结果 | **不落盘**。取消时的 `review` 必然是「未读出来」，写下去只会在编辑面留一条与代码无关的「本次自审未完成」；取消由运行器统一处理 |
+| 新表撞便携格式闸门 | **必须登记**，否则不只是测试红：`assertPortableSourceSchema` 是 fail-closed，未登记的表现在会导致**导出/备份直接失败**。已在 `portable-project-field-policy.json` 加 `m11Tables`（两表 21 字段取 `D` = preserve-domain） |
+| 自审模板是否可编辑 | **否**（系统模板，不进 `EDITABLE_PROMPT_KEYS`）。它的约束（不许算术、只许逐字引用）是判据 DK 的落点，开放编辑等于把判据交给作者改 |
+
+> 另有一条实现事实值得记住：正文链的续写轮**不带模板变量**，但**带作者材料块**。所以 W7 的资源余额注入必须走材料块，
+> 不能新开一个模板变量 —— 这条在 W7a 动手前要先确认一遍（`generate-draft.command.ts` 的 `.withCharacterStates('')`）。
 
 **先做 W6a-1 的理由**：它是唯一不需要任何 schema、不需要模型配合、且直接回答作者「下一本不要再来一次」的一块。做完就能拿本书旧稿验证，再决定 W6b 的投入。
 
