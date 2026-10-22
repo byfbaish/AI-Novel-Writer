@@ -42,6 +42,7 @@ export const CHARACTER_PROPOSAL_SOURCE_GROUP_ORDER = [
   'import',
   'finalized-generation',
   'legacy-roster-generation',
+  'cast-ledger',
 ] as const
 
 const GROUP_LABELS: Record<CharacterProposalHistoryEntry['sourceGroup'], [string, string]> = {
@@ -51,6 +52,7 @@ const GROUP_LABELS: Record<CharacterProposalHistoryEntry['sourceGroup'], [string
   import: ['来自导入', 'From import'],
   'finalized-generation': ['来自定稿正文', 'From finalized prose'],
   'legacy-roster-generation': ['来自旧角色名单', 'From legacy roster'],
+  'cast-ledger': ['来自归位表补全', 'From cast-ledger completion'],
 }
 
 /** Stable grouping without inventing a time order the ledger cannot prove. */

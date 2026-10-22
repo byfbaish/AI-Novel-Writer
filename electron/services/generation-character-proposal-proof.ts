@@ -12,6 +12,7 @@ import type { CharacterProposalProof } from './character-proposal-service'
 import type { ImportGlobalFactsReceipt } from '../../src/shared/import-global-facts'
 import { proveFinalizedCharacterGeneration } from './finalized-character-generation-proof'
 import { readLegacyRosterGenerationProof } from './legacy-roster-generation-proof'
+import { readCastLedgerGenerationProof } from './cast-ledger-generation-proof'
 import { decodeImportInferenceJson, decodeImportInferenceWithEndpointDelta } from '../../src/services/workflows/commands/import-inference-contract'
 import { preservesStructuredJsonEvidence } from '../../src/services/workflows/structured-syntax-repair'
 
@@ -67,6 +68,11 @@ export function proveCharacterProposal(db: Database.Database, runs: GenerationRu
   if (!source || typeof source !== 'object') throw new Error('CHARACTER_PROPOSAL_SOURCE_INVALID')
   if (source.kind === 'legacy-roster-generation') {
     const result = readLegacyRosterGenerationProof(db, runs, projectId, source)
+    if (forWrite) assertSources(result.currentHandle)
+    return result.proof
+  }
+  if (source.kind === 'cast-ledger') {
+    const result = readCastLedgerGenerationProof(db, runs, projectId, source)
     if (forWrite) assertSources(result.currentHandle)
     return result.proof
   }

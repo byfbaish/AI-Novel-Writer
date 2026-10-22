@@ -36,6 +36,8 @@ export function formatCharacterProposalPreview(batch: CharacterProposalBatch, te
         'Candidates are saved but are not formal characters. Confirmation adopts only clear items below; unresolved candidates remain available.')
       : batch.status === 'approved' ? text('采用决策已保存，未采用候选继续保留。', 'Adoption decisions are saved; unadopted candidates remain available.')
         : text('本次采用已取消，候选继续保留。', 'Adoption was cancelled; candidates remain available.'),
+    ...(batch.source.kind === 'cast-ledger' ? [text('这些名字来自归位表：被正文或蓝图提到但还没有卡，已为它们补齐资料；确认后建卡。',
+      'These names come from the cast ledger: mentioned in prose or blueprints but not yet carded. Their details have been filled in; confirmation creates their cards.')] : []),
     ...batch.items.map((item, index) => [
       `### ${index + 1}. ${item.fields.name}`,
       `${text('来源', 'Source')}：${item.sourceId}`,

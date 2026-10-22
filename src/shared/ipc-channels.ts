@@ -932,6 +932,7 @@ import type {
   ImportGlobalFactsReceipt,
   ImportGlobalFactsRequest,
 } from './import-global-facts'
+import type { WorldStateView } from './world-state-view'
 
 // ===== 数据库操作 =====
 export interface DatabaseChannels {
@@ -1053,6 +1054,13 @@ export interface DatabaseChannels {
   'db:character-roster-commit': {
     args: [request: CharacterRosterCommitRequest, expectedProjectPath: string]
     return: { success: boolean; receipt?: CharacterRosterCommitReceipt; error?: string }
+  }
+
+  // 3b. world state（W5 只读视图）
+  /** 世界状态只读视图：归位表 + 章节轴 + 角色状态 + 连续性事实。任何时候都不写库。 */
+  'world-state:read': {
+    args: [expectedProjectPath: string]
+    return: WorldStateView
   }
 
   // 4. drafts

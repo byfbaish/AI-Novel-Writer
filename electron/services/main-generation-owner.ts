@@ -48,6 +48,7 @@ import { GraphGeneration } from './graph-generation'
 import type { LegacyRosterGenerationChannels, LegacyRosterGenerationRecovery } from '../../src/shared/legacy-roster-generation'
 import { LegacyRosterGeneration } from './legacy-roster-generation'
 import { readLegacyRosterGenerationProof } from './legacy-roster-generation-proof'
+import { readCastLedgerGenerationProof } from './cast-ledger-generation-proof'
 import { readLegacyRosterGenerationContext } from './legacy-roster-generation-context'
 import { readPortableRuntimeFreeze } from './portable-runtime-freeze'
 import { readLegacyRosterSource, adoptLegacyCards } from './legacy-roster-source'
@@ -1267,7 +1268,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
         if (batch.status === 'approved') return characters.approve(request)
         const source = batch.source
         const handle = source.kind === 'finalized-generation' ? proveFinalizedCharacterGeneration(deps.database, repository, deps.projectId, source.handle, source.artifact).currentHandle
-          : source.kind === 'legacy-roster-generation' ? readLegacyRosterGenerationProof(deps.database, repository, deps.projectId, source).currentHandle : source.kind === 'generation' ? source.handle
+          : source.kind === 'legacy-roster-generation' ? readLegacyRosterGenerationProof(deps.database, repository, deps.projectId, source).currentHandle : source.kind === 'cast-ledger' ? readCastLedgerGenerationProof(deps.database, repository, deps.projectId, source).currentHandle : source.kind === 'generation' ? source.handle
           : source.kind === 'directory' ? repository.listDirectoryProgress().find(item => item.operationId === source.operationId)?.sourceHandle : undefined
         return handle ? agents.withChildEffect(handle, () => characters.approve(request)) : characters.approve(request)
       }).immediate()

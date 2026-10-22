@@ -4,6 +4,7 @@ import { canonicalM03FindingSetHash, verifyM03ReviewCycle, type M03FindingDescri
 import { parseHumanConfirmedReviewSnapshot, type HumanConfirmedReviewSnapshot } from '../../src/shared/human-confirmed-review'
 import { classifyFindingEvidenceChange, unshownMustShowRecheckFindings, type ReviewCycleRecheckContext,
   type ReviewCycleRecheckFinding, type ReviewCycleProjection } from '../../src/shared/review-cycle'
+import type { CastLedgerMention } from '../../src/shared/cast-ledger'
 import { isStateDelta, type ReviewStateDeltaItem } from '../../src/shared/review-generation-report'
 
 const HASH = /^[a-f0-9]{64}$/u
@@ -306,6 +307,52 @@ export function readReviewStateDeltaForDraft(draftId: number, contentHash: strin
     }
   }
   return { status: parsedAny ? 'legacy' : 'unreadable' }
+}
+
+export interface ReviewStateDeltaMentions {
+  mentions: CastLedgerMention[]
+  /** 这些章的最新定稿稿没有可采信的审稿差分（unreadable / legacy / 正文已改），不计入提及。 */
+  unreadableChapters: number[]
+}
+
+/**
+ * W5 归位表来源 1（review-state-delta）：逐章取**最新定稿稿**，只采信「与本稿正文同一版」的审稿差分。
+ *
+ * 为什么按章而不是按全部 reviews：归位表只关心「模型在这章点名过谁」，同一章多稿时只有定稿稿
+ * 才代表这章最终正文；旧稿的审稿差分是历史，不是这一章的观测。
+ * 为什么 sameContent=false 不采信：审稿读的正文与定稿正文不是同一版时，引文可能已被修订掉，
+ * 此时把名字算成「模型点名过」会把坏证据当成沉默；这类章计数交给调用方提示。
+ * 读不出来（unreadable / legacy / 正文已改）一律进 unreadableChapters，不折成空数组。
+ */
+export function listCurrentReviewStateDeltaMentions(db: Database.Database): ReviewStateDeltaMentions {
+  // 每章只保留 version 最大的定稿稿（id 兜底），再逐章查审稿差分。
+  const rows = db.prepare(`SELECT d.chapter_number AS chapterNumber, d.id AS draftId, c.body AS body
+    FROM drafts d JOIN contents c ON c.id=d.content_id
+    WHERE d.status='finalized'
+    ORDER BY d.chapter_number ASC, d.version DESC, d.id DESC`).all() as Array<{
+      chapterNumber: number; draftId: number; body: string | null }>
+  const latestByChapter = new Map<number, { draftId: number; body: string }>()
+  for (const row of rows) {
+    if (!integer(row.chapterNumber, 1) || !integer(row.draftId, 1) || typeof row.body !== 'string') continue
+    if (!latestByChapter.has(row.chapterNumber)) latestByChapter.set(row.chapterNumber, { draftId: row.draftId, body: row.body })
+  }
+  const mentions: CastLedgerMention[] = []
+  const unreadableChapters: number[] = []
+  for (const chapterNumber of [...latestByChapter.keys()].sort((a, b) => a - b)) {
+    const current = latestByChapter.get(chapterNumber)
+    if (!current) continue
+    const lookup = readReviewStateDeltaForDraft(current.draftId, hash(current.body), db)
+    if (lookup.status === 'ok' && lookup.sameContent) {
+      for (const item of lookup.items) {
+        mentions.push({ name: item.characterName, source: 'review-state-delta', chapterNumber })
+      }
+      continue
+    }
+    if (lookup.status === 'unreadable' || lookup.status === 'legacy' || lookup.status === 'ok') {
+      unreadableChapters.push(chapterNumber)
+    }
+  }
+  return { mentions, unreadableChapters }
 }
 
 function locateUnique(source: string, quote: string): { start: number; end: number } | null {

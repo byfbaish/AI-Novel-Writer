@@ -24,6 +24,22 @@ export type CharacterProposalSource =
       artifact: { artifactId: string; revision: number; textHash: string } }
   | { kind: 'legacy-roster-generation'; handle: MainGenerationRunHandle;
       artifact: { artifactId: string; revision: number; textHash: string } }
+  /**
+   * 归位表补全（W4a ②补全段）：作者在归位表里看到「被提到但还没有卡」的名字，模型为它们补齐静态资料。
+   *
+   * 为什么是「先生成、后 stage」而不是「先只带名字 stage、再补全」：
+   * `readEnvelope`（character-proposal-service.ts）每次读取都从**当前**库重算 proof 并与封存 proof
+   * 深比较，不等即 CHARACTER_PROPOSAL_SOURCE_CHANGED；而 `proposalBatchId` 是
+   * `textHash(JSON.stringify([projectId, source]))`。若先 stage 只有名字的批次、随后补全后再 stage，
+   * 会得到**新的** batchId，旧批次永远停在 pending-approval（判据 CX 的「永远无法应用的项」）。
+   * 反过来「不改 source、只让 items 由 proof 派生名字」则会产出**没有资料的卡**（§4.4 retired=1「刘三」的空壳教训）。
+   * 因此：模型产物先落 artifact，`names` 与 `artifacts` 一次成型后才 stage ⇒ 不存在「只有名字的可批准批次」。
+   *
+   * 注意：产物里的 `currentState` 不写入新卡（`CharacterStaticFields` 没有该字段，且
+   * `decodeCharacterDetails` 会把 `updatedAtChapter` 压成 0）⇒ 新卡显示为「未观测」，而不是伪造的第 0 章状态。
+   */
+  | { kind: 'cast-ledger'; names: string[]; handle: MainGenerationRunHandle;
+      artifacts: { artifactId: string; revision: number; textHash: string }[] }
 export interface CharacterProposalStageEvidence { proposalBatchId: string; sourceHash: string }
 export interface CharacterProposalItem {
   selectionKey: string
@@ -84,6 +100,7 @@ export interface CharacterProposalHistoryEntry {
   source: CharacterProposalSource
   /** Semantic grouping key derived from `source`; history cannot be time-ordered. */
   sourceGroup: 'architecture' | 'planning-material' | 'directory' | 'import' | 'finalized-generation' | 'legacy-roster-generation'
+    | 'cast-ledger'
   itemCount: number
   /** Display label, e.g. 「来自前提+配置 · 5 个角色」. Author-facing only. */
   label: string

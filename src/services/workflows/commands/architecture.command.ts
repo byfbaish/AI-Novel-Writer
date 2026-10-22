@@ -12,6 +12,7 @@ import { planOutlinePrefixBudget } from '../../../shared/outline-prefix-budget'
 import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../shared/arc-node'
 import { composeGenreLabel } from '../../../shared/genre-label'
 import { withSpaceConstraints } from '../../../shared/space-constraints'
+import { describeWorldBuildingCompleteness, inspectWorldBuildingCompleteness } from '../../../shared/worldbuilding-completeness'
 import { projectScopedConfigFields, projectScopedText } from '../../../shared/text-scope-tags'
 import { declareTraceScopeChapterRange } from '../../prompts/trace-scope'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
@@ -2242,6 +2243,11 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
       '世界观已生成并写入数据库',
       'Worldbuilding generated and saved to the database.',
     ))
+    const completenessHint = describeWorldBuildingCompleteness(
+      inspectWorldBuildingCompleteness(result),
+      writingLanguage,
+    )
+    if (completenessHint) callbacks.log(completenessHint)
     return result
   }
 

@@ -8,6 +8,8 @@ import { getProjectDataRoot } from '../services/project-data-locator'
 import { readPortableCurrentAuthority } from '../services/portable-current-authority'
 import { currentDerivedCharacterFields } from '../services/current-character-projection'
 import { assertRequiredExpectedProjectPath } from '../utils/project-context'
+import { emptyWorldStateView, WORLD_STATE_NOTES } from '../../src/shared/world-state-view'
+import { readWorldState } from '../services/world-state-read'
 
 // 导入所有 Repository
 import {
@@ -1230,6 +1232,18 @@ export function registerDatabaseController() {
   ipcMain.handle('db:post-process-is-all-passed', async (_event, sourceType: string, sourceId: string, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return PostProcessRepository.isAllCriticalPassed(sourceType, sourceId)
+  })
+
+  // ============================================================
+  // W5 世界状态（只读视图）
+  // ============================================================
+  ipcMain.handle('world-state:read', async (_event, expectedProjectPath: string) => {
+    // 项目上下文校验必须发生在读任何数据之前：过期路径这里直接抛出，不返回旧项目的数据。
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    const db = getProjectDb()
+    // 库尚未打开：返回空视图而不是抛错，渲染层可以用 notes 提示「项目未就绪」。
+    if (!db) return emptyWorldStateView(null, [WORLD_STATE_NOTES.projectNotOpen])
+    return readWorldState(db, getCurrentProjectPath())
   })
 
   // ============================================================

@@ -497,7 +497,7 @@
 
 **★ 生效范围提示**：`~/.vela` 是**跨项目**全局根，所以这次是**所有项目**的世界观都改成五维；dev 根仍是另一处目录 ⇒ 要看到效果需要正式版迁移后，或把同一份文件放到 dev 根的 `prompts/`。
 
-### 11.7 已立项待实施：架构链「五维齐备性检查」（2026-10-22 登记，作者：要做、今天不做）
+### 11.7 架构链「五维齐备性检查」（2026-10-22 登记 · ✅ 已实施 2026-10-22）
 
 **问题**：缺第 5 维（历法 / t0）目前是**静默**的 —— 审稿第 8 条是条件句（缺维只查章内自相矛盾、不得判 error），架构链三处检索「维度」零命中 ⇒ 产出落进 `project_core.worldbuilding` 那一刻没人再查一遍。模板里「只输出前三个维度视为不合格」这行字只有模型看得见。
 
@@ -512,6 +512,16 @@
 | 验收 | ① 生成一份只有三维的世界观 ⇒ 落库后作者能看到"缺第 4/5 维"；② 五维齐全时不显示任何东西；③ 存量项目（第 5 维是后来手工追加的）不会被误报 |
 
 **排期**：W5 之后、W4b 之前（它与 W2 的日序共用第 5 维，先让它可见再做六槽）。
+
+**落地（2026-10-22，已完成）**：
+
+| 项 | 内容 |
+|---|---|
+| 纯函数 | `src/shared/worldbuilding-completeness.ts`（零依赖）：`inspectWorldBuildingCompleteness(text)` → `{ present, missing, missingStoryStart, unreadable }`；`describeWorldBuildingCompleteness(result, language)` → `string | undefined` |
+| 识别口径 | 标题行 `/^#{1,6}[ \t]+(.*)$/` + 可剥前导编号（`1.` / `1、` / `1）`）+ 中英别名子串命中；第 5 维另查「起点：/故事起点：/start/starting point/story start date/origin」 |
+| 接线 | `src/services/workflows/commands/architecture.command.ts` 的 GenerateWorldBuildingCommand：写库成功、原 `callbacks.log` 之后追加一条 `callbacks.log(hint)`；不 throw / 不改 result |
+| 静默降级 | 空文本或非空但零命中 ⇒ `unreadable=true`，只提示「未能识别五维标题结构」一条，不逐维报缺（判据 CS：宁可说读不懂，也不猜） |
+| 测试 | `src/shared/__tests__/worldbuilding-completeness.test.ts`（19 例：缺维 / 齐备 / 缺起点行 / 标题变体 / 编号变体 / 空文本 / 英文） |
 
 ---
 
@@ -944,6 +954,19 @@ M07（`plot_structure_plan`）/ M08（`structured_refs`）/ M09（`rhythm_profil
 
 **因此排期不再是"以后"**：W4a 的价值只在「被看见」，而看见的地方就是这里。
 
+### 17.3 落地（2026-10-22，已完成）
+
+| 项 | 内容 |
+|---|---|
+| 读取层 | `electron/services/world-state-read.ts`：`readWorldState(db, projectPath)` —— 归位表（三来源 mentions + 锚点 + 别名 + 退休过滤）、章节轴（`SummaryRepository.listFinalizedContinuityBefore`，`story_day_offset` NULL 原样透传）、角色六槽 + `cs_provenance`、连续性事实；全程只读，无一条 UPDATE/INSERT |
+| 通道 | `src/shared/ipc-channels.ts` 加 `'world-state:read'`（args: `[expectedProjectPath]`）；`electron/controllers/db-controller.ts` 用 `assertRequiredExpectedProjectPath` 校验后读取；库未打开返回空视图 + note |
+| 视图 | `src/components/panels/sidebar/WorldStateView.tsx` + `world-state-view-model.ts`（纯函数）；四区：归位表四档 / 章节轴 / 角色六槽 + 来源 / 连续性事实；`unreadableMentions` 三源分别显式提示 |
+| 导航 | `SidebarView` 加 `'world-state'`；`LeftToolWindowBar` 加「世界状态」（Compass 图标，世界之后、剧情之前）。**与计划文件的偏差**：计划写 id `'worldstate'` + Gauge，实现用 `'world-state'` + Compass（内部命名与图标，不影响语义） |
+| 唯一动作 | orphan 行「补齐并建卡」：模型披露确认（照 `CharacterCardGenerateButton.tsx:102-107`）→ 启动两段式补齐工作流 → 在任务面板预览并确认 → 才走 `approve` 写名单。视图自身**没有** approve / 写仓库调用；ambiguous 只列命中卡数 |
+| 测试 | `world-state-read.test.ts`（8）· `db-controller-project-context.test.ts`（36，含本通道）· `world-state-view-model.test.ts`（19）· `WorldStateView.render.test.tsx`（3）· `WorldStateView.completion.browser.tsx`（4，真 Chromium：披露/启动/无模型/只读边界） |
+
+**已知未做（有意）**：视图不订阅 `REFRESH_RESOURCE`，approve 建卡后需手动刷新（header 已提示「快照可能已过期」）。
+
 ---
 
 ## 18. W4：归位表与六槽（2026-10-22 起 · 进行中）
@@ -1030,9 +1053,30 @@ M07（`plot_structure_plan`）/ M08（`structured_refs`）/ M09（`rhythm_profil
 
 W4b（六槽 + 设计意图栏）等 W4a 接线后拿真实数据再定，**不提前落 schema**。
 
+### 18.5.1 实施裁决（2026-10-22，与设计稿 A1 的差异）
+
+A1 写的是 `{ kind:'cast-ledger', names }` —— **只有名字就 stage**。实现改成 **先生成、后 stage**：
+
+```
+source = { kind:'cast-ledger', names, handle:{projectId,epoch,rootActionId,runId}, artifacts:[{artifactId,revision,textHash}] }
+```
+
+三条理由都是代码事实：
+
+1. `character-proposal-service.ts` 的 `readEnvelope` 每次重算 `sourceProof` 并深比较，`proposalBatchId` 又由 `JSON.stringify([projectId, source])` 决定 ⇒ **改 source 就是改批次 id**，旧批次永远 `pending`（判据 CX：不产生永远无法应用的项）。
+2. 提案项只能由 proof 派生（同一文件 :203-223 的 items 构造），只带名字的 proof 无法产出可批准字段。
+3. 先 stage 再补全 ⇒ 库里存在过「只带名字的可批准批次」⇒ 一旦有人在这窗口点通过，就是 §4.4 那种空壳卡。**先生成后 stage 让它结构上不可能存在。**
+
+因此「三段流水线」在实现里的形状是：**② 补全（生成 + proof）→ ① 骨架（stage 时 items 由 proof 派生）→ ③ approve**。写路径仍然只有 `approve → commitCharacterIdentities`，没有新增。
+
+另外两条落地细节：
+
+- 归位表命令 `src/services/workflows/commands/cast-ledger-completion.command.ts` 在 stage 前**重查一次 `db:character-get-all`**：名字在这期间已被建卡就整批报「名单已变化，请刷新世界状态后重试」，不做静默剔除（避免部分覆盖）。
+- detail 产物里的 `currentState` **故意不投影**进新卡（`CharacterStaticFields` 无此字段，`decodeCharacterDetails` 也把它压成 `updatedAtChapter=0`）⇒ 新卡状态是「未观测」，不是伪造的第 0 章状态（判据 CS）。
+
 ### 18.6 因此的排期变化
 
-原计划 W4 → W5 并列，现在变成 **W4a 纯函数（已完成）→ W5 视图（出口）→ W4b（schema）**。
+原计划 W4 → W5 并列，现在变成 **W4a 纯函数（✅）→ W5 视图（✅，含归位表接线）→ W4b（schema，未动）**。
 理由不是顺序偏好：归位表不落地任何界面，它的价值只在「被看见」，而看见的地方就是 W5。
 
 ---

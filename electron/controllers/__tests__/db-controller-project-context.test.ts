@@ -67,6 +67,7 @@ const mocks = vi.hoisted(() => ({
   recoveryListPending: vi.fn((): unknown[] => []),
   recoveryUpdatePending: vi.fn(),
   recoveryResolve: vi.fn(),
+  worldStateRead: vi.fn(),
 }))
 
 vi.mock('electron', () => ({
@@ -95,6 +96,7 @@ vi.mock('../../services/project-access', () => ({
 vi.mock('../../services/project-data-locator', () => ({ getProjectDataRoot: mocks.getProjectDataRoot }))
 vi.mock('../../services/portable-current-authority', () => ({ readPortableCurrentAuthority: mocks.readPortableCurrentAuthority }))
 vi.mock('../../services/current-character-projection', () => ({ currentDerivedCharacterFields: mocks.currentDerivedCharacterFields }))
+vi.mock('../../services/world-state-read', () => ({ readWorldState: mocks.worldStateRead }))
 
 vi.mock('../../repositories/project-core-repository', () => ({
   ProjectCoreRepository: {
@@ -857,6 +859,32 @@ describe('database controller project context guard', () => {
     expect(mocks.blueprintUpsert).not.toHaveBeenCalled()
     expect(mocks.blueprintDelete).not.toHaveBeenCalled()
     expect(mocks.blueprintClearAll).not.toHaveBeenCalled()
+  })
+
+  it('rejects a stale world-state read before touching the reader', async () => {
+    mocks.currentProjectPath = 'C:/projects/B'
+
+    await expect(handler('world-state:read')({}, 'C:/projects/A'))
+      .rejects.toThrow(/项目上下文已切换/)
+
+    expect(mocks.worldStateRead).not.toHaveBeenCalled()
+  })
+
+  it('returns an empty world state view instead of throwing when the project database is not open', async () => {
+    mocks.getProjectDb.mockReturnValue(null)
+
+    const view = await handler('world-state:read')({}, 'C:/projects/A') as {
+      projectPath: unknown
+      chapters: unknown[]
+      notes: unknown[]
+      castLedger: { entries: unknown[] }
+    }
+
+    expect(view.projectPath).toBeNull()
+    expect(view.chapters).toEqual([])
+    expect(view.notes).toEqual(['project-not-open'])
+    expect(view.castLedger.entries).toEqual([])
+    expect(mocks.worldStateRead).not.toHaveBeenCalled()
   })
 
   it('allows same-project character and blueprint access with an explicit context', async () => {
