@@ -1075,6 +1075,40 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 - At most 6 findings; if there is none, output {"findings": []}`,
   },
   /**
+   * W6a-4 资源登记提案。同样不进 `CORE_LOCALIZED_BUILTIN_PROMPT_KEYS`（那张表被 #155 契约锁定），
+   * 但必须自带英文：判据 DN / CS 的约束（没依据就留空、未知不得填 0）两侧缺一不可 ——
+   * 英文版若少了「不许推断单位 / 不许推断换算锚」两条，模型就会在英文项目里凭空造汇率。
+   */
+  world_building_resource_extract: {
+    systemRole: 'You are a meticulous setting registrar. You copy out only the resources this book actually states, quote the exact sentence that supports each one, never do arithmetic, never infer anything the text does not say, and never rewrite the setting.',
+    content: `[Resource registration proposals] Do one thing only: find the resources this book explicitly states in the worldbuilding text and return strict JSON.
+
+[Worldbuilding text]
+{{world_building}}
+
+[What counts as a resource]
+Things in this book that are contested, allocated, consumed, or priced: currency / spirit stones / crystals, stipends or wages paid on a cycle, goods that must be bought (pills, materials, provisions, equipment), things with quotas or shares (slots, tickets, contribution points, merit).
+Not resources: age, cultivation rank, realm names, headcounts, days, distances, hours, chapter numbers.
+
+[Fill only what the text states; leave everything else blank (violating any rule voids this pass)]
+- Never invent: every field must have a basis in [Worldbuilding text]. If the text does not say it, leave it empty (null or an empty string). "Books like this usually have one" is not a basis — a blank field the author fills in is worth more than a fabricated one.
+- quote must be a contiguous fragment copied verbatim from [Worldbuilding text]: do not paraphrase, splice, summarize, or add punctuation. If you cannot copy an exact sentence, do not report that item.
+- No arithmetic of any kind: no balances, ratios, unit conversion, or totals.
+- Never infer a unit: write unit only if the text actually used one (as in "three hundred spirit stones"). Copy the wording as written. Leave it blank otherwise — a wrong unit makes every later ledger entry fail to reconcile.
+- The exchange anchor needs its own quote: write anchorValue, anchorNote and anchorQuote only if the text states an explicit exchange relation (as in "one high-grade stone converts to one hundred low-grade stones"); anchorQuote copies that sentence verbatim. If you cannot copy that sentence, write null for both anchorValue and anchorNote — blank means "not convertible" (safe), while a guessed number fabricates an exchange rate, and a fabricated rate is the one error this system cannot detect: a wrong unit surfaces as a unit conflict, a wrong cycle is caught by the review pass, but a wrong exchange rate keeps adding up quietly.
+- Same family, several tiers: write familyId and tier only when the text names multiple tiers of one family ("high / mid / low grade spirit stones"). familyId is the family name (e.g. "spirit stone"); tier is an integer ordering, higher means higher grade. Single resources get a blank familyId and tier 0.
+- Fill period only when the text states a settlement cycle (per day / per month / per item / per year), copied as written.
+- earnNote / costNote / scarcityNote are descriptive extracts: one sentence if the text mentions it, blank otherwise. Never design these for the author.
+
+[Output format — strict JSON; no Markdown, no code fence, no explanation]
+{"candidates":[{"name":"low-grade spirit stone","familyId":"spirit stone","tier":1,"unit":"piece","period":"month","anchorValue":null,"anchorNote":null,"anchorQuote":null,"earnNote":"monthly sect stipend","costNote":"buys pills and materials","scarcityNote":"main expense of low-rank cultivators","quote":"the sect issues thirty low-grade spirit stones each month"}]}
+
+- Every field must appear; write null or an empty string when there is no content (never omit a key).
+- When anchorQuote is not null, anchorValue must be a number; the two always come as a pair.
+- At most 12 candidates; one entry per resource.
+- If the text states no resource at all, output {"candidates":[]}. Do not pad the list by reporting cultivation ranks or realms as resources.`,
+  },
+  /**
    * W6b 资源变动抽取。同样不进 `CORE_LOCALIZED_BUILTIN_PROMPT_KEYS`（那张表被 #155 契约锁定），
    * 但必须自带英文：判据 DK 的约束（只读数、不做算术）两侧缺一不可。
    */

@@ -25,6 +25,12 @@ import {
   type WorldBuildingSelfReview,
 } from '../../../shared/worldbuilding-self-review'
 import {
+  describeResourceCandidates,
+  filterResourceCandidates,
+  parseResourceCandidates,
+  type ResourceCandidateSet,
+} from '../../../shared/worldbuilding-resource-extract'
+import {
   auditSpaceLocations,
   describeSpaceReviewChecklist,
 } from '../../../shared/space-machine-line'
@@ -133,6 +139,13 @@ interface PartialArchData {
    * 只在生成成功那一路写入；编辑面读它渲染提示条，读方见 `parseWorldBuildingSelfReview`。
    */
   world_building_self_review?: string
+  /**
+   * W6a-4：资源登记提案（`ResourceCandidateSet` 的 JSON 字符串）。
+   *
+   * **只是提案，不是权威值** —— 作者确认后才进 `resources` 表（设计稿 §3.4 / §4.6）。
+   * 编辑面读它渲染候选区，读方见 `parseResourceCandidates`。
+   */
+  world_building_resource_candidates?: string
   /** 情节大纲：已确认覆盖至 synopsis_covered_to 的纯正文（不含批次进度行）。 */
   synopsis_result?: string
   /** 上一次生成在本批范围内被输出长度中断；synopsis_result 为已完成部分。 */
@@ -1986,6 +1999,13 @@ export class AdoptGeneratedCharactersCommand extends BaseWorkflowCommand<string>
  */
 const WORLD_BUILDING_SELF_REVIEW_PURPOSE = 'world-building-self-review'
 
+/**
+ * W6a-4：资源登记提案的 purpose。与自审同一档（结构化产物，不是正文的 visible-text）。
+ *
+ * 同样在主进程冻结输出形态，改字符串等于改输出合同。
+ */
+const WORLD_BUILDING_RESOURCE_EXTRACT_PURPOSE = 'world-building-resource-extract'
+
 export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
   constructor(
     private snapshot: ArchitectureProjectSnapshot,
@@ -2007,7 +2027,10 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
       // W6a-2：正统世界观之后追加的一次 JSON 自审。输出形态与主产物不同，
       // 必须像 generate-global-config 那样在主进程冻结一份显式例外（否则命中
       // GENERATION_OUTPUT_CONTRACT_CHANGED）。它不是第二个产物，只是同一次生成里的只读检查。
-      outputOverrides: [{ purpose: WORLD_BUILDING_SELF_REVIEW_PURPOSE, output: 'structured-data' }],
+      outputOverrides: [
+        { purpose: WORLD_BUILDING_SELF_REVIEW_PURPOSE, output: 'structured-data' },
+        { purpose: WORLD_BUILDING_RESOURCE_EXTRACT_PURPOSE, output: 'structured-data' },
+      ],
       ...(this.options.resumeWorldBuilding ? { resumeHandle: this.options.resumeHandle } : {}),
       onRunOpened: async handle => {
         const session = requireWorkflowProjectSession(params.context)
@@ -2310,6 +2333,17 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
       partial,
       result,
     })
+    // ★ W6a-4：资源登记提案。与自审同一姿态（只提示、不 throw、不改 result），
+    // 但它补的是**空转根因**——没有它 `resources` 永远是空表，W6b 抽取没有名单可喂。
+    await this.attachWorldBuildingResourceCandidates({
+      projectSession,
+      expectedProjectPath,
+      context,
+      callbacks,
+      writingLanguage,
+      partial,
+      result,
+    })
     return result
   }
 
@@ -2417,6 +2451,82 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
       callbacks.log(text(
         '世界观自审结果未能保存，编辑面下次打开时不会显示本次提示。',
         'The worldbuilding self-review could not be saved; the editor will not show this notice next time.',
+      ))
+    }
+  }
+
+  /**
+   * W6a-4：世界观写库后的资源登记提案 —— 只读地再问一次模型「这本书有哪些资源」。
+   *
+   * **为什么必须有这一环**：`resources` 表空着 ⇒ W6b 抽取提示词里的 `resources_json`
+   * 是空清单（`finalize-chapter.command.ts:402`）⇒ 一条变动都抽不出来 ⇒ W6c 空转。
+   * 这是模型**提议**的入口，不是写入口：候选要作者确认才进 `resources`（设计稿 §3.4）。
+   *
+   * 硬约束（与 `attachWorldBuildingSelfReview` 完全一致）：
+   * - **永不抛错**：调用失败 / 坏 JSON / 被取消，一律只记一行 log。走到这一步正文已经写库成功了，
+   *   让提案失败回滚它是最坏的取舍。
+   * - **不改 result**：产物只进 `partial.world_building_resource_candidates`，正文一个字都不动。
+   * - **引文必须能在原文里逐字命中**：命不中的条目在落盘前就丢掉（`filterResourceCandidates`）。
+   * - **不猜字段**：解析器已保证「没依据的字段是 null」，这里不填任何默认值（判据 DN / CS）。
+   */
+  private async attachWorldBuildingResourceCandidates(options: {
+    projectSession: ProjectSessionContext
+    expectedProjectPath: string
+    context: WorkflowContext
+    callbacks: StepCallbacks
+    writingLanguage: WritingLanguage
+    partial: PartialArchData
+    result: string
+  }): Promise<void> {
+    const { projectSession, expectedProjectPath, context, callbacks, writingLanguage, partial, result } = options
+    const text = (zhCNText: string, enUSText: string) => workflowUiText(context, zhCNText, enUSText)
+    let set: ResourceCandidateSet = { candidates: [], unreadable: true, dropped: 0 }
+    try {
+      if (!context.cancelled) {
+        const template = await resolvePromptTemplate('world_building_resource_extract', projectSession, writingLanguage)
+        if (template) {
+          const outcome = await this.callLLMResult(
+            renderPrompt(template, { world_building: result }, writingLanguage),
+            composePromptSystemRole(template, writingLanguage),
+            callbacks,
+            {
+              responseFormat: { type: 'json_object' },
+              purpose: WORLD_BUILDING_RESOURCE_EXTRACT_PURPOSE,
+              reasoningStage: 'planning',
+              omitWritingSkill: true,
+            },
+            context,
+          )
+          if (outcome.finishReason === 'stop') {
+            set = filterResourceCandidates(parseResourceCandidates(outcome.content), result)
+          }
+        }
+      }
+    } catch {
+      // 吞掉：提案不是产物，它失败不能把本次生成判成失败。
+      set = { candidates: [], unreadable: true, dropped: 0 }
+    }
+
+    const candidateHint = describeResourceCandidates(set, writingLanguage)
+    if (candidateHint) callbacks.log(candidateHint)
+
+    // 与自审同理：取消不是提案的结论，不落盘。
+    if (context.cancelled) return
+
+    partial.world_building_resource_candidates = JSON.stringify(set)
+    try {
+      await savePartialData(
+        expectedProjectPath,
+        partial,
+        projectSession,
+        text('保存资源登记提案', 'Save the resource registration proposals'),
+        text('保存资源登记提案失败', 'Failed to save the resource registration proposals.'),
+      )
+      context.data.partial = partial
+    } catch {
+      callbacks.log(text(
+        '资源登记提案未能保存，编辑面下次打开时不会显示本次候选。',
+        'The resource registration proposals could not be saved; the editor will not show them next time.',
       ))
     }
   }

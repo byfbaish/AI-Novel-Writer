@@ -46,6 +46,12 @@ export interface PartialArchData {
    * 读方见 `parseWorldBuildingSelfReview`（`src/shared/worldbuilding-self-review.ts`）。
    */
   world_building_self_review?: string
+  /**
+   * W6a-4：资源登记提案（`ResourceCandidateSet` 的 JSON 字符串）。
+   * **只是提案，不是权威值** —— 作者确认后才进 `resources` 表（设计稿 §3.4 / §4.6）。
+   * 读方见 `parseResourceCandidates`（`src/shared/worldbuilding-resource-extract.ts`）。
+   */
+  world_building_resource_candidates?: string
   synopsis_result?: string
   /** 情节大纲在上一次生成中被输出长度中断；synopsis_result 为已完成部分。 */
   synopsis_incomplete?: boolean
