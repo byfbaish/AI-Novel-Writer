@@ -167,16 +167,33 @@ function fencedJsonWithProse(json: string): string {
  */
 const SELF_REVIEW_MARKERS = ['世界观自审', 'Worldbuilding self-review']
 
+/** W6a-4：世界观写库后追加的资源登记提案（结构化 JSON），同样是只读检查。 */
+const RESOURCE_EXTRACT_MARKERS = ['资源登记提案', 'Resource registration proposals']
+
 function isWorldBuildingSelfReviewCall(
   messages: ReadonlyArray<{ content: string }>,
 ): boolean {
   return messages.some(message => SELF_REVIEW_MARKERS.some(marker => message.content.includes(marker)))
 }
 
+function isResourceExtractCall(
+  messages: ReadonlyArray<{ content: string }>,
+): boolean {
+  return messages.some(message => RESOURCE_EXTRACT_MARKERS.some(marker => message.content.includes(marker)))
+}
+
+/**
+ * 写库之后追加的**只读辅助调用**（自审 + 资源提案）。
+ * 它们既不算正文的续写轮次，也不消耗本文件里按顺序排好的正文响应。
+ */
+function isAuxiliaryCall(messages: ReadonlyArray<{ content: string }>): boolean {
+  return isWorldBuildingSelfReviewCall(messages) || isResourceExtractCall(messages)
+}
+
 /** 只保留「正文/配置」类模型调用（第一次实参是 messages），供次数与提示词断言使用。 */
 function isProductCall(call: readonly unknown[]): boolean {
   const messages = call[0]
-  return Array.isArray(messages) && !isWorldBuildingSelfReviewCall(messages as Array<{ content: string }>)
+  return Array.isArray(messages) && !isAuxiliaryCall(messages as Array<{ content: string }>)
 }
 
 function createResponseStream(
@@ -584,6 +601,11 @@ describe('GenerateCharactersCommand structured roster seam', () => {
           streamCallbacks.onDone?.('{"findings": []}', undefined, 'stop')
           return 'architecture-self-review-request'
         }
+        // W6a-4：资源登记提案同理，同样不参与正文轮次编号。
+        if (isResourceExtractCall(messages)) {
+          streamCallbacks.onDone?.('{"candidates": []}', undefined, 'stop')
+          return 'architecture-resource-extract-request'
+        }
         englishCallCount += 1
         streamCallbacks.onDone?.(
           englishCallCount === 3 ? `${outlineOutput}\n\n${enProgressMark}` : modelOutput,
@@ -698,7 +720,8 @@ describe('GenerateCharactersCommand structured roster seam', () => {
       resumeHandle: { projectId: 'main', epoch: 'lease-main', rootActionId: 'fixture-root', runId: 'fixture-run' },
     }).execute({ step: {}, context: makeContext(), callbacks })).resolves.toContain(final)
 
-    expect(generateStream).toHaveBeenCalledTimes(4)
+    // W6a-4：写库后追加了资源登记提案，所以总次数比自审时期多一次（正文轮次仍是 3）。
+    expect(generateStream).toHaveBeenCalledTimes(5)
     const productStreamCalls = generateStream.mock.calls.filter(isProductCall)
     expect(productStreamCalls).toHaveLength(3)
     const originalPrompt = productStreamCalls[0]![0].find(message => message.role === 'user')!.content
@@ -761,7 +784,8 @@ describe('GenerateCharactersCommand structured roster seam', () => {
       .filter(([channel]) => channel === 'db:project-core-update')
       .map(([, update]) => update)
     expect(persistedUpdates).toEqual([{ worldbuilding: `# 世界观\n\n${worldText}` }])
-    expect(calls).toBe(2)
+    // 正文 + 自审 + 资源提案 = 3 次（提案这一路失败不影响前两次的结果）。
+    expect(calls).toBe(3)
     // 自审失败 = 「未完成」，不是「0 个问题」；结果仍落检查点，刷新后提示条能如实说明。
     expect(partialFile.world_building_self_review).toBe('{"findings":[],"unreadable":true}')
     const visibleLogs = vi.mocked(callbacks.log).mock.calls.map(([message]) => message).join('\n')
@@ -821,6 +845,150 @@ describe('GenerateCharactersCommand structured roster seam', () => {
     expect(stored.findings.map(finding => finding.quote)).toEqual(['灵石只有宗门才发得起'])
     const visibleLogs = vi.mocked(callbacks.log).mock.calls.map(([message]) => message).join('\n')
     expect(visibleLogs).toContain('世界观自审：有 1 处设定需要确认')
+  })
+
+  /**
+   * W6a-4：资源登记提案。**补的是空转根因** —— 没有它 `resources` 永远是空表，
+   * W6b 抽取没有名单可喂。这里钉三件事：只留证据命中的候选、坏 JSON 不连累正文、
+   * 取消时不落盘。
+   */
+  it('persists only resource candidates whose evidence hits the generated worldbuilding verbatim', async () => {
+    const novelConfig = { writingLanguage: 'zh-CN' as const, genre: '玄幻' }
+    useProjectStore.setState({ currentProject: { ...project(projectAPath), novelConfig } as never })
+    const worldText = '灵石只有宗门才发得起，凡人每日劳作换十枚下品灵石。'
+    const candidatesJson = JSON.stringify({
+      candidates: [
+        {
+          name: '下品灵石',
+          familyId: '灵石',
+          tier: 1,
+          unit: '枚',
+          period: '日',
+          // 模型编的换算锚：原文没有兑换关系。解析器应当把它归一成 null（不猜汇率）。
+          anchorValue: 100,
+          anchorNote: '一枚上品换一百枚下品',
+          earnNote: '凡人每日劳作换取',
+          costNote: '',
+          scarcityNote: '',
+          quote: '凡人每日劳作换十枚下品灵石',
+        },
+        // 模型编的引文：原文里没有 ⇒ 落盘前必须被丢掉。
+        {
+          name: '幽冥玄铁',
+          familyId: null,
+          tier: 0,
+          unit: '块',
+          period: null,
+          anchorValue: null,
+          anchorNote: '',
+          earnNote: '',
+          costNote: '',
+          scarcityNote: '',
+          quote: '这条引文原文里并不存在',
+        },
+      ],
+    })
+    useLLMStore.setState({
+      defaultModelId: 'model-1',
+      generateStream: vi.fn(async (messages, streamCallbacks) => {
+        if (isWorldBuildingSelfReviewCall(messages)) {
+          streamCallbacks.onDone?.('{"findings": []}', undefined, 'stop')
+          return 'architecture-self-review-request'
+        }
+        const content = isResourceExtractCall(messages) ? candidatesJson : worldText
+        streamCallbacks.onDone?.(content, undefined, 'stop')
+        return 'worldbuilding-request'
+      }),
+    })
+    let partialFile: Record<string, unknown> = {}
+    const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
+      if (channel === 'fs:check-exists') return false
+      if (channel === 'db:project-core-get') {
+        return { premise: '测绘师追查记忆税令，保护沿岸聚落免于倒悬古城的灾难。'.repeat(2) }
+      }
+      if (channel === 'fs:read-json') return { success: true, data: structuredClone(partialFile) }
+      if (channel === 'fs:write-json') {
+        partialFile = structuredClone(args[1] as Record<string, unknown>)
+        return { success: true }
+      }
+      if (channel === 'db:project-core-update') return { success: true }
+      throw new Error(`Unexpected IPC channel: ${channel}`)
+    })
+    vi.stubGlobal('window', {
+      aiNovelAPI: { invoke, on: vi.fn(), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn() },
+    })
+    const snapshot = { expectedProjectPath: projectAPath, novelConfig } as never
+
+    await expect(new GenerateWorldBuildingCommand(snapshot, workflowRuntimeDependencies).execute({
+      step: {},
+      context: { ...context, data: {} },
+      callbacks,
+    })).resolves.toBe(worldText)
+
+    const stored = JSON.parse(String(partialFile.world_building_resource_candidates)) as {
+      candidates: Array<{ name: string; unit: string | null; anchorValue: number | null; anchorNote: string | null }>
+      unreadable: boolean
+      dropped: number
+    }
+    expect(stored.unreadable).toBe(false)
+    expect(stored.dropped).toBe(1)
+    expect(stored.candidates).toHaveLength(1)
+    // 判据 DN / CS：原文没写兑换关系 ⇒ null，**不是 0**。0 会被读成「免费兑换」。
+    expect(stored.candidates[0]!.anchorValue).toBeNull()
+    expect(stored.candidates[0]!.anchorNote).toBeNull()
+    expect(stored.candidates[0]!.unit).toBe('枚')
+    const visibleLogs = vi.mocked(callbacks.log).mock.calls.map(([message]) => message).join('\n')
+    expect(visibleLogs).toContain('资源登记提案：1 条候选')
+    // 提案只是候选，绝不自己进 `resources` 表 —— 那张表只能由作者写。
+    expect((invoke.mock.calls as unknown as Array<[string, unknown]>)
+      .some(([channel]) => channel === 'db:resources-upsert')).toBe(false)
+  })
+
+  it('skips the resource proposal pass entirely when the run is cancelled after the worldbuilding write', async () => {
+    const novelConfig = { writingLanguage: 'zh-CN' as const, genre: '玄幻' }
+    useProjectStore.setState({ currentProject: { ...project(projectAPath), novelConfig } as never })
+    const worldText = '灵石只有宗门才发得起，凡人每日劳作换十枚下品灵石。'
+    const runContext: WorkflowContext = { ...context, data: {}, cancelled: false }
+    const generateStream = vi.fn(async (_messages, streamCallbacks) => {
+      streamCallbacks.onDone?.(worldText, undefined, 'stop')
+      return 'worldbuilding-request'
+    })
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream })
+    let partialFile: Record<string, unknown> = {}
+    const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
+      if (channel === 'fs:check-exists') return false
+      if (channel === 'db:project-core-get') {
+        return { premise: '测绘师追查记忆税令，保护沿岸聚落免于倒悬古城的灾难。'.repeat(2) }
+      }
+      if (channel === 'fs:read-json') return { success: true, data: structuredClone(partialFile) }
+      if (channel === 'fs:write-json') {
+        partialFile = structuredClone(args[1] as Record<string, unknown>)
+        return { success: true }
+      }
+      // 写库完成＝取消发生的时刻：自审与提案都在它之后。
+      if (channel === 'db:project-core-update') { runContext.cancelled = true; return { success: true } }
+      throw new Error(`Unexpected IPC channel: ${channel}`)
+    })
+    vi.stubGlobal('window', {
+      aiNovelAPI: { invoke, on: vi.fn(), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn() },
+    })
+    const snapshot = { expectedProjectPath: projectAPath, novelConfig } as never
+
+    // 写库之后被取消 ⇒ 工作流运行器按既有行为抛「已取消」。**正文已经写库成功**，
+    // 这里断言的是取消之后的辅助通道：它们一个都不许跑。
+    await expect(new GenerateWorldBuildingCommand(snapshot, workflowRuntimeDependencies).execute({
+      step: {},
+      context: runContext,
+      callbacks,
+    })).rejects.toThrow(/取消/)
+
+    // 取消不是提案的结论：既不发那次模型调用，也不在检查点留下「本次未完成」。
+    const auxCalls = generateStream.mock.calls.filter(([messages]) =>
+      isAuxiliaryCall(messages as Array<{ content: string }>))
+    expect(auxCalls).toHaveLength(0)
+    expect(partialFile.world_building_resource_candidates).toBeUndefined()
   })
 
   it('uses the frozen English UI locale for premise logs and an empty-result error', async () => {
