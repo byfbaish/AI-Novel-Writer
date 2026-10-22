@@ -139,7 +139,7 @@ docs/
 | [`p8-fanqie-flavor-draft-quality-design.md`](design/prompt/p8-fanqie-flavor-draft-quality-design.md) | ✅ P1 生效 · ⏳ P2/P3 待复验 | 番茄向正文质量闸门：续写判定接回合格线 / 可判定 AI 味禁令 / 番茄 KPI 落点（§10 复验 #1） |
 | [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（37 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（38 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -156,7 +156,8 @@ docs/
 | [`layered-generation-assessment.md`](design/architecture/layered-generation-assessment.md) | 评估 | 分层/增量生成；仅篇幅约束可采纳 |
 | [`architecture-consistency-design.md`](design/architecture/architecture-consistency-design.md) | 评估（已进台账） | 五层一致性校验 → AC1/AC2/AC3 三段走 |
 | [`ac5-numeric-resource-consistency-design.md`](design/architecture/ac5-numeric-resource-consistency-design.md) | ⛔ 部分否决 | AC5 数值一致性：**机读数值行已否决**，保留判据 CJ–CM 与覆盖版阻断项 |
-| [`world-state-review-and-wiring-plan.md`](design/architecture/world-state-review-and-wiring-plan.md) | 📝 待裁定（W 线） | 世界状态：**状态已在库里、两条消费链都不读**（正文 `.withCharacterStates('')`、审稿只放行 `kind=author`）；W0 接线可证伪 |
+| [`world-state-review-and-wiring-plan.md`](design/architecture/world-state-review-and-wiring-plan.md) | ⚙️ 已实施至 W5 | 世界状态：**状态已在库里、两条消费链都不读**（正文 `.withCharacterStates('')`、审稿只放行 `kind=author`）；W0 接线可证伪。**W0–W3 已完结 · W4a 流水线 + W5 只读视图已落地**；剩 W4b 六槽（后置）· §19 一人多身份（未开工） |
+| [`world-state-w4a-wiring-plan.md`](design/architecture/world-state-w4a-wiring-plan.md) | ✅ 已实施 | 上一稿的**施工子稿**：§11.7 五维齐备性检查 + W4a 三段流水线 + W5 视图一轮做完；含「先生成后 stage」裁决、偏差全表与验证命令 |
 | [`blueprint-key-events-structuring-design.md`](design/architecture/blueprint-key-events-structuring-design.md) | 初稿 v2 · 待裁定 | 蓝图 `keyEvents` 结构化 |
 | [`phase2-keyevents-bprime-implementation-plan.md`](design/architecture/phase2-keyevents-bprime-implementation-plan.md) | 待过目 · 未动代码 | 阶段 2 + B′（含 R6）实施清单 |
 | [`p11-plan-validity-and-fact-registry-design.md`](design/architecture/p11-plan-validity-and-fact-registry-design.md) | 📝 待裁定 | 计划的有效期与事实登记：水位列 / `attacks` / 复核五步 / 章级「前提」 |

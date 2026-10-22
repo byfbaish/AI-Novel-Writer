@@ -1,7 +1,10 @@
 # W 线接续实施计划（作者已批准 2026-10-22）
 
-> 依据：docs/handoffs/2026-10-22-world-state-w4-handoff.md · docs/design/architecture/world-state-review-and-wiring-plan.md §17–§19
-> 分支：exp/world-state
+> **状态**：✅ 已实施（2026-10-22 四阶段全部完成；偏差与未做项见文末）
+> **日期**：2026-10-22 · 分支 `exp/world-state`
+> **上级稿**：[`world-state-review-and-wiring-plan.md`](./world-state-review-and-wiring-plan.md) §17–§19（本稿是它的**施工子稿**，判据与硬边界以主稿为准）
+> **依据**：[`2026-10-22-world-state-w4-handoff.md`](../../handoffs/2026-10-22-world-state-w4-handoff.md) §5 的 ①②③
+> **为什么单独一份**：本轮 = 三个待办一次做完（§11.7 + W4a 流水线 + W5 视图），主线稿已长；施工顺序、裁决理由与偏差全表放这里，主稿只留状态行与判据。
 
 ## 目标与验收
 1. **§11.7 五维齐备性检查**：世界观写库成功后，缺维/缺「起点：」行在步骤日志可见（不阻断、不改正文）；五维齐全不显示；存量手工补第 5 维不误报。
