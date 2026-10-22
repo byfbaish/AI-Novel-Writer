@@ -428,9 +428,14 @@
 }
 .v3-magazine-shell .writer-statusbar {
   position: relative;
-  min-height: 30px;
-  background: #17161c;
-  color: #fff;
+  min-height: 26px;
+  /*
+   * 这里原本硬编码 #17161c —— 浅色皮肤下突然一条近黑底，且文字沿用 --v3-indigo，
+   * 对比度极低（作者反馈「太暗了根本看不清」）。改为跟随主题面板色：
+   * 浅色走 --v3-panel-strong（#f6f7f9），深色/星系主题自动落回各自的深色值。
+   */
+  background: var(--v3-panel-strong);
+  color: var(--v3-muted);
   font-size: 12px;
 }
 .v3-magazine-shell .writer-statusbar::before {

@@ -19,6 +19,7 @@ import NarrativeThreadEditor from '../editor/NarrativeThreadEditor'
 import ThreeWayMerge from '../editor/ThreeWayMerge'  // 保留引用以防其他入口使用
 import { WriterWelcomePage } from '../pages/v2/use-project-overview'
 import KnowledgeOverview from '../pages/KnowledgeOverview'
+import WorldStatePage from '../pages/WorldStatePage'
 import { useProjectStore } from '../../stores/project-store'
 import { registerEditorExitSaveHandler, useEditorStore, type EditorTab } from '../../stores/editor-store'
 import { discardAndCloseEditorTab } from '../../stores/editor-discard'
@@ -456,6 +457,10 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
     )
   } else if (sidebarView === 'knowledge') {
     auxiliaryPage = <KnowledgeOverview />
+  } else if (sidebarView === 'world-state') {
+    // 世界状态用整块主区展示（与知识库 / 角色管理同构）：260px 左栏只放分类导航，
+    // 四区内容在主区按自适应网格铺开。正文工作区仍保持挂载，只是被 hidden。
+    auxiliaryPage = <WorldStatePage />
   }
 
   // 未打开项目时显示欢迎页

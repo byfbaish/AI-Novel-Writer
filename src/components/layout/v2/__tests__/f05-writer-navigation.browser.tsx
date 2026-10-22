@@ -83,9 +83,14 @@ afterEach(async () => {
   else Reflect.deleteProperty(window, 'aiNovelAPI')
 })
 
-it('U03.A01 Writer 侧栏设置按钮打开真实设置页', async () => {
+it('U03.A01 Writer 左栏不再重复设置入口（设置只留在标题栏）', async () => {
   await render()
-  await click(host.querySelector<HTMLButtonElement>('.writer-left-rail button[title="设置"]'))
+  // 2026-10-22 作者裁定：左栏的设置按钮与标题栏重复，已移除；
+  // 任务/日志/模型同样只保留下方工具窗一个入口。
+  expect(host.querySelector('.writer-left-rail button[title="设置"]')).toBeNull()
+  expect(host.querySelector('.writer-left-rail button[title="任务"]')).toBeNull()
+  // 设置本身仍可用，且能打开真实设置页（入口已统一到标题栏）。
+  await act(async () => useLayoutStore.getState().openSettings())
   expect(useLayoutStore.getState()).toMatchObject({ settingsOpen: true, settingsSection: 'llm' })
   expect(host.querySelector('h2')?.textContent).toBe('AI 生成模型')
 })

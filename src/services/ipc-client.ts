@@ -52,6 +52,10 @@ function isProjectScopedChannel(channel: string): boolean {
     || channel.startsWith('import-generation:')
     || channel.startsWith('editor-inline:')
     || channel.startsWith('db:')
+    // 世界状态只读视图虽然不带 db: 前缀，但主进程仍用同一套会话门禁
+    // （db-controller 的 registerProjectDatabaseHandler），漏掉这里就会
+    // 因为「缺少项目会话上下文」被整条拒掉。
+    || channel.startsWith('world-state:')
     || channel.startsWith('kb:')
     || channel.startsWith('chapter:')
     || channel.startsWith('fs:')

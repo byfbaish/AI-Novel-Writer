@@ -12,7 +12,7 @@ import KnowledgePanel from './KnowledgePanel'
 import HomeSidebarPanel from './sidebar/HomeSidebarPanel'
 import ProjectTree from './sidebar/ProjectTree'
 import CharactersView from './sidebar/CharactersView'
-import WorldStateView from './sidebar/WorldStateView'
+import WorldStateNav from './sidebar/WorldStateNav'
 import {
   registerMenuSetter, unregisterMenuSetter,
   type SidebarMenuState,
@@ -56,7 +56,7 @@ export default function Sidebar() {
         {sidebarView === 'project'    && <ProjectTree />}
         {sidebarView === 'knowledge'  && <KnowledgePanel />}
         {sidebarView === 'characters' && <CharactersView />}
-        {sidebarView === 'world-state' && <WorldStateView />}
+        {sidebarView === 'world-state' && <WorldStateNav />}
       </div>
 
       {/* 动态右键菜单 */}

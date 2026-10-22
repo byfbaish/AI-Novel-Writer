@@ -1,20 +1,21 @@
 import { useState, useEffect } from 'react'
-import { Wifi, BookOpen, CheckCircle2, FolderOpen, RefreshCw } from 'lucide-react'
-import { useProjectStore } from '../../stores/project-store'
+import { Wifi, CheckCircle2 } from 'lucide-react'
 import { useLLMStore } from '../../stores/llm-store'
 import { useLayoutStore } from '../../stores/layout-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
-import { APP_BRAND } from '../../shared/brand'
 import { useLocaleStore } from '../../stores/locale-store'
-import {
-  reloadGlobalCustomPrompts,
-  reloadProjectCustomPrompts,
-} from '../../services/prompt-templates'
-import { captureProjectSession, isProjectSessionCurrent } from '../project-session-gate'
 
-/** 底部状态栏 — JetBrains 风格：22px、深灰底、多分段、hover 可点击感 */
+/**
+ * 底部状态栏 — JetBrains 风格：只放「状态」，不放入口。
+ *
+ * 精简原则（2026-10-22 作者裁定）：
+ * - 品牌 + 版本号：标题栏与「关于」里都有，重复。
+ * - 当前项目名：标题栏已显示，重复。
+ * - 「重载提示词」：提示词是在设置里改的，改完在设置里刷新才成闭环；
+ *   在状态栏点一下等于「在两个画面之间跳转」，不符合操作逻辑 —— 已移除。
+ * 现在左侧留空，右侧仍是「AI 任务胶囊 + 当前模型」。
+ */
 export default function StatusBar() {
-  const currentProject = useProjectStore((s) => s.currentProject)
   const models = useLLMStore(s => s.models)
   const defaultModelId = useLLMStore(s => s.defaultModelId)
   const openSettings = useLayoutStore(s => s.openSettings)
@@ -22,68 +23,16 @@ export default function StatusBar() {
     (m) => m.id === defaultModelId && m.purposes?.some((p) => p !== 'embedding')
   )
   const text = useLocaleStore(s => s.text)
-  const [reloadingPrompts, setReloadingPrompts] = useState(false)
-
-  /**
-   * 状态栏快捷重载：外部改了提示词文件后，免重启加载最新内容。
-   * 与设置面板里的「重新加载提示词」是同一动作，这里给调优时的高频路径多一个入口。
-   */
-  const reloadPrompts = async () => {
-    if (reloadingPrompts) return
-    setReloadingPrompts(true)
-    try {
-      await reloadGlobalCustomPrompts()
-      const project = useProjectStore.getState().currentProject
-      const session = project?.id && project.path && project.sessionLease
-        ? captureProjectSession({ id: project.id, path: project.path, sessionLease: project.sessionLease })
-        : null
-      if (session && isProjectSessionCurrent(session)) {
-        await reloadProjectCustomPrompts(session)
-      }
-    } catch {
-      // 静默失败：状态栏只做快捷入口，错误细节由设置面板承载。
-    } finally {
-      setReloadingPrompts(false)
-    }
-  }
 
   return (
     <div
-      className="writer-statusbar no-select flex items-center justify-between"
+      className="writer-statusbar no-select flex items-center justify-end"
       style={{
         height: 'var(--height-statusbar)',
         fontSize: "0.75rem",
         flexShrink: 0,
       }}
     >
-      {/* 左侧 */}
-      <div className="flex items-center h-full">
-        <StatusBarSegment title={text(APP_BRAND.zhName, APP_BRAND.enName)}>
-          <BookOpen size={11} />
-          <span className="font-medium brand-gradient">{text(APP_BRAND.shortName, APP_BRAND.enName)}</span>
-          <span className="opacity-80 brand-gradient">v{__APP_VERSION__}</span>
-        </StatusBarSegment>
-
-        {currentProject && (
-          <>
-            <StatusBarDivider />
-            <StatusBarSegment title={currentProject.path}>
-              <FolderOpen size={11} style={{ opacity: 0.7 }} />
-              <span className="opacity-80 max-w-[180px] truncate">{currentProject.name}</span>
-            </StatusBarSegment>
-          </>
-        )}
-
-        <StatusBarDivider />
-        <StatusBarSegment
-          title={text('重新加载提示词（外部改动免重启生效）', 'Reload prompts (apply external edits without restarting)')}
-          onClick={() => void reloadPrompts()}
-        >
-          <RefreshCw size={11} className={reloadingPrompts ? 'animate-spin' : undefined} style={{ opacity: 0.8 }} />
-          <span className="opacity-80">{text('重载提示词', 'Reload prompts')}</span>
-        </StatusBarSegment>
-      </div>
-
       {/* 右侧：AI 胶囊 + 模型名 */}
       <div className="flex items-center h-full">
         {/* AI 任务胶囊指示器（右下角） */}
@@ -257,12 +206,5 @@ function StatusBarSegment({
     >
       {children}
     </div>
-  )
-}
-
-/** 状态栏分隔符 */
-function StatusBarDivider() {
-  return (
-    <span style={{ opacity: 0.25, fontSize: "0.75rem", userSelect: 'none' }}>|</span>
   )
 }

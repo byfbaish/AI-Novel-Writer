@@ -271,7 +271,7 @@ it('V3 magazine masthead, real App rail and shelf retain navigation callbacks', 
 
   expect(host.querySelector('.v3-masthead-band')).toBeTruthy()
   expect(host.querySelectorAll('.v3-masthead-band span')).toHaveLength(7)
-  expect(host.querySelectorAll('.v3-magazine-shell .writer-left-rail > div:first-child .left-nav-button:not([title="版本历史"])')).toHaveLength(7)
+  expect(host.querySelectorAll('.v3-magazine-shell .writer-left-rail > div:first-child .left-nav-button:not([title="版本历史"])')).toHaveLength(8)
   expect(host.querySelectorAll('.v3-magazine-shell .writer-left-rail > div:first-child .left-nav-button[title="版本历史"]')).toHaveLength(1)
   expect(host.querySelector('.writer-left-rail .left-nav-button.is-active')?.textContent).toContain('首页')
   expect(host.querySelector('.writer-shelf .v3-bookcase')).toBeTruthy()
@@ -281,9 +281,9 @@ it('V3 magazine masthead, real App rail and shelf retain navigation callbacks', 
   host.querySelector<HTMLButtonElement>('[aria-label="打开《雨夜来信》"]')!.click()
   expect(preview).toHaveBeenCalledOnce()
   expect(open).toHaveBeenCalledOnce()
-  await act(async () => host.querySelector<HTMLButtonElement>('.writer-left-rail button[title="设置"]')!.click())
-  expect(useLayoutStore.getState().settingsOpen).toBe(true)
-  await act(async () => useLayoutStore.getState().closeSettings())
+  // 2026-10-22：左栏的「任务 / 日志 / 模型 / 设置」四个重复入口已移除，
+  // 设置只留在标题栏。这里钉住左栏不再出现该入口。
+  expect(host.querySelector('.writer-left-rail button[title="设置"]')).toBeNull()
 })
 
 it('V3 active project section marks the editor canvas without replacing the editor', async () => {
