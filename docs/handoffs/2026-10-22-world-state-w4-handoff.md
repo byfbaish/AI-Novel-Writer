@@ -157,7 +157,7 @@ source 从「只有 `names`」扩成 `{ kind:'cast-ledger', names, handle, artif
 
 | 文件 | 作用 |
 |---|---|
-| `docs/plans/world-state-w4a-wiring-plan.md` | 本轮实施计划（作者已批准；四阶段 + 逐文件改动 + 验收） |
+| `docs/design/architecture/world-state-w4a-wiring-plan.md` | 本轮实施计划（作者已批准；四阶段 + 逐文件改动 + 验收）。**原落在 `docs/plans/`，违反放置规则 §3.2-1，已移至 `design/architecture/` 并在 `docs/README.md` §4.2 登记** |
 | `src/shared/worldbuilding-completeness.ts` | §11.7 五维识别 + 描述（零依赖纯函数） |
 | `src/shared/__tests__/worldbuilding-completeness.test.ts` | 19 例 |
 | `src/shared/world-state-view.ts` | W5 视图类型 + `emptyWorldStateView` |
