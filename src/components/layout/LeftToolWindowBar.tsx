@@ -11,6 +11,7 @@ import {
   Settings,
   ScrollText,
   Cpu,
+  Compass,
 } from 'lucide-react'
 import { useLayoutStore, type SidebarView, type BottomTab } from '../../stores/layout-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
@@ -145,6 +146,13 @@ export default function LeftToolWindowBar() {
             setSidebarView('project', 'world')
             openBuiltinEditor('world-building-editor', text('故事架构', 'Story architecture'), 'world-building')
           }}
+        />
+        <LeftNavButton
+          icon={Compass}
+          label={text('世界状态', 'World state')}
+          active={activeRailItem === 'world-state'}
+          title={text('世界状态', 'World state')}
+          onClick={() => setSidebarView('world-state')}
         />
         <LeftNavButton
           icon={GitBranch}

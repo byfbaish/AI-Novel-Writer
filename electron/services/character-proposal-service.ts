@@ -10,6 +10,7 @@ import { GenerationRunRepository, textHash } from '../repositories/generation-ru
 import { SummaryRepository } from '../repositories/summary-repository'
 import { normalizeFinalizedCharacterProposalSource } from './finalized-character-generation-proof'
 import { readLegacyRosterGenerationProof } from './legacy-roster-generation-proof'
+import { readCastLedgerGenerationProof } from './cast-ledger-generation-proof'
 import type { ArchitectureDerivationVersion } from '../../src/shared/character-proposal-parser'
 
 export interface CharacterProposalProof {
@@ -59,7 +60,8 @@ function historyLabel(group: CharacterProposalHistoryEntry['sourceGroup'], itemC
       : group === 'directory' ? '来自章节蓝图'
         : group === 'import' ? '来自导入'
           : group === 'finalized-generation' ? '来自定稿正文'
-            : '来自旧角色名单'
+            : group === 'legacy-roster-generation' ? '来自旧角色名单'
+              : '来自归位表补全'
   return `${base} · ${itemCount} 个角色`
 }
 /** 可以「原文保留 + 追加候选」的叙述性字段。标识类字段不在此列。 */
@@ -427,8 +429,41 @@ export class CharacterProposalService {
     const envelope = this.readEnvelope(proposalBatchId)
     return { proposalBatchId, sourceHash: envelope.proof.sourceHash }
   }
+  /**
+   * 同一份「名字集合」的 cast-ledger 批次只允许存在一个 pending。
+   *
+   * 归位表补全是重跑安全的：作者可能对同一份名单连续触发两次（重试、换模型、换章节）。
+   *  - 名字集合**完全相等** → 复用既有 pending 批次（幂等）：待确认队列里不该出现两条同样名单的批次；
+   *  - 名字集合**相交但不相等** → CHARACTER_CAST_LEDGER_PENDING_CONFLICT：两批都能各自批准，
+   *    先批准那批会把相交的名字变成「已有卡」，后一批再建卡就成了重复建卡（判据 CX 里「永远无法
+   *    应用的项」的同类问题）。宁可现在就拒绝，让作者先处理掉前一批。
+   */
+  private pendingCastLedgerBatch(names: readonly string[]): string | undefined {
+    const requested = new Set(names)
+    const rows = this.db.prepare('SELECT proposal_id,raw_value FROM character_identity_proposals WHERE source_key=? ORDER BY proposal_id')
+      .all(`character-proposal-v1:${this.projectId}`) as { proposal_id: string; raw_value: string }[]
+    for (const row of rows) {
+      let envelope: Envelope
+      try { envelope = JSON.parse(row.raw_value) as Envelope } catch { continue }
+      const batch = envelope?.batch
+      if (batch?.status !== 'pending-approval' || batch.source?.kind !== 'cast-ledger') continue
+      const existing = new Set(batch.source.names.map(name => name.trim()).filter(Boolean))
+      if (existing.size === requested.size && [...requested].every(name => existing.has(name))) return row.proposal_id
+      if ([...requested].some(name => existing.has(name))) throw new Error('CHARACTER_CAST_LEDGER_PENDING_CONFLICT')
+    }
+    return undefined
+  }
   stage(source: CharacterProposalSource): CharacterProposalBatch {
     return this.db.transaction(() => {
+      if (source?.kind === 'cast-ledger') {
+        // 先补全、后 stage：proof 与 canonical source 一次成型（names 排序、artifacts 按 id 排序）。
+        const proven = readCastLedgerGenerationProof(this.db, new GenerationRunRepository(() => this.db), this.projectId, source)
+        source = proven.source
+        const proposalBatchId = `cpb:${textHash(JSON.stringify([this.projectId, source]))}`
+        if (this.db.prepare('SELECT 1 FROM character_identity_proposals WHERE proposal_id=?').get(proposalBatchId)) return this.read(proposalBatchId)
+        const pending = this.pendingCastLedgerBatch(proven.names)
+        if (pending) return this.read(pending)
+      }
       if (source?.kind === 'legacy-roster-generation') {
         source = readLegacyRosterGenerationProof(this.db, new GenerationRunRepository(() => this.db), this.projectId, source).source
         const proposalBatchId = `cpb:${textHash(JSON.stringify([this.projectId, source]))}`
@@ -541,7 +576,10 @@ export class CharacterProposalService {
       if (batch.source.kind === 'legacy-roster-generation' && !request.selections.some(item => item.action === 'create' || item.action === 'map'))
         throw new Error('CHARACTER_APPROVAL_SELECTION_REQUIRED')
       const identityRequest: CharacterIdentityCommitRequest = { approval: { operationId: request.operationId, expectedRevision: request.expectedRevision,
-        source: provenance, action: batch.source.kind === 'legacy-roster-generation' || batch.source.kind === 'generation' && batch.source.inputKind === 'architecture' ? 'adopt-generated' : 'adopt-import' },
+        // cast-ledger 的 provenance 恒为 generated（模型补全的静态资料 + 冻结产物），
+        // 与 legacy 名单/架构推导同档：都能满足 commitCharacterIdentities 的 allowedSources。
+        source: provenance, action: batch.source.kind === 'legacy-roster-generation' || batch.source.kind === 'cast-ledger'
+          || batch.source.kind === 'generation' && batch.source.inputKind === 'architecture' ? 'adopt-generated' : 'adopt-import' },
         changes: [], creations: [], retireIds: [], relationships: [], resolutions: [] }
       const existingCharacters = this.identitySnapshot().characters
       for (const selection of request.selections) {
