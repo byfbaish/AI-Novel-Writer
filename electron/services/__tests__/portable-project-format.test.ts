@@ -75,15 +75,15 @@ describe('portable v7 field policy', () => {
       .all() as Array<{ name: string }>
     const fieldCount = tables.reduce((count, table) => count
       + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 52, fields: 495 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 52, fields: 495 })
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 54, fields: 516 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 54, fields: 516 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_character_sync_operations.operation_id')
   })
 
-  it('把签署S01基线35表356字段逐项投影，并精确增加M01-M05的15表/123字段、M06的1表/2字段及M08的1表/10字段', () => {
+  it('把签署S01基线35表356字段逐项投影，并精确增加M01-M05的15表/123字段、M06的1表/2字段、M08的1表/10字段及M11的2表/21字段', () => {
     const signed = JSON.parse(fs.readFileSync(path.resolve(
       'docs/research/novel-quality-modernization/s01-storage-contract.json'), 'utf8')) as {
       fieldDispositions: Array<{ table: string; field: string; portableDisposition: string }>
@@ -108,7 +108,8 @@ describe('portable v7 field policy', () => {
     // 126（M01-M05 + 头像 + M06）+ M07 漏登记的 project_core.plot_structure_plan
     // + M08 的 1 列（blueprints.structured_refs）+ 1 表 9 列
     // + W2 的 2 列（summary_snapshots.story_day_offset / story_day_label，走 optionalFields）
-    expect(added).toHaveLength(140)
+    // + W6/M11 的 2 表 21 列（resources 13 列 / resource_movements 8 列）
+    expect(added).toHaveLength(161)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -131,6 +132,17 @@ describe('portable v7 field policy', () => {
       'character_cast_decisions.decision_id', 'character_cast_decisions.name',
       'character_cast_decisions.operation_id', 'character_cast_decisions.relation_to_protagonist',
       'character_cast_decisions.source_revision',
+    ])
+    // M11 同样走独立标签：资源定义与账本都是作者权威数据（preserve-domain），跨机迁移不能丢。
+    expect(listPortableFieldPolicyKeys().filter(key => getPortableFieldPolicy(
+      ...key.split('.') as [string, string]).origin === 'm11-delta')).toEqual([
+      'resource_movements.chapter_number', 'resource_movements.created_at', 'resource_movements.delta',
+      'resource_movements.evidence', 'resource_movements.id', 'resource_movements.resource_id',
+      'resource_movements.source', 'resource_movements.unit',
+      'resources.anchor_note', 'resources.anchor_value', 'resources.cost_note', 'resources.created_at',
+      'resources.earn_note', 'resources.family_id', 'resources.name', 'resources.period',
+      'resources.resource_id', 'resources.scarcity_note', 'resources.tier', 'resources.unit',
+      'resources.updated_at',
     ])
   })
 
@@ -184,7 +196,7 @@ describe('portable v7 field policy', () => {
         .all() as Array<{ name: string }>
       const fields = tables.reduce((count, table) => count
         + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-      expect({ tables: tables.length, fields }).toEqual({ tables: 52, fields: 495 })
+      expect({ tables: tables.length, fields }).toEqual({ tables: 54, fields: 516 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)

@@ -15,7 +15,7 @@ export interface PortableFieldPolicy {
   disposition: PortableFieldDisposition
   validator: string
   consumer: string
-  origin: 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm08-delta' | 'registered-donor'
+  origin: 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm08-delta' | 'm11-delta' | 'registered-donor'
   signedDisposition: string | null
 }
 
@@ -29,6 +29,7 @@ const tables = fieldPolicyDocument.tables as Record<string, Record<string, Polic
 const deltaTables = new Set<string>(fieldPolicyDocument.deltaTables)
 const m06Tables = new Set<string>(fieldPolicyDocument.m06Tables)
 const m08Tables = new Set<string>(fieldPolicyDocument.m08Tables)
+const m11Tables = new Set<string>(fieldPolicyDocument.m11Tables)
 const deltaCharacterFields = new Set<string>(fieldPolicyDocument.deltaCharacterFields)
 const optionalFields = new Set<string>(fieldPolicyDocument.optionalFields)
 const signedOverrides = fieldPolicyDocument.signedOverrides as Record<string, string>
@@ -48,7 +49,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
       const rule = rules[code]
       const key = `${table}.${field}`
       const delta = optionalFields.has(key) || deltaTables.has(table) || m06Tables.has(table) || m08Tables.has(table)
-        || table === 'characters' && deltaCharacterFields.has(field)
+        || m11Tables.has(table) || table === 'characters' && deltaCharacterFields.has(field)
       const signedDisposition = delta ? null : signedOverrides[key] ?? signedDefaults[code]
       if (!field || !rule || rule.length !== 3 || !PORTABLE_FIELD_DISPOSITIONS.has(rule[0])
         || typeof rule[1] !== 'string' || !rule[1] || typeof rule[2] !== 'string' || !rule[2]
@@ -58,6 +59,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
       result.set(key, Object.freeze({ disposition: rule[0], validator: rule[1], consumer: rule[2],
         origin: optionalFields.has(key) ? 'registered-donor'
           : m06Tables.has(table) ? 'm06-delta' : m08Tables.has(table) ? 'm08-delta'
+            : m11Tables.has(table) ? 'm11-delta'
             : delta ? 'm01-m05-delta' : 'signed-s01', signedDisposition }))
     }
   }

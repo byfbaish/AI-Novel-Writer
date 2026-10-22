@@ -18,6 +18,12 @@ import {
   inspectWorldBuildingNumeric,
 } from '../../../shared/worldbuilding-numeric-audit'
 import {
+  describeWorldBuildingSelfReview,
+  filterSelfReviewFindings,
+  parseWorldBuildingSelfReview,
+  type WorldBuildingSelfReview,
+} from '../../../shared/worldbuilding-self-review'
+import {
   auditSpaceLocations,
   describeSpaceReviewChecklist,
 } from '../../../shared/space-machine-line'
@@ -35,6 +41,7 @@ import {
 import { useProjectStore } from '../../../stores/project-store'
 import {
   composePromptSystemRole,
+  renderPrompt,
   renderPromptTaskGuidance,
   resolvePromptTemplate,
 } from '../../prompt-templates'
@@ -120,6 +127,11 @@ interface PartialArchData {
   world_building_db_hash?: string
   /** 候选实际使用的作者步骤指导；恢复时沿用，不读取新输入。 */
   world_building_step_guidance?: string
+  /**
+   * W6a-2：世界观写库后 B 层模型自审的结果（`WorldBuildingSelfReview` 的 JSON 字符串）。
+   * 只在生成成功那一路写入；编辑面读它渲染提示条，读方见 `parseWorldBuildingSelfReview`。
+   */
+  world_building_self_review?: string
   /** 情节大纲：已确认覆盖至 synopsis_covered_to 的纯正文（不含批次进度行）。 */
   synopsis_result?: string
   /** 上一次生成在本批范围内被输出长度中断；synopsis_result 为已完成部分。 */
@@ -1965,6 +1977,14 @@ export class AdoptGeneratedCharactersCommand extends BaseWorkflowCommand<string>
   }
 }
 
+/**
+ * W6a-2：世界观 B 层自审的 purpose。
+ *
+ * 主进程按 purpose 冻结输出形态（`outputOverrides`），所以这里是**契约的一部分**，
+ * 改字符串等于改输出合同；不要与 `generate-world-building` 混用（后者是正文的 visible-text）。
+ */
+const WORLD_BUILDING_SELF_REVIEW_PURPOSE = 'world-building-self-review'
+
 export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
   constructor(
     private snapshot: ArchitectureProjectSnapshot,
@@ -1983,6 +2003,10 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
     return this.executeWithGenerationRuntime('text', params, () => this.executeWithinGeneration(params), {
       authorInputs: stepAuthorInputs(params.context, 'worldbuilding', this.snapshot, null, null, this.options.resumeWorldBuilding),
       operation: 'generate-world-building', promptKeys: ['world_building'], skillStages: ['planning'], output: 'visible-text',
+      // W6a-2：正统世界观之后追加的一次 JSON 自审。输出形态与主产物不同，
+      // 必须像 generate-global-config 那样在主进程冻结一份显式例外（否则命中
+      // GENERATION_OUTPUT_CONTRACT_CHANGED）。它不是第二个产物，只是同一次生成里的只读检查。
+      outputOverrides: [{ purpose: WORLD_BUILDING_SELF_REVIEW_PURPOSE, output: 'structured-data' }],
       ...(this.options.resumeWorldBuilding ? { resumeHandle: this.options.resumeHandle } : {}),
       onRunOpened: async handle => {
         const session = requireWorkflowProjectSession(params.context)
@@ -2269,7 +2293,101 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
     if (!spaceAudit.unreadable) {
       callbacks.log(describeSpaceReviewChecklist(spaceAudit, writingLanguage))
     }
+    // ★ W6a-2：B 层模型自审（语义矛盾 / 设定不足）。姿态与上面三条完全一致：
+    // 只提示、不 throw、不改 result、不阻断。它挂在**世界观写库成功之后**，
+    // 所以自审失败绝不连累已经生成好的世界观。
+    await this.attachWorldBuildingSelfReview({
+      projectSession,
+      expectedProjectPath,
+      context,
+      callbacks,
+      writingLanguage,
+      partial,
+      result,
+    })
     return result
+  }
+
+  /**
+   * 世界观写库后的 B 层自审：只读地再问一次模型「这份设定有没有语义矛盾 / 缺条件」。
+   *
+   * 硬约束（W6a-2）：
+   * - **永不抛错**：调用失败 / 坏 JSON / 被取消，一律只记一行 log。走到这一步正文已经写库成功了，
+   *   让自审失败回滚它是最坏的取舍（取消仍由工作流运行器在步骤返回后统一处理）。
+   * - **不改 result**：自审产物只进 `partial.world_building_self_review`，正文一个字都不动。
+   * - **引文必须能在原文里逐字命中**：命不中的条目在落盘前就丢掉（防模型编引文）。
+   */
+  private async attachWorldBuildingSelfReview(options: {
+    projectSession: ProjectSessionContext
+    expectedProjectPath: string
+    context: WorkflowContext
+    callbacks: StepCallbacks
+    writingLanguage: WritingLanguage
+    partial: PartialArchData
+    result: string
+  }): Promise<void> {
+    const { projectSession, expectedProjectPath, context, callbacks, writingLanguage, partial, result } = options
+    const text = (zhCNText: string, enUSText: string) => workflowUiText(context, zhCNText, enUSText)
+    let review: WorldBuildingSelfReview = { findings: [], unreadable: true }
+    try {
+      if (!context.cancelled) {
+        const template = await resolvePromptTemplate('world_building_self_review', projectSession, writingLanguage)
+        if (template) {
+          // 结构化调用的既有先例：`GenerateConfigCommand` 里
+          // `callLLMResult(..., { responseFormat: { type: 'json_object' }, purpose })`，
+          // 不另起调用通道；主进程侧靠上面的 `outputOverrides` 认这个 purpose。
+          const outcome = await this.callLLMResult(
+            renderPrompt(template, { world_building: result }, writingLanguage),
+            composePromptSystemRole(template, writingLanguage),
+            callbacks,
+            {
+              responseFormat: { type: 'json_object' },
+              purpose: WORLD_BUILDING_SELF_REVIEW_PURPOSE,
+              reasoningStage: 'planning',
+              omitWritingSkill: true,
+            },
+            context,
+          )
+          if (outcome.finishReason === 'stop') {
+            review = filterSelfReviewFindings(
+              parseWorldBuildingSelfReview(outcome.content),
+              result,
+            )
+          }
+        }
+      }
+    } catch {
+      // 吞掉：自审不是产物，它失败不能把本次生成判成失败。
+      review = { findings: [], unreadable: true }
+    }
+
+    // 一句话日志：`unreadable` 说「未完成」，有 finding 才说条数，没有就保持沉默（不刷屏）。
+    const selfReviewHint = describeWorldBuildingSelfReview(review, writingLanguage)
+    if (selfReviewHint) callbacks.log(selfReviewHint)
+
+    // 被取消时不落盘：这时 `review` 必然是「未读出来」，写下去只会在编辑面留一条
+    // 与代码无关的「本次自审未完成」——取消不是自审的结论。运行器稍后会统一处理取消。
+    if (context.cancelled) return
+
+    // 结果落检查点：编辑面的提示条刷新后仍在（W6a-2 验收）。
+    // 这里发生在 `delete partial.world_building_*` 那串之后，且那些删除都是**精确键名**，
+    // 不会碰到本字段；写盘失败也只丢一条提示，不回滚正文。
+    partial.world_building_self_review = JSON.stringify(review)
+    try {
+      await savePartialData(
+        expectedProjectPath,
+        partial,
+        projectSession,
+        text('保存世界观自审结果', 'Save the worldbuilding self-review'),
+        text('保存世界观自审结果失败', 'Failed to save the worldbuilding self-review.'),
+      )
+      context.data.partial = partial
+    } catch {
+      callbacks.log(text(
+        '世界观自审结果未能保存，编辑面下次打开时不会显示本次提示。',
+        'The worldbuilding self-review could not be saved; the editor will not show this notice next time.',
+      ))
+    }
   }
 
   private async persistWorldBuildingCandidate(

@@ -29,10 +29,13 @@ import type { ModelProviderResourceId } from './model-provider-resources'
 import type { WritingLanguage } from './writing-language'
 import type { DraftStatus } from './draft-status'
 import type { ReviewCycleProjection } from './review-cycle'
+import type { RecoveryCandidate, RecoveryCandidateRecordInput } from './recovery-candidate'
 import type {
-  RecoveryCandidate,
-  RecoveryCandidateRecordInput,
-} from './recovery-candidate'
+  ResourceDefinition,
+  ResourceDefinitionInput,
+  ResourceMovementInput,
+  ResourceMovementSource,
+} from './resource-ledger'
 import type {
   FinalizedContinuityProjection,
   FinalizedSourceReadResult,
@@ -1232,6 +1235,12 @@ export interface DatabaseChannels {
   'db:post-process-mark-step-ok': { args: [runId: string, stepKey: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:post-process-mark-step-failed': { args: [runId: string, stepKey: string, errorMsg: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:post-process-is-all-passed': { args: [sourceType: string, sourceId: string, expectedProjectPath: string]; return: boolean }
+
+  // 7b. resources — W6 资源账本（资源定义 + 逐章变动）
+  'db:resources-list': { args: [expectedProjectPath: string]; return: { success: boolean; resources?: ResourceDefinition[]; error?: string } }
+  'db:resources-upsert': { args: [input: ResourceDefinitionInput, expectedProjectPath: string]; return: { success: boolean; resourceId?: string; error?: string } }
+  'db:resources-delete': { args: [resourceId: string, expectedProjectPath: string]; return: { success: boolean; error?: string; movementCount?: number } }
+  'db:resource-movements-replace-chapter': { args: [chapterNumber: number, rows: ResourceMovementInput[], source: ResourceMovementSource, expectedProjectPath: string]; return: { success: boolean; inserted?: number; error?: string } }
 
   // 沿用旧表
   'db:log-llm-call': { args: [call: Record<string, unknown>, expectedProjectPath: string]; return: { success: boolean } }

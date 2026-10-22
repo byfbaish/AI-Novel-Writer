@@ -137,9 +137,13 @@ const expectedPromptVariables: Record<string, string[]> = {
     'latest_chapter',
     'total_chapters',
   ],
+  // W6a-2：世界观 B 层自审（生成后追加的一次只读 pass）。
+  world_building_self_review: ['world_building'],
 }
 
 const expectedJsonFields: Record<string, string[]> = {
+  // W6a-2：自审只输出「引文 + 一句话」，没有任何余额/合计字段（判据 DK）。
+  world_building_self_review: ['findings', 'severity', 'category', 'quote', 'why'],
   // schemaVersion 已被第五层架构改造移出角色图谱输出合同：prompt-language.ts 的
   // detailSystem / detailContract 现在明确要求「不得输出 schemaVersion、relationships」。
   // 此处跟随模板演进，不要再回填已废弃字段。

@@ -31,7 +31,7 @@ describe('installed M08 lane', () => {
       const bodyBefore = db.prepare('SELECT body FROM contents').pluck().get()
       const keyEventsBefore = db.prepare('SELECT key_events FROM blueprints WHERE chapter_number=1').pluck().get()
       const result = migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), 9)
-      expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBe(11)
+      expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBe(12)
       expect(result.completedSteps).toEqual(['M08'])
       expect(db.prepare('SELECT body FROM contents').pluck().get()).toBe(bodyBefore)
       expect(db.prepare('SELECT key_events FROM blueprints WHERE chapter_number=1').pluck().get()).toBe(keyEventsBefore)

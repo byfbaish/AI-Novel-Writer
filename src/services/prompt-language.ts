@@ -1043,6 +1043,37 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 - Forbid the narrator from defining a world rule: a rule may only surface through at least two observable consequences; no blanket claims such as "nothing ever", "never", or "the only place where".
 - Reuse of the same externalized-emotion phrase is limited to once per chapter each; never spend three consecutive paragraphs on physical reactions without external action or dialogue.`,
   },
+  /**
+   * W6a-2 · B 层自审。故意不进 `CORE_LOCALIZED_BUILTIN_PROMPT_KEYS`：
+   * 那张表是「#155 前向写作生命周期」的既有清单，被契约测试逐项锁定；
+   * 本模板只服务于生成期自审，但仍必须自带英文，不能静默回退中文。
+   */
+  world_building_self_review: {
+    systemRole: 'You are a rigorous setting reviewer. You check meaning only against the already-generated worldbuilding text, quote it verbatim, never do arithmetic, never rewrite it, and never produce replacement setting text.',
+    content: `[Worldbuilding self-review] Read the worldbuilding text below and look for two kinds of problems only: semantic self-contradiction, and underspecified rules.
+
+[Worldbuilding text]
+{{world_building}}
+
+[What counts]
+1. Self-contradiction: two statements that cannot both hold. Example: "labor earns payment" alongside "checking in grants it for free"; "resources are scarce" alongside "everyone is wealthy".
+2. Underspecification: a key rule is missing a condition required for it to hold, so later chapters cannot decide it. Example: a resource is named but never says how it is obtained; a prohibition is named but not its consequence.
+
+[Hard constraints — violating any one voids this review]
+- quote must be a contiguous fragment copied verbatim from [Worldbuilding text]: do not paraphrase, splice, summarize, or add punctuation. If you cannot copy an exact sentence, do not report that item.
+- No arithmetic of any kind: no totals, balances, differences, ratios, unit conversion, or sums. If a problem only holds after calculating something, do not report it.
+- Do not rewrite the text, do not output replacement setting text, and do not hand back a rewritten paragraph.
+- If there is nothing to report, output {"findings": []}. Never invent items to fill the list: report less rather than guess.
+
+[Output format — strict JSON; no Markdown, no code fence, no explanation]
+{"findings":[{"severity":"conflict","category":"resource","quote":"verbatim fragment from the worldbuilding text","why":"one-sentence explanation"}]}
+
+- severity must be one of: conflict (two statements cannot both hold) | undecidable (the rule is insufficient to decide) | suggestion (could be clearer, but still holds)
+- category must be one of: resource | time | space | logic | other
+- quote: must be findable verbatim in [Worldbuilding text]
+- why: one sentence, at most 60 characters
+- At most 6 findings; if there is none, output {"findings": []}`,
+  },
 } satisfies Record<CoreLocalizedBuiltinPromptKey, PromptLanguageTemplate> & Record<string, PromptLanguageTemplate>)
 
 export function promptLanguageText(

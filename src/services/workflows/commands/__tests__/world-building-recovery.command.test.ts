@@ -71,9 +71,28 @@ function callbacks(): StepCallbacks {
   }
 }
 
+/**
+ * W6a-2：世界观写库后追加一次 B 层自审（结构化 JSON）。它不占正文响应位，
+ * 也不参与续写时序断言 —— 这些用例断言的是「正文请求几次」，不是「模型总共被调几次」。
+ */
+const SELF_REVIEW_MARKERS = ['世界观自审', 'Worldbuilding self-review']
+
+function isSelfReviewCall(messages: ReadonlyArray<{ content: string }>): boolean {
+  return messages.some(message => SELF_REVIEW_MARKERS.some(marker => message.content.includes(marker)))
+}
+
+function productRequests(generateStream: { mock: { calls: Array<[ReadonlyArray<{ content: string }>, unknown]> } }) {
+  return generateStream.mock.calls.filter(([messages]) => !isSelfReviewCall(messages))
+}
+
 function installResponses(items: readonly ResponseItem[], writesAtRequestStart: number[] = []) {
   let index = 0
-  const generateStream = vi.fn(async (_messages, streamCallbacks) => {
+  const generateStream = vi.fn(async (messages, streamCallbacks) => {
+    if (isSelfReviewCall(messages)) {
+      streamCallbacks.onChunk?.('{"findings": []}')
+      streamCallbacks.onDone?.('{"findings": []}', undefined, 'stop')
+      return '世界观自审请求'
+    }
     writesAtRequestStart.push(partialWriteCount)
     const item = items[index++]
     if (!item) throw new Error(`出现未计划的第 ${index} 次模型请求`)
@@ -174,7 +193,8 @@ describe('GenerateWorldBuildingCommand 截断恢复', () => {
       .execute({ step: {}, context: context(), callbacks: callbacks() }))
       .resolves.toBe('新世界遵循明确的资源与权力规则。')
 
-    expect(generateStream).toHaveBeenCalledTimes(1)
+    expect(generateStream).toHaveBeenCalledTimes(2)
+    expect(productRequests(generateStream)).toHaveLength(1)
     expect(formalWrites).toEqual(['# 世界观\n\n新世界遵循明确的资源与权力规则。'])
     expect(recoverableWorldBuildingCandidate(partialFile)).toBe('')
   })
@@ -189,7 +209,7 @@ describe('GenerateWorldBuildingCommand 截断恢复', () => {
     const result = await new GenerateWorldBuildingCommand(snapshot, createWorkflowRuntimeDependencies())
       .execute({ step: {}, context: context(), callbacks: callbacks() })
 
-    expect(generateStream).toHaveBeenCalledTimes(2)
+    expect(productRequests(generateStream)).toHaveLength(2)
     expect(requestStartWrites).toEqual([0, 1])
     expect(result).toContain('古城以记忆作为税收与燃料')
     expect(result).toContain('王庭与行会因此形成相互制衡')
@@ -208,7 +228,7 @@ describe('GenerateWorldBuildingCommand 截断恢复', () => {
       .execute({ step: {}, context: context(), callbacks: callbacks() }))
       .rejects.toBeInstanceOf(WorldBuildingResumeAvailableError)
 
-    expect(generateStream).toHaveBeenCalledTimes(2)
+    expect(productRequests(generateStream)).toHaveLength(2)
     expect(formalWrites).toHaveLength(0)
     expect(formalWorldbuilding).toBe(original)
     expect(recoverableWorldBuildingCandidate(partialFile)).toContain('第一部分建立记忆税')
@@ -254,7 +274,7 @@ describe('GenerateWorldBuildingCommand 截断恢复', () => {
       { resumeWorldBuilding: true, resumeHandle: { projectId: projectSession.projectId, epoch: projectSession.leaseId, rootActionId: '合成恢复根', runId: '合成恢复运行' } },
     ).execute({ step: {}, context: reopenedContext, callbacks: callbacks() })
 
-    expect(resumeCalls).toHaveBeenCalledTimes(1)
+    expect(productRequests(resumeCalls)).toHaveLength(1)
     expect(result).toContain(persistedCandidate)
     expect(result).toContain('王庭通过税令制衡行会')
     expect(formalWrites).toHaveLength(1)
