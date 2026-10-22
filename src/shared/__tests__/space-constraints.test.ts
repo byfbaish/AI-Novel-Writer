@@ -131,3 +131,91 @@ describe('withSpaceConstraints', () => {
     expect(twice.match(/★【空间约束（硬）】/gu)).toHaveLength(1)
   })
 })
+
+/**
+ * 取自作者真实世界观（2026-10-22 第 4 维）：三列表格 + 末尾机读行代码块。
+ * 原实现在这份数据上摘到 **0 条** ⇒ 整维规则从未进过 prompt。
+ */
+const AUTHORED_TABLE_WORLDBUILDING = `### 4.【空间结构（地图与区域）】
+
+| 空间定位 | 一句话描述 | 关键规则 |
+|---------|-----------|---------|
+| **青阳山·杂役处** | 底层修士居住区，无围墙的临时落脚点 | 每日06:00-06:30 需签到否则扣除灵石额度；未经许可不得擅自离开山体范围 |
+| **外门广场** | 内门巡视检查区，杂役必经之地 | 工作时间08:00-17:00 开放；其余时间禁入；巡查队出现时必须低头回避 |
+| **试炼峰·聚气台** | 每月开放一次的晋升考核点 | 需在当月25日前登记报名；通过凝元境测试者获得转正资格；未通过者扣除三月贡献点 |
+| **百草园·禁地方块** | 九转回魂草所在地，九重阵法环绕 | 每月1日起三天有效窗口期；需持有内门令牌且通过三重符阵验证；无权限者靠近即触发警报 |
+| **执法殿·审讯室** | 宗门裁决争议的场所，阴森压抑 | 申请时间为每日14:00-16:00；提交材料需包含两名见证人签名；证据不足者当场定罪 |
+| **藏书阁·外楼** | 普通功法存放地，残缺不全 | 阅览时间09:00-12:00；取阅时需归还等额价值物品作为押金；涉及禁忌内容者直接上报高层 |
+| **废弃矿洞·地下三层** | 古战场遗迹，充满危险气息 | 无任何准入限制；夜间温度骤降至零下二十度；存在未知生物活动迹象 |
+| **青冥海·边缘岛屿** | 神魔封印残余能量聚集地，后期重要场景 | 需金丹期修为方可抵御海水侵蚀；每月十五月圆之夜开启传送通道 |
+
+**机读约束行：**
+
+\`\`\`
+青阳山·杂役处｜hours=06:00-06:30｜entry=需签到打卡
+外门广场｜hours=08:00-17:00｜entry=禁止擅入
+\`\`\`
+`
+
+describe('extractSpaceConstraints · markdown 表格形态', () => {
+  it('摘到表格里的全部空间，且顺序与表格一致', () => {
+    const result = extractSpaceConstraints(AUTHORED_TABLE_WORLDBUILDING)
+
+    expect(result.map(item => item.name)).toEqual([
+      '青阳山·杂役处',
+      '外门广场',
+      '试炼峰·聚气台',
+      '百草园·禁地方块',
+      '执法殿·审讯室',
+      '藏书阁·外楼',
+      '废弃矿洞·地下三层',
+      '青冥海·边缘岛屿',
+    ])
+  })
+
+  it('规则取最后一列原文，不做解析', () => {
+    const result = extractSpaceConstraints(AUTHORED_TABLE_WORLDBUILDING)
+    const trial = result.find(item => item.name.includes('试炼峰'))
+
+    expect(trial?.rule).toContain('25日前登记报名')
+    expect(trial?.rule).toContain('扣除三月贡献点')
+    // 只取关键规则列，不把「一句话描述」拼进来
+    expect(trial?.rule).not.toContain('晋升考核点')
+  })
+
+  it('机读行不被当成条目摘录（表头 / 分隔行 / 代码块都要跳过）', () => {
+    const result = extractSpaceConstraints(AUTHORED_TABLE_WORLDBUILDING)
+
+    // 机读行若被误摘，rule 里会出现 hours=
+    expect(result.every(item => !item.rule.includes('hours='))).toBe(true)
+    // 表头与分隔行不可成为条目名
+    expect(result.every(item => !item.name.includes('空间定位'))).toBe(true)
+    expect(result.every(item => !item.name.includes('---'))).toBe(true)
+  })
+
+  it('bold 与表格并存时取并集，同名只保留一条', () => {
+    const mixed = [
+      '### 4.【空间结构】',
+      '',
+      '**梅林坳·39号出租屋**',
+      '关键规则：零点刷新点。',
+      '',
+      '| 空间定位 | 关键规则 |',
+      '|---|---|',
+      '| **梅林坳·39号出租屋** | 同一空间的另一条写法 |',
+      '| **老陈记早餐摊** | 7:00—10:00 营业。 |',
+    ].join('\n')
+
+    const result = extractSpaceConstraints(mixed)
+
+    expect(result.map(item => item.name)).toEqual(['梅林坳·39号出租屋', '老陈记早餐摊'])
+    expect(result[0].rule).toContain('零点刷新点')
+  })
+
+  it('渲染块能带上表格摘到的规则', () => {
+    const block = renderSpaceConstraintsBlock(AUTHORED_TABLE_WORLDBUILDING, 'zh-CN')
+
+    expect(block).toContain('★【空间约束（硬）】')
+    expect(block).toContain('青阳山·杂役处：每日06:00-06:30 需签到')
+  })
+})

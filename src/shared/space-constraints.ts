@@ -1,7 +1,7 @@
 import type { WritingLanguage } from './writing-language'
 
 /**
- * 空间约束摘录（2026-10-14）。
+ * 空间约束摘录（2026-10-14；2026-10-22 增加 markdown 表格形态）。
  *
  * ## 为什么需要它
  *
@@ -13,9 +13,19 @@ import type { WritingLanguage } from './writing-language'
  * 因此本模块不做任何**语义判断** —— 只是把散文中已经存在的「空间名 + 关键规则」
  * **原样摘录**成一张短清单，独立成节地放在世界观正文之后。
  *
+ * ## 支持的三种书写形态
+ *
+ * 1. `**名称**` 独占行 + 紧随的 `关键规则：…`（内置模板的产出形态）
+ * 2. **markdown 表格**：`| **名称** | 一句话描述 | 关键规则 |`（作者手写或模型表格式产出）
+ * 3. `- **名称**：描述…`（en 模板声明的单行形态，仅在前两种都摘不到时兜底）
+ *
+ * 形态 2 是 2026-10-22 补的：作者第 4 维写成三列表格，实测原实现**摘到 0 条**（表格行不是
+ * `**名称**` 独占行，也不是 `- **名称**：…`）⇒ 整维规则一条都没进 prompt，属于静默失效。
+ *
  * ## 边界（与 §6.1「框架边界判据」一致）
  *
- * 本模块**不解析**规则的含义：不识别钟点、不做区间推断、不判断「下午两点」是否越界。
+ * 本模块**不解析**规则的含义：不识别钟点、不做区间推断、不判断「下午两点」是否越界，
+ * 也**不解析**世界观末尾的 `名称｜hours=…｜entry=…` 机读行。
  * 它只做「按标题切段 + 按字段摘录」这类**结构对结构**的事；判定交给模型。
  * 同理，它也不做「上午 / 下午」的归一化 —— 那是 B′ 双写（由模型在生成设定时给出规范形式）的职责。
  *
@@ -91,15 +101,61 @@ export function extractSpaceConstraints(worldbuilding: string | null | undefined
     section.push(lines[index])
   }
 
-  // 2) 第一遍：bold 独占行 = 条目名，紧随的「关键规则：」= 规则。
-  //    小节标题（如「长期舞台（全书反复出现）」）后面没有关键规则，会被自然丢弃。
-  const entries = collect(section, 'bold')
-  if (entries.length > 0) return entries.slice(0, MAX_ENTRIES)
+  // 2) 显式结构：`**名称**` 独占行 + 关键规则，以及 markdown 表格。
+  //    两者合并（而不是「有 bold 就不看表格」）：一份世界观里两种写法可能并存，
+  //    少了表格那一段就等于静默漏掉半维规则。小节标题（如「长期舞台」）后面没有
+  //    关键规则，会被自然丢弃。
+  const explicit = mergeEntries([
+    ...collect(section, 'bold'),
+    ...collectFromTable(section),
+  ])
+  if (explicit.length > 0) return explicit.slice(0, MAX_ENTRIES)
 
-  // 3) 第二遍（兜底）：模型整体用 `Name: role + rule` 单行形态时（en 模板声明的形状），
-  //    才退到 inline 解析。之所以要求「第一遍为空」：zh 的「一次性与低频场景」也用
+  // 3) 兜底：模型整体用 `Name: role + rule` 单行形态时（en 模板声明的形状），
+  //    才退到 inline 解析。之所以要求「前两种都为空」：zh 的「一次性与低频场景」也用
   //    `- **名称**：描述` 列表，但那**不是**约束 —— 混进来只会稀释清单（宁漏勿误）。
   return collect(section, 'inline').slice(0, MAX_ENTRIES)
+}
+
+/**
+ * markdown 表格里的空间：
+ *
+ *     | 空间定位 | 一句话描述 | 关键规则 |
+ *     |---------|-----------|---------|
+ *     | **青阳山·杂役处** | 底层修士居住区 | 每日06:00-06:30 需签到 |
+ *
+ * 只认「首列是 `**粗体**`」的行（表头与 `|---|` 分隔行天然不匹配），规则取**最后一列**。
+ * 不做列名匹配：列名由模型自由书写（「关键规则」/「规则」/「限制」都见过），
+ * 靠列名匹配等于给自己制造解析失败。
+ */
+function collectFromTable(section: readonly string[]): SpaceConstraint[] {
+  const entries: SpaceConstraint[] = []
+  for (const raw of section) {
+    const line = raw.trim()
+    if (!line.startsWith('|') || !line.endsWith('|')) continue
+    const cells = line.slice(1, -1).split('|').map(cell => cell.trim())
+    if (cells.length < 2) continue
+    const bold = /^\*\*(.+?)\*\*$/u.exec(cells[0] ?? '')
+    if (!bold) continue
+    const rule = truncate(cells[cells.length - 1] ?? '')
+    if (!rule || /^[-:\s]+$/u.test(rule)) continue
+    const name = cleanName(bold[1])
+    if (name) entries.push({ name, rule })
+  }
+  return entries.filter(entry => entry.name && entry.rule)
+}
+
+/** 同名去重，保留先出现的（bold 形态优先于表格）。 */
+function mergeEntries(entries: readonly SpaceConstraint[]): SpaceConstraint[] {
+  const seen = new Set<string>()
+  const merged: SpaceConstraint[] = []
+  for (const entry of entries) {
+    const key = entry.name.replace(/\s+/gu, '')
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(entry)
+  }
+  return merged
 }
 
 function collect(

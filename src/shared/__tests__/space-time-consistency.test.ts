@@ -305,3 +305,66 @@ describe('spaceTimeStableFactKey', () => {
     expect(spaceTimeStableFactKey(['unregistered-space', ' 甲 '])).toBe(spaceTimeStableFactKey(['unregistered-space', '甲']))
   })
 })
+
+/**
+ * 按月窗口 / 当日全天：2026-10-22 起 `parseSpaceRules` 用 `parseSpaceHours` 解析 `hours=`。
+ *
+ * 边界主张：
+ * - `当日00:00-24:00` 是**每日**窗口，24:00 归一到当日结束 ⇒ 可判；
+ * - `每月D日…` 需要「故事第几日 → 当月第几日」的月历换算，本项目**不做历法推演**
+ *   （背景为剧情服务，不是模拟世界）⇒ 显式 info 未判，并明说「不用补」，
+ *   不能叫作者去补一个本来就已经写了的字段。
+ */
+const WINDOW_FORMS_WORLD = [
+  '青冥海·边缘岛屿｜hours=每月15日00:00-00:10｜entry=需金丹期修为',
+  '百草园·禁地方块｜hours=每月01日08:00-03日18:00｜entry=需内门令牌',
+  '试炼峰·聚气台｜hours=当日00:00-24:00｜entry=需登记',
+  '自由进出洞｜entry=自由进出',
+].join('\n')
+
+describe('findSpaceTimeConflicts · 窗口形态的三种结局', () => {
+  it('当日全天窗口可判定：任何钟点都在窗口内，不报', () => {
+    const findings = findSpaceTimeConflicts({
+      chapterNumber: 1, worldBuildingText: WINDOW_FORMS_WORLD,
+      spaceRefs: [{ space: '试炼峰·聚气台', timeRef: '03:00' }],
+    })
+
+    expect(findings).toEqual([])
+  })
+
+  it('按月窗口显式未判，措辞说明不做历法推演、且不提示补一个已存在的字段', () => {
+    const findings = findSpaceTimeConflicts({
+      chapterNumber: 4, worldBuildingText: WINDOW_FORMS_WORLD,
+      spaceRefs: [{ space: '青冥海·边缘岛屿', timeRef: '00:05' }],
+    })
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toMatchObject({ severity: 'info', sourceChapter: 4 })
+    expect(findings[0]!.issue.zhCN).toContain('按月窗口')
+    expect(findings[0]!.issue.zhCN).toContain('不做历法推演')
+    expect(findings[0]!.issue.zhCN).not.toContain('未给该空间的')
+    expect(findings[0]!.suggestion.zhCN).toContain('不用补')
+  })
+
+  it('跨日区间同样未判（同属按月形态）', () => {
+    const findings = findSpaceTimeConflicts({
+      chapterNumber: 5, worldBuildingText: WINDOW_FORMS_WORLD,
+      spaceRefs: [{ space: '百草园·禁地方块', timeRef: '10:00' }],
+    })
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.severity).toBe('info')
+    expect(findings[0]!.issue.zhCN).toContain('按月窗口')
+  })
+
+  it('真正没声明 hours 时，仍提示去补机读行（三分支措辞不混）', () => {
+    const findings = findSpaceTimeConflicts({
+      chapterNumber: 2, worldBuildingText: WINDOW_FORMS_WORLD,
+      spaceRefs: [{ space: '自由进出洞', timeRef: '10:00' }],
+    })
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.issue.zhCN).toContain('未给该空间的')
+    expect(findings[0]!.suggestion.zhCN).toContain('补一行')
+  })
+})
