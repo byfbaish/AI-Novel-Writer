@@ -20,7 +20,9 @@ import { emptyWorldStateView, WORLD_STATE_NOTES, type CastLedgerView,
   type WorldStateChapter, type WorldStateCharacter, type WorldStateFieldProvenance,
   type WorldStateNote, type WorldStateObservation, type WorldStateView } from '../../src/shared/world-state-view'
 import { isFinalizedSourceIdentity } from '../../src/shared/source-ref'
+import { auditSpaceLocations } from '../../src/shared/space-machine-line'
 import { CharacterCastDecisionRepository, hasCharacterCastDecisionSchema } from '../repositories/character-cast-decision-repository'
+import { ProjectCoreRepository } from '../repositories/project-core-repository'
 import { listCurrentReviewStateDeltaMentions } from '../repositories/review-cycle-repository'
 import { SummaryRepository } from '../repositories/summary-repository'
 
@@ -154,6 +156,20 @@ function readCharacters(db: Database.Database): { rows: CharacterStateRow[]; ali
 }
 
 /**
+ * project_core.worldbuilding（世界观正文）；表/行缺失或读不出来时返回 null。
+ * 空间检查把 null 当作「没读到」⇒ unreadable，不退化成「0 个 issue」。
+ */
+function readWorldbuilding(db: Database.Database): string | null {
+  try {
+    const worldbuilding = ProjectCoreRepository.get(db)?.worldbuilding
+    return typeof worldbuilding === 'string' ? worldbuilding : null
+  } catch {
+    // 极老的库可能还没有 project_core：空间检查按「未检查」处理，不中断整页读取。
+    return null
+  }
+}
+
+/**
  * 读取 W5 世界状态视图。纯只读，不打开/切换数据库，不抛业务错误。
  * @param db 已迁移到当前版本的项目库；调用方负责项目上下文校验。
  * @param projectPath 当前项目根目录；无项目时传 null，得到空视图。
@@ -281,6 +297,8 @@ export function readWorldState(db: Database.Database, projectPath: string | null
       finalized: finalizedUnreadable,
       blueprint: blueprintUnreadable,
     },
+    // 没有项目上下文时传 null：审计函数自己对 null 返回 unreadable，不必另写一份默认值。
+    spaceAudit: auditSpaceLocations(projectPath === null ? null : readWorldbuilding(db)),
     notes,
   }
 }

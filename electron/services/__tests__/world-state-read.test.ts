@@ -249,5 +249,45 @@ describe('W5 world state read service', () => {
     expect(view.unreadableMentions).toEqual({ review: 0, finalized: 0, blueprint: 0 })
     expect(view.notes).toEqual([])
     expect(typeof view.fetchedAt).toBe('string')
+    // 没有项目 = 没有检查过，不是「0 个问题」。
+    expect(view.spaceAudit.unreadable).toBe(true)
+  })
+
+  it('audits the space table and machine lines read from project_core.worldbuilding', () => {
+    const { db } = fixture()
+    db.prepare('INSERT INTO project_core(worldbuilding) VALUES(?)').run([
+      '## 4. 空间结构（地图与区域）',
+      '',
+      '| 空间定位 | 一句话描述 | 关键规则 |',
+      '|---------|-----------|---------|',
+      '| **执法殿·审讯室** | 审讯要地 | 每日14:00-16:00 受理申请，须持令牌 |',
+      '| **藏经阁** | 典籍存放 | 每日08:00-10:00 开放 |',
+      '',
+      '执法殿·审讯室｜hours=14:00-16:00｜entry=持令牌',
+    ].join('\n'))
+
+    const view = readWorldState(db, 'C:/projects/A')
+
+    expect(view.spaceAudit.unreadable).toBe(false)
+    expect(view.spaceAudit.tableSpaces).toBe(2)
+    expect(view.spaceAudit.machineLines).toBe(1)
+    // 表格里有「藏经阁」、机读行里没有 —— 必须点名到具体空间。
+    expect(view.spaceAudit.issues).toContainEqual(expect.objectContaining({
+      kind: 'missing-machine-line',
+      space: '藏经阁',
+    }))
+    // 规则里的时间是「受理申请」窗口，被压成 hours ⇒ 语义待确认。
+    expect(view.spaceAudit.issues.map(issue => issue.kind)).toContain('window-semantics-ambiguous')
+  })
+
+  it('marks the space audit unreadable when the world-building has no space structure', () => {
+    const { db } = fixture()
+    // 有世界观正文，但既没有「空间结构」段也没有机读行。
+    db.prepare('INSERT INTO project_core(worldbuilding) VALUES(?)').run('这个世界只有一条灵气稀薄的街区。')
+
+    const view = readWorldState(db, 'C:/projects/A')
+
+    // 关键：不能退化成「0 个 issue」——没检查过和查过没问题必须分开。
+    expect(view.spaceAudit).toEqual({ tableSpaces: 0, machineLines: 0, issues: [], unreadable: true })
   })
 })

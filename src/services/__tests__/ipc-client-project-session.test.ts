@@ -64,6 +64,24 @@ describe('project-scoped IPC session transport', () => {
     )
   })
 
+  it('appends the frozen active session to the read-only world state request', async () => {
+    // world-state:read 由 db-controller 的同一套会话门禁注册：不带 session 会被
+    // 「缺少项目会话上下文」整条拒掉，所以 renderer 侧必须自动追加。
+    invoke.mockResolvedValue({ projectPath: 'C:/projects/A', chapters: [], notes: [] })
+
+    await ipc.invoke('world-state:read', 'C:/projects/A')
+
+    expect(invoke).toHaveBeenCalledWith(
+      'world-state:read',
+      'C:/projects/A',
+      {
+        projectId: 'project-A',
+        leaseId: 'lease-A',
+        projectPath: 'C:/projects/A',
+      },
+    )
+  })
+
   it('allows a capability-grant filesystem request without an active project session', async () => {
     invoke.mockResolvedValue({ success: true })
     setActiveProjectSessionContext(null)

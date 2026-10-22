@@ -7,14 +7,9 @@ import {
   Globe2,
   GitBranch,
   History,
-  ListChecks,
-  Settings,
-  ScrollText,
-  Cpu,
   Compass,
 } from 'lucide-react'
-import { useLayoutStore, type SidebarView, type BottomTab } from '../../stores/layout-store'
-import { useWorkflowStore } from '../../stores/workflow-store'
+import { useLayoutStore, type SidebarView } from '../../stores/layout-store'
 import { useProjectStore } from '../../stores/project-store'
 import { openBuiltinEditor } from '../panels/sidebar/sidebar-file-openers'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -26,25 +21,16 @@ const sidebarActivities: Array<{ id: SidebarView; icon: typeof FolderOpen; zh: s
   { id: 'characters', icon: Users, zh: '角色', en: 'Cast' },
 ]
 
-/** 底部面板 Tab 按钮配置 */
-const bottomTabs: Array<{ id: BottomTab; icon: typeof ListChecks; zh: string; en: string }> = [
-  { id: 'tasks', icon: ListChecks, zh: '任务', en: 'Tasks' },
-  { id: 'log', icon: ScrollText, zh: '日志', en: 'Logs' },
-  { id: 'models', icon: Cpu, zh: '模型', en: 'Models' },
-]
-
 function LeftNavButton({
   icon: Icon,
   label,
   active,
-  pulse,
   onClick,
   title,
 }: {
   icon: typeof FolderOpen
   label: string
   active?: boolean
-  pulse?: boolean
   onClick: () => void
   title?: string
 }) {
@@ -58,12 +44,6 @@ function LeftNavButton({
         <Icon size={22} strokeWidth={active ? 2 : 1.75} />
         <span className="left-nav-label">{label}</span>
       </button>
-      {pulse && (
-        <span
-          className="absolute top-[5px] right-[5px] w-[5px] h-[5px] rounded-full animate-pulse pointer-events-none"
-          style={{ backgroundColor: 'var(--color-accent)' }}
-        />
-      )}
     </div>
   )
 }
@@ -77,9 +57,6 @@ export default function LeftToolWindowBar() {
   const sidebarView = useLayoutStore(s => s.sidebarView)
   const currentProject = useProjectStore(s => s.currentProject)
   const setSidebarView = useLayoutStore(s => s.setSidebarView)
-  const setBottomTab = useLayoutStore(s => s.setBottomTab)
-  const openSettings = useLayoutStore(s => s.openSettings)
-  const currentRun = useWorkflowStore(s => s.currentRun)
   const text = useLocaleStore(s => s.text)
 
   /** Home 按钮是否激活 */
@@ -183,41 +160,13 @@ export default function LeftToolWindowBar() {
         />
       </div>
 
-      {/* 弹性间隔 */}
+      {/*
+        弹性间隔。
+        这里原本还有「任务 / 日志 / 模型 / 设置」四个按钮 —— 前三个与下方工具窗
+        左侧的 28px 图标栏完全重复（BottomToolWindowBar），设置与右上角标题栏重复，
+        已全部移除：底部工具窗才是唯一入口，左栏只留视图导航。
+      */}
       <div className="flex-1" />
-
-      {/* ===== 底部：底部面板 Tab 控制 ===== */}
-      <div className="flex flex-col items-center w-full pb-1">
-        <div className="writer-nav-divider w-8 mb-1" style={{ height: 1 }} />
-
-        {bottomTabs.map(({ id, icon: Icon, zh, en }) => {
-          const label = text(zh, en)
-          const isActive = activeRailItem === id
-          const showPulse = id === 'tasks' && currentRun &&
-            (currentRun.status === 'running' || currentRun.status === 'waiting')
-
-          return (
-            <LeftNavButton
-              key={id}
-              icon={Icon}
-              label={label}
-              active={isActive}
-              title={label}
-              pulse={!!showPulse}
-              onClick={() => setBottomTab(id)}
-            />
-          )
-        })}
-
-        <div className="writer-nav-divider w-8 my-1" style={{ height: 1 }} />
-
-        <LeftNavButton
-          icon={Settings}
-          label={text('设置', 'Settings')}
-          active={activeRailItem === 'settings'}
-          onClick={() => openSettings()}
-        />
-      </div>
     </div>
   )
 }

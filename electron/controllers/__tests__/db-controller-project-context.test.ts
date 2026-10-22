@@ -870,6 +870,17 @@ describe('database controller project context guard', () => {
     expect(mocks.worldStateRead).not.toHaveBeenCalled()
   })
 
+  it('rejects a world-state read that arrives without a project session context', async () => {
+    // 真机首测的失败形态：渲染层只发 path、不带会话 ⇒ 门禁必须直接拒，
+    // 不能因为「只是只读」就放行（路径本身从不构成授权）。
+    mocks.getProjectDb.mockReturnValue({})
+
+    await expect(rawHandler('world-state:read')({}, 'C:/projects/A'))
+      .rejects.toThrow(/缺少项目会话上下文/)
+
+    expect(mocks.worldStateRead).not.toHaveBeenCalled()
+  })
+
   it('returns an empty world state view instead of throwing when the project database is not open', async () => {
     mocks.getProjectDb.mockReturnValue(null)
 

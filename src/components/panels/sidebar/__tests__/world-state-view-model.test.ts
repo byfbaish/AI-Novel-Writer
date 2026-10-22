@@ -1,15 +1,25 @@
 import { describe, expect, it } from 'vitest'
 import type { CastLedgerEntry } from '../../../../shared/cast-ledger'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../../../shared/character-roster'
+import type { WorldStateChapter } from '../../../../shared/world-state-view'
+import { emptyWorldStateView } from '../../../../shared/world-state-view'
 import {
+  SPACE_AUDIT_KIND_LABELS,
   STATE_FIELD_LABELS,
+  TIMELINE_UNKNOWN_GROUP_KEY,
+  WORLD_STATE_SECTION_LABELS,
+  WORLD_STATE_SECTION_ORDER,
   WORLD_STATE_STATUS_LABELS,
   WORLD_STATE_STATUS_ORDER,
+  defaultExpandedTimelineKeys,
   describeFieldProvenance,
   describeObservationReason,
+  filterContinuityFacts,
   formatStoryDay,
   groupCastLedgerEntries,
+  groupTimelineByStoryDay,
   summarizeMentions,
+  summarizeSpaceAudit,
   summarizeUnreadable,
 } from '../world-state-view-model'
 
@@ -108,6 +118,28 @@ describe('summarizeUnreadable', () => {
   })
 })
 
+describe('summarizeSpaceAudit', () => {
+  const audit = {
+    tableSpaces: 3,
+    machineLines: 2,
+    issues: [
+      { kind: 'missing-machine-line' as const, space: '藏经阁', detail: '…' },
+      { kind: 'hours-unreadable' as const, space: '', detail: '…' },
+    ],
+    unreadable: false,
+  }
+
+  it('renders the three counts in both languages', () => {
+    expect(summarizeSpaceAudit(audit, 'zh-CN')).toBe('表格 3 个空间 · 机读行 2 条 · 2 处待确认')
+    expect(summarizeSpaceAudit(audit, 'en-US')).toBe('3 table space(s) · 2 machine line(s) · 2 to confirm')
+  })
+
+  it('returns null when the audit did not run (never renders 0 issues for unchecked data)', () => {
+    expect(summarizeSpaceAudit({ ...audit, unreadable: true }, 'zh-CN')).toBeNull()
+    expect(summarizeSpaceAudit(emptyWorldStateView(null).spaceAudit, 'en-US')).toBeNull()
+  })
+})
+
 describe('groupCastLedgerEntries', () => {
   it('always returns the four status groups in fixed order, even when empty', () => {
     const groups = groupCastLedgerEntries([])
@@ -156,6 +188,25 @@ describe('label tables', () => {
     }
   })
 
+  it('keeps the five sections in fixed order with the space check appended last', () => {
+    // 既有四区顺序不动：追加而不是插队，避免作者的使用习惯被打断。
+    expect(WORLD_STATE_SECTION_ORDER).toEqual(['cast', 'timeline', 'characters', 'facts', 'space'])
+    for (const section of WORLD_STATE_SECTION_ORDER) {
+      expect(WORLD_STATE_SECTION_LABELS[section].zh.length).toBeGreaterThan(0)
+      expect(WORLD_STATE_SECTION_LABELS[section].en.length).toBeGreaterThan(0)
+    }
+    expect(WORLD_STATE_SECTION_LABELS.space).toEqual({ zh: '空间检查', en: 'Space check' })
+  })
+
+  it('labels every space-audit issue kind in both languages', () => {
+    const kinds = Object.keys(SPACE_AUDIT_KIND_LABELS)
+    expect(kinds).toHaveLength(10)
+    for (const kind of kinds) {
+      expect(SPACE_AUDIT_KIND_LABELS[kind as keyof typeof SPACE_AUDIT_KIND_LABELS].zh.length).toBeGreaterThan(0)
+      expect(SPACE_AUDIT_KIND_LABELS[kind as keyof typeof SPACE_AUDIT_KIND_LABELS].en.length).toBeGreaterThan(0)
+    }
+  })
+
   it('keeps the six state-field labels aligned with the character panel wording', () => {
     const expected: Record<string, [string, string]> = {
       location: ['位置', 'Location'],
@@ -186,5 +237,125 @@ describe('describeFieldProvenance', () => {
     expect(describeFieldProvenance({ kind: 'author', chapterNumber: 3 }, 'en-US')).toBe('Author ch3')
     expect(describeFieldProvenance({ kind: 'derived', chapterNumber: 2 }, 'en-US')).toBe('Finalized-derived ch2')
     expect(describeFieldProvenance({ kind: 'legacy' }, 'en-US')).toBe('Legacy')
+  })
+})
+
+describe('groupTimelineByStoryDay', () => {
+  function chapter(
+    chapterNumber: number,
+    storyDayOffset: number | null,
+    storyDayLabel: string | null = null,
+  ): WorldStateChapter {
+    return {
+      chapterNumber,
+      title: null,
+      storyDayOffset,
+      storyDayLabel,
+      draftStatus: 'finalized',
+      observations: [],
+    }
+  }
+
+  it('groups chapters that share a story day and keeps chapter order inside the group', () => {
+    const groups = groupTimelineByStoryDay(
+      [chapter(3, 9), chapter(1, 9), chapter(2, 9), chapter(4, 10)],
+      'zh-CN',
+    )
+
+    expect(groups.map(group => group.key)).toEqual(['story-day:9', 'story-day:10'])
+    expect(groups[0].chapters.map(item => item.chapterNumber)).toEqual([1, 2, 3])
+    expect(groups[0].label).toBe('第9日')
+    expect(groups[1].chapters.map(item => item.chapterNumber)).toEqual([4])
+  })
+
+  it('sorts day groups by story-day offset regardless of input order', () => {
+    const groups = groupTimelineByStoryDay([chapter(5, 12), chapter(1, 2), chapter(3, 7)], 'zh-CN')
+
+    expect(groups.map(group => group.storyDayOffset)).toEqual([2, 7, 12])
+  })
+
+  it('keeps unknown story days in their own trailing group instead of collapsing them to day 0', () => {
+    const groups = groupTimelineByStoryDay([chapter(2, null), chapter(1, 0), chapter(3, null)], 'zh-CN')
+
+    expect(groups.map(group => group.key)).toEqual(['story-day:0', TIMELINE_UNKNOWN_GROUP_KEY])
+    // 0 是合法日序，必须与「未知」分开显示。
+    expect(groups[0].label).toBe('第0日')
+    expect(groups[1].storyDayOffset).toBeNull()
+    expect(groups[1].label).toBe('日序未知')
+    expect(groups[1].chapters.map(item => item.chapterNumber)).toEqual([2, 3])
+  })
+
+  it('prefers the author-written story day label over the numeric offset', () => {
+    const groups = groupTimelineByStoryDay(
+      [chapter(1, 3, '第三天清晨'), chapter(2, 3)],
+      'zh-CN',
+    )
+
+    expect(groups[0].label).toBe('第三天清晨')
+  })
+
+  it('labels the unknown group in English when the locale is en-US', () => {
+    const groups = groupTimelineByStoryDay([chapter(1, null)], 'en-US')
+
+    expect(groups[0].label).toBe('Unknown story day')
+    expect(groups[0].chapters).toHaveLength(1)
+  })
+
+  it('returns no groups for an empty timeline', () => {
+    expect(groupTimelineByStoryDay([], 'zh-CN')).toEqual([])
+  })
+})
+
+describe('defaultExpandedTimelineKeys', () => {
+  const groups = [1, 2, 3, 4, 5].map(offset => ({
+    key: `story-day:${offset}`,
+    storyDayOffset: offset,
+    label: `第${offset}日`,
+    chapters: [],
+  }))
+
+  it('expands only the most recent three groups', () => {
+    expect(defaultExpandedTimelineKeys(groups)).toEqual(['story-day:3', 'story-day:4', 'story-day:5'])
+  })
+
+  it('expands everything when there are fewer groups than the limit', () => {
+    expect(defaultExpandedTimelineKeys(groups.slice(0, 2))).toEqual(['story-day:1', 'story-day:2'])
+  })
+
+  it('returns an empty list for an empty timeline', () => {
+    expect(defaultExpandedTimelineKeys([])).toEqual([])
+  })
+})
+
+describe('filterContinuityFacts', () => {
+  const facts = [
+    { chapterNumber: 1, text: '林舟在下品灵石矿脉取走一百二十枚' },
+    { chapterNumber: 2, text: '林舟只剩二十枚灵石' },
+    { chapterNumber: 12, text: '执法堂封了矿脉' },
+  ]
+
+  it('returns every fact for a blank query', () => {
+    expect(filterContinuityFacts(facts, '   ')).toHaveLength(3)
+  })
+
+  it('matches the fact text', () => {
+    expect(filterContinuityFacts(facts, '灵石').map(fact => fact.chapterNumber)).toEqual([1, 2])
+    expect(filterContinuityFacts(facts, '矿脉').map(fact => fact.chapterNumber)).toEqual([1, 12])
+  })
+
+  it('matches a chapter number with or without the Chinese prefix/suffix', () => {
+    expect(filterContinuityFacts(facts, '12').map(fact => fact.chapterNumber)).toEqual([12])
+    expect(filterContinuityFacts(facts, '第12章').map(fact => fact.chapterNumber)).toEqual([12])
+  })
+
+  it('returns an empty list when nothing matches', () => {
+    expect(filterContinuityFacts(facts, '不存在的东西')).toEqual([])
+  })
+
+  it('does not mutate the input array', () => {
+    const result = filterContinuityFacts(facts, '')
+
+    expect(result).not.toBe(facts)
+    expect(facts).toHaveLength(3)
   })
 })

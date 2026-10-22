@@ -10,7 +10,14 @@
  */
 import type { CastLedgerEntry, CastLedgerMentionSource, CastLedgerStatus } from '../../../shared/cast-ledger'
 import type { CharacterStateTextField } from '../../../shared/character-roster'
-import type { WorldStateFieldProvenance, WorldStateObservation } from '../../../shared/world-state-view'
+import type { SpaceLocationAudit } from '../../../shared/space-machine-line'
+import type {
+  WorldStateChapter,
+  WorldStateContinuityFact,
+  WorldStateFieldProvenance,
+  WorldStateObservation,
+} from '../../../shared/world-state-view'
+import type { WorldStateSection } from '../../../stores/world-state-store'
 
 export type WorldStateLanguage = 'zh-CN' | 'en-US'
 
@@ -180,4 +187,153 @@ export function groupCastLedgerEntries(
     status,
     entries: entries.filter((entry) => entry.status === status),
   }))
+}
+
+// ============================================================
+// 分类导航 + 时间线分组（W5 宽屏页）
+// ============================================================
+
+/**
+ * 主区页面的五个分类。左栏导航与主区渲染共用同一份枚举，
+ * 类型本体放在 store（它才是这份 UI 状态的所有者），这里只负责文案与分组。
+ *
+ * `space`（空间检查）追加在末尾：既有四区的顺序与计数语义不动，
+ * 避免影响已经按顺序断言的用例与作者的使用习惯。
+ */
+export const WORLD_STATE_SECTION_ORDER: readonly WorldStateSection[] = [
+  'cast',
+  'timeline',
+  'characters',
+  'facts',
+  'space',
+]
+
+export const WORLD_STATE_SECTION_LABELS: Record<WorldStateSection, { zh: string; en: string }> = {
+  cast: { zh: '归位表', en: 'Cast ledger' },
+  timeline: { zh: '时间线', en: 'Timeline' },
+  characters: { zh: '角色', en: 'Characters' },
+  facts: { zh: '连续性事实', en: 'Continuity facts' },
+  space: { zh: '空间检查', en: 'Space check' },
+}
+
+/**
+ * 空间检查的 issue 类型徽标。
+ *
+ * **只有一份实现**：标签表由 `space-machine-line.ts` 导出，这里只做改名再导出。
+ * 不在这里复述一份的原因是同一批 kind 在两处维护必然漂移 —— 改一处忘一处就会
+ * 「步骤日志说『极短窗口』、面板说『窗口过短』」（判据 DG 的同型问题）。
+ */
+export { SPACE_AUDIT_ISSUE_LABELS as SPACE_AUDIT_KIND_LABELS } from '../../../shared/space-machine-line'
+
+/**
+ * 空间检查的计数行（「表格 N 个空间 · 机读行 M 条 · X 处待确认」）。
+ *
+ * `unreadable` 时返回 null —— 没检查过的数据不能渲染成「0 处待确认」，
+ * 与 `summarizeUnreadable` 的 null 语义一致。
+ */
+export function summarizeSpaceAudit(
+  audit: SpaceLocationAudit,
+  language: WorldStateLanguage,
+): string | null {
+  if (audit.unreadable) return null
+  return language === 'zh-CN'
+    ? `表格 ${audit.tableSpaces} 个空间 · 机读行 ${audit.machineLines} 条 · ${audit.issues.length} 处待确认`
+    : `${audit.tableSpaces} table space(s) · ${audit.machineLines} machine line(s) · ${audit.issues.length} to confirm`
+}
+
+/** 日序未知的章归到这一组，且永远排在已知日序之后。 */
+export const TIMELINE_UNKNOWN_GROUP_KEY = 'story-day:unknown'
+
+export interface TimelineDayGroup {
+  key: string
+  /** null 表示这一组是「日序未知」——不是第 0 日。 */
+  storyDayOffset: number | null
+  label: string
+  chapters: WorldStateChapter[]
+}
+
+const byChapterNumber = (left: WorldStateChapter, right: WorldStateChapter): number =>
+  left.chapterNumber - right.chapterNumber
+
+/**
+ * 时间线按故事日分组。
+ *
+ * 为什么按日而不是按章：这一栏的数据是定稿连续性投影（一章一行 + storyDayOffset），
+ * 语义是「世界时间线」。按日聚组后，同一故事日内的章节并排，跨日分界一眼可见；
+ * 日序未知的章单独成组放末尾，绝不折算成第 0 日。
+ */
+export function groupTimelineByStoryDay(
+  chapters: readonly WorldStateChapter[],
+  language: WorldStateLanguage,
+): TimelineDayGroup[] {
+  const byOffset = new Map<number, WorldStateChapter[]>()
+  const unknown: WorldStateChapter[] = []
+
+  for (const chapter of chapters) {
+    if (chapter.storyDayOffset === null) {
+      unknown.push(chapter)
+      continue
+    }
+    const bucket = byOffset.get(chapter.storyDayOffset) ?? []
+    bucket.push(chapter)
+    byOffset.set(chapter.storyDayOffset, bucket)
+  }
+
+  const groups: TimelineDayGroup[] = [...byOffset.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([offset, bucket]) => {
+      const sorted = [...bucket].sort(byChapterNumber)
+      // 作者手写的日序标签优先（组内任意一章带标签即采用），否则回落到「第N日」。
+      const authored = sorted.find(chapter => chapter.storyDayLabel?.trim())?.storyDayLabel ?? null
+      return {
+        key: `story-day:${offset}`,
+        storyDayOffset: offset,
+        label: formatStoryDay({ storyDayOffset: offset, storyDayLabel: authored }, language) ?? '',
+        chapters: sorted,
+      }
+    })
+
+  if (unknown.length > 0) {
+    groups.push({
+      key: TIMELINE_UNKNOWN_GROUP_KEY,
+      storyDayOffset: null,
+      label: language === 'zh-CN' ? '日序未知' : 'Unknown story day',
+      chapters: [...unknown].sort(byChapterNumber),
+    })
+  }
+
+  return groups
+}
+
+/**
+ * 首屏默认展开哪几组：取最后 `recent` 组（即故事时间上最新的几天）。
+ *
+ * 写作时关心的是「现在写到哪」，不是第 1 天；其余组折叠成标题，
+ * 几百章在视觉上退化成几十行组标题，而不是几百张卡。
+ */
+export function defaultExpandedTimelineKeys(
+  groups: readonly TimelineDayGroup[],
+  recent = 3,
+): string[] {
+  if (groups.length === 0) return []
+  return groups.slice(Math.max(0, groups.length - Math.max(1, recent))).map(group => group.key)
+}
+
+/**
+ * 连续性事实的本地过滤。
+ *
+ * 只过滤**已经读进内存**的数组：不发 IPC、不改数据、不影响任何写路径。
+ * 所以它是「只读页里的检索框」，不是可编辑控件。
+ * 匹配范围 = 事实正文 + 章号（输入纯数字时按章号命中，写「第12章」这种也能搜到）。
+ */
+export function filterContinuityFacts(
+  facts: readonly WorldStateContinuityFact[],
+  query: string,
+): WorldStateContinuityFact[] {
+  const needle = query.trim().toLocaleLowerCase('zh-CN').replace(/^第/, '').replace(/章$/, '')
+  if (!needle) return [...facts]
+  return facts.filter((fact) => {
+    if (fact.text.toLocaleLowerCase('zh-CN').includes(needle)) return true
+    return String(fact.chapterNumber) === needle
+  })
 }

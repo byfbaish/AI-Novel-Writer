@@ -10,6 +10,7 @@
  */
 import type { CastLedgerEntry, CastLedgerStatus } from './cast-ledger'
 import type { CharacterStateTextField } from './character-roster'
+import type { SpaceLocationAudit } from './space-machine-line'
 
 /**
  * notes 的取值清单（渲染层可据此做中文/英文文案映射）：
@@ -104,6 +105,12 @@ export interface WorldStateView {
   continuityFacts: WorldStateContinuityFact[]
   /** 三来源里读不出来的条数：review=整章不可采信，finalized/blueprint=JSON 坏行数。 */
   unreadableMentions: { review: number; finalized: number; blueprint: number }
+  /**
+   * 空间检查：世界观「空间结构」表格 × 末尾机读行的结构对账。
+   * `unreadable` 为 true 表示**没检查**（世界观读不出来，或里面一个空间都没识别到），
+   * 与「检查过、0 个问题」必须分开显示。
+   */
+  spaceAudit: SpaceLocationAudit
   notes: WorldStateNote[]
 }
 
@@ -120,6 +127,8 @@ export function emptyWorldStateView(projectPath: string | null = null, notes: Wo
     characters: [],
     continuityFacts: [],
     unreadableMentions: { review: 0, finalized: 0, blueprint: 0 },
+    // 空视图 = 没读过世界观 ⇒ 空间检查标记为「未检查」，不是「0 个问题」。
+    spaceAudit: { tableSpaces: 0, machineLines: 0, issues: [], unreadable: true },
     notes: [...notes],
   }
 }
