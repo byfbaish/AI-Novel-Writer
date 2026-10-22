@@ -161,6 +161,24 @@ function fencedJsonWithProse(json: string): string {
   return `下面是按合同输出的 JSON：\n\n\`\`\`json\n${json}\n\`\`\`\n\n</think`
 }
 
+/**
+ * W6a-2：世界观写库后会追加一次 B 层自审（结构化 JSON），它是同一次生成里的**只读检查**，
+ * 既不算正文的续写轮次，也不消耗本文件里按顺序排好的正文响应。
+ */
+const SELF_REVIEW_MARKERS = ['世界观自审', 'Worldbuilding self-review']
+
+function isWorldBuildingSelfReviewCall(
+  messages: ReadonlyArray<{ content: string }>,
+): boolean {
+  return messages.some(message => SELF_REVIEW_MARKERS.some(marker => message.content.includes(marker)))
+}
+
+/** 只保留「正文/配置」类模型调用（第一次实参是 messages），供次数与提示词断言使用。 */
+function isProductCall(call: readonly unknown[]): boolean {
+  const messages = call[0]
+  return Array.isArray(messages) && !isWorldBuildingSelfReviewCall(messages as Array<{ content: string }>)
+}
+
 function createResponseStream(
   responses: readonly string[],
   finishReasons: ReadonlyArray<'stop' | 'length'> = responses.map(() => 'stop'),
@@ -170,6 +188,11 @@ function createResponseStream(
     _messages: Parameters<ReturnType<typeof useLLMStore.getState>['generateStream']>[0],
     streamCallbacks: Parameters<ReturnType<typeof useLLMStore.getState>['generateStream']>[1],
   ) => {
+    if (isWorldBuildingSelfReviewCall(_messages)) {
+      streamCallbacks.onChunk?.('{"findings": []}')
+      streamCallbacks.onDone?.('{"findings": []}', undefined, 'stop')
+      return Promise.resolve('worldbuilding-self-review-request')
+    }
     const index = nextResponseIndex++
     const output = responses[index]
     if (output === undefined) throw new Error(`unexpected character generation attempt ${index + 1}`)
@@ -555,7 +578,12 @@ describe('GenerateCharactersCommand structured roster seam', () => {
     let englishCallCount = 0
     useLLMStore.setState({
       defaultModelId: 'model-1',
-      generateStream: vi.fn(async (_messages, streamCallbacks) => {
+      generateStream: vi.fn(async (messages, streamCallbacks) => {
+        // W6a-2：世界观写库后的自审是第 4 次调用；它不参与正文轮次的编号。
+        if (isWorldBuildingSelfReviewCall(messages)) {
+          streamCallbacks.onDone?.('{"findings": []}', undefined, 'stop')
+          return 'architecture-self-review-request'
+        }
         englishCallCount += 1
         streamCallbacks.onDone?.(
           englishCallCount === 3 ? `${outlineOutput}\n\n${enProgressMark}` : modelOutput,
@@ -670,11 +698,13 @@ describe('GenerateCharactersCommand structured roster seam', () => {
       resumeHandle: { projectId: 'main', epoch: 'lease-main', rootActionId: 'fixture-root', runId: 'fixture-run' },
     }).execute({ step: {}, context: makeContext(), callbacks })).resolves.toContain(final)
 
-    expect(generateStream).toHaveBeenCalledTimes(3)
-    const originalPrompt = generateStream.mock.calls[0]![0].find(message => message.role === 'user')!.content
+    expect(generateStream).toHaveBeenCalledTimes(4)
+    const productStreamCalls = generateStream.mock.calls.filter(isProductCall)
+    expect(productStreamCalls).toHaveLength(3)
+    const originalPrompt = productStreamCalls[0]![0].find(message => message.role === 'user')!.content
     expect(originalPrompt).toContain(middleRule)
     expect(originalPrompt.length).toBeGreaterThan(12_000)
-    for (const [messages] of generateStream.mock.calls.slice(1)) {
+    for (const [messages] of productStreamCalls.slice(1)) {
       const continuationPrompt = messages.find(message => message.role === 'user')!.content
       expect(continuationPrompt).toContain(originalPrompt)
       expect(continuationPrompt).not.toContain('EARLY_VISIBLE_TEXT')
@@ -684,6 +714,113 @@ describe('GenerateCharactersCommand structured roster seam', () => {
     expect(partialFile.world_building_result).toContain(second)
     expect(partialFile.world_building_result).toContain(final)
     expect(domainIpcChannels(invoke).filter(channel => channel === 'db:project-core-update')).toHaveLength(1)
+  })
+
+  it('keeps the worldbuilding write when the post-write self-review call throws', async () => {
+    const novelConfig = { writingLanguage: 'zh-CN' as const, genre: '玄幻' }
+    useProjectStore.setState({ currentProject: { ...project(projectAPath), novelConfig } as never })
+    const worldText = '灵石只有宗门才发得起，凡人每日劳作换十枚下品灵石，逾期不补。'
+    let calls = 0
+    useLLMStore.setState({
+      defaultModelId: 'model-1',
+      generateStream: vi.fn(async (messages, streamCallbacks) => {
+        calls += 1
+        // 自审是写库之后的第二次调用：它炸了不能把已经写好的世界观一起判死。
+        if (isWorldBuildingSelfReviewCall(messages)) throw new Error('自审模型不可用')
+        streamCallbacks.onDone?.(worldText, undefined, 'stop')
+        return 'worldbuilding-request'
+      }),
+    })
+    let partialFile: Record<string, unknown> = {}
+    const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
+      if (channel === 'fs:check-exists') return false
+      if (channel === 'db:project-core-get') {
+        return { premise: '测绘师追查记忆税令，保护沿岸聚落免于倒悬古城的灾难。'.repeat(2) }
+      }
+      if (channel === 'fs:read-json') return { success: true, data: structuredClone(partialFile) }
+      if (channel === 'fs:write-json') {
+        partialFile = structuredClone(args[1] as Record<string, unknown>)
+        return { success: true }
+      }
+      if (channel === 'db:project-core-update') return { success: true }
+      throw new Error(`Unexpected IPC channel: ${channel}`)
+    })
+    vi.stubGlobal('window', {
+      aiNovelAPI: { invoke, on: vi.fn(), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn() },
+    })
+    const snapshot = { expectedProjectPath: projectAPath, novelConfig } as never
+
+    await expect(new GenerateWorldBuildingCommand(snapshot, workflowRuntimeDependencies).execute({
+      step: {},
+      context: { ...context, data: {} },
+      callbacks,
+    })).resolves.toBe(worldText)
+
+    const persistedUpdates = (invoke.mock.calls as unknown as Array<[string, unknown]>)
+      .filter(([channel]) => channel === 'db:project-core-update')
+      .map(([, update]) => update)
+    expect(persistedUpdates).toEqual([{ worldbuilding: `# 世界观\n\n${worldText}` }])
+    expect(calls).toBe(2)
+    // 自审失败 = 「未完成」，不是「0 个问题」；结果仍落检查点，刷新后提示条能如实说明。
+    expect(partialFile.world_building_self_review).toBe('{"findings":[],"unreadable":true}')
+    const visibleLogs = vi.mocked(callbacks.log).mock.calls.map(([message]) => message).join('\n')
+    expect(visibleLogs).toContain('世界观自审未完成')
+  })
+
+  it('persists only self-review findings whose quote hits the generated worldbuilding verbatim', async () => {
+    const novelConfig = { writingLanguage: 'zh-CN' as const, genre: '玄幻' }
+    useProjectStore.setState({ currentProject: { ...project(projectAPath), novelConfig } as never })
+    const worldText = '灵石只有宗门才发得起，凡人每日劳作换十枚下品灵石。'
+    const selfReviewJson = JSON.stringify({
+      findings: [
+        { severity: 'conflict', category: 'resource', quote: '灵石只有宗门才发得起', why: '与「人人富足」不能并存' },
+        // 模型编的引文：原文里没有 ⇒ 落盘前必须被丢掉。
+        { severity: 'conflict', category: 'logic', quote: '这条引文原文里并不存在', why: '编造的' },
+      ],
+    })
+    useLLMStore.setState({
+      defaultModelId: 'model-1',
+      generateStream: vi.fn(async (messages, streamCallbacks) => {
+        const content = isWorldBuildingSelfReviewCall(messages) ? selfReviewJson : worldText
+        streamCallbacks.onDone?.(content, undefined, 'stop')
+        return 'worldbuilding-request'
+      }),
+    })
+    let partialFile: Record<string, unknown> = {}
+    const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
+      if (channel === 'fs:check-exists') return false
+      if (channel === 'db:project-core-get') {
+        return { premise: '测绘师追查记忆税令，保护沿岸聚落免于倒悬古城的灾难。'.repeat(2) }
+      }
+      if (channel === 'fs:read-json') return { success: true, data: structuredClone(partialFile) }
+      if (channel === 'fs:write-json') {
+        partialFile = structuredClone(args[1] as Record<string, unknown>)
+        return { success: true }
+      }
+      if (channel === 'db:project-core-update') return { success: true }
+      throw new Error(`Unexpected IPC channel: ${channel}`)
+    })
+    vi.stubGlobal('window', {
+      aiNovelAPI: { invoke, on: vi.fn(), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn() },
+    })
+    const snapshot = { expectedProjectPath: projectAPath, novelConfig } as never
+
+    await expect(new GenerateWorldBuildingCommand(snapshot, workflowRuntimeDependencies).execute({
+      step: {},
+      context: { ...context, data: {} },
+      callbacks,
+    })).resolves.toBe(worldText)
+
+    const stored = JSON.parse(String(partialFile.world_building_self_review)) as {
+      findings: Array<{ quote: string }>
+      unreadable: boolean
+    }
+    expect(stored.unreadable).toBe(false)
+    expect(stored.findings.map(finding => finding.quote)).toEqual(['灵石只有宗门才发得起'])
+    const visibleLogs = vi.mocked(callbacks.log).mock.calls.map(([message]) => message).join('\n')
+    expect(visibleLogs).toContain('世界观自审：有 1 处设定需要确认')
   })
 
   it('uses the frozen English UI locale for premise logs and an empty-result error', async () => {

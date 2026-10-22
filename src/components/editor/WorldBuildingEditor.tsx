@@ -1,7 +1,7 @@
 import { LegacyRosterRecoveryPanel } from './LegacyRosterRecoveryPanel'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../shared/project-format'
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { Sparkles, CheckCircle2, Circle, RefreshCw, FileText, BookOpen, AlertTriangle, FolderTree, Eye, Copy } from 'lucide-react'
+import { Sparkles, CheckCircle2, Circle, RefreshCw, FileText, BookOpen, AlertTriangle, FolderTree, Eye, Copy, ChevronDown, ChevronUp, Info } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -49,6 +49,34 @@ import {
   hasVisiblePartialSynopsisMarker,
   isUsableSynopsisCheckpoint,
 } from '../../services/workflows/commands/architecture.command'
+import {
+  clipSelfReviewQuote,
+  filterSelfReviewFindings,
+  MAX_SELF_REVIEW_ITEMS,
+  parseWorldBuildingSelfReview,
+  type WorldBuildingSelfReview,
+  type WorldBuildingSelfReviewSeverity,
+} from '../../shared/worldbuilding-self-review'
+
+/**
+ * 读检查点里的自审结果（W6a-2）。
+ *
+ * - 没有这个键 ⇒ `null`（老项目 / 旧检查点：不渲染任何东西）。
+ * - 引文在当前世界观正文里找不到 ⇒ 整条丢掉（正文被作者改过，旧引文已经不存在）。
+ * - 过滤后一条不剩、且本来不是「未完成」⇒ `null`：审了没问题就不打扰作者。
+ */
+function readStoredSelfReview(raw: string, worldbuilding: string): WorldBuildingSelfReview | null {
+  if (!raw) return null
+  const verified = filterSelfReviewFindings(parseWorldBuildingSelfReview(raw), worldbuilding)
+  if (!verified.unreadable && verified.findings.length === 0) return null
+  return verified
+}
+
+const SELF_REVIEW_SEVERITY_LABEL: Record<WorldBuildingSelfReviewSeverity, { zh: string; en: string }> = {
+  conflict: { zh: '矛盾', en: 'conflict' },
+  undecidable: { zh: '无法判定', en: 'undecidable' },
+  suggestion: { zh: '可补充', en: 'suggestion' },
+}
 
 type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'plotStructure' | 'synopsis'
 
@@ -100,6 +128,9 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
   const [worldBuildingCandidate, setWorldBuildingCandidate] = useState('')
   const [worldBuildingBusy, setWorldBuildingBusy] = useState(false)
   const [showWorldBuildingCandidate, setShowWorldBuildingCandidate] = useState(false)
+  /** W6a-2：世界观 B 层自审结果（来自检查点，刷新后仍在）。 */
+  const [selfReview, setSelfReview] = useState<WorldBuildingSelfReview | null>(null)
+  const [selfReviewExpanded, setSelfReviewExpanded] = useState(false)
   const [pendingSynopsisRange, setPendingSynopsisRange] = useState<{ from: number; to: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [showArchDialog, setShowArchDialog] = useState(false)
@@ -131,6 +162,8 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
       setShowSynopsisCandidate(false)
       setWorldBuildingCandidate('')
       setShowWorldBuildingCandidate(false)
+      setSelfReview(null)
+      setSelfReviewExpanded(false)
       setLoading(false)
       return
     }
@@ -148,6 +181,8 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
     let coveredTo = 0
     let recoveredWorldBuildingCandidate = ''
     let recoveredSynopsisCandidate = ''
+    /** W6a-2：检查点里的世界观自审原文（JSON 字符串），解析放到会话校验之后。 */
+    let storedSelfReview = ''
     let confirmedWorldHandle: MainGenerationRunHandle | null = null
     let confirmedSynopsisHandle: MainGenerationRunHandle | null = null
     let recoveredPlanning: GenerationRecoveryContext | null = null
@@ -171,6 +206,8 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
         ? partial.world_building_partial_result : ''
       recoveredSynopsisCandidate = partial?.synopsis_incomplete === true && typeof partial.synopsis_result === 'string'
         ? partial.synopsis_result : ''
+      storedSelfReview = typeof partial?.world_building_self_review === 'string'
+        ? partial.world_building_self_review : ''
       // A failed main read must not hide the independently readable legacy candidate.
       for (const kind of ['worldbuilding', 'synopsis'] as const) {
         const handle = architectureRecoveryHandle(partial, kind, projectSession.projectId)
@@ -252,6 +289,8 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
     if (!recoveredSynopsisCandidate) setShowSynopsisCandidate(false)
     setWorldBuildingCandidate(recoveredWorldBuildingCandidate)
     if (!recoveredWorldBuildingCandidate) setShowWorldBuildingCandidate(false)
+    setSelfReview(readStoredSelfReview(storedSelfReview, core?.worldbuilding || ''))
+    setSelfReviewExpanded(false)
     setLoading(false)
     // ✅ 只依赖 path 字符串，避免 novelConfig 等变化导致 loadStatus 重建
   }, [currentProject, projectKey, projectMatches, rosterSnapshot])
@@ -532,6 +571,21 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
   )
   const canRepairRoster = canExplicitlyRepairCharacterRoster(rosterPresentation)
 
+  // W6a-2：自审提示条。有 conflict 走警示色，其余（undecidable/suggestion）走次要色；
+  // 没有条目时整条不渲染 —— 不留一条空灰条。
+  const selfReviewHasConflict = selfReview?.findings.some(finding => finding.severity === 'conflict') ?? false
+  const selfReviewTone = selfReviewHasConflict
+    ? 'var(--color-warning-text)'
+    : 'var(--color-text-secondary)'
+  const selfReviewHeadline = selfReview?.unreadable
+    ? text('世界观自审未完成（不影响使用）', 'Worldbuilding self-review did not complete (not blocking)')
+    : text(
+        `世界观自审：${selfReview?.findings.length ?? 0} 处设定需要确认（不影响使用）`,
+        `Worldbuilding self-review: ${selfReview?.findings.length ?? 0} item(s) to confirm (not blocking)`,
+      )
+  const selfReviewVisible = selfReview?.findings.slice(0, MAX_SELF_REVIEW_ITEMS) ?? []
+  const selfReviewRest = (selfReview?.findings.length ?? 0) - selfReviewVisible.length
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* 顶部工具栏 */}
@@ -569,6 +623,73 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
           </Button>
         </div>
       </div>
+
+      {/* W6a-2：世界观自审提示条 —— 可见但不阻断，可折叠，不占正文区域 */}
+      {selfReview && (selfReview.unreadable || selfReview.findings.length > 0) && (
+        <div
+          role="status"
+          className="flex-shrink-0 border-b"
+          style={{
+            borderColor: 'var(--color-border)',
+            backgroundColor: selfReviewHasConflict ? 'rgba(245, 158, 11, 0.06)' : 'var(--color-panel)',
+          }}
+        >
+          <button
+            type="button"
+            className="w-full flex items-center gap-1.5 px-3 h-8 text-left"
+            onClick={() => setSelfReviewExpanded(value => !value)}
+            title={text(
+              '这是生成后对世界观做的一次语义自审，只引用原文、不做算术，也不会自动改写正文。',
+              'A post-generation semantic review of the worldbuilding. It quotes the text verbatim, does no arithmetic, and never rewrites the prose.',
+            )}
+          >
+            {selfReviewHasConflict
+              ? <AlertTriangle size={12} style={{ color: selfReviewTone, flexShrink: 0 }} />
+              : <Info size={12} style={{ color: selfReviewTone, flexShrink: 0 }} />}
+            <span className="text-xs font-medium truncate" style={{ color: selfReviewTone }}>
+              {selfReviewHeadline}
+            </span>
+            <span
+              className="ml-auto flex items-center gap-0.5 text-[0.7rem] flex-shrink-0"
+              style={{ color: 'var(--color-text-muted)' }}
+            >
+              {selfReviewExpanded ? text('收起', 'Hide') : text('展开', 'Show')}
+              {selfReviewExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </span>
+          </button>
+          {selfReviewExpanded && (
+            <div className="px-3 pb-2 space-y-1">
+              {selfReview.unreadable ? (
+                <div className="text-xs leading-5" style={{ color: 'var(--color-text-muted)' }}>
+                  {text(
+                    '本次没有拿到可用的自审结果（模型未返回 / 返回内容无法解析）。已完成的世界观不受影响，也不会因此判定为失败。',
+                    'No usable self-review result was returned this run (missing or unparseable). The generated worldbuilding is unaffected and this is not treated as a failure.',
+                  )}
+                </div>
+              ) : (
+                <>
+                  {selfReviewVisible.map((finding, index) => (
+                    <div key={`${finding.severity}-${index}`} className="text-xs leading-5">
+                      <span style={{ color: selfReviewTone }}>
+                        [{text(SELF_REVIEW_SEVERITY_LABEL[finding.severity].zh, SELF_REVIEW_SEVERITY_LABEL[finding.severity].en)}]
+                      </span>{' '}
+                      <span style={{ color: 'var(--color-text-secondary)' }}>
+                        「{clipSelfReviewQuote(finding.quote)}」
+                      </span>{' '}
+                      <span style={{ color: 'var(--color-text-muted)' }}>{finding.why}</span>
+                    </div>
+                  ))}
+                  {selfReviewRest > 0 && (
+                    <div className="text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>
+                      {text(`另有 ${selfReviewRest} 条未展开。`, `${selfReviewRest} more not listed.`)}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 文件卡片列表 */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">

@@ -23,7 +23,7 @@ describe('installed M07 lane', () => {
     try {
       const before = db.prepare('SELECT body FROM contents').pluck().get()
       const result = migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), 8)
-      expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBe(11)
+      expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBe(12)
       expect(result.completedSteps).toEqual(['M07'])
       expect(db.prepare('SELECT body FROM contents').pluck().get()).toBe(before)
       // 新列以 NOT NULL DEFAULT '' 落地，消费点在它为空时回退到枚举模板。

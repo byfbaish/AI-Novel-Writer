@@ -1921,6 +1921,44 @@ severity 取值：error=严重的上述客观问题，强烈建议修复；warni
 4. currentState 应基于最新章节推断当前状态，而非初始状态
 5. plotStructure 和 narrativePOV 请根据实际叙事特征判断，而非猜测`,
   },
+
+  // ================================================================
+  // 世界观自审（W6a-2 · B 层）
+  // ================================================================
+
+  {
+    key: 'world_building_self_review',
+    name: '世界观自审',
+    description: '世界观写库后追加的一次只读自审：只找语义矛盾与设定不足，只引用原文',
+    systemRole: '你是一位严谨的设定审校员。你只依据已生成的世界观原文做语义核对，只逐字引用原句，不做任何算术，不改写设定，也不产出新的设定文本。',
+    variables: {
+      world_building: '本次生成的世界观全文',
+    },
+    requiredContextVariables: ['world_building'],
+    content: `【世界观自审】请通读下面这份世界观设定，只找两类问题：语义层面的自相矛盾、设定不足。
+
+【世界观原文】
+{{world_building}}
+
+【只找这两类】
+1. 自相矛盾：两处设定不能同时成立。例：「劳作换取报酬」与「签到即得」并存；「资源稀缺」与「人人富足」并存。
+2. 设定不足：关键规则缺了成立所必需的条件，导致后文无法判定。例：只写了资源名却没写它怎么获得；只写了禁忌却没写违反的后果。
+
+【硬约束（违反任意一条，本次自审作废）】
+- quote 只能逐字照抄【世界观原文】里的连续片段：不改写、不拼接、不概括、不补标点。抄不出原句就不要报这一条。
+- 禁止任何算术：不求和、不算余额、不算差额、不算比例、不做单位换算、不给总数。一个问题若必须靠算数才能成立，就不要报。
+- 不改写正文，不输出新的设定文本，不给出「应该改成什么」的完整替代段落。
+- 没有问题就输出 {"findings": []}。不要为了凑数编问题：宁可少报，不可乱报。
+
+【输出格式（严格 JSON；不要 Markdown、不要代码围栏、不要解释）】
+{"findings":[{"severity":"conflict","category":"resource","quote":"世界观原文里的逐字片段","why":"一句话说明"}]}
+
+- severity 只能取：conflict（两处设定不能同时成立）| undecidable（规则不足以判定）| suggestion（可以更明确，但不影响成立）
+- category 只能取：resource | time | space | logic | other
+- quote：必须能在【世界观原文】里原样搜到
+- why：一句话说清为什么成立，不超过 60 字
+- findings 最多 6 条；没有就输出 {"findings": []}`,
+  },
 ]
 
 const EN_US_ASSISTANT_IDENTITY: Pick<PromptTemplate, 'name' | 'description' | 'systemRole' | 'taskGuidance' | 'content' | 'systemSuffix' | 'variables'> = {

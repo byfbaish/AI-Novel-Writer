@@ -35,7 +35,9 @@ export type ArchStepKey = typeof ARCH_STEP_ORDER[number]
 const STEP_CHECKPOINT_KEYS: Readonly<Record<ArchStepKey, readonly string[]>> = {
   premise: ['premise_result'],
   characters: [],
-  worldbuilding: ['world_building_result', 'world_building_generation_handle'],
+  // `world_building_self_review`（W6a-2）必须跟着一起清：它的每条 finding 都引用世界观原文，
+  // 正文被清掉之后这些引文一条都命中不了 —— 留着只会让编辑面挂一条指向不存在文本的提示。
+  worldbuilding: ['world_building_result', 'world_building_generation_handle', 'world_building_self_review'],
   plotStructure: [],
   synopsis: SYNOPSIS_CHECKPOINT_KEYS,
 }

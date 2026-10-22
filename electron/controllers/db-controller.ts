@@ -67,6 +67,18 @@ import { NarrativeThreadRepository } from '../repositories/narrative-thread-repo
 import { PlotTreeRepository } from '../repositories/plot-tree-repository'
 import { RecoveryCandidateRepository } from '../repositories/recovery-candidate-repository'
 import type { RecoveryCandidateRecordInput } from '../../src/shared/recovery-candidate'
+import {
+  deleteResource,
+  hasResourceLedgerSchema,
+  listResources,
+  replaceChapterMovements,
+  upsertResource,
+} from '../repositories/resource-repository'
+import type {
+  ResourceDefinitionInput,
+  ResourceMovementInput,
+  ResourceMovementSource,
+} from '../../src/shared/resource-ledger'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
 
@@ -126,6 +138,9 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:narrative-thread-event-confirm',
   'db:plot-tree-save',
   'db:plot-tree-clear',
+  'db:resources-upsert',
+  'db:resources-delete',
+  'db:resource-movements-replace-chapter',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -1244,6 +1259,63 @@ export function registerDatabaseController() {
     // 库尚未打开：返回空视图而不是抛错，渲染层可以用 notes 提示「项目未就绪」。
     if (!db) return emptyWorldStateView(null, [WORLD_STATE_NOTES.projectNotOpen])
     return readWorldState(db, getCurrentProjectPath())
+  })
+
+  // ============================================================
+  // W6 资源账本（资源定义 + 逐章变动）
+  // ============================================================
+  ipcMain.handle('db:resources-list', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      // M11 之前 / 库未打开：降级成空列表，不报错（设计稿 §9）。
+      if (!db || !hasResourceLedgerSchema(db)) return { success: true, resources: [] }
+      return { success: true, resources: listResources(db) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:resources-upsert', async (_event, input: ResourceDefinitionInput, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = upsertResource(db, input)
+      return result.success ? { success: true, resourceId: result.resourceId } : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:resources-delete', async (_event, resourceId: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = deleteResource(db, resourceId)
+      return result.success ? { success: true } : { success: false, error: result.error, movementCount: result.movementCount }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:resource-movements-replace-chapter', async (
+    _event,
+    chapterNumber: number,
+    rows: ResourceMovementInput[],
+    source: ResourceMovementSource,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = replaceChapterMovements(db, chapterNumber, rows ?? [], source)
+      return result.success ? { success: true, inserted: result.inserted } : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
   })
 
   // ============================================================

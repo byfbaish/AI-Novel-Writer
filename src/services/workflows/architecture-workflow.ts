@@ -40,6 +40,12 @@ export interface PartialArchData {
   world_building_facts_fingerprint?: string
   world_building_db_hash?: string
   world_building_step_guidance?: string
+  /**
+   * W6a-2：世界观写库后 B 层模型自审的结果（`WorldBuildingSelfReview` 的 JSON 字符串）。
+   * 与其它 partial 字段同为字符串；只有生成成功那一路才会写入，失败路径不碰它。
+   * 读方见 `parseWorldBuildingSelfReview`（`src/shared/worldbuilding-self-review.ts`）。
+   */
+  world_building_self_review?: string
   synopsis_result?: string
   /** 情节大纲在上一次生成中被输出长度中断；synopsis_result 为已完成部分。 */
   synopsis_incomplete?: boolean
