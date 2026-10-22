@@ -6,7 +6,7 @@ import { createRequire } from 'node:module'
 import type BetterSqlite3 from 'better-sqlite3'
 import { CURRENT_DESKTOP_SCHEMA_VERSION, getDesktopMigrationRegistry } from '../migrations/desktop-registry'
 import { migrateSchema, probeSchema, verifySchema } from '../migrations/runner'
-import type { MigrationRegistry } from '../migrations/registry'
+import type { MigrationImplementation, MigrationRegistry } from '../migrations/registry'
 import { SqliteSchemaAdapter } from '../migrations/sqlite-schema-adapter'
 import { M02_ADDED_CHARACTER_COLUMNS, M02_AUXILIARY_TABLES } from '../migrations/m02-character-identity'
 import { M03_REVIEW_CYCLE_TABLES } from '../migrations/m03-review-cycle'
@@ -243,6 +243,27 @@ export async function backupProjectSqlite(options: {
 }
 
 
+/** 白名单不再写死版本数字：从 registry 实际安装的 lane 反推「这一档能不能一路升到当前」。
+ *
+ * 硬编码数组漏一档的直接表现是**老项目打不开**（`CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED`）：
+ * 2026-10-19 加 M09 漏过一次；2026-10-22 加 M10/M11 又漏一次 —— 那次作者手上所有项目
+ * 都停在 v11，M11 一落地就**全部**打不开。以后加 lane 不用再改这一处。
+ *
+ * v0 不放行：那是未版本化的旧库（见 registry 里 MIGRATION_LANE 的注释），走 legacy 合格源路径。
+ */
+export function isSupportedUpgradeOrigin(registry: MigrationRegistry, version: number): boolean {
+  if (!Number.isInteger(version) || version < 1 || version >= CURRENT_DESKTOP_SCHEMA_VERSION) return false
+  const byFrom = new Map<number, MigrationImplementation>()
+  for (const step of registry.implementations) byFrom.set(step.from, step)
+  let cursor = version
+  while (cursor < CURRENT_DESKTOP_SCHEMA_VERSION) {
+    const step = byFrom.get(cursor)
+    if (!step || step.to <= cursor) return false
+    cursor = step.to
+  }
+  return cursor === CURRENT_DESKTOP_SCHEMA_VERSION
+}
+
 /** Canonical-only upgrade seam. Caller validates its manifest and excludes business
  * writers first. Probe never opens the source; the single lane owns the transaction.
  */
@@ -250,10 +271,8 @@ export function upgradeProjectSqlite(options: { databasePath: string; registry?:
   const registry = options.registry ?? getDesktopMigrationRegistry()
   const before = probeProjectSqlite({ databasePath: options.databasePath, registry })
   if (before.schemaVersion === CURRENT_DESKTOP_SCHEMA_VERSION) return verifyProjectSqlite({ ...options, registry })
-  // 每一项都必须保留：旧项目可能停在任一历史版本（v7 由 M07 升 v8、v8 由 M08 升 v9、
-  // v9 由 M09 升 v10）。漏一档的直接表现就是老项目打不开：
-  // `CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED`（2026-10-19 实测踩过）。
-  if (![1, 2, 3, 4, 5, 6, 7, 8, 9].includes(before.schemaVersion)) throw new Error('CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED')
+  // 旧项目可能停在任一历史版本（v10 由 M10 升 v11、v11 由 M11 升 v12），每一档都必须放行。
+  if (!isSupportedUpgradeOrigin(registry, before.schemaVersion)) throw new Error('CANONICAL_SCHEMA_UPGRADE_UNSUPPORTED')
   sourceFile(options.databasePath)
   const database = new Database(options.databasePath, { fileMustExist: true })
   try {
