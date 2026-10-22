@@ -1,6 +1,6 @@
 # 世界状态：评审与接线方案（W 线）
 
-> **状态**：⚙️ **W0–W3 已完结**（W3 第一单元 `07435526` 审稿报告 v3 + 判据 CY/CZ；第二单元 `d4806d92`+`4c8df58d` 定稿期交叉 + 判据 DA/DB，见 §16 / §16.8）；**W4a 三段流水线已接线**（§18.5 / §18.5.1）；**§11.7 五维齐备性检查已落地**；**W5 只读视图已落地（含归位表，§17 / §17.3）**；**施工子稿**：[`world-state-w4a-wiring-plan.md`](./world-state-w4a-wiring-plan.md)（2026-10-22 一轮做完，含偏差全表）。**剩 W4b 六槽（后置）· §19 一人多身份（未开工）**
+> **状态**：⚙️ **W0–W3 已完结**（W3 第一单元 `07435526` 审稿报告 v3 + 判据 CY/CZ；第二单元 `d4806d92`+`4c8df58d` 定稿期交叉 + 判据 DA/DB，见 §16 / §16.8）；**W4a 三段流水线已接线**（§18.5 / §18.5.1）；**§11.7 五维齐备性检查已落地**；**W5 只读视图已落地（含归位表，§17 / §17.3；布局改造 §17.4）**；**W6 资源账本已立项**（[`w6-resource-ledger-design.md`](./w6-resource-ledger-design.md)，判据 DI–DL；**W6a-1 规则层已落地**（`worldbuilding-numeric-audit.ts`，A-1 每日时间量 ≥ 24h / A-2 相对量缺分母）；**W4b 并入其 M11**）；**W7 世界状态前置注入已立项**（[`w7-world-state-injection-design.md`](./w7-world-state-injection-design.md)，判据 DM–DP，闭环的另一半：**只有账本没有注入 = 事后能查出、写的时候照样不知道**）；**施工子稿**：[`world-state-w4a-wiring-plan.md`](./world-state-w4a-wiring-plan.md)（2026-10-22 一轮做完，含偏差全表）。**W4b 六槽已移交 W6**（2026-10-22 裁定并入其 M11，不在本线做）· **§19 一人多身份（未开工）** · **六槽剩余五格（时间/人物/制度/空间/能力，含关键物品）已全部立项、放最优先**（台账 12.13–12.18，共用 W6 的形状）
 > **日期**：2026-10-21 · 分支 `exp/world-state`（由 `exp/arc-tree-v2` 切出，14+4 个改动已先收口）
 > **缘起**：作者四问（Q1 泛用性 / Q2 还缺什么维度 / Q3 设定是否=初始值+维护规则 / Q4 是否该给状态而不是背景资料）+ 外部收敛稿《世界状态方案》
 > **样本**：《师父派我来除魔，幕后真凶竟是小师妹》第 1–4 章（库内原文 + trace `20261021-135755-068-正文-ch4` / `20261021-191749-711-审稿`）
@@ -285,8 +285,11 @@
 | **W1** ✅ | **执行合同进审稿**（已完成，见 §9.4）★ **做法与预案不同**：不是把生成侧文本抽成共享函数，而是新写**判据版**（`shared/review-execution-contract.ts`）＋一张「生成侧条款 → 审稿侧处置」对照表，由测试读源码强制表态 | 实际半天 | 补"规则只约束写不约束验收"（§3.2②）。**逐字复用会制造错误义务**：生成侧写"必须通过具体行动发生"是写作义务，审稿要的是"只认已发生的具体行动"这种判据 |
 | **W2** ✅ | **两个元数据**：① 日序（`storyDay` + 周期事件表）② 口径（`period`）——**已完成（2026-10-21，见 §14）**：日序两列走 **M10（v10→v11）**，由定稿后处理产出整数 + 单调性校验；`period` 不建字段、只在模板里加要求。含两处与预案的偏离 | 1.5 天（实际） | 唯一必须**先定**的两个槽 —— 它们让一切算术可判；其余槽等 W3 的真实数据。**教训见判据 CU**：两列初版写进冻结基线，老库导入直接失败 |
 | **W3** ✅ | **审稿输出 `stateDelta`** → 落审稿报告体 → **定稿期交叉** → 写回 `cs_*`（须与权威值/分级同时上线，§6.4） | 实际 1 天 | 从"每章一条意见"变成"可回写的差分"。**第一单元** `07435526`（报告 v3 + 判据 CY/CZ，§16）；**第二单元** `d4806d92`（定稿期交叉 + 判据 DA/DB，§16.8）+ `4c8df58d`（面板动线）。**§9.2 原表述的中间那段走不通**，见 §16.1 |
-| **W4** ⚙️ | 六槽/孤儿设定归位表（外部稿 S0）+ 设计意图栏 | 2 天 | **归位表可与 W0 并行做**，但**不要先落 schema**：三个槽已存在，先落会造第二事实源。**W4a 已完成**：纯函数 `c44e9449` + 读取面 `world-state-read.ts` + 三段流水线（先生成后 stage，§18.5.1）⇒ 归位表并入 W5 视图。**剩 W4b 六槽（后置，不提前落 schema）** |
+| **W4** ⚙️ | 六槽/孤儿设定归位表（外部稿 S0）+ 设计意图栏 | 2 天 | **归位表可与 W0 并行做**，但**不要先落 schema**：三个槽已存在，先落会造第二事实源。**W4a 已完成**：纯函数 `c44e9449` + 读取面 `world-state-read.ts` + 三段流水线（先生成后 stage，§18.5.1）⇒ 归位表并入 W5 视图。**W4b 已移交 W6（2026-10-22 裁定：并入其 M11，一次迁移同时落资源两表 + 六槽补齐 + 设计意图栏）** |
 | **W5** ✅ | **世界状态只读视图**（时间轴 + 差分）+ **归位表并入此视图** | 待估 | 原为"低优先级、不排期"；**2026-10-22 作者裁定归位表不另做界面后，W5 成了 W4a 的唯一出口** —— 归位表算得出来但没地方看。**✅ 已落地（§17.3）**：侧栏「世界状态」+ 归位表 / 日序轴 / 角色六槽与 provenance / 连续性事实，**零写路径**；orphan 行挂「补齐并建卡」入口。**硬边界见 §17**：只读、不编辑、不当第五个事实源 |
+| **W6** 🚧 | **资源账本**（灵石案）：权威值 `resources` 表 + **生成期自检**（防下一本）+ 账本（抽取/纯算术/中断语义）+ 世界状态第五类 | 3 期（W6a → M11 → W6b/c） | **2026-10-22 立项**（作者裁定 ①②③）。判据 **DI–DL**。**W6a-1 已落地**（规则层 A-1/A-2，不动 schema，18 例）。**W4b 已并入其 M11**。仅覆盖六类状态槽里的「资源」一半 —— 边界见该稿 §6.1、§10。见 [`w6-resource-ledger-design.md`](./w6-resource-ledger-design.md) |
+| **W7** 📝 | **世界状态前置注入**（闭环的另一半）：写前把「截至上一章的状态」递给模型 | 4 期（W7a → W7b/c/d） | **2026-10-22 作者裁定立项**，理由「世界状态必须闭环，不然没有意义；且这是给按卷切片打地基」。判据 **DM–DP**。复用 W0 的作者材料块与 E4 的三层投影（本卷 + 上卷快照 + 最近 K 章），**不新建卷表**。见 [`w7-world-state-injection-design.md`](./w7-world-state-injection-design.md) |
+| **S×5** 📌 | **六槽剩余五格**：时间 / 人物 / 制度 / 空间 / 能力 | 各 1 期（未开工） | **2026-10-22 作者裁定：六槽全部立项、放最优先**（世界状态是首要必须完成的任务）。**共用 W6 的形状**（权威值 → 变动 → 纯算术 → 中断 → 注入），**不各自造轮子**。建议顺序：时间（「昨儿夜里」已发生）→ 人物（「记的是四副」）→ 制度 → 空间（先确认第 4 维数据齐不齐）→ 能力（先定金手指数据形状）。条目与关联资料见台账 **12.13–12.18** 及「世界状态六槽 · 闭环总纲」 |
 
 > **★ 与外部稿的关键分歧**：它把"定六槽"排第一；我把它拆成"两个元数据先定（W2）+ 归位表并行、schema 后置（W4）"。
 > 理由是实测：六槽里三槽已有宿主，再定一遍不产生新能力；而真正卡住 6 条规则的日序与口径，各占一句话。
@@ -960,10 +963,23 @@ M07（`plot_structure_plan`）/ M08（`structured_refs`）/ M09（`rhythm_profil
 |---|---|
 | 读取层 | `electron/services/world-state-read.ts`：`readWorldState(db, projectPath)` —— 归位表（三来源 mentions + 锚点 + 别名 + 退休过滤）、章节轴（`SummaryRepository.listFinalizedContinuityBefore`，`story_day_offset` NULL 原样透传）、角色六槽 + `cs_provenance`、连续性事实；全程只读，无一条 UPDATE/INSERT |
 | 通道 | `src/shared/ipc-channels.ts` 加 `'world-state:read'`（args: `[expectedProjectPath]`）；`electron/controllers/db-controller.ts` 用 `assertRequiredExpectedProjectPath` 校验后读取；库未打开返回空视图 + note |
-| 视图 | `src/components/panels/sidebar/WorldStateView.tsx` + `world-state-view-model.ts`（纯函数）；四区：归位表四档 / 章节轴 / 角色六槽 + 来源 / 连续性事实；`unreadableMentions` 三源分别显式提示 |
+| 视图 | **主区页** `src/components/pages/WorldStatePage.tsx` + **左栏分类导航** `panels/sidebar/WorldStateNav.tsx` + `world-state-view-model.ts`（纯函数）；四区：归位表四档 / **时间线（按故事日分组）** / 角色六槽 + 来源 / 连续性事实；`unreadableMentions` 三源分别显式提示。**布局改造见 §17.4**（初版是塞在 260px 左栏里的 `sidebar/WorldStateView.tsx`，已删除） |
 | 导航 | `SidebarView` 加 `'world-state'`；`LeftToolWindowBar` 加「世界状态」（Compass 图标，世界之后、剧情之前）。**与计划文件的偏差**：计划写 id `'worldstate'` + Gauge，实现用 `'world-state'` + Compass（内部命名与图标，不影响语义） |
 | 唯一动作 | orphan 行「补齐并建卡」：模型披露确认（照 `CharacterCardGenerateButton.tsx:102-107`）→ 启动两段式补齐工作流 → 在任务面板预览并确认 → 才走 `approve` 写名单。视图自身**没有** approve / 写仓库调用；ambiguous 只列命中卡数 |
-| 测试 | `world-state-read.test.ts`（8）· `db-controller-project-context.test.ts`（36，含本通道）· `world-state-view-model.test.ts`（19）· `WorldStateView.render.test.tsx`（3）· `WorldStateView.completion.browser.tsx`（4，真 Chromium：披露/启动/无模型/只读边界） |
+| 测试 | `world-state-read.test.ts`（8）· `db-controller-project-context.test.ts`（37，含本通道）· `world-state-view-model.test.ts`（28，含时间线分组 9）· `WorldStatePage.render.test.tsx`（3）· `WorldStatePage.completion.browser.tsx`（6，真 Chromium：披露/启动/无模型/只读边界/时间线分组/只读通道唯一性） |
+
+### 17.4 布局改造（2026-10-22，作者首测后）
+
+作者反馈：四区全挤在 260px 左栏、一屏只装一区半；「章节」其实是世界时间线；几百章一行一个要拉很久。
+三项裁定 + 落地细节见 [`docs/handoffs/2026-10-22-world-state-w4-handoff.md`](../../handoffs/2026-10-22-world-state-w4-handoff.md) §7.7。
+
+| 项 | 结论 |
+|---|---|
+| 结构 | 左栏只做分类导航（4 类 + 计数 + `N 待建卡`）；内容走 `EditorArea` 的 `auxiliaryPage`（与 home / 角色管理 / 知识库同构），**不新增 `EditorTab` 类型**（纯只读页不该带脏状态与关闭语义） |
+| 数据 | 抽 `src/stores/world-state-store.ts`：左栏取计数、主区取明细，一次 IPC 两处用；快照带 `path`，项目切换按路径判新鲜度 |
+| 时间线 | 按 `storyDayOffset` 分组（NULL 单独成「日序未知」组、排末尾、不折 0），组内 `auto-fill` 网格；**只默认展开最近 3 组**，首屏 `scrollIntoView` 定位最新一次 |
+| 网格 | `repeat(auto-fill, minmax(Nrem, 1fr))`，由容器宽度决定列数，不写死断点 |
+| 副作用 | 进本页会 `hidden` 正文编辑器区（仍挂载、状态不丢），与角色管理 / 知识库一致 |
 
 **已知未做（有意）**：视图不订阅 `REFRESH_RESOURCE`，approve 建卡后需手动刷新（header 已提示「快照可能已过期」）。
 
@@ -978,7 +994,7 @@ M07（`plot_structure_plan`）/ M08（`structured_refs`）/ M09（`rhythm_profil
 | 子项 | 内容 | 是否动 schema | 前置 |
 |---|---|---|---|
 | **W4a** | **归位表**：把「系统已经说出口的名字」对账到落点（有卡 / 多卡 / 作者判锚点 / 孤儿） | ❌ 不动 | W3（已完成：`stateDelta` 才有 `characterName` 的出处） |
-| **W4b** | 六槽补齐 + 设计意图栏 | ⏸ **后置** | W4a 的真实数据 |
+| **W4b** | 六槽补齐 + 设计意图栏 | 🔀 **已移交 W6**（2026-10-22 裁定并入其 M11） | W4a 的真实数据已具备 |
 
 **为什么不先做六槽**（§9.2 已有一句，这里展开）：六槽里三槽已有宿主（`cs_location` / `cs_power_level` / `cs_key_items` + `cs_provenance`），再定一遍不产生新能力；而真正卡住的日序与口径（W2）各占一句话。**先落 schema 会把「现在能写的」和「新加的槽」混成两套真相** —— 判据 CU 的教训（初版把两列写进冻结基线，老库导入直接失败）在同一处又踩一次的概率很高。
 
@@ -1051,7 +1067,7 @@ M07（`plot_structure_plan`）/ M08（`structured_refs`）/ M09（`rhythm_profil
 ②要落地只需要一件事：把 `detailSystem` 段从架构流程里**取出来单独调**，输入成「最小 manifest（slotId + name）」。
 `detailTask` 的输入形态（`manifest` + `slotIds` + `validatedPrefix`）本来就支持这个用法，缺的只是调用点。
 
-W4b（六槽 + 设计意图栏）等 W4a 接线后拿真实数据再定，**不提前落 schema**。
+W4b（六槽 + 设计意图栏）已移交 W6 的 M11（2026-10-22 裁定），本线不再等它。
 
 ### 18.5.1 实施裁决（2026-10-22，与设计稿 A1 的差异）
 

@@ -72,6 +72,7 @@ src/shared/__tests__/cast-ledger-completion.test.ts、electron/__tests__/cast-le
 ## 阶段 4 · W5 视图
 - 导航：src/stores/layout-store.ts:4 SidebarView 加 'worldstate'；src/components/layout/LeftToolWindowBar.tsx:22-26 sidebarActivities 加 { id:'worldstate', icon: Gauge, zh:'世界状态', en:'World state' }；Sidebar.tsx:34-56 加 viewTitle + render。
 - 新 src/components/panels/sidebar/WorldStateView.tsx：调 'world-state:read'；四区（归位表 / 日序轴 / 角色六槽+provenance / 连续性事实）；orphan 两动作（补齐并建卡 / 提示去角色管理页登记锚点）；ambiguous 只列卡名；NULL 显示未知；unreadableMentions 显式提示。
+  > **已被取代（2026-10-22 同日）**：按作者反馈改为「左栏分类导航 + 主区宽屏页（`WorldStatePage` + `WorldStateNav` + `world-state-store`）」，本文件 685 行的组件已删除。改造细节见交接文档 §7.7、主稿 §17.4。
 - 硬边界：组件只允许 'world-state:read' + workflow 启动；无 approve、无写仓库。
 - browser 测试：WorldStateView.browser.tsx（NULL→未知、orphan 排序、未配置模型不启动、只调用只读通道）。
 
@@ -89,7 +90,7 @@ src/shared/__tests__/cast-ledger-completion.test.ts、electron/__tests__/cast-le
 | ① §11.7 | `src/shared/worldbuilding-completeness.ts`（19 例）+ `architecture.command.ts` 写库后一行日志 |
 | ② 归位表读取 | `electron/services/world-state-read.ts`（8 例）+ `src/shared/world-state-view.ts` + `world-state:read` 通道（db-controller 36 例含新通道） |
 | ③ 流水线 | `src/shared/cast-ledger-completion.ts`（14）· `electron/services/cast-ledger-generation-proof.ts`（12）· `character-proposal-service` cast-ledger 分支（6）· `cast-ledger-completion.command.ts`（8）· `cast-ledger-completion-workflow.ts`（5） |
-| ④ W5 视图 | `WorldStateView.tsx` + `world-state-view-model.ts`（19）+ render（3）+ browser（4） |
+| ④ W5 视图 | `WorldStatePage.tsx` + `WorldStateNav.tsx` + `world-state-view-model.ts`（28）+ render（3）+ browser（6）· *初版 `WorldStateView.tsx` 已由本行取代，见交接 §7.7* |
 
 `pnpm typecheck` exit 0；定向 11 文件 134 例 + browser 4 例全绿。
 

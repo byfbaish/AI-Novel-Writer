@@ -2,7 +2,7 @@
 
 > **用途**：上下文过长时的接力点。**先读这一页，再读主设计稿**，防止目标漂移。
 > 分支：`exp/world-state` · 代码 HEAD：`19383cdd` + 本轮提交（W4a 接线 + W5 视图）· 工作区：代码与文档一并提交
-> 进度：**W0–W3 全部完结 · W4a 三段流水线已接线 · §11.7 五维检查已落地 · W5 只读视图已落地（含归位表）· W4b 后置**
+> 进度：**W0–W3 全部完结 · W4a 三段流水线已接线 · §11.7 五维检查已落地 · W5 只读视图已落地（含归位表）· W4b 后置 · W6 资源账本已立项（W6a-1 已落地）· W7 前置注入已立项**（两条都独立成线，**不在本线做**）
 > 主设计稿：[`docs/design/architecture/world-state-review-and-wiring-plan.md`](../design/architecture/world-state-review-and-wiring-plan.md)
 > 台账：[`docs/plans/prompt-assembly-backlog.md`](../plans/prompt-assembly-backlog.md) 12.6（W 线）· 12.8（C1 一人多身份）· 12.9（§10-8）· 12.10（五维齐备性检查）
 
@@ -33,6 +33,9 @@ W 线要解决的不是"缺状态数据"，而是 **"状态已经有了，两条
 - ❌ 让定稿补写"审稿说过但定稿没提"的字段（那是**补写**不是防错，属 W4 之后的新课题）
 - ❌ W5 视图里编辑状态（它必须是只读，否则成第五个事实源，§17）
 - ❌ 提前落 W4b 的 schema（三槽已存在，先落会造第二事实源）
+- ❌ **W6 资源账本**（`resources` / `resource_movements` / 生成期自检）—— 已单独立项，**本线不碰**
+- ❌ **W7 前置注入**（`docs/design/architecture/w7-world-state-injection-design.md`）—— 已单独立项，**本线不碰**。它与 W6 合起来才是闭环：W6 写后查，W7 写前给
+- ❌ **W4b 六槽 + 设计意图栏** —— **2026-10-22 已裁定移交给 W6**（并入其 M11），本线不再跟进
 - ❌ 动 `~/.vela/` 里其余 19 份旧覆盖（只有 `refine_chapter` 带 `builtinRevision`，但那是另一条线的事）
 
 ---
@@ -46,7 +49,7 @@ W 线要解决的不是"缺状态数据"，而是 **"状态已经有了，两条
 | W2 | ✅ | 日序两列走 **M10（v10→v11）**；`period` 不建字段 | 判据 CT/CU/CV/CW |
 | W3 | ✅ | 第一单元 `07435526`（报告 v3，判据 CY/CZ）· 第二单元 `d4806d92`（定稿期交叉，判据 DA/DB）+ `4c8df58d`（面板） | 冲突 ⇒ `review-conflict` 待裁决，**不静默写回** |
 | W4a | ✅ | 纯函数 `src/shared/cast-ledger.ts`（四档，11 例）· 读取 `electron/services/world-state-read.ts` · 补全 `cast-ledger-completion.command.ts` + `cast-ledger-completion-workflow.ts` · 证明 `cast-ledger-generation-proof.ts` · 类型 `src/shared/cast-ledger-completion.ts` | **先生成后 stage**（不是设计稿的「先 stage」）：见 §7.2；写路径仍只有 `approve` |
-| **W5** | ✅ | `src/components/panels/sidebar/WorldStateView.tsx` + `world-state-view-model.ts`；通道 `world-state:read` | 只读；唯一动作是 orphan 行「补齐并建卡」（启动工作流，不直接写库） |
+| **W5** | ✅ | 主区页 `src/components/pages/WorldStatePage.tsx` + 左栏导航 `panels/sidebar/WorldStateNav.tsx` + `world-state-view-model.ts`；通道 `world-state:read` | 只读；唯一动作是 orphan 卡「补齐并建卡」（启动工作流，不直接写库）。**布局见 §7.7**（原 `sidebar/WorldStateView.tsx` 已删） |
 | §11.7 | ✅ | `src/shared/worldbuilding-completeness.ts` + `architecture.command.ts` 一行日志 | 缺维可见不阻断；空/读不懂时只提示「未能识别标题结构」 |
 | W4b | ⬜ | 六槽 + 设计意图栏 | **后置**，不提前落 schema |
 
@@ -97,7 +100,7 @@ source 从「只有 `names`」扩成 `{ kind:'cast-ledger', names, handle, artif
 含 `cast-ledger` 的 `orphan` / `ambiguous` 区。硬边界见 §17：只读、不编辑、不当第五个事实源；
 状态来源（author / derived / 未定）在界面上可区分；**没有任何写路径**。
 
-**落地**：`WorldStateView.tsx`（四区：归位表四档 / 章节轴 / 角色六槽+来源 / 连续性事实）+ `world-state-view-model.ts`（纯函数 19 例）+ `world-state:read` 只读通道（`electron/services/world-state-read.ts`）。
+**落地**：`WorldStatePage.tsx`（主区宽屏页：归位表四档 / 时间线 / 角色六槽+来源 / 连续性事实）+ `WorldStateNav.tsx`（左栏分类导航）+ `world-state-view-model.ts`（纯函数）+ `world-state:read` 只读通道（`electron/services/world-state-read.ts`）。**最初版本是塞在 260px 左栏里的 `WorldStateView.tsx`，同日按作者反馈改成独立页，见 §7.7。**
 唯一动作是 orphan 行的「补齐并建卡」：披露模型端点 → 启动两段式工作流 → 任务面板预览确认 → 才 `approve` 写名单；视图自身不调 approve。
 
 ### ④ C1 一人多身份（待作者选档，**未开工**）
@@ -172,11 +175,11 @@ source 从「只有 `names`」扩成 `{ kind:'cast-ledger', names, handle, artif
 | `src/services/workflows/cast-ledger-completion-workflow.ts` | 两段式：补全 → 确认并写入角色卡 |
 | `src/services/workflows/__tests__/cast-ledger-completion.command.test.ts` | 8 例 |
 | `src/services/workflows/__tests__/cast-ledger-completion-workflow.test.ts` | 5 例 |
-| `src/components/panels/sidebar/world-state-view-model.ts` | 视图纯函数（四档分组 / 日序 / 提及摘要 / 来源文案） |
-| `src/components/panels/sidebar/__tests__/world-state-view-model.test.ts` | 19 例 |
-| `src/components/panels/sidebar/WorldStateView.tsx` | W5 视图（四区 + orphan「补齐并建卡」） |
-| `src/components/panels/sidebar/__tests__/WorldStateView.render.test.tsx` | 3 例（无项目分支） |
-| `src/components/panels/sidebar/__tests__/WorldStateView.completion.browser.tsx` | 4 例（真 Chromium：披露 / 启动 / 无模型 / 只读边界） |
+| `src/components/panels/sidebar/world-state-view-model.ts` | 视图纯函数（四档分组 / **时间线按故事日分组** / 日序 / 提及摘要 / 来源文案） |
+| `src/components/panels/sidebar/__tests__/world-state-view-model.test.ts` | 19 例 → **28 例**（+9 时间线分组与默认展开） |
+| ~~`src/components/panels/sidebar/WorldStateView.tsx`~~ | **已删除**（§7.7 改为主区页 + 左栏导航，避免两份实现） |
+| ~~`src/components/panels/sidebar/__tests__/WorldStateView.render.test.tsx`~~ | **已迁移** → `src/components/pages/__tests__/WorldStatePage.render.test.tsx`（3 例） |
+| ~~`src/components/panels/sidebar/__tests__/WorldStateView.completion.browser.tsx`~~ | **已迁移** → `src/components/pages/__tests__/WorldStatePage.completion.browser.tsx`（4 → 6 例：+时间线分组 / +只读通道唯一性） |
 
 **修改（15）**
 
@@ -252,3 +255,121 @@ $env:ELECTRON_RUN_AS_NODE=1; & ./node_modules/electron/dist/electron.exe ./node_
 2. W5 视图订阅 `REFRESH_RESOURCE`（`characterCards` / `summary`）做自动刷新。
 3. W4b 六槽 + 设计意图栏（先拿 W5 真实数据定槽，不提前落 schema）。
 
+### 7.6 同日修复：只读通道漏登记会话前缀（作者真机首测发现）
+
+**现象**：打开「世界状态」面板立刻报
+
+```
+Error occurred in handler for 'world-state:read': Error: 缺少项目会话上下文，已拒绝操作
+    at ProjectAccessService.assertCurrentProjectContext
+```
+
+与项目是空是满无关：**任何项目、任何数据状态下都会这样失败**。
+
+**根因（不是数据问题，是两段各自正确的代码拼起来缺一环）**
+
+1. `electron/controllers/db-controller.ts` 里**所有** `db:*` / 新通道都经
+   `registerProjectDatabaseHandler` 门禁：它把**最后一个实参**当
+   `ProjectSessionContext`（`isProjectSessionContext` 判定），取不到就
+   `assertCurrentProjectContext(undefined, …)` 直接抛「缺少项目会话上下文」。
+2. 渲染层 `src/services/ipc-client.ts#isProjectScopedChannel` 决定「这条通道要不要
+   自动追加冻结会话」。该白名单只列了 `db:` / `kb:` / `character-proposal:` 等前缀，
+   **没有 `world-state:`** ⇒ `ipc.invoke('world-state:read', path)` 被当成非项目域通道，
+   只发了 `path`，主进程当然拿不到会话。
+
+**为什么 134 例单测全绿却没拦住**
+
+- `db-controller-project-context.test.ts` 的 `handler()` 辅助函数会**自动在实参末尾补
+  `currentSession()`** —— 它覆盖的是「带了会话的正常路径」，从没测过「渲染层忘带会话」；
+  门禁本身的行为（缺会话即拒）也因此没有被任何用例钉住。
+- `ipc-client-project-session.test.ts`（渲染层「该不该补会话」）只断言了 `db:` 前缀的例子。
+
+两层各测一半，中间那条「新增通道必须登记前缀」的契约谁都没测。
+
+**修法（两处，最小改动）**
+
+- `src/services/ipc-client.ts`：`isProjectScopedChannel` 增加
+  `channel.startsWith('world-state:')`（附注释说明主进程用同一套门禁）。
+- `src/services/__tests__/ipc-client-project-session.test.ts`：+1 例
+  `world-state:read` 必须携带 `{projectId, leaseId, projectPath}`。
+
+**验证**：`ipc-client-project-session` 4 例 ✓ · `db-controller-project-context` 36 例 +
+`world-state-read` 8 例 = 44 例 ✓ · `pnpm typecheck` exit 0。
+改了 `src/` 非组件模块 ⇒ **必须重启 `pnpm dev`**（热更新不会重载 IPC 客户端）。
+
+**同类风险（下次新增通道时照这个清单自查）**：通道前缀不在
+`isProjectScopedChannel` 白名单里，表现就是「权限正确却全量被拒」。新增通道时
+同时改 `ipc-channels.ts`、主进程注册点、**以及这个白名单**。
+
+
+### 7.7 同日改造：左栏降级为导航 + 主区宽屏页（作者看实效果后要求）
+
+**触发**：作者首测后指出三件事——四区全挤在 260px 左栏里；「章节」那一栏其实是世界时间线；
+几百章一行一个要往下拉很久。三条判断都成立，第一条是结构问题（不是样式问题）。
+
+**作者裁定（三选三中）**
+
+1. 时间线：**按故事日分组 + 组内自适应网格**（不是纯网格，也不是横向时间轴）。
+2. 连续性事实：**独立成第 4 类**（与时间线数据同源但排序粒度不同，各自一页）。
+3. 默认定位：**定位最新，只展开最近 3 组**。
+
+**结构**
+
+| 位置 | 改造前 | 改造后 |
+|---|---|---|
+| 左栏 `sidebar/WorldStateNav.tsx` | 四区内容全塞在这里（`WorldStateView.tsx`，685 行） | 四个分类入口 + 计数 + `N 待建卡` 徽标；不调 IPC |
+| 主区 `pages/WorldStatePage.tsx` | 无 | 宽屏页；`EditorArea` 的 `auxiliaryPage` 第四个成员（与 home / characters / knowledge 同构） |
+| 数据 `stores/world-state-store.ts` | 组件内 `useEffect` 各自 invoke | 单一快照持有者；左栏取计数、主区取明细，**一次 IPC 两处用** |
+
+**时间线的实现选择**
+
+- `groupTimelineByStoryDay`：按 `storyDayOffset` 聚组并按 offset 升序；**NULL 单独成「日序未知」组排末尾**，
+  绝不折算成第 0 日（0 是合法日序，单测专门钉了这条）；组内按章号升序；作者手写的
+  `storyDayLabel` 优先于数字日序。
+- `defaultExpandedTimelineKeys(groups, 3)`：只展开最后三组，历史组折叠成一行标题 ——
+  这是「几百张不要往下拉」的真正解法，光换网格还是会滚 100 行。
+- 首屏 `scrollIntoView({ block: 'start' })` 指到最后一组，**只滚一次**（`jumpedRef`），之后不抢滚动。
+- 章卡上的 observation 改成 `details` 折叠（`N 条观察`），几百卡不会一次性铺出几千行明细。
+
+**网格**：`repeat(auto-fill, minmax(Nrem, 1fr))` 内联 style（四档 6.5 / 章卡 13 / 归位表 14 / 事实 16 / 角色 17），
+由容器宽度决定列数，不写死断点。
+
+**副作用（已知情）**：进世界状态页会把正文编辑器区 `hidden`（与角色管理 / 知识库一致，组件仍挂载、状态不丢）。
+若要「边看时间线边改正文」，得改走可关闭编辑器 Tab 的路子 —— 会连带动脏状态 / 关闭确认 / 保存 seam，
+本轮明确不走。
+
+**验证**
+
+| 项 | 结果 |
+|---|---|
+| `pnpm typecheck` | exit 0 |
+| `eslint`（10 个改动文件） | exit 0，无告警 |
+| `world-state-view-model.test.ts` | 19 → **28 passed**（+9：分组 / 排序 / NULL 独立 / 0 日 / 手写标签 / 英文 / 空 / 默认展开 3 组） |
+| `WorldStatePage.render.test.tsx` | 3 passed（无项目分支、无可编辑控件、不抛错） |
+| `WorldStatePage.completion.browser.tsx` | 6 passed（披露 / 启动 / 无模型 / 只读边界 / 时间线分组 / 只读通道唯一性） |
+| 连带回归 | `LeftToolWindowBar` 4 · `plot-tree-rail-navigation` 2 · `EditorArea.revision-recovery` 2 · `ipc-client-project-session` 4 全绿 |
+| 未跑 | 全量 `pnpm test`（已知基线噪声）；**GUI 实效果未目视**（需重启 `pnpm dev`） |
+
+**偏差 / 未做**
+
+- 左栏顶部 `Sidebar.tsx` 的 `panel-header` 仍写「世界状态」，导航内部另有一行「分类 · 只读」——
+  信息略有重复，不冲突；要不要合并等作者看过实效果再定。
+- 时间线未虚拟化：几百卡仍全量渲染，靠「默认只展开 3 组」把首屏量级压到几十张。
+- 事实栏的搜索 / 过滤（作者在裁定问题里未被选中）留作后续。
+
+### 7.8 同日第三轮：事实检索 + 导航去重 + 状态栏精简（作者看过实效果后）
+
+| 项 | 结论 / 落地 |
+|---|---|
+| 事实栏搜索 | ✅ 新增。`filterContinuityFacts(facts, query)` 纯函数（正文 + 章号，支持「12」「第12章」）；页面加 `input[type=search]` + `N / M` 计数 + 空结果提示。**只过滤内存数组：不发 IPC、不写库**，所以不违反只读契约（browser 用例专门断言 IPC 调用次数不变） |
+| 左栏「任务/日志/模型/设置」 | ✅ 全部移除。前三项与 `BottomToolWindowBar`（下方 28px 图标栏）完全重复；设置与标题栏重复。左栏只留视图导航，腾出的位置给后续功能 |
+| 状态栏 | ✅ 只留「AI 任务胶囊 + 当前模型」。移除品牌名/版本号（标题栏与「关于」已有）、当前书名（标题栏已有）、**「重载提示词」**（提示词在设置里改，就该在设置里刷新才闭环；跨画面跳转不符合操作逻辑，设置里 `PromptSettings.tsx:225` 与 `DeveloperSettings.tsx:76` 仍保留两个入口） |
+| 状态栏配色 | ✅ 根因是 `v3-magazine.css` 后段硬编码 `background:#17161c`（浅色皮肤下突然一条近黑底）+ 文字用 `--v3-indigo`，对比度极低。改为 `var(--v3-panel-strong)` / `var(--v3-muted)`，深色主题自动回落各自变量 |
+
+**测试契约变更（三条，都因结构改变而非放宽）**
+
+1. `LeftToolWindowBar.test.tsx`：标签清单去掉「任务/设置」，**新增一条负向断言**（左栏不得再出现这四个字的按钮），防止重复入口回潮。
+2. `f05-writer-navigation.browser.tsx`：`U03.A01` 由「点左栏设置按钮」改为「左栏没有设置入口 + `openSettings` 仍能打开真实设置页」。
+3. `v3-shell.browser.tsx`：导航按钮计数 7 → **8**（上一轮加「世界状态」时就该改，漏了）；设置点击段改为断言左栏无该入口。
+
+**验证**：`pnpm typecheck` 0 · `eslint`（9 文件）0 · view-model **33 例** · LeftToolWindowBar 5 · WorldStatePage.browser **7 例** · `f05-writer-navigation` 10 · `v3-shell` 10 · 主题相关 48（`theme-text-contrast` / `app-skin-background` / tokens 全绿；`visual-fidelity-contract` 2 例为已知基线噪声）。
