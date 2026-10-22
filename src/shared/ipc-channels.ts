@@ -33,6 +33,7 @@ import type { RecoveryCandidate, RecoveryCandidateRecordInput } from './recovery
 import type {
   ResourceDefinition,
   ResourceDefinitionInput,
+  ResourceMovement,
   ResourceMovementInput,
   ResourceMovementSource,
 } from './resource-ledger'
@@ -1241,6 +1242,8 @@ export interface DatabaseChannels {
   'db:resources-upsert': { args: [input: ResourceDefinitionInput, expectedProjectPath: string]; return: { success: boolean; resourceId?: string; error?: string } }
   'db:resources-delete': { args: [resourceId: string, expectedProjectPath: string]; return: { success: boolean; error?: string; movementCount?: number } }
   'db:resource-movements-replace-chapter': { args: [chapterNumber: number, rows: ResourceMovementInput[], source: ResourceMovementSource, expectedProjectPath: string]; return: { success: boolean; inserted?: number; error?: string } }
+  /** W6b 账本读视图：资源定义 + 截至 `throughChapter` 的变动 + **已扫章号**（中断判定的唯一来源）。 */
+  'db:resource-ledger-read': { args: [throughChapter: number, expectedProjectPath: string]; return: { success: boolean; resources?: ResourceDefinition[]; movements?: ResourceMovement[]; scannedChapters?: number[]; error?: string } }
 
   // 沿用旧表
   'db:log-llm-call': { args: [call: Record<string, unknown>, expectedProjectPath: string]; return: { success: boolean } }

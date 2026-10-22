@@ -185,3 +185,59 @@ export function listMovementsThrough(db: BetterSqlite3.Database, chapterNumber: 
   return db.prepare(`SELECT ${SELECT_MOVEMENT} FROM resource_movements
     WHERE chapter_number <= ? ORDER BY chapter_number ASC, id ASC`).all(chapterNumber) as ResourceMovement[]
 }
+
+/**
+ * 已确认「扫描过」的章号（设计稿 §5.2 的判定表）。
+ *
+ * `post_process_steps` 只有 `ok INTEGER`，而且**没跑过的步骤根本没有行**
+ * （`electron/migrations/baseline-schema.ts:292`）。所以判定是：
+ * `行存在 && ok=1` ⇒ 已扫；`ok=0` 或没有这一行 ⇒ 未扫。本函数只返回**已扫**的章号。
+ *
+ * ## 为什么必须 join（而 `trigger_source_id` 不是章号）
+ *
+ * 正常定稿的跑批在 `PostProcessRepository.createRun` 里把
+ * `trigger_source_id` 改写成了 `finalization:<finalization_id>`
+ * （`electron/repositories/post-process-repository.ts:69`），所以章号不在 run 上。
+ * 映射走 `finalization_outbox.finalization_id → chapter_number`
+ * （`baseline-schema.ts:164-180`，它在定稿事务里与正文一起提交，每个定稿草稿必有且仅有一条），
+ * **不用** `summary_snapshots`：那张表只有 `chapter_notes` 步骤成功后才有一行，
+ * 用它做 join 会把「要点失败但账本成功」的章判成未扫，也会把「要点比账本晚成」的窗口判成中断。
+ *
+ * 三道收窄，缺一条都会把别的章算进来：
+ * 1. 只认**该章最新定稿草稿**的 outbox（重定稿会产生第二个 draft/outbox 行，
+ *    与 `PostProcessRepository.getLatestRun:96` 的口径一致）；
+ * 2. 只认**该 finalization 里最近一次「含账本步骤」的跑批**：重定稿会开新 run，
+ *    新 run 的账本步骤尚未跑完时余额就该是 unknown，而不是沿用旧 run 的成功记录；
+ *    反过来，一次**只跑别的步骤**的跑批（修复 `character_cards` 之类会带 `stepKey` 过滤）
+ *    根本没碰账本，不能因此把已有的扫描记录抹成中断；
+ * 3. 新库写 `finalization:<id>`，老库/无 finalizedSource 的跑批写裸章号 —— 两种都认，
+ *    老库从这里拿不到账本步骤行，结果自然是未扫（保守方向，不会谎报已扫）。
+ */
+export function listScannedLedgerChapters(db: BetterSqlite3.Database): number[] {
+  if (!hasTable(db, 'post_process_runs') || !hasTable(db, 'post_process_steps')) return []
+  if (!hasTable(db, 'finalization_outbox') || !hasTable(db, 'drafts')) return []
+  const rows = db.prepare(`
+    SELECT o.chapter_number AS chapterNumber
+    FROM post_process_runs r
+    JOIN finalization_outbox o
+      ON r.trigger_source_type = 'chapter_finalize'
+     AND (r.trigger_source_id = 'finalization:' || o.finalization_id
+          OR r.trigger_source_id = CAST(o.chapter_number AS TEXT))
+    JOIN drafts d ON d.id = o.draft_id
+    JOIN post_process_steps s ON s.run_id = r.id AND s.step_key = 'resource-ledger'
+    WHERE d.id = (
+        SELECT d2.id FROM drafts d2
+        WHERE d2.chapter_number = o.chapter_number AND d2.status = 'finalized'
+        ORDER BY d2.version DESC, d2.id DESC LIMIT 1)
+      AND r.rowid = (
+        SELECT r2.rowid FROM post_process_runs r2
+        WHERE r2.trigger_source_type = 'chapter_finalize'
+          AND r2.trigger_source_id = r.trigger_source_id
+          AND EXISTS (
+            SELECT 1 FROM post_process_steps s2
+            WHERE s2.run_id = r2.id AND s2.step_key = 'resource-ledger')
+        ORDER BY r2.created_at DESC, r2.rowid DESC LIMIT 1)
+      AND s.ok = 1
+    ORDER BY o.chapter_number`).all() as Array<{ chapterNumber: number }>
+  return [...new Set(rows.map((row) => row.chapterNumber))]
+}

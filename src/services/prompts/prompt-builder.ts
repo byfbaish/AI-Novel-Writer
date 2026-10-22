@@ -312,6 +312,20 @@ export class PostProcessPromptBuilder extends BasePromptBuilder {
       : JSON.stringify(json, null, 2);
     return this;
   }
+
+  /**
+   * 资源清单（W6b）：**只喂名字与单位**。
+   *
+   * 类型上就只收这两个字段是一种刻意设计：`earn_note` / `cost_note` / `anchor_value`
+   * 一旦进了提示词，模型会顺手拿费率算出「本章应该拿多少」，那是判据 DK 明确禁止的
+   * 「模型做算术」—— 而且它算错的数会看起来和正文一样可信。
+   */
+  withResourcesJson(resources: string | ReadonlyArray<{ name: string; unit: string }>) {
+    this.variables.resources_json = typeof resources === 'string'
+      ? resources
+      : JSON.stringify(resources.map(({ name, unit }) => ({ name, unit })), null, 2);
+    return this;
+  }
 }
 
 /**

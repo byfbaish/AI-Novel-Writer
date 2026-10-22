@@ -46,6 +46,10 @@ import { writingLanguageText } from '../../../shared/writing-language'
 import { localize } from '../../../i18n/core'
 import type { Locale } from '../../../i18n/types'
 import type { FinalizedCharacterGenerationReceipt } from '../../../shared/finalized-character-generation'
+import {
+  parseResourceMovementExtraction,
+  type LedgerExtractionDrops,
+} from '../../../shared/resource-ledger'
 
 export interface FinalizeChapterParams {
   draftPath: string
@@ -74,9 +78,70 @@ export interface FinalizePostProcessGeneration {
     context: WorkflowContext,
     prepared: { contextId: string; context: FinalizedCharacterContext },
   ): Promise<FinalizedCharacterGenerationReceipt>
+  /**
+   * W6b 资源变动抽取的模型调用（可选）。
+   *
+   * 为什么不走 `finalizedStage`：主进程的定稿生成槽位只认两个 `stepKey`
+   * （`finalization-generation-source.ts:13` 的白名单、`main-generation-owner.ts:1100` 的
+   * 兄弟槽前置校验），第三槽要动的是跑批/提交/回执五处不变量，不属于本波范围。
+   * 因此账本走一次性调用（`completeResourceLedgerExtraction`），由 `critical: false` 兜底：
+   * 它失败只让「该章起账本中断」，不会把已经提交的定稿判成失败。
+   */
+  extractResourceMovements?(
+    builder: { build: () => string; getSystemRole: () => string },
+    callbacks: StepCallbacks,
+    context: WorkflowContext,
+  ): Promise<string>
 }
 
 // ===== 后处理步骤构建器 =====
+
+/**
+ * W6b 账本抽取的模型调用：一次性、非持久化、非流式。
+ *
+ * 与 `attachWorldBuildingSelfReview`（`architecture.command.ts:2334`）同一档：
+ * 产物是**派生事实**而不是定稿正文，所以不需要主进程的可恢复跑批；
+ * 它失败时只让这一步 `ok=0`（⇒ 该章起账本中断），定稿本身一个字都不动。
+ */
+async function completeResourceLedgerExtraction(
+  builder: { build: () => string; getSystemRole: () => string },
+  context: WorkflowContext,
+): Promise<string> {
+  const modelId = context.generationModelId ?? useLLMStore.getState().defaultModelId ?? ''
+  if (!modelId) throw new Error('RESOURCE_LEDGER_MODEL_REQUIRED')
+  const response = await useLLMStore.getState().generate(
+    [
+      { role: 'system', content: builder.getSystemRole() },
+      { role: 'user', content: builder.build() },
+    ],
+    modelId,
+    {
+      responseFormat: { type: 'json_object' },
+      purpose: 'resource-ledger-extract',
+      reasoningStage: 'review',
+      projectSession: context.projectSession,
+    },
+  )
+  if (!response.success || response.finishReason !== 'stop') {
+    throw new Error(response.error || 'RESOURCE_LEDGER_EXTRACTION_INCOMPLETE')
+  }
+  return response.content
+}
+
+/**
+ * 丢弃计数 → 一句注释。少了几条必须说清是哪一类，
+ * 否则作者只会看到「本章 1 条变动」，而正文里明明写了三条（判据 CX：不要留无法解释的差额）。
+ */
+function describeDroppedMovements(dropped: LedgerExtractionDrops, english: boolean): string {
+  const parts = [
+    dropped.unknownResource > 0 ? (english ? `not registered: ${dropped.unknownResource}` : `未登记资源 ${dropped.unknownResource}`) : '',
+    dropped.unreadableDelta > 0 ? (english ? `unreadable quantity: ${dropped.unreadableDelta}` : `数量读不出 ${dropped.unreadableDelta}`) : '',
+    dropped.zeroDelta > 0 ? (english ? `zero change: ${dropped.zeroDelta}` : `零变动 ${dropped.zeroDelta}`) : '',
+    dropped.missingQuote > 0 ? (english ? `quote not found verbatim: ${dropped.missingQuote}` : `引文未命中 ${dropped.missingQuote}`) : '',
+    dropped.unitMismatch > 0 ? (english ? `unit differs from the registry: ${dropped.unitMismatch}` : `单位与登记不同 ${dropped.unitMismatch}`) : '',
+  ].filter(Boolean)
+  return parts.join(english ? ', ' : '，')
+}
 
 /**
  * 构建章节定稿后处理步骤列表
@@ -317,6 +382,82 @@ export function buildFinalizePostProcessSteps(
       callbacks.log(text(
         '角色状态已按身份核验：更新 ' + receipt.applied + ' 个字段，待确认 ' + (receipt.candidates.length + receipt.unresolved.length) + ' 项。',
         'Character identities verified: ' + receipt.applied + ' fields updated; ' + (receipt.candidates.length + receipt.unresolved.length) + ' items await confirmation.',
+      ))
+    },
+  })
+
+  // ─── 步骤 3: 资源账本变动（W6b）──────────────────────────────────
+  //
+  // 只认「明确的数量变化」，产出 `resource_movements`（判据 DK：模型只读数，不做算术）。
+  // 落库走 `replaceChapterMovements` 的整章重建 ⇒ `withRetry` 跑三次与跑一次结果相同。
+  steps.push({
+    key: 'resource-ledger',
+    label: text('资源账本', 'Resource ledger'),
+    critical: false,
+    executor: async (callbacks, context) => {
+      if (!context) throw new Error('定稿后处理缺少冻结工作流上下文')
+      if (context.cancelled) throw new Error(workflowUiText(context, '工作流已取消', 'Workflow was cancelled.'))
+      const projectSession = requireWorkflowProjectSession(context)
+      const writingLanguage = workflowWritingLanguage(context)
+      const listed = await ipc.invokeWithProjectSession(projectSession, 'db:resources-list', _project.path)
+      requireIpcSuccess(listed, text('读取资源登记表', 'Read the resource registry'))
+      const resources = listed.resources ?? []
+
+      // 未登记资源 ⇒ 这一步无事可做，但**不是失败**：空表是全新项目的正常状态。
+      // 这里也绝不能拿空 rows 去「整章重建」——那会把别处留下的行删掉却什么也不写。
+      if (resources.length === 0) {
+        callbacks.log(workflowUiText(
+          context,
+          '  尚未登记资源，本章账本跳过（不产生任何变动行）',
+          '  No resources are registered yet, so the ledger skipped this chapter and wrote no movement rows.',
+        ))
+        return
+      }
+
+      const template = await resolvePromptTemplate('extract_resource_movements', projectSession, writingLanguage)
+      if (!template) throw new Error(workflowUiText(
+        context,
+        '未找到资源变动抽取模板',
+        'The resource-movement extraction template was not found.',
+      ))
+      // 只给名字与单位：费率/说明/换算锚一律不进提示词，否则模型会顺手把余额算出来。
+      const builder = new PostProcessPromptBuilder(template, writingLanguage)
+        .withChapterContent(draftContent)
+        .withChapterNumber(chapterNumber)
+        .withChapterTitle(chapterTitle)
+        .withResourcesJson(resources)
+
+      const raw = generation.extractResourceMovements
+        ? await generation.extractResourceMovements(builder, callbacks, context)
+        : await completeResourceLedgerExtraction(builder, context)
+      if (context.cancelled) throw new Error(workflowUiText(context, '工作流已取消', 'Workflow was cancelled.'))
+
+      const result = parseResourceMovementExtraction(
+        raw,
+        draftContent,
+        resources.map(({ resourceId, name, unit }) => ({ resourceId, name, unit })),
+      )
+      // 读不出来 ≠ 「本章没有变动」。整份坏掉时**一个字都不写**（保住上一次的整章结果），
+      // 并让步骤失败 ⇒ 该章起余额 unknown；把坏输出当成「无变动」落库，等于用垃圾覆盖好数据。
+      if (result.unreadable) throw new Error('RESOURCE_LEDGER_EXTRACTION_UNREADABLE')
+
+      const written = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:resource-movements-replace-chapter',
+        chapterNumber,
+        result.movements,
+        'finalized-extract',
+        _project.path,
+      )
+      requireIpcSuccess(written, text('写入资源变动', 'Write resource movements'))
+
+      const dropped = describeDroppedMovements(result.dropped, workflowUiLocale(context) !== 'zh-CN')
+      callbacks.log(workflowUiText(
+        context,
+        `本章资源变动 ${result.movements.length} 条（整章重建，重复执行结果不变）`
+          + (dropped ? `；已丢弃：${dropped}` : ''),
+        `Resource movements for this chapter: ${result.movements.length} (the whole chapter was rebuilt, so reruns are idempotent).`
+          + (dropped ? ` Dropped — ${dropped}` : ''),
       ))
     },
   })

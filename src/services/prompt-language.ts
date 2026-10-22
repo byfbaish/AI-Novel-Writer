@@ -1074,6 +1074,35 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 - why: one sentence, at most 60 characters
 - At most 6 findings; if there is none, output {"findings": []}`,
   },
+  /**
+   * W6b 资源变动抽取。同样不进 `CORE_LOCALIZED_BUILTIN_PROMPT_KEYS`（那张表被 #155 契约锁定），
+   * 但必须自带英文：判据 DK 的约束（只读数、不做算术）两侧缺一不可。
+   */
+  extract_resource_movements: {
+    systemRole: 'You are a meticulous ledger clerk. You copy explicit quantity changes out of the chapter prose, quote the exact sentence that supports each one, never do arithmetic, and never judge the prose.',
+    content: `[Resource movement extraction] Do one thing only: find explicit quantity changes of registered resources in this chapter and return strict JSON.
+
+[Chapter prose]
+Chapter {{chapter_number}} {{chapter_title}}
+{{chapter_content}}
+
+[Registered resources of this book: names and units only]
+{{resources_json}}
+
+[Read numbers only, never compute (violating any rule voids this extraction)]
+- Record only changes that state an explicit quantity: "took a hundred and twenty" yields 120; "spent six" yields -6 (spending is negative).
+- Vague wording never yields an entry: "lost heavily", "spent quite a lot", "nearly emptied", "a small fortune", "several times more" — no explicit number, no entry. Report less rather than guess.
+- Never output a balance: no totals, differences, ratios, unit conversion, or projection. Any balance / total / remaining field is discarded by the program.
+- Never read people counts, ages, occurrences, years, distances, or durations as resource quantities. Only names in [Registered resources] count as resources; never invent one that is not listed.
+- Prefer an Arabic integer for delta; when the prose only has a spelled-out number (for example "a hundred and twenty") you may copy it and the program normalizes it. Wording that cannot be resolved to one number ("about a hundred and twenty", "a handful", "some") is dropped.
+- Copy unit from the registry. When the prose uses a different unit (for example the registry says a unit and the prose says another), write the prose's unit: never convert it and never relabel it as the registry unit.
+- quote must be one short, contiguous, verbatim fragment of the chapter prose: do not paraphrase, splice, add punctuation, or span paragraphs, and quote only the sentence that directly supports that number.
+
+[Output format — strict JSON; no Markdown, no code fence, no explanation]
+{"movements":[{"resource":"name from the registry","delta":120,"unit":"unit from the prose","quote":"verbatim fragment"}]}
+
+When the chapter states no explicit quantity change, output {"movements":[]}.`,
+  },
 } satisfies Record<CoreLocalizedBuiltinPromptKey, PromptLanguageTemplate> & Record<string, PromptLanguageTemplate>)
 
 export function promptLanguageText(
