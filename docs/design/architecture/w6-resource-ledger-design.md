@@ -1,6 +1,6 @@
 # W6 · 资源账本（资源作为社会运转的基石）
 
-> **状态**：🚧 **W6a-1 已落地（2026-10-22）**· **剩余 6 期已排定三波施工顺序（2026-10-22 晚评审）**
+> **状态**：🚧 **已完成 5 期**（W6a-1 规则层 · M11 两表 · W6a-2 B 层自审 · W6a-0 资源登记 · W6b 账本）· **剩 2 期**（W6c 世界状态资源区 · W6a-3 双单位/重复定义）
 > 裁定：① **先做 W6a-1 规则层** ② **W4b 并入 W6 的 M11** ③ **资源登记单列 W6a-0** ④ **体检结果落 `partial`** ⑤ **账本支持按章回填重扫**
 > **日期**：2026-10-22 · 分支 `exp/world-state`（动工时另开 `exp/resource-ledger`）
 > **缘起**：灵石案 —— 世界观「每日劳作十二时辰换取十枚下品灵石」，正文第 2–4 章数额/周期/比例各写各的，写到第 4 章开始崩盘
@@ -378,9 +378,9 @@ W6 只动其中一类的一半：
 | **W6a-1** ✅ | 生成期规则层 **A-1 每日时间量 ≥ 24h / A-2 相对量缺分母** + 落库后提示 | ❌ | ★ 最高（防下一本） | ✅ **已落地（2026-10-22）**：`src/shared/worldbuilding-numeric-audit.ts`（18 例）+ `architecture.command.ts:2251` 追加一行 log；`typecheck` 0 · `eslint` 0 · `architecture.command.test.ts` 47 例全绿 |
 | **W6a-2** ✅ | B 层模型自审 + 结果落 `partial.world_building_self_review` + 编辑面提示条 | ❌ | 高 | ✅ **已落地（2026-10-22）**：`src/shared/worldbuilding-self-review.ts`（23 例）+ 模板 `world_building_self_review` + `architecture.command.ts` 的 `attachWorldBuildingSelfReview`；引文必须逐字命中原文，命不中即丢弃；`typecheck` 0 · `eslint` 0 · `architecture.command.test.ts` 49 例全绿 |
 | **M11** ✅ | `resources` + `resource_movements` + **W4b 六槽（核实已齐备，零改动）与设计意图栏（`scarcity_note`）** + **仓储读 API 与 IPC 通道** | ✅ v11→v12 | 高 | ✅ **已落地（2026-10-22）**：`electron/migrations/m11-resource-ledger.ts` + `electron/repositories/resource-repository.ts` + 四条 IPC；M11 5 例 + 仓储 5 例；老库升级、幂等、`delta` 无默认值、外键 RESTRICT 均有用例 |
-| **W6a-0** 🆕 | **资源登记界面**（世界观页「资源登记」表格 CRUD） | ❌ | 高 | 登记 3 条（同族两品阶 + 单例）⇒ 世界状态页能列全；重名就地拒绝；有账本记录的资源不许删 |
+| **W6a-0** ✅ | **资源登记界面**（世界观页「资源登记」表格 CRUD） | ❌ | 高 | ✅ **已落地（2026-10-22）**：`src/components/editor/ResourceRegistryPanel.tsx`（6 例 browser）+ 挂在 `WorldBuildingEditor` 的 `worldbuilding` 步骤下并列一块；重名不发 IPC 就地拒、有账本记录的资源拒绝删除并说明条数 |
 | **W6a-3** | A-3 同资源双单位 / A-4 资源名重复定义（此期才做，因为有表可精确比对） | ❌ | 中 | 双单位、层级混淆各命中一次；**干净设定零误报**；资源未登记 ⇒ 零噪声 |
-| **W6b** | `resource-ledger` 抽取 step + 纯算术 + 中断语义 + **幂等** + **按章回填重扫** | — | 中 | 三章样本：抽到变动 ⇒ 余额对；故意跳过一章 ⇒ 后续 unknown；同一章连抽两次余额不变；模糊表述不产生行 |
+| **W6b** ✅ | `resource-ledger` 抽取 step + 纯算术 + 中断语义 + **幂等** + **按章回填重扫** | — | 中 | ✅ **已落地（2026-10-22）**：`src/shared/resource-ledger.ts` 纯算术（24 例）+ 已扫判定（8 例）+ 抽取步骤（4 例）+ 回填工作流（3 例）；`db:resource-ledger-read` 读通道 |
 | **W6c** | 世界状态第六类「资源」 | ❌ | 中 | 余额/走势/中断/引文四项可见；NULL 显示未知不是 0 |
 
 > 🆕 **W6a-0 为什么必须单列**（2026-10-22 评审补）：原分期表里 M11 只建表、W6c 只读，**「作者在哪里登记资源」没有任何一期**。没有它，`resources` 会永远是空表 ⇒ W6b 抽取无事可做，W6c 只能显示「尚未登记资源」，整条账本空转。
@@ -403,6 +403,19 @@ W6 只动其中一类的一半：
 
 > 另有一条实现事实值得记住：正文链的续写轮**不带模板变量**，但**带作者材料块**。所以 W7 的资源余额注入必须走材料块，
 > 不能新开一个模板变量 —— 这条在 W7a 动手前要先确认一遍（`generate-draft.command.ts` 的 `.withCharacterStates('')`）。
+
+### 9.2 波 2 落地记录（2026-10-22）
+
+| 项 | 结论 |
+|---|---|
+| **定稿生成槽位只认两个 `stepKey`** | 主进程的 `finalization-generation-source.ts:13` 白名单 + `main-generation-owner.ts:1100` 兄弟槽前置校验 + 提交分支 + `generation-source-binding.ts:551` + `FinalizationGenerationEffect` 联合类型，**加第三槽要动五处不变量**。所以账本抽取走**渲染层一次性调用**（`useLLMStore.generate` + `json_object`），与 W6a-2 的自审同一档；`critical:false` 兜底 —— 这一步失败只让「该章起账本中断」，已经提交的定稿一个字不动。**W7 若需要「生成期」类调用，同样会撞这条，不要再试着加第三个槽** |
+| **已扫判定用 `finalization_outbox` join，不用 `summary_snapshots`** | 后者只有 `chapter_notes` 成功后才有一行 ⇒ 会把「要点失败但账本成功」判成未扫，也会把「要点比账本晚成」的窗口判成中断，那正是判据 DJ 要防的**假中断**。`finalization_outbox` 与正文同一事务提交，每份定稿草稿必有且仅有一条 |
+| 已扫判定还要再收窄两道 | ① 只认该章**最新定稿草稿**（重定稿后不能沿用旧 finalization 的成功）② 只认**最近一次含账本步骤的跑批**（只跑别的步骤的过滤跑批不能抹掉已有扫描记录）。`created_at` 只有秒精度，用 `rowid` 兜底 |
+| `balanceAt` 是**三态** | `known` / `unknown`（`reason`: `not-scanned` \| `no-origin`）/ `conflict`（`unit-mismatch`）。冲突不是「未知」而是「数据打架」，混进 unknown 会丢掉这层语义；**W6c 必须按三态渲染** |
+| 抽取时单位与登记不同 | **保留**并计数，不丢弃：写进去让 `balanceAt` 判成显式冲突。丢弃等于把「作者改过单位」这件事抹掉（§5.1 ★ 要防的正是静默重解释） |
+| 坏 JSON 的处理 | 让该步 `ok=0`，**不写 0 行**。把「读不出来」落成「本章无变动」= 用垃圾覆盖上一次的整章结果，还顺手把该章标成「已扫」 |
+| 回填的副作用（已知，接受） | 回填新开跑批会成为该章「最新跑批」，于是「修复后处理」状态卡只看得到账本这一步。W6c 若要显示全量步骤，改成读全部跑批而不是最新一条 |
+| 重定稿后账本自动回 `unknown` | 刻意保守：新跑批的账本步骤 `ok=0` ⇒ 该章起中断。**不做**「重定稿时自动补跑账本」——那是定稿流程的行为变更，要单独裁定 |
 
 **先做 W6a-1 的理由**：它是唯一不需要任何 schema、不需要模型配合、且直接回答作者「下一本不要再来一次」的一块。做完就能拿本书旧稿验证，再决定 W6b 的投入。
 
