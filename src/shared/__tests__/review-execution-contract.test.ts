@@ -71,9 +71,9 @@ describe('生成侧条款覆盖契约', () => {
   it('生成侧每条条款都在对照表里表态（进 / 不进 / 改写）', () => {
     const ownSource = readFileSync(new URL('../review-execution-contract.ts', import.meta.url), 'utf8')
     const titles = generatingClauseTitles()
-    // 9 条：作者本章任务、本章可推进的事件、远期设定边界、前文已定稿事实、
+    // 10 条：作者本章任务、本章可推进的事件、本章叙事定位、远期设定边界、前文已定稿事实、
     // 前文计划与本章决定、本章事件兑现、前文待核实问题、时间承接、操作边界
-    expect(titles.length).toBe(9)
+    expect(titles.length).toBe(10)
     const untracked = titles.filter(title => !ownSource.includes(`| ${title} |`))
     expect(untracked).toEqual([])
   })

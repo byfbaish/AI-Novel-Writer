@@ -50,6 +50,7 @@ import { copyFileSync, existsSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
+import { applyStaleDependencyRepair, findStaleDependencies } from './lib/draft-dependency-repair.mjs'
 
 const Database = createRequire(import.meta.url)('better-sqlite3')
 
@@ -181,11 +182,32 @@ function main() {
     }
   }
 
+  // 收据对齐正文之后，**下游草稿记的旧指纹**必须一并更新，否则之后的新章提交会被
+  // `DraftRepository.create` 的递归链校验拒掉（`GENERATION_DRAFT_SOURCE_STALE`，
+  // 2026-10-24 实测：第 3 章记着第 2 章的旧指纹，导致第 4 章永远提交不了）。
+  const staleDependencies = (() => {
+    try {
+      const probe = new Database(dbPath, { readonly: true, fileMustExist: true })
+      const found = findStaleDependencies(probe)
+      probe.close()
+      return found
+    } catch {
+      return []
+    }
+  })()
+  if (staleDependencies.length) {
+    console.log('\n=== 下游草稿的依赖指纹已过期（不修就永远提交不了新章） ===')
+    for (const item of staleDependencies) {
+      console.log(`  ${item.owner} → 依赖 ${item.dependsOn}：${item.from} → ${item.to}`)
+    }
+    console.log('  加 --apply 时会一并级联更新（只改指纹，不动正文）。')
+  }
+
   if (!args.apply) {
     console.log('\n（dry-run：没有写入任何数据。确认无误后加 --apply）')
     return
   }
-  if (drift.length === 0) {
+  if (drift.length === 0 && staleDependencies.length === 0) {
     console.log('\n没有需要修复的章，未写入。')
     return
   }
@@ -219,7 +241,13 @@ function main() {
       for (const row of rows) update.run({ draftId: row.draftId, snapshot: row.body, hash: sha256(row.body) })
     })
     run(drift)
-    console.log(`已修复 ${drift.length} 章：第 ${drift.map(row => row.chapterNumber).join('、')} 章。`)
+    if (drift.length) console.log(`已修复 ${drift.length} 章：第 ${drift.map(row => row.chapterNumber).join('、')} 章。`)
+    // 级联：收据已对齐新正文，下游草稿还记着旧指纹 —— 不更新的话，那些章之后再生成/提交都会被拒。
+    const cascadeTargets = findStaleDependencies(db)
+    if (cascadeTargets.length) {
+      const touched = db.transaction(() => applyStaleDependencyRepair(db))()
+      console.log(`级联更新 ${touched} 个草稿的依赖指纹：${cascadeTargets.map(item => `${item.owner}→${item.dependsOn}`).join('、')}。`)
+    }
     console.log('正文未改动；现在可以回到「世界状态 → 资源 → 账本回填」补扫。')
   } finally {
     db.close()

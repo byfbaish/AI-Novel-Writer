@@ -201,7 +201,7 @@ ai-novel-writer-mac-x64-<版本号>-installer.dmg
 
 ## 开发与架构文档
 
-文档权威层级、ADR、调研、Agent 规则和任务交接入口见 [`docs/README.md`](docs/README.md)。DeepSeek Harness 插件拥有独立的[插件说明](plugins/dsh-ai-novel-writer/README.md)，不作为桌面版行为的来源。
+文档权威层级、ADR、调研、Agent 规则和任务交接入口见 [`docs/README.md`](docs/README.md)。构建、验收、打包、发布与一次性运维脚本的完整索引（含「何时跑」和对应的 `pnpm run` 命令）见 [`scripts/README.md`](scripts/README.md)。DeepSeek Harness 插件拥有独立的[插件说明](plugins/dsh-ai-novel-writer/README.md)，不作为桌面版行为的来源。
 
 ## 许可证
 

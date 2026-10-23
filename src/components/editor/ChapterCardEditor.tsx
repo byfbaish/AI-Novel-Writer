@@ -877,7 +877,6 @@ function ChapterCardEditorSession({
                 className="h-1.5 w-1.5 rounded-full"
                 style={{ backgroundColor: 'currentColor' }}
               />
-              {text('未保存', 'Unsaved')}
             </span>
           )}
           <SaveFeedback dirty={visibleDirty} saving={saving} outcome={saveOutcome} />

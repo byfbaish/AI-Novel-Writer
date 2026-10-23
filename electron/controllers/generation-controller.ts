@@ -18,6 +18,7 @@ import { readBuiltinWritingSkill } from '../../src/shared/builtin-writing-skills
 import { getProjectDb, getCurrentProjectPath, onProjectDatabaseBeforeClose } from '../database'
 import { getGlobalDataRoot } from '../services/app-data-locator'
 import { getProjectDataRoot } from '../services/project-data-locator'
+import { recordUnclassifiedGenerationError } from '../services/generation-error-diagnostics'
 import { projectAccess } from '../services/project-access'
 import { ModelExecutionLeaseRegistry } from '../services/model-execution-lease'
 import { createMainGenerationOwner } from '../services/main-generation-owner'
@@ -43,6 +44,18 @@ const ownerSessions = new WeakMap<Owner, ProjectSessionContext>()
  */
 function safeErrorClassName(value: string): string {
   return /^[A-Za-z_$][A-Za-z0-9_$]{0,63}$/u.test(value) ? value : 'Error'
+}
+
+/**
+ * 白名单内的错误码：原样透出。返回 `null` 表示这个错误会被压缩成 `GENERATION_REQUEST_FAILED:<类名>`。
+ * 压缩时 message 会丢失，调用方据此决定是否落一份诊断记录。
+ */
+function classifiedErrorMessage(error: unknown): string | null {
+  if (!(error instanceof Error)) return null
+  if (error.message === 'SOURCE_DRAFT_CHANGED') return error.message
+  return /^(?:GENERATION|ROOT_BUDGET|ARTIFACT|MAIN|CHARACTER|FINALIZED_CHARACTER|LEGACY_ROSTER)_[A-Z_]+$/u.test(error.message)
+    ? error.message
+    : null
 }
 /** Called synchronously inside the same SQLite transaction as the formal effect. */
 export function assertGenerationSourcesCurrent(handle: MainGenerationRunHandle, blueprintRange?: { startChapter: number; endChapter: number }): void {
@@ -156,21 +169,22 @@ export function registerGenerationController(options: {
   function register<C extends keyof OwnerChannels>(channel: C, arity: number,
     handler: (owner: Owner, ...args: OwnerChannels[C]['args']) => OwnerChannels[C]['return'] | Promise<OwnerChannels[C]['return']>) {
     ipcMain.handle(channel, async (event, ...raw: unknown[]) => {
+      const sessionCandidate = raw.pop()
+      const session = isProjectSessionContext(sessionCandidate) ? sessionCandidate : undefined
       try {
-        const session = raw.pop()
-        if (!isProjectSessionContext(session) || raw.length !== arity && !(channel === 'generation:compose-visible' && raw.length === 3)) throw new Error('GENERATION_PROJECT_SESSION_REQUIRED')
+        if (!session || raw.length !== arity && !(channel === 'generation:compose-visible' && raw.length === 3)) throw new Error('GENERATION_PROJECT_SESSION_REQUIRED')
         const result = await handler(authorizedOwner(session, event), ...raw as OwnerChannels[C]['args'])
         projectAccess.assertCurrentProjectContext(session, getCurrentProjectPath())
         return result
       } catch (error) {
         if (error instanceof TaskBudgetPreflightError) throw new Error(error.message)
         if (error instanceof KnowledgeBaseUnavailableError || error instanceof LegacyVectorMigrationBlockedError) throw new Error(error.code)
-        const code = error instanceof Error && (error.message === 'SOURCE_DRAFT_CHANGED' || /^(?:GENERATION|ROOT_BUDGET|ARTIFACT|MAIN|CHARACTER|FINALIZED_CHARACTER|LEGACY_ROSTER)_[A-Z_]+$/u.test(error.message))
-          ? error.message
-          // 白名单之外的错误一律压成同一个码，真因会永久消失；带上类名至少能区分
-          // 「第三方/Node 错误」与「本项目守卫写错文案」。只带类名，不带 message。
-          : `GENERATION_REQUEST_FAILED:${error instanceof Error ? safeErrorClassName(error.name) : 'NonError'}`
-        throw new Error(code)
+        const classified = classifiedErrorMessage(error)
+        // 白名单之外的错误一律压成同一个码，真因会永久消失；带上类名至少能区分
+        // 「第三方/Node 错误」与「本项目守卫写错文案」。只带类名，不带 message——
+        // 所以完整原因落到项目自己的 debug/ 下（与 prompt-trace 同一约定），否则无从排查。
+        if (!classified && session) recordUnclassifiedGenerationError(session.projectPath, String(channel), error)
+        throw new Error(classified ?? `GENERATION_REQUEST_FAILED:${error instanceof Error ? safeErrorClassName(error.name) : 'NonError'}`)
       }
     })
   }
