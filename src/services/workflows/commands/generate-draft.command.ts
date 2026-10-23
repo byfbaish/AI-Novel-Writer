@@ -941,6 +941,32 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         `The required finalized source for Chapter ${previousChapterNumber} could not be fixed, so generation stopped. Repair or re-finalize that chapter and try again.`,
       ))
     }
+
+    /**
+     * P0-1：前章定稿虽然还在，但它的**前提已变**（更早的章被退回或改过）⇒ 不能继续往下写。
+     *
+     * 与上一条"取不到定稿来源"是两件事：那条是**没有**来源，这条是**有但不可信**。
+     * 放在同一处检查，是为了让失败路径只有一条说法；文案不同，处置入口相同。
+     */
+    if (!isFirstChapter && requiredFinalizedSource) {
+      const staleness = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:chapter-staleness-list',
+        this.chapterInfo.projectPath,
+      )
+      const previousIsStale = staleness.success === true
+        && (staleness.chapters ?? []).some(chapter => (
+          chapter.chapterNumber === previousChapterNumber && chapter.state === 'stale'
+        ))
+      if (previousIsStale) {
+        throw new Error(uiText(
+          `第 ${previousChapterNumber} 章的前提已变（更早的章被退回或修改过），已停止生成第 ${this.chapterInfo.chapterNumber} 章。`
+            + `请先重新定稿第 ${previousChapterNumber} 章、修复其后处理，或确认它无需改动。`,
+          `Chapter ${previousChapterNumber}'s facts are stale because an earlier chapter was reverted or edited, so Chapter ${this.chapterInfo.chapterNumber} was not drafted. `
+            + `Re-finalize Chapter ${previousChapterNumber}, repair its post-processing, or confirm it needs no change.`,
+        ))
+      }
+    }
     let chapterMaterials: ChapterMaterialAssembly
     try {
       chapterMaterials = await assembleChapterMaterials({

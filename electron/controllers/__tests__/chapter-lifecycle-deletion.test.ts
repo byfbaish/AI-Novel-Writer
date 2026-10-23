@@ -204,8 +204,51 @@ describe('chapter lifecycle deletion IPC', () => {
     expect(operations).toHaveLength(1)
   })
 
-  it('只允许动定稿链尾部：中间章的退回与删除都被拒绝，且什么都没删（2026-10-23）', async () => {
-    // 在 fixture 的第 1 章之上再定稿第 2 章 ⇒ 定稿链尾部是第 2 章，第 1 章变成「中间章」。
+  it('退回不限链尾，但会显式标记后续章的前提已变（ADR-0023）', async () => {
+    // 再定稿第 2 章 ⇒ 第 1 章成为"中间章"
+    const secondDraftId = DraftRepository.create({
+      chapterNumber: 2,
+      source: 'write',
+      content: '第二章正文',
+      wordCount: 5,
+    })
+    FinalizationRepository.commit({
+      finalizationId: 'finalization-2',
+      draftId: secondDraftId,
+      chapterNumber: 2,
+      chapterTitle: '第二章',
+      content: '第二章正文',
+      contentHash: 'second-hash',
+      contentRevision: 1,
+      targetFileName: '第2章 第二章.txt',
+    })
+    const metaBefore = getProjectDb()!.prepare(
+      "SELECT generation, stale_from_chapter AS staleFromChapter FROM continuity_projection_meta WHERE id='main'",
+    ).get() as { generation: number; staleFromChapter: number | null }
+
+    const revert = handlers.get('chapter:revert-finalized')!
+    const result = await revert({}, { draftId, chapterNumber: 1 }, projectRoot, projectSession) as {
+      success: boolean
+      committed: boolean
+      errorCode?: string
+    }
+
+    // 放开后：中间章退回成功，正文保留
+    expect(result.success).toBe(true)
+    expect(result.committed).toBe(true)
+    expect(DraftRepository.getMeta(draftId)!.status).toBe('revised')
+    expect(DraftRepository.getFull(draftId)!.content).toBe('目标章节独有关键字')
+
+    // 关键：失效必须被**显式标记**（generation +1、水位落到第 1 章），
+    // 否则就是"静默失去前提" —— 那正是链尾守卫原本要防的事。
+    const metaAfter = getProjectDb()!.prepare(
+      "SELECT generation, stale_from_chapter AS staleFromChapter FROM continuity_projection_meta WHERE id='main'",
+    ).get() as { generation: number; staleFromChapter: number | null }
+    expect(metaAfter.generation).toBe(metaBefore.generation + 1)
+    expect(metaAfter.staleFromChapter).toBe(1)
+  })
+
+  it('删除正文仍只允许链尾（不可逆，后续章没有东西可复核）', async () => {
     const secondDraftId = DraftRepository.create({
       chapterNumber: 2,
       source: 'write',
@@ -223,36 +266,18 @@ describe('chapter lifecycle deletion IPC', () => {
       targetFileName: '第2章 第二章.txt',
     })
 
-    const revert = handlers.get('chapter:revert-finalized')!
-    const rejected = await revert(
-      {},
-      { draftId, chapterNumber: 1 },
-      projectRoot,
-      projectSession,
-    ) as { success: boolean; committed: boolean; errorCode?: string; errorDetails?: unknown }
-
+    const remove = handlers.get('chapter:delete-finalized')!
+    const rejected = await remove({}, { draftId, chapterNumber: 1 }, projectRoot, projectSession) as {
+      success: boolean
+      committed: boolean
+      errorCode?: string
+    }
     expect(rejected.success).toBe(false)
     expect(rejected.committed).toBe(false)
     expect(rejected.errorCode).toBe('FINALIZED_CHAIN_TAIL_REQUIRED')
-    expect(rejected.errorDetails).toEqual({ chapterNumber: 1, latestFinalizedChapter: 2 })
-
-    // 拒绝必须是「什么都没发生」：第 1 章的定稿事实、收据、草稿全都还在。
+    // 拒绝必须什么都没发生
     expect(DraftRepository.getMeta(draftId)!.status).toBe('finalized')
-    expect(getProjectDb()!.prepare('SELECT COUNT(*) FROM finalization_outbox WHERE draft_id=?').pluck().get(draftId)).toBe(1)
     expect(fs.existsSync(path.join(projectRoot, targetFileName))).toBe(true)
-
-    // 删除正文走同一道守卫（两条入口不能有一条漏掉）。
-    const remove = handlers.get('chapter:delete-finalized')!
-    const removeRejected = await remove(
-      {},
-      { draftId, chapterNumber: 1 },
-      projectRoot,
-      projectSession,
-    ) as { success: boolean; committed: boolean; errorCode?: string }
-    expect(removeRejected.success).toBe(false)
-    expect(removeRejected.committed).toBe(false)
-    expect(removeRejected.errorCode).toBe('FINALIZED_CHAIN_TAIL_REQUIRED')
-    expect(DraftRepository.getMeta(draftId)!.status).toBe('finalized')
   })
 
   it('退回草稿保留正文与草稿行，只作废定稿收据与派生（2026-10-23）', async () => {

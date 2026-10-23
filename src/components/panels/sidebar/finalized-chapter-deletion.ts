@@ -240,7 +240,28 @@ export async function revertFinalizedChapter(
   const projectSession = captureProjectSession(input.project)
   if (!projectSession || !isProjectSessionPath(projectSession, input.projectPath)) return null
 
-  const confirmed = await confirm(config.confirmation, {
+  // 退回任意章都会让其后章节的派生相对新世代过期 —— 确认框必须先说清波及范围，
+  // 否则作者点完才发现列表里多出一排「前提已变」。
+  let scopeNote = ''
+  try {
+    const snapshot = await ipc.invokeWithProjectSession(
+      projectSession,
+      'db:chapter-staleness-list',
+      input.projectPath,
+    )
+    const tail = snapshot.success ? (snapshot.latestFinalizedChapter ?? 0) : 0
+    if (tail > input.chapterNumber) {
+      scopeNote = text(
+        `\n\n退回后，第 ${input.chapterNumber + 1}–${tail} 章会被标记为「前提已变」，`
+          + '需逐章处置：重新定稿、修复后处理，或确认无需改动。',
+        `\n\nAfter reverting, chapters ${input.chapterNumber + 1}–${tail} will be marked "stale" and need one of: re-finalize, repair post-processing, or confirm no change.`,
+      )
+    }
+  } catch {
+    // 拿不到范围就按原文案确认：不阻塞动作，只是少一句提示
+  }
+
+  const confirmed = await confirm(config.confirmation + scopeNote, {
     title: config.confirmationTitle,
     confirmText: text('退回草稿', 'Move back to draft'),
   })

@@ -484,6 +484,25 @@ export class SummaryRepository {
    * 只取**权威定稿**那一条（同章多版本时 version 最大者），与 `currentCharacterProjection`
    * 的口径一致 —— 否则同一章会出现两条互相矛盾的判定。
    */
+  static chapterStalenessSnapshot(): {
+    generation: number
+    latestFinalizedChapter: number
+    chapters: ChapterStalenessRow[]
+  } {
+    const chapters = SummaryRepository.listChapterStaleness()
+    const db = getProjectDb()
+    const meta = db?.prepare("SELECT generation FROM continuity_projection_meta WHERE id='main'").get() as
+      { generation: number } | undefined
+    const latestFinalizedChapter = db?.prepare(
+      "SELECT COALESCE(MAX(chapter_number), 0) FROM drafts WHERE status = 'finalized'",
+    ).pluck().get() as number | undefined
+    return {
+      generation: meta?.generation ?? 0,
+      latestFinalizedChapter: latestFinalizedChapter ?? 0,
+      chapters,
+    }
+  }
+
   static listChapterStaleness(): ChapterStalenessRow[] {
     const db = getProjectDb()
     if (!db) return []

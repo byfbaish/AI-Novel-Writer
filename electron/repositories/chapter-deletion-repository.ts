@@ -77,12 +77,17 @@ function requireFinalizedTarget(
   if (target.status !== 'finalized' || !target.finalization_id) {
     throw new Error('只有具备定稿提交收据的章节才能通过章节生命周期入口删除')
   }
-  requireFinalizedChainTail(db, target.chapter_number)
+  // 链尾检查**不在这里**：退回草稿允许任意章（ADR-0023），删除正文仍限链尾。
+  // 放在 `begin` 里按 keepDraft 分流，避免两条入口各写一份。
   return target as FinalizedChapterTarget
 }
 
 /**
- * 只有**定稿链尾部**可以退回或删除（2026-10-23 作者裁定）。
+ * 只有**定稿链尾部**可以**删除**（2026-10-23 裁定；2026-10-23 晚 ADR-0023 收窄为"仅删除"）。
+ *
+ * 退回草稿已放开到任意章：它会调 `invalidateContinuityProjectionFrom`，后续章的快照代
+ * 相对新世代落后 ⇒ 界面显示「前提已变」、生成链拒绝把它们当前提，失效不再静默。
+ * 删除不同 —— 它连正文一起删，后续章没有任何东西可复核，所以仍限链尾。
  *
  * 为什么必须拦中间章：第 N 章一旦定稿，第 N+1 章就是**基于它的事实**写出来并定稿的
  * （角色状态、连续性事实、账本余额、故事日序都从它推）。此时撤掉第 N 章的定稿事实，
@@ -262,6 +267,8 @@ export class ChapterDeletionRepository {
       }
 
       const target = requireFinalizedTarget(db, input.draftId, input.chapterNumber)
+      // 删除正文不可逆，仍只允许从链尾开始；退回草稿保留正文，允许任意章（ADR-0023）。
+      if (!input.keepDraft) requireFinalizedChainTail(db, target.chapter_number)
       const postProcessRunIds = listPostProcessRunIds(db, input.chapterNumber, target.finalization_id)
 
       db.prepare(`
