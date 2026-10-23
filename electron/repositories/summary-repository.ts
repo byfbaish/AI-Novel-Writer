@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+
+import { chapterStaleness, type ChapterStalenessState } from '../../src/shared/chapter-staleness'
 import { isDeepStrictEqual } from 'node:util'
 import type BetterSqlite3 from 'better-sqlite3'
 import { getProjectDb } from '../database'
@@ -462,7 +464,75 @@ export function invalidateContinuityProjectionFrom(
   `).run(chapterNumber, chapterNumber)
 }
 
+/** 一章的「前提是否已变」判定结果，给界面用。 */
+export interface ChapterStalenessRow {
+  chapterNumber: number
+  state: ChapterStalenessState
+  /** 该章派生快照的世代；null = 没有快照 */
+  snapshotGeneration: number | null
+  /** 文案用：这一轮脏从第几章开始 */
+  staleFromChapter: number | null
+}
+
 export class SummaryRepository {
+  /**
+   * 全书逐章的「前提已变」判定（P0-1）。
+   *
+   * 判定本身在 `src/shared/chapter-staleness.ts`（纯函数，渲染层与主进程共用同一份），
+   * 这里只负责把三样原料取出来：当前世代、每章快照代、该章针对当前世代的人工确认。
+   *
+   * 只取**权威定稿**那一条（同章多版本时 version 最大者），与 `currentCharacterProjection`
+   * 的口径一致 —— 否则同一章会出现两条互相矛盾的判定。
+   */
+  static listChapterStaleness(): ChapterStalenessRow[] {
+    const db = getProjectDb()
+    if (!db) return []
+    const meta = db.prepare("SELECT generation, stale_from_chapter AS staleFromChapter FROM continuity_projection_meta WHERE id='main'").get() as
+      { generation: number; staleFromChapter: number | null } | undefined
+    if (!meta) return []
+    const rows = db.prepare(`
+      SELECT drafts.chapter_number AS chapterNumber,
+             summary_snapshots.projection_generation AS snapshotGeneration
+      FROM drafts
+      JOIN summary_snapshots ON summary_snapshots.draft_id = drafts.id
+      WHERE drafts.status = 'finalized'
+        AND NOT EXISTS (
+          SELECT 1 FROM drafts newer
+          WHERE newer.chapter_number = drafts.chapter_number
+            AND newer.status = 'finalized'
+            AND (newer.version > drafts.version OR (newer.version = drafts.version AND newer.id > drafts.id))
+        )
+      ORDER BY drafts.chapter_number
+    `).all() as Array<{ chapterNumber: number; snapshotGeneration: number | null }>
+    const acks = db.prepare(`
+      SELECT chapter_number AS chapterNumber, acknowledged_generation AS generation
+      FROM chapter_staleness_acknowledgements
+    `).all() as Array<{ chapterNumber: number; generation: number }>
+    const acksByChapter = new Map<number, number[]>()
+    for (const ack of acks) {
+      const list = acksByChapter.get(ack.chapterNumber)
+      if (list) list.push(ack.generation)
+      else acksByChapter.set(ack.chapterNumber, [ack.generation])
+    }
+    return rows.map((row) => {
+      const result = chapterStaleness(
+        {
+          chapterNumber: row.chapterNumber,
+          snapshotGeneration: row.snapshotGeneration,
+          generation: meta.generation,
+          acknowledgedGenerations: acksByChapter.get(row.chapterNumber) ?? [],
+        },
+        { generation: meta.generation, staleFromChapter: meta.staleFromChapter },
+      )
+      return {
+        chapterNumber: row.chapterNumber,
+        state: result.state,
+        snapshotGeneration: row.snapshotGeneration,
+        staleFromChapter: result.staleFromChapter ?? null,
+      }
+    })
+  }
+
   static readFinalizedCharacterContext(draftId: number, scope: ProjectEpoch, database = getProjectDb()): FinalizedCharacterContext {
     if (!database || !scope.projectId?.trim() || !scope.epoch?.trim()) throw new Error('FINALIZED_CHARACTER_SCOPE_REQUIRED')
     const db = database

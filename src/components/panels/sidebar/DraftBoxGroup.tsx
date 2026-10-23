@@ -21,6 +21,7 @@ import {
   isProjectSessionPath,
 } from '../../project-session-gate'
 import { revertFinalizedChapter } from './finalized-chapter-deletion'
+import { useChapterStaleness } from './use-chapter-staleness'
 
 const DRAFT_STATUS_EN: Record<string, string> = {
   draft: 'Draft', revising: 'Revising', reviewed: 'Reviewed', finalized: 'Finalized', archived: 'Archived',
@@ -36,6 +37,8 @@ export default function DraftBoxGroup({
   const [open, setOpen] = useState(true)
   const text = useLocaleStore(s => s.text)
   const projectKey = useProjectStore(s => s.currentProject?.path)
+  // P0-1：整本取一次再传下去；每章各调一次会变成 N 次 IPC。
+  const staleness = useChapterStaleness(projectKey ?? '')
   if (!projectKey) return null
 
   // 所有章节号排序
@@ -86,6 +89,7 @@ export default function DraftBoxGroup({
                 chapterNumber={chNum}
                 drafts={draftsByChapter[chNum] || []}
                 projectKey={projectKey}
+                staleness={staleness.get(chNum) ?? null}
               />
             ))
           )}
@@ -101,10 +105,12 @@ function DraftChapterGroup({
   chapterNumber,
   drafts,
   projectKey,
+  staleness,
 }: {
   chapterNumber: number
   drafts: DraftMeta[]
   projectKey: string
+  staleness: { state: string; staleFromChapter: number | null } | null
 }) {
   const text = useLocaleStore(s => s.text)
   const currentProject = useProjectStore(s => s.currentProject)
@@ -161,6 +167,19 @@ function DraftChapterGroup({
         <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text-secondary)' }}>
           {displayTitle}
         </span>
+        {staleness?.state === 'stale' && (
+          <span
+            data-testid="chapter-stale-badge"
+            className="text-[0.7rem] flex-shrink-0"
+            title={text(
+              `第 ${staleness.staleFromChapter ?? '?'} 章已退回或修改，本章派生相对它已过期；请重新定稿、修复后处理，或确认无需改动`,
+              `Chapter ${staleness.staleFromChapter ?? '?'} was reverted or edited; this chapter's derived facts are now stale. Re-finalize, rebuild post-processing, or confirm it needs no change.`,
+            )}
+            style={{ color: 'var(--color-warning-text)' }}
+          >
+            ⚠ {text('前提已变', 'Stale')}
+          </span>
+        )}
         <span className="ml-auto text-[0.7rem] flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
           {text(`${activeDrafts.length} 稿`, `${activeDrafts.length} drafts`)}
         </span>

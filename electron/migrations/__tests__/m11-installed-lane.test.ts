@@ -48,7 +48,9 @@ describe('installed M11 lane', () => {
 
       const result = migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), 12)
 
-      expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBe(12)
+      // 这里原先写死 12（M11 是当时最新）。后续迁移会继续升版，所以只断言「不低于 12」；
+      // 「当前版本等于最新迁移的 to」由最新一期迁移的 lane 测试守。
+      expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBeGreaterThanOrEqual(12)
       expect(result.completedSteps).toEqual(['M11'])
       expect(db.pragma('user_version', { simple: true })).toBe(12)
       expect(db.prepare('SELECT body FROM contents').pluck().get()).toBe(bodyBefore)

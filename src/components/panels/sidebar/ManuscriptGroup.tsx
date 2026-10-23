@@ -20,6 +20,7 @@ import {
 
 import { openChapterFile } from './sidebar-file-openers'
 import { showSidebarMenu } from './sidebar-menu'
+import { useChapterStaleness } from './use-chapter-staleness'
 import { chapterTitleCache, chapterTitleCacheKey } from './manuscript-title-cache'
 import {
   confirmLegacyKnowledgeAbsentAndContinue,
@@ -102,6 +103,8 @@ async function readChapterTitle(
 // ===== 正文章节组件 =====
 
 export default function ManuscriptGroup({ files, projectPath }: { files: ManuscriptFileNode[]; projectPath: string }) {
+  /** P0-1：哪几章的前提已变（退回过更早的章之后）。 */
+  const staleness = useChapterStaleness(projectPath)
   const [open, setOpen] = useState(true)
   const text = useLocaleStore(s => s.text)
   const currentProject = useProjectStore(s => s.currentProject)
@@ -380,6 +383,19 @@ export default function ManuscriptGroup({ files, projectPath }: { files: Manuscr
                   <span className="text-sm truncate flex-1" style={{ color: 'var(--color-text-secondary)' }}>
                     {displayName}
                   </span>
+                  {chapterNumber !== undefined && staleness.get(chapterNumber)?.state === 'stale' && (
+                    <span
+                      data-testid="chapter-stale-badge"
+                      className="text-[0.7rem] flex-shrink-0"
+                      title={text(
+                        `第 ${staleness.get(chapterNumber)?.staleFromChapter ?? '?'} 章已退回或修改，本章派生相对它已过期；请重新定稿、修复后处理，或确认无需改动`,
+                        `Chapter ${staleness.get(chapterNumber)?.staleFromChapter ?? '?'} was reverted or edited; this chapter's derived facts are now stale. Re-finalize, rebuild post-processing, or confirm it needs no change.`,
+                      )}
+                      style={{ color: 'var(--color-warning-text)' }}
+                    >
+                      ⚠ {text('前提已变', 'Stale')}
+                    </span>
+                  )}
                   <button
                     type="button"
                     className="opacity-70 hover:opacity-100 rounded p-0.5"

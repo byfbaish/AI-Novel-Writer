@@ -1098,6 +1098,19 @@ export interface DatabaseChannels {
     args: [chapterNumber: number, expectedProjectPath: string]
     return: FinalizedContinuityProjection[]
   }
+  'db:chapter-staleness-list': {
+    args: [expectedProjectPath: string]
+    return: {
+      success: boolean
+      chapters?: Array<{
+        chapterNumber: number
+        state: 'current' | 'stale' | 'not-finalized'
+        snapshotGeneration: number | null
+        staleFromChapter: number | null
+      }>
+      error?: string
+    }
+  }
   'db:continuity-read-source': {
     args: [draftId: number, expectedProjectPath: string]
     return: FinalizedSourceReadResult
