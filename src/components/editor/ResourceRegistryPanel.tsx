@@ -823,9 +823,10 @@ export function ResourceRegistryPanel({
       setCandidates(kept)
       if (appended.length > 0) setRows(previous => [...previous, ...appended])
       if (saved > 0 && failed === 0) {
+        // 账本与补扫已下线（ADR-0022）：资源定义的作用是统一口径，不再指向"去补扫"。
         setStatus(text(
-          `已登记 ${saved} 条资源定义。接着去「世界状态 → 资源」的「账本回填」点「补扫第 1–N 章」，第 1 章起的变动才会进账本。`,
-          `Registered ${saved} resource definition(s). Next, open World state -> Resources and run "Ledger backfill" so movements from existing chapters are extracted.`,
+          `已登记 ${saved} 条资源定义。这些定义会在生成时作为本书的资源口径使用，避免每章重新发明单位与周期。`,
+          `Registered ${saved} resource definition(s). They are used as this book's resource vocabulary during generation, so units and periods are not reinvented chapter by chapter.`,
         ))
       } else {
         setStatus(text(
