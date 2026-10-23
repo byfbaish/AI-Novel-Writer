@@ -78,6 +78,7 @@ docs/
 | 收口一期 | **所有写着该期状态的位置**都要改（顶部状态行、分期表、台账、交接稿）—— 2026-10-22 的教训：只改了顶部，路线图表格没标 ✅，读者以为没做完 |
 | 新增 TODO / 缺陷 | 只往 [`plans/prompt-assembly-backlog.md`](plans/prompt-assembly-backlog.md) 追加，不另建台账 |
 | 提交前 | `node scripts/check-doc-links.mjs`（断链不许进主线） |
+| 提交前（**新增 2026-10-23**） | **跑受影响的测试文件，不只是改动所在模块的测试**。反例：给生成链加了一个 IPC 调用，却只跑了那个 IPC 的测试 ⇒ `generate-draft.command.test.ts` 51 例红了整个批次，靠下一位施工员发现。`tsc` 通过不代表测试通过 |
 
 ### ② 图：用 Mermaid，一图配一句读法
 
