@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from 'react'
-import { ChevronRight, ChevronDown, CheckCircle2, Circle, FileText, FolderOpen, Copy, Trash2, FilePen } from 'lucide-react'
+import { ChevronRight, ChevronDown, CheckCircle2, Circle, FileText, FolderOpen, Copy, Trash2, FilePen, RotateCcw } from 'lucide-react'
 import type { DraftMeta } from '../../../stores/draft-store'
 import { useDraftStore, readDraftBody } from '../../../stores/draft-store'
 import { useEditorStore } from '../../../stores/editor-store'
@@ -20,7 +20,7 @@ import {
   isProjectSessionCurrent,
   isProjectSessionPath,
 } from '../../project-session-gate'
-import { deleteFinalizedChapter } from './finalized-chapter-deletion'
+import { revertFinalizedChapter } from './finalized-chapter-deletion'
 
 const DRAFT_STATUS_EN: Record<string, string> = {
   draft: 'Draft', revising: 'Revising', reviewed: 'Reviewed', finalized: 'Finalized', archived: 'Archived',
@@ -242,18 +242,29 @@ function DraftItem({
     })
   }
 
-  /** 删除草稿 */
+  /**
+   * 定稿行只给「退回草稿」（2026-10-23）。
+   *
+   * 每章通常只有一条草稿 v1，它就是定稿 —— 「删除定稿」在数据层等于把这条草稿与正文
+   * 一起删掉，正文彻底消失（实机：第 2、3 章删完草稿箱直接空掉）。
+   * 想改本章时需要的只是撤销定稿，所以草稿箱这一侧不再提供「删除」，只提供退回；
+   * 真要整章删除，去「正文章节」那条（有独立的二次确认）。
+   */
+  const revertDraft = async () => {
+    await revertFinalizedChapter({
+      project: currentProject,
+      projectPath: projectKey,
+      draftId: draft.id,
+      chapterNumber: draft.chapterNumber,
+      displayName: `${chapterTitleText} v${draft.version}`,
+      tabFilePath: draft.filePath,
+    })
+  }
+
+  /** 删除草稿（定稿行走退回，绝不在这里删正文） */
   const deleteDraft = async () => {
     if (draft.status === 'finalized') {
-      await deleteFinalizedChapter({
-        project: currentProject,
-        projectPath: projectKey,
-        draftId: draft.id,
-        chapterNumber: draft.chapterNumber,
-        displayName: `${chapterTitleText} v${draft.version}`,
-        tabFilePath: draft.filePath,
-        surface: 'draft',
-      })
+      await revertDraft()
       return
     }
 
@@ -278,15 +289,8 @@ function DraftItem({
         projectSession,
       )
       if (!isProjectSessionCurrent(projectSession)) return
-      await deleteFinalizedChapter({
-        project: currentProject,
-        projectPath: projectKey,
-        draftId: draft.id,
-        chapterNumber: draft.chapterNumber,
-        displayName: `${chapterTitleText} v${draft.version}`,
-        tabFilePath: draft.filePath,
-        surface: 'draft',
-      })
+      // 状态在确认期间变成了定稿（主进程权威判定）：改走退回草稿，绝不删正文。
+      await revertDraft()
       return
     }
     if (!result.success) {
@@ -340,7 +344,12 @@ function DraftItem({
           onClick: () => navigator.clipboard.writeText(draft.filePath).catch(() => { }),
         },
         { key: 'div2', type: 'divider' as const },
-        {
+        isFinalized ? {
+          key: 'revert',
+          label: text('退回草稿（保留正文）', 'Move back to draft (keep text)'),
+          icon: <RotateCcw size={13} />,
+          onClick: revertDraft,
+        } : {
           key: 'delete',
           label: text('删除这一稿', 'Delete draft'),
           icon: <Trash2 size={13} />,
@@ -368,14 +377,17 @@ function DraftItem({
       <button
         type="button"
         className="opacity-70 hover:opacity-100 rounded p-0.5"
-        title={text('删除这一稿', 'Delete draft')}
+        title={isFinalized
+          ? text('退回草稿（保留正文，可改完再定稿）', 'Move back to draft (keeps the text so you can edit and finalize again)')
+          : text('删除这一稿', 'Delete draft')}
         onClick={(e) => {
           e.stopPropagation()
-          deleteDraft()
+          if (isFinalized) void revertDraft()
+          else void deleteDraft()
         }}
         style={{ color: 'var(--color-text-muted)' }}
       >
-        <Trash2 size={10} />
+        {isFinalized ? <RotateCcw size={10} /> : <Trash2 size={10} />}
       </button>
     </div>
   )

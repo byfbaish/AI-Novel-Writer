@@ -77,7 +77,42 @@ function requireFinalizedTarget(
   if (target.status !== 'finalized' || !target.finalization_id) {
     throw new Error('只有具备定稿提交收据的章节才能通过章节生命周期入口删除')
   }
+  requireFinalizedChainTail(db, target.chapter_number)
   return target as FinalizedChapterTarget
+}
+
+/**
+ * 只有**定稿链尾部**可以退回或删除（2026-10-23 作者裁定）。
+ *
+ * 为什么必须拦中间章：第 N 章一旦定稿，第 N+1 章就是**基于它的事实**写出来并定稿的
+ * （角色状态、连续性事实、账本余额、故事日序都从它推）。此时撤掉第 N 章的定稿事实，
+ * 后续章节的正文与收据全都还挂着，但它们的依据已经被抽走 —— 这是「静默失去前提」，
+ * 比报错严重得多：不会有人发现，直到一致性全面崩掉。
+ *
+ * 所以允许的只有一种形态：**从最后一章定稿开始，倒着连续退**。退完 N，N-1 自动成为新尾部。
+ * 需要跳着退（例如退第 2 章而第 5 章还定稿着）时必须连带回退 3–5 章的正文与派生，
+ * 那是「指定连续回退 / 卷回滚」的范畴，属于另一件事，不在这里做。
+ */
+function requireFinalizedChainTail(
+  db: ReturnType<typeof requireDatabase>,
+  chapterNumber: number,
+): void {
+  const latest = db.prepare(
+    "SELECT COALESCE(MAX(chapter_number), 0) FROM drafts WHERE status = 'finalized'",
+  ).pluck().get() as number
+  if (chapterNumber >= latest) return
+  throw Object.assign(
+    new Error(
+      `第 ${chapterNumber} 章后面还有第 ${latest} 章的定稿在引用它的事实，`
+      + `只能从最后一章（第 ${latest} 章）开始倒着连续退回；`
+      + `要直接退第 ${chapterNumber} 章，需要连同第 ${chapterNumber + 1}–${latest} 章一起回退（指定连续回退 / 卷回滚，尚未实现）`,
+    ),
+    {
+      code: 'FINALIZED_CHAIN_TAIL_REQUIRED' as const,
+      chapterNumber,
+      latestFinalizedChapter: latest,
+    },
+  )
 }
 
 function listPostProcessRunIds(
@@ -120,6 +155,38 @@ function deleteChapterFacts(
       // target. Foreign keys preserve it without weakening this commit.
     }
   }
+}
+
+/**
+ * 「退回草稿」（2026-10-23）：撤销定稿，但**保留正文与草稿行**。
+ *
+ * 为什么必须有这条路：每章通常只有一条草稿 v1，它就是定稿。此前作者想改本章正文，
+ * 唯一入口是「删除定稿」—— 而那条路会把这条草稿与正文一起删掉，正文彻底消失
+ * （2026-10-23 实机：第 2、3 章被删后草稿箱直接空掉，只能靠备份恢复）。
+ *
+ * 定稿事实消失 ⇒ **依赖它的派生必须一并失效**，这条不能省：
+ * - 定稿收据 `finalization_outbox`（删）
+ * - 该章后处理跑批 `post_process_runs`（删；要点/角色状态等随之失效）
+ * - `summary_snapshots`（删：章节要点与角色状态来自定稿正文）
+ * - `resource_movements`（删：账本变动来自定稿正文，留着会与「未定稿」矛盾）
+ * - 连续性投影自该章起失效（`invalidateContinuityProjectionFrom`）
+ *
+ * 正文实体稿与知识库文档由 service 的投影清理统一处理（与删除同一条路）。
+ */
+function revertChapterFacts(
+  db: ReturnType<typeof requireDatabase>,
+  target: FinalizedChapterTarget,
+  postProcessRunIds: readonly string[],
+): void {
+  invalidateContinuityProjectionFrom(db, target.chapter_number)
+  for (const runId of postProcessRunIds) {
+    db.prepare('DELETE FROM post_process_runs WHERE id = ?').run(runId)
+  }
+  db.prepare('DELETE FROM summary_snapshots WHERE draft_id = ?').run(target.id)
+  db.prepare('DELETE FROM resource_movements WHERE chapter_number = ?').run(target.chapter_number)
+  db.prepare('DELETE FROM finalization_outbox WHERE draft_id = ?').run(target.id)
+  // 状态回到「已修订待定稿」：正文还在，作者可以继续改，改完重新定稿会重建收据。
+  db.prepare("UPDATE drafts SET status = 'revised', updated_at = datetime('now') WHERE id = ?").run(target.id)
 }
 
 function rowToOperation(row: ChapterDeletionRow): ChapterDeletionOperation {
@@ -179,6 +246,8 @@ export class ChapterDeletionRepository {
     draftId: number
     chapterNumber: number
     legacyKnowledgeAuthorizationRequired?: boolean
+    /** true = 退回草稿（保留正文与草稿行），false/缺省 = 删除章节事实。 */
+    keepDraft?: boolean
   }): ChapterDeletionOperation {
     const db = requireDatabase()
     const transaction = db.transaction(() => {
@@ -219,7 +288,8 @@ export class ChapterDeletionRepository {
       )
 
       if (input.legacyKnowledgeAuthorizationRequired) return input.operationId
-      deleteChapterFacts(db, target, postProcessRunIds)
+      if (input.keepDraft) revertChapterFacts(db, target, postProcessRunIds)
+      else deleteChapterFacts(db, target, postProcessRunIds)
       return input.operationId
     })
 
@@ -281,6 +351,29 @@ export class ChapterDeletionRepository {
     const operation = ChapterDeletionRepository.get(confirmedOperationId)
     if (!operation) throw new Error(`章节删除操作不存在：${confirmedOperationId}`)
     return operation
+  }
+
+  /**
+   * 该草稿的定稿事实是否**仍然站着**（可被删除/退回）。
+   *
+   * 用途：`completed` 的删除收据只有在这个值为 false 时才可信 —— 事实都推不动了，
+   * 说明删除确实发生过。反过来，收据说"已完成"而事实仍完美站着，只可能是
+   * 数据被备份恢复/回滚过（2026-10-23 实机：恢复第 2、3 章后旧的删除收据仍在，
+   * 于是「退回草稿」直接返回成功、什么都没做，界面却报「已退回」）。
+   */
+  static factsStillActionable(draftId: number): boolean {
+    const row = requireDatabase().prepare(`
+      SELECT drafts.status AS status, finalization_outbox.finalization_id AS finalizationId
+      FROM drafts
+      LEFT JOIN finalization_outbox ON finalization_outbox.draft_id = drafts.id
+      WHERE drafts.id = ?
+    `).get(draftId) as { status: string; finalizationId: string | null } | undefined
+    return !!row && row.status === 'finalized' && !!row.finalizationId
+  }
+
+  /** 作废一条陈旧收据（事实已回滚，收据不再描述现实）。`draft_id` 有 UNIQUE，删掉才能重新登记。 */
+  static discard(operationId: string): void {
+    requireDatabase().prepare('DELETE FROM chapter_deletion_operations WHERE operation_id = ?').run(operationId)
   }
 
   static get(operationId: string): ChapterDeletionOperation | null {

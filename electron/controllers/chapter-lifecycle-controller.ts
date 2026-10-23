@@ -28,10 +28,24 @@ export function registerChapterLifecycleController(
           lease.rootPath,
         )
       } catch (error) {
+        const code = error && typeof error === 'object' && 'code' in error
+          ? (error as { code?: unknown }).code
+          : undefined
+        const details = error && typeof error === 'object'
+          && 'chapterNumber' in error && 'latestFinalizedChapter' in error
+          ? {
+              chapterNumber: Number((error as { chapterNumber: unknown }).chapterNumber),
+              latestFinalizedChapter: Number((error as { latestFinalizedChapter: unknown }).latestFinalizedChapter),
+            }
+          : undefined
         return {
           success: false,
           committed: false,
           error: error instanceof Error ? error.message : String(error),
+          // 只透传已知的机器码，别把任意 code 当成契约漏出去。
+          ...(code === 'FINALIZED_CHAIN_TAIL_REQUIRED'
+            ? { errorCode: code, ...(details ? { errorDetails: details } : {}) }
+            : {}),
         }
       }
     })
@@ -45,6 +59,16 @@ export function registerChapterLifecycleController(
   ) => {
     assertRequiredExpectedProjectPath(projectRoot, expectedProjectPath)
     return service.delete(projectRoot, request)
+  })
+
+  register('chapter:revert-finalized', async (
+    _event,
+    request: DeleteFinalizedChapterRequest,
+    expectedProjectPath: string,
+    projectRoot: string,
+  ) => {
+    assertRequiredExpectedProjectPath(projectRoot, expectedProjectPath)
+    return service.revert(projectRoot, request)
   })
 
   register('chapter:retry-deletion', async (
