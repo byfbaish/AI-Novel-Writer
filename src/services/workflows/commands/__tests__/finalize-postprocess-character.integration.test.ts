@@ -263,6 +263,10 @@ function installRealRepositoryIpc(): void {
             return []
           case 'db:continuity-list-before':
             return SummaryRepository.listFinalizedContinuityBefore(Number(args[0]))
+          // P0-1 期1：前章定稿「前提已变」检查（生成第 N 章时问一次）。
+          // 本测试不演练回退链路，固定答「没有过期章」——与旧行为一致。
+          case 'db:chapter-staleness-list':
+            return { success: true, chapters: [] }
           case 'kb:search-writing-context':
             return { success: true, value: [] }
           case 'db:blueprint-get':

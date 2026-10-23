@@ -198,7 +198,7 @@ export function createArchitectureWorkflow(
     {
       name: text('卷 / 单元结构', 'Volumes and units'),
       key: 'plotStructure',
-      description: stepDesc('plotStructure', '把世界观与角色推演成「卷 → 单元」两级结构：处境、阻力换代、代价', 'Turn worldbuilding and characters into a two-level structure of volumes and units'),
+      description: stepDesc('plotStructure', '把世界观与角色推演成「卷 / 单元」两级结构：处境、阻力换代、代价', 'Turn worldbuilding and characters into a two-level structure of volumes and units'),
       executor: async (step: unknown, context: WorkflowContext, callbacks: StepCallbacks) => {
         context.data.stepGuidance = guidance
         const { GeneratePlotStructureCommand } = await import('./commands/architecture.command')

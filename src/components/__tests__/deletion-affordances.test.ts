@@ -46,7 +46,11 @@ describe('generated content deletion affordances', () => {
 
     expect(draftBox).toContain('删除这一稿')
     expect(draftBox).toContain('db:draft-delete')
-    expect(draftBox).toContain('deleteFinalizedChapter')
+    // ADR-0021 / ADR-0023：定稿行在草稿箱只给「退回草稿（保留正文）」——
+    // 删除正文的唯一入口是正文页（ManuscriptGroup）。这条 not 断言锁定该设计，防回潮。
+    expect(draftBox).toContain('revertFinalizedChapter')
+    expect(draftBox).toContain('退回草稿（保留正文）')
+    expect(draftBox).not.toContain('deleteFinalizedChapter')
     expect(manuscript).toContain('删除正文')
     expect(manuscript).toContain('deleteFinalizedChapter')
     expect(manuscript).toContain('chapter:list-incomplete-deletions')

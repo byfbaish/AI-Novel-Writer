@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
+import { withoutComments } from '../../../../test/source-contract'
+
 const brandingSources = [
   'src/components/settings/SettingsModal.tsx',
   'electron/main.ts',
@@ -23,7 +25,11 @@ function readSources(files: string[]): string {
 }
 
 const brandingSource = readSources(brandingSources)
-const visibleSettingsSource = readSources(visibleSettingsSources)
+// 伪图标断言扫**可见文案**：⚠️/★ 是仓库注释的常用记号，不是 UI 图标 ⇒ 剥注释后再扫。
+// 正则类断言专用（transpile 会重排格式，不能用于多行精确串）。
+const visibleSettingsSource = visibleSettingsSources
+  .map((file) => withoutComments(file, readFileSync(resolve(process.cwd(), file), 'utf8')))
+  .join('\n')
 
 const forbiddenVisibleLegacy = [
   '"name": "vela"',
@@ -61,7 +67,8 @@ describe('settings visible branding', () => {
     }
 
     expect(visibleSettingsSource).not.toMatch(pseudoIconPattern)
-    expect(visibleSettingsSource).not.toMatch(/<svg\b|<path\b/)
+    // svg 禁令保持裸扫：连注释里出现 <svg 也要能看见。
+    expect(readSources(visibleSettingsSources)).not.toMatch(/<svg\b|<path\b/)
   })
 
   it('does not keep legacy support image assets in the repository', () => {

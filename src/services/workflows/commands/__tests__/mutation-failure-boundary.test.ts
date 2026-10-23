@@ -546,6 +546,9 @@ describe('workflow mutation failure boundaries', () => {
         chapterNumber: 1,
         chapterNotes: '作者原稿的连续性事实',
         facts: [],
+        // W2 日序可算术（150e4f45）：要点里没有「时间定位」⇒ 显式 null，不填 0。
+        storyDayOffset: null,
+        storyDayLabel: null,
         projectionGeneration: 7,
         source: finalizedSource(41, 1, '作者正文'),
       },
