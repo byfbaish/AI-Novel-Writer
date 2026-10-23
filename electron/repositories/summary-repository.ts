@@ -453,7 +453,7 @@ export function invalidateContinuityProjectionFrom(
   if (!Number.isSafeInteger(chapterNumber) || chapterNumber < 1) {
     throw new Error('连续性投影失效章节无效')
   }
-  db.prepare(`
+  const updated = db.prepare(`
     UPDATE continuity_projection_meta
     SET generation = generation + 1,
         stale_from_chapter = CASE
@@ -462,6 +462,14 @@ export function invalidateContinuityProjectionFrom(
         END
     WHERE id = 'main'
   `).run(chapterNumber, chapterNumber)
+  if (updated.changes === 0) return
+  /**
+   * 记下"变的是哪一章"（M13）。只有全局计数器时，判定只能得出
+   * "有某章变过 ⇒ 所有旧快照都过期"，改后文会把前文一起打回；
+   * 有了这一行，判定才能算出"该章**之前**的最新变化"（见 chapter-staleness.ts 文件头）。
+   */
+  const generation = db.prepare("SELECT generation FROM continuity_projection_meta WHERE id='main'").pluck().get() as number
+  db.prepare('INSERT INTO continuity_change_log (chapter_number, generation) VALUES (?, ?)').run(chapterNumber, generation)
 }
 
 /** 一章的「前提是否已变」判定结果，给界面用。 */
@@ -484,6 +492,36 @@ export class SummaryRepository {
    * 只取**权威定稿**那一条（同章多版本时 version 最大者），与 `currentCharacterProjection`
    * 的口径一致 —— 否则同一章会出现两条互相矛盾的判定。
    */
+  /**
+   * 记下"这一章在当前世代无需改动"（P0-1 期 3）。
+   *
+   * 两条硬约束：
+   * - **理由必填**：空理由等于静默放行，而静默放行正是这个功能要防的东西；
+   * - **只对定稿章开放**：给未定稿章做确认没有意义（它本来就没有派生）。
+   *
+   * 写入的是**当前世代**：之后任何一章再退回，generation 变，这条确认自动失效
+   * （判定取 `max(快照代, 确认代) >= 该章之前的最新变更代`）。
+   */
+  static acknowledgeChapterStaleness(chapterNumber: number, reason: string): { generation: number } {
+    const db = getProjectDb()
+    if (!db) throw new Error('项目数据库未连接')
+    const trimmed = reason.trim()
+    if (!trimmed) throw new Error('STALENESS_ACK_REASON_REQUIRED')
+    const finalized = db.prepare(
+      "SELECT 1 FROM drafts WHERE chapter_number = ? AND status = 'finalized' LIMIT 1",
+    ).get(chapterNumber)
+    if (!finalized) throw new Error('STALENESS_ACK_CHAPTER_NOT_FINALIZED')
+    const generation = db.prepare(
+      "SELECT generation FROM continuity_projection_meta WHERE id='main'",
+    ).pluck().get() as number
+    db.prepare(`
+      INSERT INTO chapter_staleness_acknowledgements (chapter_number, acknowledged_generation, reason)
+      VALUES (?, ?, ?)
+      ON CONFLICT(chapter_number, acknowledged_generation) DO UPDATE SET reason = excluded.reason
+    `).run(chapterNumber, generation, trimmed)
+    return { generation }
+  }
+
   static chapterStalenessSnapshot(): {
     generation: number
     latestFinalizedChapter: number
@@ -523,6 +561,24 @@ export class SummaryRepository {
         )
       ORDER BY drafts.chapter_number
     `).all() as Array<{ chapterNumber: number; snapshotGeneration: number | null }>
+    // 每次"哪一章变过"（M13）。判定要的是**该章之前**的最大变更代，不是全局计数。
+    const changes = db.prepare(`
+      SELECT chapter_number AS chapterNumber, generation FROM continuity_change_log
+    `).all() as Array<{ chapterNumber: number; generation: number }>
+    const changeByChapter = new Map<number, number>()
+    for (const change of changes) {
+      changeByChapter.set(change.chapterNumber, Math.max(changeByChapter.get(change.chapterNumber) ?? 0, change.generation))
+    }
+    const changedChapters = [...changeByChapter.keys()].sort((left, right) => left - right)
+    /** 严格小于 `chapterNumber` 的章里，最后一次变化的代。改后文不影响前文。 */
+    const requiredGenerationFor = (chapterNumber: number): number => {
+      let required = 0
+      for (const changed of changedChapters) {
+        if (changed >= chapterNumber) break
+        required = Math.max(required, changeByChapter.get(changed) ?? 0)
+      }
+      return required
+    }
     const acks = db.prepare(`
       SELECT chapter_number AS chapterNumber, acknowledged_generation AS generation
       FROM chapter_staleness_acknowledgements
@@ -538,10 +594,10 @@ export class SummaryRepository {
         {
           chapterNumber: row.chapterNumber,
           snapshotGeneration: row.snapshotGeneration,
-          generation: meta.generation,
+          requiredGeneration: requiredGenerationFor(row.chapterNumber),
           acknowledgedGenerations: acksByChapter.get(row.chapterNumber) ?? [],
         },
-        { generation: meta.generation, staleFromChapter: meta.staleFromChapter },
+        { staleFromChapter: meta.staleFromChapter },
       )
       return {
         chapterNumber: row.chapterNumber,

@@ -1098,6 +1098,15 @@ export interface DatabaseChannels {
     args: [chapterNumber: number, expectedProjectPath: string]
     return: FinalizedContinuityProjection[]
   }
+  'db:chapter-staleness-ack': {
+    args: [chapterNumber: number, reason: string, expectedProjectPath: string]
+    return: {
+      success: boolean
+      generation?: number
+      errorCode?: 'REASON_REQUIRED' | 'CHAPTER_NOT_FINALIZED'
+      error?: string
+    }
+  }
   'db:chapter-staleness-list': {
     args: [expectedProjectPath: string]
     return: {

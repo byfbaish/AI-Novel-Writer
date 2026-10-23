@@ -10,6 +10,13 @@
  *
  * 这不是"账本"，是**可判定的时间戳比较**：快照生成时的世代 vs 当前世代。
  *
+ * ## 为什么需要"该章之前的最新变更代"，而不是全局计数
+ *
+ * 影响是**单向**的：第 k 章变化只影响 k 之后。用单一全局计数器会得出
+ * "改第 22 章 ⇒ 第 21 章也过期"的错误结论 —— 逐章修复时会把已确认的章反复打回。
+ * 所以判定用的是 `requiredGeneration`（该章**之前**的章最后一次变化的代），
+ * 由 `continuity_change_log` 算出（M13）。
+ *
  * ## 为什么不看 `stale_from_chapter`
  *
  * 那是**单调水位**（只会往前走，重新定稿不会让它后退），用来回答"最早从哪一章开始脏"，
@@ -36,9 +43,12 @@ export interface ChapterStalenessInput {
   chapterNumber: number
   /** 该章派生快照的生成世代；`null` = 没有快照 */
   snapshotGeneration: number | null
-  /** 项目当前世代（`continuity_projection_meta.generation`） */
-  generation: number
-  /** 已对"当前世代"做过确认的世代列表（该章） */
+  /**
+   * 该章**之前**的章最后一次变化时的代（`continuity_change_log` 前缀最大）。
+   * 0 = 前面从没变过。**不含本章及之后的变更** —— 后文变化不影响前文。
+   */
+  requiredGeneration: number
+  /** 该章做过的确认（每次确认记下当时的代） */
   acknowledgedGenerations: readonly number[]
 }
 
@@ -52,7 +62,7 @@ export interface ChapterStaleness {
 }
 
 export interface ChapterStalenessProjectMeta {
-  generation: number
+  /** 仅用于文案：这一轮脏从第几章开始。不参与判定。 */
   staleFromChapter: number | null
 }
 
@@ -63,16 +73,16 @@ export function chapterStaleness(
   input: ChapterStalenessInput,
   meta: ChapterStalenessProjectMeta,
 ): ChapterStaleness {
-  const { snapshotGeneration, acknowledgedGenerations } = input
+  const { snapshotGeneration, requiredGeneration, acknowledgedGenerations } = input
   if (snapshotGeneration === null || !Number.isSafeInteger(snapshotGeneration)) {
     return { state: 'not-finalized', staleFromChapter: null }
   }
-  // 快照代已经追平（甚至超过）当前世代 ⇒ 它是在这一代世界里算出来的。
-  if (snapshotGeneration >= meta.generation) {
-    return { state: 'current', staleFromChapter: null }
-  }
-  // 人工确认只对"确认时的那一代"有效：generation 一变，全部作废。
-  if (acknowledgedGenerations.includes(meta.generation)) {
+  // 最有力的凭据：要么快照就是在"前文最新变化之后"算的，要么在之后确认过。
+  const bestEvidence = Math.max(
+    snapshotGeneration,
+    ...acknowledgedGenerations.filter(value => Number.isSafeInteger(value)),
+  )
+  if (bestEvidence >= requiredGeneration) {
     return { state: 'current', staleFromChapter: null }
   }
   return { state: 'stale', staleFromChapter: meta.staleFromChapter }
