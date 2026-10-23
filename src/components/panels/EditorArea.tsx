@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BookOpen, CalendarClock, Check, ChevronLeft, ChevronRight, ClipboardCheck, Coins, FileText, Globe, History, MoreHorizontal, Package, PenTool, Save, Settings, Users, X } from 'lucide-react'
+import { ArrowLeftRight, BookOpen, CalendarClock, Check, ChevronLeft, ChevronRight, ClipboardCheck, Coins, Eye, FileText, Globe, History, MoreHorizontal, Package, PenTool, Save, Settings, Users, X } from 'lucide-react'
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react'
 import { ContextMenu, type ContextMenuEntry } from '../ui/ContextMenu'
 import {
@@ -14,6 +14,7 @@ import WorldBuildingEditor from '../editor/WorldBuildingEditor'
 import ResourceRegistryEditor from '../editor/ResourceRegistryEditor'
 import KeyItemRegistryEditor from '../editor/KeyItemRegistryEditor'
 import CadenceRegistryEditor from '../editor/CadenceRegistryEditor'
+import KnowledgeRegistryEditor from '../editor/KnowledgeRegistryEditor'
 import ArchFileViewer from '../editor/ArchFileViewer'
 import DraftEditor from '../editor/DraftEditor'
 import VersionHistory from '../editor/VersionHistory'
@@ -500,6 +501,7 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
     if (type === 'resource-registry') return <Coins size={14} />
     if (type === 'key-item-registry') return <Package size={14} />
     if (type === 'cadence-registry') return <CalendarClock size={14} />
+    if (type === 'knowledge-registry') return <Eye size={14} />
     if (type === 'version-history') return <History size={14} />
     if (type === 'review-report') return <ClipboardCheck size={14} />
     return <FileText size={14} />
@@ -741,6 +743,9 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
         )}
         {activeTab?.type === 'cadence-registry' && activeTab.projectKey && (
           <CadenceRegistryEditor key={activeTab.id} projectKey={activeTab.projectKey} />
+        )}
+        {activeTab?.type === 'knowledge-registry' && activeTab.projectKey && (
+          <KnowledgeRegistryEditor key={activeTab.id} projectKey={activeTab.projectKey} />
         )}
         {activeTab?.type === 'narrative-thread' && activeTab.projectKey === currentProject.path && (
           <NarrativeThreadEditor

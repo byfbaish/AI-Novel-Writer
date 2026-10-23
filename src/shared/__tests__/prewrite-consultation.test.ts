@@ -11,6 +11,10 @@ import {
 } from '../prewrite-consultation'
 import { renderKeyItemLine, type KeyItemDefinition } from '../key-item'
 import { CADENCE_MAX_ITEMS, type CadenceEntry, type InstitutionCadence } from '../institution-cadence'
+import {
+  KNOWLEDGE_MAX_ITEMS,
+  type KnowledgeStateDefinition,
+} from '../knowledge-state'
 import type { WorldBuildingRule } from '../worldbuilding-rules'
 
 const fact = (over: Partial<PrewriteFact> = {}): PrewriteFact => ({
@@ -64,6 +68,23 @@ const dueEntry = (over: Partial<InstitutionCadence> = {}, name = '月例'): Cade
   evaluation: { status: 'due', basis: 'chapter' },
 })
 
+const knowledge = (over: Partial<KnowledgeStateDefinition> = {}): KnowledgeStateDefinition => ({
+  knowledgeId: 'knowledge:1',
+  characterId: 'character:guchangfeng',
+  characterName: '顾长风',
+  factChapter: 9,
+  factEvidence: '灵根检测结果被人改过',
+  factEvidenceHash: 'a'.repeat(64),
+  factKey: 'kf:0123456789abcdef',
+  learnedChapter: 12,
+  evidence: '',
+  source: 'author',
+  refState: 'valid',
+  createdAt: '',
+  updatedAt: '',
+  ...over,
+})
+
 describe('renderPrewriteFactLine', () => {
   it('中文行与审稿链逐字相同（判据 DM：同一条事实只有一种措辞）', () => {
     expect(renderPrewriteFactLine(fact(), 'zh-CN'))
@@ -113,7 +134,7 @@ describe('renderPrewriteFactsSection', () => {
 describe('buildPrewriteConsultationBlock', () => {
   it('两节都空 ⇒ 空串（材料块逐字节不变，parity 哈希护栏靠这个成立）', () => {
     expect(buildPrewriteConsultationBlock({}, 'zh-CN'))
-      .toEqual({ text: '', factCount: 0, itemCount: 0, cadenceCount: 0, ruleCount: 0 })
+      .toEqual({ text: '', factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, ruleCount: 0 })
     expect(buildPrewriteConsultationBlock({ facts: [], rules: [] }, 'zh-CN').text).toBe('')
     // 传空 cadences 与不传逐字节相同：制度缺省必须零字节。
     expect(buildPrewriteConsultationBlock({ cadences: [] }, 'zh-CN').text).toBe('')
@@ -221,7 +242,7 @@ describe('cadences section', () => {
     expect(block.text).toContain('以下每条只回答「该不该发生」，不回答「应发多少」')
     expect(block.text.indexOf('【关键物品（')).toBeLessThan(block.text.indexOf('【制度（周期事件'))
     expect(block.text.indexOf('【制度（周期事件')).toBeLessThan(block.text.indexOf('【本书规则（'))
-    expect(block).toMatchObject({ factCount: 0, itemCount: 1, cadenceCount: 1, ruleCount: 1 })
+    expect(block).toMatchObject({ factCount: 0, itemCount: 1, cadenceCount: 1, knowledgeCount: 0, ruleCount: 1 })
   })
 
   it('unknown 渲染成「未知」而不是「未到」（缺失就说缺失，判据 DN 同型）', () => {
@@ -241,5 +262,51 @@ describe('cadences section', () => {
     const block = buildPrewriteConsultationBlock({ cadences: many }, 'zh-CN')
     expect(block.cadenceCount).toBe(CADENCE_MAX_ITEMS)
     expect(block.text).not.toContain(`事件${CADENCE_MAX_ITEMS}`)
+  })
+})
+
+/**
+ * 知情这一节（P1-1 期 3）。四件事：位置（制度之后、规则之前）、零字节、
+ * 上限整条丢弃、以及**节首说明逐字包含封闭默认的边界句**。
+ *
+ * 最后一条是本期的判据：说明句缺了「未登记的事实一概不判」，读者就会把它读成
+ * 「这本书里谁都不知道别的任何事」—— 那是比不注入更大的错误。
+ */
+describe('knowledge section', () => {
+  it('知情排在制度之后、本书规则之前，并回报 knowledgeCount', () => {
+    const block = buildPrewriteConsultationBlock({
+      cadences: [dueEntry()],
+      knowledge: [knowledge()],
+      rules: [rule()],
+    }, 'zh-CN')
+    expect(block.text).toContain('【知情（谁知道什么）】')
+    expect(block.text.indexOf('【制度（周期事件')).toBeLessThan(block.text.indexOf('【知情（谁知道什么）】'))
+    expect(block.text.indexOf('【知情（谁知道什么）】')).toBeLessThan(block.text.indexOf('【本书规则（'))
+    expect(block).toMatchObject({ factCount: 0, itemCount: 0, cadenceCount: 1, knowledgeCount: 1, ruleCount: 1 })
+  })
+
+  it('节首说明逐字包含「未登记的事实一概不判」（封闭默认只在注入文本里成立）', () => {
+    const block = buildPrewriteConsultationBlock({ knowledge: [knowledge()] }, 'zh-CN')
+    expect(block.text).toContain('登记过的事实，未列出的角色视为不知道；未登记的事实一概不判。')
+    // 英文对称：不能只写前半句。
+    const en = buildPrewriteConsultationBlock({ knowledge: [knowledge()] }, 'en-US')
+    expect(en.text).toContain('facts that were never registered are not judged at all')
+  })
+
+  it('缺省与传空都零字节（材料块逐字节不变，parity 哈希护栏靠这个成立）', () => {
+    expect(buildPrewriteConsultationBlock({ knowledge: [] }, 'zh-CN').text).toBe('')
+    expect(buildPrewriteConsultationBlock({}, 'zh-CN').text).toBe('')
+  })
+
+  it('条数按上限截断，超出的整条丢弃（不截半行）', () => {
+    const many = Array.from({ length: KNOWLEDGE_MAX_ITEMS + 3 }, (_, index) => knowledge({
+      knowledgeId: `knowledge:${index}`,
+      characterName: `角色${index}`,
+      learnedChapter: 12 - index,
+    }))
+    const block = buildPrewriteConsultationBlock({ knowledge: many }, 'zh-CN')
+    expect(block.knowledgeCount).toBe(KNOWLEDGE_MAX_ITEMS)
+    // 被裁掉的最后一条：整行都不出现（不是只少半句）。
+    expect(block.text).not.toContain(`角色${KNOWLEDGE_MAX_ITEMS + 2}：`)
   })
 })

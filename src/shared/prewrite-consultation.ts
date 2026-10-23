@@ -30,6 +30,11 @@
 import type { FinalizedContinuityFactCategory } from './finalized-continuity'
 import { renderCadenceSection, CADENCE_MAX_ITEMS, type CadenceEntry } from './institution-cadence'
 import { renderKeyItemLine, type KeyItemDefinition } from './key-item'
+import {
+  renderKnowledgeSection,
+  KNOWLEDGE_MAX_ITEMS,
+  type KnowledgeStateDefinition,
+} from './knowledge-state'
 import type { WritingLanguage } from './writing-language'
 import { renderWorldRulesSection, WORLD_RULES_MAX_ITEMS, type WorldBuildingRule } from './worldbuilding-rules'
 
@@ -59,6 +64,11 @@ export const PREWRITE_ITEMS_MAX_CHARS = 640
  * 那一节自带渲染入口，这里只做排序与拼接，不再另设一套上限。
  */
 export const PREWRITE_CADENCES_MAX_ITEMS = CADENCE_MAX_ITEMS
+/**
+ * 知情条数上限（P1-1）。与 `knowledge-state.ts` 的 `KNOWLEDGE_MAX_ITEMS` 同源 ——
+ * 那一节自带渲染入口与失效过滤，这里只做拼接，不再另设一套上限。
+ */
+export const PREWRITE_KNOWLEDGE_MAX_ITEMS = KNOWLEDGE_MAX_ITEMS
 
 /** 单行渲染；格式与审稿链逐字相同，改动即两侧同时变（这是判据 DM 的自检点）。 */
 export function renderPrewriteFactLine(fact: PrewriteFact, writingLanguage: WritingLanguage): string {
@@ -132,10 +142,14 @@ export function renderPrewriteItemsSection(
 }
 
 /**
- * 组装四节（前文事实 / 关键物品 / 制度 / 本书规则）；返回实际进入提示词的条数。
+ * 组装五节（前文事实 / 关键物品 / 制度 / 知情 / 本书规则）；返回实际进入提示词的条数。
  *
- * 顺序按计划 §0 定死：**事实 → 物品 → 制度 → 规则**。事实与物品靠前（先看 canon），
- * 规则最后（像约束条款，收尾位最不易被忽略）。
+ * 顺序按计划 §0 定死：**事实 → 物品 → 制度 → 知情 → 规则**。事实与物品靠前（先看 canon），
+ * 规则最后（像约束条款，收尾位最不易被忽略）；知情紧跟制度，因为二者都回答「这一章现场
+ * 还成立吗」。
+ *
+ * 「本章出场角色优先」的排序在 `renderKnowledgeSection` 里做（它需要 `chapterCharacters`），
+ * 本层只透传。调用方**必须**先滤掉未来章（`learnedChapter > 本章`）—— 纯函数不知道本章号。
  *
  * 全部为空 ⇒ `text=''`，调用方据此不产生任何字节（材料块逐字节不变，护栏靠这个成立）。
  */
@@ -145,20 +159,28 @@ export function buildPrewriteConsultationBlock(
     items?: readonly KeyItemDefinition[]
     /** 已按本章位置判定并排序过的周期事件（排序在调用方，本层只渲染）。 */
     cadences?: readonly CadenceEntry[]
+    /** 已滤掉未来章与失效引用的知情关系（过滤在调用方，本层只渲染）。 */
+    knowledge?: readonly KnowledgeStateDefinition[]
+    /** 本章出场角色名：只用于知情节的排序，不参与渲染措辞。 */
+    chapterCharacters?: readonly string[]
     rules?: readonly WorldBuildingRule[]
   },
   writingLanguage: WritingLanguage,
-): { text: string; factCount: number; itemCount: number; cadenceCount: number; ruleCount: number } {
+): { text: string; factCount: number; itemCount: number; cadenceCount: number; knowledgeCount: number; ruleCount: number } {
   const facts = input.facts ?? []
   const items = input.items ?? []
   const cadences = input.cadences ?? []
+  const knowledge = input.knowledge ?? []
   const rules = input.rules ?? []
   const factsSection = renderPrewriteFactsSection(facts, writingLanguage)
   const itemsSection = renderPrewriteItemsSection(items, writingLanguage)
   const cadencesSection = renderCadenceSection(cadences, writingLanguage)
+  const knowledgeSection = renderKnowledgeSection(knowledge, writingLanguage, input.chapterCharacters ?? [])
   const rulesSection = renderWorldRulesSection(rules, writingLanguage)
-  const text = [factsSection, itemsSection, cadencesSection, rulesSection].filter(Boolean).join('\n\n')
-  if (!text) return { text: '', factCount: 0, itemCount: 0, cadenceCount: 0, ruleCount: 0 }
+  const text = [factsSection, itemsSection, cadencesSection, knowledgeSection, rulesSection].filter(Boolean).join('\n\n')
+  if (!text) {
+    return { text: '', factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, ruleCount: 0 }
+  }
   // 条数按**通过裁剪**的行数回报：日志说"注入了 6 条"就必须真是 6 条。
   const count = (section: string) => (section ? section.split('\n').filter(line => line.startsWith('- ')).length : 0)
   return {
@@ -167,6 +189,7 @@ export function buildPrewriteConsultationBlock(
     factCount: Math.min(count(factsSection), PREWRITE_FACTS_MAX_ITEMS),
     itemCount: Math.min(count(itemsSection), PREWRITE_ITEMS_MAX_ITEMS),
     cadenceCount: Math.min(count(cadencesSection), CADENCE_MAX_ITEMS),
+    knowledgeCount: Math.min(count(knowledgeSection), KNOWLEDGE_MAX_ITEMS),
     ruleCount: Math.min(count(rulesSection), WORLD_RULES_MAX_ITEMS),
   }
 }

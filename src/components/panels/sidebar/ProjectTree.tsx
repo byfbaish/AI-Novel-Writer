@@ -6,7 +6,7 @@ import { formatResourceUri } from '../../../shared/project-paths'
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins, Package, CalendarClock } from 'lucide-react'
+import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins, Package, CalendarClock, Eye } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { useDraftStore } from '../../../stores/draft-store'
@@ -475,6 +475,27 @@ function WorldBuildingGroup({
             </span>
             <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
               {text('制度（周期事件）', 'Cadences')}
+            </span>
+          </div>
+          {/* P1-1 期 3：知情登记（谁知道什么）。回答的是「这个人此刻知道哪件事」。 */}
+          <div
+            className="tree-item gap-1.5 cursor-pointer select-none"
+            style={{ paddingLeft: 26 }}
+            onClick={() => openBuiltinEditor(
+              'knowledge-registry-editor',
+              text('知情（谁知道什么）', 'Knowledge state'),
+              'knowledge-registry',
+            )}
+            title={text(
+              '登记谁在哪一章得知了哪条定稿事实；生成时只提醒已登记的事实，未登记的概不判断',
+              'Register who learned which finalized fact and when; only registered facts are consulted',
+            )}
+          >
+            <span className="flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+              <Eye size={13} />
+            </span>
+            <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
+              {text('知情（谁知道什么）', 'Knowledge state')}
             </span>
           </div>
         </div>

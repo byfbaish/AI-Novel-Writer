@@ -75,8 +75,9 @@ describe('portable v7 field policy', () => {
       .all() as Array<{ name: string }>
     const fieldCount = tables.reduce((count, table) => count
       + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 58, fields: 547 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 58, fields: 547 })
+    // P1-1 期 3 / M16：+1 表 11 列（knowledge_states）—— 58/547 → 59/558，属预期变化。
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 59, fields: 558 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 59, fields: 558 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -112,7 +113,8 @@ describe('portable v7 field policy', () => {
     // + P0-1/M12 的 1 表 4 列（chapter_staleness_acknowledgements）+ M13 的 1 表 4 列（continuity_change_log）
     // + P1-1/M14 的 1 表 10 列（key_items）
     // + P1-1 期 2 / M15 的 1 表 13 列（institution_cadences）—— 计数随之 +13，属预期变化
-    expect(added).toHaveLength(192)
+    // + P1-1 期 3 / M16 的 1 表 11 列（knowledge_states）—— 计数随之 +11（192 → 203），属预期变化
+    expect(added).toHaveLength(203)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -199,7 +201,8 @@ describe('portable v7 field policy', () => {
         .all() as Array<{ name: string }>
       const fields = tables.reduce((count, table) => count
         + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-      expect({ tables: tables.length, fields }).toEqual({ tables: 58, fields: 547 })
+      // 同上：M16 的 1 表 11 列也计入（删掉索引的 DDL fork 仍必须被拒绝）。
+      expect({ tables: tables.length, fields }).toEqual({ tables: 59, fields: 558 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)
