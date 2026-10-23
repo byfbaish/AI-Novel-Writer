@@ -213,6 +213,62 @@ function toInput(row: DraftRow): ResourceDefinitionInput {
   }
 }
 
+/**
+ * 口径词根：`period` 必须说明"多久结算一次"。
+ *
+ * 只收单字词根，靠"结尾是不是它"判定，误报最低。
+ * 代价是 `三天一副`（费率描述）算通过 —— 它至少以量词结尾；
+ * 这条提示只负责抓**形态明显不对**的那一类（`永久兑换`、`100`）。
+ */
+const PERIOD_ROOTS = new Set(['日', '天', '周', '月', '季', '年', '章', '次', '副', '回', '轮', '单', '笔', '夜', '刻', '更'])
+
+/**
+ * 建议级提示（W6a-7）：**只提示、不阻断**（判据 DL 同源）。
+ *
+ * 为什么要有：实机见三处登记口径填错 —— `unit=100`（把金额填进单位）、
+ * `period=永久兑换`（不是周期）、`unit=枚` 而正文写「副」。
+ * 前两类是**形态**问题，面板自己就能看出来；第三类是**语义**问题，
+ * 面板不知道正文，只能交给 `unit-mismatch` 冲突机制（已工作）。
+ *
+ * 所以这里只做能确定的判断，措辞一律是"看起来/建议"，不给结论（判据 CJ）。
+ */
+function reviewRows(rows: readonly DraftRow[], text: LocaleText): Map<string, string> {
+  const hints = new Map<string, string>()
+  for (const row of rows) {
+    if (row.removing) continue
+    const unit = row.unit.trim()
+    const period = row.period.trim()
+    const messages: string[] = []
+
+    if (unit) {
+      if (/^\d+(?:\.\d+)?$/u.test(unit)) {
+        messages.push(text(
+          `单位填成了数字 ${unit} —— 看起来是把金额写进了单位列，单位应是量词（枚/株/间）`,
+          `Unit looks like a number (${unit}); the unit column expects a counter such as pieces or plants`,
+        ))
+      } else if (unit.length > 6) {
+        messages.push(text(
+          '单位这一列通常是短量词；这段更像一句说明',
+          'The unit column expects a short counter; this reads like a sentence',
+        ))
+      }
+    }
+
+    if (period) {
+      const tail = period.slice(-1)
+      if (!PERIOD_ROOTS.has(tail)) {
+        messages.push(text(
+          `口径（周期）应说明多久结算一次（日/月/副/次），「${period}」看起来不是口径`,
+          `The period should say how often it settles (day/month/dose/time); “${period}” does not look like one`,
+        ))
+      }
+    }
+
+    if (messages.length > 0) hints.set(row.key, messages.join('；'))
+  }
+  return hints
+}
+
 /** 写库失败的可见文案。后端回的是错误码，不是给人看的话。 */
 function writeErrorLabel(error: string | undefined, text: LocaleText): string {
   switch (error) {
@@ -792,6 +848,8 @@ export function ResourceRegistryPanel({
     rows.filter(row => !row.removing).map(row => row.name.trim()).filter(Boolean),
   )
   const selectedCandidateCount = candidates.filter(row => row.selected).length
+  /** 建议级提示：不阻断保存，所以每次渲染实时算（不进 state，避免与草稿不同步）。 */
+  const rowHints = reviewRows(rows, text)
   const canExtract = !extracting && !busy && Boolean(worldbuilding?.trim())
 
   return (
@@ -1120,11 +1178,25 @@ export function ResourceRegistryPanel({
                       )}
                     </td>
                   </tr>
-                  {row.error && (
+                  {row.error ? (
                     <tr>
                       <td colSpan={COLUMNS.length + 1} className="px-1 pb-1">
                         <span role="alert" className="text-xs" style={{ color: 'var(--color-error-text)' }}>
                           {row.error}
+                        </span>
+                      </td>
+                    </tr>
+                  ) : rowHints.has(row.key) && (
+                    <tr>
+                      <td colSpan={COLUMNS.length + 1} className="px-1 pb-1">
+                        {/* 建议级：用 status 不用 alert，也不阻断保存（判据 DL） */}
+                        <span
+                          role="status"
+                          data-testid="resource-row-hint"
+                          className="text-xs"
+                          style={{ color: 'var(--color-warning-text)' }}
+                        >
+                          {rowHints.get(row.key)}
                         </span>
                       </td>
                     </tr>

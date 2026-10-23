@@ -490,3 +490,32 @@ describe('资源登记提案（W6a-4）', () => {
     expect(candidateRows()).toHaveLength(0)
   })
 })
+
+describe('登记口径的建议级提示（W6a-7）', () => {
+  it('单位填成数字 / 周期不是口径 ⇒ 给提示，但不阻断保存', async () => {
+    await renderPanel()
+    await click(button('增行'))
+    await fill(0, 'name', '贡献点')
+    await fill(0, 'unit', '100')
+    await fill(0, 'period', '永久兑换')
+
+    const hint = container.querySelector('[data-testid="resource-row-hint"]')
+    // 只说明"看起来不像"，不给结论（判据 CJ）
+    expect(hint?.textContent).toContain('单位填成了数字 100')
+    expect(hint?.textContent).toContain('「永久兑换」看起来不是口径')
+    // 建议级：用 status 而不是 alert，别把它读成错误
+    expect(hint?.getAttribute('role')).toBe('status')
+
+    await click(button('保存'))
+    await vi.waitFor(() => expect(container.textContent).toContain('已保存 1 条资源定义'))
+    expect(upsertCalls()).toHaveLength(1)
+  })
+
+  it('口径正常的行不给提示（干净登记零噪声）', async () => {
+    await renderPanel()
+    await click(button('增行'))
+    await fillRow(0, '下品灵石') // unit=块、period=章
+
+    expect(container.querySelector('[data-testid="resource-row-hint"]')).toBeNull()
+  })
+})
