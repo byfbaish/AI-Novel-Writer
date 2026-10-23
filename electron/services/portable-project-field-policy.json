@@ -24,6 +24,7 @@
   "m14Tables": ["key_items"],
   "m15Tables": ["institution_cadences"],
   "m16Tables": ["knowledge_states"],
+  "m17Tables": ["power_abilities"],
   "optionalFields": ["characters.avatar", "project_core.rhythm_profile", "summary_snapshots.story_day_offset", "summary_snapshots.story_day_label"],
   "deltaCharacterFields": ["character_id", "legacy_key", "static_provenance", "identity_revision", "retired"],
   "signedOverrides": {
@@ -129,6 +130,7 @@
     "narrative_thread_plans": {"id":"D","title":"D","type":"D","target_start_chapter":"D","target_end_chapter":"D","author_intent":"D","created_at":"D","updated_at":"D"},
     "post_process_runs": {"id":"H","trigger_source_type":"H","trigger_source_id":"H","source_label":"H","all_critical_passed":"H","created_at":"H","updated_at":"H"},
     "post_process_steps": {"id":"H","run_id":"H","step_key":"H","label":"H","critical":"H","ok":"H","error_msg":"R","attempt_count":"H","completed_at":"H","last_attempt_at":"H"},
+    "power_abilities": {"ability_id":"D","name":"D","form":"D","hard_limit":"D","weakness":"D","cost_note":"D","stage_chapter":"D","stage_note":"D","evidence":"D","evidence_scope":"D","source":"D","created_at":"D","updated_at":"D"},
     "project_core": {"id":"D","project_name":"D","genre":"D","sub_genre":"D","target_audience":"D","total_chapters":"D","words_per_chapter":"D","writing_language":"D","creative_strategy":"D","narrative_thread_dormant_threshold":"D","plot_structure":"D","plot_structure_plan":"D","rhythm_profile":"D","narrative_pov":"D","writing_style":"D","reference_works":"D","global_guidance":"D","golden_finger":"D","core_outline":"D","world_setting":"D","protagonist_profile":"D","premise":"D","worldbuilding":"D","characters_arch":"D","synopsis":"D","character_states":"D","plot_tree_snapshot":"D","created_at":"D","updated_at":"D"},
     "recovery_candidates": {"candidate_id":"D","run_id":"D","step_id":"D","project_id":"D","chapter_number":"D","chapter_title":"D","source_snapshot":"R","source_hash":"R","source_draft_id":"D","source_draft_version":"D","source_draft_identity_captured":"D","visible_text":"D","content_hash":"D","failure_code":"D","failure_reason":"R","status":"H","replaces_candidate_id":"D","created_at":"D","resolved_at":"D"},
     "review_cycles": {"cycle_id":"H","root_action_id":"H","review_id":"H","review_content_hash":"H","confirmation_review_id":"H","confirmation_content_hash":"H","revision_id":"H","source_hash":"H","finding_set_hash":"H","comparison_version":"H","revision_status":"H","merged_hash":"H","recheck_count":"H","recheck_attempt_id":"H"},

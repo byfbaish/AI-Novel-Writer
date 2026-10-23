@@ -15,6 +15,10 @@ import {
   KNOWLEDGE_MAX_ITEMS,
   type KnowledgeStateDefinition,
 } from '../knowledge-state'
+import {
+  ABILITY_MAX_ITEMS,
+  type PowerAbilityDefinition,
+} from '../power-ability'
 import type { WorldBuildingRule } from '../worldbuilding-rules'
 
 const fact = (over: Partial<PrewriteFact> = {}): PrewriteFact => ({
@@ -85,6 +89,23 @@ const knowledge = (over: Partial<KnowledgeStateDefinition> = {}): KnowledgeState
   ...over,
 })
 
+const ability = (over: Partial<PowerAbilityDefinition> = {}): PowerAbilityDefinition => ({
+  abilityId: 'ability:1',
+  name: '噬魂推演录',
+  form: '规则',
+  hardLimit: '必须击杀仇敌后方可掠夺',
+  weakness: '蚀毒未清时强注灵力即经脉爆裂',
+  costNote: '每次吞噬向天道发送一次坐标',
+  stageChapter: null,
+  stageNote: '',
+  evidence: '',
+  evidenceScope: null,
+  source: 'author',
+  createdAt: '',
+  updatedAt: '',
+  ...over,
+})
+
 describe('renderPrewriteFactLine', () => {
   it('中文行与审稿链逐字相同（判据 DM：同一条事实只有一种措辞）', () => {
     expect(renderPrewriteFactLine(fact(), 'zh-CN'))
@@ -134,7 +155,7 @@ describe('renderPrewriteFactsSection', () => {
 describe('buildPrewriteConsultationBlock', () => {
   it('两节都空 ⇒ 空串（材料块逐字节不变，parity 哈希护栏靠这个成立）', () => {
     expect(buildPrewriteConsultationBlock({}, 'zh-CN'))
-      .toEqual({ text: '', factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, ruleCount: 0 })
+      .toEqual({ text: '', factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 0, ruleCount: 0 })
     expect(buildPrewriteConsultationBlock({ facts: [], rules: [] }, 'zh-CN').text).toBe('')
     // 传空 cadences 与不传逐字节相同：制度缺省必须零字节。
     expect(buildPrewriteConsultationBlock({ cadences: [] }, 'zh-CN').text).toBe('')
@@ -173,14 +194,18 @@ describe('buildPrewriteConsultationBlock', () => {
     expect(text).toContain('[World rules')
   })
 
-  it('四节都有时顺序是 事实 → 关键物品 → 制度 → 规则', () => {
+  it('五节都有时顺序是 事实 → 关键物品 → 制度 → 知情 → 规则', () => {
     const text = buildPrewriteConsultationBlock(
-      { facts: [fact()], items: [item()], cadences: [dueEntry()], rules: [rule()] },
+      {
+        facts: [fact()], items: [item()], cadences: [dueEntry()],
+        knowledge: [knowledge()], rules: [rule()],
+      },
       'zh-CN',
     ).text
     expect(text.indexOf('【前文事实（')).toBeLessThan(text.indexOf('【关键物品（'))
     expect(text.indexOf('【关键物品（')).toBeLessThan(text.indexOf('【制度（周期事件'))
-    expect(text.indexOf('【制度（周期事件')).toBeLessThan(text.indexOf('【本书规则（'))
+    expect(text.indexOf('【制度（周期事件')).toBeLessThan(text.indexOf('【知情（谁知道什么）】'))
+    expect(text.indexOf('【知情（谁知道什么）】')).toBeLessThan(text.indexOf('【本书规则（'))
   })
 })
 
@@ -242,7 +267,7 @@ describe('cadences section', () => {
     expect(block.text).toContain('以下每条只回答「该不该发生」，不回答「应发多少」')
     expect(block.text.indexOf('【关键物品（')).toBeLessThan(block.text.indexOf('【制度（周期事件'))
     expect(block.text.indexOf('【制度（周期事件')).toBeLessThan(block.text.indexOf('【本书规则（'))
-    expect(block).toMatchObject({ factCount: 0, itemCount: 1, cadenceCount: 1, knowledgeCount: 0, ruleCount: 1 })
+    expect(block).toMatchObject({ factCount: 0, itemCount: 1, cadenceCount: 1, knowledgeCount: 0, abilityCount: 0, ruleCount: 1 })
   })
 
   it('unknown 渲染成「未知」而不是「未到」（缺失就说缺失，判据 DN 同型）', () => {
@@ -282,7 +307,7 @@ describe('knowledge section', () => {
     expect(block.text).toContain('【知情（谁知道什么）】')
     expect(block.text.indexOf('【制度（周期事件')).toBeLessThan(block.text.indexOf('【知情（谁知道什么）】'))
     expect(block.text.indexOf('【知情（谁知道什么）】')).toBeLessThan(block.text.indexOf('【本书规则（'))
-    expect(block).toMatchObject({ factCount: 0, itemCount: 0, cadenceCount: 1, knowledgeCount: 1, ruleCount: 1 })
+    expect(block).toMatchObject({ factCount: 0, itemCount: 0, cadenceCount: 1, knowledgeCount: 1, abilityCount: 0, ruleCount: 1 })
   })
 
   it('节首说明逐字包含「未登记的事实一概不判」（封闭默认只在注入文本里成立）', () => {
@@ -308,5 +333,74 @@ describe('knowledge section', () => {
     expect(block.knowledgeCount).toBe(KNOWLEDGE_MAX_ITEMS)
     // 被裁掉的最后一条：整行都不出现（不是只少半句）。
     expect(block.text).not.toContain(`角色${KNOWLEDGE_MAX_ITEMS + 2}：`)
+  })
+})
+
+/**
+ * 能力这一节（P1-1 期 4b）。四件事：位置（知情之后、规则之前）、零字节、
+ * 三态（`ahead` 不进上下文）、以及**空字段不产生任何字节**。
+ *
+ * 最后一条是对判据 DN 的刻意例外：注入「限制未登记」会被读成「没有限制」。
+ * 所以本节把缺失提示留在登记页（黄条），提示词里一个字都不写。
+ */
+describe('abilities section', () => {
+  it('能力排在知情之后、本书规则之前，并回报 abilityCount', () => {
+    const block = buildPrewriteConsultationBlock({
+      knowledge: [knowledge()],
+      abilities: [ability()],
+      chapterNumber: 5,
+      rules: [rule()],
+    }, 'zh-CN')
+    expect(block.text).toContain('【能力（本书的能力规则：能做什么、要付什么、什么情况下会被破）】')
+    expect(block.text).toContain('不得据此推定无限制')
+    expect(block.text.indexOf('【知情（谁知道什么）】')).toBeLessThan(block.text.indexOf('【能力（本书的能力规则'))
+    expect(block.text.indexOf('【能力（本书的能力规则')).toBeLessThan(block.text.indexOf('【本书规则（'))
+    expect(block).toMatchObject({ factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 1, abilityCount: 1, ruleCount: 1 })
+  })
+
+  it('缺省与传空都零字节（材料块逐字节不变，parity 哈希护栏靠这个成立）', () => {
+    expect(buildPrewriteConsultationBlock({ abilities: [] }, 'zh-CN').text).toBe('')
+    expect(buildPrewriteConsultationBlock({ abilities: [], chapterNumber: 5 }, 'zh-CN').text).toBe('')
+    expect(buildPrewriteConsultationBlock({}, 'zh-CN').text).toBe('')
+  })
+
+  it('三态：undated 注入、active 标章号、ahead 不进上下文', () => {
+    const block = buildPrewriteConsultationBlock({
+      abilities: [
+        ability({ abilityId: 'a:undated', name: '未标章号的能力', stageChapter: null }),
+        ability({ abilityId: 'a:active', name: '现在就能用的能力', stageChapter: 3 }),
+        ability({ abilityId: 'a:ahead', name: '未来才解锁的能力', stageChapter: 9 }),
+      ],
+      chapterNumber: 5,
+    }, 'zh-CN')
+    expect(block.text).toContain('未标章号的能力（')
+    expect(block.text).toContain('作者登记，未标章号')
+    expect(block.text).toContain('现在就能用的能力（规则；自第3章起')
+    // 未来能力整行不出现：不是「写了但标了未来」，是根本没注入。
+    expect(block.text).not.toContain('未来才解锁的能力')
+    expect(block.abilityCount).toBe(2)
+  })
+
+  it('三类限制全空 ⇒ 整段省略且不写「未登记」（零字节）', () => {
+    const block = buildPrewriteConsultationBlock({
+      abilities: [ability({ name: '只有名字的能力', form: '', hardLimit: '', weakness: '', costNote: '' })],
+      chapterNumber: 5,
+    }, 'zh-CN')
+    expect(block.text).toContain('- 只有名字的能力（作者登记，未标章号）')
+    // 只看能力行本身：节首说明里的「未登记的用法」是边界句，不是缺失提示。
+    const line = block.text.split('\n').find(value => value.startsWith('- ')) ?? ''
+    for (const forbidden of ['硬限制', '弱点', '代价', '未登记']) {
+      expect(line).not.toContain(forbidden)
+    }
+    expect(block.abilityCount).toBe(1)
+  })
+
+  it('条数按上限截断，超出的整条丢弃（不截半行）', () => {
+    const many = Array.from({ length: ABILITY_MAX_ITEMS + 3 }, (_, index) =>
+      ability({ abilityId: `a:${index}`, name: `能力${index}` }))
+    const block = buildPrewriteConsultationBlock({ abilities: many, chapterNumber: 5 }, 'zh-CN')
+    expect(block.abilityCount).toBe(ABILITY_MAX_ITEMS)
+    // 被裁掉的最后一条：整行都不出现。
+    expect(block.text).not.toContain(`- 能力${ABILITY_MAX_ITEMS + 2}（`)
   })
 })

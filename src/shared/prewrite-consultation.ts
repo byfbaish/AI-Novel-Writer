@@ -17,7 +17,11 @@
  * 2. **关键物品**：来源是作者登记表（`key_items`），回答「谁拿着什么」。
  * 3. **制度**：来源是作者登记表（`institution_cadences`），回答「这一章该不该发生那件
  *    周期性的事」。四态由 `institution-cadence.ts` 的判定表给出，本节只渲染。
- * 4. **本书规则**：来源是世界观原文摘录（`worldbuilding-rules.ts`），出处只标维度。
+ * 4. **知情**：来源是作者登记表（`knowledge_states`），回答「这个角色此刻知道哪件事」。
+ * 5. **能力**：来源是作者登记表（`power_abilities`），回答「这条能力能做什么、要付什么、
+ *    什么情况下会被破」。三态（`active` / `ahead` / `undated`）由 `power-ability.ts` 判定，
+ *    `ahead` 一律不注入。
+ * 6. **本书规则**：来源是世界观原文摘录（`worldbuilding-rules.ts`），出处只标维度。
  *
  * ## 三条边界
  *
@@ -36,6 +40,7 @@ import {
   type KnowledgeStateDefinition,
 } from './knowledge-state'
 import type { WritingLanguage } from './writing-language'
+import { ABILITY_MAX_ITEMS, renderAbilitySection, type PowerAbilityDefinition } from './power-ability'
 import { renderWorldRulesSection, WORLD_RULES_MAX_ITEMS, type WorldBuildingRule } from './worldbuilding-rules'
 
 /**
@@ -69,6 +74,11 @@ export const PREWRITE_CADENCES_MAX_ITEMS = CADENCE_MAX_ITEMS
  * 那一节自带渲染入口与失效过滤，这里只做拼接，不再另设一套上限。
  */
 export const PREWRITE_KNOWLEDGE_MAX_ITEMS = KNOWLEDGE_MAX_ITEMS
+/**
+ * 能力条数上限（P1-1）。与 `power-ability.ts` 的 `ABILITY_MAX_ITEMS` 同源 ——
+ * 那一节自带渲染入口与三态过滤，这里只做拼接，不再另设一套上限。
+ */
+export const PREWRITE_ABILITIES_MAX_ITEMS = ABILITY_MAX_ITEMS
 
 /** 单行渲染；格式与审稿链逐字相同，改动即两侧同时变（这是判据 DM 的自检点）。 */
 export function renderPrewriteFactLine(fact: PrewriteFact, writingLanguage: WritingLanguage): string {
@@ -142,14 +152,14 @@ export function renderPrewriteItemsSection(
 }
 
 /**
- * 组装五节（前文事实 / 关键物品 / 制度 / 知情 / 本书规则）；返回实际进入提示词的条数。
+ * 组装六节（前文事实 / 关键物品 / 制度 / 知情 / 能力 / 本书规则）；返回实际进入提示词的条数。
  *
- * 顺序按计划 §0 定死：**事实 → 物品 → 制度 → 知情 → 规则**。事实与物品靠前（先看 canon），
- * 规则最后（像约束条款，收尾位最不易被忽略）；知情紧跟制度，因为二者都回答「这一章现场
- * 还成立吗」。
+ * 顺序按计划 §0 定死：**事实 → 物品 → 制度 → 知情 → 能力 → 规则**。能力放在规则之前，
+ * 因为能力回答「能做什么」、规则回答「什么不许做」，约束条款收尾最不易被忽略。
  *
  * 「本章出场角色优先」的排序在 `renderKnowledgeSection` 里做（它需要 `chapterCharacters`），
  * 本层只透传。调用方**必须**先滤掉未来章（`learnedChapter > 本章`）—— 纯函数不知道本章号。
+ * 能力的 `ahead` 过滤在 `renderAbilitySection` 里再兜一次（它需要本章号，本层透传）。
  *
  * 全部为空 ⇒ `text=''`，调用方据此不产生任何字节（材料块逐字节不变，护栏靠这个成立）。
  */
@@ -161,25 +171,35 @@ export function buildPrewriteConsultationBlock(
     cadences?: readonly CadenceEntry[]
     /** 已滤掉未来章与失效引用的知情关系（过滤在调用方，本层只渲染）。 */
     knowledge?: readonly KnowledgeStateDefinition[]
+    /** 本书级能力规则；`ahead`（`stageChapter > 本章`）由渲染层再滤一次。 */
+    abilities?: readonly PowerAbilityDefinition[]
+    /** 本章章号：能力三态判定要用。缺省 1（只影响 `ahead` 过滤，不影响 `undated`）。 */
+    chapterNumber?: number
     /** 本章出场角色名：只用于知情节的排序，不参与渲染措辞。 */
     chapterCharacters?: readonly string[]
     rules?: readonly WorldBuildingRule[]
   },
   writingLanguage: WritingLanguage,
-): { text: string; factCount: number; itemCount: number; cadenceCount: number; knowledgeCount: number; ruleCount: number } {
+): { text: string; factCount: number; itemCount: number; cadenceCount: number; knowledgeCount: number; abilityCount: number; ruleCount: number } {
   const facts = input.facts ?? []
   const items = input.items ?? []
   const cadences = input.cadences ?? []
   const knowledge = input.knowledge ?? []
+  const abilities = input.abilities ?? []
+  const chapterNumber = Number.isSafeInteger(input.chapterNumber) && (input.chapterNumber as number) > 0
+    ? input.chapterNumber as number
+    : 1
   const rules = input.rules ?? []
   const factsSection = renderPrewriteFactsSection(facts, writingLanguage)
   const itemsSection = renderPrewriteItemsSection(items, writingLanguage)
   const cadencesSection = renderCadenceSection(cadences, writingLanguage)
   const knowledgeSection = renderKnowledgeSection(knowledge, writingLanguage, input.chapterCharacters ?? [])
+  const abilitiesSection = renderAbilitySection(abilities, writingLanguage, chapterNumber)
   const rulesSection = renderWorldRulesSection(rules, writingLanguage)
-  const text = [factsSection, itemsSection, cadencesSection, knowledgeSection, rulesSection].filter(Boolean).join('\n\n')
+  const text = [factsSection, itemsSection, cadencesSection, knowledgeSection, abilitiesSection, rulesSection]
+    .filter(Boolean).join('\n\n')
   if (!text) {
-    return { text: '', factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, ruleCount: 0 }
+    return { text: '', factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 0, ruleCount: 0 }
   }
   // 条数按**通过裁剪**的行数回报：日志说"注入了 6 条"就必须真是 6 条。
   const count = (section: string) => (section ? section.split('\n').filter(line => line.startsWith('- ')).length : 0)
@@ -190,6 +210,7 @@ export function buildPrewriteConsultationBlock(
     itemCount: Math.min(count(itemsSection), PREWRITE_ITEMS_MAX_ITEMS),
     cadenceCount: Math.min(count(cadencesSection), CADENCE_MAX_ITEMS),
     knowledgeCount: Math.min(count(knowledgeSection), KNOWLEDGE_MAX_ITEMS),
+    abilityCount: Math.min(count(abilitiesSection), PREWRITE_ABILITIES_MAX_ITEMS),
     ruleCount: Math.min(count(rulesSection), WORLD_RULES_MAX_ITEMS),
   }
 }

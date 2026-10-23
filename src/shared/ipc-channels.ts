@@ -40,6 +40,7 @@ import type {
 import type { KeyItemDefinition, KeyItemInput } from './key-item'
 import type { InstitutionCadence, InstitutionCadenceInput } from './institution-cadence'
 import type { KnowledgeFactCandidate, KnowledgeStateDefinition, KnowledgeStateInput } from './knowledge-state'
+import type { PowerAbilityDefinition, PowerAbilityInput } from './power-ability'
 import type {
   FinalizedContinuityProjection,
   FinalizedSourceReadResult,
@@ -1291,6 +1292,13 @@ export interface DatabaseChannels {
   'db:knowledge-delete': { args: [knowledgeId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   /** 只读：已定稿各章可用于引用的事实候选（面板选事实用，永不入库）。 */
   'db:knowledge-fact-candidates': { args: [expectedProjectPath: string]; return: { success: boolean; candidates?: KnowledgeFactCandidate[]; error?: string } }
+
+  // 7f. abilities — P1-1 能力（本书级能力规则：能做什么 / 要付什么 / 怎么被破）。
+  // 只读的 `db:golden-finger-read` 只服务登记页的「从金手指原文取名字」，永不写库。
+  'db:abilities-list': { args: [expectedProjectPath: string]; return: { success: boolean; abilities?: PowerAbilityDefinition[]; error?: string } }
+  'db:abilities-upsert': { args: [input: PowerAbilityInput, expectedProjectPath: string]; return: { success: boolean; abilityId?: string; error?: string } }
+  'db:abilities-delete': { args: [abilityId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
+  'db:golden-finger-read': { args: [expectedProjectPath: string]; return: { success: boolean; goldenFinger?: string; error?: string } }
 
   // 沿用旧表
   'db:log-llm-call': { args: [call: Record<string, unknown>, expectedProjectPath: string]; return: { success: boolean } }

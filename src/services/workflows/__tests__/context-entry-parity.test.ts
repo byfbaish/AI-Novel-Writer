@@ -81,7 +81,7 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.text).toContain('- [timeline] 林岚抵达海港（来源第1章；证据：林岚抵达海港。）')
     expect(bundle.text).toContain('- （世界观·第 1 维【核心规则与体系漏洞】）灵潮每甲子退潮一次')
     expect(bundle.text.indexOf('【前文事实（')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
-    expect(bundle.prewrite).toEqual({ factCount: 1, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, ruleCount: 1 })
+    expect(bundle.prewrite).toEqual({ factCount: 1, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 0, ruleCount: 1 })
     expect(sha(bundle.text)).toBe('a006dfb730391c7a30b5aef5cc8da1fdebdaed34a70843a46d41245a79551107')
   })
 
@@ -119,7 +119,7 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.text).toContain('- 月例 — 每10章一次；上次：第12章（作者登记）⇒ 本章：到期')
     expect(bundle.text).toContain('- 送账日 — 每7日一次；上次：第12章（书中第9日，作者登记）⇒ 本章：未知（本章日序不可知）')
     expect(bundle.text.indexOf('【制度（周期事件')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
-    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 2, knowledgeCount: 0, ruleCount: 0 })
+    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 2, knowledgeCount: 0, abilityCount: 0, ruleCount: 0 })
     // 本条哈希是**新增**，不是改旧值：三条旧锚点在上面三条用例里一字未动。
     expect(sha(bundle.text)).toBe('9db07fa7929fba10a71c1509967fc68f617a7e3591f79c7171500251bd374455')
   })
@@ -159,9 +159,93 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.text).toContain('- 小郑：知道（事实出处：第9章「灵根检测结果被人改过」；自第13章得知）')
     expect(bundle.text.indexOf('- 顾长风：')).toBeLessThan(bundle.text.indexOf('- 小郑：'))
     expect(bundle.text.indexOf('【知情（谁知道什么）】')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
-    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 2, ruleCount: 0 })
+    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 2, abilityCount: 0, ruleCount: 0 })
     // 本条哈希是**新增**，不是改旧值：上面四条锚点一字未动。
     expect(sha(bundle.text)).toBe('7183dafbdafe42603ebcc64883098979d297fe9b326576c295941bad04d3192e')
+  })
+
+  /**
+   * P1-1 期 4b：能力节单独钉一条哈希（**新增，不是改旧值**）。
+   *
+   * 五条旧锚点（`dcca9697…` / `a006dfb7…` / `9db07fa7…` / `7183dafb…` / `bddf8727…`）一字未改 ——
+   * `abilities` 缺省/空数组时不产生任何字节；这一条只在**传入**时才生效，钉的是「传了是这样」。
+   */
+  it('composes the ability section when it is supplied', async () => {
+    const bundle = await assembleChapterMaterials({
+      ...baseline(),
+      prewrite: {
+        chapterNumber: 5,
+        abilities: [{
+          abilityId: 'ability:soul', name: '噬魂推演录', form: '规则·功法·天赋混合',
+          hardLimit: '必须击杀仇敌后方可掠夺功法记忆，每日只能承受一次超越境界的灵力注入',
+          weakness: '蚀毒未清时强注灵力即经脉爆裂',
+          costNote: '每次吞噬向天道发送一次坐标，雷劫难度随之上升',
+          stageChapter: null, stageNote: '', evidence: '', evidenceScope: null,
+          source: 'author', createdAt: '', updatedAt: '',
+        }],
+      },
+    })
+    expect(bundle.text).toContain('【能力（本书的能力规则：能做什么、要付什么、什么情况下会被破）】')
+    expect(bundle.text).toContain('- 噬魂推演录（规则·功法·天赋混合；作者登记，未标章号）：硬限制——')
+    expect(bundle.text.indexOf('【能力（本书的能力规则')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
+    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 1, ruleCount: 0 })
+    // 本条哈希是**新增**，不是改旧值：上面五条锚点一字未动。
+    expect(sha(bundle.text)).toBe('44ce3a3e2b93c9e4ee6142dcb72a2fd8d3bd76473f2ecd3caf50b15f5bdfa323')
+  })
+
+  /**
+   * 「六节齐备」总哈希：一次传入 事实 / 物品 / 制度 / 知情 / 能力 / 规则，钉住**节序**。
+   *
+   * 单独五条哈希各自只证明「这一节长这样」；这一条证明六节同时出现时的顺序是
+   * 事实 → 物品 → 制度 → 知情 → 能力 → 规则。顺序错一格哈希就翻。
+   */
+  it('composes all six pre-writing sections in the fixed order', async () => {
+    const bundle = await assembleChapterMaterials({
+      ...baseline(),
+      prewrite: {
+        facts: [{ category: 'timeline', statement: '林岚抵达海港', sourceChapter: 1, evidence: '林岚抵达海港。' }],
+        items: [{
+          itemId: 'item:1', name: '裁纸刀', holderCharacter: '', holderLabel: '林岚',
+          statusNote: '', chapterNumber: null, evidence: '', source: 'author', createdAt: '', updatedAt: '',
+        }],
+        cadences: [{
+          cadence: {
+            cadenceId: 'cadence:monthly', name: '月例', axis: 'chapter', interval: 10,
+            anchorChapter: 12, anchorStoryDay: null, fallbackIntervalChapters: null,
+            note: '', chapterNumber: 3, evidence: '', source: 'author', createdAt: '', updatedAt: '',
+          },
+          evaluation: { status: 'due', basis: 'chapter' },
+        }],
+        knowledge: [{
+          knowledgeId: 'knowledge:guchangfeng', characterId: 'character:guchangfeng', characterName: '顾长风',
+          factChapter: 9, factEvidence: '灵根检测结果被人改过',
+          factEvidenceHash: 'a'.repeat(64), factKey: 'kf:0123456789abcdef', learnedChapter: 12,
+          evidence: '', source: 'author', refState: 'valid', createdAt: '', updatedAt: '',
+        }],
+        abilities: [{
+          abilityId: 'ability:soul', name: '噬魂推演录', form: '规则',
+          hardLimit: '必须击杀仇敌后方可掠夺功法记忆', weakness: '蚀毒未清时强注灵力即经脉爆裂',
+          costNote: '每次吞噬向天道发送一次坐标', stageChapter: null, stageNote: '',
+          evidence: '', evidenceScope: null, source: 'author', createdAt: '', updatedAt: '',
+        }],
+        chapterNumber: 5,
+        chapterCharacters: ['顾长风'],
+        rules: [{ dimension: 1, name: '', rule: '灵潮每甲子退潮一次' }],
+      },
+    })
+    const order = [
+      '【前文事实（', '【关键物品（', '【制度（周期事件', '【知情（谁知道什么）】',
+      '【能力（本书的能力规则', '【本书规则（',
+    ].map(heading => bundle.text.indexOf(heading))
+    expect(order.every(index => index >= 0)).toBe(true)
+    for (let index = 1; index < order.length; index += 1) {
+      expect(order[index - 1]).toBeLessThan(order[index]!)
+    }
+    expect(bundle.prewrite).toEqual({
+      factCount: 1, itemCount: 1, cadenceCount: 1, knowledgeCount: 1, abilityCount: 1, ruleCount: 1,
+    })
+    // 本条同样是**新增**：上面六条锚点（含 {abilities}）一字未改。
+    expect(sha(bundle.text)).toBe('4e63616457e22a09ad13877ab084342255c8689d3993b7927f56adb7ba5feffc')
   })
 
   it('fails explicitly when required author material alone exceeds the capacity', async () => {

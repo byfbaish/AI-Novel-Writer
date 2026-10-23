@@ -14,6 +14,7 @@ import type { NarrativeThreadView } from '../../../../shared/narrative-thread'
 import type { KeyItemDefinition } from '../../../../shared/key-item'
 import type { InstitutionCadence } from '../../../../shared/institution-cadence'
 import type { KnowledgeStateDefinition } from '../../../../shared/knowledge-state'
+import type { PowerAbilityDefinition } from '../../../../shared/power-ability'
 import {
   createGenerationRuntime,
   type GenerationRuntime,
@@ -432,6 +433,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     cadences?: InstitutionCadence[]
     /** P1-1 期 3：作者登记的知情关系（谁知道什么）。缺省空 = 本项目还没登记。 */
     knowledgeStates?: KnowledgeStateDefinition[]
+    /** P1-1 期 4：作者登记的能力规则（本书级）。缺省空 = 本项目还没登记。 */
+    abilities?: PowerAbilityDefinition[]
     /** P0-1：哪些章判定为「前提已变」。缺省空 = 正常路径（阻断用例显式给值）。 */
     staleChapters?: number[]
     previousFinalizedContent?: string
@@ -596,6 +599,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       // P1-1 期 2：制度同样每章都会读（第 1 章也可能一开场就是送账日），缺省给空表。
       if (channel === 'db:cadences-list') return { success: true, cadences: options.cadences ?? [] }
       if (channel === 'db:knowledge-list') return { success: true, entries: options.knowledgeStates ?? [] }
+      // P1-1 期 4：能力同样每章都会读（第 1 章也可能一开场就有金手指）。
+      if (channel === 'db:abilities-list') return { success: true, abilities: options.abilities ?? [] }
       throw new Error(`unexpected IPC: ${channel}`)
     })
     vi.stubGlobal('window', {
@@ -4132,6 +4137,64 @@ ${headingPrefix}第3章：潮门
     expect(continuation).toContain('林岚：知道')
     expect(continuation).not.toContain('赵六')
     expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('知情 2 条'))
+  })
+
+  /**
+   * P1-1 期 4 能力：作者登记的本书级能力规则进写前查阅。
+   *
+   * 三条断言是这个功能的验收口径：
+   * 1. 首发与续写轮**都**带（续写轮不带模板变量，只带材料块）；
+   * 2. `undated` 是主路径（真实数据里没有章号），标「作者登记，未标章号」；
+   * 3. **`ahead` 没有进上下文**（`stageChapter > 本章` = 剧透）。
+   */
+  it('P1-1 ability: injects undated rules into initial and continuation, never future ones', async () => {
+    const runtime = fakeOutcomes(
+      outcome('初'.repeat(100), 'length', 1),
+      outcome(`${'续'.repeat(400)}。`, 'stop', 2),
+    )
+    const ability = (over: Partial<PowerAbilityDefinition> & Pick<PowerAbilityDefinition, 'abilityId' | 'name'>): PowerAbilityDefinition => ({
+      form: '规则',
+      hardLimit: '必须击杀仇敌后方可掠夺',
+      weakness: '蚀毒未清时强注灵力即经脉爆裂',
+      costNote: '每次吞噬向天道发送一次坐标',
+      stageChapter: null,
+      stageNote: '',
+      evidence: '',
+      evidenceScope: null,
+      source: 'author',
+      createdAt: '',
+      updatedAt: '',
+      ...over,
+    })
+    const { callbacks, context, command } = setup({
+      runtime,
+      wordsTarget: 500,
+      chapterNumber: 5,
+      characters: ['林岚'],
+      previousFinalizedContent: '第四章定稿原文。',
+      abilities: [
+        ability({ abilityId: 'a:undated', name: '噬魂推演录' }),
+        ability({ abilityId: 'a:active', name: '现在就能用的能力', stageChapter: 3 }),
+        // 未来才解锁 ⇒ 不注入（剧透）
+        ability({ abilityId: 'a:ahead', name: '未来才解锁的能力', stageChapter: 9 }),
+      ],
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const initial = runtime.complete.mock.calls[0]![0].messages
+      .find(message => message.role === 'user')!.content
+    expect(initial).toContain('【能力（本书的能力规则：能做什么、要付什么、什么情况下会被破）】')
+    expect(initial).toContain('- 噬魂推演录（规则；作者登记，未标章号）：硬限制——必须击杀仇敌后方可掠夺')
+    expect(initial).toContain('- 现在就能用的能力（规则；自第3章起；作者登记）：')
+    expect(initial).not.toContain('未来才解锁的能力')
+
+    const continuation = runtime.complete.mock.calls[1]![0].messages
+      .find(message => message.role === 'user')!.content
+    expect(continuation).toContain('【能力（本书的能力规则')
+    expect(continuation).toContain('噬魂推演录')
+    expect(continuation).not.toContain('未来才解锁的能力')
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('能力 2 条'))
   })
 
   it('previews only authored text before completion and reconciles to the persisted terminal draft', async () => {
