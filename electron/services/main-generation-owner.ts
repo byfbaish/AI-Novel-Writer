@@ -1112,7 +1112,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       }
       if (sibling && !finalizations.readEffect(sibling)) throw new Error('GENERATION_FINALIZATION_PREDECESSOR_REQUIRED')
       const prepared = finalizedCharacters.readContext(slot.source.draftId)
-      if (!isDeepStrictEqual(prepared.context.source, slot.source)) { console.error('[DEBUG-SOURCE-DIFF]', 'protoIdentity:', Object.getPrototypeOf(prepared.context.source) === Object.getPrototypeOf(slot.source), 'ctorIdentity:', (prepared.context.source as unknown as { constructor: unknown }).constructor === (slot.source as unknown as { constructor: unknown }).constructor, 'globalIdentity:', (globalThis as unknown as { Object: unknown }).Object === (0, eval)('Object'), 'preparedRealmObject:', (prepared.context.source as unknown as { constructor: unknown }).constructor === (globalThis as unknown as { Object: unknown }).Object, 'slotRealmObject:', (slot.source as unknown as { constructor: unknown }).constructor === (globalThis as unknown as { Object: unknown }).Object); throw new Error('GENERATION_FINALIZATION_SOURCE_CHANGED') }
+      if (!isDeepStrictEqual(prepared.context.source, slot.source)) throw new Error('GENERATION_FINALIZATION_SOURCE_CHANGED')
       const characterStep = slot.stepKey === 'character_cards'
       const view = begin({ operation: characterStep ? 'finalized-character-state' : 'finalized-chapter-notes', uiActionNonce: `finalization:${finalizationSlotKey(slot)}${prior ? `:retry:${prior.runId}` : ''}`,
         modelId: selectedModelId, chapterNumber: slot.source.chapterNumber, selectedDraftIds: [], selectedFinalizedDraftIds: [slot.source.draftId],
