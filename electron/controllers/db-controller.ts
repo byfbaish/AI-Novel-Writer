@@ -98,6 +98,13 @@ import {
   upsertKnowledgeState,
 } from '../repositories/knowledge-state-repository'
 import type { KnowledgeStateInput } from '../../src/shared/knowledge-state'
+import {
+  deletePowerAbility,
+  hasPowerAbilitySchema,
+  listPowerAbilities,
+  upsertPowerAbility,
+} from '../repositories/power-ability-repository'
+import type { PowerAbilityInput } from '../../src/shared/power-ability'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
 
@@ -168,6 +175,9 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   // P1-1 信息流：同上，只有写通道进集合；`-list` 与 `-fact-candidates` 是只读，不进。
   'db:knowledge-upsert',
   'db:knowledge-delete',
+  // P1-1 能力：只有写通道进集合；`-list` 与 `db:golden-finger-read` 是只读，不进。
+  'db:abilities-upsert',
+  'db:abilities-delete',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -1531,6 +1541,68 @@ export function registerDatabaseController() {
       const db = getProjectDb()
       if (!db) return { success: true, candidates: [] }
       return { success: true, candidates: await listFactCandidates(db) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ============================================================
+  // P1-1 能力（本书级能力规则）。只登「没有角色归属」的那一半 —— 角色技能在角色卡里。
+  // ============================================================
+  ipcMain.handle('db:abilities-list', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      // M17 之前 / 库未打开：降级成空列表，不报错（与资源、物品、制度、知情同一纪律）。
+      if (!db || !hasPowerAbilitySchema(db)) return { success: true, abilities: [] }
+      return { success: true, abilities: listPowerAbilities(db) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:abilities-upsert', async (
+    _event,
+    input: PowerAbilityInput,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = upsertPowerAbility(db, input)
+      return result.success
+        ? { success: true, abilityId: result.abilityId }
+        : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:abilities-delete', async (_event, abilityId: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = deletePowerAbility(db, abilityId)
+      return result.success ? { success: true } : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  /**
+   * 只读：金手指原文。登记页用它给「取首行标题 / 取引号短语」两个候选 —— 取样里 2/3 的书
+   * 没有现成名字，`name` 又是唯一必填项，没有这个入口作者就进不去。
+   *
+   * 走 `ProjectCoreRepository.get()` 而不是另写 SQL：`project_core` 的读路径只有这一处，
+   * 多一份 SELECT 就会长出第二套字段映射。**永不写库**，因此不进 MUTATING 集合。
+   */
+  ipcMain.handle('db:golden-finger-read', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      if (!getProjectDb()) return { success: true, goldenFinger: '' }
+      return { success: true, goldenFinger: ProjectCoreRepository.get()?.goldenFinger ?? '' }
     } catch (err) {
       return { success: false, error: String(err) }
     }

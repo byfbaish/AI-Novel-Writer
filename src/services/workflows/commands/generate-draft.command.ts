@@ -68,6 +68,7 @@ import {
   type InstitutionCadence,
 } from '../../../shared/institution-cadence'
 import type { KnowledgeStateDefinition } from '../../../shared/knowledge-state'
+import { abilityStageState, type PowerAbilityDefinition } from '../../../shared/power-ability'
 import { extractWorldBuildingRules } from '../../../shared/worldbuilding-rules'
 import {
   assembleChapterMaterials,
@@ -948,6 +949,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // P1-1 信息流：谁知道什么。**期界在这里落**（`learnedChapter > 本章` 一律不取），
     // 所以第 1 章也能安全调用 —— 它只会取到「第 1 章之前就知道」的行，而那通常是空的。
     const knowledgeStates = await this.readKnowledgeStates(expectedProjectPath, projectSession)
+    // P1-1 能力：`ahead`（`stage_chapter > 本章`）在这里就滤掉 —— 未来的能力不能进上下文。
+    const abilities = await this.readAbilities(expectedProjectPath, projectSession)
 
     if (defaultMain && earlyRecovery?.selectedDraftIds.length && !earlyRecovery.selectedDrafts)
       throw new Error('GENERATION_DRAFT_SOURCE_CHANGED')
@@ -1026,6 +1029,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           items: keyItems,
           cadences,
           knowledge: knowledgeStates,
+          abilities,
+          chapterNumber: this.chapterInfo.chapterNumber,
           chapterCharacters: this.chapterInfo.characters,
           rules: extractWorldBuildingRules(worldBuildingSource),
         },
@@ -1048,10 +1053,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // 不必每次都去翻 prompt trace。
     if (chapterMaterials.prewrite.factCount > 0 || chapterMaterials.prewrite.ruleCount > 0
       || chapterMaterials.prewrite.itemCount > 0 || chapterMaterials.prewrite.cadenceCount > 0
-      || chapterMaterials.prewrite.knowledgeCount > 0) {
+      || chapterMaterials.prewrite.knowledgeCount > 0 || chapterMaterials.prewrite.abilityCount > 0) {
       callbacks.log(uiText(
-        `  已注入写前查阅：前文事实 ${chapterMaterials.prewrite.factCount} 条 / 关键物品 ${chapterMaterials.prewrite.itemCount} 条 / 制度 ${chapterMaterials.prewrite.cadenceCount} 条 / 知情 ${chapterMaterials.prewrite.knowledgeCount} 条 / 本书规则 ${chapterMaterials.prewrite.ruleCount} 条`,
-        `  Injected pre-writing reference: ${chapterMaterials.prewrite.factCount} facts / ${chapterMaterials.prewrite.itemCount} key items / ${chapterMaterials.prewrite.cadenceCount} cadences / ${chapterMaterials.prewrite.knowledgeCount} knowledge states / ${chapterMaterials.prewrite.ruleCount} world rules`,
+        `  已注入写前查阅：前文事实 ${chapterMaterials.prewrite.factCount} 条 / 关键物品 ${chapterMaterials.prewrite.itemCount} 条 / 制度 ${chapterMaterials.prewrite.cadenceCount} 条 / 知情 ${chapterMaterials.prewrite.knowledgeCount} 条 / 能力 ${chapterMaterials.prewrite.abilityCount} 条 / 本书规则 ${chapterMaterials.prewrite.ruleCount} 条`,
+        `  Injected pre-writing reference: ${chapterMaterials.prewrite.factCount} facts / ${chapterMaterials.prewrite.itemCount} key items / ${chapterMaterials.prewrite.cadenceCount} cadences / ${chapterMaterials.prewrite.knowledgeCount} knowledge states / ${chapterMaterials.prewrite.abilityCount} abilities / ${chapterMaterials.prewrite.ruleCount} world rules`,
       ))
     }
     const admittedCandidateSourceIds = new Set(chapterMaterials.selection.included
@@ -2492,6 +2497,32 @@ ${params.candidate.text}`,
       const chapterNumber = this.chapterInfo.chapterNumber
       return (result.entries ?? [])
         .filter(entry => entry.learnedChapter <= chapterNumber && entry.refState === 'valid')
+    } catch { return [] }
+  }
+
+  /**
+   * 读取作者登记的能力（本书级规则），并在此处完成**期界过滤**（P1-1 能力）。
+   *
+   * `ahead`（`stage_chapter > 本章`）一律不取：未来的能力写进本章就是剧透。`undated`
+   * （`stage_chapter IS NULL`）照常取 —— 真实数据里这是主路径，不注入等于这一节白建。
+   *
+   * 失败降级成空数组：这一格缺了不该让整章生成停摆（与物品、制度、知情同一纪律）。
+   * 渲染层还会再滤一次 `ahead`（那里才知道本章章号），这里过滤是为了「上下文里根本没有」。
+   */
+  private async readAbilities(
+    projectPath: string,
+    projectSession: ProjectSessionContext,
+  ): Promise<PowerAbilityDefinition[]> {
+    try {
+      const result = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:abilities-list',
+        projectPath,
+      ) as { success?: boolean; abilities?: PowerAbilityDefinition[] }
+      if (!result?.success) return []
+      const chapterNumber = this.chapterInfo.chapterNumber
+      return (result.abilities ?? [])
+        .filter(ability => abilityStageState(ability, chapterNumber) !== 'ahead')
     } catch { return [] }
   }
 

@@ -6,7 +6,7 @@ import { formatResourceUri } from '../../../shared/project-paths'
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins, Package, CalendarClock, Eye } from 'lucide-react'
+import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins, Package, CalendarClock, Eye, Sparkles } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { useDraftStore } from '../../../stores/draft-store'
@@ -496,6 +496,27 @@ function WorldBuildingGroup({
             </span>
             <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
               {text('知情（谁知道什么）', 'Knowledge state')}
+            </span>
+          </div>
+          {/* P1-1 期 4：能力登记（本书级规则）。与知情并列，但回答的是「能做什么、要付什么」。 */}
+          <div
+            className="tree-item gap-1.5 cursor-pointer select-none"
+            style={{ paddingLeft: 26 }}
+            onClick={() => openBuiltinEditor(
+              'ability-registry-editor',
+              text('能力（本书的能力规则）', 'Abilities'),
+              'ability-registry',
+            )}
+            title={text(
+              '登记金手指、体系漏洞、宝物权限这类本书级规则；生成时只提醒三类限制，角色技能仍在角色卡里',
+              'Register book-level rules such as the golden finger and system loopholes; generation only reads the three limits',
+            )}
+          >
+            <span className="flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+              <Sparkles size={13} />
+            </span>
+            <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
+              {text('能力（本书的能力规则）', 'Abilities')}
             </span>
           </div>
         </div>

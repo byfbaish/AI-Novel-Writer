@@ -13,6 +13,7 @@ import { buildPrewriteConsultationBlock, type PrewriteFact } from '../../shared/
 import type { KeyItemDefinition } from '../../shared/key-item'
 import type { CadenceEntry } from '../../shared/institution-cadence'
 import type { KnowledgeStateDefinition } from '../../shared/knowledge-state'
+import type { PowerAbilityDefinition } from '../../shared/power-ability'
 import type { WorldBuildingRule } from '../../shared/worldbuilding-rules'
 import { promptLanguageText } from '../prompt-language'
 import {
@@ -132,7 +133,7 @@ export interface ChapterMaterialAssembly extends ChapterMaterialBundle {
    * 只回报条数、不回报内容 —— 与「公开日志不放正文」同一原则。调用方据此写步骤日志，
    * 作者能一眼看出这一轮到底注入了没有、注了几条（而不是只能翻 prompt trace）。
    */
-  prewrite: { factCount: number; itemCount: number; cadenceCount: number; knowledgeCount: number; ruleCount: number }
+  prewrite: { factCount: number; itemCount: number; cadenceCount: number; knowledgeCount: number; abilityCount: number; ruleCount: number }
 }
 
 /**
@@ -480,6 +481,13 @@ export async function assembleChapterMaterials(input: {
      * 失效引用（`refState !== 'valid'`）—— 本节渲染层不知道本章号。
      */
     knowledge?: readonly KnowledgeStateDefinition[]
+    /**
+     * P1-1 能力（本书级规则）。`ahead` 由调用方先滤一遍；这里把本章章号传给渲染层，
+     * 让它再兜一次（`renderAbilitySection` 需要章号才能判三态）。
+     */
+    abilities?: readonly PowerAbilityDefinition[]
+    /** 本章章号：能力三态判定要用（缺省时渲染层按「不是 ahead」处理）。 */
+    chapterNumber?: number
     /** 本章出场角色名：只服务知情节的「本章角色优先」排序。 */
     chapterCharacters?: readonly string[]
     rules?: readonly WorldBuildingRule[]
@@ -818,6 +826,7 @@ export async function assembleChapterMaterials(input: {
       itemCount: consultation.itemCount,
       cadenceCount: consultation.cadenceCount,
       knowledgeCount: consultation.knowledgeCount,
+      abilityCount: consultation.abilityCount,
       ruleCount: consultation.ruleCount,
     },
   }
