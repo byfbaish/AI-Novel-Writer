@@ -101,6 +101,12 @@ src/services/structured-json-call.ts               JSON 模式降级重试
 
 ## 5. 下一步（按优先级）
 
+> ⚠ **2026-10-23 晚更新**：优先级已被**长篇就绪度评审**重排 ——
+> 见 `docs/design/architecture/long-form-readiness-review.md` 与台账
+> `docs/plans/prompt-assembly-backlog.md` 顶部「2026-10-23 长篇就绪度重排」。
+> **新的 P0 是「改稿连锁」，不是 W7**（改不了早期章节就写不了长篇）。
+> 下面这份列表保留作当时记录。
+
 1. **W6 已收口**：十一期落地 + 账本下线（ADR-0022，入口关闭、代码保留）。剩余只有一条数据建议：
    修三处登记口径（活气散单位应为「副」、贡献点 `unit=100`、残卷 `period=永久兑换`）—— 它影响生成时的口径，与账本无关。
 2. **W8 讨论**：`w8-nested-world-handoff-design.md` §2 是核心——切片包里**有五项现在带不走**

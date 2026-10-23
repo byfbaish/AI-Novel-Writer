@@ -53,7 +53,7 @@
 | **资源定义与量纲**（1 枚 = 多少、日结月结） | `resources` | ⚠️ 能带格式，**语义不可复用** | 旧定义只作参考，新项目**强制重新登记**，不许直接继承 `anchor_value` |
 | **角色状态六槽**（境界/伤势/物品/位置…） | `cs_*`（自由文本） | ⚠️ 能带字符串，**带不准** | 照抄进新项目角色卡；显式标注"上一部末状态，需作者核对" |
 | **关键物品**（那把刀、那张欠条） | **无结构**（在 `cs_key_items` 一句话里） | ❌ 带不了 | 只能走作者手写摘要（W6 §6.1 已承认是真空） |
-| **未回收伏笔** | `narrative_thread_plans`（title/type/target 区间/author_intent） | ❌ **带不了** —— 没有「已回收」状态，也没有跨项目作用域 | §4 新建跨部伏笔池；在此之前只能人工列清单 |
+| **未回收伏笔** | `NarrativeThreadStatus` 五态（planned/planted/progressing/**resolved**/abandoned）+ `dormantChapters` + `overdue` | ⚠️ **能算出"未回收"，但只在项目内** | 缺的是**跨项目作用域**（id 是项目内自增）⇒ §4 新建跨部伏笔池；在此之前只能人工列清单 |
 | **金手指/能力触发次数、冷却、代价** | **无宿体** | ❌ | 手写摘要，或先立 12.x 的能力槽 |
 | **制度进度**（月例发到第几月、差事轮次） | **无宿体** | ❌ | 同上 |
 | **故事日序** | `summary_snapshots.story_day_offset`（整数） | ✅ 能 | 新项目起点直接写整数 |
@@ -101,11 +101,14 @@ handoff-<项目名>-<层名>.json    # 机器读（导入用；与 md 不一致�
 narrative_thread_plans => id,title,type,target_start_chapter,target_end_chapter,author_intent,created_at,updated_at
 ```
 
-- **没有** status（未回收 / 已回收 / 已作废）；
-- **没有** 「预期回收层级」；
+- **计划表没有 status** —— 但**线索状态是有的**：`NarrativeThreadStatus` = `planned / planted / progressing / resolved / abandoned`，
+  另有 `dormantChapters` 与 `overdue`（`src/shared/narrative-thread.ts`）。状态由事件（`narrative_thread_confirmations`）推导，
+  所以「哪些坑还欠着」**能算出来**；
+- **没有** 「预期回收层级」（在哪一部回收）；
 - **没有** 跨项目身份（id 是项目内自增，换项目就重号）。
 
-所以"自动从池里拉取本层该回收的伏笔"目前**做不到**，只能人工列。
+所以缺的**不是**"回收状态"，而是**跨项目作用域 + 层级归属**：
+「第 1 部还欠几个坑」这件事，在第 2 部里查不到，因为池子住在第 1 部的库里。
 
 **最小可行形态**（W8c）：
 
