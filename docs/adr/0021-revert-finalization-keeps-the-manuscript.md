@@ -10,6 +10,25 @@
 
 要跳着退（第 5 章还定稿着却想退第 2 章），必须连带回退第 3–5 章的正文与派生——那是「指定连续回退 / 卷回滚」，与卷级结构一起设计，不在本 ADR 范围。当前只支持一种形态：从最后一章开始，一章一章往回退；退完 N，N−1 自动成为新尾部。
 
+## 状态机
+
+```mermaid
+stateDiagram-v2
+  [*] --> Draft
+  Draft --> Finalized: 定稿（写收据，成为链尾）
+  Finalized --> Revised: 退回草稿（正文保留）
+  Revised --> Finalized: 重新定稿
+  Finalized --> Deleted: 删除正文（连草稿）
+  Deleted --> [*]
+  note right of Finalized
+    只有链尾可退回/删除
+    completed 收据须用事实复核
+  end note
+```
+
+**一句话读法**：`Finalized → Revised` 是新增的出口，它保正文；`Finalized → Deleted` 才是真删。
+两条出口都在**链尾守卫**之下，中间章不可达。
+
 ## Consequences
 
 - 「删定稿连草稿一起删」仍然是删除的正确语义，但不再是改稿的唯一出路；两件事各自有入口与文案。
