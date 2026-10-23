@@ -1102,6 +1102,10 @@ export interface DatabaseChannels {
     args: [expectedProjectPath: string]
     return: {
       success: boolean
+      /** 当前世代（退回/改写任意章都会 +1） */
+      generation?: number
+      /** 当前定稿链尾章；0 = 没有定稿章。退回确认框用它算"将连带标记 N+1..M" */
+      latestFinalizedChapter?: number
       chapters?: Array<{
         chapterNumber: number
         state: 'current' | 'stale' | 'not-finalized'

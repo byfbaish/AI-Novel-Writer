@@ -825,7 +825,7 @@ export function registerDatabaseController() {
   ipcMain.handle('db:chapter-staleness-list', async (_event, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
-      return { success: true as const, chapters: SummaryRepository.listChapterStaleness() }
+      return { success: true as const, ...SummaryRepository.chapterStalenessSnapshot() }
     } catch (error) {
       return { success: false as const, error: String(error) }
     }
