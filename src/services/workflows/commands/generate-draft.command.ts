@@ -60,6 +60,7 @@ import { countDraftUnits, draftAimLowUnits, draftTargetUnitRange } from '../../.
 import type { RecoveryChapterSource } from '../../../shared/recovery-candidate'
 import { characterStateFacts } from '../../../shared/character-state-lines'
 import type { PrewriteFact } from '../../../shared/prewrite-consultation'
+import type { KeyItemDefinition } from '../../../shared/key-item'
 import { extractWorldBuildingRules } from '../../../shared/worldbuilding-rules'
 import {
   assembleChapterMaterials,
@@ -887,6 +888,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     let activeThreadContext = ''
     // P0-2：前文事实只在第 2 章起才有（第 1 章没有「前文」）。本书规则则每章都要。
     let consultationFacts: PrewriteFact[] = []
+    // P1-1：关键物品不受「有没有前文」影响 —— 第 1 章也可能一开场就有一把刀。
+    const keyItems = await this.readKeyItems(expectedProjectPath, projectSession)
     if (!isFirstChapter) {
       const finalized = await this.readFinalizedMaterials(
         expectedProjectPath,
@@ -998,6 +1001,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         // P0-2 写前查阅。规则在第 1 章也要（世界规则不受「有没有前文」影响）。
         prewrite: {
           facts: consultationFacts,
+          items: keyItems,
           rules: extractWorldBuildingRules(worldBuildingSource),
         },
       })
@@ -1017,10 +1021,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     }
     // 只报条数、不报内容（公开日志不放正文）。作者据此判断这一轮到底注入了没有，
     // 不必每次都去翻 prompt trace。
-    if (chapterMaterials.prewrite.factCount > 0 || chapterMaterials.prewrite.ruleCount > 0) {
+    if (chapterMaterials.prewrite.factCount > 0 || chapterMaterials.prewrite.ruleCount > 0
+      || chapterMaterials.prewrite.itemCount > 0) {
       callbacks.log(uiText(
-        `  已注入写前查阅：前文事实 ${chapterMaterials.prewrite.factCount} 条 / 本书规则 ${chapterMaterials.prewrite.ruleCount} 条`,
-        `  Injected pre-writing reference: ${chapterMaterials.prewrite.factCount} established facts / ${chapterMaterials.prewrite.ruleCount} world rules`,
+        `  已注入写前查阅：前文事实 ${chapterMaterials.prewrite.factCount} 条 / 关键物品 ${chapterMaterials.prewrite.itemCount} 条 / 本书规则 ${chapterMaterials.prewrite.ruleCount} 条`,
+        `  Injected pre-writing reference: ${chapterMaterials.prewrite.factCount} facts / ${chapterMaterials.prewrite.itemCount} key items / ${chapterMaterials.prewrite.ruleCount} world rules`,
       ))
     }
     const admittedCandidateSourceIds = new Set(chapterMaterials.selection.included
@@ -2378,6 +2383,30 @@ ${params.candidate.text}`,
       })),
       consultationFacts,
     }
+  }
+
+  /**
+   * 读取作者登记的关键物品，按「本章角色持有」优先排序。
+   *
+   * P1-1：物品是**客观事实**（谁拿着什么），不是账本余额 —— 所以不受 ADR-0022 限制。
+   * 排序只做一件事：本章蓝图点名的角色手里的东西排前面，其余按表内顺序兜在后面，
+   * 由渲染侧的条数上限裁掉。这里**不做**任何「该不该在手」的推断（那是 findings 的事）。
+   */
+  private async readKeyItems(projectPath: string, projectSession: ProjectSessionContext): Promise<KeyItemDefinition[]> {
+    try {
+      const result = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:key-items-list',
+        projectPath,
+      ) as { success?: boolean; items?: KeyItemDefinition[] }
+      if (!result?.success) return []
+      const onStage = new Set(this.chapterInfo.characters.map(name => name.trim()).filter(Boolean))
+      const items = result.items ?? []
+      return [
+        ...items.filter(item => item.holderCharacter && onStage.has(item.holderCharacter)),
+        ...items.filter(item => !item.holderCharacter || !onStage.has(item.holderCharacter)),
+      ]
+    } catch { return [] }
   }
 
   private async readActiveNarrativeThreads(

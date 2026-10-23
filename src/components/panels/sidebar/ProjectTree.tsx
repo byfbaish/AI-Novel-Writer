@@ -6,7 +6,7 @@ import { formatResourceUri } from '../../../shared/project-paths'
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins } from 'lucide-react'
+import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins, Package } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { useDraftStore } from '../../../stores/draft-store'
@@ -432,6 +432,28 @@ function WorldBuildingGroup({
             </span>
             <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
               {text('资源登记', 'Resource registry')}
+            </span>
+          </div>
+          {/* P1-1：关键物品登记。与资源登记并列，但**不是**同一件事：
+              资源按单位加减，物品只问「在谁手里」。 */}
+          <div
+            className="tree-item gap-1.5 cursor-pointer select-none"
+            style={{ paddingLeft: 26 }}
+            onClick={() => openBuiltinEditor(
+              'key-item-registry-editor',
+              text('关键物品', 'Key items'),
+              'key-item-registry',
+            )}
+            title={text(
+              '登记关键物品的归属与状态（谁拿着什么）；生成时会带着出处一起进写前查阅',
+              'Register who holds what; items enter the pre-writing reference with their sources',
+            )}
+          >
+            <span className="flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+              <Package size={13} />
+            </span>
+            <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
+              {text('关键物品', 'Key items')}
             </span>
           </div>
         </div>

@@ -25,6 +25,7 @@
  *   空标题会让模型以为「作者确认过没有前文事实」。
  */
 import type { FinalizedContinuityFactCategory } from './finalized-continuity'
+import { renderKeyItemLine, type KeyItemDefinition } from './key-item'
 import type { WritingLanguage } from './writing-language'
 import { renderWorldRulesSection, WORLD_RULES_MAX_ITEMS, type WorldBuildingRule } from './worldbuilding-rules'
 
@@ -45,6 +46,10 @@ export interface PrewriteFact {
 export const PREWRITE_FACTS_MAX_ITEMS = 6
 /** 正文行总字数上限（不含节标题与说明句）。 */
 export const PREWRITE_FACTS_MAX_CHARS = 720
+/** 关键物品条数上限：比事实更宽一点，物品清单本来就短。 */
+export const PREWRITE_ITEMS_MAX_ITEMS = 8
+/** 关键物品正文行字数上限。 */
+export const PREWRITE_ITEMS_MAX_CHARS = 640
 
 /** 单行渲染；格式与审稿链逐字相同，改动即两侧同时变（这是判据 DM 的自检点）。 */
 export function renderPrewriteFactLine(fact: PrewriteFact, writingLanguage: WritingLanguage): string {
@@ -86,27 +91,65 @@ export function renderPrewriteFactsSection(
 }
 
 /**
- * 组装两节；返回实际进入提示词的条数，供步骤日志与测试使用。
+ * 渲染【关键物品】整节；空数组返回空串。
  *
- * 两节都空 ⇒ `text=''`，调用方据此不产生任何字节（材料块逐字节不变，护栏靠这个成立）。
+ * 这一节回答的是「谁拿着什么」，不是「有多少」—— 没有任何数字是算出来的（ADR-0022）。
+ * 归属**按时点理解**（与六槽同一措辞）：标了章号就是那一刻的状态，没标就是作者登记的当前状态。
+ */
+export function renderPrewriteItemsSection(
+  items: readonly KeyItemDefinition[],
+  writingLanguage: WritingLanguage,
+  maxChars: number = PREWRITE_ITEMS_MAX_CHARS,
+): string {
+  const lines: string[] = []
+  let used = 0
+  for (const item of items.slice(0, PREWRITE_ITEMS_MAX_ITEMS)) {
+    if (!item.name?.trim()) continue
+    const line = renderKeyItemLine(item, writingLanguage)
+    const next = line.length + (lines.length > 0 ? 1 : 0)
+    if (used + next > maxChars) break
+    lines.push(line)
+    used += next
+  }
+  if (lines.length === 0) return ''
+  const isEn = writingLanguage === 'en-US'
+  const heading = isEn
+    ? '[Key items (author registry: who holds what)]'
+    : '【关键物品（作者登记：谁拿着什么）】'
+  const lead = isEn
+    ? 'Ownership is time-bound when a chapter is given; entries marked "author entry" have no chapter. Do not move an item to another holder without showing the transfer in the prose.'
+    : '标了章号的归属按那一刻理解，不是永久状态；没标章号的是作者登记。没有写出转交过程，不得把物品换到别人手里。'
+  return `${heading}\n${lead}\n${lines.join('\n')}`
+}
+
+/**
+ * 组装三节（前文事实 / 关键物品 / 本书规则）；返回实际进入提示词的条数。
+ *
+ * 全部为空 ⇒ `text=''`，调用方据此不产生任何字节（材料块逐字节不变，护栏靠这个成立）。
  */
 export function buildPrewriteConsultationBlock(
-  input: { facts?: readonly PrewriteFact[]; rules?: readonly WorldBuildingRule[] },
+  input: {
+    facts?: readonly PrewriteFact[]
+    items?: readonly KeyItemDefinition[]
+    rules?: readonly WorldBuildingRule[]
+  },
   writingLanguage: WritingLanguage,
-): { text: string; factCount: number; ruleCount: number } {
+): { text: string; factCount: number; itemCount: number; ruleCount: number } {
   const facts = input.facts ?? []
+  const items = input.items ?? []
   const rules = input.rules ?? []
   const factsSection = renderPrewriteFactsSection(facts, writingLanguage)
+  const itemsSection = renderPrewriteItemsSection(items, writingLanguage)
   const rulesSection = renderWorldRulesSection(rules, writingLanguage)
-  const text = [factsSection, rulesSection].filter(Boolean).join('\n\n')
-  if (!text) return { text: '', factCount: 0, ruleCount: 0 }
+  const text = [factsSection, itemsSection, rulesSection].filter(Boolean).join('\n\n')
+  if (!text) return { text: '', factCount: 0, itemCount: 0, ruleCount: 0 }
   // 条数按**通过裁剪**的行数回报：日志说"注入了 6 条"就必须真是 6 条。
-  const factCount = factsSection ? factsSection.split('\n').filter(line => line.startsWith('- ')).length : 0
-  const ruleCount = rulesSection ? rulesSection.split('\n').filter(line => line.startsWith('- ')).length : 0
+  const count = (section: string) => (section ? section.split('\n').filter(line => line.startsWith('- ')).length : 0)
   return {
     text,
     // 极端情况下条目多于上限：按常量兜住，避免日志与常量说法打架。
-    factCount: Math.min(factCount, PREWRITE_FACTS_MAX_ITEMS),
-    ruleCount: Math.min(ruleCount, WORLD_RULES_MAX_ITEMS),
+    factCount: Math.min(count(factsSection), PREWRITE_FACTS_MAX_ITEMS),
+    itemCount: Math.min(count(itemsSection), PREWRITE_ITEMS_MAX_ITEMS),
+    ruleCount: Math.min(count(rulesSection), WORLD_RULES_MAX_ITEMS),
   }
 }

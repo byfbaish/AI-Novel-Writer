@@ -37,6 +37,7 @@ import type {
   ResourceMovementInput,
   ResourceMovementSource,
 } from './resource-ledger'
+import type { KeyItemDefinition, KeyItemInput } from './key-item'
 import type {
   FinalizedContinuityProjection,
   FinalizedSourceReadResult,
@@ -1270,6 +1271,11 @@ export interface DatabaseChannels {
   'db:resource-movements-replace-chapter': { args: [chapterNumber: number, rows: ResourceMovementInput[], source: ResourceMovementSource, expectedProjectPath: string]; return: { success: boolean; inserted?: number; error?: string } }
   /** W6b 账本读视图：资源定义 + 截至 `throughChapter` 的变动 + **已扫章号**（中断判定的唯一来源）。 */
   'db:resource-ledger-read': { args: [throughChapter: number, expectedProjectPath: string]; return: { success: boolean; resources?: ResourceDefinition[]; movements?: ResourceMovement[]; scannedChapters?: number[]; error?: string } }
+
+  // 7c. key-items — P1-1 关键物品（谁拿着什么；不是账本，没有余额与变动）
+  'db:key-items-list': { args: [expectedProjectPath: string]; return: { success: boolean; items?: KeyItemDefinition[]; error?: string } }
+  'db:key-items-upsert': { args: [input: KeyItemInput, expectedProjectPath: string]; return: { success: boolean; itemId?: string; error?: string } }
+  'db:key-items-delete': { args: [itemId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
 
   // 沿用旧表
   'db:log-llm-call': { args: [call: Record<string, unknown>, expectedProjectPath: string]; return: { success: boolean } }

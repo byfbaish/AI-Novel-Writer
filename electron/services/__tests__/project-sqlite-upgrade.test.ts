@@ -48,14 +48,20 @@ describe('canonical upgrade whitelist', () => {
     expect(isSupportedUpgradeOrigin(registry, CURRENT_DESKTOP_SCHEMA_VERSION + 1)).toBe(false)
   })
 
-  // 判定必须有牙齿：少装 M11 一档，上面那条「每一档都放行」就得变成「一档都上不去」。
+  // 判定必须有牙齿：少装 M11 一档，凡是必须经过它的起点都得变成「上不去」。
   // 没有这条，前一条用例可能被一个恒真的实现蒙混过关。
-  it('lane 少装一档时全线不放行（证明判定不是恒真）', () => {
+  it('lane 少装一档时，需要经过它的起点全线不放行（证明判定不是恒真）', () => {
     const registry = getDesktopMigrationRegistry()
     const withoutM11 = createMigrationRegistry(
       registry.implementations.filter(step => step.id !== 'M11'), registry.recognizedSchemas)
-    for (let version = 1; version < CURRENT_DESKTOP_SCHEMA_VERSION; version++) {
+    // M11 是 11→12：v1..v11 都必须经过它，所以全部不放行。
+    for (let version = 1; version <= 11; version++) {
       expect(isSupportedUpgradeOrigin(withoutM11, version), `v${version} 不该被放行`).toBe(false)
+    }
+    // v12 起已经不经过 M11（M12/M13/M14 各自有槽位），仍然可以升级 —— 这不是漏洞：
+    // 「能否升级」只取决于**从这个起点出发**是否连续，不取决于更早的档有没有装。
+    for (let version = 12; version < CURRENT_DESKTOP_SCHEMA_VERSION; version++) {
+      expect(isSupportedUpgradeOrigin(withoutM11, version), `v${version} 不经过 M11，应可升级`).toBe(true)
     }
     expect(isSupportedUpgradeOrigin(registry, CURRENT_DESKTOP_SCHEMA_VERSION - 1)).toBe(true)
   })

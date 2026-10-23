@@ -75,8 +75,8 @@ describe('portable v7 field policy', () => {
       .all() as Array<{ name: string }>
     const fieldCount = tables.reduce((count, table) => count
       + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 54, fields: 516 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 54, fields: 516 })
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 57, fields: 534 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 57, fields: 534 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -109,7 +109,9 @@ describe('portable v7 field policy', () => {
     // + M08 的 1 列（blueprints.structured_refs）+ 1 表 9 列
     // + W2 的 2 列（summary_snapshots.story_day_offset / story_day_label，走 optionalFields）
     // + W6/M11 的 2 表 21 列（resources 13 列 / resource_movements 8 列）
-    expect(added).toHaveLength(161)
+    // + P0-1/M12 的 1 表 4 列（chapter_staleness_acknowledgements）+ M13 的 1 表 4 列（continuity_change_log）
+    // + P1-1/M14 的 1 表 10 列（key_items）
+    expect(added).toHaveLength(179)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -196,7 +198,7 @@ describe('portable v7 field policy', () => {
         .all() as Array<{ name: string }>
       const fields = tables.reduce((count, table) => count
         + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-      expect({ tables: tables.length, fields }).toEqual({ tables: 54, fields: 516 })
+      expect({ tables: tables.length, fields }).toEqual({ tables: 57, fields: 534 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)

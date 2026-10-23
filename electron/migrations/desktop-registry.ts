@@ -14,13 +14,14 @@ import { applyM10StoryDay, createM10Migration, verifyM10StoryDay } from './m10-s
 import { applyM11ResourceLedger, createM11Migration, verifyM11ResourceLedger } from './m11-resource-ledger'
 import { applyM12ChapterStalenessAck, createM12Migration, verifyM12ChapterStalenessAck } from './m12-chapter-staleness-ack'
 import { applyM13ContinuityChangeLog, createM13Migration, verifyM13ContinuityChangeLog } from './m13-continuity-change-log'
+import { applyM14KeyItems, createM14Migration, verifyM14KeyItems } from './m14-key-items'
 import { initializeLegacyBaselineSchema, applyBaselineTables } from './baseline-schema'
 import { ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
 import { SqliteSchemaAdapter, sqliteSchemaFingerprint } from './sqlite-schema-adapter'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-export const CURRENT_DESKTOP_SCHEMA_VERSION = 14
+export const CURRENT_DESKTOP_SCHEMA_VERSION = 15
 let installed: MigrationRegistry | undefined
 
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -120,14 +121,19 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
     const m13 = createM13Migration({ database: native,
       verifyKnownSchema: db => changeLogFingerprints.has(sqliteSchemaFingerprint(native(db)))
         && verifyM13ContinuityChangeLog(native(db)) })
-    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13], [
+    for (const db of references) db.transaction(() => applyM14KeyItems(db))()
+    const keyItemSchemas = schemas(15), keyItemFingerprints = new Set(keyItemSchemas.map(item => item.fingerprint))
+    const m14 = createM14Migration({ database: native,
+      verifyKnownSchema: db => keyItemFingerprints.has(sqliteSchemaFingerprint(native(db)))
+        && verifyM14KeyItems(native(db)) })
+    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),
       ...baselineSchemas, ...generationSchemas, ...identitySchemas,
       ...reviewCycleSchemas, ...importEffectSchemas, ...characterAssetSchemas, ...mergeSnapshotSchemas,
       // 基线保持冻结态，v0~v11 的指纹与历史库天然一致，旧项目无需额外登记即可被
       // probeSchema 识别，再由 M11 升到 v12。
       ...plotPlanSchemas, ...structuredRefsSchemas, ...rhythmProfileSchemas, ...storyDaySchemas,
-      ...resourceLedgerSchemas, ...stalenessAckSchemas, ...changeLogSchemas,
+      ...resourceLedgerSchemas, ...stalenessAckSchemas, ...changeLogSchemas, ...keyItemSchemas,
     ])
     return installed
   } finally { reference.close(); donor.close() }

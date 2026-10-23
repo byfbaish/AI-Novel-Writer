@@ -11,6 +11,7 @@ import type {
   ModelExecutionLeaseReceipt,
 } from '../../../../shared/ipc-channels'
 import type { NarrativeThreadView } from '../../../../shared/narrative-thread'
+import type { KeyItemDefinition } from '../../../../shared/key-item'
 import {
   createGenerationRuntime,
   type GenerationRuntime,
@@ -423,6 +424,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     continuitySourceContents?: Record<number, string>
     invalidContinuitySourceIds?: number[]
     narrativeThreads?: NarrativeThreadView[]
+    /** P1-1：作者登记的关键物品（谁拿着什么）。缺省空 = 本项目还没登记。 */
+    keyItems?: KeyItemDefinition[]
     /** P0-1：哪些章判定为「前提已变」。缺省空 = 正常路径（阻断用例显式给值）。 */
     staleChapters?: number[]
     previousFinalizedContent?: string
@@ -582,6 +585,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
           })),
         }
       }
+      // P1-1：关键物品每章都会读（第 1 章也可能一开场就有一把刀），缺省给空表。
+      if (channel === 'db:key-items-list') return { success: true, items: options.keyItems ?? [] }
       throw new Error(`unexpected IPC: ${channel}`)
     })
     vi.stubGlobal('window', {
@@ -3933,6 +3938,63 @@ ${headingPrefix}第3章：潮门
     expect(continuation).toContain('【前文事实（')
     expect(continuation).toContain('【本书规则（')
     expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('写前查阅'))
+  })
+
+  /**
+   * P1-1 关键物品：作者登记的「谁拿着什么」进写前查阅。
+   *
+   * 三条断言是这个功能的验收口径（评审写的「物品归属能答『刀在谁手里』」）：
+   * 1. 有章号有引文 ⇒ 带出处；没有 ⇒ 如实写「作者登记」，**不伪造章号**；
+   * 2. 本章出场角色手里的物品排前面（相关性只有这一条规则）；
+   * 3. 续写轮同样带着 —— 物品和事实一样，续写时不带就等于忘了他手里有什么。
+   */
+  it('P1-1: injects registered key items with their source into initial and continuation requests', async () => {
+    const runtime = fakeOutcomes(
+      outcome('初'.repeat(100), 'length', 1),
+      outcome(`${'续'.repeat(400)}。`, 'stop', 2),
+    )
+    const item = (over: Partial<KeyItemDefinition> & Pick<KeyItemDefinition, 'itemId' | 'name'>): KeyItemDefinition => ({
+      holderCharacter: '',
+      holderLabel: '',
+      statusNote: '',
+      chapterNumber: null,
+      evidence: '',
+      source: 'author',
+      createdAt: '',
+      updatedAt: '',
+      ...over,
+    })
+    const { callbacks, context, command } = setup({
+      runtime,
+      wordsTarget: 500,
+      chapterNumber: 5,
+      characters: ['林岚'],
+      previousFinalizedContent: '第四章定稿原文。',
+      keyItems: [
+        item({
+          itemId: 'item:1', name: '裁纸刀', holderCharacter: '林岚', holderLabel: '林岚',
+          statusNote: '刃口崩了一角', chapterNumber: 3, evidence: '刀口崩了一角',
+        }),
+        item({ itemId: 'item:2', name: '名单备份', holderLabel: '王浩', statusNote: '红笔标注' }),
+      ],
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const initial = runtime.complete.mock.calls[0]![0].messages
+      .find(message => message.role === 'user')!.content
+    expect(initial).toContain('【关键物品（作者登记：谁拿着什么）】')
+    expect(initial).toContain('- 裁纸刀 — 林岚持有（刃口崩了一角）；出处：第3章：『刀口崩了一角』')
+    // 没有章号与引文就如实说「作者登记」
+    expect(initial).toContain('- 名单备份 — 王浩持有（红笔标注）；出处：作者登记')
+    // 本章出场角色持有的排前面
+    expect(initial.indexOf('裁纸刀')).toBeLessThan(initial.indexOf('名单备份'))
+
+    const continuation = runtime.complete.mock.calls[1]![0].messages
+      .find(message => message.role === 'user')!.content
+    expect(continuation).toContain('【关键物品（作者登记：谁拿着什么）】')
+    expect(continuation).toContain('裁纸刀')
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('关键物品'))
   })
 
   it('previews only authored text before completion and reconciles to the persisted terminal draft', async () => {

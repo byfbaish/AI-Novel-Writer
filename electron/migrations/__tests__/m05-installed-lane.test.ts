@@ -34,7 +34,7 @@ describe('installed M05 lane', () => {
       const before = db.prepare('SELECT body FROM contents').pluck().get()
       const result = migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), 6)
 
-      expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBe(12)
+      expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBeGreaterThanOrEqual(12) // 最新一档由 m14 的 lane 测试钉死
       expect(result.completedSteps).toEqual(['M05'])
       expect(db.prepare('SELECT body FROM contents').pluck().get()).toBe(before)
       expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'character_avatar_%' ORDER BY name").pluck().all())

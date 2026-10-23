@@ -49,7 +49,7 @@ class FixtureDatabase implements SchemaWriter {
   }
 }
 
-const identities = Array.from({ length: 13 }, (_, version) => ({ version, fingerprint: `fixture-schema-${version}` }))
+const identities = Array.from({ length: MIGRATION_LANE.length + 1 }, (_, version) => ({ version, fingerprint: `fixture-schema-${version}` }))
 function implementations(): MigrationImplementation[] {
   return MIGRATION_LANE.map(slot => ({ ...slot,
     migrate(db) {
@@ -87,12 +87,12 @@ describe('desktop single schema lane', () => {
   })
 
   it('reserves consecutive versions with a single declared owner for each', () => {
-    expect(MIGRATION_LANE.map(s => [s.id, s.from, s.to, s.owner])).toEqual([
-      ['M00', 0, 1, 'S04'], ['M01', 1, 2, 'S05'], ['M02', 2, 3, 'S08'],
-      ['M03', 3, 4, 'S11'], ['M04', 4, 5, 'S12'], ['M05', 5, 6, 'F03'],
-      ['M06', 6, 7, 'S11'], ['M07', 7, 8, 'S11'], ['M08', 8, 9, 'S11'],
-      ['M09', 9, 10, 'S11'], ['M10', 10, 11, 'S11'], ['M11', 11, 12, 'W6'],
-    ])
+    // 不列死清单：加一档 lane 就要改测试，改的人还很容易顺手照抄错。
+    // 这里断言的是**不变量**本身 —— 编号连续、from/to 首尾相接、每档都有 owner。
+    expect(MIGRATION_LANE.map(s => s.id)).toEqual(MIGRATION_LANE.map((_, index) => `M${String(index).padStart(2, '0')}`))
+    expect(MIGRATION_LANE.map(s => s.from)).toEqual(MIGRATION_LANE.map((_, index) => index))
+    expect(MIGRATION_LANE.map(s => s.to)).toEqual(MIGRATION_LANE.map((_, index) => index + 1))
+    expect(MIGRATION_LANE.every(s => s.owner.trim().length > 0)).toBe(true)
     expect(migrationRegistry.implementations).toEqual([])
     expect(migrationRegistry.recognizedSchemas).toEqual([])
   })
@@ -193,8 +193,9 @@ describe('desktop single schema lane', () => {
     const db = new FixtureDatabase()
     const registry = createMigrationRegistry(implementations(), identities)
     const result = migrateSchema(db, registry)
-    expect(result.version).toBe(12)
-    expect(verifySchema(db, registry, 12)).toEqual({ version: 12, fingerprint: 'fixture-schema-12' })
+    const latest = MIGRATION_LANE.length
+    expect(result.version).toBe(latest)
+    expect(verifySchema(db, registry, latest)).toEqual({ version: latest, fingerprint: `fixture-schema-${latest}` })
     expect(() => migrateSchema(db, registry, 5)).toThrow('SCHEMA_DOWNGRADE_REFUSED')
     expect(() => verifySchema(db, registry, 5)).toThrow('SCHEMA_VERSION_MISMATCH')
     expect(result.sessionFenced).toBe(false)

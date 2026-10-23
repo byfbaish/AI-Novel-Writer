@@ -81,6 +81,8 @@ import type {
   ResourceMovementInput,
   ResourceMovementSource,
 } from '../../src/shared/resource-ledger'
+import { deleteKeyItem, hasKeyItemSchema, listKeyItems, upsertKeyItem } from '../repositories/key-item-repository'
+import type { KeyItemInput } from '../../src/shared/key-item'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
 
@@ -143,6 +145,8 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:resources-upsert',
   'db:resources-delete',
   'db:resource-movements-replace-chapter',
+  'db:key-items-upsert',
+  'db:key-items-delete',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -1366,6 +1370,45 @@ export function registerDatabaseController() {
         movements: listMovementsThrough(db, throughChapter),
         scannedChapters: listScannedLedgerChapters(db),
       }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ============================================================
+  // P1-1 关键物品（谁拿着什么；不是账本，没有余额与变动）
+  // ============================================================
+  ipcMain.handle('db:key-items-list', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      // M14 之前 / 库未打开：降级成空列表，不报错（与资源登记同一纪律）。
+      if (!db || !hasKeyItemSchema(db)) return { success: true, items: [] }
+      return { success: true, items: listKeyItems(db) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:key-items-upsert', async (_event, input: KeyItemInput, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = upsertKeyItem(db, input)
+      return result.success ? { success: true, itemId: result.itemId } : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:key-items-delete', async (_event, itemId: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = deleteKeyItem(db, itemId)
+      return result.success ? { success: true } : { success: false, error: result.error }
     } catch (err) {
       return { success: false, error: String(err) }
     }

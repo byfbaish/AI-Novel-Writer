@@ -612,8 +612,9 @@ describe('portable project export service', { timeout: 20_000 }, () => {
       requiresRuntimeFreezeGuard: true,
       // M08（`6dfea726`）把基线推到 v9 并新增 10 列；M10 推到 v11 再加 2 列
       // （`story_day_offset` / `story_day_label`，均为可空）；M11 推到 v12 再加 2 表 21 列
-      // （`resources` 13 列 / `resource_movements` 8 列）。此期望随迁移同步更新。
-      sourceEvidence: { schemaVersion: 12, tableCount: 54, fieldCount: 516 },
+      // （`resources` 13 列 / `resource_movements` 8 列）；M12/M13 各 1 表 4 列；
+      // M14（P1-1 关键物品）1 表 10 列。此期望随迁移同步更新。
+      sourceEvidence: { schemaVersion: 15, tableCount: 57, fieldCount: 534 },
     })
     expect(contextCalls).toEqual(['lease-current', 'lease-current', 'lease-current'])
     expect(fs.readFileSync(f.databasePath)).toEqual(before)
@@ -674,7 +675,7 @@ describe('portable project export service', { timeout: 20_000 }, () => {
 
     const receipt = await exportPortableProject(input(f))
     // 与上一条同源：M10 的两列与 M11 的两张表同样计入 donor 夹具（比上一条多 1 个字段）。
-    expect(receipt.sourceEvidence).toMatchObject({ schemaVersion: 12, tableCount: 54, fieldCount: 517 })
+    expect(receipt.sourceEvidence).toMatchObject({ schemaVersion: 15, tableCount: 57, fieldCount: 535 })
     const targetProjectRoot = path.join(f.base, 'restored-donor')
     await restorePortableProject({ archivePath: f.target, targetProjectRoot })
 
