@@ -822,6 +822,15 @@ export function registerDatabaseController() {
     return SummaryRepository.listFinalizedContinuityBefore(chapterNumber)
   })
 
+  ipcMain.handle('db:chapter-staleness-list', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true as const, chapters: SummaryRepository.listChapterStaleness() }
+    } catch (error) {
+      return { success: false as const, error: String(error) }
+    }
+  })
+
   ipcMain.handle('db:continuity-read-source', async (_event, draftId: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
     return SummaryRepository.readFinalizedSource(draftId)
