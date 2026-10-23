@@ -44,7 +44,8 @@ describe('installed M14 lane', () => {
       const bodyBefore = db.prepare('SELECT body FROM contents').pluck().get()
       migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
       expect(db.pragma('user_version', { simple: true })).toBe(CURRENT_DESKTOP_SCHEMA_VERSION)
-      expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBe(15)
+      // M15 起 schema 继续往前走：这里只钉「至少已到 15」，不再钉等于 15。
+      expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBeGreaterThanOrEqual(15)
       expect(db.prepare('SELECT body FROM contents').pluck().get()).toBe(bodyBefore)
       expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='key_items'").pluck().get())
         .toBe('key_items')

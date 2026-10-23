@@ -12,6 +12,7 @@ import type {
 } from '../../../../shared/ipc-channels'
 import type { NarrativeThreadView } from '../../../../shared/narrative-thread'
 import type { KeyItemDefinition } from '../../../../shared/key-item'
+import type { InstitutionCadence } from '../../../../shared/institution-cadence'
 import {
   createGenerationRuntime,
   type GenerationRuntime,
@@ -426,6 +427,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     narrativeThreads?: NarrativeThreadView[]
     /** P1-1：作者登记的关键物品（谁拿着什么）。缺省空 = 本项目还没登记。 */
     keyItems?: KeyItemDefinition[]
+    /** P1-1 期 2：作者登记的周期事件（制度）。缺省空 = 本项目还没登记。 */
+    cadences?: InstitutionCadence[]
     /** P0-1：哪些章判定为「前提已变」。缺省空 = 正常路径（阻断用例显式给值）。 */
     staleChapters?: number[]
     previousFinalizedContent?: string
@@ -587,6 +590,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       }
       // P1-1：关键物品每章都会读（第 1 章也可能一开场就有一把刀），缺省给空表。
       if (channel === 'db:key-items-list') return { success: true, items: options.keyItems ?? [] }
+      // P1-1 期 2：制度同样每章都会读（第 1 章也可能一开场就是送账日），缺省给空表。
+      if (channel === 'db:cadences-list') return { success: true, cadences: options.cadences ?? [] }
       throw new Error(`unexpected IPC: ${channel}`)
     })
     vi.stubGlobal('window', {
@@ -3995,6 +4000,65 @@ ${headingPrefix}第3章：潮门
     expect(continuation).toContain('【关键物品（作者登记：谁拿着什么）】')
     expect(continuation).toContain('裁纸刀')
     expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('关键物品'))
+  })
+
+  /**
+   * P1-1 期 2 制度：作者登记的周期事件进写前查阅。
+   *
+   * 三条断言是这个功能的验收口径：
+   * 1. 首发与续写轮**都**带（续写轮不带模板变量，只带材料块）；
+   * 2. 排序 due → unknown → not_due（未到已经确认过，未知才是作者要看一眼的）；
+   * 3. 日序轴在「本章日序不可知」时如实写「未知」，绝不折成「未到」。
+   */
+  it('P1-1 cadence: injects due cadences before not-due ones into initial and continuation requests', async () => {
+    const runtime = fakeOutcomes(
+      outcome('初'.repeat(100), 'length', 1),
+      outcome(`${'续'.repeat(400)}。`, 'stop', 2),
+    )
+    const cadence = (over: Partial<InstitutionCadence> & Pick<InstitutionCadence, 'cadenceId' | 'name' | 'axis' | 'interval'>): InstitutionCadence => ({
+      anchorChapter: null,
+      anchorStoryDay: null,
+      fallbackIntervalChapters: null,
+      note: '',
+      chapterNumber: null,
+      evidence: '',
+      source: 'author',
+      createdAt: '',
+      updatedAt: '',
+      ...over,
+    })
+    const { callbacks, context, command } = setup({
+      runtime,
+      wordsTarget: 500,
+      chapterNumber: 5,
+      characters: ['林岚'],
+      previousFinalizedContent: '第四章定稿原文。',
+      cadences: [
+        // 锚 2、每 10 章、本章 5 ⇒ 未到
+        cadence({ cadenceId: 'c:monthly', name: '月例', axis: 'chapter', interval: 10, anchorChapter: 2 }),
+        // 锚 2、每 2 章、本章 5 ⇒ 到期
+        cadence({ cadenceId: 'c:remit', name: '送账日', axis: 'chapter', interval: 2, anchorChapter: 2 }),
+        // 日序轴没有按章降级 + 本章日序不可知 ⇒ 未知
+        cadence({ cadenceId: 'c:patrol', name: '巡夜', axis: 'story-day', interval: 3, anchorChapter: 2, anchorStoryDay: 9 }),
+      ],
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const initial = runtime.complete.mock.calls[0]![0].messages
+      .find(message => message.role === 'user')!.content
+    expect(initial).toContain('【制度（周期事件：到没到点）】')
+    expect(initial).toContain('- 送账日 — 每2章一次；上次：第2章（作者登记）⇒ 本章：到期')
+    expect(initial).toContain('- 巡夜 — 每3日一次；上次：第2章（书中第9日，作者登记）⇒ 本章：未知（本章日序不可知）')
+    expect(initial).toContain('- 月例 — 每10章一次；上次：第2章（作者登记）⇒ 本章：未到')
+    expect(initial.indexOf('送账日')).toBeLessThan(initial.indexOf('巡夜'))
+    expect(initial.indexOf('巡夜')).toBeLessThan(initial.indexOf('月例'))
+
+    const continuation = runtime.complete.mock.calls[1]![0].messages
+      .find(message => message.role === 'user')!.content
+    expect(continuation).toContain('【制度（周期事件：到没到点）】')
+    expect(continuation).toContain('送账日')
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('制度 3 条'))
   })
 
   it('previews only authored text before completion and reconciles to the persisted terminal draft', async () => {
