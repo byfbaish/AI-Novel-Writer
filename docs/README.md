@@ -41,6 +41,7 @@ docs/
 | 查 **Prompt 组装 / 材料准入 / 去重 / 缓存** | [`design/prompt/`](design/prompt/) |
 | 查 **架构五层 / 故事弧 / 阶段结构 / 一致性校验** | [`design/architecture/`](design/architecture/) |
 | 查 **审稿链**（材料去重、目标准入、序数断言） | [`design/review/`](design/review/) |
+| **行业对齐 / 阶段目标（W7 · W8 · S×5）** | [`design/architecture/industry-alignment-and-stage-goals.md`](design/architecture/industry-alignment-and-stage-goals.md) —— **写任何设计稿前先读 §5 的四问** |
 | 查**已定的、不可逆的决定** | [`adr/`](adr/) |
 | 查**为什么没采纳某方案** | `design/<主题>/…-assessment.md`，或 `research/` |
 | 查 **Program v3 原始合同 / 审计证据** | `plans/novel-quality-*/`、[`research/novel-quality-modernization/`](research/novel-quality-modernization/) 🔒 冻结 |
