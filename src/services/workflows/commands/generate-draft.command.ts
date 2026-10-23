@@ -67,6 +67,7 @@ import {
   type CadenceStatus,
   type InstitutionCadence,
 } from '../../../shared/institution-cadence'
+import type { KnowledgeStateDefinition } from '../../../shared/knowledge-state'
 import { extractWorldBuildingRules } from '../../../shared/worldbuilding-rules'
 import {
   assembleChapterMaterials,
@@ -944,6 +945,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
 
     // P1-1 制度：判定要用到本章位置，所以放在定稿材料之后（日序锚从那一步来）。
     const cadences = await this.readCadences(expectedProjectPath, projectSession, currentStoryDayOffset)
+    // P1-1 信息流：谁知道什么。**期界在这里落**（`learnedChapter > 本章` 一律不取），
+    // 所以第 1 章也能安全调用 —— 它只会取到「第 1 章之前就知道」的行，而那通常是空的。
+    const knowledgeStates = await this.readKnowledgeStates(expectedProjectPath, projectSession)
 
     if (defaultMain && earlyRecovery?.selectedDraftIds.length && !earlyRecovery.selectedDrafts)
       throw new Error('GENERATION_DRAFT_SOURCE_CHANGED')
@@ -1021,6 +1025,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           facts: consultationFacts,
           items: keyItems,
           cadences,
+          knowledge: knowledgeStates,
+          chapterCharacters: this.chapterInfo.characters,
           rules: extractWorldBuildingRules(worldBuildingSource),
         },
       })
@@ -1041,10 +1047,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // 只报条数、不报内容（公开日志不放正文）。作者据此判断这一轮到底注入了没有，
     // 不必每次都去翻 prompt trace。
     if (chapterMaterials.prewrite.factCount > 0 || chapterMaterials.prewrite.ruleCount > 0
-      || chapterMaterials.prewrite.itemCount > 0 || chapterMaterials.prewrite.cadenceCount > 0) {
+      || chapterMaterials.prewrite.itemCount > 0 || chapterMaterials.prewrite.cadenceCount > 0
+      || chapterMaterials.prewrite.knowledgeCount > 0) {
       callbacks.log(uiText(
-        `  已注入写前查阅：前文事实 ${chapterMaterials.prewrite.factCount} 条 / 关键物品 ${chapterMaterials.prewrite.itemCount} 条 / 制度 ${chapterMaterials.prewrite.cadenceCount} 条 / 本书规则 ${chapterMaterials.prewrite.ruleCount} 条`,
-        `  Injected pre-writing reference: ${chapterMaterials.prewrite.factCount} facts / ${chapterMaterials.prewrite.itemCount} key items / ${chapterMaterials.prewrite.cadenceCount} cadences / ${chapterMaterials.prewrite.ruleCount} world rules`,
+        `  已注入写前查阅：前文事实 ${chapterMaterials.prewrite.factCount} 条 / 关键物品 ${chapterMaterials.prewrite.itemCount} 条 / 制度 ${chapterMaterials.prewrite.cadenceCount} 条 / 知情 ${chapterMaterials.prewrite.knowledgeCount} 条 / 本书规则 ${chapterMaterials.prewrite.ruleCount} 条`,
+        `  Injected pre-writing reference: ${chapterMaterials.prewrite.factCount} facts / ${chapterMaterials.prewrite.itemCount} key items / ${chapterMaterials.prewrite.cadenceCount} cadences / ${chapterMaterials.prewrite.knowledgeCount} knowledge states / ${chapterMaterials.prewrite.ruleCount} world rules`,
       ))
     }
     const admittedCandidateSourceIds = new Set(chapterMaterials.selection.included
@@ -2457,6 +2464,34 @@ ${params.candidate.text}`,
         // 同状态按名字的码元序（不用 localeCompare：它的结果随宿主 locale 变，测试会飘）。
         .sort((left, right) => rank[left.evaluation.status] - rank[right.evaluation.status]
           || (left.cadence.name < right.cadence.name ? -1 : left.cadence.name > right.cadence.name ? 1 : 0))
+    } catch { return [] }
+  }
+
+  /**
+   * 读取作者登记的知情关系（谁知道什么），并在此处完成**期界过滤**（P1-1 信息流）。
+   *
+   * 两道闸都在这里，渲染层不重复判：
+   * 1. `learnedChapter <= 本章` —— 未来的知识就是剧透，一律不取。第 1 章也能安全调用。
+   * 2. `refState === 'valid'` —— 引用已对不上定稿（`stale` / `unverifiable`）的行不注入；
+   *    它们指的是「这条登记失效了」，不是「这个角色不知道」，所以既不能注入也不能反着读。
+   *
+   * 排序（本章出场角色优先）在共享层按 `chapterCharacters` 做，这里只透传本章角色名。
+   * 失败降级成空数组：这一格缺了不该让整章生成停摆（与关键物品、制度同一纪律）。
+   */
+  private async readKnowledgeStates(
+    projectPath: string,
+    projectSession: ProjectSessionContext,
+  ): Promise<KnowledgeStateDefinition[]> {
+    try {
+      const result = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:knowledge-list',
+        projectPath,
+      ) as { success?: boolean; entries?: KnowledgeStateDefinition[] }
+      if (!result?.success) return []
+      const chapterNumber = this.chapterInfo.chapterNumber
+      return (result.entries ?? [])
+        .filter(entry => entry.learnedChapter <= chapterNumber && entry.refState === 'valid')
     } catch { return [] }
   }
 

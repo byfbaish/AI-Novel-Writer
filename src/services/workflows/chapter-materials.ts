@@ -12,6 +12,7 @@ import type { ReviewMaterialIdentity } from '../../shared/review-revision-genera
 import { buildPrewriteConsultationBlock, type PrewriteFact } from '../../shared/prewrite-consultation'
 import type { KeyItemDefinition } from '../../shared/key-item'
 import type { CadenceEntry } from '../../shared/institution-cadence'
+import type { KnowledgeStateDefinition } from '../../shared/knowledge-state'
 import type { WorldBuildingRule } from '../../shared/worldbuilding-rules'
 import { promptLanguageText } from '../prompt-language'
 import {
@@ -131,7 +132,7 @@ export interface ChapterMaterialAssembly extends ChapterMaterialBundle {
    * 只回报条数、不回报内容 —— 与「公开日志不放正文」同一原则。调用方据此写步骤日志，
    * 作者能一眼看出这一轮到底注入了没有、注了几条（而不是只能翻 prompt trace）。
    */
-  prewrite: { factCount: number; itemCount: number; cadenceCount: number; ruleCount: number }
+  prewrite: { factCount: number; itemCount: number; cadenceCount: number; knowledgeCount: number; ruleCount: number }
 }
 
 /**
@@ -474,6 +475,13 @@ export async function assembleChapterMaterials(input: {
     items?: readonly KeyItemDefinition[]
     /** P1-1 制度（周期事件：到没到点）。已由调用方按本章位置判定并排序。 */
     cadences?: readonly CadenceEntry[]
+    /**
+     * P1-1 信息流（谁知道什么）。调用方**必须**先滤掉未来章（`learnedChapter > 本章`）与
+     * 失效引用（`refState !== 'valid'`）—— 本节渲染层不知道本章号。
+     */
+    knowledge?: readonly KnowledgeStateDefinition[]
+    /** 本章出场角色名：只服务知情节的「本章角色优先」排序。 */
+    chapterCharacters?: readonly string[]
     rules?: readonly WorldBuildingRule[]
   }
 }): Promise<ChapterMaterialAssembly> {
@@ -809,6 +817,7 @@ export async function assembleChapterMaterials(input: {
       factCount: consultation.factCount,
       itemCount: consultation.itemCount,
       cadenceCount: consultation.cadenceCount,
+      knowledgeCount: consultation.knowledgeCount,
       ruleCount: consultation.ruleCount,
     },
   }

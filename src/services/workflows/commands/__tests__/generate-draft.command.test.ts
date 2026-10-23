@@ -13,6 +13,7 @@ import type {
 import type { NarrativeThreadView } from '../../../../shared/narrative-thread'
 import type { KeyItemDefinition } from '../../../../shared/key-item'
 import type { InstitutionCadence } from '../../../../shared/institution-cadence'
+import type { KnowledgeStateDefinition } from '../../../../shared/knowledge-state'
 import {
   createGenerationRuntime,
   type GenerationRuntime,
@@ -429,6 +430,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     keyItems?: KeyItemDefinition[]
     /** P1-1 期 2：作者登记的周期事件（制度）。缺省空 = 本项目还没登记。 */
     cadences?: InstitutionCadence[]
+    /** P1-1 期 3：作者登记的知情关系（谁知道什么）。缺省空 = 本项目还没登记。 */
+    knowledgeStates?: KnowledgeStateDefinition[]
     /** P0-1：哪些章判定为「前提已变」。缺省空 = 正常路径（阻断用例显式给值）。 */
     staleChapters?: number[]
     previousFinalizedContent?: string
@@ -592,6 +595,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       if (channel === 'db:key-items-list') return { success: true, items: options.keyItems ?? [] }
       // P1-1 期 2：制度同样每章都会读（第 1 章也可能一开场就是送账日），缺省给空表。
       if (channel === 'db:cadences-list') return { success: true, cadences: options.cadences ?? [] }
+      if (channel === 'db:knowledge-list') return { success: true, entries: options.knowledgeStates ?? [] }
       throw new Error(`unexpected IPC: ${channel}`)
     })
     vi.stubGlobal('window', {
@@ -4059,6 +4063,75 @@ ${headingPrefix}第3章：潮门
     expect(continuation).toContain('【制度（周期事件：到没到点）】')
     expect(continuation).toContain('送账日')
     expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('制度 3 条'))
+  })
+
+  /**
+   * P1-1 期 3 信息流：作者登记的知情关系进写前查阅。
+   *
+   * 四条断言是这个功能的验收口径：
+   * 1. 首发与续写轮**都**带（续写轮不带模板变量，只带材料块）；
+   * 2. **本章出场角色排前面**（即便别人得知得更晚）；
+   * 3. **未来章的行没有进上下文**（`learnedChapter > 本章` = 剧透）；
+   * 4. 引用失效（`stale`）的行不注入 —— 它指「这条登记对不上定稿」，不是「这个角色不知道」。
+   */
+  it('P1-1 knowledge: injects on-stage characters first and never leaks future knowledge', async () => {
+    const runtime = fakeOutcomes(
+      outcome('初'.repeat(100), 'length', 1),
+      outcome(`${'续'.repeat(400)}。`, 'stop', 2),
+    )
+    const knowledge = (over: Partial<KnowledgeStateDefinition> & Pick<KnowledgeStateDefinition, 'knowledgeId' | 'characterName'>): KnowledgeStateDefinition => ({
+      characterId: `character:${over.knowledgeId}`,
+      factChapter: 3,
+      factEvidence: '灵根检测结果被人改过',
+      factEvidenceHash: 'a'.repeat(64),
+      factKey: 'kf:0123456789abcdef',
+      learnedChapter: 4,
+      evidence: '',
+      source: 'author',
+      refState: 'valid',
+      createdAt: '',
+      updatedAt: '',
+      ...over,
+    })
+    const { callbacks, context, command } = setup({
+      runtime,
+      wordsTarget: 500,
+      chapterNumber: 5,
+      characters: ['林岚'],
+      previousFinalizedContent: '第四章定稿原文。',
+      knowledgeStates: [
+        // 本章出场 ⇒ 即便得知得更早（第 4 章）也排前面
+        knowledge({ knowledgeId: 'k:linlan', characterName: '林岚', learnedChapter: 4 }),
+        // 得知得更晚（第 5 章），但不在本章出场名单里 ⇒ 排后面
+        knowledge({ knowledgeId: 'k:wanghao', characterName: '王浩', learnedChapter: 5 }),
+        // 未来才知道 ⇒ 剧透，一律不注入
+        knowledge({ knowledgeId: 'k:zhaoliu', characterName: '赵六', learnedChapter: 12, factEvidence: '未来才知道的秘密' }),
+        // 引用已失效 ⇒ 不注入（它指的是「登记对不上定稿」）
+        knowledge({ knowledgeId: 'k:qianqi', characterName: '钱七', refState: 'stale', factEvidence: '已从定稿消失的旧说法' }),
+      ],
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const initial = runtime.complete.mock.calls[0]![0].messages
+      .find(message => message.role === 'user')!.content
+    expect(initial).toContain('【知情（谁知道什么）】')
+    expect(initial).toContain('- 林岚：知道（事实出处：第3章「灵根检测结果被人改过」；自第4章得知）')
+    expect(initial).toContain('- 王浩：知道（事实出处：第3章「灵根检测结果被人改过」；自第5章得知）')
+    expect(initial.indexOf('- 林岚：')).toBeLessThan(initial.indexOf('- 王浩：'))
+    // 期界：未来的行一个字都不能进上下文。
+    expect(initial).not.toContain('赵六')
+    expect(initial).not.toContain('未来才知道的秘密')
+    // 失效引用不注入。
+    expect(initial).not.toContain('钱七')
+    expect(initial).not.toContain('已从定稿消失的旧说法')
+
+    const continuation = runtime.complete.mock.calls[1]![0].messages
+      .find(message => message.role === 'user')!.content
+    expect(continuation).toContain('【知情（谁知道什么）】')
+    expect(continuation).toContain('林岚：知道')
+    expect(continuation).not.toContain('赵六')
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('知情 2 条'))
   })
 
   it('previews only authored text before completion and reconciles to the persisted terminal draft', async () => {

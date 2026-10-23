@@ -39,6 +39,7 @@ import type {
 } from './resource-ledger'
 import type { KeyItemDefinition, KeyItemInput } from './key-item'
 import type { InstitutionCadence, InstitutionCadenceInput } from './institution-cadence'
+import type { KnowledgeFactCandidate, KnowledgeStateDefinition, KnowledgeStateInput } from './knowledge-state'
 import type {
   FinalizedContinuityProjection,
   FinalizedSourceReadResult,
@@ -1282,6 +1283,14 @@ export interface DatabaseChannels {
   'db:cadences-list': { args: [expectedProjectPath: string]; return: { success: boolean; cadences?: InstitutionCadence[]; error?: string } }
   'db:cadences-upsert': { args: [input: InstitutionCadenceInput, expectedProjectPath: string]; return: { success: boolean; cadenceId?: string; error?: string } }
   'db:cadences-delete': { args: [cadenceId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
+
+  // 7e. knowledge — P1-1 信息流（谁知道什么）。`-list` 返回**已算好 `refState` 与显示名**的记录：
+  // 失效三态由主进程仓储判定，渲染层与生成链都不自己拼（否则会长出第二套「这条事实还在不在」）。
+  'db:knowledge-list': { args: [expectedProjectPath: string]; return: { success: boolean; entries?: KnowledgeStateDefinition[]; error?: string } }
+  'db:knowledge-upsert': { args: [input: KnowledgeStateInput, expectedProjectPath: string]; return: { success: boolean; knowledgeId?: string; error?: string } }
+  'db:knowledge-delete': { args: [knowledgeId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
+  /** 只读：已定稿各章可用于引用的事实候选（面板选事实用，永不入库）。 */
+  'db:knowledge-fact-candidates': { args: [expectedProjectPath: string]; return: { success: boolean; candidates?: KnowledgeFactCandidate[]; error?: string } }
 
   // 沿用旧表
   'db:log-llm-call': { args: [call: Record<string, unknown>, expectedProjectPath: string]; return: { success: boolean } }

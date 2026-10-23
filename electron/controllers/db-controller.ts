@@ -90,6 +90,14 @@ import {
   upsertInstitutionCadence,
 } from '../repositories/institution-cadence-repository'
 import type { InstitutionCadenceInput } from '../../src/shared/institution-cadence'
+import {
+  deleteKnowledgeState,
+  hasKnowledgeSchema,
+  listFactCandidates,
+  listKnowledgeStates,
+  upsertKnowledgeState,
+} from '../repositories/knowledge-state-repository'
+import type { KnowledgeStateInput } from '../../src/shared/knowledge-state'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
 
@@ -157,6 +165,9 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   // P1-1 制度：只有写通道进集合。读通道（list）不进 —— 它不该在失败时被包成 {success:false}。
   'db:cadences-upsert',
   'db:cadences-delete',
+  // P1-1 信息流：同上，只有写通道进集合；`-list` 与 `-fact-candidates` 是只读，不进。
+  'db:knowledge-upsert',
+  'db:knowledge-delete',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -1464,6 +1475,62 @@ export function registerDatabaseController() {
       if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
       const result = deleteInstitutionCadence(db, cadenceId)
       return result.success ? { success: true } : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ============================================================
+  // P1-1 信息流（谁知道什么）。失效三态由仓储算好再返回 —— 渲染层与生成链都不自己判。
+  // ============================================================
+  ipcMain.handle('db:knowledge-list', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      // M16 之前 / 库未打开：降级成空列表，不报错（与资源、关键物品、制度同一纪律）。
+      if (!db || !hasKnowledgeSchema(db)) return { success: true, entries: [] }
+      return { success: true, entries: await listKnowledgeStates(db) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:knowledge-upsert', async (
+    _event,
+    input: KnowledgeStateInput,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = await upsertKnowledgeState(db, input)
+      return result.success
+        ? { success: true, knowledgeId: result.knowledgeId }
+        : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:knowledge-delete', async (_event, knowledgeId: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = deleteKnowledgeState(db, knowledgeId)
+      return result.success ? { success: true } : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:knowledge-fact-candidates', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: true, candidates: [] }
+      return { success: true, candidates: await listFactCandidates(db) }
     } catch (err) {
       return { success: false, error: String(err) }
     }

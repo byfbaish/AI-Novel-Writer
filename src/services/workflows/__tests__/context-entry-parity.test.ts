@@ -81,7 +81,7 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.text).toContain('- [timeline] 林岚抵达海港（来源第1章；证据：林岚抵达海港。）')
     expect(bundle.text).toContain('- （世界观·第 1 维【核心规则与体系漏洞】）灵潮每甲子退潮一次')
     expect(bundle.text.indexOf('【前文事实（')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
-    expect(bundle.prewrite).toEqual({ factCount: 1, itemCount: 0, cadenceCount: 0, ruleCount: 1 })
+    expect(bundle.prewrite).toEqual({ factCount: 1, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, ruleCount: 1 })
     expect(sha(bundle.text)).toBe('a006dfb730391c7a30b5aef5cc8da1fdebdaed34a70843a46d41245a79551107')
   })
 
@@ -119,9 +119,49 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.text).toContain('- 月例 — 每10章一次；上次：第12章（作者登记）⇒ 本章：到期')
     expect(bundle.text).toContain('- 送账日 — 每7日一次；上次：第12章（书中第9日，作者登记）⇒ 本章：未知（本章日序不可知）')
     expect(bundle.text.indexOf('【制度（周期事件')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
-    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 2, ruleCount: 0 })
+    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 2, knowledgeCount: 0, ruleCount: 0 })
     // 本条哈希是**新增**，不是改旧值：三条旧锚点在上面三条用例里一字未动。
     expect(sha(bundle.text)).toBe('9db07fa7929fba10a71c1509967fc68f617a7e3591f79c7171500251bd374455')
+  })
+
+  /**
+   * P1-1 期 3：知情节单独钉一条哈希（**新增，不是改旧值**）。
+   *
+   * 四条旧锚点（`dcca9697…` / `a006dfb7…` / `bddf8727…` / `9db07fa7…`）一字未改 ——
+   * `knowledge` 缺省/空数组时不产生任何字节；这一条只在**传入**时才生效。
+   *
+   * 这一条同时钉住「本章出场角色优先」：小郑得知得更晚（第 13 章），但顾长风在本章出场，
+   * 所以顾长风排在前面。排序错了两行的顺序就会换，哈希立刻变。
+   */
+  it('composes the knowledge state section when it is supplied', async () => {
+    const bundle = await assembleChapterMaterials({
+      ...baseline(),
+      prewrite: {
+        knowledge: [
+          {
+            knowledgeId: 'knowledge:xiaozheng', characterId: 'character:xiaozheng', characterName: '小郑',
+            factChapter: 9, factEvidence: '灵根检测结果被人改过',
+            factEvidenceHash: 'a'.repeat(64), factKey: 'kf:0123456789abcdef', learnedChapter: 13,
+            evidence: '', source: 'author', refState: 'valid', createdAt: '', updatedAt: '',
+          },
+          {
+            knowledgeId: 'knowledge:guchangfeng', characterId: 'character:guchangfeng', characterName: '顾长风',
+            factChapter: 9, factEvidence: '灵根检测结果被人改过',
+            factEvidenceHash: 'a'.repeat(64), factKey: 'kf:0123456789abcdef', learnedChapter: 12,
+            evidence: '', source: 'author', refState: 'valid', createdAt: '', updatedAt: '',
+          },
+        ],
+        chapterCharacters: ['顾长风'],
+      },
+    })
+    expect(bundle.text).toContain('【知情（谁知道什么）】')
+    expect(bundle.text).toContain('- 顾长风：知道（事实出处：第9章「灵根检测结果被人改过」；自第12章得知）')
+    expect(bundle.text).toContain('- 小郑：知道（事实出处：第9章「灵根检测结果被人改过」；自第13章得知）')
+    expect(bundle.text.indexOf('- 顾长风：')).toBeLessThan(bundle.text.indexOf('- 小郑：'))
+    expect(bundle.text.indexOf('【知情（谁知道什么）】')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
+    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 2, ruleCount: 0 })
+    // 本条哈希是**新增**，不是改旧值：上面四条锚点一字未动。
+    expect(sha(bundle.text)).toBe('7183dafbdafe42603ebcc64883098979d297fe9b326576c295941bad04d3192e')
   })
 
   it('fails explicitly when required author material alone exceeds the capacity', async () => {

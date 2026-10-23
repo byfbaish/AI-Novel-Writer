@@ -16,13 +16,14 @@ import { applyM12ChapterStalenessAck, createM12Migration, verifyM12ChapterStalen
 import { applyM13ContinuityChangeLog, createM13Migration, verifyM13ContinuityChangeLog } from './m13-continuity-change-log'
 import { applyM14KeyItems, createM14Migration, verifyM14KeyItems } from './m14-key-items'
 import { applyM15InstitutionCadences, createM15Migration, verifyM15InstitutionCadences } from './m15-institution-cadences'
+import { applyM16KnowledgeStates, createM16Migration, verifyM16KnowledgeStates } from './m16-knowledge-states'
 import { initializeLegacyBaselineSchema, applyBaselineTables } from './baseline-schema'
 import { ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
 import { SqliteSchemaAdapter, sqliteSchemaFingerprint } from './sqlite-schema-adapter'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-export const CURRENT_DESKTOP_SCHEMA_VERSION = 16
+export const CURRENT_DESKTOP_SCHEMA_VERSION = 17
 let installed: MigrationRegistry | undefined
 
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -132,7 +133,12 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
     const m15 = createM15Migration({ database: native,
       verifyKnownSchema: db => cadenceFingerprints.has(sqliteSchemaFingerprint(native(db)))
         && verifyM15InstitutionCadences(native(db)) })
-    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14, m15], [
+    for (const db of references) db.transaction(() => applyM16KnowledgeStates(db))()
+    const knowledgeSchemas = schemas(17), knowledgeFingerprints = new Set(knowledgeSchemas.map(item => item.fingerprint))
+    const m16 = createM16Migration({ database: native,
+      verifyKnownSchema: db => knowledgeFingerprints.has(sqliteSchemaFingerprint(native(db)))
+        && verifyM16KnowledgeStates(native(db)) })
+    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14, m15, m16], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),
       ...baselineSchemas, ...generationSchemas, ...identitySchemas,
       ...reviewCycleSchemas, ...importEffectSchemas, ...characterAssetSchemas, ...mergeSnapshotSchemas,
@@ -141,6 +147,7 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
       ...plotPlanSchemas, ...structuredRefsSchemas, ...rhythmProfileSchemas, ...storyDaySchemas,
       ...resourceLedgerSchemas, ...stalenessAckSchemas, ...changeLogSchemas, ...keyItemSchemas,
       ...cadenceSchemas,
+      ...knowledgeSchemas,
     ])
     return installed
   } finally { reference.close(); donor.close() }

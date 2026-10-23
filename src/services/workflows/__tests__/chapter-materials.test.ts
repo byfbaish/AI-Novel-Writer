@@ -1281,14 +1281,14 @@ describe('pre-writing consultation block', () => {
     expect(facts).toBeGreaterThan(author)
     expect(rules).toBeGreaterThan(facts)
     expect(boundary).toBeGreaterThan(rules)
-    expect(bundle.prewrite).toEqual({ factCount: 1, itemCount: 0, cadenceCount: 0, ruleCount: 1 })
+    expect(bundle.prewrite).toEqual({ factCount: 1, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, ruleCount: 1 })
   })
 
   it('缺省 prewrite 与传空 prewrite 逐字节相同（护栏靠这个成立）', async () => {
     const without = await assemble(base())
     const empty = await assemble({ ...base(), prewrite: {} })
     expect(without.text).toBe(empty.text)
-    expect(without.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 0, ruleCount: 0 })
+    expect(without.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, ruleCount: 0 })
     expect(without.text).not.toContain('【前文事实（')
     expect(without.text).not.toContain('【本书规则（')
     expect(without.text).not.toContain('【制度（')
@@ -1302,7 +1302,7 @@ describe('pre-writing consultation block', () => {
     })
     expect(bundle.text).toContain('【本书规则（')
     expect(bundle.text).not.toContain('【前文事实（')
-    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 0, ruleCount: 1 })
+    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, ruleCount: 1 })
   })
 
   it('关键物品排在事实之后、规则之前，且不传就零字节', async () => {
@@ -1321,7 +1321,7 @@ describe('pre-writing consultation block', () => {
     expect(withItems.text.indexOf('【作者资料')).toBeLessThan(withItems.text.indexOf('【关键物品（'))
     expect(withItems.text.indexOf('【关键物品（')).toBeLessThan(withItems.text.indexOf('【本书规则（'))
     expect(withItems.text.indexOf('【本书规则（')).toBeLessThan(withItems.text.indexOf('【后续计划边界'))
-    expect(withItems.prewrite).toEqual({ factCount: 0, itemCount: 1, cadenceCount: 0, ruleCount: 1 })
+    expect(withItems.prewrite).toEqual({ factCount: 0, itemCount: 1, cadenceCount: 0, knowledgeCount: 0, ruleCount: 1 })
 
     const without = await assemble(base())
     expect(without.text).not.toContain('【关键物品（')
@@ -1348,6 +1348,6 @@ describe('pre-writing consultation block', () => {
     expect(bundle.text.indexOf('【作者资料')).toBeLessThan(bundle.text.indexOf('【制度（周期事件'))
     expect(bundle.text.indexOf('【制度（周期事件')).toBeLessThan(bundle.text.indexOf('【本书规则（'))
     expect(bundle.text.indexOf('【本书规则（')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
-    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 1, ruleCount: 1 })
+    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 1, knowledgeCount: 0, ruleCount: 1 })
   })
 })

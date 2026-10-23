@@ -29,7 +29,7 @@ export type PlanningRecoverySaveSnapshot = EditorTabSaveSnapshot & {
 export interface EditorTab {
   id: string
   name: string
-  type: 'chapter' | 'outline' | 'character' | 'config' | 'diff' | 'chapter-card' | 'world-building' | 'resource-registry' | 'key-item-registry' | 'cadence-registry' | 'arch-file' | 'version-history' | 'review-report' | 'narrative-thread'
+  type: 'chapter' | 'outline' | 'character' | 'config' | 'diff' | 'chapter-card' | 'world-building' | 'resource-registry' | 'key-item-registry' | 'cadence-registry' | 'knowledge-registry' | 'arch-file' | 'version-history' | 'review-report' | 'narrative-thread'
   filePath?: string
   content?: string
   /** 架构文档已持久化的基准内容，用于跨 Tab/项目切换后恢复脏状态。 */
@@ -184,6 +184,8 @@ const PROJECT_SCOPED_BUILTIN_TYPES = new Set<EditorTab['type']>([
   'key-item-registry',
   // P1-1 期 2：制度登记独立 tab。同样必须在这里登记，否则两个项目共用一个 tab。
   'cadence-registry',
+  // P1-1 期 3：知情登记独立 tab。同上，漏登记会让两个项目共用同一个 tab。
+  'knowledge-registry',
   'chapter',
   'review-report',
   'version-history',
