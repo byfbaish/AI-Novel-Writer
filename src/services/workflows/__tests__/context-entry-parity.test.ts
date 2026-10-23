@@ -27,6 +27,9 @@ import { refineHistoryMaterials } from '../commands/refine-draft.command'
  * 再变一次（P1-1）：【后续计划边界】从「保留作者后续计划原文」改为「只列后续章节事件要点」的
  * 禁写边界，说明句的中段被重写（不再承诺逐字保留）；下方固定输入的 `futurePlans` 本身未变，
  * 因此哈希只差这一句说明。压缩（按章分组 / 首句截断）发生在上层 `generate-draft`，本层只管承载。
+ *
+ * **P0-2（2026-10-23）没有改动上面两条哈希**：新增的 `prewrite`（写前查阅）是**可选**入参，
+ * 缺省时不产生任何字节。带数据时的组合另钉一条用例 —— 既守住「没传就没变」，又守住「传了是这样」。
  */
 const sha = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex')
 
@@ -63,6 +66,23 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.omissions).toEqual([])
     expect(bundle.consumedFinalizedSources.map(source => source.draftId)).toEqual([1])
     expect(sha(bundle.text)).toBe('dcca9697eb84a99d24b9939aa19f1c80ce24f19bb1e7d1b969331119dd888a1e')
+  })
+
+  // P0-2：写前查阅两节进必需材料块。**缺省入参时下面两条既有哈希必须不变** ——
+  // 所以这条用例是**新增**一条带 prewrite 的钉死，而不是改旧值。
+  it('composes the pre-writing consultation sections when they are supplied', async () => {
+    const bundle = await assembleChapterMaterials({
+      ...baseline(),
+      prewrite: {
+        facts: [{ category: 'timeline', statement: '林岚抵达海港', sourceChapter: 1, evidence: '林岚抵达海港。' }],
+        rules: [{ dimension: 1, name: '', rule: '灵潮每甲子退潮一次' }],
+      },
+    })
+    expect(bundle.text).toContain('- [timeline] 林岚抵达海港（来源第1章；证据：林岚抵达海港。）')
+    expect(bundle.text).toContain('- （世界观·第 1 维【核心规则与体系漏洞】）灵潮每甲子退潮一次')
+    expect(bundle.text.indexOf('【前文事实（')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
+    expect(bundle.prewrite).toEqual({ factCount: 1, ruleCount: 1 })
+    expect(sha(bundle.text)).toBe('a006dfb730391c7a30b5aef5cc8da1fdebdaed34a70843a46d41245a79551107')
   })
 
   it('fails explicitly when required author material alone exceeds the capacity', async () => {

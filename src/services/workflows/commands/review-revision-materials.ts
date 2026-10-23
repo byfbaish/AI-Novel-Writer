@@ -1,5 +1,6 @@
 import { reviewRevisionAiBrief, reviewRevisionAuthorMaterial, type ReviewAuthorMaterialOmittable, type ReviewRevisionContext } from '../../../shared/review-revision-generation'
 import { keyEventsText } from '../../../shared/blueprint-key-events'
+import { renderPrewriteFactLine } from '../../../shared/prewrite-consultation'
 import { hashAuthorText } from '../../../shared/source-ref'
 import { promptLanguageText } from '../../prompt-language'
 import { selectReviewRevisionMaterials, unknownReviewMaterialIdentity, type ChapterMaterialIdentity, type ReviewRevisionMaterial } from '../chapter-materials'
@@ -14,9 +15,9 @@ export function reviewHistoryMaterials(frozen: ReviewRevisionContext, current: C
       text(`【第${item.chapterNumber}章${item === frozen.predecessor ? '已选保存前驱｜可能含未解决问题，不覆盖作者设定' : '定稿历史'}】`,
         `[Chapter ${item.chapterNumber} ${item === frozen.predecessor ? 'selected saved predecessor | unresolved issues may remain; does not override author settings' : 'finalized history'}]`),
       item.content,
+      // P0-2：正文链的「前文事实」也调这一行渲染，两条链对同一条事实只有一种措辞（判据 DM）。
       ...(item.projection?.sourceStatus === 'current' ? (item.projection.facts ?? []).map(fact =>
-        text(`- [${fact.category}] ${fact.statement}（来源第${fact.sourceChapter}章；证据：${fact.evidence}）`,
-          `- [${fact.category}] ${fact.statement} (source: Chapter ${fact.sourceChapter}; evidence: ${fact.evidence})`)) : []),
+        renderPrewriteFactLine(fact, frozen.writingLanguage)) : []),
     ].join('\n'),
   }))
 }

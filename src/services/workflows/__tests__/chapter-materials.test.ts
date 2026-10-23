@@ -1247,3 +1247,60 @@ describe('材料准入的脱敏收据（MaterialDecisionReceipt）', () => {
     )).toThrow('MATERIAL_DECISION_NOT_READY')
   })
 })
+
+/**
+ * P0-2 写前查阅：两节必须落在 `author:required` 里 —— 那是首轮与续写/压缩轮**唯一共用**
+ * 的材料块（续写轮不带模板变量）。这里只钉位置、条数与「缺省不改字节」这三件事，
+ * 渲染格式本身由 `prewrite-consultation.test.ts` 负责。
+ */
+describe('pre-writing consultation block', () => {
+  const base = () => ({
+    writingLanguage: 'zh-CN' as const,
+    authorProjectFacts: ['作者设定甲'],
+    characterProfiles: '主角：林岚',
+    futurePlans: '第三章：北塔揭晓',
+    references: [],
+    finalized: [{ chapterNumber: 1, draftId: 1, title: '第1章', content: '第一章正文。', evidence: [], includeEnding: true }],
+    candidates: [],
+    relevanceTerms: [],
+  })
+
+  it('两节插在【作者资料】之后、【后续计划边界】之前，并回报条数', async () => {
+    const bundle = await assemble({
+      ...base(),
+      prewrite: {
+        facts: [{ category: 'timeline', statement: '林岚抵达海港', sourceChapter: 1, evidence: '林岚抵达海港。' }],
+        rules: [{ dimension: 1, name: '', rule: '灵潮每甲子退潮一次' }],
+      },
+    })
+    const author = bundle.text.indexOf('【作者资料')
+    const facts = bundle.text.indexOf('【前文事实（')
+    const rules = bundle.text.indexOf('【本书规则（')
+    const boundary = bundle.text.indexOf('【后续计划边界')
+    expect(author).toBeGreaterThanOrEqual(0)
+    expect(facts).toBeGreaterThan(author)
+    expect(rules).toBeGreaterThan(facts)
+    expect(boundary).toBeGreaterThan(rules)
+    expect(bundle.prewrite).toEqual({ factCount: 1, ruleCount: 1 })
+  })
+
+  it('缺省 prewrite 与传空 prewrite 逐字节相同（护栏靠这个成立）', async () => {
+    const without = await assemble(base())
+    const empty = await assemble({ ...base(), prewrite: {} })
+    expect(without.text).toBe(empty.text)
+    expect(without.prewrite).toEqual({ factCount: 0, ruleCount: 0 })
+    expect(without.text).not.toContain('【前文事实（')
+    expect(without.text).not.toContain('【本书规则（')
+  })
+
+  it('只有规则时不产生空的事实节（第 1 章就是这种形态）', async () => {
+    const bundle = await assemble({
+      ...base(),
+      finalized: [],
+      prewrite: { rules: [{ dimension: 2, name: '', rule: '外门每月领取三枚' }] },
+    })
+    expect(bundle.text).toContain('【本书规则（')
+    expect(bundle.text).not.toContain('【前文事实（')
+    expect(bundle.prewrite).toEqual({ factCount: 0, ruleCount: 1 })
+  })
+})

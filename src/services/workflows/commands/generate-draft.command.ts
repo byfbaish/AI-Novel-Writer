@@ -53,12 +53,14 @@ import type {
   GenerationSession,
 } from '../../generation/generation-harness'
 import type { WritingLanguage } from '../../../shared/writing-language'
-import type { FinalizedContinuityProjection } from '../../../shared/finalized-continuity'
+import type { FinalizedContinuityFact, FinalizedContinuityProjection } from '../../../shared/finalized-continuity'
 import type { NarrativeThreadView } from '../../../shared/narrative-thread'
 import { promptLanguageText } from '../../prompt-language'
 import { countDraftUnits, draftAimLowUnits, draftTargetUnitRange } from '../../../shared/draft-units'
 import type { RecoveryChapterSource } from '../../../shared/recovery-candidate'
 import { characterStateFacts } from '../../../shared/character-state-lines'
+import type { PrewriteFact } from '../../../shared/prewrite-consultation'
+import { extractWorldBuildingRules } from '../../../shared/worldbuilding-rules'
 import {
   assembleChapterMaterials,
   ChapterMaterialCapacityError,
@@ -713,11 +715,14 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // P1-2a：架构里的「整节远期」设定（§3【隐喻与深层危机】）对正文只作边界、不逐字下发。
     // 否则写第 2 章时请求里已经躺着「终极谜团 / 零号档案 / 终极抉择」（ch2 实机：architecture
     // 6,854 字 = user 消息的 39.9%，是单块最大的材料）。fail-open：找不到该节则逐字返回。
-    const architectureProjection = projectArchitectureForDraft(
-      await this.readArchitecture(expectedProjectPath, projectSession, authoredConfigFacts),
-      writingLanguage,
-    )
+    const architectureSource = await this.readArchitecture(expectedProjectPath, projectSession, authoredConfigFacts)
+    const architectureProjection = projectArchitectureForDraft(architectureSource.text, writingLanguage)
     const architecture = architectureProjection.text
+    // P0-2：规则摘录取**落库的世界观原文**，不取投影后的 `architecture` —— 投影只保证
+    // 「能匹配到远期节标题」时才压第 3 维，标题被覆盖版改写时它 fail-open 逐字放行；
+    // 规则抽取必须自己按维度号排除第 3 维（判据 DP），不能把剧透防线挂在别处。
+    // 老项目可能只写了「核心世界观设定」而没有架构世界观，那时退回 `worldSetting`。
+    const worldBuildingSource = architectureSource.worldBuilding.trim() || (worldSetting ?? '').trim()
     // P1-3′ 可观测性：把这次投影（剥了哪节、省了多少字）登记给 trace，供事后核对。
     if (architectureProjection.projection) notePromptProjection(architectureProjection.projection)
     const projectPrompts = await this.readProjectPrompts(
@@ -880,6 +885,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     let finalizedSources: FinalizedMaterialSource[] = []
     let storyDayAnchorLine = ''
     let activeThreadContext = ''
+    // P0-2：前文事实只在第 2 章起才有（第 1 章没有「前文」）。本书规则则每章都要。
+    let consultationFacts: PrewriteFact[] = []
     if (!isFirstChapter) {
       const finalized = await this.readFinalizedMaterials(
         expectedProjectPath,
@@ -888,6 +895,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         this.chapterInfo.characters,
       )
       finalizedSources = finalized.sources
+      consultationFacts = finalized.consultationFacts
       // W2：把「上一章是第几天」作为一条可算术的锚点并进作者资料。
       // 缺日序时它写明「缺失」，不让模型退回按章号推算。
       storyDayAnchorLine = formatStoryDayAnchorLine(finalized.storyDayAnchors, {
@@ -987,6 +995,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           keyEventsText(this.chapterInfo.keyEvents),
           ...this.chapterInfo.characters,
         ],
+        // P0-2 写前查阅。规则在第 1 章也要（世界规则不受「有没有前文」影响）。
+        prewrite: {
+          facts: consultationFacts,
+          rules: extractWorldBuildingRules(worldBuildingSource),
+        },
       })
     } catch (error) {
       if (!(error instanceof ChapterMaterialCapacityError)) throw error
@@ -1000,6 +1013,14 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       throw new Error(uiText(
         '本章必需材料（作者资料、角色档案、后续计划、上一章正文）超出上下文容量，已停止生成。请精简这些内容后重试。',
         'The required material for this chapter (author facts, character profiles, future plans, previous chapter prose) exceeds the context capacity, so generation stopped. Trim it and try again.',
+      ))
+    }
+    // 只报条数、不报内容（公开日志不放正文）。作者据此判断这一轮到底注入了没有，
+    // 不必每次都去翻 prompt trace。
+    if (chapterMaterials.prewrite.factCount > 0 || chapterMaterials.prewrite.ruleCount > 0) {
+      callbacks.log(uiText(
+        `  已注入写前查阅：前文事实 ${chapterMaterials.prewrite.factCount} 条 / 本书规则 ${chapterMaterials.prewrite.ruleCount} 条`,
+        `  Injected pre-writing reference: ${chapterMaterials.prewrite.factCount} established facts / ${chapterMaterials.prewrite.ruleCount} world rules`,
       ))
     }
     const admittedCandidateSourceIds = new Set(chapterMaterials.selection.included
@@ -1988,11 +2009,18 @@ ${params.candidate.text}`,
   }
 
   // --- 抽取自原文件的辅助方法 ---
+  /**
+   * 读取「故事架构」原文用于 `{{architecture}}`。
+   *
+   * P0-2（2026-10-23）：额外回传**未经投影**的 `worldBuilding`，给「本书规则」摘录用。
+   * `text` 的语义与拼接顺序完全不变（既有 `split` 去重断言依赖它），只是把
+   * `core.worldbuilding` 这一段同时留了个原件——投影会压掉整节远期设定，摘录需要原始维度。
+   */
   private async readArchitecture(
     projectPath: string,
     projectSession: ProjectSessionContext,
     authoredConfigFacts: readonly string[],
-  ): Promise<string> {
+  ): Promise<{ text: string; worldBuilding: string }> {
     const core = await ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectPath)
     const duplicates = authoredFactFingerprints(authoredConfigFacts)
     const parts: string[] = []
@@ -2010,7 +2038,10 @@ ${params.candidate.text}`,
     // prompt 且没有任何优先级声明，模型会在两份表述之间自由取舍。实机核对见
     // docs/plans/llm-probe-observation-plan.md。章级内容一律由蓝图承载。
     if (core?.synopsis) append(synopsisSettingSectionsForDraft(core.synopsis))
-    return parts.filter(Boolean).join('\n\n---\n\n')
+    return {
+      text: parts.filter(Boolean).join('\n\n---\n\n'),
+      worldBuilding: typeof core?.worldbuilding === 'string' ? core.worldbuilding : '',
+    }
   }
 
   private async readProjectPrompts(
@@ -2154,6 +2185,14 @@ ${params.candidate.text}`,
     locatedFactCandidates: number
     /** 每章日序锚（含缺失章的 null）：正文侧据此给出「第几天」，缺失就明说。 */
     storyDayAnchors: StoryDaySource[]
+    /**
+     * P0-2 写前查阅：可注入的「前文事实」（陈述 + 来源章 + 逐字引文），新章在前。
+     *
+     * 只收 `timeline` / `plot` 两类：`character-state` 已由六槽承载
+     * （`readCharacterProfiles` → `characterStateFacts`），`open-thread` 已由活跃线索块承载；
+     * 同一轮再渲染一遍就是两份措辞不一致的同一件事。
+     */
+    consultationFacts: PrewriteFact[]
   }> {
     const FULL_WINDOW = 5
     let finalizedContinuity: FinalizedContinuityProjection[] = []
@@ -2168,23 +2207,28 @@ ${params.candidate.text}`,
 
     const selected = finalizedContinuity.flatMap(projection => {
       const isRecent = projection.chapterNumber >= currentChapter - FULL_WINDOW
-      const factEvidence = (projection.facts ?? []).filter(fact => {
+      // 相关度判据只有一份：证据定位与「前文事实」共用它。另写一套会让两块材料
+      // 对「哪条与本章相关」给出不同答案（既有断言「无关事实哨兵不得出现」依赖这一处）。
+      const relevantFacts = (projection.facts ?? []).filter(fact => {
         const entityRelevant = fact.entities.some(entity => currentEntities.includes(entity))
           || currentEntities.some(entity => (
             fact.statement.includes(entity) || fact.evidence.includes(entity)
           ))
         return isRecent || entityRelevant
-      }).map(fact => fact.evidence).filter(Boolean)
+      })
+      const factEvidence = relevantFacts.map(fact => fact.evidence).filter(Boolean)
       const candidateEvidence = (projection.characterStateCandidates ?? [])
         .filter(candidate => isRecent || currentEntities.includes(candidate.characterName))
         .map(candidate => candidate.value || candidate.characterName)
         .filter(Boolean)
       const evidence = [...new Set([...factEvidence, ...candidateEvidence])]
-      return evidence.length > 0 ? [{ projection, evidence }] : []
+      return evidence.length > 0 ? [{ projection, evidence, facts: relevantFacts }] : []
     }).sort((left, right) => right.projection.chapterNumber - left.projection.chapterNumber).slice(0, 12)
 
+    const consultationFacts: PrewriteFact[] = []
+    const seenFacts = new Set<string>()
     const sources: FinalizedMaterialSource[] = []
-    for (const { projection, evidence } of selected) {
+    for (const { projection, evidence, facts } of selected) {
       try {
         const sourceDraftId = projection.sourceStatus === 'stale' && projection.currentFinalizedDraftId
           ? projection.currentFinalizedDraftId : projection.draftId
@@ -2224,6 +2268,28 @@ ${params.candidate.text}`,
               ? { sourceIdentity: { kind: 'legacy-finalized' as const } }
               : {}),
         })
+        // P0-2：只有**本次确实读到已定稿正文**（来源身份校验通过）且投影不是过时/遗留的，
+        // 它的陈述才敢当「前文事实」注入。stale 投影的陈述就是被改掉的那一版
+        // （`chapter-materials.ts:414` 已明令旧陈述不进提示词），legacy 来源未知同理。
+        if (sourceRead.status === 'valid' && projection.sourceStatus !== 'stale' && projection.sourceStatus !== 'legacy') {
+          const isRelevant = (fact: FinalizedContinuityFact) =>
+            fact.entities.some(entity => currentEntities.includes(entity))
+            || currentEntities.some(entity => fact.statement.includes(entity) || fact.evidence.includes(entity))
+          const ordered = [...facts].sort((left, right) => Number(!isRelevant(right)) - Number(!isRelevant(left)))
+          for (const fact of ordered) {
+            if (fact.category !== 'timeline' && fact.category !== 'plot') continue
+            if (!fact.statement.trim() || !fact.evidence.trim()) continue
+            const key = `${fact.category}:${fact.statement.trim()}`
+            if (seenFacts.has(key)) continue
+            seenFacts.add(key)
+            consultationFacts.push({
+              category: fact.category,
+              statement: fact.statement.trim(),
+              sourceChapter: fact.sourceChapter,
+              evidence: fact.evidence.trim(),
+            })
+          }
+        }
       } catch {
         if (projection.chapterNumber === currentChapter - 1) continue
         sources.push({
@@ -2310,6 +2376,7 @@ ${params.candidate.text}`,
         storyDayOffset: projection.storyDayOffset ?? null,
         storyDayLabel: projection.storyDayLabel ?? null,
       })),
+      consultationFacts,
     }
   }
 

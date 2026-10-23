@@ -42,7 +42,7 @@ export interface SpaceConstraint {
 }
 
 /** 单条规则摘录的上限字数（宁短勿长：清单要一眼扫完） */
-const MAX_RULE_CHARS = 90
+export const SPACE_RULE_MAX_CHARS = 90
 /** 摘录条数上限 */
 const MAX_ENTRIES = 12
 
@@ -75,7 +75,32 @@ function cleanName(raw: string): string {
 
 function truncate(text: string): string {
   const flat = text.replace(/\s+/gu, ' ').trim()
-  return flat.length > MAX_RULE_CHARS ? `${flat.slice(0, MAX_RULE_CHARS)}…` : flat
+  return flat.length > SPACE_RULE_MAX_CHARS ? `${flat.slice(0, SPACE_RULE_MAX_CHARS)}…` : flat
+}
+
+/**
+ * 只做**段内条目解析**，不做标题定位：调用方只提供「空间结构」那一节的行。
+ *
+ * 存在的理由（P0-2，2026-10-23）：`worldbuilding-rules.ts` 要按五维统一切节，
+ * 第 4 维必须复用这里的三种形态解析（`**名称**`+`关键规则：` / 三列表格 / `- **名称**：描述`）；
+ * 若它再写一份，就会出现第三份「空间条目」解析，两处漂移后同一份世界观会给出两份规则。
+ * 因此把解析搬成可复用函数，`extractSpaceConstraints` 只保留「定位 → 调它」。
+ */
+export function extractSpaceConstraintsFromSection(section: readonly string[]): SpaceConstraint[] {
+  // 1) 显式结构：`**名称**` 独占行 + 关键规则，以及 markdown 表格。
+  //    两者合并（而不是「有 bold 就不看表格」）：一份世界观里两种写法可能并存，
+  //    少了表格那一段就等于静默漏掉半维规则。小节标题（如「长期舞台」）后面没有
+  //    关键规则，会被自然丢弃。
+  const explicit = mergeEntries([
+    ...collect(section, 'bold'),
+    ...collectFromTable(section),
+  ])
+  if (explicit.length > 0) return explicit.slice(0, MAX_ENTRIES)
+
+  // 2) 兜底：模型整体用 `Name: role + rule` 单行形态时（en 模板声明的形状），
+  //    才退到 inline 解析。之所以要求「前两种都为空」：zh 的「一次性与低频场景」也用
+  //    `- **名称**：描述` 列表，但那**不是**约束 —— 混进来只会稀释清单（宁漏勿误）。
+  return collect(section, 'inline').slice(0, MAX_ENTRIES)
 }
 
 /**
@@ -86,7 +111,7 @@ export function extractSpaceConstraints(worldbuilding: string | null | undefined
   if (!worldbuilding) return []
   const lines = worldbuilding.replace(/\r\n?/gu, '\n').split('\n')
 
-  // 1) 定位「空间结构」段：从该标题之后，到下一个同级或更高级标题为止。
+  // 定位「空间结构」段：从该标题之后，到下一个同级或更高级标题为止。
   let start = -1
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index].trim()
@@ -101,20 +126,7 @@ export function extractSpaceConstraints(worldbuilding: string | null | undefined
     section.push(lines[index])
   }
 
-  // 2) 显式结构：`**名称**` 独占行 + 关键规则，以及 markdown 表格。
-  //    两者合并（而不是「有 bold 就不看表格」）：一份世界观里两种写法可能并存，
-  //    少了表格那一段就等于静默漏掉半维规则。小节标题（如「长期舞台」）后面没有
-  //    关键规则，会被自然丢弃。
-  const explicit = mergeEntries([
-    ...collect(section, 'bold'),
-    ...collectFromTable(section),
-  ])
-  if (explicit.length > 0) return explicit.slice(0, MAX_ENTRIES)
-
-  // 3) 兜底：模型整体用 `Name: role + rule` 单行形态时（en 模板声明的形状），
-  //    才退到 inline 解析。之所以要求「前两种都为空」：zh 的「一次性与低频场景」也用
-  //    `- **名称**：描述` 列表，但那**不是**约束 —— 混进来只会稀释清单（宁漏勿误）。
-  return collect(section, 'inline').slice(0, MAX_ENTRIES)
+  return extractSpaceConstraintsFromSection(section)
 }
 
 /**

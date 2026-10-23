@@ -9,6 +9,8 @@ import {
   type MaterialDecisionDraft,
 } from '../../shared/generation-owner-contract'
 import type { ReviewMaterialIdentity } from '../../shared/review-revision-generation'
+import { buildPrewriteConsultationBlock, type PrewriteFact } from '../../shared/prewrite-consultation'
+import type { WorldBuildingRule } from '../../shared/worldbuilding-rules'
 import { promptLanguageText } from '../prompt-language'
 import {
   selectChapterSources,
@@ -121,6 +123,13 @@ export interface ChapterMaterialAssembly extends ChapterMaterialBundle {
   selection: Extract<SourceSelection, { decision: 'ready' }>
   /** 脱敏准入收据：随主进程冻结上下文一起持久化，并被恢复指纹绑定。 */
   decision: MaterialDecisionDraft
+  /**
+   * P0-2：实际进入必需材料块的「前文事实 / 本书规则」条数（已过条数与字数裁剪）。
+   *
+   * 只回报条数、不回报内容 —— 与「公开日志不放正文」同一原则。调用方据此写步骤日志，
+   * 作者能一眼看出这一轮到底注入了没有、注了几条（而不是只能翻 prompt trace）。
+   */
+  prewrite: { factCount: number; ruleCount: number }
 }
 
 /**
@@ -450,6 +459,17 @@ export async function assembleChapterMaterials(input: {
   candidates: readonly SelectedCandidateDraft[]
   relevanceTerms: readonly string[]
   budgetChars?: number
+  /**
+   * P0-2 写前查阅（W7）：前文事实（带章号 + 逐字引文）与本书规则（世界观原文摘录）。
+   *
+   * **可选**：缺省时不产生任何字节，材料块与 P0-2 之前逐字节相同 —— 这是
+   * `context-entry-parity` 的哈希护栏能继续成立的前提。两节各自的条数与字数上限
+   * 在 `prewrite-consultation.ts` / `worldbuilding-rules.ts` 里定死，本层不再裁剪。
+   */
+  prewrite?: {
+    facts?: readonly PrewriteFact[]
+    rules?: readonly WorldBuildingRule[]
+  }
 }): Promise<ChapterMaterialAssembly> {
   const writingLanguage = input.writingLanguage
   const omissions: ChapterMaterialOmission[] = []
@@ -517,10 +537,15 @@ export async function assembleChapterMaterials(input: {
   // ---- 必需材料（决定 1B）：作者资料 + 角色档案 + 后续计划是单一候选，----
   // ---- 装不下就整轮失败，绝不静默截断，也绝不让它挤掉别的块。            ----
   const authorFacts = [...new Set(input.authorProjectFacts.map(value => value.trim()).filter(Boolean))]
+  // P0-2 写前查阅：两节都进**必需**材料块，因为续写 / 压缩轮只带材料块、不带模板变量
+  // （`draftAuthorMaterialBlock`），放成可选材料就会被预算整块裁掉，等于没注入。
+  // 两节皆空时 `text` 为空串 ⇒ 下面逐字节不变（parity 哈希护栏依赖这一点）。
+  const consultation = buildPrewriteConsultationBlock(input.prewrite ?? {}, writingLanguage)
+  const consultationBlock = consultation.text ? `\n\n${consultation.text}` : ''
   const required = promptLanguageText(
     writingLanguage,
-    `【作者资料（保留原文；人物状态具有时点，不是永久约束）】\n${[...authorFacts, input.characterProfiles].filter(Boolean).join('\n\n') || '（无补充作者资料）'}\n\n【后续计划边界（只约束当前章，不是当前章任务）】\n以下只列后续章节的事件要点，用于防止本章提前执行；它是禁写边界，不是本章任务，也不是事件全文。明确安排在后续章节的知情变化、物品转交、行动和完成状态不得前移；允许不改变这些时点的铺垫。\n${input.futurePlans}`,
-    `[Author material (verbatim; character state is time-bound, not permanent)]\n${[...authorFacts, input.characterProfiles].filter(Boolean).join('\n\n') || '(no additional author material)'}\n\n[Future-plan boundary (constrains the current chapter; not a current-chapter task)]\nOnly the key points of later chapters' events are listed below, to prevent premature execution in this chapter; this is a boundary on what not to write, not a task list for this chapter, and not the full events. Knowledge changes, item transfers, actions, and completed states explicitly assigned to later chapters must not be moved earlier; foreshadowing that does not change those timings is allowed.\n${input.futurePlans}`,
+    `【作者资料（保留原文；人物状态具有时点，不是永久约束）】\n${[...authorFacts, input.characterProfiles].filter(Boolean).join('\n\n') || '（无补充作者资料）'}${consultationBlock}\n\n【后续计划边界（只约束当前章，不是当前章任务）】\n以下只列后续章节的事件要点，用于防止本章提前执行；它是禁写边界，不是本章任务，也不是事件全文。明确安排在后续章节的知情变化、物品转交、行动和完成状态不得前移；允许不改变这些时点的铺垫。\n${input.futurePlans}`,
+    `[Author material (verbatim; character state is time-bound, not permanent)]\n${[...authorFacts, input.characterProfiles].filter(Boolean).join('\n\n') || '(no additional author material)'}${consultationBlock}\n\n[Future-plan boundary (constrains the current chapter; not a current-chapter task)]\nOnly the key points of later chapters' events are listed below, to prevent premature execution in this chapter; this is a boundary on what not to write, not a task list for this chapter, and not the full events. Knowledge changes, item transfers, actions, and completed states explicitly assigned to later chapters must not be moved earlier; foreshadowing that does not change those timings is allowed.\n${input.futurePlans}`,
   )
   const sourced = promptLanguageText(
     writingLanguage,
@@ -774,6 +799,7 @@ export async function assembleChapterMaterials(input: {
     includedFinalizedFacts,
     consumedFinalizedSources,
     omissions: allOmissions,
+    prewrite: { factCount: consultation.factCount, ruleCount: consultation.ruleCount },
   }
 }
 
