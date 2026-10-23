@@ -71,7 +71,7 @@ X2/X3 决定"跨卷会不会失真"，X4 是 X2 与 findings 的原料。
 | 人物连续性     | character consistency              | 六槽自由文本 + 定稿期写回                                                                                                | ⚠️ 勉强          |
 | **物品连续性** | possession continuity              | ✅ **宿体已落地**（P1-1 期 1，M14 `key_items` + 登记页 + 写前查阅注入）；仍缺「转手未回填」的校验（属 P2-1 findings） | ⚠️ 能用，待校验 |
 | **能力连续性** | forgotten abilities                | 无                                                                                                             | ❌ 缺            |
-| **制度连续性** | world rules / social norms         | 无（费率只是展示文本）                                                                                                   | ❌ 缺            |
+| **制度连续性** | world rules / periodic obligations | ✅ **宿体已落地**（P1-1 期 2，M15 `institution_cadences` + 登记页 + 写前查阅「制度」节：四态 due/not_due/overdue/unknown）；仍缺「漏发/连发」的 findings | ⚠️ 能用，待校验 |
 | **信息流**   | who knows what                     | 无（知情边界没有任何结构）                                                                                                 | ❌ 缺            |
 | **写前查阅**  | consult the bible                  | 半缺：首轮有全量世界观（`readArchitecture` → `{{architecture}}`），但**续写轮没有**，且前文只有原文摘句、没有「陈述＋章号＋引文」索引；物品/信息流无宿体            | ❌ **硬伤（P0-2）** |
 | **卷级上下文** | previous-volume snapshot           | 无（设计稿要求 1,500 字卷末快照，代码零命中）                                                                                    | ❌ **硬伤**       |

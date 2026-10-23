@@ -6,7 +6,7 @@ import { formatResourceUri } from '../../../shared/project-paths'
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins, Package } from 'lucide-react'
+import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins, Package, CalendarClock } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { useDraftStore } from '../../../stores/draft-store'
@@ -454,6 +454,27 @@ function WorldBuildingGroup({
             </span>
             <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
               {text('关键物品', 'Key items')}
+            </span>
+          </div>
+          {/* P1-1 期 2：制度登记（周期事件）。与物品并列，但回答的是「到没到点」，不是「在谁手里」。 */}
+          <div
+            className="tree-item gap-1.5 cursor-pointer select-none"
+            style={{ paddingLeft: 26 }}
+            onClick={() => openBuiltinEditor(
+              'cadence-registry-editor',
+              text('制度（周期事件）', 'Cadences'),
+              'cadence-registry',
+            )}
+            title={text(
+              '登记月例、送账日、巡夜这类周期事件；生成时会判「这一章该不该发生」，不判「应发多少」',
+              'Register recurring events; generation decides whether one is due, never how much',
+            )}
+          >
+            <span className="flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+              <CalendarClock size={13} />
+            </span>
+            <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
+              {text('制度（周期事件）', 'Cadences')}
             </span>
           </div>
         </div>

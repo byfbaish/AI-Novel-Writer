@@ -83,6 +83,13 @@ import type {
 } from '../../src/shared/resource-ledger'
 import { deleteKeyItem, hasKeyItemSchema, listKeyItems, upsertKeyItem } from '../repositories/key-item-repository'
 import type { KeyItemInput } from '../../src/shared/key-item'
+import {
+  deleteInstitutionCadence,
+  hasInstitutionCadenceSchema,
+  listInstitutionCadences,
+  upsertInstitutionCadence,
+} from '../repositories/institution-cadence-repository'
+import type { InstitutionCadenceInput } from '../../src/shared/institution-cadence'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
 
@@ -147,6 +154,9 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   'db:resource-movements-replace-chapter',
   'db:key-items-upsert',
   'db:key-items-delete',
+  // P1-1 制度：只有写通道进集合。读通道（list）不进 —— 它不该在失败时被包成 {success:false}。
+  'db:cadences-upsert',
+  'db:cadences-delete',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -1408,6 +1418,51 @@ export function registerDatabaseController() {
       const db = getProjectDb()
       if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
       const result = deleteKeyItem(db, itemId)
+      return result.success ? { success: true } : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ============================================================
+  // P1-1 制度（周期事件：月例 / 签到 / 送账；只判该不该发生）
+  // ============================================================
+  ipcMain.handle('db:cadences-list', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      // M15 之前 / 库未打开：降级成空列表，不报错（与资源、关键物品同一纪律）。
+      if (!db || !hasInstitutionCadenceSchema(db)) return { success: true, cadences: [] }
+      return { success: true, cadences: listInstitutionCadences(db) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:cadences-upsert', async (
+    _event,
+    input: InstitutionCadenceInput,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = upsertInstitutionCadence(db, input)
+      return result.success
+        ? { success: true, cadenceId: result.cadenceId }
+        : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:cadences-delete', async (_event, cadenceId: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = deleteInstitutionCadence(db, cadenceId)
       return result.success ? { success: true } : { success: false, error: result.error }
     } catch (err) {
       return { success: false, error: String(err) }

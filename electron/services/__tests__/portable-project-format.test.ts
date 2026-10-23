@@ -75,8 +75,8 @@ describe('portable v7 field policy', () => {
       .all() as Array<{ name: string }>
     const fieldCount = tables.reduce((count, table) => count
       + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 57, fields: 534 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 57, fields: 534 })
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 58, fields: 547 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 58, fields: 547 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -111,7 +111,8 @@ describe('portable v7 field policy', () => {
     // + W6/M11 的 2 表 21 列（resources 13 列 / resource_movements 8 列）
     // + P0-1/M12 的 1 表 4 列（chapter_staleness_acknowledgements）+ M13 的 1 表 4 列（continuity_change_log）
     // + P1-1/M14 的 1 表 10 列（key_items）
-    expect(added).toHaveLength(179)
+    // + P1-1 期 2 / M15 的 1 表 13 列（institution_cadences）—— 计数随之 +13，属预期变化
+    expect(added).toHaveLength(192)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -198,7 +199,7 @@ describe('portable v7 field policy', () => {
         .all() as Array<{ name: string }>
       const fields = tables.reduce((count, table) => count
         + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
-      expect({ tables: tables.length, fields }).toEqual({ tables: 57, fields: 534 })
+      expect({ tables: tables.length, fields }).toEqual({ tables: 58, fields: 547 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)

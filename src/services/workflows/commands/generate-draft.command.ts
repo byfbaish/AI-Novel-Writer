@@ -61,6 +61,12 @@ import type { RecoveryChapterSource } from '../../../shared/recovery-candidate'
 import { characterStateFacts } from '../../../shared/character-state-lines'
 import type { PrewriteFact } from '../../../shared/prewrite-consultation'
 import type { KeyItemDefinition } from '../../../shared/key-item'
+import {
+  evaluateCadence,
+  type CadenceEntry,
+  type CadenceStatus,
+  type InstitutionCadence,
+} from '../../../shared/institution-cadence'
 import { extractWorldBuildingRules } from '../../../shared/worldbuilding-rules'
 import {
   assembleChapterMaterials,
@@ -888,6 +894,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     let activeThreadContext = ''
     // P0-2：前文事实只在第 2 章起才有（第 1 章没有「前文」）。本书规则则每章都要。
     let consultationFacts: PrewriteFact[] = []
+    // P1-1 制度：日序轴上「本章是第几天」没人知道（这一章还没写）。用**最近一个登记了
+    // 日序的已定稿章**当作当前位置 —— 它只会比真实日序早，所以逾期只会少报、不会多报。
+    let currentStoryDayOffset: number | null = null
     // P1-1：关键物品不受「有没有前文」影响 —— 第 1 章也可能一开场就有一把刀。
     const keyItems = await this.readKeyItems(expectedProjectPath, projectSession)
     if (!isFirstChapter) {
@@ -899,6 +908,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       )
       finalizedSources = finalized.sources
       consultationFacts = finalized.consultationFacts
+      // 晚于「最近一章」的日序不往回退：这里只取**最近一个非 null 的日序**，
+      // 中间有缺日序的章就跳过它（W2 的「缺就说缺」只约束给模型的锚点文案，
+      // 周期事件没有「第几天」这个输出，用更早的一天只会少报逾期）。
+      currentStoryDayOffset = finalized.storyDayAnchors
+        .filter(anchor => anchor.storyDayOffset !== null && anchor.storyDayOffset !== undefined)
+        .sort((left, right) => right.chapterNumber - left.chapterNumber)[0]?.storyDayOffset ?? null
       // W2：把「上一章是第几天」作为一条可算术的锚点并进作者资料。
       // 缺日序时它写明「缺失」，不让模型退回按章号推算。
       storyDayAnchorLine = formatStoryDayAnchorLine(finalized.storyDayAnchors, {
@@ -926,6 +941,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         .withPreviousEnding('')
         .withShortSummary('')
     }
+
+    // P1-1 制度：判定要用到本章位置，所以放在定稿材料之后（日序锚从那一步来）。
+    const cadences = await this.readCadences(expectedProjectPath, projectSession, currentStoryDayOffset)
 
     if (defaultMain && earlyRecovery?.selectedDraftIds.length && !earlyRecovery.selectedDrafts)
       throw new Error('GENERATION_DRAFT_SOURCE_CHANGED')
@@ -1002,6 +1020,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         prewrite: {
           facts: consultationFacts,
           items: keyItems,
+          cadences,
           rules: extractWorldBuildingRules(worldBuildingSource),
         },
       })
@@ -1022,10 +1041,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // 只报条数、不报内容（公开日志不放正文）。作者据此判断这一轮到底注入了没有，
     // 不必每次都去翻 prompt trace。
     if (chapterMaterials.prewrite.factCount > 0 || chapterMaterials.prewrite.ruleCount > 0
-      || chapterMaterials.prewrite.itemCount > 0) {
+      || chapterMaterials.prewrite.itemCount > 0 || chapterMaterials.prewrite.cadenceCount > 0) {
       callbacks.log(uiText(
-        `  已注入写前查阅：前文事实 ${chapterMaterials.prewrite.factCount} 条 / 关键物品 ${chapterMaterials.prewrite.itemCount} 条 / 本书规则 ${chapterMaterials.prewrite.ruleCount} 条`,
-        `  Injected pre-writing reference: ${chapterMaterials.prewrite.factCount} facts / ${chapterMaterials.prewrite.itemCount} key items / ${chapterMaterials.prewrite.ruleCount} world rules`,
+        `  已注入写前查阅：前文事实 ${chapterMaterials.prewrite.factCount} 条 / 关键物品 ${chapterMaterials.prewrite.itemCount} 条 / 制度 ${chapterMaterials.prewrite.cadenceCount} 条 / 本书规则 ${chapterMaterials.prewrite.ruleCount} 条`,
+        `  Injected pre-writing reference: ${chapterMaterials.prewrite.factCount} facts / ${chapterMaterials.prewrite.itemCount} key items / ${chapterMaterials.prewrite.cadenceCount} cadences / ${chapterMaterials.prewrite.ruleCount} world rules`,
       ))
     }
     const admittedCandidateSourceIds = new Set(chapterMaterials.selection.included
@@ -2406,6 +2425,38 @@ ${params.candidate.text}`,
         ...items.filter(item => item.holderCharacter && onStage.has(item.holderCharacter)),
         ...items.filter(item => !item.holderCharacter || !onStage.has(item.holderCharacter)),
       ]
+    } catch { return [] }
+  }
+
+  /**
+   * 读取作者登记的周期事件，按**本章位置**判定并排序（P1-1 制度）。
+   *
+   * 排序只服务一件事：这一章真要处理的那几条排前面（`due` → `overdue` → `unknown` → `not_due`）。
+   * 「未知」排在「未到」前面是刻意的：未到 = 已经确认过、这章不用管；未知 = 「我还不知道」，
+   * 作者越早看见越好。渲染侧的条数上限会从尾部裁，所以排在前面的就是最要紧的。
+   *
+   * `storyDayOffset` 由调用方给出（最近一个登记了日序的已定稿章）：新章自己的日序是 null ——
+   * 这一章还没写，没人知道它是第几天。
+   */
+  private async readCadences(
+    projectPath: string,
+    projectSession: ProjectSessionContext,
+    storyDayOffset: number | null,
+  ): Promise<CadenceEntry[]> {
+    try {
+      const result = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:cadences-list',
+        projectPath,
+      ) as { success?: boolean; cadences?: InstitutionCadence[] }
+      if (!result?.success) return []
+      const position = { chapterNumber: this.chapterInfo.chapterNumber, storyDayOffset }
+      const rank: Record<CadenceStatus, number> = { due: 0, overdue: 1, unknown: 2, not_due: 3 }
+      return (result.cadences ?? [])
+        .map(cadence => ({ cadence, evaluation: evaluateCadence(cadence, position) }))
+        // 同状态按名字的码元序（不用 localeCompare：它的结果随宿主 locale 变，测试会飘）。
+        .sort((left, right) => rank[left.evaluation.status] - rank[right.evaluation.status]
+          || (left.cadence.name < right.cadence.name ? -1 : left.cadence.name > right.cadence.name ? 1 : 0))
     } catch { return [] }
   }
 

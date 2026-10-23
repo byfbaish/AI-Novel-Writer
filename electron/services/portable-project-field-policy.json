@@ -22,6 +22,7 @@
   "m12Tables": ["chapter_staleness_acknowledgements"],
   "m13Tables": ["continuity_change_log"],
   "m14Tables": ["key_items"],
+  "m15Tables": ["institution_cadences"],
   "optionalFields": ["characters.avatar", "project_core.rhythm_profile", "summary_snapshots.story_day_offset", "summary_snapshots.story_day_label"],
   "deltaCharacterFields": ["character_id", "legacy_key", "static_provenance", "identity_revision", "retired"],
   "signedOverrides": {
@@ -120,6 +121,7 @@
     "import_runs": {"id":"H","purpose":"H","root_run_id":"D","effect_namespace":"R","source_fingerprint":"R","manifest_fingerprint":"R","authority_fingerprint":"R","legacy_source_fingerprint":"R","source_display_json":"R","locale":"H","stage":"H","status":"H","completed_batches_json":"H","last_error":"R","resumable":"H","cancel_requested":"H","execution_owner":"X","execution_epoch":"X","lease_expires_at":"X","total_chapters":"H","total_content_size":"H","manifest_chapter_count":"H","manifest_content_size":"H","manifest_word_count":"H","completed_chapters":"H","base_run_id":"H","created_at":"H","updated_at":"H","completed_at":"H"},
     "import_source_aliases": {"alias_digest":"D","alias_kind":"D","source_id":"D","created_at":"D"},
     "import_source_chapter_map": {"purpose":"D","source_id":"D","source_chapter_number":"D","chapter_number":"D"},
+    "institution_cadences": {"cadence_id":"D","name":"D","axis":"D","interval":"D","anchor_chapter":"D","anchor_story_day":"D","fallback_interval_chapters":"D","note":"D","chapter_number":"D","evidence":"D","source":"D","created_at":"D","updated_at":"D"},
     "llm_calls": {"id":"R","model_id":"R","model_name":"R","purpose":"R","prompt_tokens":"R","completion_tokens":"R","total_tokens":"R","duration_ms":"R","success":"R","error_message":"R","created_at":"R"},
     "narrative_thread_confirmations": {"id":"D","plan_id":"D","draft_id":"D","event_type":"D","evidence":"D","reason":"D","created_at":"D"},
     "narrative_thread_plans": {"id":"D","title":"D","type":"D","target_start_chapter":"D","target_end_chapter":"D","author_intent":"D","created_at":"D","updated_at":"D"},

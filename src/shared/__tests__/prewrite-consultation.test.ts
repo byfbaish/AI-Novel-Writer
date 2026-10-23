@@ -10,6 +10,7 @@ import {
   type PrewriteFact,
 } from '../prewrite-consultation'
 import { renderKeyItemLine, type KeyItemDefinition } from '../key-item'
+import { CADENCE_MAX_ITEMS, type CadenceEntry, type InstitutionCadence } from '../institution-cadence'
 import type { WorldBuildingRule } from '../worldbuilding-rules'
 
 const fact = (over: Partial<PrewriteFact> = {}): PrewriteFact => ({
@@ -39,6 +40,28 @@ const item = (over: Partial<KeyItemDefinition> = {}): KeyItemDefinition => ({
   createdAt: '',
   updatedAt: '',
   ...over,
+})
+
+const cadence = (over: Partial<InstitutionCadence> = {}): InstitutionCadence => ({
+  cadenceId: 'cadence:1',
+  name: '月例',
+  axis: 'chapter',
+  interval: 10,
+  anchorChapter: 12,
+  anchorStoryDay: null,
+  fallbackIntervalChapters: null,
+  note: '',
+  chapterNumber: null,
+  evidence: '',
+  source: 'author',
+  createdAt: '',
+  updatedAt: '',
+  ...over,
+})
+
+const dueEntry = (over: Partial<InstitutionCadence> = {}, name = '月例'): CadenceEntry => ({
+  cadence: cadence({ name, ...over }),
+  evaluation: { status: 'due', basis: 'chapter' },
 })
 
 describe('renderPrewriteFactLine', () => {
@@ -89,8 +112,11 @@ describe('renderPrewriteFactsSection', () => {
 
 describe('buildPrewriteConsultationBlock', () => {
   it('两节都空 ⇒ 空串（材料块逐字节不变，parity 哈希护栏靠这个成立）', () => {
-    expect(buildPrewriteConsultationBlock({}, 'zh-CN')).toEqual({ text: '', factCount: 0, itemCount: 0, ruleCount: 0 })
+    expect(buildPrewriteConsultationBlock({}, 'zh-CN'))
+      .toEqual({ text: '', factCount: 0, itemCount: 0, cadenceCount: 0, ruleCount: 0 })
     expect(buildPrewriteConsultationBlock({ facts: [], rules: [] }, 'zh-CN').text).toBe('')
+    // 传空 cadences 与不传逐字节相同：制度缺省必须零字节。
+    expect(buildPrewriteConsultationBlock({ cadences: [] }, 'zh-CN').text).toBe('')
   })
 
   it('只有事实时没有规则节，反之亦然', () => {
@@ -126,13 +152,14 @@ describe('buildPrewriteConsultationBlock', () => {
     expect(text).toContain('[World rules')
   })
 
-  it('三节都有时顺序是 事实 → 关键物品 → 规则', () => {
+  it('四节都有时顺序是 事实 → 关键物品 → 制度 → 规则', () => {
     const text = buildPrewriteConsultationBlock(
-      { facts: [fact()], items: [item()], rules: [rule()] },
+      { facts: [fact()], items: [item()], cadences: [dueEntry()], rules: [rule()] },
       'zh-CN',
     ).text
     expect(text.indexOf('【前文事实（')).toBeLessThan(text.indexOf('【关键物品（'))
-    expect(text.indexOf('【关键物品（')).toBeLessThan(text.indexOf('【本书规则（'))
+    expect(text.indexOf('【关键物品（')).toBeLessThan(text.indexOf('【制度（周期事件'))
+    expect(text.indexOf('【制度（周期事件')).toBeLessThan(text.indexOf('【本书规则（'))
   })
 })
 
@@ -176,5 +203,43 @@ describe('key items section', () => {
     expect(buildPrewriteConsultationBlock({ items }, 'zh-CN')).toMatchObject({
       factCount: 0, itemCount: PREWRITE_ITEMS_MAX_ITEMS, ruleCount: 0,
     })
+  })
+})
+
+/**
+ * 制度这一节（P1-1 期 2）。四件事：位置、零字节、上限、`unknown` 的措辞。
+ * 判定表本身由 `institution-cadence.test.ts` 负责，这里只钉它在组装层的位置与计数。
+ */
+describe('cadences section', () => {
+  it('制度排在关键物品之后、本书规则之前，并回报 cadenceCount', () => {
+    const block = buildPrewriteConsultationBlock({
+      items: [item()],
+      cadences: [dueEntry()],
+      rules: [rule()],
+    }, 'zh-CN')
+    expect(block.text).toContain('【制度（周期事件：到没到点）】')
+    expect(block.text).toContain('以下每条只回答「该不该发生」，不回答「应发多少」')
+    expect(block.text.indexOf('【关键物品（')).toBeLessThan(block.text.indexOf('【制度（周期事件'))
+    expect(block.text.indexOf('【制度（周期事件')).toBeLessThan(block.text.indexOf('【本书规则（'))
+    expect(block).toMatchObject({ factCount: 0, itemCount: 1, cadenceCount: 1, ruleCount: 1 })
+  })
+
+  it('unknown 渲染成「未知」而不是「未到」（缺失就说缺失，判据 DN 同型）', () => {
+    const block = buildPrewriteConsultationBlock({
+      cadences: [{
+        cadence: cadence({ axis: 'story-day', interval: 7, anchorStoryDay: 9, anchorChapter: 12 }),
+        evaluation: { status: 'unknown', basis: 'none', reason: 'story-day-missing' },
+      }],
+    }, 'zh-CN')
+    expect(block.text).toContain('未知（本章日序不可知）')
+    expect(block.text).not.toContain('未到')
+    expect(block.cadenceCount).toBe(1)
+  })
+
+  it('条数按上限截断，超出的整条丢弃（与其它节同一纪律）', () => {
+    const many = Array.from({ length: CADENCE_MAX_ITEMS + 3 }, (_, index) => dueEntry({}, `事件${index}`))
+    const block = buildPrewriteConsultationBlock({ cadences: many }, 'zh-CN')
+    expect(block.cadenceCount).toBe(CADENCE_MAX_ITEMS)
+    expect(block.text).not.toContain(`事件${CADENCE_MAX_ITEMS}`)
   })
 })

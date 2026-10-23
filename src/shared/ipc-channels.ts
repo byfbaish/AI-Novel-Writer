@@ -38,6 +38,7 @@ import type {
   ResourceMovementSource,
 } from './resource-ledger'
 import type { KeyItemDefinition, KeyItemInput } from './key-item'
+import type { InstitutionCadence, InstitutionCadenceInput } from './institution-cadence'
 import type {
   FinalizedContinuityProjection,
   FinalizedSourceReadResult,
@@ -1276,6 +1277,11 @@ export interface DatabaseChannels {
   'db:key-items-list': { args: [expectedProjectPath: string]; return: { success: boolean; items?: KeyItemDefinition[]; error?: string } }
   'db:key-items-upsert': { args: [input: KeyItemInput, expectedProjectPath: string]; return: { success: boolean; itemId?: string; error?: string } }
   'db:key-items-delete': { args: [itemId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
+
+  // 7d. cadences — P1-1 制度（周期事件：月例/签到/送账；只判「该不该发生」，不判「应发多少」）
+  'db:cadences-list': { args: [expectedProjectPath: string]; return: { success: boolean; cadences?: InstitutionCadence[]; error?: string } }
+  'db:cadences-upsert': { args: [input: InstitutionCadenceInput, expectedProjectPath: string]; return: { success: boolean; cadenceId?: string; error?: string } }
+  'db:cadences-delete': { args: [cadenceId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
 
   // 沿用旧表
   'db:log-llm-call': { args: [call: Record<string, unknown>, expectedProjectPath: string]; return: { success: boolean } }
