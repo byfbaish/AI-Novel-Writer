@@ -49,6 +49,7 @@
 |---|---|---|---|
 | 1 | 「定稿：只能动定稿链尾部」「改稿连锁 ❌ 缺」 | ✅ 已落地（ADR-0023，期 1–3） | 本轮实际落地 |
 | 2 | 「没有未回收伏笔的注入通道」（§2.2） | **伏笔早就注入了，而且带出处** | `generate-draft.command.ts` 的 `assembleChapterMaterials` + `readActiveNarrativeThreads`：每条形如 `- 标题 [status]（目标第 a–b 章；作者意图…；来源第 N 章：逐字引文）`，带条数/字符预算，第 1 章不注入 |
+| **3** | 「`worldbuilding` 不进正文，只有 A-1~A-4 在读它」（§1.1 / §2.2） | **世界规则在正文请求里**（首章【全书设定池】、后续章 systemSuffix）；**只有续写/压缩轮没有** | `readArchitecture`（`generate-draft.command.ts:1991-2014`）里 `append(core?.worldbuilding)`，经 `:851` `.withArchitecture()` 注入 `builtin-prompt-templates.ts:1106` / `:1216-1217`。W7 的真实缺口改为「续写轮无设定 + 无本章适用筛选与出处」（2026-10-23 晚，P0-2 立项前复核） |
 
 **第 2 条为什么重要**：照原报告做 W7，下一轮很可能**新建一套注入管道**，与现有 `assembleChapterMaterials` 打架。
 修正后 W7 的范围是：**复用伏笔那条现成范式**，只补三块（**世界规则 / 关键物品 / 信息流**），

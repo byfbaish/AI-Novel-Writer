@@ -423,6 +423,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     continuitySourceContents?: Record<number, string>
     invalidContinuitySourceIds?: number[]
     narrativeThreads?: NarrativeThreadView[]
+    /** P0-1：哪些章判定为「前提已变」。缺省空 = 正常路径（阻断用例显式给值）。 */
+    staleChapters?: number[]
     previousFinalizedContent?: string
     selectedCandidateDrafts?: Array<{
       chapterNumber: number
@@ -566,6 +568,19 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
             candidateId: `candidate-${recoveryCandidateSequence}`,
           },
         } as { success: boolean; candidate?: { candidateId: string }; error?: string }
+      }
+      // P0-1 期 2 加了「前章前提已变则拒绝写下一章」的闸门，本文件的用例测的都是正常路径，
+      // 所以默认回答「没有任何章处于 stale」。要测阻断请另写用例覆盖该通道。
+      if (channel === 'db:chapter-staleness-list') {
+        return {
+          success: true,
+          chapters: (options.staleChapters ?? []).map(chapterNumber => ({
+            chapterNumber,
+            state: 'stale' as const,
+            snapshotGeneration: 0,
+            staleFromChapter: chapterNumber,
+          })),
+        }
       }
       throw new Error(`unexpected IPC: ${channel}`)
     })
@@ -2041,6 +2056,25 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(invoke).not.toHaveBeenCalledWith('db:draft-create', expect.anything(), expect.anything(), expect.anything())
     expect(invoke).toHaveBeenCalledWith('db:continuity-read-source', 77, projectPath, expect.anything())
     expect(invoke).not.toHaveBeenCalledWith('db:draft-get-full', 77, projectPath, expect.anything())
+  })
+
+  it('P0-1: 前章定稿仍在但前提已变时拒绝写下一章（provider 一次都不调）', async () => {
+    // 与上一条的区别：那条是**没有**定稿来源，这条是**有但不可信**。
+    // 两种都要在调用模型之前拦下，否则等于拿一个已失效的前提继续写。
+    const runtime = fakeOutcomes(outcome('不应生成。'.repeat(125), 'stop'))
+    const { invoke, context, callbacks, command } = setup({
+      runtime,
+      chapterNumber: 2,
+      wordsTarget: 500,
+      previousFinalizedContent: '第 1 章定稿正文。',
+      staleChapters: [1],
+    })
+
+    await expect(command.execute({ step: {}, context, callbacks }))
+      .rejects.toThrow(/第 1 章的前提已变/u)
+
+    expect(runtime.complete).not.toHaveBeenCalled()
+    expect(invoke).not.toHaveBeenCalledWith('db:draft-create', expect.anything(), expect.anything(), expect.anything())
   })
 
   it('stops before the provider when the required previous finalized source is missing', async () => {
@@ -3822,6 +3856,83 @@ ${headingPrefix}第3章：潮门
       projectPath,
       expect.anything(),
     )
+  })
+
+  /**
+   * P0-2 写前查阅：前文事实（带章号 + 逐字引文）与本书规则（出处只标维度）。
+   *
+   * 两条断言是这个功能的**核心验收**：
+   * 1. 续写轮**同样**带着两节 —— 续写请求不带任何模板变量，只带材料块，这正是此前
+   *    「续写第二章起模型看不到世界观」的那个洞；
+   * 2. 第 3 维（隐喻与深层危机）的句子**一句都不能出现** —— 注入即剧透（判据 DP）。
+   */
+  it('P0-2: injects the pre-writing consultation into initial and continuation requests', async () => {
+    // wordsTarget 500 → 合格线 425；首稿 100 触发一次续写。
+    const runtime = fakeOutcomes(
+      outcome('初'.repeat(100), 'length', 1),
+      outcome(`${'续'.repeat(400)}。`, 'stop', 2),
+    )
+    const worldbuilding = [
+      '# 世界观',
+      '',
+      '### 1.【核心规则与体系漏洞】',
+      '',
+      '凡以血为引者，必须在三年内偿还同等灵力。',
+      '',
+      '### 3.【隐喻与深层危机】',
+      '',
+      '终极谜团：零号档案里记着谁的名字。',
+      '',
+      '### 5.【时间历法（日序与周期）】',
+      '',
+      '每旬逢五开市，闭市后禁止一切交易。',
+      '',
+    ].join('\n')
+    const { callbacks, context, command } = setup({
+      runtime,
+      wordsTarget: 500,
+      chapterNumber: 5,
+      characters: ['林岚'],
+      worldbuilding,
+      previousFinalizedContent: '第四章定稿原文。',
+      // 事实只在「确实读到已定稿正文」时才算数，所以这里必须走 valid 通道。
+      continuitySourceContents: { 41: '林岚在旧码头拒绝登船。' },
+      continuity: [{
+        draftId: 41,
+        chapterNumber: 4,
+        chapterTitle: '旧码头',
+        chapterNotes: '',
+        sourceStatus: 'current',
+        facts: [{
+          category: 'timeline',
+          entities: ['林岚'],
+          statement: '林岚在旧码头拒绝登船',
+          sourceChapter: 4,
+          evidence: '林岚在旧码头拒绝登船。',
+        }],
+      }],
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const initial = runtime.complete.mock.calls[0]![0].messages
+      .find(message => message.role === 'user')!.content
+    expect(initial).toContain('【前文事实（')
+    expect(initial).toContain('- [timeline] 林岚在旧码头拒绝登船（来源第4章；证据：林岚在旧码头拒绝登船。）')
+    expect(initial).toContain('【本书规则（')
+    expect(initial).toContain('（世界观·第 1 维【核心规则与体系漏洞】）')
+    // 判据 DP：远期反转不得进上下文
+    expect(initial).not.toContain('零号档案')
+    expect(initial).not.toContain('终极谜团')
+    // 单次请求内每节只出现一次（防空节重复拼接）
+    expect(initial.split('【前文事实（')).toHaveLength(2)
+    expect(initial.split('【本书规则（')).toHaveLength(2)
+
+    const continuation = runtime.complete.mock.calls[1]![0].messages
+      .find(message => message.role === 'user')!.content
+    expect(continuation).toContain('【前文事实（')
+    expect(continuation).toContain('【本书规则（')
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('写前查阅'))
   })
 
   it('previews only authored text before completion and reconciles to the persisted terminal draft', async () => {

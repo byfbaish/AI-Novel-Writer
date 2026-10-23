@@ -29,7 +29,7 @@
  */
 
 /** 五维编号（与内置模板的 1-5 一一对应）。 */
-type WorldBuildingDimension = 1 | 2 | 3 | 4 | 5
+export type WorldBuildingDimension = 1 | 2 | 3 | 4 | 5
 
 /** 五维齐备性检查结果。 */
 export interface WorldBuildingCompleteness {
@@ -182,8 +182,52 @@ export function inspectWorldBuildingCompleteness(text: string): WorldBuildingCom
   }
 }
 
+/** 一个维度区段：维度号 + 标题行原文 + 标题之后到下一个标题之前的原始行。 */
+export interface WorldBuildingDimensionSection {
+  dimension: WorldBuildingDimension
+  /** 维度标题行（已 trim，便于日志与调试）。 */
+  heading: string
+  /** 标题之后、下一个标题之前的原始行（保留空行）。 */
+  body: readonly string[]
+}
+
+/**
+ * 按五维标题把世界观正文切成区段，供各维条目解析器消费（P0-2「写前查阅」）。
+ *
+ * **为什么放在这里**：五维标题别名表（`DIMENSIONS`）与 `matchDimension` 是全项目唯一的维度定位实现。
+ * 此前 `space-constraints.ts` 另写过一份「空间结构」标题正则，`worldbuilding-rules.ts` 若再写一份就是第三份；
+ * 两处拼法一旦漂移，同一份世界观在不同链上会被切成不同的节。所以定位统一在这里，各处只做自己那一段的解析。
+ *
+ * **区段边界**：与 `space-constraints.ts` 的 `ANY_HEADING` 同口径 —— 下一个 markdown 标题**或**
+ * 以 `【` 开头的块标记行即结束。这不是随手定的：`withSpaceConstraints` 会往提示词尾部追加
+ * `★【空间约束（硬）】` 这类块，取同样的边界才能保证第 4 维在两条链上切出同一段。
+ *
+ * fail-open：文本为空或一个维度标题都没识别出来 ⇒ 返回 `[]`，不抛、不告警。
+ * 同一维度出现多次时只取**第一次**（与齐备性检查的 `present` 语义一致）。
+ */
+export function locateWorldBuildingSections(text: string | null | undefined): WorldBuildingDimensionSection[] {
+  if (!text) return []
+  const lines = text.replace(/\r\n?/gu, '\n').split('\n')
+  const sections: WorldBuildingDimensionSection[] = []
+  const seen = new Set<WorldBuildingDimension>()
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? ''
+    const dimension = matchDimension(line)
+    if (dimension === null || seen.has(dimension)) continue
+    seen.add(dimension)
+    const body: string[] = []
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      const next = lines[cursor] ?? ''
+      if (HEADING_LINE.test(next) || next.trimStart().startsWith('【')) break
+      body.push(next)
+    }
+    sections.push({ dimension, heading: line.trim(), body })
+  }
+  return sections
+}
+
 /** 报错文案里的维度标签。 */
-function dimensionLabel(dimension: number, language: 'zh-CN' | 'en-US'): string {
+export function dimensionLabel(dimension: number, language: 'zh-CN' | 'en-US'): string {
   const rule = DIMENSIONS.find((entry) => entry.dimension === dimension)
   if (!rule) return String(dimension)
   return language === 'en-US'
