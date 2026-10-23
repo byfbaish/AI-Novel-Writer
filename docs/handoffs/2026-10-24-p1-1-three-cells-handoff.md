@@ -1,7 +1,7 @@
 # P1-1 剩余三格交接（制度 / 知情 / 能力）
 
-> **状态**：期 2 ✅ 已合入（`ad2e0c58`）· 期 3 ✅ 已合入（`610c3c9e`）· **期 4a 未开工（待形状提案 + 作者签 G4a）**
-> **日期**：2026-10-24 凌晨 · 分支 `exp/resource-ledger` · schema 15 → **17**
+> **状态**：期 2 ✅ 已合入（`ad2e0c58`）· 期 3 ✅ 已合入（`610c3c9e`）· **期 4a ✅ G4a 已签（2026-10-24）→ 期 4b（M17）可开工**
+> **日期**：2026-10-24 · 分支 `exp/resource-ledger` · schema 15 → **17**（4b 后 → 18）
 > **本稿定位**：接手人只看这一份就能继续施工。**实现细节在各期设计稿，本稿只写状态、判据、门与坑。**
 
 ---
@@ -27,7 +27,7 @@
 | 物品 possession | M14 | `key_items`（10 列） | ✅ | ✅【关键物品】 | ✅ 期 1（`b7c96853`） |
 | **制度 periodic obligations** | **M15** | **`institution_cadences`（13 列）** | ✅ | ✅【制度（周期事件：到没到点）】 | **✅ 期 2（`ad2e0c58`）** |
 | **知情 knowledge state** | **M16** | **`knowledge_states`（11 列）** | ✅ | ✅【知情（谁知道什么）】 | **✅ 期 3（`610c3c9e`）** |
-| 能力 power system | M17 | 未建 | — | — | **⏳ 期 4a：只交形状提案** |
+| 能力 power system | M17 | 未建 | — | — | **4a ✅ 已签（13 列，含 `evidence_scope`）· 4b ⏳ 可开工** |
 
 **写前查阅现在的节序**（`prewrite-consultation.ts:174-182`，改顺序会让四条哈希全翻）：
 
@@ -108,19 +108,36 @@
 
 ---
 
-## 6. 期 4 · 能力（M17，未开工）
+## 6. 期 4 · 能力（M17）
 
-**前置门 G4a 只签文档**：`docs/design/architecture/p1-1-power-system-shape-proposal.md` **不存在**，必须先写。
-写它需要的取样**在作者本机项目库里**（不在仓库）：
-`golden_finger`、`characters.abilities`、世界观第 1 维。取样后要回答的是「这本书的能力到底是哪几类形态、
-三类限制填得满吗」，而不是先建表。
+**期 4a ✅ 已签（2026-10-24）**：`docs/design/architecture/p1-1-power-system-shape-proposal.md`（301 行）。
+**形状以它的 §2.2 为准，13 列**：
 
-**已定形状**（不得再讨论）：`power_abilities(ability_id, name UNIQUE, form, hard_limit, weakness, cost_note,
-stage_chapter, stage_note, evidence, source, created_at, updated_at)`；`form` **不设 CHECK**（行业资料明确
-「类别界限并不分明，常是几种特性的混合体」，词表只作 UI `datalist` 提示）；三态 `active / ahead / undated`，
-**`ahead` 一律不注入**（剧透）。表名不叫 `abilities`（`characters.abilities` 是真实列名）。
+```
+ability_id · name(UNIQUE) · form · hard_limit · weakness · cost_note
+· stage_chapter · stage_note · evidence · evidence_scope · source · created_at · updated_at
+```
 
----
+取样是**在作者本机库上只读做的**（三库 schema 16 / 9 / 10；`golden_finger` 406 / 318 / 223 字；
+`abilities` 填了 7/8、8/9、12/12；「第 N 章」命中 **0**）。我复现过它的三条硬结论，见提案 §0.0。
+
+**4a 改掉的三处（4b 照新形状做，别照旧计划）**
+
+1. **新增 `evidence_scope`**（`golden-finger` / `worldbuilding` / `chapter`）：三本书的能力出处 **100% 是设定文本、0% 是章号**；
+   没这一列，UI 只能把「世界观第 1 维那句话」写成「来源第 3 章」= 伪造章号。**只有 `chapter` 档才允许出现章号。**
+2. **只登「本书级规则能力」，表里刻意没有 `character_id`**：角色技能留在 `characters.abilities`（已随角色卡进正文，`:2171`）。
+   再登一份就是第二套账。代价要记住：**配角「忘了自己有这个技能」这类 findings 仍然查不出来**（那是角色卡质量，另一期）。
+3. **`stage_chapter` 的真实默认是 `undated`**：`ahead` 是「作者手填章号才有」的开关，**4b 不得宣称「解决了剧透」**。
+
+**4b 的四条验收条件（我签 G4a 时写下的）**
+
+1. `evidence_scope` 三档各有测试：`chapter` 才渲染「来源第 N 章」，另两档渲染「作者登记」+ 出处域，**渲染行里不得出现章号**。
+2. `undated` 是主路径的测试 + `ahead` 只靠构造数据（`stage_chapter` 未来值）。
+3. 空字段整段省略 ⇒ **零字节测试**（这是对判据 DN 的刻意例外，设计稿要写理由）。
+4. 词表外 `form` 值读回来一字不差（不设 CHECK 的证明）。
+
+**仍照旧的部分**：`form` 不设 CHECK（`datalist` 提示）；表名不叫 `abilities`；不做次数/冷却/积分；
+插入位置 `【知情】` 之后、`【本书规则】` 之前；5 条 / 640 字；新增 `{abilities}` 哈希 + 「六节齐备」总哈希。
 
 ## 7. 团队与门（谁在哪签、失败过哪条）
 
@@ -161,12 +178,22 @@ ipc-channels / db-controller），并行必冲突，且四条哈希会被连续�
 - 便携/归档计数随迁移推进：54/516/161 → 59/558/203，`schemaVersion` 12 → 17。
 - 评审 §0 / §1 图 / §1.1 / §2.1 / §2.2 与台账 12.15 里「四类事实无宿体」「知情依赖 C1」等**过期状态句**已清。
 
+**发现但未修的两条既有缺陷（别当成新 bug，也别顺手改）**
+
+1. **【本书规则】在真实世界观里永远排不到第 5 维**：`DIMENSION_PRIORITY = [1,2,4,5]` + 逐维上限 3 + 总上限 8，
+   实测三库都**恰好 8 条**、分布全为 `{"1":3,"2":3,"4":2}` ⇒ **第 5 维（时间历法）0 条**。
+   修法（总上限提到 10 / 第 1 维降到 2）会改期 1 的语义与 `a006dfb7…` / `bddf8727…` 两条哈希，**另立项**。
+2. **`golden_finger` 从不进正文请求**：`withGoldenFinger` 全仓只有 `architecture.command.ts:1635/2130` 调用；
+   正文链 `novelConfigFacts` 的排除清单（`generate-draft.command.ts:811-818`）**含 `goldenFinger`**。
+   ⇒ 系统流/金手指题材里，模型写第 N 章时看不到「这个能力要付什么代价」。期 4b 的能力槽是**部分补**（只补作者登记的那几句），
+   不是全补；要彻底补得让 `golden_finger` 进材料块（另一期，且要考虑 640 字预算）。
+
 ---
 
 ## 10. 下一步
 
-1. **期 4a（丙）**：取样 → 写 `p1-1-power-system-shape-proposal.md` → 我签 G4a。**不签不开工**。
-2. **期 4b**：M17 + 登记页 + 写前查阅第六小节（插在知情之后、本书规则之前）+ 六节齐备总哈希。
+1. ~~期 4a（丙）：取样 → 写形状提案 → 签 G4a~~ ✅ **2026-10-24 已签**（提案 §0.0 有我的复现记录）。
+2. **期 4b（下一步）**：M17（13 列）+ 登记页（名字要能从金手指原文一键取）+ 写前查阅第六小节 + `{abilities}` 哈希 + 六节齐备总哈希。
 3. **之后**（按评审 §5 的顺序，先能用→写对→查错→跨部）：卷末快照（P1-2）→ findings（P2-1，注意
    `review_findings.resolved` **写不进去**）→ W8 跨部（P2-2）。
 4. 三格都收口后，**这里补一节「六节齐备」总状态**并把本稿状态行改成「全部完成」。
