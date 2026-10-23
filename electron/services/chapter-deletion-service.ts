@@ -76,18 +76,8 @@ export class ChapterDeletionService {
     projectRoot: string,
     request: DeleteFinalizedChapterRequest,
   ): Promise<ChapterDeletionResult> {
-    const existing = ChapterDeletionRepository.getByDraftId(request.draftId)
-    if (existing) {
-      if (existing.draftId !== request.draftId || existing.chapterNumber !== request.chapterNumber) {
-        return { success: false, committed: false, error: '章节删除请求与已冻结操作身份不匹配' }
-      }
-      const frozen = frozenLegacyOperation(projectRoot, existing)
-      if (frozen) return frozen
-      if (existing.legacyKnowledgeAuthorization === 'required') {
-        return legacyKnowledgeAuthorizationRequired(existing)
-      }
-      return this.resume(projectRoot, existing.operationId)
-    }
+    const replayed = await this.resumeExistingOperation(projectRoot, request, '章节删除请求与已冻结操作身份不匹配')
+    if (replayed) return replayed
     const requiresLegacyKnowledgeAuthorization = this.requiresLegacyKnowledgeAuthorization(request)
     const frozen = ChapterDeletionRepository.begin({
       operationId: this.createOperationId(),
@@ -99,6 +89,74 @@ export class ChapterDeletionService {
       return legacyKnowledgeAuthorizationRequired(frozen)
     }
     return this.resume(projectRoot, frozen.operationId)
+  }
+
+  /**
+   * 退回草稿（2026-10-23）：撤销定稿事实，**保留正文与草稿行**。
+   *
+   * 与 `delete` 共用同一条 begin → resume：投影清理（正文实体稿、知识库）完全一样，
+   * 差别只在 `begin({ keepDraft: true })` —— 它删收据与派生、但不删 drafts/contents。
+   */
+  async revert(
+    projectRoot: string,
+    request: DeleteFinalizedChapterRequest,
+  ): Promise<ChapterDeletionResult> {
+    const replayed = await this.resumeExistingOperation(projectRoot, request, '退回草稿请求与已冻结操作身份不匹配')
+    if (replayed) return replayed
+    /**
+     * 旧定稿（无可验证的知识文档 ID）**不开退回通道**。
+     *
+     * 原因：`confirmLegacyKnowledgeAbsent` 走到的是删除分支（会真的删草稿），
+     * 而「退回草稿」绝不能删草稿。与其让作者在确认框里踩一个会毁正文的岔路，
+     * 不如在这里直接拒绝并给出可行替代。
+     */
+    if (this.requiresLegacyKnowledgeAuthorization(request)) {
+      return {
+        success: false,
+        committed: false,
+        error: '该章是旧定稿且没有可验证的知识文档身份，退回草稿可能留下无法清理的知识投影；'
+          + '请先在知识库手动清理这一章的文档，或使用「删除正文」明确删除整章',
+      }
+    }
+    const begun = ChapterDeletionRepository.begin({
+      operationId: this.createOperationId(),
+      draftId: request.draftId,
+      chapterNumber: request.chapterNumber,
+      keepDraft: true,
+    })
+    return this.resume(projectRoot, begun.operationId)
+  }
+
+  /**
+   * 已存在同一草稿的操作收据时，怎么回应这次请求。`null` = 收据已作废，走全新流程。
+   *
+   * 关键一条：`completed` 不等于「现在也是完成态」。库被恢复/回滚之后，收据还写着
+   * 已完成，事实却回到了定稿态；此时若直接返回成功，界面会报「已退回/已删除」，
+   * 而数据一动没动 —— 2026-10-23 实机就是这么骗了作者一次。所以先复核事实。
+   */
+  private async resumeExistingOperation(
+    projectRoot: string,
+    request: DeleteFinalizedChapterRequest,
+    mismatchError: string,
+  ): Promise<ChapterDeletionResult | null> {
+    const existing = ChapterDeletionRepository.getByDraftId(request.draftId)
+    if (!existing) return null
+    if (existing.draftId !== request.draftId || existing.chapterNumber !== request.chapterNumber) {
+      return { success: false, committed: false, error: mismatchError }
+    }
+    const frozen = frozenLegacyOperation(projectRoot, existing)
+    if (frozen) return frozen
+    if (
+      existing.status === 'completed'
+      && ChapterDeletionRepository.factsStillActionable(request.draftId)
+    ) {
+      ChapterDeletionRepository.discard(existing.operationId)
+      return null
+    }
+    if (existing.legacyKnowledgeAuthorization === 'required') {
+      return legacyKnowledgeAuthorizationRequired(existing)
+    }
+    return this.resume(projectRoot, existing.operationId)
   }
 
   private requiresLegacyKnowledgeAuthorization(request: DeleteFinalizedChapterRequest): boolean {

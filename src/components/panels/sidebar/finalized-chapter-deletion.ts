@@ -15,7 +15,7 @@ import {
 import { clearChapterTitleCache } from './manuscript-title-cache'
 
 type SessionProject = Pick<ProjectData, 'id' | 'path' | 'sessionLease'>
-type DeletionSurface = 'draft' | 'manuscript'
+type DeletionSurface = 'manuscript' | 'revert'
 type Localize = (chinese: string, english: string) => string
 
 interface DeleteFinalizedChapterInput {
@@ -47,18 +47,18 @@ function deletionSurfaceConfig(
   text: Localize,
 ): DeletionSurfaceConfig {
   const configs: Record<DeletionSurface, DeletionSurfaceConfig> = {
-    draft: {
+    revert: {
       confirmation: text(
-        `确认删除 "${displayName}"？\n此操作会删除定稿事实，并清理实体稿、知识库和后处理投影；失败的投影清理可在正文章节下重试。`,
-        `Delete “${displayName}”?\nThis removes the finalized fact and cleans its manuscript, knowledge, and post-processing projections. Failed cleanup can be retried below Manuscript chapters.`,
+        `确认把「${displayName}」退回草稿？\n正文会保留在草稿箱，可以继续修改后重新定稿；定稿收据、章节要点、角色状态与该章资源变动会一并作废，正文实体稿与知识库文档会被清理。蓝图不受影响。`,
+        `Move “${displayName}” back to draft?\nThe manuscript stays in the draft box so you can edit and finalize again. The finalization receipt, chapter notes, character state, and this chapter's resource movements are dropped; the published manuscript file and knowledge document are cleaned up. Blueprints are untouched.`,
       ),
-      confirmationTitle: text('删除这一稿', 'Delete draft'),
-      success: text(`已删除 ${displayName}`, `Deleted ${displayName}`),
+      confirmationTitle: text('退回草稿', 'Move back to draft'),
+      success: text(`已把「${displayName}」退回草稿`, `Moved “${displayName}” back to draft`),
       partialFailure: error => text(
-        `正文已删除，但派生投影仍待清理：${error}。请在正文章节下使用“重试清理”。`,
-        `The manuscript fact was deleted, but derived projections still need cleanup: ${error}. Use “Retry cleanup” below Manuscript chapters.`,
+        `已退回草稿，但派生投影仍待清理：${error}。请在正文章节下使用“重试清理”。`,
+        `Moved back to draft, but derived projections still need cleanup: ${error}. Use “Retry cleanup” below Manuscript chapters.`,
       ),
-      prepareRefresh: () => undefined,
+      prepareRefresh: clearChapterTitleCache,
       refreshDrafts: (projectPath, chapterNumber, projectSession) => (
         useDraftStore.getState().loadChapterDrafts(chapterNumber, projectPath, projectSession)
       ),
@@ -93,7 +93,25 @@ function emitDeletionStatusUpdated(
   globalEventBus.emit('CHAPTER_DELETION_UPDATED', { projectPath, projectSession })
 }
 
+/**
+ * 被「定稿链尾部」守卫拒绝时说的是**规则**，不是一个失败。
+ *
+ * 这条不是异常，是设计约束：中间章的定稿事实还撑着后面几章，撤掉它等于让后续章节
+ * 静默失去前提。用「删除失败」开头会让人以为重试或换个顺序就能过，所以单独出文案。
+ * 章号来自 `errorDetails`，不靠匹配错误字符串。
+ */
 function showUncommittedError(result: ChapterDeletionResult, text: Localize): void {
+  if (result.errorCode === 'FINALIZED_CHAIN_TAIL_REQUIRED') {
+    const target = result.errorDetails?.chapterNumber
+    const latest = result.errorDetails?.latestFinalizedChapter
+    toast.warning(text(
+      `不能退回第 ${target ?? '?'} 章：后面还有第 ${latest ?? '?'} 章的定稿引用它的事实。\n\n`
+        + '只能从最后一章定稿开始，一章一章往回退；跳章退回要连同后面的章节一起回退（与卷回滚一起做，尚未实现）。',
+      `Chapter ${target ?? '?'} cannot be reverted: Chapter ${latest ?? '?'} was finalized on top of its facts.\n\n`
+        + 'Unwind from the latest finalized chapter, one chapter at a time. Skipping chapters requires rolling back the later ones as well (to be designed together with volume rollback).',
+    ), 10_000)
+    return
+  }
   toast.error(text(
     `删除失败\n\n${result.error ?? '未知错误'}`,
     `Delete failed\n\n${result.error ?? 'Unknown error'}`,
@@ -201,6 +219,46 @@ export async function deleteFinalizedChapter(
     return result
   }
   return finishCommittedDeletion(input, projectSession, result, config, text)
+}
+
+/**
+ * 把一章定稿**退回草稿**（2026-10-23）。
+ *
+ * 与「删除正文」是两件事，刻意分开：
+ * - 退回：正文留在草稿箱，定稿收据 / 章节要点 / 角色状态 / 该章资源变动作废，
+ *   实体稿与知识库文档清理，**蓝图保留**；改完可以重新定稿；
+ * - 删除：连正文草稿一起删（在「正文章节」那条入口）。
+ *
+ * 旧定稿（无可验证知识文档身份）由主进程直接拒绝：那条路会走到「删除事实」分支，
+ * 与本动作「绝不删正文」的前提冲突。此时 `committed=false`，错误文案即原因。
+ */
+export async function revertFinalizedChapter(
+  input: Omit<DeleteFinalizedChapterInput, 'surface'>,
+): Promise<ChapterDeletionResult | null> {
+  const text = useLocaleStore.getState().text
+  const config = deletionSurfaceConfig('revert', input.displayName, text)
+  const projectSession = captureProjectSession(input.project)
+  if (!projectSession || !isProjectSessionPath(projectSession, input.projectPath)) return null
+
+  const confirmed = await confirm(config.confirmation, {
+    title: config.confirmationTitle,
+    confirmText: text('退回草稿', 'Move back to draft'),
+  })
+  if (!confirmed || !isProjectSessionCurrent(projectSession)) return null
+
+  const result = await ipc.invokeWithProjectSession(
+    projectSession,
+    'chapter:revert-finalized',
+    { draftId: input.draftId, chapterNumber: input.chapterNumber },
+    input.projectPath,
+  )
+  if (!isProjectSessionCurrent(projectSession)) return null
+  emitDeletionStatusUpdated(input.projectPath, projectSession)
+  if (!result.committed) {
+    showUncommittedError(result, text)
+    return result
+  }
+  return finishCommittedDeletion({ ...input, surface: 'revert' }, projectSession, result, config, text)
 }
 
 /** Resume a persisted legacy-provenance receipt from the Manuscript status row. */

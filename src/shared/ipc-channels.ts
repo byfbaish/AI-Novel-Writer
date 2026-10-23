@@ -1336,6 +1336,10 @@ export interface ChapterLifecycleChannels {
     args: [request: DeleteFinalizedChapterRequest, expectedProjectPath: string]
     return: ChapterDeletionResult
   }
+  'chapter:revert-finalized': {
+    args: [request: DeleteFinalizedChapterRequest, expectedProjectPath: string]
+    return: ChapterDeletionResult
+  }
   'chapter:retry-deletion': {
     args: [operationId: string, expectedProjectPath: string]
     return: ChapterDeletionResult
