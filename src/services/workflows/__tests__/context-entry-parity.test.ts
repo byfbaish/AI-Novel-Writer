@@ -81,7 +81,7 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.text).toContain('- [timeline] 林岚抵达海港（来源第1章；证据：林岚抵达海港。）')
     expect(bundle.text).toContain('- （世界观·第 1 维【核心规则与体系漏洞】）灵潮每甲子退潮一次')
     expect(bundle.text.indexOf('【前文事实（')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
-    expect(bundle.prewrite).toEqual({ factCount: 1, ruleCount: 1 })
+    expect(bundle.prewrite).toEqual({ factCount: 1, itemCount: 0, ruleCount: 1 })
     expect(sha(bundle.text)).toBe('a006dfb730391c7a30b5aef5cc8da1fdebdaed34a70843a46d41245a79551107')
   })
 

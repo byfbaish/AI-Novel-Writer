@@ -10,6 +10,7 @@ import {
 } from '../../shared/generation-owner-contract'
 import type { ReviewMaterialIdentity } from '../../shared/review-revision-generation'
 import { buildPrewriteConsultationBlock, type PrewriteFact } from '../../shared/prewrite-consultation'
+import type { KeyItemDefinition } from '../../shared/key-item'
 import type { WorldBuildingRule } from '../../shared/worldbuilding-rules'
 import { promptLanguageText } from '../prompt-language'
 import {
@@ -129,7 +130,7 @@ export interface ChapterMaterialAssembly extends ChapterMaterialBundle {
    * 只回报条数、不回报内容 —— 与「公开日志不放正文」同一原则。调用方据此写步骤日志，
    * 作者能一眼看出这一轮到底注入了没有、注了几条（而不是只能翻 prompt trace）。
    */
-  prewrite: { factCount: number; ruleCount: number }
+  prewrite: { factCount: number; itemCount: number; ruleCount: number }
 }
 
 /**
@@ -468,6 +469,8 @@ export async function assembleChapterMaterials(input: {
    */
   prewrite?: {
     facts?: readonly PrewriteFact[]
+    /** P1-1 关键物品（谁拿着什么）。与事实/规则一样进必需块，续写轮同样可见。 */
+    items?: readonly KeyItemDefinition[]
     rules?: readonly WorldBuildingRule[]
   }
 }): Promise<ChapterMaterialAssembly> {
@@ -799,7 +802,11 @@ export async function assembleChapterMaterials(input: {
     includedFinalizedFacts,
     consumedFinalizedSources,
     omissions: allOmissions,
-    prewrite: { factCount: consultation.factCount, ruleCount: consultation.ruleCount },
+    prewrite: {
+      factCount: consultation.factCount,
+      itemCount: consultation.itemCount,
+      ruleCount: consultation.ruleCount,
+    },
   }
 }
 

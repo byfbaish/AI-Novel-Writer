@@ -3,10 +3,13 @@ import { describe, expect, it } from 'vitest'
 import {
   buildPrewriteConsultationBlock,
   PREWRITE_FACTS_MAX_ITEMS,
+  PREWRITE_ITEMS_MAX_ITEMS,
   renderPrewriteFactLine,
   renderPrewriteFactsSection,
+  renderPrewriteItemsSection,
   type PrewriteFact,
 } from '../prewrite-consultation'
+import { renderKeyItemLine, type KeyItemDefinition } from '../key-item'
 import type { WorldBuildingRule } from '../worldbuilding-rules'
 
 const fact = (over: Partial<PrewriteFact> = {}): PrewriteFact => ({
@@ -21,6 +24,20 @@ const rule = (over: Partial<WorldBuildingRule> = {}): WorldBuildingRule => ({
   dimension: 1,
   name: '',
   rule: '必须偿还同等灵力',
+  ...over,
+})
+
+const item = (over: Partial<KeyItemDefinition> = {}): KeyItemDefinition => ({
+  itemId: 'item:1',
+  name: '裁纸刀',
+  holderCharacter: '',
+  holderLabel: '林岚',
+  statusNote: '',
+  chapterNumber: null,
+  evidence: '',
+  source: 'author',
+  createdAt: '',
+  updatedAt: '',
   ...over,
 })
 
@@ -72,7 +89,7 @@ describe('renderPrewriteFactsSection', () => {
 
 describe('buildPrewriteConsultationBlock', () => {
   it('两节都空 ⇒ 空串（材料块逐字节不变，parity 哈希护栏靠这个成立）', () => {
-    expect(buildPrewriteConsultationBlock({}, 'zh-CN')).toEqual({ text: '', factCount: 0, ruleCount: 0 })
+    expect(buildPrewriteConsultationBlock({}, 'zh-CN')).toEqual({ text: '', factCount: 0, itemCount: 0, ruleCount: 0 })
     expect(buildPrewriteConsultationBlock({ facts: [], rules: [] }, 'zh-CN').text).toBe('')
   })
 
@@ -80,12 +97,12 @@ describe('buildPrewriteConsultationBlock', () => {
     const factsOnly = buildPrewriteConsultationBlock({ facts: [fact()] }, 'zh-CN')
     expect(factsOnly.text).toContain('【前文事实（')
     expect(factsOnly.text).not.toContain('【本书规则（')
-    expect(factsOnly).toMatchObject({ factCount: 1, ruleCount: 0 })
+    expect(factsOnly).toMatchObject({ factCount: 1, itemCount: 0, ruleCount: 0 })
 
     const rulesOnly = buildPrewriteConsultationBlock({ rules: [rule()] }, 'zh-CN')
     expect(rulesOnly.text).toContain('【本书规则（')
     expect(rulesOnly.text).not.toContain('【前文事实（')
-    expect(rulesOnly).toMatchObject({ factCount: 0, ruleCount: 1 })
+    expect(rulesOnly).toMatchObject({ factCount: 0, itemCount: 0, ruleCount: 1 })
   })
 
   it('两节都有时事实在前、规则在后', () => {
@@ -107,5 +124,57 @@ describe('buildPrewriteConsultationBlock', () => {
     const text = buildPrewriteConsultationBlock({ facts: [fact()], rules: [rule()] }, 'en-US').text
     expect(text).toContain('[Established facts from earlier chapters')
     expect(text).toContain('[World rules')
+  })
+
+  it('三节都有时顺序是 事实 → 关键物品 → 规则', () => {
+    const text = buildPrewriteConsultationBlock(
+      { facts: [fact()], items: [item()], rules: [rule()] },
+      'zh-CN',
+    ).text
+    expect(text.indexOf('【前文事实（')).toBeLessThan(text.indexOf('【关键物品（'))
+    expect(text.indexOf('【关键物品（')).toBeLessThan(text.indexOf('【本书规则（'))
+  })
+})
+
+/**
+ * 关键物品这一节（P1-1）。三条断言对应三种「出处」：有章号有引文 / 只有章号 / 都没有。
+ * 第三种必须如实写「作者登记」—— 伪造一个章号会让模型拿它跟前文对账，对不上就是新错误源。
+ */
+describe('key items section', () => {
+  it('空数组返回空串：没有登记就不留空标题', () => {
+    expect(renderPrewriteItemsSection([], 'zh-CN')).toBe('')
+  })
+
+  it('三种出处分支：章号+引文 / 只有章号 / 都没有（作者登记）', () => {
+    expect(renderKeyItemLine(item({ chapterNumber: 3, evidence: '刀口崩了一角' }), 'zh-CN'))
+      .toBe('- 裁纸刀 — 林岚持有；出处：第3章：『刀口崩了一角』')
+    expect(renderKeyItemLine(item({ chapterNumber: 3 }), 'zh-CN'))
+      .toBe('- 裁纸刀 — 林岚持有；出处：第3章')
+    expect(renderKeyItemLine(item(), 'zh-CN'))
+      .toBe('- 裁纸刀 — 林岚持有；出处：作者登记')
+    expect(renderKeyItemLine(item(), 'zh-CN')).not.toContain('章')
+  })
+
+  it('状态短语跟在持有者后面', () => {
+    expect(renderKeyItemLine(item({ statusNote: '剩两副' }), 'zh-CN')).toContain('林岚持有（剩两副）')
+  })
+
+  it('持有者为空时写「未登记持有者」，不留一个空白', () => {
+    expect(renderKeyItemLine(item({ holderLabel: '   ' }), 'zh-CN')).toContain('未登记持有者')
+  })
+
+  it('条数按上限截断，超出的整条丢弃', () => {
+    const items = Array.from({ length: PREWRITE_ITEMS_MAX_ITEMS + 2 }, (_, index) =>
+      item({ itemId: `item:${index}`, name: `物品${index}` }))
+    const section = renderPrewriteItemsSection(items, 'zh-CN')
+    expect(section.split('\n').filter(line => line.startsWith('- ')).length).toBe(PREWRITE_ITEMS_MAX_ITEMS)
+    expect(section).not.toContain('物品9')
+  })
+
+  it('buildPrewriteConsultationBlock 回报 itemCount，并受同一套上限约束', () => {
+    const items = Array.from({ length: 12 }, (_, index) => item({ itemId: `item:${index}`, name: `物品${index}` }))
+    expect(buildPrewriteConsultationBlock({ items }, 'zh-CN')).toMatchObject({
+      factCount: 0, itemCount: PREWRITE_ITEMS_MAX_ITEMS, ruleCount: 0,
+    })
   })
 })

@@ -29,7 +29,7 @@ export type PlanningRecoverySaveSnapshot = EditorTabSaveSnapshot & {
 export interface EditorTab {
   id: string
   name: string
-  type: 'chapter' | 'outline' | 'character' | 'config' | 'diff' | 'chapter-card' | 'world-building' | 'resource-registry' | 'arch-file' | 'version-history' | 'review-report' | 'narrative-thread'
+  type: 'chapter' | 'outline' | 'character' | 'config' | 'diff' | 'chapter-card' | 'world-building' | 'resource-registry' | 'key-item-registry' | 'arch-file' | 'version-history' | 'review-report' | 'narrative-thread'
   filePath?: string
   content?: string
   /** 架构文档已持久化的基准内容，用于跨 Tab/项目切换后恢复脏状态。 */
@@ -180,6 +180,8 @@ const PROJECT_SCOPED_BUILTIN_TYPES = new Set<EditorTab['type']>([
   // W6a-5：资源登记独立 tab。这个集合决定 tab id 是否按项目隔离
   // （`createProjectScopedEditorTabId`）——漏登记会让两个项目共用同一个 tab。
   'resource-registry',
+  // P1-1：关键物品登记独立 tab，同样要按项目隔离（漏登记会让两个项目共用同一个 tab）。
+  'key-item-registry',
   'chapter',
   'review-report',
   'version-history',

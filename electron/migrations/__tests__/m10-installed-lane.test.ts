@@ -32,7 +32,7 @@ describe('installed M10 lane', () => {
       const bodyBefore = db.prepare('SELECT body FROM contents').pluck().get()
       const notesBefore = db.prepare('SELECT chapter_notes FROM summary_snapshots WHERE chapter_number=1').pluck().get()
       const result = migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), 11)
-      expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBe(12)
+      expect(CURRENT_DESKTOP_SCHEMA_VERSION).toBeGreaterThanOrEqual(12) // 最新一档由 m14 的 lane 测试钉死
       expect(result.completedSteps).toEqual(['M10'])
       expect(db.prepare('SELECT body FROM contents').pluck().get()).toBe(bodyBefore)
       expect(db.prepare('SELECT chapter_notes FROM summary_snapshots WHERE chapter_number=1').pluck().get()).toBe(notesBefore)
