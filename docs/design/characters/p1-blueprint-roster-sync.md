@@ -3,7 +3,7 @@
 > 状态：**✅ 已实施**（本文件写于 2026-10-10「设计待审」，**该状态行已过期**——机制早已落地并在实机中持续迭代）。
 > 实施落点：`blueprint-character-sync.ts`（同步操作）· `character-proposal-service.ts`（候选/暂存/批准/关系校验/锚点人物）
 > · `CharacterProposalSelectionPanel.tsx` / `CharacterProposalInbox.tsx`（UI 入口）· `character-card-generation.command.ts`（列表/确认步）。
-> 实战迭代（2026-10-15 台账，见 `docs/handoffs/2026-10-15-keyevents-bprime-pause-handoff.md` §1.1）：
+> 实战迭代（2026-10-15 台账，见 `docs/handoffs/archive/2026-10-15-keyevents-bprime-pause-handoff.md` §1.1）：
 > `1a7b230d` 写前证明收紧 / `6e737bb0` 面板滚动 / `f8ac0571` 暂存≠完成 + 取消≠终态 / `159aac8f` 列出步断链
 > / `01f891b3` 目录批次二次卡死 / `57173786`+`abf0a933` 关系端点 / `503943b8` 补背景 stage 从未成功
 > / `bcec0367` 未转义引号 / `76e65473` 0 项批次 + 撤销半闭环。
