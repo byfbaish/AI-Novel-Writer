@@ -1,6 +1,11 @@
 # W6a-4 资源登记提案通道 · 交接（2026-10-23）
 
-分支 `exp/resource-ledger` · 基线提交 `94532555` · **进行中，未完成**
+分支 `exp/resource-ledger` · 基线提交 `94532555` · ✅ **已完成（2026-10-23，面板侧收口）**
+
+> 收口记录见设计稿 `w6-resource-ledger-design.md` **§9.4**：本文 §3 的三项全部落地，
+> 另补了核实中查出的两处缺口（清空世界观时作废候选、登记后的补扫引导）。
+> 一处与本文原稿的偏离：**候选行的 `unit`/`period` 做成可编辑** —— 否则「缺单位请补一个」
+> 这句提示没有可执行落点。落库通道没变（仍逐条 `db:resources-upsert`，不提供强行落库）。
 
 ---
 
@@ -10,8 +15,9 @@
 「模型只能提议，落库前必须确认」、而 §9 分期表没有任何一期实现这个通道** —— 于是
 `resources` 永远是空表，W6b 抽取没有名单可喂，整条账本空转。本轮补这一环。
 
-**已完成的那一半（下一本）**：生成世界观后自动跑一次抽取，候选进检查点。
-**未完成的那一半（本书）**：登记面板上的「从世界观抽取候选」按钮 + 候选确认区。
+**两条触发点现在都通了**：
+- 下一本：生成世界观后自动跑一次抽取，候选进检查点（`94532555`）；
+- 本书：登记面板上的「从世界观抽取候选」按钮 + 候选确认区（本次收口）。
 
 ---
 
@@ -22,8 +28,8 @@
 | 1 | `docs/design/architecture/w6-resource-ledger-design.md` **§4.6** | 本期的完整设计：通道形态、抽哪些列、两个触发点、缺单位怎么办、范围 |
 | 2 | `src/shared/worldbuilding-resource-extract.ts` | 核心契约。**已完成**，改之前先读头注释 |
 | 3 | `src/services/workflows/commands/architecture.command.ts` 搜 `attachWorldBuildingResourceCandidates` | 生成侧挂载，**已完成** |
-| 4 | `src/components/editor/ResourceRegistryPanel.tsx` | **未完成**，下一步就改这里 |
-| 5 | `src/components/editor/WorldBuildingEditor.tsx` | **未完成**，需要传两个 prop |
+| 4 | `src/components/editor/ResourceRegistryPanel.tsx` | **已改**：候选确认区、三条闸门、行内补单位、逐条落库 |
+| 5 | `src/components/editor/WorldBuildingEditor.tsx` | **已改**：传 `worldbuilding` / `storedCandidates` / `writingLanguage`，面板 `key` 跟项目走 |
 
 ---
 
@@ -41,7 +47,7 @@
 
 ---
 
-## 3. 未完成（下一步照这个做）
+## 3. 面板侧（已按本节落地，保留作验收对照）
 
 ### 3.1 面板：`src/components/editor/ResourceRegistryPanel.tsx`
 

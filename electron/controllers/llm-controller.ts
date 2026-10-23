@@ -80,6 +80,32 @@ function applyProxyConfig() {
   } catch { /* 忽略 */ }
 }
 
+/** 诊断串长度上限：够看清状态码与首行说明，又不至于把整段响应体写进库。 */
+const MAX_CALL_FAILURE_CHARS = 300
+
+/**
+ * 一次失败调用的诊断串：`finish:<reason>` 与真实错误**并存**。
+ *
+ * - 只有结束原因（旧行为）⇒ 知道"怎么结束的"，不知道"为什么"；
+ * - 只有错误 ⇒ 分不清是模型主动停（`length`）还是请求被拒（`error`）。
+ *
+ * 成功调用仍返回 `undefined`（不制造噪声）。
+ */
+export function describeCallFailure(outcome: {
+  success: boolean
+  error?: string
+  finishReason?: LLMFinishReason
+}): string | undefined {
+  const finish = outcome.finishReason && outcome.finishReason !== 'stop'
+    ? `finish:${outcome.finishReason}`
+    : ''
+  const detail = outcome.error?.trim().slice(0, MAX_CALL_FAILURE_CHARS) ?? ''
+  if (!finish) return detail || undefined
+  if (!detail) return finish
+  // 错误文案常自带 "Error: ..."，拼起来会像两条独立结论，用分隔符明确这是一条记录的两个字段。
+  return `${finish} | ${detail}`
+}
+
 function recordProviderOutcome(
   request: LLMRequest,
   model: ModelProfile,
@@ -103,9 +129,15 @@ function recordProviderOutcome(
       totalTokens: outcome.usage?.totalTokens ?? null,
       durationMs: Math.max(0, Date.now() - startedAt),
       success: outcome.success,
-      errorMessage: outcome.finishReason && outcome.finishReason !== 'stop'
-        ? `finish:${outcome.finishReason}`
-        : outcome.error,
+      /**
+       * 诊断串要**同时留**结束原因与真实错误。
+       *
+       * 原来这里是三元：`finishReason !== 'stop'` 时只写 `finish:<reason>`，把
+       * `outcome.error` 整个丢掉 —— 2026-10-23 排查资源提案连失 5 次时，库里只剩
+       * `finish:error`，真实原因（provider 回的是 `API 调用失败 (400): …`）无从得知。
+       * 结束原因说明"怎么结束的"，错误说明"为什么"，两者缺一都得回到现场重跑。
+       */
+      errorMessage: describeCallFailure(outcome),
     })
   } catch (error) {
     // Statistics are diagnostic only and must never change generation outcome.

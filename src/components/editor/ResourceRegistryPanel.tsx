@@ -1,8 +1,19 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
-import { Loader2, Plus, RefreshCw, Save, Trash2, Undo2 } from 'lucide-react'
+import { Loader2, Plus, RefreshCw, Save, Sparkles, Trash2, Undo2 } from 'lucide-react'
 
 import type { ResourceDefinition, ResourceDefinitionInput } from '../../shared/resource-ledger'
+import { isQuotePresent } from '../../shared/worldbuilding-self-review'
+import {
+  describeResourceCandidates,
+  filterResourceCandidates,
+  parseResourceCandidates,
+  type ResourceCandidate,
+} from '../../shared/worldbuilding-resource-extract'
+import { resolveWritingLanguage, type WritingLanguage } from '../../shared/writing-language'
+import { composePromptSystemRole } from '../../services/builtin-prompt-templates'
+import { renderPrompt, resolvePromptTemplate } from '../../services/prompt-templates'
 import { ipc } from '../../services/ipc-client'
+import { generateStructuredJson } from '../../services/structured-json-call'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../project-session-gate'
@@ -15,6 +26,18 @@ import { Button } from '../ui/Button'
  * 1. **定义**，不是余额：余额/中断判定属于 W6c 与纯函数层，这块面板不显示任何数字汇总。
  * 2. **保存前不落库**：编辑全在本地草稿行里，点「保存」才一次性提交。
  * 3. **`scarcity_note` 只展示**（判据 DL）：标签写成「设计意图」，并明写不参与任何计算。
+ *
+ * ## W6a-4：提案通道的「本书」这一路
+ *
+ * 设计稿 §3.4 写了「模型只能提议，落库前必须确认」，这一块就是那个确认面。
+ * 候选有三个来源（共用同一套展示与闸门）：
+ * 1. 「从世界观抽取候选」按钮（本书，手动）；
+ * 2. `storedCandidates`（下一本，生成侧写进检查点的那份）；
+ * 3. 两者都只进内存 state，**不落盘** —— 重开面板再点一次即可（§4.6.3）。
+ *
+ * 候选进表前**必须**过 `filterResourceCandidates`：引文要能在当前世界观正文里逐字命中。
+ * 检查点是生成时的快照，作者事后改过正文时旧引文一条都不成立 —— 直接展示等于把
+ * 陈引文当成有效依据（与自审的 `readStoredSelfReview` 同一个道理）。
  */
 type LocaleText = (zh: string, en: string) => string
 
@@ -239,16 +262,131 @@ function deleteErrorLabel(
   return writeErrorLabel(error, text)
 }
 
-export function ResourceRegistryPanel({ projectKey }: { projectKey: string }) {
+/**
+ * 候选确认区的一行。
+ *
+ * `unit` / `period` 是**草稿**而不是候选原值：模型没抽到单位时（§4.6.4 的常见情形），
+ * 作者必须能就地补一个 —— 否则「缺单位请补一个」这条提示没有可执行落点。
+ */
+interface CandidateRow {
+  key: string
+  candidate: ResourceCandidate
+  unit: string
+  period: string
+  selected: boolean
+  /** 本行就地错误（闸门原因 / 后端拒绝原因）。 */
+  error: string
+}
+
+function toCandidateRow(candidate: ResourceCandidate): CandidateRow {
+  // 候选名已由 `parseResourceCandidates` 去重，可直接当 key；加前缀避免与草稿行撞。
+  return {
+    key: `candidate:${candidate.name}`,
+    candidate,
+    unit: candidate.unit ?? '',
+    period: candidate.period ?? '',
+    selected: false,
+    error: '',
+  }
+}
+
+/**
+ * 这条候选现在能不能落库。空串 = 可以。
+ *
+ * 三道闸门，顺序即作者看到的那个原因（一次只说最该先解决的那条）：
+ * 重名 → 缺单位 → 缺口径。后两条在后端都会失败（`NOT NULL`），
+ * 但在这里拦住的差别是**不发 IPC、原因说得更清楚**。
+ */
+function candidateBlockReason(
+  row: CandidateRow,
+  registeredNames: ReadonlySet<string>,
+  text: LocaleText,
+): string {
+  if (registeredNames.has(row.candidate.name.trim())) {
+    return text(
+      '已登记：同名资源已在表里，要改请改上面那一行',
+      'Already registered: change the existing row above instead',
+    )
+  }
+  if (!row.unit.trim()) {
+    return text(
+      '缺单位，请补一个，例如「枚」「元」—— 单位错了会让以后每一笔记账都对不上',
+      'Unit is missing; add one (e.g. pieces, yuan) — a wrong unit makes every later ledger entry mismatch',
+    )
+  }
+  if (!row.period.trim()) {
+    return text(
+      '缺口径（周期），请补一个，例如「日」「月」—— 日结与月结会差 30 倍',
+      'Period is missing; add one (e.g. day, month) — daily versus monthly differs by 30x',
+    )
+  }
+  return ''
+}
+
+/**
+ * 候选 → 落库入参。
+ *
+ * `anchorValue` 原样传：`null` 的语义是「不可通兑」（可用状态），**绝不能填 0** ——
+ * 0 会被读成「免费兑换」，与不可通兑正好相反（判据 DN / CS）。
+ */
+function candidateToInput(row: CandidateRow): ResourceDefinitionInput {
+  const { candidate } = row
+  return {
+    familyId: candidate.familyId,
+    name: candidate.name.trim(),
+    tier: candidate.tier,
+    unit: row.unit.trim(),
+    anchorValue: candidate.anchorValue,
+    period: row.period.trim(),
+    earnNote: candidate.earnNote ?? '',
+    costNote: candidate.costNote ?? '',
+    scarcityNote: candidate.scarcityNote ?? '',
+    anchorNote: candidate.anchorNote ?? '',
+  }
+}
+
+/** 候选卡上的可空列：null 一律显示「—」，绝不显示 0。 */
+function candidateCell(value: string | number | null): string {
+  if (value === null) return '—'
+  if (typeof value === 'number') return String(value)
+  const trimmed = value.trim()
+  return trimmed ? trimmed : '—'
+}
+
+export function ResourceRegistryPanel({
+  projectKey,
+  worldbuilding,
+  storedCandidates,
+  writingLanguage,
+}: {
+  projectKey: string
+  /** 世界观全文：抽取候选的唯一输入（不扫已定稿正文，§4.6.5）。 */
+  worldbuilding?: string
+  /** 检查点里的候选 JSON（下一本那一路）；进面板后仍按当前正文重验引文。 */
+  storedCandidates?: string
+  /** 提示词语言；缺省跟随项目配置。 */
+  writingLanguage?: WritingLanguage
+}) {
   const currentProject = useProjectStore(state => state.currentProject)
   const text = useLocaleStore(state => state.text)
+  const locale = useLocaleStore(state => state.locale)
+  const language = resolveWritingLanguage(writingLanguage ?? currentProject?.novelConfig?.writingLanguage)
+  /** 候选提示语跟随界面语言（`describeResourceCandidates` 只认这两种）。 */
+  const noticeLanguage = locale === 'en-US' ? 'en-US' : 'zh-CN'
   const [rows, setRows] = useState<DraftRow[]>([])
+  const [candidates, setCandidates] = useState<CandidateRow[]>([])
+  const [candidateNotice, setCandidateNotice] = useState('')
+  const [extracting, setExtracting] = useState(false)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [loadError, setLoadError] = useState('')
   /** 保存中禁止重复提交；state 更新滞后一拍，挡不住连点。 */
   const busyRef = useRef(false)
+  /** 抽取中禁止重复点击。 */
+  const extractingRef = useRef(false)
+  /** 上一次已应用的 `storedCandidates`，防止编辑器每次 loadStatus 抹掉手工抽取/刚补的单位。 */
+  const appliedStoredCandidates = useRef<string | null>(null)
 
   const applyField = useCallback((key: string, field: DraftField, value: string) => {
     setRows(previous => previous.map(row => (
@@ -292,6 +430,155 @@ export function ResourceRegistryPanel({ projectKey }: { projectKey: string }) {
     // 延到微任务再读：effect 体内同步 setState 会触发级联渲染（react-hooks/set-state-in-effect）。
     queueMicrotask(() => { void load() })
   }, [load, currentProject?.sessionLease])
+
+  /**
+   * 检查点里的候选（下一本那一路）进面板。
+   *
+   * 三条约束，少一条都会静默出错：
+   * 1. **必须重验引文**（`filterResourceCandidates`）：正文被作者改过之后，旧引文一条都不成立。
+   * 2. 世界观正文还没读到（空串）时**不应用** —— 那会把每一条都判成「引文命不中」而全丢，
+   *    于是编辑器哪怕只是重载一次，候选就永久消失了。等正文到位再应用。
+   * 3. 只在 prop **真的变了**时覆盖：否则任何一次 `loadStatus` 都会抹掉作者刚手工抽取、
+   *    或刚补了一半单位的结果。
+   */
+  const applyStoredCandidates = useCallback(() => {
+    if (!storedCandidates || !worldbuilding?.trim()) return
+    if (appliedStoredCandidates.current === storedCandidates) return
+    appliedStoredCandidates.current = storedCandidates
+    const set = filterResourceCandidates(parseResourceCandidates(storedCandidates), worldbuilding)
+    if (set.unreadable) {
+      setCandidateNotice(describeResourceCandidates(set, noticeLanguage) ?? '')
+      return
+    }
+    if (set.candidates.length === 0) {
+      setCandidateNotice(set.dropped > 0
+        ? text(
+            '检查点里的候选依据在当前世界观里已经找不到了（正文被改过），已全部丢弃。',
+            'The stored proposals no longer match the current worldbuilding (the text changed), so all were discarded.',
+          )
+        : '')
+      return
+    }
+    setCandidates(set.candidates.map(toCandidateRow))
+    setCandidateNotice(describeResourceCandidates(set, noticeLanguage) ?? '')
+  }, [storedCandidates, worldbuilding, noticeLanguage, text])
+
+  useEffect(() => {
+    queueMicrotask(applyStoredCandidates)
+  }, [applyStoredCandidates])
+
+  /**
+   * 正文被改过之后，**已展示的**候选也要重验一遍。
+   *
+   * 只丢引文已经不存在的那几行（依据没了，勾了也是无据可查），保留其余行的
+   * 单位/周期草稿 —— 作者补到一半的内容不该因为别处改了一句设定就整批消失。
+   */
+  useEffect(() => {
+    queueMicrotask(() => {
+      const world = worldbuilding ?? ''
+      if (!world.trim()) return
+      setCandidates(previous => previous.filter(row => (
+        isQuotePresent(row.candidate.quote, world) && isQuotePresent(row.candidate.name, world)
+      )))
+    })
+  }, [worldbuilding])
+
+  const toggleCandidate = (key: string) => {
+    setCandidateNotice('')
+    setCandidates(previous => previous.map(row => (
+      row.key === key ? { ...row, selected: !row.selected, error: '' } : row
+    )))
+  }
+
+  const applyCandidateField = (key: string, field: 'unit' | 'period', value: string) => {
+    setCandidateNotice('')
+    setCandidates(previous => previous.map(row => (
+      row.key === key ? { ...row, [field]: value, error: '' } : row
+    )))
+  }
+
+  /**
+   * 「从世界观抽取候选」：本书这一路。
+   *
+   * 与定稿后处理里的账本抽取同一档一次性调用（非流式、非持久化），
+   * 失败**永不改表格、永不弹窗、永不写库** —— 它产出的只是提案。
+   */
+  const extractCandidates = async () => {
+    if (extractingRef.current) return
+    const world = (worldbuilding ?? '').trim()
+    if (!world) {
+      setCandidateNotice(text(
+        '世界观还没有内容，先完成世界观生成再抽取。',
+        'The worldbuilding is still empty; generate it before extracting proposals.',
+      ))
+      return
+    }
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) {
+      setCandidateNotice(text('项目会话已切换，请重新打开这个页面', 'The project session changed; reopen this page'))
+      return
+    }
+    /**
+     * 三种「没拿到」共用一句文案：调用失败 / 模板缺失 / 坏 JSON 对作者是同一件事
+     * （本次没有结果），但它们与「这本书没有资源」是**相反**的含义，不能合并。
+     *
+     * `reason` 是 provider 的真实原因摘要（已脱敏裁剪）。2026-10-23 那次连失 5 次，
+     * 界面只说「没拿到结果」，而库里只剩 `finish:error` —— 作者无从判断是模型不认
+     * `response_format`、还是没额度，只能猜。所以这里必须把原因带出来。
+     */
+    const unusable = (reason?: string) => {
+      const base = describeResourceCandidates({ candidates: [], unreadable: true, dropped: 0 }, noticeLanguage) ?? ''
+      setCandidateNotice(reason ? `${base}${text('原因：', 'Reason: ')}${reason}` : base)
+    }
+
+    extractingRef.current = true
+    setExtracting(true)
+    setCandidateNotice('')
+    try {
+      const template = await resolvePromptTemplate('world_building_resource_extract', projectSession, language)
+      if (!isProjectSessionCurrent(projectSession)) return
+      if (!template) { unusable(); return }
+
+      // 服务端不认 `response_format` 时由这层降级重试一次（解析端本来就能剥围栏）。
+      const outcome = await generateStructuredJson({
+        messages: [
+          { role: 'system', content: composePromptSystemRole(template, language) },
+          { role: 'user', content: renderPrompt(template, { world_building: world }, language) },
+        ],
+        purpose: 'world-building-resource-extract',
+        reasoningStage: 'planning',
+        projectSession,
+      })
+      // 项目切了就丢弃结果：它是上一个项目的提案，写进这个项目的 state 就是串项目。
+      if (!isProjectSessionCurrent(projectSession) || !isProjectSessionPath(projectSession, projectKey)) return
+      if (!outcome.ok) { unusable(outcome.error); return }
+
+      const set = filterResourceCandidates(parseResourceCandidates(outcome.content), world)
+      if (set.unreadable) { unusable(); return }
+      if (set.candidates.length === 0) {
+        setCandidateNotice(text(
+          '世界观里没有找到可登记的资源 —— 这份设定可能还没写到具体数额与结算周期。',
+          'No registrable resource was found: this worldbuilding may not state amounts or settlement periods yet.',
+        ))
+        return
+      }
+      setCandidates(set.candidates.map(toCandidateRow))
+      const summary = describeResourceCandidates(set, noticeLanguage) ?? ''
+      setCandidateNotice(outcome.degraded
+        ? `${summary}${text(
+            '（服务端不接受结构化输出，本次已按普通补全重试成功）',
+            ' (The service rejected structured output, so this run fell back to plain completion.)',
+          )}`
+        : summary)
+    } catch (error) {
+      if (isProjectSessionCurrent(projectSession)) {
+        unusable(error instanceof Error ? error.message : String(error))
+      }
+    } finally {
+      extractingRef.current = false
+      setExtracting(false)
+    }
+  }
 
   const addRow = () => {
     setRows(previous => [...previous, emptyRow()])
@@ -407,6 +694,106 @@ export function ResourceRegistryPanel({ projectKey }: { projectKey: string }) {
     }
   }
 
+  /**
+   * 勾选确认后逐条登记。
+   *
+   * 三条纪律：
+   * 1. **逐条**提交，失败的留着、其余继续 —— 一条重名不该让另外九条白填。
+   * 2. 落库成功后**只 append 进表格，不重读清单**：`rows` 里可能有作者没保存的草稿，
+   *    `load()` 会把它们静默冲掉。
+   * 3. 成功且全绿时补一句「去补扫」—— 登记完不补扫，账本仍然是空的，
+   *    作者会以为这一整轮没生效（先登记、后补扫，顺序不能反）。
+   */
+  const commitCandidates = async () => {
+    if (busyRef.current) return
+    if (!candidates.some(row => row.selected)) return
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) {
+      setCandidateNotice(text('项目会话已切换，请重新打开这个页面', 'The project session changed; reopen this page'))
+      return
+    }
+    busyRef.current = true
+    setBusy(true)
+    setCandidateNotice('')
+    try {
+      const registered = new Set(
+        rows.filter(row => !row.removing).map(row => row.name.trim()).filter(Boolean),
+      )
+      const kept: CandidateRow[] = []
+      const appended: DraftRow[] = []
+      let saved = 0
+      let failed = 0
+
+      for (const row of candidates) {
+        if (!isProjectSessionCurrent(projectSession)) return
+        if (!row.selected) { kept.push(row); continue }
+
+        // 双保险：UI 已禁用复选框，这里再拦一次 —— 缺单位落库等于埋一颗静默的雷。
+        const blocked = candidateBlockReason(row, registered, text)
+        if (blocked) { failed += 1; kept.push({ ...row, selected: false, error: blocked }); continue }
+
+        const input = candidateToInput(row)
+        const result = await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:resources-upsert',
+          input,
+          projectSession.projectPath,
+        )
+        if (result.success && result.resourceId) {
+          saved += 1
+          registered.add(input.name)
+          appended.push(rowFromDefinition({
+            resourceId: result.resourceId,
+            familyId: input.familyId ?? null,
+            name: input.name,
+            tier: input.tier ?? 0,
+            unit: input.unit,
+            anchorValue: input.anchorValue ?? null,
+            period: input.period,
+            earnNote: input.earnNote ?? '',
+            costNote: input.costNote ?? '',
+            scarcityNote: input.scarcityNote ?? '',
+            anchorNote: input.anchorNote ?? '',
+            createdAt: '',
+            updatedAt: '',
+          }))
+        } else {
+          failed += 1
+          kept.push({ ...row, selected: false, error: writeErrorLabel(result.error, text) })
+        }
+      }
+
+      if (!isProjectSessionCurrent(projectSession)) return
+      setCandidates(kept)
+      if (appended.length > 0) setRows(previous => [...previous, ...appended])
+      if (saved > 0 && failed === 0) {
+        setStatus(text(
+          `已登记 ${saved} 条资源定义。接着去「世界状态 → 资源」的「账本回填」点「补扫第 1–N 章」，第 1 章起的变动才会进账本。`,
+          `Registered ${saved} resource definition(s). Next, open World state -> Resources and run "Ledger backfill" so movements from existing chapters are extracted.`,
+        ))
+      } else {
+        setStatus(text(
+          `已登记 ${saved} 条，${failed} 条没有登记（原因见对应行）`,
+          `Registered ${saved}; ${failed} not registered (see the affected rows)`,
+        ))
+      }
+    } catch {
+      if (isProjectSessionCurrent(projectSession)) {
+        setCandidateNotice(text('登记失败，请查看候选行上的提示', 'Registration failed; see the messages on the proposal rows'))
+      }
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+
+  /** 已登记的名字：候选撞它就不给勾（别让它撞 UNIQUE，也别让作者登记出两份同名定义）。 */
+  const registeredNames = new Set(
+    rows.filter(row => !row.removing).map(row => row.name.trim()).filter(Boolean),
+  )
+  const selectedCandidateCount = candidates.filter(row => row.selected).length
+  const canExtract = !extracting && !busy && Boolean(worldbuilding?.trim())
+
   return (
     <section
       data-testid="resource-registry-panel"
@@ -447,6 +834,190 @@ export function ResourceRegistryPanel({ projectKey }: { projectKey: string }) {
       {status && (
         <p role="status" className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{status}</p>
       )}
+
+      {/* W6a-4：提案 → 确认。模型只能提议，勾选后才进下面那张表（设计稿 §3.4 / §4.6）。 */}
+      <div
+        data-testid="resource-candidate-zone"
+        className="rounded-md px-2.5 py-2 space-y-2"
+        style={{ border: '1px solid var(--color-border)' }}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>
+              {text('从世界观抽取候选', 'Extract resource proposals')}
+            </div>
+            <div className="text-[0.62rem] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+              {text(
+                '只读世界观全文提出候选，每条都附原文依据。勾选后才会写进下表 —— 模型不能直接落库。缺单位/缺口径的行必须先补齐。',
+                'Proposals are read from the worldbuilding only, and each one carries its verbatim evidence. Nothing is registered until you tick it. Rows missing a unit or period must be completed first.',
+              )}
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 flex-shrink-0 px-2 text-[0.65rem]"
+            disabled={!canExtract}
+            title={worldbuilding?.trim()
+              ? text('读世界观全文，提出资源登记候选', 'Read the worldbuilding and propose resource entries')
+              : text('世界观还没有内容，先完成世界观生成', 'The worldbuilding is empty; generate it first')}
+            onClick={() => void extractCandidates()}
+          >
+            {extracting ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+            {extracting
+              ? text('抽取中...', 'Extracting...')
+              : text('从世界观抽取候选', 'Extract proposals')}
+          </Button>
+        </div>
+
+        {candidateNotice && (
+          <p role="status" className="text-[0.65rem] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+            {candidateNotice}
+          </p>
+        )}
+
+        {candidates.length > 0 && (
+          <div className="overflow-x-auto space-y-1">
+            <table className="w-full text-xs border-collapse" style={{ color: 'var(--color-text)' }}>
+              <thead>
+                <tr style={{ color: 'var(--color-text-secondary)' }}>
+                  <th scope="col" className="text-left px-1 pb-1 font-medium whitespace-nowrap">
+                    {text('选择', 'Select')}
+                  </th>
+                  <th scope="col" className="text-left px-1 pb-1 font-medium whitespace-nowrap">{text('名称', 'Name')}</th>
+                  <th scope="col" className="text-left px-1 pb-1 font-medium whitespace-nowrap">{text('资源族', 'Family')}</th>
+                  <th scope="col" className="text-left px-1 pb-1 font-medium whitespace-nowrap">{text('品阶', 'Tier')}</th>
+                  <th
+                    scope="col"
+                    className="text-left px-1 pb-1 font-medium whitespace-nowrap"
+                    style={{ minWidth: '5rem' }}
+                  >
+                    {text('单位', 'Unit')}<span aria-hidden="true"> *</span>
+                  </th>
+                  <th
+                    scope="col"
+                    className="text-left px-1 pb-1 font-medium whitespace-nowrap"
+                    style={{ minWidth: '6rem' }}
+                  >
+                    {text('口径（周期）', 'Period')}<span aria-hidden="true"> *</span>
+                  </th>
+                  <th scope="col" className="text-left px-1 pb-1 font-medium whitespace-nowrap">{text('换算锚', 'Anchor')}</th>
+                  <th scope="col" className="text-left px-1 pb-1 font-medium whitespace-nowrap">{text('收入说明', 'Earned by')}</th>
+                  <th scope="col" className="text-left px-1 pb-1 font-medium whitespace-nowrap">{text('支出说明', 'Spent on')}</th>
+                  <th scope="col" className="text-left px-1 pb-1 font-medium whitespace-nowrap">{text('设计意图', 'Design intent')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {candidates.map(row => {
+                  const blocked = candidateBlockReason(row, registeredNames, text)
+                  return (
+                    <Fragment key={row.key}>
+                      <tr data-testid="resource-candidate" data-blocked={blocked ? 'true' : 'false'}>
+                        <td className="px-1 py-0.5 align-top">
+                          <input
+                            type="checkbox"
+                            data-field="candidate-select"
+                            aria-label={text(`选择 ${row.candidate.name}`, `Select ${row.candidate.name}`)}
+                            checked={row.selected}
+                            // 有拦路原因就不给勾：不提供「强行落库」的口子（§4.6.4）。
+                            disabled={Boolean(blocked) || busy}
+                            onChange={() => toggleCandidate(row.key)}
+                          />
+                        </td>
+                        <td className="px-1 py-0.5 align-top whitespace-nowrap">{row.candidate.name}</td>
+                        <td className="px-1 py-0.5 align-top whitespace-nowrap">{candidateCell(row.candidate.familyId)}</td>
+                        <td className="px-1 py-0.5 align-top whitespace-nowrap">{row.candidate.tier}</td>
+                        <td className="px-1 py-0.5 align-top">
+                          <input
+                            data-field="candidate-unit"
+                            aria-label={text(`单位 ${row.candidate.name}`, `Unit for ${row.candidate.name}`)}
+                            className="w-full h-6 px-1.5 rounded text-xs"
+                            style={{
+                              backgroundColor: 'var(--color-bg)',
+                              border: '1px solid var(--color-border)',
+                              color: 'var(--color-text)',
+                            }}
+                            placeholder={text('必填', 'required')}
+                            value={row.unit}
+                            disabled={busy}
+                            onChange={event => applyCandidateField(row.key, 'unit', event.target.value)}
+                          />
+                        </td>
+                        <td className="px-1 py-0.5 align-top">
+                          <input
+                            data-field="candidate-period"
+                            aria-label={text(`口径 ${row.candidate.name}`, `Period for ${row.candidate.name}`)}
+                            className="w-full h-6 px-1.5 rounded text-xs"
+                            style={{
+                              backgroundColor: 'var(--color-bg)',
+                              border: '1px solid var(--color-border)',
+                              color: 'var(--color-text)',
+                            }}
+                            placeholder={text('必填', 'required')}
+                            value={row.period}
+                            disabled={busy}
+                            onChange={event => applyCandidateField(row.key, 'period', event.target.value)}
+                          />
+                        </td>
+                        <td className="px-1 py-0.5 align-top whitespace-nowrap">{candidateCell(row.candidate.anchorValue)}</td>
+                        <td className="px-1 py-0.5 align-top">{candidateCell(row.candidate.earnNote)}</td>
+                        <td className="px-1 py-0.5 align-top">{candidateCell(row.candidate.costNote)}</td>
+                        <td className="px-1 py-0.5 align-top">{candidateCell(row.candidate.scarcityNote)}</td>
+                      </tr>
+                      <tr>
+                        <td colSpan={10} className="px-1 pb-1.5 align-top">
+                          <div className="text-[0.65rem] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+                            {/* 原文依据是作者敢不敢勾的唯一依据，必须逐字展示。 */}
+                            <span>{text('原文依据：', 'Evidence: ')}</span>
+                            <span data-testid="candidate-quote" style={{ color: 'var(--color-text-secondary)' }}>
+                              「{row.candidate.quote}」
+                            </span>
+                          </div>
+                          {row.candidate.anchorQuote !== null && (
+                            <div className="text-[0.65rem] leading-relaxed" style={{ color: 'var(--color-text-muted)' }}>
+                              <span>{text('换算锚依据：', 'Anchor evidence: ')}</span>
+                              <span data-testid="candidate-anchor-quote" style={{ color: 'var(--color-text-secondary)' }}>
+                                「{row.candidate.anchorQuote}」
+                              </span>
+                            </div>
+                          )}
+                          {blocked && (
+                            <div
+                              role="status"
+                              className="text-[0.65rem] leading-relaxed"
+                              style={{ color: 'var(--color-warning-text)' }}
+                            >
+                              {blocked}
+                            </div>
+                          )}
+                          {row.error && (
+                            <div role="alert" className="text-[0.65rem] leading-relaxed" style={{ color: 'var(--color-error-text)' }}>
+                              {row.error}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+            <div className="flex items-center justify-end gap-2">
+              <span className="text-[0.65rem]" style={{ color: 'var(--color-text-muted)' }}>
+                {text(`已选 ${selectedCandidateCount} 条`, `${selectedCandidateCount} selected`)}
+              </span>
+              <Button
+                size="sm"
+                disabled={busy || selectedCandidateCount === 0}
+                onClick={() => void commitCandidates()}
+              >
+                {busy ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                {text('登记选中', 'Register selected')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {rows.length === 0 ? (
         <p className="text-xs py-4 text-center" style={{ color: 'var(--color-text-muted)' }}>

@@ -1,9 +1,10 @@
 # W6 · 资源账本（资源作为社会运转的基石）
 
-> **状态**：✅ **W6 七期全部落地（2026-10-22）** —— W6a-1 规则层 · W6a-2 B 层自审 · M11 两表 · W6a-0 资源登记 · W6b 账本 · W6c 世界状态资源区 · W6a-3 双单位/重复定义
-> **闭环的另一半仍是空的**：W6 只解决「事后能查」，写前注入在 [`W7`](./w7-world-state-injection-design.md)，未开工
+> **状态**：✅ **W6 十期全部落地（2026-10-22 → 10-23）** —— W6a-1 规则层 · W6a-2 B 层自审 · M11 两表 · W6a-0 资源登记 · W6b 账本 · W6c 世界状态资源区 · W6a-3 双单位/重复定义 · W6a-4 提案通道（§4.6 / §9.4）· **W6a-5 面板独立成页 · W6a-6 抽取失败可诊断（§9.5）**
+> **闭环已验证（2026-10-23）**：登记 → 抽取 → 账本在真实项目上跑通，见 §9.6；唯一剩余缺口是作者尚未登记开篇起点（余额显示「未知」，刻意行为）
+> **另一半仍需做**：W6 只解决「事后能查」，写前注入在 [`W7`](./w7-world-state-injection-design.md)，未开工
 > 裁定：① **先做 W6a-1 规则层** ② **W4b 并入 W6 的 M11** ③ **资源登记单列 W6a-0** ④ **体检结果落 `partial`** ⑤ **账本支持按章回填重扫**
-> **日期**：2026-10-22 · 分支 `exp/world-state`（动工时另开 `exp/resource-ledger`）
+> **日期**：2026-10-22（W6a-4 于 10-23 补齐）· 分支 `exp/world-state`（动工时另开 `exp/resource-ledger`）
 > **缘起**：灵石案 —— 世界观「每日劳作十二时辰换取十枚下品灵石」，正文第 2–4 章数额/周期/比例各写各的，写到第 4 章开始崩盘
 > **上级稿**：
 > - [`ac5-numeric-resource-consistency-design.md`](./ac5-numeric-resource-consistency-design.md) —— 四类缺陷分解、三种读法算术、判据 **CJ/CK/CL/CM**（机读数值行已被否决，判据保留）
@@ -441,11 +442,12 @@ W6 只动其中一类的一半：
 | **W6a-2** ✅ | B 层模型自审 + 结果落 `partial.world_building_self_review` + 编辑面提示条 | ❌ | 高 | ✅ **已落地（2026-10-22）**：`src/shared/worldbuilding-self-review.ts`（23 例）+ 模板 `world_building_self_review` + `architecture.command.ts` 的 `attachWorldBuildingSelfReview`；引文必须逐字命中原文，命不中即丢弃；`typecheck` 0 · `eslint` 0 · `architecture.command.test.ts` 49 例全绿 |
 | **M11** ✅ | `resources` + `resource_movements` + **W4b 六槽（核实已齐备，零改动）与设计意图栏（`scarcity_note`）** + **仓储读 API 与 IPC 通道** | ✅ v11→v12 | 高 | ✅ **已落地（2026-10-22）**：`electron/migrations/m11-resource-ledger.ts` + `electron/repositories/resource-repository.ts` + 四条 IPC；M11 5 例 + 仓储 5 例；老库升级、幂等、`delta` 无默认值、外键 RESTRICT 均有用例 |
 | **W6a-0** ✅ | **资源登记界面**（世界观页「资源登记」表格 CRUD） | ❌ | 高 | ✅ **已落地（2026-10-22）**：`src/components/editor/ResourceRegistryPanel.tsx`（6 例 browser）+ 挂在 `WorldBuildingEditor` 的 `worldbuilding` 步骤下并列一块；重名不发 IPC 就地拒、有账本记录的资源拒绝删除并说明条数 |
-| **W6a-3** | A-3 同资源双单位 / A-4 资源名重复定义（此期才做，因为有表可精确比对） | ❌ | 中 | 双单位、层级混淆各命中一次；**干净设定零误报**；资源未登记 ⇒ 零噪声 |
 | **W6b** ✅ | `resource-ledger` 抽取 step + 纯算术 + 中断语义 + **幂等** + **按章回填重扫** | — | 中 | ✅ **已落地（2026-10-22）**：`src/shared/resource-ledger.ts` 纯算术（24 例）+ 已扫判定（8 例）+ 抽取步骤（4 例）+ 回填工作流（3 例）；`db:resource-ledger-read` 读通道 |
 | **W6c** ✅ | 世界状态第六类「资源」 | ❌ | 中 | ✅ **已落地（2026-10-22）**：三态渲染 + 走势（未知章画虚线空槽）+ 引文展开 + 族分组不合计 + 两个回填动作；8 例 browser 断言通道集合恰为 `world-state:read` 与 `db:resource-ledger-read`，页面无 input/textarea |
 | **W6a-3** ✅ | A-3 同资源双单位 / A-4 资源名重复定义 | ❌ | 中 | ✅ **已落地（2026-10-22）**：16 例（原 18 例未动，共 34）；资源未登记 ⇒ 整个判定块不执行（断言空数组而不是"报了再过滤"） |
-| **W6a-4** | **资源登记提案通道**：抽取 pass + 候选确认面（模型只能提议，作者确认才落库） | ❌ | ★ **高（空转根因）** | 详见 §4.6：模板 `world_building_resource_extract` + `shared/worldbuilding-resource-extract.ts` + 两个触发点；**只填有逐字依据的列**，缺单位不给落库；下一本自动跑、本书手动点 |
+| **W6a-4** ✅ | **资源登记提案通道**：抽取 pass + 候选确认面（模型只能提议，作者确认才落库） | ❌ | ★ **高（空转根因）** | ✅ **已落地（2026-10-23）**：契约 `src/shared/worldbuilding-resource-extract.ts`（24 例）+ 模板 `world_building_resource_extract` + 生成侧 `attachWorldBuildingResourceCandidates` + 面板侧候选确认区（14 例 browser）+ 检查点清理键；详见 §4.6 与 §9.4 |
+| **W6a-5** ✅ | **资源登记独立成页**（面板从世界观卡片下搬走，左栏「故事架构」组内、世界观之后） | ❌ | 中 | ✅ **已落地（2026-10-23）**：`ResourceRegistryEditor.tsx`（3 例 browser）+ 新 tab type `resource-registry`；世界观页不再内嵌（9 例断言"不应再有面板"）；详见 §9.5 |
+| **W6a-6** ✅ | **抽取失败可诊断**：`llm:generate` 保留真实错误 + JSON 模式被拒时降级重试一次 | ❌ | 高 | ✅ **已落地（2026-10-23）**：`describeCallFailure`（5 例）+ `structured-json-call.ts`（8 例）；面板回显脱敏原因；详见 §9.5 |
 
 > 🆕 **W6a-4 为什么现在才补**（2026-10-23）：作者问「资源登记只能靠手动么」。核实后确认 ——
 > §3.4 写了提案通道，但分期表没有对应期次，而**缺它 ⇒ `resources` 空表 ⇒ W6b 抽取喂给模型空清单 ⇒
@@ -506,6 +508,78 @@ W6 只动其中一类的一半：
 3. **回填进度不入 store**：切到别的分类再回来，busy 态与报告区会丢（工作流仍在跑；同章并发会被 `resourceKeys` 冲突挡住）。
 
 **先做 W6a-1 的理由**：它是唯一不需要任何 schema、不需要模型配合、且直接回答作者「下一本不要再来一次」的一块。做完就能拿本书旧稿验证，再决定 W6b 的投入。
+
+### 9.4 W6a-4 落地记录（2026-10-23）
+
+两条触发点都通了：下一本自动跑（生成侧写检查点）、本书手动点（面板抽取，只进内存）。本节只记**做的时候才暴露出来、读设计稿看不出来**的那几条。
+
+| 项 | 结论 |
+|---|---|
+| 候选行的 `unit` / `period` **必须可编辑** | 设计稿 §4.6.4 写「缺单位 ⇒ 不给落库 + 提示补一个」，但候选区若全只读，这句提示没有可执行落点（作者补不了，只能去表格重抄名称/周期/说明）。所以这两列做成行内输入框，补完即解锁复选框；**落库通道不变**（仍是逐条 `db:resources-upsert`，不提供「强行落库」） |
+| `storedCandidates` 进来**必须重验引文** | 检查点是生成时的快照；作者事后改过正文，旧 `quote` 一条都不成立。面板过 `filterResourceCandidates`，并另有一条「正文变化时重滤已展示候选」的守卫 —— 只丢失去依据的行，**保留其余行的单位/周期草稿**（别处改一句设定不该让补到一半的输入整批消失） |
+| 覆盖候选区的时机要用 ref 掐住 | 编辑器任何一次 `loadStatus` 都会把 `storedCandidates` 重新传下来。不做「只在 prop 真变化时覆盖」，作者刚抽调或补了一半单位的结果会被静默抹掉 |
+| 正文还没读到时**不应用**候选 | `worldbuilding` 为空时过滤会把每一条都判成「引文命不中」而全丢 —— 编辑器重载一次候选就永久消失。等正文到位再应用 |
+| 落库成功后**只 append 进表格，不 `load()`** | 表格里可能有作者没保存的草稿行，重读清单会静默冲掉它们 |
+| 登记成功后必须给「去补扫」引导 | 登记完不补扫，账本依旧是空的，作者会以为整轮没生效（**先登记、后补扫**，顺序不能反）。文案里直接写「世界状态 → 资源 → 账本回填 → 补扫第 1–N 章」 |
+| 清空世界观要连候选一起作废 | `arch-step-checkpoint.ts` 的 `worldbuilding` 键表补 `world_building_resource_candidates`。候选的 `quote`/`anchorQuote` 是**落库依据**，比自审结论更硬：正文没了还挂在面板上，作者会给一批查无实据的资源建定义 |
+| 面板 `key` 跟项目走 | 切项目时整体重挂，候选/草稿这些本地状态一律不留（否则上一个项目的候选会挂在新项目上） |
+| 三条「没有结果」不许合并成一句 | 调用失败 / 模板缺失 / 坏 JSON ⇒「本次没有拿到可用的提案结果」；读到了但为空 ⇒「世界观里没有找到可登记的资源」。两者对作者的含义相反（判据 CX 的同源要求） |
+
+**验收**：`typecheck` 0 · `eslint` 0 · `ResourceRegistryPanel.browser.tsx` 14 例（原 6 + 新 8）· `WorldBuildingEditor.recovery.browser.tsx` 10 例（含 1 例候选透传）· `synopsis-unit-rewind.test.ts` 14 例；挂载世界观编辑器的 6 个浏览器测试文件共 87 例全绿。
+
+**手工验收清单（需真实项目 + 已配置模型）**：抽一次 → 每行都能看到原文依据 → 挑缺单位的一行补上单位 → 勾选登记 → 切「世界状态 → 资源」补扫 → 第 2–4 章灵石变动能查出来。反例：把正文里被引用的那句删掉，重开页面该候选不再显示。
+
+### 9.5 W6a-5 / W6a-6 落地记录（2026-10-23，实机反馈驱动）
+
+| 项 | 结论 |
+|---|---|
+| **W6a-5 面板独立成页** | W6a-0 把面板嵌在「世界观」卡片下，实机截图（10-23）确认**放不下**：十列表格被压到名称只看前几个字、「口径」列直接截断 ⇒ 作者没法核对候选。改为独立 tab `resource-registry`，入口在左栏「故事架构」组内、世界观之后；`WorldBuildingEditor` 里那块整块移除（**一个入口、一套状态**）。新页 `ResourceRegistryEditor` 只负责喂三份输入（`worldbuilding` / `storedCandidates` / `writingLanguage`），不改任何数据 |
+| 新 tab 必须登记 `PROJECT_SCOPED_BUILTIN_TYPES` | 该集合决定 tab id 是否按项目隔离（`createProjectScopedEditorTabId`）。漏了它两个项目会共用同一个 tab id —— 「加一种编辑器」的固定动作 |
+| 左栏那一项**不能进 `ARCH_FILES`** | 组标题的 `x/5` 进度徽章只该数架构文档，多一项就变成 `x/6` |
+| **W6a-6 抽取失败可诊断** | 连失 5 次时库里只有 `finish:error`：`llm-controller` 原本在 `finishReason !== 'stop'` 时用三元覆盖掉 `outcome.error`。现改为「`finish:<reason> \| 真实错误摘要`」并存（截断 300 字），导出的 `describeCallFailure` 有单测钉住 |
+| **JSON 模式降级重试** | `src/services/structured-json-call.ts`：首发带 `response_format: json_object`；失败且错误像「请求形状被拒」（400/422 / `response_format` / unsupported / invalid）⇒ 去掉该字段重试**一次**；认证/额度/限流/超时**一律不重试**。解析端本来就能剥 ```json 围栏，所以降级是安全的；成功但降级过会在界面明示 |
+| 面板回显原因要脱敏 | provider 错误体可能带请求回显 ⇒ 抹 `Bearer …` / `sk-…` / 32+ 位十六进制再截断 160 字。**「调用失败（附原因）」与「读到了但没有资源」仍是两句不同的话** |
+
+**定稿收据的一次性数据修复**（`scripts/repair-finalization-receipts.mjs`，10-23）：
+
+第 2 章实机：`contents.body` 与 `finalization_outbox.content_snapshot` 同 2942 字、42 处字符差（`不到十枚` ↔ `不到五十枚`），收据 hash 只与自己自洽 ⇒ 旧框架旁路写入导致「定稿后被改过」。守卫补齐后这类章被判收据失效，而产品**没有重新定稿入口**，等于死路。
+
+裁定：**不放宽产品语义**（不给「按当前正文扫」开新入口），只做一次性数据修复 —— 以**当前正文**为准重写 `content_snapshot` / `content_hash`、`content_revision+1`。判据三条缺一不修：`status='finalized'` + `snapshot !== body` + `sha256(snapshot) === content_hash`。缺省 dry-run、先备份 `.bak-receipt-<本地时间戳>`、`--chapter` 可收窄；**不碰正文、不跑后处理**。
+
+副作用（脚本会报告、不自动处理）：修完收据后 `summary_snapshots.source_content_hash` 与正文不再对应（第 2 章要点/角色状态是按旧文本算的），是否点「修复后处理」重跑由作者决定。
+
+### 9.6 端到端验收（2026-10-23，真实项目，闭环已通）
+
+作者在《师父派我来除魔，幕后真凶竟是小师妹》上跑完了全程，证据全部取自项目库，可复核：
+
+| 环节 | 证据 |
+|---|---|
+| 提案抽取 | `llm_calls` id=8 `purpose='world-building-resource-extract'`，`success=1`（此前连失 5 次，`finish:error`） |
+| 资源登记 | `resources` 7 条：下品灵石（枚/月）、活气散、九转回魂草、聚气丹、安全修炼室、残卷、贡献点 |
+| 账本补扫 | `llm_calls` id=7/9/10/11 `purpose='resource-ledger-extract'` 全部 `success=1`；`post_process_steps` 4 条 `resource-ledger` 全 `ok=1` |
+| 抽取结果 | `resource_movements` 4 条，引文与正文逐字一致：第 2 章 下品灵石 +10（"十枚灵石，照发。"）、活气散 +10 副；第 3 章 下品灵石 −6、活气散 +1 副 |
+| 已扫判定 | 第 1/2/3 章都有 `resource-ledger` 跑批记录（第 1 章扫过但无可认变动 ⇒ 无行，符合 §5.2） |
+
+**结论**：W6 的闭环（登记 → 抽取 → 账本）在真实数据上成立，不再是空转。
+
+**唯一剩余缺口（不是代码问题）**：`resource_movements` 里**没有 `chapter_number=0` 的起点行**
+⇒ 按 §5.3 规则 2，余额显示为 `unknown(no-origin)`「未知（未登记开篇余额）」。
+这是**刻意**的保守行为（不许假定起点为 0）。作者补一条 `下品灵石 +N`（`source='author'`）即可看到余额与走势。
+
+**同轮发现的数据质量问题**（机制按设计工作，但登记口径需要一次轻量校验）：
+
+- **活气散**：登记 `unit=枚`、`period=三天一副`；而正文与变动都是「副」⇒ `balanceAt` 会判
+  `conflict(unit-mismatch)`，界面显示「单位不一致：枚 / 副」且不显示合计。这正是 §5.1 要防的静默重解释，
+  但它说明**「三天一副」是费率，不是周期口径**，单位应为「副」。
+- **贡献点**：`unit=100` —— 把金额填进了单位。
+- **残卷**：`period=永久兑换`；**九转回魂草**：`period=百年` —— 都不是「日/月/副/次」这类口径。
+
+⇒ 待办（W6a-7，未开工）：登记面板对 `unit` / `period` 做轻量形态提示（`unit` 不应是纯数字、
+`period` 建议来自口径词表），**只提示不阻断**（判据 DL 同源）。已知记录在案，不在本轮改。
+
+**同轮顺带修掉的运维缺口**：定稿收据与正文分叉会让补扫/修复全被判"收据失效"，
+而产品没有重新定稿入口 ⇒ 新增 `scripts/repair-finalization-receipts.mjs`（dry-run 缺省、先备份、
+三条判据缺一不修）与 `scripts/restore-drafts-from-backup.mjs`（按章从备份恢复草稿）。
 
 ---
 

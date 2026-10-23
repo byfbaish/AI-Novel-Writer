@@ -37,7 +37,14 @@ const STEP_CHECKPOINT_KEYS: Readonly<Record<ArchStepKey, readonly string[]>> = {
   characters: [],
   // `world_building_self_review`（W6a-2）必须跟着一起清：它的每条 finding 都引用世界观原文，
   // 正文被清掉之后这些引文一条都命中不了 —— 留着只会让编辑面挂一条指向不存在文本的提示。
-  worldbuilding: ['world_building_result', 'world_building_generation_handle', 'world_building_self_review'],
+  // `world_building_resource_candidates`（W6a-4）同理，而且更硬：候选的 `quote` / `anchorQuote`
+  // 是**落库依据**，正文没了还留在面板上，作者会给一批查无实据的资源建定义。
+  worldbuilding: [
+    'world_building_result',
+    'world_building_generation_handle',
+    'world_building_self_review',
+    'world_building_resource_candidates',
+  ],
   plotStructure: [],
   synopsis: SYNOPSIS_CHECKPOINT_KEYS,
 }

@@ -173,6 +173,8 @@ describe('清空架构项时级联作废检查点进度（2026-10-21 实机）',
     expect(keys).not.toContain('premise_result')
     expect(keys).toContain('world_building_result')
     expect(keys).toContain('synopsis_covered_to')
+    // W6a-4：候选的引文全都指向世界观原文，正文清掉后一条都命不中。
+    expect(keys).toContain('world_building_resource_candidates')
   })
 
   it('清情节大纲 ⇒ 只清大纲自己的 12 个进度键', () => {
