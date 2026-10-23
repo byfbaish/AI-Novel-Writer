@@ -41,12 +41,13 @@ docs/
 | 查 **Prompt 组装 / 材料准入 / 去重 / 缓存** | [`design/prompt/`](design/prompt/) |
 | 查 **架构五层 / 故事弧 / 阶段结构 / 一致性校验** | [`design/architecture/`](design/architecture/) |
 | 查 **审稿链**（材料去重、目标准入、序数断言） | [`design/review/`](design/review/) |
-| **行业对齐 / 阶段目标（W7 · W8 · S×5）** | [`design/architecture/industry-alignment-and-stage-goals.md`](design/architecture/industry-alignment-and-stage-goals.md) —— **写任何设计稿前先读 §5 的四问** |
+| **行业对齐 / 阶段目标（W7 · W8 · S×5）** | [`design/architecture/industry-alignment-and-stage-goals.md`](design/architecture/industry-alignment-and-stage-goals.md) —— **写任何设计稿前先读 §5 的四问**；写/改 prompt 条款前先过三问 → [`design/prompt/prompt-clause-admission.md`](design/prompt/prompt-clause-admission.md) |
 | 查**已定的、不可逆的决定** | [`adr/`](adr/) |
 | 查**为什么没采纳某方案** | `design/<主题>/…-assessment.md`，或 `research/` |
 | 查 **Program v3 原始合同 / 审计证据** | `plans/novel-quality-*/`、[`research/novel-quality-modernization/`](research/novel-quality-modernization/) 🔒 冻结 |
 | 接手别人的会话 | [`handoffs/`](handoffs/) |
 | 发布 / 交付 / 审查流程 | [`DEVELOPMENT.md`](DEVELOPMENT.md) · [`agents/delivery.md`](agents/delivery.md) |
+| **要跑某个构建/验收/运维脚本，或想知道「改完这个该跑什么」** | [`../scripts/README.md`](../scripts/README.md) —— 按用途分类 + 「何时跑」+ 谁调用（npm script / CI / 手工） |
 | 产品术语 / 事实源边界 | [`product-domain.md`](product-domain.md) |
 
 ---
@@ -144,7 +145,7 @@ docs/
 
 > 完整索引即本节。**这是查找设计文档的唯一清单**，不要再去翻目录树。
 
-### 4.1 Prompt 流水线 · [`design/prompt/`](design/prompt/)（22 篇）
+### 4.1 Prompt 流水线 · [`design/prompt/`](design/prompt/)（25 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -171,6 +172,8 @@ docs/
 | [`prompt-trace-output-sample.md`](design/prompt/prompt-trace-output-sample.md) | 样本 | 真实生成数据的 Prompt 组装快照 |
 | [`p8-fanqie-flavor-draft-quality-design.md`](design/prompt/p8-fanqie-flavor-draft-quality-design.md) | ✅ P1 生效 · ⏳ P2/P3 待复验 | 番茄向正文质量闸门：续写判定接回合格线 / 可判定 AI 味禁令 / 番茄 KPI 落点（§10 复验 #1） |
 | [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
+| [`p14-chapter-role-guidance-design.md`](design/prompt/p14-chapter-role-guidance-design.md) | 待裁定 | 章节定位七档 → 本章「承担/不做」成对合同，落执行合同（system），未知零字节 |
+| [`prompt-clause-admission.md`](design/prompt/prompt-clause-admission.md) | ✅ 已生效 | 条款准入三问（作者要它时是否仍成立 / 合法反例 / 限定词）+ 反例库 |
 
 ### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（38 篇）
 

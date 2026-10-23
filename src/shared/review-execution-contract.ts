@@ -22,7 +22,7 @@ import type { WritingLanguage } from './writing-language'
  * ★ recheck（定向复核）分支刻意不加：那一轮只裁决既有 finding 是否 resolved，
  * 判据已在 `review-chapter.command.ts` 的 recheck 段落里写死，再加口径会互相干扰。
  *
- * ★ 与生成侧条款的对照表（生成侧 = `chapterExecutionContractText()`，共 9 条）。
+ * ★ 与生成侧条款的对照表（生成侧 = `chapterExecutionContractText()`，共 10 条）。
  * 这张表是**防漂移契约**：`review-execution-contract.test.ts` 会读生成侧源码，
  * 断言这里的每一条生成侧条款标题都有明确处置 —— 生成侧新增条款而这里没表态，测试即红。
  *
@@ -30,6 +30,7 @@ import type { WritingLanguage } from './writing-language'
  * |---|---|
  * | 【作者本章任务】 | 进 → 【任务兑现】【可推进范围】 |
  * | 【本章可推进的事件】 | 进 → 【可推进范围】 |
+ * | 【本章叙事定位】 | 不进 → 写作取舍（建置/高潮/收尾该花多少笔墨）不是缺陷判据；用它判会把「收尾章不该开新线」误判成问题（判据 CM：设计强度≠一致性） |
  * | 【远期设定边界】 | 不进 → 由 `reviewFarTermSettingRule()` 专门覆盖 |
  * | 【前文已定稿事实】 | 进 → 【已定稿事实优先】 |
  * | 【前文计划与本章决定】 | 进 → 【计划不是禁令】 |

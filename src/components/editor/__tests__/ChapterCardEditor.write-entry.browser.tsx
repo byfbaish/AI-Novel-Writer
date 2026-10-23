@@ -391,4 +391,22 @@ describe('ChapterCardEditor writing entry', () => {
 
     expect(container?.textContent).not.toContain('检测到后续正文但第 1 章尚未写作')
   })
+
+  it('shows the unsaved label exactly once after a blueprint edit', async () => {
+    installIpc({ blueprints: [blueprint(1)] })
+    await renderEditor()
+    await vi.waitFor(() => expect(container?.textContent).toContain('雨夜启程'))
+
+    const titleInput = Array.from(container!.querySelectorAll<HTMLInputElement>('input'))
+      .find(input => input.value === '雨夜启程')
+    expect(titleInput).toBeDefined()
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(titleInput, '雨夜启程（改）')
+      titleInput!.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+    await vi.waitFor(() => expect(container?.textContent).toContain('未保存'))
+    const occurrences = container!.textContent!.split('未保存').length - 1
+    expect(occurrences).toBe(1)
+  })
 })

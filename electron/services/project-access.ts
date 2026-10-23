@@ -29,6 +29,16 @@ export class ProjectRootRequiredError extends Error {
   }
 }
 
+/**
+ * 会话守卫的失败原因，用作 `Error.name`。
+ * 上层按类名压缩错误码时（只带类名、不带 message），靠它区分是哪一道守卫失败。
+ */
+export type ProjectSessionGuardReason =
+  | 'ProjectSessionLeaseStale'
+  | 'ProjectSessionContextMissing'
+  | 'ProjectSessionRootMismatch'
+  | 'ProjectSessionDatabaseMismatch'
+
 export interface TrustedProject {
   kind: 'manifest'
   projectId: string
@@ -235,6 +245,20 @@ export class ProjectAccessService {
     }
   }
 
+  /**
+   * 会话守卫必须把**失败原因**带进 `Error.name`。
+   *
+   * `generation-controller` 把白名单之外的错误压成 `GENERATION_REQUEST_FAILED:<类名>`，
+   * 只带类名、不带 message（避免正文泄漏）。中文 message 一律被吞成 `:Error`，
+   * 真因就永久消失了 —— 2026-10-24 的 `commit-draft` 失败就是这么查不动的。
+   * message 保持不变：UI 仍然显示中文，只有类名承载诊断信息。
+   */
+  private guardError(reason: ProjectSessionGuardReason, message: string): Error {
+    const error = new Error(message)
+    error.name = reason
+    return error
+  }
+
   assertCurrentSession(lease: ProjectSessionCredential): ProjectSessionLease {
     const active = this.activeSession
     if (
@@ -242,7 +266,7 @@ export class ProjectAccessService {
       || active.projectId !== lease.projectId
       || active.leaseId !== lease.leaseId
     ) {
-      throw new Error('项目会话已失效，已拒绝操作')
+      throw this.guardError('ProjectSessionLeaseStale', '项目会话已失效，已拒绝操作')
     }
     return active
   }
@@ -256,17 +280,17 @@ export class ProjectAccessService {
     currentProjectPath: string | null,
   ): ProjectSessionLease {
     if (!context?.projectId || !context.leaseId || !context.projectPath) {
-      throw new Error('缺少项目会话上下文，已拒绝操作')
+      throw this.guardError('ProjectSessionContextMissing', '缺少项目会话上下文，已拒绝操作')
     }
     const active = this.assertCurrentSession({
       projectId: context.projectId,
       leaseId: context.leaseId,
     })
     if (!this.sameCanonicalProjectRoot(active.rootPath, context.projectPath)) {
-      throw new Error('项目会话根目录不匹配，已拒绝操作')
+      throw this.guardError('ProjectSessionRootMismatch', '项目会话根目录不匹配，已拒绝操作')
     }
     if (!currentProjectPath || !this.sameCanonicalProjectRoot(active.rootPath, currentProjectPath)) {
-      throw new Error('项目会话与当前数据库不匹配，已拒绝操作')
+      throw this.guardError('ProjectSessionDatabaseMismatch', '项目会话与当前数据库不匹配，已拒绝操作')
     }
     return active
   }

@@ -407,6 +407,12 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     writingLanguage?: 'zh-CN' | 'en-US'
     uiLocale?: 'zh-CN' | 'en-US'
     chapterNumber?: number
+    /**
+     * 章节定位（`blueprints.role` 的自由文本）。
+     * 默认保持 '开端'（不在七档内）⇒ 既有用例全部走「认不出 → 零字节」路径，
+     * 不会因新增的【本章叙事定位】块而改变既有断言。
+     */
+    role?: string
     characters?: string[]
     characterAliases?: Array<{ name: string; characterId: string }>
     continuity?: Array<{
@@ -658,7 +664,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       projectPath,
       chapterNumber: options.chapterNumber ?? 1,
       title: options.chapterNumber === 2 ? 'Chapter Two' : '第一章',
-      role: '开端',
+      role: options.role ?? '开端',
       purpose: '建立冲突',
       keyEvents: normalizeKeyEvents(options.keyEvents ?? '开端', { chapterNumber: options.chapterNumber ?? 1 }),
       suspenseHook: options.suspenseHook,
@@ -3145,6 +3151,65 @@ ${headingPrefix}第3章：潮门
       expect(task.messages[0]!.content).not.toContain('作者更正：林澄撤回先前核查安排。')
     }
     expect(continuationTask!.messages[1]!.content).toContain(continuationContext)
+  })
+
+  describe('chapter role guidance in the execution contract', () => {
+    const ROLE_HEADING_ZH = '【本章叙事定位】'
+    const ROLE_HEADING_EN = '[Narrative function of this chapter]'
+
+    it('injects the role block into the system message only, between advanceable events and the later-stage boundary', async () => {
+      const runtime = fakeOutcomes(outcome('本章正文。'.repeat(125), 'stop'))
+      const f = setup({ runtime, wordsTarget: 500, chapterNumber: 2, keyEvents: '读信', role: '建置',
+        previousFinalizedContent: '上一章末尾，信刚送到。' })
+
+      await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+
+      const task = runtime.complete.mock.calls[0]![0]
+      expect(task.messages.map(message => message.role)).toEqual(['system', 'user'])
+      const system = task.messages[0]!.content
+      const prompt = task.messages[1]!.content
+      expect(system.split(ROLE_HEADING_ZH)).toHaveLength(2)
+      expect(system).toContain('本章按「建置」定位取舍')
+      // 四条成对条款必须都在：只给「承担」会诱导为履行定位硬塞事件（判据 AP）。
+      expect(system.split('承担：')).toHaveLength(3)
+      expect(system.split('不做：')).toHaveLength(3)
+      // 位置：可推进的事件之后、远期设定边界之前。
+      expect(system.indexOf(ROLE_HEADING_ZH)).toBeGreaterThan(system.indexOf('【本章可推进的事件】'))
+      expect(system.indexOf(ROLE_HEADING_ZH)).toBeLessThan(system.indexOf('【远期设定边界】'))
+      // 论文材料侧不得重复：定位块只属于规则区。
+      expect(prompt).not.toContain(ROLE_HEADING_ZH)
+    })
+
+    it('renders the English role label for an en-US project even though the stored value is Chinese', async () => {
+      // 英文按词计：520 词落在 500 目标的可接受区间内，不触发续写或压缩。
+      const runtime = fakeOutcomes(outcome(`${'Body '.repeat(520).trim()}.`, 'stop'))
+      const f = setup({ runtime, wordsTarget: 500, chapterNumber: 2, keyEvents: 'read the letter', role: '建置',
+        writingLanguage: 'en-US', previousFinalizedContent: 'The letter arrived at dawn.' })
+
+      await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+
+      const system = runtime.complete.mock.calls[0]![0].messages[0]!.content
+      expect(system).toContain(ROLE_HEADING_EN)
+      expect(system).toContain('positioned as "Setup"')
+      expect(system).not.toContain(ROLE_HEADING_ZH)
+      expect(system).not.toContain('承担：')
+    })
+
+    it.each(['开端', '', '双线交汇'])('leaves the contract byte-identical for an unrecognised role (%j)', async role => {
+      const runSystem = async (value: string): Promise<string> => {
+        const runtime = fakeOutcomes(outcome('本章正文。'.repeat(125), 'stop'))
+        const f = setup({ runtime, wordsTarget: 500, chapterNumber: 2, keyEvents: '读信', role: value,
+          previousFinalizedContent: '上一章末尾，信刚送到。' })
+        await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+        return runtime.complete.mock.calls[0]![0].messages[0]!.content
+      }
+
+      const system = await runSystem(role)
+      expect(system).not.toContain(ROLE_HEADING_ZH)
+      // 不留空标题、不留空行。
+      expect(system).not.toMatch(/\n\n【远期设定边界】/)
+      expect(system).toBe(await runSystem(''))
+    })
   })
 
   describe('automatic short outline', () => {

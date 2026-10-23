@@ -314,13 +314,15 @@ export class DraftRepository {
         const tx = db.transaction(() => {
             const serializedDependencies = JSON.stringify(params.sourceDependencies ?? [])
             const parsedDependencies = parseDependencies(serializedDependencies)
-            if (!parsedDependencies.valid) throw new Error('草稿来源依赖无效')
+            if (!parsedDependencies.valid) throw new Error('GENERATION_DRAFT_SOURCE_INVALID')
             const states = dependencyStates(
                 db,
                 parsedDependencies.dependencies.map(dependency => dependency.draftId),
             )
+            // 必须是白名单码：中文 message 会被 IPC 网关压成 `GENERATION_REQUEST_FAILED:Error`，
+            // 作者只能看到「Error」两个字（2026-10-24 实测）。
             if (!dependenciesAreCurrent(parsedDependencies.dependencies, states, new Map())) {
-                throw new Error('草稿来源依赖已变化或不再是当前定稿，已拒绝保存')
+                throw new Error('GENERATION_DRAFT_SOURCE_STALE')
             }
 
             const row = db.prepare(`
