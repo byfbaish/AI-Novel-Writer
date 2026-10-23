@@ -166,7 +166,7 @@ ability_id · name(UNIQUE) · form · hard_limit · weakness · cost_note
 | **G3 界面** | 可增删改、保存前不落库、重名整批不提交 | `npx vitest run --config vitest.browser.config.ts src/components/editor/__tests__/<X>Panel.browser.tsx` + `eslint` |
 | **G4 注入** | 三条旧哈希不变 + 新节零字节 + 续写轮可见 | `npx vitest run src/shared/__tests__/prewrite-consultation.test.ts src/services/workflows/__tests__/{chapter-materials,context-entry-parity}.test.ts src/services/workflows/commands/__tests__/generate-draft.command.test.ts` |
 | **G4a 形状** | 只签文档：四字段各有真实取样支撑 + 七类形态提示够用 | 读 `p1-1-power-system-shape-proposal.md`；**不签则 4b 不启动** |
-| **G5 收口** | 全量绿 + 提交 + 迁移验收 | 全量 `npx vitest run` → 授权 commit → **提交后**跑 `node scripts/project-migration-acceptance.mjs`（拒脏树）→ 交接稿填实测数字 |
+| **G5 收口** | 全量绿 + 提交 + 迁移验收 | 全量 `npx vitest run` → 授权 commit → **提交后**跑 `node scripts/project-migration-acceptance.mjs --run-synthetic`（拒脏树）→ 交接稿填实测数字 |
 
 ### 5.2 核验官十二条（只读）
 
@@ -182,6 +182,18 @@ ability_id · name(UNIQUE) · form · hard_limit · weakness · cost_note
 10. 期界：未来事实 / 未来阶段不进注入，各有专门用例。
 11. 日志只报条数不报内容；无 `console.log` / `[DEBUG-` 残留。
 12. 交接稿本节与提交内容一致（文件清单、计数、命令输出对得上）。
+
+---
+
+### 5.3 已知的既有红（**不是本批造成的，别误判**）
+
+| 门 | 现象 | 结论 |
+|---|---|---|
+| `project-migration-acceptance.mjs --run-synthetic` | `exitCode:1`，根因是 `electron/services/__tests__/project-format-migration.test.ts` 的 2 例 `PROJECT_MIGRATION_UNSAFE_FILE`（`expected {state:'blocked'} to match {state:'ready', backupOnlyCount:2}`） | 期 2 施工后在 **HEAD 基线**（`git stash` 对照）上同样失败 ⇒ 既有问题，与本批无关。但该脚本因此**长期红**，不要拿它当"本批把迁移搞坏了"的证据；`targetSchemaVersion` 能解析成正确值，说明版本行格式没被破坏 |
+| `electron/controllers/__tests__` | 3 例（`llm-controller-connection` 2 · `generation-controller` 1，都是 finish code / recovery prefix） | 同样 HEAD 基线对照确认既有 |
+| `npx vitest run src` | 10 文件 / 29 例 | 既有（UI 契约、qwen 契约、导出、世界观恢复等），与本批无关 |
+
+**做法**：每期 G5 只与**基线失败集**比对；新增失败才拦。基线失败集要随批更新在交接稿里。
 
 ---
 
