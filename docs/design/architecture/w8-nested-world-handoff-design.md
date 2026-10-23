@@ -2,6 +2,9 @@
 
 > **状态**：📋 方向已定，未开工（2026-10-23 作者裁定「先考虑线性世界（嵌套型升级流）」）
 > **分支**：建议另开 `exp/nested-world`
+> **术语对齐（2026-10-23）**：本文的"跨部切片交接"在行业里叫 **series bible 交接 / lock canon before book two**；
+> 「未回收伏笔」= **plot promises / unresolved threads**。术语与出处见 `industry-alignment-and-stage-goals.md` §2，
+> 目标定义见其 §3.2 —— **数量只传口径与量级，不传余额**。
 > **缘起**：作者判断现有工作流「只能写一个独立完整世界的故事」，而几百万字的网文常是层层套嵌的
 > （人界 → 灵界 → 神界）。设想是：本部结束后把世界切片/压缩，作为下一部的空项目世界观。
 > **上级稿**：`world-state-review-and-wiring-plan.md`（W 线主稿）· `w6-resource-ledger-design.md`（账本，唯一已结构化的状态类别）
