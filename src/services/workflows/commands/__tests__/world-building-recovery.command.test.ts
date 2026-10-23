@@ -81,8 +81,23 @@ function isSelfReviewCall(messages: ReadonlyArray<{ content: string }>): boolean
   return messages.some(message => SELF_REVIEW_MARKERS.some(marker => message.content.includes(marker)))
 }
 
+/**
+ * W6a-4：世界观写库后追加一次资源登记提案（结构化 JSON）。与自审同一姿态：
+ * 不占正文响应位，也不参与续写时序断言 —— 这些用例断言的是「正文请求几次」，
+ * 不是「模型总共被调几次」。标记取自模板的用户内容（【资源登记提案】）与系统角色（设定登记员）。
+ */
+const RESOURCE_EXTRACT_MARKERS = ['【资源登记提案】', '设定登记员']
+
+function isResourceExtractCall(messages: ReadonlyArray<{ content: string }>): boolean {
+  return messages.some(message => RESOURCE_EXTRACT_MARKERS.some(marker => message.content.includes(marker)))
+}
+
+function isNonProductCall(messages: ReadonlyArray<{ content: string }>): boolean {
+  return isSelfReviewCall(messages) || isResourceExtractCall(messages)
+}
+
 function productRequests(generateStream: { mock: { calls: Array<[ReadonlyArray<{ content: string }>, unknown]> } }) {
-  return generateStream.mock.calls.filter(([messages]) => !isSelfReviewCall(messages))
+  return generateStream.mock.calls.filter(([messages]) => !isNonProductCall(messages))
 }
 
 function installResponses(items: readonly ResponseItem[], writesAtRequestStart: number[] = []) {
@@ -92,6 +107,13 @@ function installResponses(items: readonly ResponseItem[], writesAtRequestStart: 
       streamCallbacks.onChunk?.('{"findings": []}')
       streamCallbacks.onDone?.('{"findings": []}', undefined, 'stop')
       return '世界观自审请求'
+    }
+    // W6a-4：资源登记提案只读一次模型。这里固定答「没有候选」——
+    // 提案候选的解析/过滤另有单测，本文件只管它不占正文响应位。
+    if (isResourceExtractCall(messages)) {
+      streamCallbacks.onChunk?.('{"candidates": []}')
+      streamCallbacks.onDone?.('{"candidates": []}', undefined, 'stop')
+      return '资源登记提案请求'
     }
     writesAtRequestStart.push(partialWriteCount)
     const item = items[index++]
@@ -193,7 +215,9 @@ describe('GenerateWorldBuildingCommand 截断恢复', () => {
       .execute({ step: {}, context: context(), callbacks: callbacks() }))
       .resolves.toBe('新世界遵循明确的资源与权力规则。')
 
-    expect(generateStream).toHaveBeenCalledTimes(2)
+    // 模型共 3 次：正文 1 + 自审 1（W6a-2）+ 资源登记提案 1（W6a-4）。
+    // 后两次都是只读旁路，不占正文响应位 —— 断言拆分见 productRequests。
+    expect(generateStream).toHaveBeenCalledTimes(3)
     expect(productRequests(generateStream)).toHaveLength(1)
     expect(formalWrites).toEqual(['# 世界观\n\n新世界遵循明确的资源与权力规则。'])
     expect(recoverableWorldBuildingCandidate(partialFile)).toBe('')

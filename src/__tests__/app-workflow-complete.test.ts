@@ -10,7 +10,13 @@ it('preserves complete workflow titles in Chinese and English completion notific
   function visit(node: ts.Node) {
     if (ts.isCallExpression(node)
       && node.expression.getText(source) === 'globalEventBus.on'
-      && node.arguments[0]?.getText(source) === "'WORKFLOW_COMPLETE'") {
+      && node.arguments[0]?.getText(source) === "'WORKFLOW_COMPLETE'"
+      // WORKFLOW_COMPLETE 有多个订阅者（toast 通知 / 蓝图角色提示 / 大纲角色提醒 / 单元链步进），
+      // 无判据时「最后一个匹配胜出」会撞上 TS 注解/as 断言导致 VM SyntaxError。
+      // 本测试只关心「工作流标题 toast」⇒ 按 handler 体内的 toast 文案认领
+      // （蓝图角色提示虽然也调 actionToast.workflowComplete，但文案是「待建卡角色」，不含 completedRun.title）。
+      && node.arguments[1]?.getText(source).includes('actionToast.workflowComplete')
+      && node.arguments[1]?.getText(source).includes('completedRun.title')) {
       handler = node.arguments[1]
     }
     ts.forEachChild(node, visit)

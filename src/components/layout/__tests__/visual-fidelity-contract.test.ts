@@ -3,6 +3,8 @@ import { resolve } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 
+import { withoutComments } from '../../../../test/source-contract'
+
 const pseudoIconPattern = new RegExp([
   '[\\u2600-\\u27BF]',
   '[\\u{1F300}-\\u{1FAFF}]',
@@ -59,6 +61,14 @@ function source(file: string) {
   return readFileSync(resolve(process.cwd(), file), 'utf8')
 }
 
+/**
+ * 剥注释后的源码。伪图标断言用它：⚠️/★ 是仓库注释的常用记号（判据标记、踩坑警告），
+ * 不是 UI 图标；裸扫会把注释误判成可见文案。正则类断言专用（transpile 会重排格式）。
+ */
+function commentFreeSource(file: string): string {
+  return withoutComments(file, source(file))
+}
+
 function visibleJsxSource(file: string): string {
   const content = source(file)
   const sourceFile = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
@@ -112,6 +122,7 @@ function visibleWorkflowSource(file: string): string {
 describe('writer console visual fidelity contract', () => {
   it('uses the approved writer console token classes and no pseudo-icons', () => {
     const combined = files.map(source).join('\n')
+    const visibleCombined = files.map(commentFreeSource).join('\n')
     const titleBar = source('src/components/layout/TitleBar.tsx')
     expect(titleBar).toContain('writer-topbar')
     expect(source('src/components/layout/TitleBar.tsx')).toContain('writer-command-button')
@@ -121,7 +132,9 @@ describe('writer console visual fidelity contract', () => {
       source('src/components/panels/AIPanel.tsx'),
       source('src/components/panels/AIOutputPanel.tsx'),
     ].join('\n')).toContain('writer-ai-panel')
-    expect(combined).not.toMatch(pseudoIconPattern)
+    // 伪图标扫可见文案（剥注释后）：注释里的 ⚠️/★ 记号不是图标。
+    expect(visibleCombined).not.toMatch(pseudoIconPattern)
+    // svg 禁令保持裸扫：连注释里出现 <svg 也要能看见。
     expect(combined).not.toMatch(/<svg\b|<path\b/)
   })
 
@@ -138,12 +151,13 @@ describe('writer console visual fidelity contract', () => {
   it('keeps visible editor and workflow UI on the Lucide icon system', () => {
     const visibleEditors = editorFiles.map(visibleJsxSource).join('\n')
     const visibleWorkflows = workflowFiles.map(visibleWorkflowSource).join('\n')
-    const exportLogs = source('src/services/export-service.ts')
+    // 伪图标扫剥注释后的源码：与上一个用例同一判据（注释记号 ≠ UI 图标）。
+    const exportLogs = commentFreeSource('src/services/export-service.ts')
 
     expect(visibleEditors).not.toMatch(editorPseudoIconPattern)
     expect(visibleWorkflows).not.toMatch(editorPseudoIconPattern)
     expect(exportLogs).not.toMatch(editorPseudoIconPattern)
     expect(source('src/components/editor/DraftEditor.tsx')).not.toMatch(/<svg\b|<path\b/)
-    expect(source('src/stores/character-store.ts')).not.toMatch(pseudoIconPattern)
+    expect(commentFreeSource('src/stores/character-store.ts')).not.toMatch(pseudoIconPattern)
   })
 })
