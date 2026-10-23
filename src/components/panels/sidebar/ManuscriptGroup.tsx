@@ -10,6 +10,7 @@ import type { ChapterDeletionOperation } from '../../../shared/chapter-deletion'
 import { ipc } from '../../../services/ipc-client'
 import { useProjectStore } from '../../../stores/project-store'
 import { toast } from '../../ui/Toast'
+import { promptReason } from '../../ui/ConfirmReason'
 import { globalEventBus } from '../../../shared/event-bus'
 import { useLocaleStore } from '../../../stores/locale-store'
 import {
@@ -105,6 +106,8 @@ async function readChapterTitle(
 export default function ManuscriptGroup({ files, projectPath }: { files: ManuscriptFileNode[]; projectPath: string }) {
   /** P0-1：哪几章的前提已变（退回过更早的章之后）。 */
   const staleness = useChapterStaleness(projectPath)
+
+
   const [open, setOpen] = useState(true)
   const text = useLocaleStore(s => s.text)
   const currentProject = useProjectStore(s => s.currentProject)
@@ -118,6 +121,46 @@ export default function ManuscriptGroup({ files, projectPath }: { files: Manuscr
   const deletionLoadSequence = useRef(0)
   // 文件路径 → 显示名称的映射（异步加载）
   const [titleMap, setTitleMap] = useState<Record<string, string>>({})
+
+  /**
+   * 处置之一：确认这一章**无需改动**（P0-1 期 3）。
+   *
+   * 三条处置里最省的一条 —— 不重写正文、不重跑模型，只记一条带理由的确认。
+   * 理由必填：判定只看世代，理由是留给三个月后的自己看的。
+   */
+  const acknowledgeChapter = useCallback(async (chapterNumber: number) => {
+    const session = captureProjectSession(currentProject)
+    if (!session || !isProjectSessionPath(session, projectPath)) return
+    const reason = await promptReason(text(
+      `确认第 ${chapterNumber} 章在当前改动之后仍然成立？\n\n` +
+      '这只记录你的判断，不会改动正文或派生；下次任何一章再被退回或修改，这条确认会自动失效。',
+      `Confirm Chapter ${chapterNumber} still holds after the change?\n\n` +
+      'This only records your judgement; nothing is rewritten. Any later revert or edit invalidates it automatically.',
+    ), {
+      title: text('确认无需改动', 'Confirm no change needed'),
+      confirmText: text('记录确认', 'Record'),
+    })
+    if (!reason || !isProjectSessionCurrent(session)) return
+    const result = await ipc.invokeWithProjectSession(
+      session,
+      'db:chapter-staleness-ack',
+      chapterNumber,
+      reason,
+      projectPath,
+    )
+    if (!isProjectSessionCurrent(session)) return
+    if (!result.success) {
+      toast.error(text(
+        `确认未记录：${result.errorCode === 'REASON_REQUIRED' ? '理由不能为空'
+          : result.errorCode === 'CHAPTER_NOT_FINALIZED' ? '这一章不是定稿章'
+            : result.error ?? '未知错误'}`,
+        `Confirmation was not recorded: ${result.error ?? 'unknown error'}`,
+      ))
+      return
+    }
+    toast.success(text(`已记录：第 ${chapterNumber} 章无需改动`, `Recorded: Chapter ${chapterNumber} needs no change`))
+    globalEventBus.emit('CHAPTER_DELETION_UPDATED', { projectPath, projectSession: session })
+  }, [currentProject, projectPath, text])
 
   // 每次 files 变化时异步读取各文件标题（命中缓存的路径直接跳过 IPC）
   const filesDep = files.map(f => `${f.path}\u0000${f.chapterTitle ?? ''}`).join(',')
@@ -386,7 +429,7 @@ export default function ManuscriptGroup({ files, projectPath }: { files: Manuscr
                   {chapterNumber !== undefined && staleness.get(chapterNumber)?.state === 'stale' && (
                     <span
                       data-testid="chapter-stale-badge"
-                      className="text-[0.7rem] flex-shrink-0"
+                      className="text-[0.7rem] flex-shrink-0 cursor-pointer underline decoration-dotted"
                       title={text(
                         `第 ${staleness.get(chapterNumber)?.staleFromChapter ?? '?'} 章已退回或修改，本章派生相对它已过期；请重新定稿、修复后处理，或确认无需改动`,
                         `Chapter ${staleness.get(chapterNumber)?.staleFromChapter ?? '?'} was reverted or edited; this chapter's derived facts are now stale. Re-finalize, rebuild post-processing, or confirm it needs no change.`,
@@ -395,6 +438,31 @@ export default function ManuscriptGroup({ files, projectPath }: { files: Manuscr
                     >
                       ⚠ {text('前提已变', 'Stale')}
                     </span>
+                  )}
+                  {chapterNumber !== undefined && staleness.get(chapterNumber)?.state === 'stale' && (
+                    <button
+                      type="button"
+                      className="text-[0.7rem] flex-shrink-0 underline decoration-dotted"
+                      title={text('处置这一章', 'Resolve this chapter')}
+                      style={{ color: 'var(--color-warning-text)' }}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        showSidebarMenu([
+                          {
+                            key: 'ack',
+                            label: text('确认无需改动（记理由）', 'Confirm no change needed (records a reason)'),
+                            onClick: () => void acknowledgeChapter(chapterNumber),
+                          },
+                          {
+                            key: 'open',
+                            label: text('打开这一章（改后重新定稿）', 'Open this chapter (edit, then re-finalize)'),
+                            onClick: () => openChapterFile(f.path, displayName),
+                          },
+                        ], event)
+                      }}
+                    >
+                      {text('处置', 'Resolve')}
+                    </button>
                   )}
                   <button
                     type="button"

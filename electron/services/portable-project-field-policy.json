@@ -20,6 +20,7 @@
   "m08Tables": ["character_cast_decisions"],
   "m11Tables": ["resources", "resource_movements"],
   "m12Tables": ["chapter_staleness_acknowledgements"],
+  "m13Tables": ["continuity_change_log"],
   "optionalFields": ["characters.avatar", "project_core.rhythm_profile", "summary_snapshots.story_day_offset", "summary_snapshots.story_day_label"],
   "deltaCharacterFields": ["character_id", "legacy_key", "static_provenance", "identity_revision", "retired"],
   "signedOverrides": {
@@ -82,6 +83,7 @@
     "resources": {"resource_id":"D","family_id":"D","name":"D","tier":"D","unit":"D","anchor_value":"D","period":"D","earn_note":"D","cost_note":"D","scarcity_note":"D","anchor_note":"D","created_at":"D","updated_at":"D"},
     "resource_movements": {"id":"D","chapter_number":"D","resource_id":"D","delta":"D","unit":"D","evidence":"D","source":"D","created_at":"D"},
     "chapter_staleness_acknowledgements": {"chapter_number":"D","acknowledged_generation":"D","reason":"D","created_at":"D"},
+    "continuity_change_log": {"id":"D","chapter_number":"D","generation":"D","created_at":"D"},
     "chapter_deletion_operations": {"operation_id":"H","draft_id":"H","chapter_number":"H","chapter_title":"H","finalization_id":"H","target_file_name":"P","knowledge_document_id":"H","post_process_run_ids":"H","manuscript_status":"H","manuscript_error":"R","knowledge_status":"H","knowledge_error":"R","legacy_knowledge_authorization":"X","legacy_knowledge_authorized_at":"X","status":"H","attempt_count":"H","created_at":"H","updated_at":"H","completed_at":"H"},
     "character_aliases": {"character_id":"D","name":"D","source_key":"D","valid_from":"D","valid_through":"D"},
     "character_avatar_assets": {"character_id":"A","asset_revision":"A","relative_path":"A","content_hash":"A","mime":"A","byte_size":"A","source_reference":"A"},

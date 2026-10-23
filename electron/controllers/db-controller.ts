@@ -822,6 +822,27 @@ export function registerDatabaseController() {
     return SummaryRepository.listFinalizedContinuityBefore(chapterNumber)
   })
 
+  ipcMain.handle('db:chapter-staleness-ack', async (
+    _event,
+    chapterNumber: number,
+    reason: string,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      return { success: true as const, ...SummaryRepository.acknowledgeChapterStaleness(chapterNumber, reason) }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      return {
+        success: false as const,
+        errorCode: message === 'STALENESS_ACK_REASON_REQUIRED' ? 'REASON_REQUIRED' as const
+          : message === 'STALENESS_ACK_CHAPTER_NOT_FINALIZED' ? 'CHAPTER_NOT_FINALIZED' as const
+          : undefined,
+        error: message,
+      }
+    }
+  })
+
   ipcMain.handle('db:chapter-staleness-list', async (_event, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)

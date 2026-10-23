@@ -22,6 +22,7 @@ import { PostProcessRepository } from '../../repositories/post-process-repositor
 import { projectAccess } from '../../services/project-access'
 import * as portableFreeze from '../../services/portable-runtime-freeze'
 import { ChapterDeletionRepository } from '../../repositories/chapter-deletion-repository'
+import { SummaryRepository } from '../../repositories/summary-repository'
 import { ChapterDeletionService } from '../../services/chapter-deletion-service'
 import { publishManuscript, removePublishedManuscript } from '../../services/manuscript-publisher'
 import { registerChapterLifecycleController } from '../chapter-lifecycle-controller'
@@ -246,6 +247,13 @@ describe('chapter lifecycle deletion IPC', () => {
     ).get() as { generation: number; staleFromChapter: number | null }
     expect(metaAfter.generation).toBe(metaBefore.generation + 1)
     expect(metaAfter.staleFromChapter).toBe(1)
+
+    // 变更日志必须记下"变的是哪一章"（M13）：判定靠它算"该章之前的最新变化"，
+    // 没有它就只能退回全局计数 —— 改后文会把前文一起打回。
+    const lastChange = getProjectDb()!.prepare(
+      'SELECT chapter_number AS chapterNumber, generation FROM continuity_change_log ORDER BY id DESC LIMIT 1',
+    ).get() as { chapterNumber: number; generation: number }
+    expect(lastChange).toEqual({ chapterNumber: 1, generation: metaAfter.generation })
   })
 
   it('删除正文仍只允许链尾（不可逆，后续章没有东西可复核）', async () => {
@@ -315,6 +323,34 @@ describe('chapter lifecycle deletion IPC', () => {
     // 实体稿与知识库文档照删（它们都是定稿的投影）
     expect(fs.existsSync(path.join(projectRoot, targetFileName))).toBe(false)
     await expect(searchKnowledgeFTS('目标章节独有关键字', projectRoot)).resolves.toEqual([])
+  })
+
+  it('确认无需改动：理由必填、只对定稿章开放、写入绑定当前世代（P0-1 期 3）', async () => {
+    // 理由为空 ⇒ 拒绝（静默放行正是要防的东西）
+    expect(() => SummaryRepository.acknowledgeChapterStaleness(1, '   '))
+      .toThrow('STALENESS_ACK_REASON_REQUIRED')
+
+    // 未定稿章 ⇒ 拒绝（它本来就没有派生可确认）
+    const draftOnly = DraftRepository.create({
+      chapterNumber: 9, source: 'write', content: '还没定稿', wordCount: 4,
+    })
+    expect(() => SummaryRepository.acknowledgeChapterStaleness(9, '这章不用管'))
+      .toThrow('STALENESS_ACK_CHAPTER_NOT_FINALIZED')
+
+    // 正常：写入一行，世代 = 当前世代
+    const generation = getProjectDb()!.prepare(
+      "SELECT generation FROM continuity_projection_meta WHERE id='main'",
+    ).pluck().get() as number
+    expect(SummaryRepository.acknowledgeChapterStaleness(1, '第 1 章没被改动')).toEqual({ generation })
+    const row = getProjectDb()!.prepare(
+      'SELECT chapter_number AS chapterNumber, acknowledged_generation AS generation, reason FROM chapter_staleness_acknowledgements',
+    ).get() as { chapterNumber: number; generation: number; reason: string }
+    expect(row).toEqual({ chapterNumber: 1, generation, reason: '第 1 章没被改动' })
+
+    // 判定侧读得到这条确认（该章不再是因为「没有确认」而 stale）
+    const snapshot = SummaryRepository.chapterStalenessSnapshot()
+    expect(snapshot.chapters.find(chapter => chapter.chapterNumber === 1)?.state).not.toBe('stale')
+    expect(DraftRepository.getMeta(draftOnly)).not.toBeNull()
   })
 
   it('hides frozen deletion history and does not offer legacy authorization on a refused retry',async()=>{
