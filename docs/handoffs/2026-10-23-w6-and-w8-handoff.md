@@ -9,7 +9,8 @@
 
 | 顺序 | 文件 | 看什么 |
 |---|---|---|
-| 1 | `docs/design/architecture/w6-resource-ledger-design.md` **§4.6 / §9.4 / §9.5** | 资源登记提案通道两条触发点、面板独立、抽取可诊断 |
+| 1 | `docs/design/architecture/w6-resource-ledger-design.md` **§4.6 / §9.4 / §9.5 / §9.7** | 提案通道两条触发点、面板独立、抽取可诊断、**账本下线（§9.7）** |
+| 1b | `docs/adr/0022-retire-resource-balance-ledger.md` | **为什么余额计算下线**：目标错位，不是实现问题 |
 | 2 | `docs/adr/0021-revert-finalization-keeps-the-manuscript.md` | **定稿 ≠ 删除**：退回草稿的语义、只有定稿链尾部可动 |
 | 3 | `docs/design/architecture/w8-nested-world-handoff-design.md` | **新方向**：线性嵌套世界的跨部切片交接（未开工） |
 | 4 | 本文 §4 | 数据现场：这本书已经被修成什么样，别重复修 |
@@ -76,15 +77,15 @@ src/services/structured-json-call.ts               JSON 模式降级重试
 |---|---|
 | 定稿收据 | 第 1/2/3 章全部 `ok`（`repair-finalization-receipts.mjs` 复核输出） |
 | 草稿 | 第 1/2/3 章 `finalized`，第 4 章 `revised`；第 2/3/4 章内容从备份恢复过 |
-| **资源账本（闭环已通）** | `resources` **7 条**、`resource_movements` **4 条**（第 2 章 灵石 +10 / 活气散 +10 副；第 3 章 灵石 −6 / 活气散 +1 副）；4 条 `resource-ledger` 步骤全 `ok=1`；`world-building-resource-extract` 已 `success=1`（此前连失 5 次）。详见 W6 设计稿 §9.6 |
+| **资源账本（已下线，ADR-0022）** | 曾跑通：`resources` 7 条、`resource_movements` 4 条、抽取 `success=1`（见 W6 §9.6）。现在**不再写入**，`resources` 含义收窄为「资源词汇表」；左栏「资源」分类与定稿后 `resource-ledger` 步骤都已下线，代码与表全部保留 |
 | 备份 | `project.db.bak-receipt-20261023014146`（恢复源）· `.bak-restore-20261023015929` · `.bak-receipt-20261023015941` |
 
 **遗留（已报告、未处理，需作者决定）**：
 
-0. **开篇起点未登记**：`resource_movements` 无 `chapter_number=0` 行 ⇒ 余额一律显示
+0. ~~开篇起点未登记~~（账本下线后不再需要）：`resource_movements` 无 `chapter_number=0` 行 ⇒ 余额一律显示
    `unknown(no-origin)`「未知（未登记开篇余额）」。这是刻意行为（不许假定 0），补一条
    `下品灵石 +N`（`source='author'`）即可看到余额与走势。
-0b. **登记口径填错三处**（机制按设计判冲突，不是代码 bug）：活气散 `unit=枚` 而正文与变动都是「副」
+0b. **登记口径填错三处**（仍建议改，因为它影响生成时的口径）（机制按设计判冲突，不是代码 bug）：活气散 `unit=枚` 而正文与变动都是「副」
    ⇒ 会被判 `unit-mismatch` 且不显示合计；贡献点 `unit=100`（把金额填进了单位）；残卷 `period=永久兑换`、
    九转回魂草 `period=百年`（都不是口径词）。**代码侧已补 W6a-7**（面板对这两类形态给建议级提示，
    不阻断保存）—— 但**数据本身还得你自己在面板上改**，提示不会替你改。
@@ -100,9 +101,8 @@ src/services/structured-json-call.ts               JSON 模式降级重试
 
 ## 5. 下一步（按优先级）
 
-1. **W6 代码侧已零待办**（十一期全落地，含 W6a-7）。剩下两件是**该书的数据**，不是代码：
-   ① 补开篇起点 movement（`chapter_number=0`，`source='author'`）⇒ 余额/走势才显示；
-   ② 修三处登记口径（活气散单位应为「副」、贡献点 `unit=100`、残卷 `period=永久兑换`）。
+1. **W6 已收口**：十一期落地 + 账本下线（ADR-0022，入口关闭、代码保留）。剩余只有一条数据建议：
+   修三处登记口径（活气散单位应为「副」、贡献点 `unit=100`、残卷 `period=永久兑换`）—— 它影响生成时的口径，与账本无关。
 2. **W8 讨论**：`w8-nested-world-handoff-design.md` §2 是核心——切片包里**有五项现在带不走**
    （关键物品、伏笔回收状态、能力槽、制度进度、未结构化的角色状态）。先确认「先补宿体还是先做只读包」。
 3. **卷回滚 / 指定连续回退**（`MEMORY.md` 已登记）：指定退到某章并连带回退其后所有章节，与卷边界一起设计。

@@ -430,8 +430,9 @@ describe('资源登记提案（W6a-4）', () => {
     expect(candidateRows()).toHaveLength(1)
     expect(rows()).toHaveLength(2)
     expect(container.textContent).toContain('已登记 2 条资源定义')
-    // 登记完不补扫，账本仍然是空的 —— 这句引导不能省。
-    expect(container.textContent).toContain('补扫第 1–N 章')
+    // 账本与补扫已下线（ADR-0022）：登记成功后说明的是"这些定义会作为生成时的资源口径"。
+    expect(container.textContent).not.toContain('补扫第 1–N 章')
+    expect(container.textContent).toContain('避免每章重新发明单位与周期')
   })
 
   it('抽取调用失败：说「没拿到可用结果」，不冒充「这本书没有资源」，也不动表格', async () => {

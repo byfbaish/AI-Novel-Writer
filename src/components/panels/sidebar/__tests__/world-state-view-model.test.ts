@@ -191,7 +191,8 @@ describe('label tables', () => {
   it('keeps the six sections in fixed order: people, things, events, then the space check last', () => {
     // 「人 / 物 / 事」并列（设计稿 §6）：resources（物）紧跟 characters（人）；
     // space 是检查结果而非世界状态本身，仍在末尾。
-    expect(WORLD_STATE_SECTION_ORDER).toEqual(['cast', 'timeline', 'characters', 'resources', 'facts', 'space'])
+    // resources 已下线（ADR-0022）：账本余额对写作没有用处，组件保留但不列出。
+    expect(WORLD_STATE_SECTION_ORDER).toEqual(['cast', 'timeline', 'characters', 'facts', 'space'])
     for (const section of WORLD_STATE_SECTION_ORDER) {
       expect(WORLD_STATE_SECTION_LABELS[section].zh.length).toBeGreaterThan(0)
       expect(WORLD_STATE_SECTION_LABELS[section].en.length).toBeGreaterThan(0)

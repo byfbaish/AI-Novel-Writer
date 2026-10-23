@@ -200,11 +200,17 @@ export function groupCastLedgerEntries(
  * 顺序是设计稿 §6 的「人 / 物 / 事」并列：`resources`（物）紧跟 `characters`（人）；
  * `space`（空间检查）仍在末尾 —— 它是检查结果，不是世界状态本身，追加在最后不动。
  */
+/**
+ * 左栏分类顺序。
+ *
+ * `resources` **已下线**（2026-10-23，ADR-0022）：账本余额对写作没有用处，
+ * 唯一消费者就是这块面板。`ResourcesSection` 组件与 `balanceAt` 全部保留，
+ * 这里只是不再列出来 —— 想恢复时把 'resources' 加回本数组即可。
+ */
 export const WORLD_STATE_SECTION_ORDER: readonly WorldStateSection[] = [
   'cast',
   'timeline',
   'characters',
-  'resources',
   'facts',
   'space',
 ]

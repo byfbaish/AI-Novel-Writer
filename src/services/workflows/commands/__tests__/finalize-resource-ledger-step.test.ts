@@ -70,6 +70,9 @@ function ledgerStep(raw: string) {
     'zh-CN',
     { draftId: 21, finalizationId: 'finalization-21', chapterNumber: 2, contentHash: 'a'.repeat(64) },
     0,
+    undefined,
+    // 该步骤已下线（ADR-0022），这里显式开启以继续守护保留的代码。
+    { includeResourceLedger: true },
   )
   const step = steps.find((item) => item.key === 'resource-ledger')
   expect(step).toBeDefined()
@@ -78,13 +81,32 @@ function ledgerStep(raw: string) {
 }
 
 describe('finalize post-process · resource-ledger step (W6b)', () => {
-  it('is registered as a non-critical step after the existing ones', () => {
+  it('默认不注册进后处理队列（2026-10-23 下线，ADR-0022）', () => {
     const steps = buildFinalizePostProcessSteps(
       PROJECT,
       2,
       '第二章',
       CHAPTER_TEXT,
       { complete: async () => '', extractResourceMovements: async () => '{"movements":[]}' },
+    )
+    // 余额计算对写作没有用处，唯一消费者是一块展示面板 ⇒ 不再每章花一次模型调用。
+    expect(steps.map((step) => step.key)).toEqual(['kb_import', 'chapter_notes', 'character_cards'])
+  })
+
+  it('显式开启时仍注册为非关键步骤（保留代码不腐烂）', () => {
+    const steps = buildFinalizePostProcessSteps(
+      PROJECT,
+      2,
+      '第二章',
+      CHAPTER_TEXT,
+      { complete: async () => '', extractResourceMovements: async () => '{"movements":[]}' },
+      undefined,
+      [],
+      'zh-CN',
+      undefined,
+      undefined,
+      undefined,
+      { includeResourceLedger: true },
     )
     expect(steps.map((step) => step.key)).toEqual([
       'kb_import',

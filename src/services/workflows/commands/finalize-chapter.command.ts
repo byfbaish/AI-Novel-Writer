@@ -167,6 +167,16 @@ export function buildFinalizePostProcessSteps(
   finalizedSource?: FinalizedSourceIdentity,
   projectionGeneration?: number,
   identityContext?: FinalizedCharacterContext,
+  /**
+   * `includeResourceLedger` 默认 **false**（2026-10-23 下线，ADR-0022）。
+   *
+   * 下线原因不是实现有问题，是**目标错了**：余额对写作没有用处（唯一消费者是展示面板），
+   * 而"手里有多少钱"在正文里本来就用"一大笔""几十枚"糊过去。
+   * 真正的风险（数额/周期前后矛盾）由生成期规则层 A-1~A-4 与审稿第 9 维「计量口径」覆盖。
+   *
+   * 代码与解析器全部保留：入口关掉，想重做时打开这个开关。
+   */
+  options: { includeResourceLedger?: boolean } = {},
 ): PostProcessStep[] {
   const steps: PostProcessStep[] = []
   const text = (zhCNText: string, enUSText: string) => localize(uiLocale, zhCNText, enUSText)
@@ -390,7 +400,8 @@ export function buildFinalizePostProcessSteps(
   //
   // 只认「明确的数量变化」，产出 `resource_movements`（判据 DK：模型只读数，不做算术）。
   // 落库走 `replaceChapterMovements` 的整章重建 ⇒ `withRetry` 跑三次与跑一次结果相同。
-  steps.push({
+  // 默认不进队列；显式开启才注册（见签名处注释与 ADR-0022）。
+  if (options.includeResourceLedger) steps.push({
     key: 'resource-ledger',
     label: text('资源账本', 'Resource ledger'),
     critical: false,
