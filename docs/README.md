@@ -67,6 +67,37 @@ docs/
 
 ---
 
+## 2.5 文档纪律（2026-10-23 作者要求，硬性）
+
+### ① 改代码必须同步改文档（同一提交内）
+
+| 改了什么 | 必须同步 |
+|---|---|
+| `src/` / `electron/` 的**行为或契约**（字段、错误码、状态机、判定条件） | 对应设计稿的 §落地记录 + 头部 `> 状态：` 行 |
+| **推翻了既有决定** | 新增一条 ADR（只增不改），并在被推翻的文档里打作废标记 + 指向新 ADR |
+| 收口一期 | **所有写着该期状态的位置**都要改（顶部状态行、分期表、台账、交接稿）—— 2026-10-22 的教训：只改了顶部，路线图表格没标 ✅，读者以为没做完 |
+| 新增 TODO / 缺陷 | 只往 [`plans/prompt-assembly-backlog.md`](plans/prompt-assembly-backlog.md) 追加，不另建台账 |
+| 提交前 | `node scripts/check-doc-links.mjs`（断链不许进主线） |
+
+### ② 图：用 Mermaid，一图配一句读法
+
+- 流程图/状态机/时序图一律用 ` ```mermaid ` 代码块（GitHub / VS Code / Typora 可直接渲染），不贴截图（无法 diff、无法维护）。
+- **每张图下方给一句"一句话读法"**，保证纯文本阅读器里也知道图在说什么。
+- 已有示例：`design/architecture/long-form-readiness-review.md` §1（生产链路 + 卡点）、`adr/0021`（定稿状态机）。
+
+### ③ 归档：过期就移走，别让它拖慢查阅
+
+| 判定 | 动作 |
+|---|---|
+| 被新稿**取代** | 移到 `docs/design/archive/`，原位置留一行指针 |
+| 交接快照**超过 30 天**且无新会话引用 | 移到 `docs/handoffs/archive/` |
+| 已完成且**不再被任何文档引用**的计划/评估 | 移到 `docs/design/archive/` |
+
+**不能归档**：`docs/adr/`（只增不改）、`docs/design/` 的**现行**设计稿、`plans/` 的唯一台账与 `novel-quality-*` 冻结子树。
+**迁移必须改引用**（相对路径会变），迁完跑 `check-doc-links` 兜底。
+
+---
+
 ## 3. 新文档放置规则（写之前先读这一节）
 
 ### 3.1 判定口诀（按顺序问）
@@ -103,7 +134,7 @@ docs/
 | 设计稿 | `<编号>-<主题>-design.md` | `p7-review-material-dedup-design.md` |
 | 评估 / 否决记录 | `<主题>-assessment.md` | `seven-layer-skeleton-assessment.md` |
 | 操作手册 / 草案 | `<编号>b-<主题>-guide.md` | `p1-2b-settings-period-authoring-guide.md` |
-| 交接 | `YYYY-MM-DD-<主题>.md` | `2026-09-05-astra-code-review.md` |
+| 交接 | `YYYY-MM-DD-<主题>.md` | `2026-10-23-w6-and-w8-handoff.md`；过期移入 `handoffs/archive/` |
 | ADR | `NNNN-<slug>.md` | `0020-legacy-project-copy-import.md` |
 
 ---
