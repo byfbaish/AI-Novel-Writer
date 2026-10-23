@@ -6,7 +6,7 @@ import { formatResourceUri } from '../../../shared/project-paths'
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2 } from 'lucide-react'
+import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { useDraftStore } from '../../../stores/draft-store'
@@ -412,6 +412,28 @@ function WorldBuildingGroup({
               />
             )
           })}
+          {/* W6a-5：资源登记独立入口，排在世界观之后（语义上是世界观的产物清单）。
+              刻意**不进 ARCH_FILES**：组标题那个 x/5 进度徽章只该数架构文档。 */}
+          <div
+            className="tree-item gap-1.5 cursor-pointer select-none"
+            style={{ paddingLeft: 26 }}
+            onClick={() => openBuiltinEditor(
+              'resource-registry-editor',
+              text('资源登记', 'Resource registry'),
+              'resource-registry',
+            )}
+            title={text(
+              '登记本书的资源定义：名称、单位、口径、换算关系（账本的权威值来源）',
+              'Register this book’s resource definitions: name, unit, period, conversion (the ledger’s source of authority)',
+            )}
+          >
+            <span className="flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+              <Coins size={13} />
+            </span>
+            <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
+              {text('资源登记', 'Resource registry')}
+            </span>
+          </div>
         </div>
       )}
     </div>

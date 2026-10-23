@@ -1,5 +1,4 @@
 import { LegacyRosterRecoveryPanel } from './LegacyRosterRecoveryPanel'
-import { ResourceRegistryPanel } from './ResourceRegistryPanel'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../shared/project-format'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Sparkles, CheckCircle2, Circle, RefreshCw, FileText, BookOpen, AlertTriangle, FolderTree, Eye, Copy, ChevronDown, ChevronUp, Info } from 'lucide-react'
@@ -959,9 +958,6 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
                 </div>
               </div>
               {isCharacters && <LegacyRosterRecoveryPanel onRecover={handleRepairCharacterRoster} busy={extracting} />}
-              {/* W6a-0：资源登记与世界观正文并列，是「世界观」这一步的作者侧清单，
-                  不塞进 ArchFileViewer 的文本视图（那是整篇 worldbuilding.md 的编辑器）。 */}
-              {f.key === 'worldbuilding' && <ResourceRegistryPanel projectKey={projectKey} />}
               {hasCandidate && candidateShown && (
                 <div
                   role="status"
