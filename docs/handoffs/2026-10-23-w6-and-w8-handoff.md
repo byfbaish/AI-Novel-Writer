@@ -1,5 +1,7 @@
 # 交接：W6 收口 + 定稿语义 + W8 方向（2026-10-23）
 
+> ⚠ **本文的"下一步"已被 [`2026-10-23-p0-1-close-and-target-baseline-handoff.md`](./2026-10-23-p0-1-close-and-target-baseline-handoff.md) 取代**
+> （P0-1 已收口，目标基线以 `long-form-readiness-review.md` 为准）。本文保留作 W6/W8 方向的记录。
 > 接手先读本文 §1 的「先读这四份」，再看 §5 的下一步。
 > 分支 `exp/resource-ledger`（**工作区有 29 项未提交改动**，见 §2）· 基线提交 `e3d9af27`
 
