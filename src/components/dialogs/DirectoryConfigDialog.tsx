@@ -589,6 +589,12 @@ export default function DirectoryConfigDialog({ isOpen, onClose, existingCount, 
               rows={2}
               className="text-xs"
             />
+            <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+              {text(
+                '仅作用于本次章纲生成，不会保存；要长期生效请写进项目设置的全局写作要求。不作用于正文生成。',
+                'Applies only to this blueprint run and is not saved. To make it permanent, add it to the project-wide writing guidance in project settings. It does not affect chapter drafting.',
+              )}
+            </p>
           </div>
           {launchError && (
             <p className="whitespace-pre-line rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-2.5 text-xs text-[var(--color-warning-text)]">

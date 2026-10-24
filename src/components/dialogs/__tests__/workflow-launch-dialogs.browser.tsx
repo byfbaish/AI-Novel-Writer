@@ -158,6 +158,21 @@ describe('workflow launch dialogs', () => {
     }))
   })
 
+  it('discloses that pacing guidance applies only to this blueprint run', async () => {
+    const onConfirm = vi.fn().mockResolvedValue(undefined)
+    await act(async () => root.render(
+      <DirectoryConfigDialog
+        isOpen
+        onClose={vi.fn()}
+        existingCount={0}
+        onConfirm={onConfirm}
+      />,
+    ))
+
+    await expect.element(page.getByText(/不会保存/)).toBeVisible()
+    await expect.element(page.getByText(/不作用于正文生成/)).toBeVisible()
+  })
+
   it('appends after existing blueprints when finalized manuscript authority is behind', async () => {
     authoritativeNextChapter = 1
     blueprintChapterNumbers = [1, 2, 3, 4]
