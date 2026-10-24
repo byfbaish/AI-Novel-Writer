@@ -22,6 +22,8 @@
 
 允许使用 AI 或 Agent 辅助开发，但提交者仍对全部内容负责。提交前必须逐项审阅、理解并核验代码、测试、文档和生成文件，能够解释实现与风险。未经人工核验的生成内容不应提交。
 
+**文档放哪里、要不要新建一份、什么时候必须改状态行** —— 见 [`docs/agents/documentation-charter.md`](docs/agents/documentation-charter.md)（文档章程：四层模型、单一事实源、完成定义、反例库）。提交前跑 `node scripts/check-doc-links.mjs` 与 `node scripts/check-doc-placement.mjs`。
+
 ## 评审期间
 
 维护者可能要求缩小范围、补充复现信息或增加验证。请直接更新同一 PR，并在新提交后说明哪些评审意见已经处理。是否合并由维护者根据 Issue 范围、证据和项目边界决定。
