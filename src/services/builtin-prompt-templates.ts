@@ -922,6 +922,8 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
   // ================================================================
   // 章节蓝图生成
   // ================================================================
+  // 历史遗留·无运行时消费方（实际在跑的是下一份 `chapter_blueprint_chunk`）。不删不搬的理由、
+  // 黄金三章四法则的逐条归属：docs/design/architecture/long-form-craft-alignment-assessment.md §4
 
   {
     key: 'chapter_blueprint',
@@ -1174,6 +1176,7 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
       user_guidance: '作者本章微操指导（可选）',
       filtered_context: '知识库检索结果',
       global_guidance: '全局写作要求',
+      rhythm_profile: '平台节奏推荐（可选；由项目画像注入，空则不注入推荐块）',
       word_number: '目标字数',
       writing_style: '文风描述（可选）',
       reference_works: '参考作品（可选）',
@@ -1181,6 +1184,9 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
     },
     requiredContextVariables: ['architecture', 'novel_config', 'global_guidance', 'writing_style', 'suspense_hook'],
     content: `你正在连载写作最新章节。
+
+【节奏推荐（如有，由平台画像注入；只约束节奏与兑现频率，不改变本章任务）】
+{{rhythm_profile}}
 
 【剧情记忆库与前置断点上下文】
 - [全局剧情进展]：{{global_summary}}
