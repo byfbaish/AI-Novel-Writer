@@ -56,6 +56,8 @@ let markDoneResult: { success: boolean; volume?: VolumeDefinition; actualLast?: 
 let llmReply: unknown
 /** 非 null 时 `llm:generate` 返回一个挂起的 Promise，用来断言「生成中」这一瞬间的禁用态。 */
 let llmGate: ((value: unknown) => void) | null = null
+/** 已确认的跨卷衔接（豁免行）。 */
+let exemptions: Array<{ stableFactKey: string; reason: string; revoked: boolean }>
 
 const DRAFT_JSON = JSON.stringify({
   worldState: '灵潮退去，北境三城封关',
@@ -177,6 +179,7 @@ beforeEach(() => {
   ]
   volumeState = 'ready'
   markDoneResult = { success: true, volume: volumeDef({ actualLast: 18, actualSource: 'finalized' }), actualLast: 18 }
+  exemptions = []
   llmReply = { success: true, content: DRAFT_JSON, finishReason: 'stop' }
   llmGate = null
   useLLMStore.setState({ defaultModelId: 'model-1' })
@@ -204,6 +207,11 @@ beforeEach(() => {
     }
     if (channel === 'db:volumes-mark-done') return markDoneResult
     if (channel === 'db:volume-handoffs-list') return { success: true, entries: stored }
+    if (channel === 'db:consistency-exemption-list') return exemptions
+    if (channel === 'db:consistency-exemption-revoke') {
+      exemptions = exemptions.map(item => (item.stableFactKey === args[0] ? { ...item, revoked: true } : item))
+      return { success: true }
+    }
     if (channel === 'db:volume-handoffs-upsert') {
       const input = args[0] as VolumeHandoffInput
       const volume = volumes.find(item => item.volumeId === input.volumeId)
@@ -259,7 +267,9 @@ afterEach(async () => {
 describe('卷末交接登记面板', () => {
   it('空表给出引导；挂载读两个通道，不自动重建（结构已就绪）', async () => {
     await renderPanel()
-    expect(new Set(channels())).toEqual(new Set(['db:volumes-list', 'db:volume-handoffs-list']))
+    expect(new Set(channels())).toEqual(new Set([
+      'db:volumes-list', 'db:volume-handoffs-list', 'db:consistency-exemption-list',
+    ]))
     expect(container.textContent).toContain('还没有登记任何卷末交接单')
     expect(summaryRows()).toHaveLength(0)
   })
@@ -518,5 +528,37 @@ describe('卷末交接单的自动生成', () => {
     const byId = new Map(upsertCalls().map(([, input]) => [input.handoffId, input]))
     expect(byId.get('handoff:a')!.source).toBe('author')
     expect(byId.get('handoff:b')!.source).toBe('generated')
+  })
+})
+
+/**
+ * P1-2 期 2b：开写闸门写的「已人工复查」确认。
+ *
+ * 面板只负责**看见与撤销** —— 确认本身在开写时写。没有这个入口，那句
+ * 「撤销一条，下次会重新提醒」就是一句空话。
+ */
+describe('已确认的跨卷衔接', () => {
+  it('列出已确认的卷与理由，撤销后立即消失', async () => {
+    exemptions = [{
+      stableFactKey: 'volume-handoff:volume:1',
+      reason: '作者确认已人工复查第1卷的跨卷衔接（第1–20章）并继续写作',
+      revoked: false,
+    }]
+    await renderPanel()
+    const section = container.querySelector('[data-testid="volume-handoff-acks"]')
+    expect(section).not.toBeNull()
+    expect(section!.textContent).toContain('第1卷')
+    expect(section!.textContent).toContain('人工复查')
+
+    const revoke = section!.querySelector<HTMLButtonElement>('[data-action="revoke-handoff-ack"]')!
+    await click(revoke)
+    await vi.waitFor(() => expect(channels()).toContain('db:consistency-exemption-revoke'))
+    await vi.waitFor(() => expect(container.querySelector('[data-testid="volume-handoff-acks"]')).toBeNull())
+    expect(container.textContent).toContain('已撤销确认')
+  })
+
+  it('没有确认时不渲染这一块（不制造空面板）', async () => {
+    await renderPanel()
+    expect(container.querySelector('[data-testid="volume-handoff-acks"]')).toBeNull()
   })
 })

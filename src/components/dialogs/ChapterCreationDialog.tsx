@@ -36,6 +36,9 @@ import {
   isProjectSessionCurrent,
 } from '../project-session-gate'
 import type { ModelProfile, ProjectSessionContext } from '../../shared/ipc-channels'
+import type { VolumeHandoffGate } from '../../shared/volume-handoff-gate'
+import { readVolumeHandoffGate } from '../../services/volume-handoff-gate'
+import VolumeHandoffGatePanel from './VolumeHandoffGatePanel'
 import ConsistencyPreflightPanel from './ConsistencyPreflightPanel'
 
 import { chapterRoleOptions, chapterRoleSelectValue } from '../../shared/chapter-role'
@@ -107,6 +110,8 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
   const [authorityError, setAuthorityError] = useState<string | null>(null)
   const [authorityLoading, setAuthorityLoading] = useState(false)
   const [consistencyPreflight, setConsistencyPreflight] = useState<ConsistencyPreflightResult | null>(null)
+  /** P1-2 期 2b：进新一卷第一章时的「跨卷记忆确认」闸（带冻结会话，面板要用它读要点/写确认）。 */
+  const [volumeGate, setVolumeGate] = useState<{ gate: VolumeHandoffGate; session: ProjectSessionContext } | null>(null)
   const [generationModelId, setGenerationModelId] = useState<string | null>(() => (
     preferredGenerationModelId(models, defaultModelId)
   ))
@@ -330,6 +335,27 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
       return
     }
     setGuardError(null)
+
+    /**
+     * P1-2 期 2b：进入新一卷第一章时，先确认上一卷的跨卷记忆。
+     *
+     * 频次是这个设计成立的前提 —— 一卷二十章以上，进卷头才会问一次。两种状态要拦：
+     * 上一卷**没有交接单**，或**只有一份没人看过的模型初稿**。作者版与已确认过的直接放行。
+     * 读失败 / 老项目没有这几张表 ⇒ 不拦（这是提醒，不是数据校验）。
+     */
+    const gateResult = await readVolumeHandoffGate({ projectSession, chapterNumber: targetChapter })
+    if (!isProjectSessionCurrent(projectSession)) return
+    if (gateResult.gate && gateResult.gate.state !== 'clear') {
+      setVolumeGate({ gate: gateResult.gate, session: projectSession })
+      return
+    }
+    setVolumeGate(null)
+    if (gateResult.warning) {
+      addLog('info', text(
+        `卷末交接检查本次未完成（${gateResult.warning}），创作继续。`,
+        `The volume-handoff check could not run (${gateResult.warning}); writing continues.`,
+      ))
+    }
 
     if (!ignoreFindingsOnce) {
       try {
@@ -564,6 +590,20 @@ function ChapterCreationDialogSession({ isOpen, onClose, prefill }: Props) {
                 />
               </div>
             </div>
+
+            {volumeGate ? (
+              <VolumeHandoffGatePanel
+                gate={volumeGate.gate}
+                projectSession={volumeGate.session}
+                writingLanguage={currentProject?.novelConfig.writingLanguage ?? 'zh-CN'}
+                onProceed={() => {
+                  // 确认已落库（面板里 await 过）⇒ 重进一次 handleStart 会自然放行。
+                  setVolumeGate(null)
+                  void handleStart(false)
+                }}
+                onDismiss={() => setVolumeGate(null)}
+              />
+            ) : null}
 
             {consistencyPreflight && (consistencyPreflight.findings.length > 0 || consistencyPreflight.exemptions.some(item => !item.revoked)) ? (
               <ConsistencyPreflightPanel

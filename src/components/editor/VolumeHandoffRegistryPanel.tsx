@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Plus, RefreshCw, Save, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Plus, RefreshCw, RotateCcw, Save, Trash2, Undo2 } from 'lucide-react'
 
 import {
   renderVolumeHandoffSection,
@@ -8,6 +8,8 @@ import {
   type VolumeHandoffInput,
 } from '../../shared/volume-handoff'
 import { volumeEffectiveRanges, type VolumeDefinition, type VolumeRange } from '../../shared/volume-structure'
+import type { ConsistencyExemption } from '../../shared/consistency-preflight'
+import { volumeHandoffAckKey } from '../../shared/volume-handoff-gate'
 import { ipc } from '../../services/ipc-client'
 import {
   describeVolumeHandoffFailure,
@@ -49,6 +51,9 @@ import { Button } from '../ui/Button'
  * 它由卷结构构造为连续不重叠，作者无法制造重叠。
  */
 type LocaleText = (zh: string, en: string) => string
+
+/** 「已人工复查」的确认键前缀：与开写闸门共用同一个拼法（`volumeHandoffAckKey`）。 */
+const ACK_PREFIX = volumeHandoffAckKey('')
 
 type VolumeState = 'ready' | 'stale' | 'empty' | 'unparsed'
 
@@ -202,6 +207,8 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
   const [volumes, setVolumes] = useState<VolumeDefinition[]>([])
   const [volumeState, setVolumeState] = useState<VolumeState>('ready')
   const [volumeWarnings, setVolumeWarnings] = useState<string[]>([])
+  /** 「已人工复查」的确认（开写闸门写的豁免行）；这里只负责展示与撤销。 */
+  const [acknowledged, setAcknowledged] = useState<ConsistencyExemption[]>([])
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [loadError, setLoadError] = useState('')
@@ -220,9 +227,10 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
       return
     }
     setLoading(true)
-    const [volumeRes, handoffRes] = await Promise.all([
+    const [volumeRes, handoffRes, exemptions] = await Promise.all([
       ipc.invokeWithProjectSession(projectSession, 'db:volumes-list', projectSession.projectPath),
       ipc.invokeWithProjectSession(projectSession, 'db:volume-handoffs-list', projectSession.projectPath),
+      ipc.invokeWithProjectSession(projectSession, 'db:consistency-exemption-list', projectSession.projectPath),
     ])
     if (!isProjectSessionCurrent(projectSession)) return
     setLoading(false)
@@ -233,6 +241,7 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
     setVolumeState(volumeRes.state ?? 'ready')
     setVolumeWarnings(volumeRes.warnings ?? [])
     setRows((handoffRes.entries ?? []).map(rowFromDefinition))
+    setAcknowledged((exemptions ?? []).filter(entry => !entry.revoked && entry.stableFactKey.startsWith(ACK_PREFIX)))
 
     // 表里一行都没有 ⇒ 自动建一次（没有东西可删，风险为零）。`stale` 不自动重建。
     if (volumeRes.state === 'empty' && !autoBuiltRef.current) {
@@ -384,6 +393,26 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
       setBusy(false)
       setRows(previous => previous.map(item => (item.generating ? { ...item, generating: false } : item)))
     }
+  }
+
+  /** 撤销一条「已人工复查」：下次进入该卷第一章会重新提醒。 */
+  const revokeAck = async (stableFactKey: string) => {
+    if (busyRef.current) return
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    busyRef.current = true
+    setBusy(true)
+    const result = await ipc.invokeWithProjectSession(
+      projectSession, 'db:consistency-exemption-revoke', stableFactKey, projectSession.projectPath)
+    busyRef.current = false
+    setBusy(false)
+    if (!isProjectSessionCurrent(projectSession)) return
+    if (!result.success) { setStatus(writeErrorLabel(result.error, text)); return }
+    setAcknowledged(previous => previous.filter(entry => entry.stableFactKey !== stableFactKey))
+    setStatus(text(
+      '已撤销确认：下次进入该卷第一章会重新提醒',
+      'Confirmation revoked: entering that volume again will ask once more',
+    ))
   }
 
   const applyField = (key: string, field: keyof DraftRow, value: string) => {
@@ -803,6 +832,32 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                   : text('新行', 'new row')}：{row.error}
               </p>
             ))}
+            {acknowledged.length > 0 && (
+              <details data-testid="volume-handoff-acks" className="mt-2">
+                <summary className="cursor-pointer text-xs">
+                  {text(`已确认的跨卷衔接（${acknowledged.length}）`, `Confirmed handovers (${acknowledged.length})`)}
+                </summary>
+                <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                  {text(
+                    '这些卷在开写下一卷时不会再提醒。撤销一条，下次进入该卷第一章会重新提醒。',
+                    'These volumes no longer prompt when the next volume starts. Revoke one to be asked again.',
+                  )}
+                </p>
+                {acknowledged.map(entry => {
+                  const volumeId = entry.stableFactKey.slice(ACK_PREFIX.length)
+                  const index = volumeById.get(volumeId)?.volumeIndex
+                  return (
+                    <div key={entry.stableFactKey} className="mt-1 flex items-start justify-between gap-2 text-xs">
+                      <span>{index ? text(`第${index}卷`, `Volume ${index}`) : volumeId}：{entry.reason}</span>
+                      <Button size="sm" variant="ghost" data-action="revoke-handoff-ack" disabled={busy}
+                        onClick={() => void revokeAck(entry.stableFactKey)}>
+                        <RotateCcw size={13} />{text('撤销', 'Revoke')}
+                      </Button>
+                    </div>
+                  )
+                })}
+              </details>
+            )}
           </div>
         )}
     </div>
