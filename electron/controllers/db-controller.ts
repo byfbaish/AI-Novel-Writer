@@ -105,6 +105,14 @@ import {
   upsertPowerAbility,
 } from '../repositories/power-ability-repository'
 import type { PowerAbilityInput } from '../../src/shared/power-ability'
+import {
+  deleteVolumeHandoff,
+  findPreviousHandoff,
+  hasVolumeHandoffSchema,
+  listVolumeHandoffs,
+  upsertVolumeHandoff,
+} from '../repositories/volume-handoff-repository'
+import type { VolumeHandoffInput } from '../../src/shared/volume-handoff'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
 
@@ -178,6 +186,9 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   // P1-1 能力：只有写通道进集合；`-list` 与 `db:golden-finger-read` 是只读，不进。
   'db:abilities-upsert',
   'db:abilities-delete',
+  // P1-2 卷末交接单：只有写通道进集合；`-list` 与 `-before` 是只读，不进。
+  'db:volume-handoffs-upsert',
+  'db:volume-handoffs-delete',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -1586,6 +1597,64 @@ export function registerDatabaseController() {
       if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
       const result = deletePowerAbility(db, abilityId)
       return result.success ? { success: true } : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ============================================================
+  // P1-2 卷末交接单。一条记录 = 一卷，正文链只用 `-before` 这一条读取入口。
+  // ============================================================
+  ipcMain.handle('db:volume-handoffs-list', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      // M18 之前 / 库未打开：降级成空列表，不报错（与资源、物品、制度、知情、能力同一纪律）。
+      if (!db || !hasVolumeHandoffSchema(db)) return { success: true, entries: [] }
+      return { success: true, entries: listVolumeHandoffs(db) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:volume-handoffs-before', async (
+    _event,
+    beforeChapter: number,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db || !hasVolumeHandoffSchema(db)) return { success: true, entry: null }
+      return { success: true, entry: findPreviousHandoff(db, beforeChapter) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:volume-handoffs-upsert', async (
+    _event,
+    input: VolumeHandoffInput,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      return { success: true, entry: upsertVolumeHandoff(db, input) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:volume-handoffs-delete', async (_event, handoffId: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      return deleteVolumeHandoff(db, handoffId)
+        ? { success: true }
+        : { success: false, error: 'VOLUME_HANDOFF_NOT_FOUND' }
     } catch (err) {
       return { success: false, error: String(err) }
     }

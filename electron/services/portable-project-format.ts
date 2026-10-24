@@ -15,7 +15,7 @@ export interface PortableFieldPolicy {
   disposition: PortableFieldDisposition
   validator: string
   consumer: string
-  origin: 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm08-delta' | 'm11-delta' | 'm12-delta' | 'm13-delta' | 'm14-delta' | 'm15-delta' | 'm16-delta' | 'm17-delta' | 'registered-donor'
+  origin: 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm08-delta' | 'm11-delta' | 'm12-delta' | 'm13-delta' | 'm14-delta' | 'm15-delta' | 'm16-delta' | 'm17-delta' | 'm18-delta' | 'registered-donor'
   signedDisposition: string | null
 }
 
@@ -36,6 +36,7 @@ const m14Tables = new Set<string>(fieldPolicyDocument.m14Tables)
 const m15Tables = new Set<string>(fieldPolicyDocument.m15Tables)
 const m16Tables = new Set<string>(fieldPolicyDocument.m16Tables)
 const m17Tables = new Set<string>(fieldPolicyDocument.m17Tables)
+const m18Tables = new Set<string>(fieldPolicyDocument.m18Tables)
 const deltaCharacterFields = new Set<string>(fieldPolicyDocument.deltaCharacterFields)
 const optionalFields = new Set<string>(fieldPolicyDocument.optionalFields)
 const signedOverrides = fieldPolicyDocument.signedOverrides as Record<string, string>
@@ -55,7 +56,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
       const rule = rules[code]
       const key = `${table}.${field}`
       const delta = optionalFields.has(key) || deltaTables.has(table) || m06Tables.has(table) || m08Tables.has(table)
-        || m11Tables.has(table) || m12Tables.has(table) || m13Tables.has(table) || m14Tables.has(table) || m15Tables.has(table) || m16Tables.has(table) || m17Tables.has(table) || table === 'characters' && deltaCharacterFields.has(field)
+        || m11Tables.has(table) || m12Tables.has(table) || m13Tables.has(table) || m14Tables.has(table) || m15Tables.has(table) || m16Tables.has(table) || m17Tables.has(table) || m18Tables.has(table) || table === 'characters' && deltaCharacterFields.has(field)
       const signedDisposition = delta ? null : signedOverrides[key] ?? signedDefaults[code]
       if (!field || !rule || rule.length !== 3 || !PORTABLE_FIELD_DISPOSITIONS.has(rule[0])
         || typeof rule[1] !== 'string' || !rule[1] || typeof rule[2] !== 'string' || !rule[2]
@@ -72,6 +73,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
                     : m15Tables.has(table) ? 'm15-delta'
                       : m16Tables.has(table) ? 'm16-delta'
                         : m17Tables.has(table) ? 'm17-delta'
+                        : m18Tables.has(table) ? 'm18-delta'
                           : delta ? 'm01-m05-delta' : 'signed-s01', signedDisposition }))
     }
   }

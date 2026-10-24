@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BookOpen, CalendarClock, Check, ChevronLeft, ChevronRight, ClipboardCheck, Coins, Eye, FileText, Globe, History, MoreHorizontal, Package, PenTool, Save, Settings, Sparkles, Users, X } from 'lucide-react'
+import { ArrowLeftRight, BookMarked, BookOpen, CalendarClock, Check, ChevronLeft, ChevronRight, ClipboardCheck, Coins, Eye, FileText, Globe, History, MoreHorizontal, Package, PenTool, Save, Settings, Sparkles, Users, X } from 'lucide-react'
 import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react'
 import { ContextMenu, type ContextMenuEntry } from '../ui/ContextMenu'
 import {
@@ -16,6 +16,7 @@ import KeyItemRegistryEditor from '../editor/KeyItemRegistryEditor'
 import CadenceRegistryEditor from '../editor/CadenceRegistryEditor'
 import KnowledgeRegistryEditor from '../editor/KnowledgeRegistryEditor'
 import AbilityRegistryEditor from '../editor/AbilityRegistryEditor'
+import VolumeHandoffRegistryEditor from '../editor/VolumeHandoffRegistryEditor'
 import ArchFileViewer from '../editor/ArchFileViewer'
 import DraftEditor from '../editor/DraftEditor'
 import VersionHistory from '../editor/VersionHistory'
@@ -504,6 +505,7 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
     if (type === 'cadence-registry') return <CalendarClock size={14} />
     if (type === 'knowledge-registry') return <Eye size={14} />
     if (type === 'ability-registry') return <Sparkles size={14} />
+    if (type === 'volume-handoff-registry') return <BookMarked size={14} />
     if (type === 'version-history') return <History size={14} />
     if (type === 'review-report') return <ClipboardCheck size={14} />
     return <FileText size={14} />
@@ -751,6 +753,9 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
         )}
         {activeTab?.type === 'ability-registry' && activeTab.projectKey && (
           <AbilityRegistryEditor key={activeTab.id} projectKey={activeTab.projectKey} />
+        )}
+        {activeTab?.type === 'volume-handoff-registry' && activeTab.projectKey && (
+          <VolumeHandoffRegistryEditor key={activeTab.id} projectKey={activeTab.projectKey} />
         )}
         {activeTab?.type === 'narrative-thread' && activeTab.projectKey === currentProject.path && (
           <NarrativeThreadEditor

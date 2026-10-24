@@ -15,6 +15,7 @@ import type { CadenceEntry } from '../../shared/institution-cadence'
 import type { KnowledgeStateDefinition } from '../../shared/knowledge-state'
 import type { PowerAbilityDefinition } from '../../shared/power-ability'
 import type { WorldBuildingRule } from '../../shared/worldbuilding-rules'
+import type { VolumeHandoffDefinition } from '../../shared/volume-handoff'
 import { promptLanguageText } from '../prompt-language'
 import {
   selectChapterSources,
@@ -133,7 +134,7 @@ export interface ChapterMaterialAssembly extends ChapterMaterialBundle {
    * 只回报条数、不回报内容 —— 与「公开日志不放正文」同一原则。调用方据此写步骤日志，
    * 作者能一眼看出这一轮到底注入了没有、注了几条（而不是只能翻 prompt trace）。
    */
-  prewrite: { factCount: number; itemCount: number; cadenceCount: number; knowledgeCount: number; abilityCount: number; ruleCount: number }
+  prewrite: { handoffCount: number; factCount: number; itemCount: number; cadenceCount: number; knowledgeCount: number; abilityCount: number; ruleCount: number }
 }
 
 /**
@@ -471,6 +472,11 @@ export async function assembleChapterMaterials(input: {
    * 在 `prewrite-consultation.ts` / `worldbuilding-rules.ts` 里定死，本层不再裁剪。
    */
   prewrite?: {
+    /**
+     * P1-2 上一卷交接单（跨卷记忆）。`null` / 缺省 ⇒ 零字节，与 P1-2 之前逐字节相同 ——
+     * `context-entry-parity` 的哈希护栏靠这一点继续成立。
+     */
+    handoff?: VolumeHandoffDefinition | null
     facts?: readonly PrewriteFact[]
     /** P1-1 关键物品（谁拿着什么）。与事实/规则一样进必需块，续写轮同样可见。 */
     items?: readonly KeyItemDefinition[]
@@ -822,6 +828,7 @@ export async function assembleChapterMaterials(input: {
     consumedFinalizedSources,
     omissions: allOmissions,
     prewrite: {
+      handoffCount: consultation.handoffCount,
       factCount: consultation.factCount,
       itemCount: consultation.itemCount,
       cadenceCount: consultation.cadenceCount,

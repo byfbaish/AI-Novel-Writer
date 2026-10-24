@@ -18,13 +18,14 @@ import { applyM14KeyItems, createM14Migration, verifyM14KeyItems } from './m14-k
 import { applyM15InstitutionCadences, createM15Migration, verifyM15InstitutionCadences } from './m15-institution-cadences'
 import { applyM16KnowledgeStates, createM16Migration, verifyM16KnowledgeStates } from './m16-knowledge-states'
 import { applyM17PowerAbilities, createM17Migration, verifyM17PowerAbilities } from './m17-power-abilities'
+import { applyM18VolumeHandoffs, createM18Migration, verifyM18VolumeHandoffs } from './m18-volume-handoffs'
 import { initializeLegacyBaselineSchema, applyBaselineTables } from './baseline-schema'
 import { ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
 import { SqliteSchemaAdapter, sqliteSchemaFingerprint } from './sqlite-schema-adapter'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-export const CURRENT_DESKTOP_SCHEMA_VERSION = 18
+export const CURRENT_DESKTOP_SCHEMA_VERSION = 19
 let installed: MigrationRegistry | undefined
 
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -144,7 +145,12 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
     const m17 = createM17Migration({ database: native,
       verifyKnownSchema: db => powerAbilityFingerprints.has(sqliteSchemaFingerprint(native(db)))
         && verifyM17PowerAbilities(native(db)) })
-    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14, m15, m16, m17], [
+    for (const db of references) db.transaction(() => applyM18VolumeHandoffs(db))()
+    const volumeHandoffSchemas = schemas(19), volumeHandoffFingerprints = new Set(volumeHandoffSchemas.map(item => item.fingerprint))
+    const m18 = createM18Migration({ database: native,
+      verifyKnownSchema: db => volumeHandoffFingerprints.has(sqliteSchemaFingerprint(native(db)))
+        && verifyM18VolumeHandoffs(native(db)) })
+    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14, m15, m16, m17, m18], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),
       ...baselineSchemas, ...generationSchemas, ...identitySchemas,
       ...reviewCycleSchemas, ...importEffectSchemas, ...characterAssetSchemas, ...mergeSnapshotSchemas,
@@ -155,6 +161,7 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
       ...cadenceSchemas,
       ...knowledgeSchemas,
       ...powerAbilitySchemas,
+      ...volumeHandoffSchemas,
     ])
     return installed
   } finally { reference.close(); donor.close() }

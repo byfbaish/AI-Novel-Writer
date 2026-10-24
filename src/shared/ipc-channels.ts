@@ -41,6 +41,7 @@ import type { KeyItemDefinition, KeyItemInput } from './key-item'
 import type { InstitutionCadence, InstitutionCadenceInput } from './institution-cadence'
 import type { KnowledgeFactCandidate, KnowledgeStateDefinition, KnowledgeStateInput } from './knowledge-state'
 import type { PowerAbilityDefinition, PowerAbilityInput } from './power-ability'
+import type { VolumeHandoffDefinition, VolumeHandoffInput } from './volume-handoff'
 import type {
   FinalizedContinuityProjection,
   FinalizedSourceReadResult,
@@ -1299,6 +1300,13 @@ export interface DatabaseChannels {
   'db:abilities-upsert': { args: [input: PowerAbilityInput, expectedProjectPath: string]; return: { success: boolean; abilityId?: string; error?: string } }
   'db:abilities-delete': { args: [abilityId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:golden-finger-read': { args: [expectedProjectPath: string]; return: { success: boolean; goldenFinger?: string; error?: string } }
+
+  // 7g. volume-handoffs — P1-2 卷末交接单（跨卷记忆：下一卷必须承接的几件事）。
+  // `-before` 只返回**一条**（`last_chapter < 本章` 里章号最大的那份），正文链每次请求都调它。
+  'db:volume-handoffs-list': { args: [expectedProjectPath: string]; return: { success: boolean; entries?: VolumeHandoffDefinition[]; error?: string } }
+  'db:volume-handoffs-before': { args: [beforeChapter: number, expectedProjectPath: string]; return: { success: boolean; entry?: VolumeHandoffDefinition | null; error?: string } }
+  'db:volume-handoffs-upsert': { args: [input: VolumeHandoffInput, expectedProjectPath: string]; return: { success: boolean; entry?: VolumeHandoffDefinition; error?: string } }
+  'db:volume-handoffs-delete': { args: [handoffId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
 
   // 沿用旧表
   'db:log-llm-call': { args: [call: Record<string, unknown>, expectedProjectPath: string]; return: { success: boolean } }
