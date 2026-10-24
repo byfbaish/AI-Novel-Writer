@@ -3758,8 +3758,9 @@ ${headingPrefix}第3章：潮门
       next: '半年后，泛大陆古代文字数字化保护与联合研究理事会公布了新译文；环赤道深海热泉生态长期监测联合实验室则报告了物种迁徙。',
     },
   ])('allows repeated long proper names when the surrounding events are different', async ({ previous, next }) => {
+    // 凑字数用**变化句**而非重复句：正文链新增的退化门禁会把「整篇同一长句」判为复读。
     const runtime = fakeRuntime(() => outcome(
-      `${next}\n\n${'本章沿着全新的因果继续推进。'.repeat(32)}`,
+      `${next}\n\n${Array.from({ length: 32 }, (_, index) => `第${index + 1}步，他沿着全新的因果继续推进。`).join('')}`,
       'stop',
     ))
     const { invoke, context, callbacks, command } = setup({
@@ -3780,8 +3781,9 @@ ${headingPrefix}第3章：潮门
 
   it('allows a short state echo before the new chapter advances', async () => {
     const sharedState = '远处传来脚步声，顾长庚握紧残片，却没有回头。'
+    // 同上：变化句凑字数，避免被退化门禁判成复读。
     const runtime = fakeRuntime(() => outcome(
-      `${sharedState}\n\n${'他进入新的区域并处理本章的新冲突。'.repeat(27)}`,
+      `${sharedState}\n\n${Array.from({ length: 27 }, (_, index) => `他进入第${index + 1}个新的区域并处理本章的新冲突。`).join('')}`,
       'stop',
     ))
     const { invoke, context, callbacks, command } = setup({
@@ -5442,5 +5444,45 @@ ${headingPrefix}第3章：潮门
     // 未采用候选不是名册成员，本章蓝图也没点名 → 不得出现在任何 prompt 里。
     expect(prompt).not.toContain('UNADOPTED_CANDIDATE_SENTINEL')
     expect(prompt).not.toContain('陆危楼')
+  })
+
+  // ===== 退化与照搬门禁（A3 / A4）=====
+  const noDraftCreated = (invoke: { mock: { calls: unknown[][] } }) =>
+    !invoke.mock.calls.some(call => call[0] === 'db:draft-create')
+
+  it('首稿出现占位拒绝语即拒绝，不落草稿库', async () => {
+    const runtime = fakeRuntime(() => outcome('作为 AI，我无法继续写这一段。', 'stop'))
+    const { invoke, context, callbacks, command } = setup({ runtime, chapterNumber: 1, wordsTarget: 500 })
+
+    await expect(command.execute({ step: {}, context, callbacks })).rejects.toThrow(/占位或拒绝语/u)
+    expect(noDraftCreated(invoke)).toBe(true)
+  })
+
+  it('同一长句整篇复读只在最终闸拦下（首稿放行，因为首稿还没写满）', async () => {
+    const sentence = '他推开门，看见父亲坐在黑暗里，手里攥着一张纸。'
+    const runtime = fakeRuntime(() => outcome(sentence.repeat(20), 'stop'))
+    const { invoke, context, callbacks, command } = setup({ runtime, chapterNumber: 1, wordsTarget: 500 })
+
+    await expect(command.execute({ step: {}, context, callbacks })).rejects.toThrow(/复读/u)
+    expect(noDraftCreated(invoke)).toBe(true)
+  })
+
+  it('正文几乎就是必需事件的原句时拒绝，并提示重新生成而不是改写', async () => {
+    const eventA = '甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳'
+    const eventB = '春夏秋冬风花雪月山川湖海日月星辰'
+    const eventC = '东西南北上下左右前后内外表里始终'
+    const runtime = fakeRuntime(() => outcome(
+      [`开头一段完全不一样的话。${eventA}`, `中间又换一种说法继续。${eventB}`, `结尾再说点别的。${eventC}`].join('\n\n'),
+      'stop',
+    ))
+    const { invoke, context, callbacks, command } = setup({
+      runtime,
+      chapterNumber: 1,
+      wordsTarget: 80,
+      keyEvents: [eventA, eventB, eventC].join('\n'),
+    })
+
+    await expect(command.execute({ step: {}, context, callbacks })).rejects.toThrow(/照搬细纲/u)
+    expect(noDraftCreated(invoke)).toBe(true)
   })
 })

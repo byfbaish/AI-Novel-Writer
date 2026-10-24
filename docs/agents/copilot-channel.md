@@ -38,7 +38,7 @@
 | `--available-tools` / `--excluded-tools` | 决定模型**能看见**哪些工具 | 比 deny 更强的硬过滤 |
 | `--trust-folder` | 信任工作目录配置（单次，不落盘保存） | prompt 模式下加载 `.github/` 配置需要 |
 | `--output-format json` | 输出 JSONL（一行一事件） | 见 §5 |
-| `-C <dir>` / `--add-dir <dir>` | 换工作目录 / 加额外目录 | |
+| `-C <dir>` / `--add-dir <dir>` | 换工作目录 / 加额外目录 | **`--add-dir` 已实测（2026-10-25，见 §7）** |
 | `--fleet` | 并行子代理编排 | **未实测** |
 | `--share <path>` | 跑完导出 markdown 会话 | |
 | `-r, --resume` / `--continue` | 续用旧 session | 未实测 |
@@ -95,6 +95,34 @@ copilot -p "只列出你当前可用的工具名称，每行一个，不要解�
 当前拿到的有：`view` `create` `edit` `grep` `glob` 终端 `search_code_subagent` `semantic_code_search`
 `task` `read_agent` `write_agent` `web_fetch` `skill` `sql` 以及一批 `github-mcp-server-*`。
 
+## 4.5 派活的已知陷阱（2026-10-25 实测）
+
+### 陷阱 1 · 「没读到」会被说成「没有」★ 最危险
+
+限定只读 N 个文件时，模型会把**检索边界当成事实边界**，给出覆盖全仓的否定结论。
+
+实测：只给它 3 个 `SKILL.md`，问「长篇有没有卷/单元的字数章数区间」，它答「也没有卷或单元的字数、章数区间」。
+真答案在 `references/workflow-volume.md:42`（`1.5–3 万字，约 5–15 章`）——`SKILL.md` 只是入口，机制在 `references/`。
+
+**对策（已验证生效）**：prompt 里强制区分两种表述——
+
+> 写「本次读取的文件内未找到」；**禁止**写「没有 / 不存在」这种覆盖全仓的结论（你可能没读到 references/ 子目录）。
+
+### 陷阱 2 · 出处给的是行号区间而非单行
+
+它倾向输出 `SKILL.md:2-3,9-37,114-131` 这种聚合出处。不算错（抽检仍可核对），但成本高。
+要单行就明写「出处精确到单个行号」。
+
+### 陷阱 3 · 会套用 agent body 的输出模板
+
+`DocGuard` 的 body 定义了「## 结论 / ## 矛盾 / ## 未找到的信息 / ## 本次未做的事」，它会照套——即使任务不是复核。
+看到这四个标题出现，说明模板生效，不是它在偷懒。不需要时，prompt 里直接给目标格式并注明「不要用你自己的复核模板」。
+
+### 陷阱 4 · 单次任务过重会被截断
+
+1586 行的文件一次问 5 组问题，输出会被管道尾部截掉（`tail -N`）或超出显示。
+**一次 2–4 个文件、4–5 个问题**；宁可多跑几次。判据类问题建议同时由主会话直接读源码复核。
+
 ## 5. JSONL 输出结构（要程序化消费才需要）
 
 `--output-format json` 逐行一个事件。实测出现的事件类型：
@@ -142,6 +170,10 @@ session.usage_checkpoint / result
 - `--deny-tool 'shell(git:*)'` 下 `git status` 被拒，且 agent 如实报告「该命令被执行限制拒绝」
 - `--output-format json` 的事件结构与取数字段
 - 全程零副作用：`git status` 空、基线 mtime 未变
+- **`--add-dir <dir>` 读项目外目录**（2026-10-25）：目标路径含中文（`C:/Users/<用户名>/WorkBuddy/…`）亦正常，
+  `-p "…" --agent DocGuard -s --allow-all-tools --trust-folder --add-dir "<目标>"` 能正确报出 13 个子目录名与 `README.md` 首行（逐字核对相符）
+- **批量事实清点可用**（2026-10-25）：一次 2–6 个明确文件路径 + 逐条「路径:行号 + 逐字摘句」约束，
+  13 个 skill 与 8 个脚本的判据清点均可用，抽检 5/5、3/3 相符；已知陷阱见 §4.5
 
 **未验证（要用先测，别假设）**
 

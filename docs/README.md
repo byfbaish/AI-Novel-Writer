@@ -45,6 +45,8 @@ docs/
 | **行业对齐 / 阶段目标（W7 · W8 · S×5）** | [`design/architecture/industry-alignment-and-stage-goals.md`](design/architecture/industry-alignment-and-stage-goals.md) —— **写任何设计稿前先读 §5 的四问**；写/改 prompt 条款前先过三问 → [`design/prompt/prompt-clause-admission.md`](design/prompt/prompt-clause-admission.md) |
 | 查**已定的、不可逆的决定** | [`adr/`](adr/) |
 | 查**为什么没采纳某方案** | `design/<主题>/…-assessment.md`，或 `research/` |
+| **评估外部 agent-skill 流水线包**（oh-story v0.9.0 吸收评估） | [`research/2026-10-25-oh-story-absorption/`](research/2026-10-25-oh-story-absorption/) —— 结论：**它强在文本质检、弱在连续性**，与我方互补；A3/A4 已实施、A2 下一期、A1 降级、C1–C8 刻意不为 |
+| **重校「AI 味」阈值要怎么找语料** | [`research/2026-10-25-threshold-calibration-corpus/`](research/2026-10-25-threshold-calibration-corpus/) —— 起点 3 条合法来源（全限非商业）· **番茄零** · 书面许可边界与「内主外辅」校准路径 |
 | 查 **Program v3 原始合同 / 审计证据** | `plans/novel-quality-*/`、[`research/novel-quality-modernization/`](research/novel-quality-modernization/) 🔒 冻结 |
 | 接手别人的会话 | [`handoffs/`](handoffs/) |
 | 发布 / 交付 / 审查流程 | [`DEVELOPMENT.md`](DEVELOPMENT.md) · [`agents/delivery.md`](agents/delivery.md) |

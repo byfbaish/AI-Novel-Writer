@@ -65,6 +65,74 @@ W6 的教训正是反过来的：先做了"查错"（账本），而"能用"和"
 
 ---
 
+### 2026-10-25 外部包吸收评估（oh-story v0.9.0）—— A3/A4 ✅ 已实施 · A2 下一期 · A1 降级 · A5 待定
+
+**缘起**：作者要求评估第三方 agent-skill 小说流水线包，找出值得吸收的设计与工具脚本。评估全文：[`research/2026-10-25-oh-story-absorption/assessment.md`](../research/2026-10-25-oh-story-absorption/assessment.md)（含事实底册、795 文件 sha256 清单、6.0MB 原件归档）。
+
+**结论**：它强在「确定性文本质量门禁」、弱在「连续性」，与我方**互补**。28 条行业术语逐条映射后，只有 5 项过三闸（术语 / 刻意不做 / 消费方）。
+
+| 编号 | 项 | 为什么值得 | 前置 / 风险 |
+|---|---|---|---|
+| **A1** | 风格 lint 检测器（22 类 + 密度双门槛 + `severity × review` 双轴） | `p8` §2.3 自己诊断过「禁令**不可判定** + 零惩罚」，处方只落了 prompt 文案，**判定器一直是空的** | **阈值不可直接搬**（它的校准语料是七猫 5584 章 + 黑岩 3983 篇），须用我方已定稿章节重新校准 |
+| **A2** | findings 加 `review` 轴（mechanical / semantic） | 我方只有 severity；加这一轴才能回答「这条能不能自动改」 | 低：一个枚举 + 渲染 + 判定规则 |
+| **A3** | 退化指纹检测（复读/截断/占位拒绝语/工程词泄漏） | 判据全是计数（`12` / `3` / `8`），修复语义是「**重新生成该段**」不是改写 | 极低：349 行纯 Node、零依赖 |
+| **A4** | 正文照搬细纲检测（`MIN_RUN=16` + 二分求最长延伸） | 我方无此检测；`visible-continuation.ts` 是续写拼接去重叠（48 字），语义不同 | 极低：313 行 |
+| **A5** | 每次调用的加载预算硬上限（35000 字 + 最坏叠加 + exempt 必写原因 + 配错要报错） | 对应 `attention budget`；我方有只读探针，无强制断言 | 中：需先给 20 条链路定义角色与叠加组合 |
+
+**裁定与去向（2026-10-25，作者）**
+
+| 编号 | 裁定 | 去向 / 依据 |
+|---|---|---|
+| **A3 + A4** | ✅ **已实施** | `src/shared/visible-text-integrity.ts` 新增退化判据 · 新建 `src/shared/blueprint-verbatim-overlap.ts` · `generate-draft.command.ts` 五处挂载。回归：正文链 240/240、退化 20/20、照搬 13/13、`tsc` 通过。实施记录见评估稿 §9 |
+| **A2** | ✅ 做，接受一次迁移（「缝缝补补拖泥带水，以后都是技术债」） | **下一期**。真身 = schema v20→21 + `canonicalM03FindingSetHash` + `CURRENT_REVIEW_REPORT_VERSION` 3→4 + 一处硬编码 20 个占位符的测试。与 A3/A4 全在 `src` 层不同，混做会让回归面失控 |
+| **A1** | ⏸ **降级为「平台扩展参考材料」** | 成本过高：已定稿量少、外部完结书的校准标准难定、可能把污染语料带进语料库。前置调研已落盘 → [`research/2026-10-25-threshold-calibration-corpus/`](../research/2026-10-25-threshold-calibration-corpus/)（起点 3 条合法来源全限非商业、**番茄零**、公开世界无「AI 句式频次/误报率」可对标数据） |
+| **A5** | ⏳ 待定 | 性质已查明：不是新建机制，而是把已有断言接进生产路径——`createPromptBudgetReport` 只在渲染层 `generation-harness.ts`，生产默认走的 mainOwned 路径**不执行断言**，`electron/` 零引用 |
+
+**明确不吸收**（理由与逐字证据见评估稿 §4）：单一 JSON 状态源 + 派生视图逐字比对 · delta `retired_context_items`（我方 M13 按章向前更准）· 7 个平台扫榜爬虫 · 封面生成 · 本地 Dashboard · 7 宿主部署适配层 · 并行子代理编排。
+
+**只归档**（评估稿 §5）：`outline_view.py` 作用域取段（**P1-2 期 3 施工时参考**「退役行不输出」「旧文档缺声明只告警、保守纳入」两个细节）· `scripts/bench/` 预注册 + 非劣效门槛 · `check-reference-gates.js` · `wordcount_core.py` 的 frontmatter 剥离三条件。
+
+**边界**：本轮只出评估与登记，不写设计稿、不改代码、不排期。A1–A5 任一要动手时，从评估稿取用并另出设计稿。
+
+---
+
+### 2026-10-25 大纲-正文进度守卫（新立项 · 未开工）
+
+**缘起**：作者在裁定 P1-2 期 3 时指出——按「大纲覆盖卷 − 正文定稿卷 ≥ 2」判，会漏掉 **「正文第 1 卷未完结、大纲已到第 2 卷」** 这一态；而这一态**同样没有卷快照**，一致性隐患照样埋进大纲层。作者原话：
+
+> 虽然正文受约束于大纲，但是定稿正文影响卷快照，会将影响传导到大纲，微小的差异可能会让模型产出不一样的内容。
+
+**两条代码事实（已取证）**
+
+1. **`architecture.command.ts` 完全不消费 `volume_handoffs`** —— 全仓只有 `generate-draft.command.ts:983` / `:2621`（写前查阅）读它。⇒ **正文实况回流到大纲层的线从来没接上**，与期 3 无关。
+2. `volume_handoffs` 的唯一生产者是定稿链的卷末章（`finalize-chapter.command.ts:425-436`）⇒ **上一卷不定稿就没有快照**，无论卷差是 1 还是 2。
+
+**判据必须是二维（只看卷差会漏判）**
+
+| 卷差（大纲 − 正文） | 上一卷正文 | 快照 | 判定 |
+|---|---|---|---|
+| 0 | 任意 | 不适用 | 正常 |
+| 1 | 已定稿 | 有 | 正常 |
+| **1** | **未定稿** | **无** | **⚠️ 提示**：新卷大纲只能基于**计划**，不是**实际** |
+| ≥2 | 已定稿 | 有 | ⚠️ 跑太远 |
+| ≥2 | 未定稿 | 无 | ⚠️⚠️ |
+
+**三条待裁定**
+
+1. **提示还是阻断**：作者常先铺多卷大纲再写正文，硬阻断不合适 ⇒ 倾向「强提示可取消」，与期 2b 开写闸门共用同一张豁免表。
+2. **光提示不够**：按 canon「缺则 unknown，绝不折成未到」，还必须在生成 prompt 里**显式声明**「上一卷正文尚未定稿，以下只有计划，实际结局未知」，不许静默省略这一节。
+3. **要不要打通「快照 → 大纲」回流线**：这是期 3 的前置，也是本守卫落地后才有意义的一步。
+
+**行业依据（2026-10-25 取证，用于确认「快照该给谁看」）**
+
+- **bible 是 descriptive，plan 是 prescriptive，必须分开**：`liberscript.com/guides/series-bible-continuity-guide` 原文「A series bible is a reference, **not a plan**. It records what you have already established and published, so that **future books stay consistent with it**… **The bible answers "what is true?" The plan answers "what happens next?"**」——「future books」含**规划**，不只是写作。
+- **bible 基于定稿而非初稿**：`proseengine.app/blog/keeping-a-series-consistent…` 原文「Always document from the **revised draft** — the version closest to what readers will see. **First drafts are provisional.**」；`novelium.com/blog/how-to-write-a-series-bible` 原文「Treat canon like something **earned by surviving revision**, not something declared the first time it appears in a scene.」——与我方 M18「卷末章定稿时生成」一致。
+- **⇒ 结论：快照的消费者是「下一卷的一切」（规划 + 写作），现状只给正文看是半成品；大纲链现在拿全量前缀顶替 L3，等于用 plan 冒充 bible。**
+
+**边界**：未开工、不排期。**与期 3 的关系**：期 3 管「前缀怎么切」，本条管「什么时候允许写下一卷」——不是子项关系，但**守卫是期 3 能成立的前提**：只有逐卷推进，写第 N 卷大纲时第 N−1 卷才已定稿、快照才存在，L3 才有「实际」可传。
+
+---
+
 ### 2026-10-24 全 prompt 查漏补缺（P16）—— ⏸ 只登记，不排期
 
 **缘起**（作者原话）：「再结合行业做法查漏补缺，这一次范围扩大到全 prompt，主要是系统级、工程级、作者级，要保留基本结构的创作以给予作者和大模型足够的创作发挥空间。需要将结果留档供以后参考，不能每次都全量扫描分析，成本很高」。

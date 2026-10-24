@@ -1,6 +1,8 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
 import { formatStoryDayAnchorLine, type StoryDaySource } from '../../../shared/story-day-anchor'
 import { keyEventsText } from '../../../shared/blueprint-key-events'
+import { analyzeBlueprintVerbatimCopy } from '../../../shared/blueprint-verbatim-overlap'
+import { assertNotDegenerateVisibleText, findVisibleTextDegeneracies } from '../../../shared/visible-text-integrity'
 import { buildBoundaryNotice } from '../../../shared/chapter-boundary'
 import { projectArchitectureForDraft } from '../../../shared/architecture-projection'
 import { notePromptProjection } from '../../prompts/prompt-trace'
@@ -1333,6 +1335,20 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
               + ` (GENERATION_DRAFT_SHORT_OUTLINE_FAILED; status=${outlined.status}; finishReason=${outlined.finishReason})`)
           }
           if (recovery?.draftShortOutline && !shortOutline) throw new Error('GENERATION_DRAFT_SHORT_OUTLINE_FAILED')
+          // 短细纲退化只丢弃、不阻断：它不落正文库，丢掉等价于退回「无细纲」路径，代价最低。
+          // **不跑 meta-leak**：细纲本来就写「本章 / 蓝图 / 分段预算」，且会逐字复制 keyEvents，
+          // 跑它必然自相残杀。恢复路径不在此丢弃，否则会破坏下面的 initialDraftTask 身份校验。
+          if (!recovery?.draftShortOutline && shortOutline
+            && findVisibleTextDegeneracies(shortOutline, {
+              classes: ['verbatim-repeat', 'placeholder-leak'],
+              writingLanguage,
+            }).some(finding => finding.severity === 'blocking')) {
+            callbacks.log(uiText(
+              '  短细纲出现复读或占位语，已丢弃，本次改用无细纲路径继续',
+              '  The short outline repeated itself or leaked placeholder text, so it was discarded; continuing without one',
+            ))
+            shortOutline = ''
+          }
           const reconciliationBlock = [recordedReconciliation ? draftReconciliationBlock(writingLanguage, recordedReconciliation) : '',
             shortOutline ? draftShortOutlineBlock(writingLanguage, shortOutline) : ''].filter(Boolean).join('\n\n')
           const initialPrompt = shortOutline ? `${prompt}\n\n${draftShortOutlineBlock(writingLanguage, shortOutline)}`
@@ -1401,6 +1417,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             await acknowledge(initialOutcome, initialVisibleDraft)
             }
           recoverableDraftCandidate = initialVisibleDraft
+          // 退化早失败：占位拒绝语与工序词一旦出现，后续续写不会把它们消除，早阻断省掉续写与压缩预算。
+          // 复读不在此处判——首稿通常还没写满，比例失真，交给全文就绪后的最终闸。
+          assertNotDegenerateVisibleText(initialVisibleDraft, context.uiLocale ?? 'zh-CN', {
+            classes: ['placeholder-leak', 'meta-leak'],
+            writingLanguage,
+          })
           callbacks.log(uiText(
             `  初始生成可见单位：visibleUnits=${countDraftUnits(initialVisibleDraft)}`,
             `  Initial generation visible units: visibleUnits=${countDraftUnits(initialVisibleDraft)}`,
@@ -1483,6 +1505,24 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         const units = countDraftUnits(cleanDraftText)
         const range = draftTargetUnitRange(targetChars)
         if (units < range.minimum) throw draftTooShortError(context, units, targetChars)
+      }
+      // 退化与照搬都放到「全文就绪」这一处判：中间轮次的结果会被续写 / 压缩替换，
+      // 只有这里判才覆盖得到「各轮各自通过、合并后出现跨轮复读」的漏网。
+      if (!alreadySaved) {
+        assertNotDegenerateVisibleText(cleanDraftText, context.uiLocale ?? 'zh-CN', { writingLanguage })
+        const blueprintCopy = analyzeBlueprintVerbatimCopy(cleanDraftText, writerChapterInfo.keyEvents, { writingLanguage })
+        if (blueprintCopy.severity === 'blocking') {
+          throw new Error(uiText(
+            `正文与本章必需事件连续重合 ${blueprintCopy.runs.length} 处、共 ${blueprintCopy.coveredUnits} 字（${Math.round(blueprintCopy.ratio * 100)}%），已构成照搬细纲，结果未保存。请重新生成：把事件写成场景，不要复用必需事件的原句。`,
+            `The draft repeats ${blueprintCopy.runs.length} run(s) of the chapter's required events verbatim (${blueprintCopy.coveredUnits} units, ${Math.round(blueprintCopy.ratio * 100)}%), so it was not saved. Regenerate it and dramatize the events instead of reusing their wording.`,
+          ))
+        }
+        if (blueprintCopy.severity === 'advisory') {
+          callbacks.log(uiText(
+            `  与本章必需事件连续重合 ${blueprintCopy.runs.length} 处，共 ${blueprintCopy.coveredUnits} 字（${Math.round(blueprintCopy.ratio * 100)}%）`,
+            `  Verbatim overlap with the chapter's required events: ${blueprintCopy.runs.length} run(s), ${blueprintCopy.coveredUnits} units (${Math.round(blueprintCopy.ratio * 100)}%)`,
+          ))
+        }
       }
       if (!alreadySaved && hasSubstantialPreviousChapterReuse(previousEnding, cleanDraftText, writingLanguage)) {
         throw new Error(uiText(
@@ -1773,9 +1813,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       const recoveryInstruction = recoveryPending
         ? promptLanguageText(
             params.writingLanguage,
-            '上一轮续写达到输出上限且没有增加足够的新正文，已被全部丢弃。\n'
+            '上一轮续写没有增加足够的新正文（达到输出上限，或在复读已经写过的内容），已被全部丢弃。\n'
               + '这是本次任务唯一一次无进展恢复机会：请直接推进下一事件、动作或对话，禁止复述已写末尾。\n\n',
-            'The previous continuation reached the output limit without adding enough new prose, so it was discarded in full.\n'
+            'The previous continuation did not add enough new prose (it hit the output limit, or it repeated text already written), so it was discarded in full.\n'
               + 'This is the only no-progress recovery attempt: advance directly to the next event, action, or line of dialogue without repeating the existing ending.\n\n',
           )
         : ''
@@ -1893,16 +1933,23 @@ ${visibleDraft}`,
         params.compositionVersion,
       )
       const mergedDelta = countDraftUnits(candidateDraft) - beforeChars
-      const accepted = addition.finishReason === 'stop' || mergedDelta >= 300
+      // 退化门禁与「无进展」共用同一个丢弃 + 恢复分支：两套机制分开判，会各自消耗一次恢复额度。
+      // source 传当前 draft，避免把「上一轮已写过的句子」算成本轮复读。
+      const degenerate = findVisibleTextDegeneracies(visibleAddition, {
+        source: draft,
+        writingLanguage: params.writingLanguage,
+      }).some(finding => finding.severity === 'blocking')
+      const noProgress = addition.finishReason === 'length' && mergedDelta < 300
+      const accepted = !degenerate && (addition.finishReason === 'stop' || mergedDelta >= 300)
       params.callbacks.log(uiText(
         `  自动续写可见单位：visibleUnitsBefore=${beforeChars} `
           + `candidateVisibleUnits=${countDraftUnits(visibleAddition)} `
-          + `mergedDelta=${mergedDelta} accepted=${accepted}`,
+          + `mergedDelta=${mergedDelta} accepted=${accepted} degenerate=${degenerate}`,
         `  Auto-continuation visible units: visibleUnitsBefore=${beforeChars} `
           + `candidateVisibleUnits=${countDraftUnits(visibleAddition)} `
-          + `mergedDelta=${mergedDelta} accepted=${accepted}`,
+          + `mergedDelta=${mergedDelta} accepted=${accepted} degenerate=${degenerate}`,
       ))
-      if (addition.finishReason === 'length' && mergedDelta < 300) {
+      if (noProgress || degenerate) {
         params.callbacks.replaceText?.(draft)
         if (noProgressRecoveryUsed) {
           throw new Error(uiText(
@@ -1914,8 +1961,8 @@ ${visibleDraft}`,
         recoveryPending = true
         lastFinishReason = addition.finishReason
         params.callbacks.log(uiText(
-          '  本轮低增量截断内容已丢弃，将使用剩余预算执行一次无进展恢复请求',
-          '  Discarded this low-progress truncated continuation; using the remaining budget for one no-progress recovery request',
+          '  本轮内容已丢弃（低增量截断或复读退化），将使用剩余预算执行一次无进展恢复请求',
+          '  Discarded this continuation (low progress or degenerate repetition); using the remaining budget for one no-progress recovery request',
         ))
         continue
       }
@@ -2063,9 +2110,12 @@ ${params.candidate.text}`,
     logDraftAttempt(params.callbacks, params.context, { zhCN: '压缩修订', enUS: 'Condense revision' }, outcome.receipt)
     const condensed = sanitizeDraftText(this.stripThinkingTags(outcome.content), params.compositionVersion)
     const units = countDraftUnits(condensed)
-    const accepted = outcome.finishReason === 'stop' && units >= range.minimum
+    // 压缩轮也可能压缩出复读 / 占位语；不接受就保留原稿（原稿已过首稿闸与最终闸）。
+    const degenerate = findVisibleTextDegeneracies(condensed, { writingLanguage: params.writingLanguage })
+      .some(finding => finding.severity === 'blocking')
+    const accepted = outcome.finishReason === 'stop' && units >= range.minimum && !degenerate
     params.callbacks.log(uiText(
-      `  压缩修订响应结束：finishReason=${outcome.finishReason} visibleUnits=${units} accepted=${accepted}`,
+      `  压缩修订响应结束：finishReason=${outcome.finishReason} visibleUnits=${units} accepted=${accepted} degenerate=${degenerate}`,
       `  Condense revision response ended: finishReason=${outcome.finishReason} visibleUnits=${units} accepted=${accepted}`,
     ))
     if (!accepted) return original()
