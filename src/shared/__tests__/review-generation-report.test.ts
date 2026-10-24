@@ -317,3 +317,21 @@ describe('review report v3 · stateDelta', () => {
     expect((report.stateDelta as Array<{ quote: string }>)[0]?.quote).toBe('两人约定周三再搬设备。')
   })
 })
+
+describe('P2-1 连续性 findings 走既有报告合同', () => {
+  it('固定 category 逐字保留，且不需要任何新字段', () => {
+    // 审稿 items 只有 category/quote/description/severity 四个键 —— 连续性 findings 必须
+    // 靠这条既有通道落地，不能给它加 stableFactKey 之类的新字段（会被 contract 拒掉）。
+    const item = {
+      category: '连续性核对（作者登记）',
+      quote: '乙从怀里摸出那把刀。',
+      description: '登记：第1章刀在林岚手里；本章换手且无转交过程。改本章：补出转交过程。',
+      severity: 'warning',
+    }
+    const content = JSON.stringify({ summary: '发现一处连续性冲突。', items: [item] })
+    const parsed = parseReviewGenerationResult(content)
+    expect(parsed.items[0]).toEqual(item)
+    const report = build({ content, sourceContent: '乙从怀里摸出那把刀。', frozenGoals: freezeChapterGoals(1, '') })
+    expect(report.items[0]).toEqual(item)
+  })
+})

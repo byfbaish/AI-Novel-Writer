@@ -223,10 +223,11 @@ docs/
 | [`e3-unit-batch-chain-design.md`](design/architecture/e3-unit-batch-chain-design.md) | 🟡 T12 已实施 · 待实机复验 | **连续单元（链式新 run）**：一次确认连写 N 个，**只到本卷末**；判定顺序 卷界 > 配额；每批必须重读检查点 / 重探 / 重放 author inputs / 等上一批退出活跃列表；重启不续链 |
 | [`chapter-position-format-design.md`](design/architecture/chapter-position-format-design.md) | 🟡 P0/P1/P2 已落地 · P3 待做 | **章节位置表达统一**：`## 第3卷第2单元第3章（全书第45章）：章名`——把「属哪卷哪单元」从**事后折算**变成**生成时写进标题**，给 `outline-tree` 补第四种 source（`heading`），终结「单元写超 ⇒ 后续章号与单元整体错位」；三个各写各的章标题正则已抽成共享解析器（P0 零行为变化），存量永久双格式兼容。**P2 三个坑见 §5**：`naming==='volume'` 只是措辞不是层数、格式段只在 suffix 出现一次、逐章模式刻意不改 |
 
-### 4.3 审稿链 · [`design/review/`](design/review/)（3 篇）
+### 4.3 审稿链 · [`design/review/`](design/review/)（4 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
+| [`p2-1-continuity-findings-design.md`](design/review/p2-1-continuity-findings-design.md) | 🚧 期 1 已实施 | 四类连续性登记作「核对基准」进审稿（物品/制度/知情/能力），findings 随报告生灭、零 schema 变更 |
 | [`p7-review-material-dedup-design.md`](design/review/p7-review-material-dedup-design.md) | ✅ 已实施 | 审稿链材料去重（世界观/角色状态重复注入） |
 | [`c1-review-architecture-declaration-design.md`](design/review/c1-review-architecture-declaration-design.md) | ✅ 已实施 | 审稿链「远期设定使用规则」声明（路子 B） |
 | [`consistency-check-ordinal-claim-guard-design.md`](design/review/consistency-check-ordinal-claim-guard-design.md) | ✅ 已实施 | 序数/全称断言独立复核 |

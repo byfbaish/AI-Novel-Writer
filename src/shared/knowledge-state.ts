@@ -239,6 +239,21 @@ function orderKnowledgeStates(
  *
  * @param maxChars 正文行总字数上限；预算外**整条丢弃**，不截半行（半行会读成另一条事实）。
  */
+/**
+ * 一条知情关系在某一章是否可用：`learnedChapter <= 本章` 且引用仍对得上定稿。
+ *
+ * 两道闸缺一不可 —— ① 未来的知识就是剧透；② `stale` / `unverifiable` 指的是「这条登记失效了」，
+ * 不是「这个角色不知道」，既不能注入也不能反着读。
+ *
+ * P2-1 期 1 起正文链与审稿链共用这一口径：**写的时候告诉了什么，审的时候就只能拿同一批判**。
+ */
+export function knowledgeUsableAtChapter(
+  entry: Pick<KnowledgeStateDefinition, 'learnedChapter' | 'refState'>,
+  chapterNumber: number,
+): boolean {
+  return entry.learnedChapter <= chapterNumber && entry.refState === 'valid'
+}
+
 export function renderKnowledgeSection(
   entries: readonly KnowledgeStateDefinition[],
   writingLanguage: WritingLanguage,
