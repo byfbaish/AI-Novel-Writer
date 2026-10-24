@@ -1,6 +1,6 @@
 # P1-2 期 1 · 卷末交接单（volume handoff）设计稿
 
-> **状态**：✅ 期 1 已落地（2026-10-24，M18，schema 18 → 19）；期 2 / 期 3 未开工。
+> **状态**：✅ 期 1 已落地（2026-10-24，M18，schema 18 → 19）；✅ **期 1b 已改选卷**（M19，schema 19 → 20：区间外置到 `volumes`，作者只选卷、不再填章号）。期 2（自动生成）/ 期 3 未开工。
 > **施工规格**：[`p1-2-volume-handoff-plan.md`](../../plans/p1-2-volume-handoff-plan.md)
 > **判据位置**：`long-form-readiness-review.md` §0（跨卷会失真）与 §3（卷级上下文一行）。
 

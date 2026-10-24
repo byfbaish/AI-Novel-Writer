@@ -23,9 +23,12 @@ import { VOLUME_HANDOFF_CHARS } from '../outline-prefix-budget'
 function handoff(patch: Partial<VolumeHandoffDefinition> = {}): VolumeHandoffDefinition {
   return {
     handoffId: 'handoff:1',
+    volumeId: 'volume:2',
     volumeIndex: 2,
     firstChapter: 21,
     lastChapter: 40,
+    // `actual` 是旧文案的档：节首仍写「全书第21–40章」，所以下面两条逐字快照字节不变。
+    boundaryBasis: 'actual',
     worldState: '',
     heroState: '',
     events: [],
@@ -158,5 +161,43 @@ describe('renderVolumeHandoffSection', () => {
     expect(bullets).toHaveLength(VOLUME_HANDOFF_MAX_EVENTS + VOLUME_HANDOFF_MAX_ITEMS)
     expect(bullets).toContain(`  - 物品${VOLUME_HANDOFF_MAX_ITEMS - 1}`)
     expect(bullets).not.toContain(`  - 物品${VOLUME_HANDOFF_MAX_ITEMS}`)
+  })
+
+  it('actual / headings 沿用「全书第 a–b 章」（这是第 8 条哈希不变的前提）', () => {
+    const filled = { worldState: '灵潮退去，北境三城封关' }
+    const actual = renderVolumeHandoffSection(handoff({ ...filled, boundaryBasis: 'actual' }), 'zh-CN', 45)
+    const headings = renderVolumeHandoffSection(handoff({ ...filled, boundaryBasis: 'headings' }), 'zh-CN', 45)
+    expect(actual).toContain('【上一卷交接（第2卷 · 全书第21–40章）】')
+    expect(headings).toContain('【上一卷交接（第2卷 · 全书第21–40章）】')
+    const english = renderVolumeHandoffSection(handoff({ ...filled, boundaryBasis: 'headings' }), 'en-US', 45)
+    expect(english).toContain('[Previous volume handoff (Volume 2 · chapters 21–40 of the book)]')
+  })
+
+  it('declared / even 是估算，不许沿用「全书第」（B5 反例）', () => {
+    const filled = { worldState: '灵潮退去，北境三城封关' }
+    const declared = renderVolumeHandoffSection(handoff({ ...filled, boundaryBasis: 'declared' }), 'zh-CN', 45)
+    expect(declared).toContain('【上一卷交接（第2卷 · 计划第21–40章）】')
+    expect(declared).not.toContain('全书第')
+    const even = renderVolumeHandoffSection(handoff({ ...filled, boundaryBasis: 'even' }), 'zh-CN', 45)
+    expect(even).toContain('【上一卷交接（第2卷 · 估算第21–40章）】')
+    expect(even).not.toContain('全书第')
+    expect(renderVolumeHandoffSection(handoff({ ...filled, boundaryBasis: 'even' }), 'en-US', 45))
+      .toContain('estimated chapters 21–40')
+  })
+
+  it('区间缺失 ⇒ 写「起止未定」，绝不写「全书第 null 章」', () => {
+    const text = renderVolumeHandoffSection(
+      handoff({ worldState: '灵潮退去', firstChapter: null, lastChapter: null, boundaryBasis: 'even' }), 'zh-CN', 45)
+    expect(text).toContain('【上一卷交接（第2卷 · 起止未定）】')
+    expect(text).not.toContain('null')
+    expect(renderVolumeHandoffSection(
+      handoff({ worldState: '灵潮退去', firstChapter: null, lastChapter: null }), 'en-US', 45))
+      .toContain('chapter range unresolved')
+  })
+
+  it('卷已不在结构里（volumeIndex 为 null）⇒ 整节不出现', () => {
+    expect(renderVolumeHandoffSection(
+      handoff({ volumeIndex: null, firstChapter: null, lastChapter: null, boundaryBasis: null }),
+      'zh-CN', 45)).toBe('')
   })
 })

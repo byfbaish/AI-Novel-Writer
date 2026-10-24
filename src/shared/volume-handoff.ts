@@ -12,11 +12,18 @@
  * 只记「下一卷要用的」六件事：卷末世界、卷末主角、待承接的事件、关键物品、未结清的债、
  * 卷末未决。逐章摘要的家是 `summary_snapshots`，这里再登一份就是第二套账。
  *
- * ## 为什么用章号区间而不是卷号
+ * ## 区间从哪来：由 `volumes` 派生，不再由作者手填
  *
- * 正文链靠 `lastChapter < 本章` 找「上一卷」，所以节首必须写出「第几卷 · 全书第 a–b 章」——
- * 卷号只是给人看的名字，**区间才是机器判据**。这也意味着区间必须连续、不重叠：
- * 重叠 = 同一章落在两条记录里 = 静默注入错卷。
+ * M19（P1-2 期 1b）之后，交接单只记 `volumeId`；区间由 `volumeEffectiveRanges()` 算出：
+ * 起点 = 上一卷有效末章 + 1，末章 = `actual_last ?? planned_last`。所以本模块拿到的
+ * `firstChapter` / `lastChapter` 是**派生值**，可能是 `null`（区间算不出来）。
+ *
+ * `boundaryBasis` 决定节首怎么措辞，**不许把估算说成事实**：
+ * - `actual`（该卷已标记写完，末章来自定稿章）与 `headings`（synopsis 归属标题精确观测）
+ *   ⇒ 沿用「全书第 a–b 章」——这两档是真的；
+ * - `declared` ⇒「计划第 a–b 章」（按大纲自报章数折算）；
+ * - `even` ⇒「估算第 a–b 章」（按卷数均分，最粗的一档）；
+ * - `null` 或区间缺失 ⇒「起止未定」，绝不写「全书第 null 章」。
  *
  * ## 五条字数口径（写死，不许自己定）
  *
@@ -31,18 +38,26 @@
  */
 import type { WritingLanguage } from './writing-language'
 import { VOLUME_HANDOFF_CHARS } from './outline-prefix-budget'
+import type { VolumeBoundaryBasis } from './volume-structure'
 
 /**
  * 一卷的交接单。
  *
- * - `firstChapter` / `lastChapter` 是**写入那一刻的真实章号**，不是计划章数（超写是常态）；
+ * - `volumeId` 指向 `volumes` 表；区间（`firstChapter` / `lastChapter`）与 `boundaryBasis`
+ *   由仓储用 `volumeEffectiveRanges()` 填进来，**不落库、不可编辑**；
  * - `events` / `items` / `debts` 是字符串数组，JSON 编解码由仓储负责，本模块只见数组。
  */
 export interface VolumeHandoffDefinition {
   handoffId: string
-  volumeIndex: number
-  firstChapter: number
-  lastChapter: number
+  volumeId: string
+  /** 派生值；`null` = 这一卷已不在卷结构里。 */
+  volumeIndex: number | null
+  /** 派生值；`null` = 区间算不出来（卷起止未定）。 */
+  firstChapter: number | null
+  /** 派生值；`null` 同上。 */
+  lastChapter: number | null
+  /** 区间来源；`null` = 卷记录已不在结构里。决定节首措辞，见文件头。 */
+  boundaryBasis: VolumeBoundaryBasis | null
   worldState: string
   heroState: string
   events: string[]
@@ -60,14 +75,12 @@ export const VOLUME_HANDOFF_MAX_CHARS = VOLUME_HANDOFF_CHARS
 /**
  * 写入入参：`handoffId` 缺省表示新建。
  *
- * 三个数组字段由仓储负责 `JSON.stringify`；面板传数组，不传 JSON 字符串 ——
- * 让「编码」只有一处，少一个半角引号逃逸的机会。
+ * **没有章号**：区间由卷结构派生，作者只选卷。三个数组字段由仓储负责 `JSON.stringify`；
+ * 面板传数组，不传 JSON 字符串 —— 让「编码」只有一处。
  */
 export interface VolumeHandoffInput {
   handoffId?: string
-  volumeIndex: number
-  firstChapter: number
-  lastChapter: number
+  volumeId: string
   worldState?: string
   heroState?: string
   events?: readonly string[]
@@ -107,6 +120,31 @@ export function isVolumeHandoffEmpty(handoff: VolumeHandoffDefinition | null | u
 }
 
 /**
+ * 节首里的区间措辞（按 `boundaryBasis` 分档）。
+ *
+ * **`actual` / `headings` 必须与 M18 的文案逐字一致** —— `context-entry-parity` 的第 8 条
+ * 哈希钉的就是这两档的字节。改一个字，材料块就变了，那条哈希会红。
+ *
+ * 反过来，`declared` / `even` 是估算，**不许**沿用「全书第 a–b 章」的事实语气：模型会把
+ * 估算当成已定稿来对账，对不上就成了新的错误源（判据 DN 同型：缺失就说缺失）。
+ */
+function rangeLabel(handoff: VolumeHandoffDefinition, isEn: boolean): string {
+  const first = handoff.firstChapter
+  const last = handoff.lastChapter
+  if (first === null || last === null || !Number.isSafeInteger(first) || !Number.isSafeInteger(last)) {
+    return isEn ? 'chapter range unresolved' : '起止未定'
+  }
+  if (handoff.boundaryBasis === 'declared') {
+    return isEn ? `planned chapters ${first}–${last}` : `计划第${first}–${last}章`
+  }
+  if (handoff.boundaryBasis === 'even') {
+    return isEn ? `estimated chapters ${first}–${last}` : `估算第${first}–${last}章`
+  }
+  // actual / headings / null（卷已删但区间仍在）：沿用旧文案，字节不变。
+  return isEn ? `chapters ${first}–${last} of the book` : `全书第${first}–${last}章`
+}
+
+/**
  * 渲染【上一卷交接】整节；六项全空（或一项都装不进预算）返回空串。
  *
  * @param chapterNumber 本章章号：节首明写「本章为第 N 章」，让模型知道交接的是**上一卷**。
@@ -120,10 +158,9 @@ export function renderVolumeHandoffSection(
 ): string {
   if (!handoff || isVolumeHandoffEmpty(handoff)) return ''
   const isEn = writingLanguage === 'en-US'
-  const volumeIndex = Number.isSafeInteger(handoff.volumeIndex) && handoff.volumeIndex > 0 ? handoff.volumeIndex : null
-  if (volumeIndex === null) return ''
-  const firstChapter = Number.isSafeInteger(handoff.firstChapter) ? handoff.firstChapter : 0
-  const lastChapter = Number.isSafeInteger(handoff.lastChapter) ? handoff.lastChapter : 0
+  const rawVolumeIndex = handoff.volumeIndex
+  if (rawVolumeIndex === null || !Number.isSafeInteger(rawVolumeIndex) || rawVolumeIndex < 1) return ''
+  const volumeIndex = rawVolumeIndex
   const currentChapter = Number.isSafeInteger(chapterNumber) && chapterNumber > 0 ? chapterNumber : 1
 
   const world = text(handoff.worldState)
@@ -185,8 +222,8 @@ export function renderVolumeHandoffSection(
   if (body.length === 0) return ''
 
   const heading = isEn
-    ? `[Previous volume handoff (Volume ${volumeIndex} · chapters ${firstChapter}–${lastChapter} of the book)]`
-    : `【上一卷交接（第${volumeIndex}卷 · 全书第${firstChapter}–${lastChapter}章）】`
+    ? `[Previous volume handoff (Volume ${volumeIndex} · ${rangeLabel(handoff, true)})]`
+    : `【上一卷交接（第${volumeIndex}卷 · ${rangeLabel(handoff, false)}）】`
   const lead = isEn
     ? `These facts were handed over from Volume ${volumeIndex}; this chapter is Chapter ${currentChapter}; keep only what the next volume needs — this is not a chronicle. Where it conflicts with the finalized text, the finalized text prevails.`
     : `以下是从第${volumeIndex}卷交接下来的事实，本章为第${currentChapter}章；只写下一卷要用的，不是编年史。与已定稿原文冲突时以定稿原文为准。`

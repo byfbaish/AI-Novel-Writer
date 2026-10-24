@@ -1,6 +1,6 @@
 # 卷 / 单元的结构持久化（volume & unit index）
 
-> **状态**：✅ **已裁定并进入施工**（2026-10-24）。施工规格 = [`p1-2-volume-structure-plan.md`](../../plans/p1-2-volume-structure-plan.md)。
+> **状态**：✅ **已落地**（2026-10-24，M19，schema 19 → 20）。施工规格 = [`p1-2-volume-structure-plan.md`](../../plans/p1-2-volume-structure-plan.md)。
 > **背景**：P1-2 期 1 建了 `volume_handoffs`（作者手填章号区间）后，作者指出「卷信息还是需要结构持久化的，单元也做的话，很多东西就不需要只凭推断或者现算了，后面还有部」。
 > **schema**：19 → 20（M19）
 

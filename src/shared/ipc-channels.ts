@@ -42,6 +42,7 @@ import type { InstitutionCadence, InstitutionCadenceInput } from './institution-
 import type { KnowledgeFactCandidate, KnowledgeStateDefinition, KnowledgeStateInput } from './knowledge-state'
 import type { PowerAbilityDefinition, PowerAbilityInput } from './power-ability'
 import type { VolumeHandoffDefinition, VolumeHandoffInput } from './volume-handoff'
+import type { VolumeDefinition } from './volume-structure'
 import type {
   FinalizedContinuityProjection,
   FinalizedSourceReadResult,
@@ -1302,11 +1303,18 @@ export interface DatabaseChannels {
   'db:golden-finger-read': { args: [expectedProjectPath: string]; return: { success: boolean; goldenFinger?: string; error?: string } }
 
   // 7g. volume-handoffs — P1-2 卷末交接单（跨卷记忆：下一卷必须承接的几件事）。
-  // `-before` 只返回**一条**（`last_chapter < 本章` 里章号最大的那份），正文链每次请求都调它。
+  // `-before` 只返回**一条**（有效末章在本章之前的那份），正文链每次请求都调它。
+  // 区间不再由作者填：它由 `db:volumes-*` 的卷结构派生（见 7h）。
   'db:volume-handoffs-list': { args: [expectedProjectPath: string]; return: { success: boolean; entries?: VolumeHandoffDefinition[]; error?: string } }
   'db:volume-handoffs-before': { args: [beforeChapter: number, expectedProjectPath: string]; return: { success: boolean; entry?: VolumeHandoffDefinition | null; error?: string } }
   'db:volume-handoffs-upsert': { args: [input: VolumeHandoffInput, expectedProjectPath: string]; return: { success: boolean; entry?: VolumeHandoffDefinition; error?: string } }
   'db:volume-handoffs-delete': { args: [handoffId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
+
+  // 7h. volumes — 卷 / 单元结构（M19）。计划列从大纲物化，`actual_last` 只由「标记本卷已完成」写。
+  // `-list` 带 `state` 四态（`ready` / `stale` / `empty` / `unparsed`），面板据此决定是否提示重建。
+  'db:volumes-list': { args: [expectedProjectPath: string]; return: { success: boolean; volumes?: VolumeDefinition[]; state?: 'ready' | 'stale' | 'empty' | 'unparsed'; warnings?: string[]; error?: string } }
+  'db:volumes-rebuild': { args: [expectedProjectPath: string]; return: { success: boolean; volumes?: VolumeDefinition[]; warnings?: string[]; retained?: number[]; removed?: number; error?: string } }
+  'db:volumes-mark-done': { args: [volumeId: string, expectedProjectPath: string]; return: { success: boolean; volume?: VolumeDefinition; actualLast?: number; error?: string } }
 
   // 沿用旧表
   'db:log-llm-call': { args: [call: Record<string, unknown>, expectedProjectPath: string]; return: { success: boolean } }
