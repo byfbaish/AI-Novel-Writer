@@ -240,5 +240,5 @@ ability_id · name(UNIQUE) · form · hard_limit · weakness · cost_note
 
 ## 8. 施工前必须知道的两处既有问题
 
-1. **文档与裁定冲突，期 3 必须同批改**：`long-form-readiness-review.md` 仍写「信息流另需 C1 身份分面」（§1.1 行 + §5 依赖列），作者已裁**不做 C1**。不改会让下一轮照旧文档等 C1。
+1. ~~**文档与裁定冲突，期 3 必须同批改**~~ → ✅ **已解决（2026-10-24）**：`long-form-readiness-review.md` §1.1 信息流行与 §5 P1-1 依赖列已改为「只做正向知情、不做 C1 身份分面」（与 M16 落地同批）。
 2. `review_findings` 的 `resolved` 枚举存在但**写不进去**（`review-cycle-repository.ts:865`，v2 契约要求语义是否解决仍由作者核实）—— P2-1 别建在这上面。
