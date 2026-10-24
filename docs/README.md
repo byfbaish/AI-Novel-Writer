@@ -48,6 +48,7 @@ docs/
 | 查 **Program v3 原始合同 / 审计证据** | `plans/novel-quality-*/`、[`research/novel-quality-modernization/`](research/novel-quality-modernization/) 🔒 冻结 |
 | 接手别人的会话 | [`handoffs/`](handoffs/) |
 | 发布 / 交付 / 审查流程 | [`DEVELOPMENT.md`](DEVELOPMENT.md) · [`agents/delivery.md`](agents/delivery.md) |
+| **把活派给 Copilot CLI**（无头、另一进程、可校验副作用） | [`agents/copilot-channel.md`](agents/copilot-channel.md) —— 落点/PATH · 参数速查 · 权限模型 · 工具别名 · 已验证与未验证清单 |
 | **放文档 / 归档文档 / 判断该不该新建一份** | [`agents/documentation-charter.md`](agents/documentation-charter.md) —— 四层模型 + 单一事实源 + 完成定义 + 反例库 |
 | **要跑某个构建/验收/运维脚本，或想知道「改完这个该跑什么」** | [`../scripts/README.md`](../scripts/README.md) —— 按用途分类 + 「何时跑」+ 谁调用（npm script / CI / 手工） |
 | 产品术语 / 事实源边界 | [`product-domain.md`](product-domain.md) |
@@ -296,7 +297,7 @@ docs/
 | [`docs/research/`](research/) | 调研、实施证据及实验执行说明 | 按各文件的日期和角色使用；历史回执不自动成为当前资格 |
 | [`docs/handoffs/`](handoffs/) | 指定分支或任务的交接快照 | 有日期的任务状态；完成或分支变化后可能过时 |
 
-本机 `AGENTS.md` 按仓库卫生规则**保持忽略、不入库**（`.gitignore:58`），但它是**新会话的常驻入口**——不是产品文档，也不能覆盖 [`product-domain.md`](product-domain.md) 或 ADR；其权威内容入库在 [`agents/documentation-charter.md`](agents/documentation-charter.md)，两边用 `charter-version` 标记同步（脚本 C7 校验）。
+`AGENTS.md` **已入库**（2026-10-25 起，见 [`adr/0025`](adr/0025-track-agents-md-and-copilot-channel.md)；此前按 `.gitignore:58` 被忽略，已解除）。它是**新会话的常驻入口**——不是产品文档，也不能覆盖 [`product-domain.md`](product-domain.md) 或 ADR；其权威内容在 [`agents/documentation-charter.md`](agents/documentation-charter.md)，两边用 `charter-version` 标记同步（脚本 C7 校验）。
 
 ---
 
