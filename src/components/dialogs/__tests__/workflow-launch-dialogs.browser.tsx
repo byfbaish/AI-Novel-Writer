@@ -280,11 +280,15 @@ describe('workflow launch dialogs', () => {
     await expect.element(page.getByRole('spinbutton', { name: '每章大纲目标字数' })).toHaveValue(600)
     await act(async () => page.getByRole('button', { name: /确认生成/ }).click())
 
+    // 第 5 参 `synopsisUnitTotal` 是真实契约的一部分（`ArchFileViewer.tsx:682` /
+    // `WorldBuildingEditor.tsx:407` 都接收并使用），非单元模式显式传 `undefined`。
+    // Vitest 的 `toHaveBeenCalledWith` 按**实参个数**严格比对，漏写这一项即失败。
     await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledWith(
       ['synopsis'],
       {},
       { from: 1, to: 5 },
       600,
+      undefined,
     ))
   })
 
@@ -316,6 +320,7 @@ describe('workflow launch dialogs', () => {
       {},
       { from: 21, to: 30 },
       600,
+      undefined, // 非单元模式，同第 5 参说明
     ))
   })
 
@@ -505,7 +510,7 @@ it.each(['outline', 'blueprint'] as const)('persists the %s target independently
     await page.getByRole('button', { name: kind === 'outline' ? /确认生成/ : '开始生成' }).click()
   })
   await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledOnce())
-  if (kind === 'outline') expect(onConfirm).toHaveBeenCalledWith(['synopsis'], {}, { from: 1, to: 10 }, 1000)
+  if (kind === 'outline') expect(onConfirm).toHaveBeenCalledWith(['synopsis'], {}, { from: 1, to: 10 }, 1000, undefined) // 非单元模式，同第 5 参说明
   else expect(onConfirm).toHaveBeenCalledWith(expect.objectContaining({ count: 10, targetUnits: 1000 }))
   expect(planningPreferences).toEqual(kind === 'outline'
     ? { outlineTargetUnits: 1000, blueprintTargetUnits: 800 }
