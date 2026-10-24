@@ -19,13 +19,14 @@ import { applyM15InstitutionCadences, createM15Migration, verifyM15InstitutionCa
 import { applyM16KnowledgeStates, createM16Migration, verifyM16KnowledgeStates } from './m16-knowledge-states'
 import { applyM17PowerAbilities, createM17Migration, verifyM17PowerAbilities } from './m17-power-abilities'
 import { applyM18VolumeHandoffs, createM18Migration, verifyM18VolumeHandoffs } from './m18-volume-handoffs'
+import { applyM19VolumeStructure, createM19Migration, verifyM19VolumeStructure } from './m19-volume-structure'
 import { initializeLegacyBaselineSchema, applyBaselineTables } from './baseline-schema'
 import { ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
 import { SqliteSchemaAdapter, sqliteSchemaFingerprint } from './sqlite-schema-adapter'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-export const CURRENT_DESKTOP_SCHEMA_VERSION = 19
+export const CURRENT_DESKTOP_SCHEMA_VERSION = 20
 let installed: MigrationRegistry | undefined
 
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -150,7 +151,13 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
     const m18 = createM18Migration({ database: native,
       verifyKnownSchema: db => volumeHandoffFingerprints.has(sqliteSchemaFingerprint(native(db)))
         && verifyM18VolumeHandoffs(native(db)) })
-    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14, m15, m16, m17, m18], [
+    // M19 会重建 `volume_handoffs`（13 列 → 11 列 + 外键），所以 v19 的指纹必须在它之前算。
+    for (const db of references) db.transaction(() => applyM19VolumeStructure(db))()
+    const volumeStructureSchemas = schemas(20), volumeStructureFingerprints = new Set(volumeStructureSchemas.map(item => item.fingerprint))
+    const m19 = createM19Migration({ database: native,
+      verifyKnownSchema: db => volumeStructureFingerprints.has(sqliteSchemaFingerprint(native(db)))
+        && verifyM19VolumeStructure(native(db)) })
+    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14, m15, m16, m17, m18, m19], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),
       ...baselineSchemas, ...generationSchemas, ...identitySchemas,
       ...reviewCycleSchemas, ...importEffectSchemas, ...characterAssetSchemas, ...mergeSnapshotSchemas,
@@ -162,6 +169,7 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
       ...knowledgeSchemas,
       ...powerAbilitySchemas,
       ...volumeHandoffSchemas,
+      ...volumeStructureSchemas,
     ])
     return installed
   } finally { reference.close(); donor.close() }

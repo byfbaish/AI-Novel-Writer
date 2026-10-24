@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type BetterSqlite3 from 'better-sqlite3'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -10,6 +11,14 @@ import { adoptLegacyCards, readLegacyRosterSource } from '../services/legacy-ros
 import { hasCharacterIdentitySchema } from './character-repository'
 import { CharacterRosterRepository, clearLegacyCharacterArchitecture } from './character-roster-repository'
 import { CHARACTER_ROSTER_SCHEMA_VERSION } from '../../src/shared/character-roster'
+
+/**
+ * P1-2 期 1b 的三张卷表可能不存在（v20 之前 / 未建过）。
+ * 清库不能因为「表还没建」就整步失败 —— 那会让作者连正文都清不掉。
+ */
+function hasTable(db: BetterSqlite3.Database, name: string): boolean {
+    return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name))
+}
 
 export type ProjectClearScope = 'creativeFields' | 'blueprints' | 'generatedText'
 
@@ -107,6 +116,14 @@ export class ProjectClearRepository {
                     db.prepare('DELETE FROM drafts').run()
                     db.prepare('DELETE FROM contents').run()
                     db.prepare('DELETE FROM summary_snapshots').run()
+                    // P1-2 期 1b：交接单属于正文层（讲的是「这一卷写完时」的状态）。
+                    // 卷结构本身留着 —— 它是从大纲物化的，清正文不该顺带删掉结构；
+                    // 但 `actual_last` 是「已定稿章的最大章号」，正文没了它就不成立。
+                    if (hasTable(db, 'volume_handoffs')) db.prepare('DELETE FROM volume_handoffs').run()
+                    if (hasTable(db, 'volumes')) {
+                        db.prepare('UPDATE volumes SET actual_last = NULL, actual_source = NULL, updated_at = ?')
+                            .run(new Date().toISOString())
+                    }
                     cleared.push('generatedText')
                 }
 
@@ -155,6 +172,11 @@ export class ProjectClearRepository {
                             updated_at = datetime('now')
                         WHERE id = 'main'
                     `).run()
+                    // P1-2 期 1b：`plot_structure_plan` 已置空，卷/单元结构成了悬空引用。
+                    // 顺序必须是 handoffs → units → volumes（外键依赖）。
+                    if (hasTable(db, 'volume_handoffs')) db.prepare('DELETE FROM volume_handoffs').run()
+                    if (hasTable(db, 'volume_units')) db.prepare('DELETE FROM volume_units').run()
+                    if (hasTable(db, 'volumes')) db.prepare('DELETE FROM volumes').run()
                     cleared.push('creativeFields')
                 }
             })

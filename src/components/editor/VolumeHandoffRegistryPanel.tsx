@@ -1,5 +1,5 @@
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Plus, Save, Trash2, Undo2 } from 'lucide-react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, ChevronDown, ChevronRight, Loader2, Plus, RefreshCw, Save, Trash2, Undo2 } from 'lucide-react'
 
 import {
   renderVolumeHandoffSection,
@@ -7,6 +7,7 @@ import {
   type VolumeHandoffDefinition,
   type VolumeHandoffInput,
 } from '../../shared/volume-handoff'
+import { volumeEffectiveRanges, type VolumeDefinition, type VolumeRange } from '../../shared/volume-structure'
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
@@ -14,39 +15,44 @@ import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } 
 import { Button } from '../ui/Button'
 
 /**
- * P1-2 期 1 卷末交接单登记面板（作者侧唯一写入口）。
+ * P1-2 期 1b 卷末交接单登记面板（作者侧唯一写入口）。
  *
- * ## 一条记录 = 一卷
+ * ## 一条记录 = 一卷，**只选卷、不填章号**
  *
- * 只记「下一卷必须承接的几件事」。逐章摘要的家是 `summary_snapshots`，这里再登一份
- * 就是第二套账，所以本页**没有**「从定稿生成」这类入口 —— 期 2 才有。
+ * M19 之后区间由 `volumes` 派生（`volumeEffectiveRanges`：起点 = 上一卷有效末章 + 1，
+ * 末章 = `actual_last ?? planned_last`）。作者以前要自己数「这一卷从第几章到第几章」，
+ * 现在只需在下拉里选一卷，区间只读展示。
  *
- * ## 卷号与两个章号**全部手填**
+ * ## 为什么区间要标来源
  *
- * 不做任何区间推算（作者 2026-10-24 裁定砍掉）：旧格式大纲的章标题根本没有卷号
- * （`parseOutlineChapterHeading` 对 `## 第45章：名` 返回 `volumeIndex: null`），
- * 按章数等分推断又会随超写整体漂移。每行输入框下方固定提示「章号请对照大纲里该卷的
- * 最后几章填写」—— 手填两个章号是这一期故意接受的麻烦。
+ * 四种来源的可信度完全不同：`actual`（该卷已标记写完，末章来自定稿章）> `headings`
+ * （synopsis 归属标题精确观测）> `declared`（按大纲自报章数折算）> `even`（按卷数均分）。
+ * 界面必须标出来，否则作者会把估算当事实 —— 而模型也会（节首措辞跟着变）。
+ *
+ * ## 「标记本卷已完成」写的是事实，不是推算
+ *
+ * 值取该卷区间内**已定稿章的最大章号**（`drafts.status='finalized'` 的查询），不是
+ * `planned_last`。所以点它不会把估算写进 `actual_*`；没写过定稿章时它会明确报错。
+ *
+ * ## 首次打开自动建结构（唯一的自动写操作）
+ *
+ * `db:volumes-list` 返回 `state === 'empty'` 时自动调一次重建 —— 表空时没有东西可删，
+ * 风险为零。`state === 'stale'` **不自动重建**（作者可能正在改大纲），只显示黄条。
  *
  * ## 保存前按「保存后的快照」校验
  *
- * 判的是**这一批保存完之后**的库：排除被删的行、把同批次其他行的新值算进去，再判
- * 区间重叠与卷号重复。逐行对当前库判会把「同时改两行」误判成冲突。
- * 任一冲突 ⇒ **整批不提交**并逐行标红（一行失败不该让别的行偷偷落库）。
- *
- * ## 字数提示不阻断保存
- *
- * 显示「正文 N / 1500 字」，超了红字但**照样能存**：注入侧会按规则丢弃超出部分，
- * 那是有序丢弃（后面的先丢），比拦住作者不让他存更符合写作现场。
+ * 只剩两条：必须选卷、同一卷不能两份。**区间重叠校验已删除** —— 区间不再由作者输入，
+ * 它由卷结构构造为连续不重叠，作者无法制造重叠。
  */
 type LocaleText = (zh: string, en: string) => string
+
+type VolumeState = 'ready' | 'stale' | 'empty' | 'unparsed'
 
 interface DraftRow {
   key: string
   handoffId?: string
-  volumeIndex: string
-  firstChapter: string
-  lastChapter: string
+  /** `''` = 还没选卷。 */
+  volumeId: string
   worldState: string
   heroState: string
   /** 多行文本域：一行一条（保存时 `split('\n').filter(trim)`）。 */
@@ -63,9 +69,7 @@ interface DraftRow {
 function emptyRow(): DraftRow {
   return {
     key: `draft:${crypto.randomUUID()}`,
-    volumeIndex: '',
-    firstChapter: '',
-    lastChapter: '',
+    volumeId: '',
     worldState: '',
     heroState: '',
     events: '',
@@ -83,9 +87,7 @@ function rowFromDefinition(handoff: VolumeHandoffDefinition): DraftRow {
   return {
     key: handoff.handoffId,
     handoffId: handoff.handoffId,
-    volumeIndex: String(handoff.volumeIndex),
-    firstChapter: String(handoff.firstChapter),
-    lastChapter: String(handoff.lastChapter),
+    volumeId: handoff.volumeId,
     worldState: handoff.worldState,
     heroState: handoff.heroState,
     events: handoff.events.join('\n'),
@@ -104,12 +106,20 @@ function toList(value: string): string[] {
   return value.split('\n').map(line => line.trim()).filter(Boolean)
 }
 
-function toDefinition(row: DraftRow): VolumeHandoffDefinition {
+/**
+ * 只用于字数预览的假定义。
+ *
+ * 区间只影响被 `slice(2)` 掉的两行头，所以传占位值即可 —— 这样**没选卷时字数也不再恒为 0**
+ * （旧实现 `Number('') || 0` 会让区间变成 0，`volumeIndex` 为 0 时渲染函数直接返回空串）。
+ */
+function previewDefinition(row: DraftRow): VolumeHandoffDefinition {
   return {
     handoffId: row.handoffId ?? '',
-    volumeIndex: Number(row.volumeIndex.trim()) || 0,
-    firstChapter: Number(row.firstChapter.trim()) || 0,
-    lastChapter: Number(row.lastChapter.trim()) || 0,
+    volumeId: row.volumeId,
+    volumeIndex: 1,
+    firstChapter: 1,
+    lastChapter: 1,
+    boundaryBasis: 'actual',
     worldState: row.worldState,
     heroState: row.heroState,
     events: toList(row.events),
@@ -129,7 +139,7 @@ function toDefinition(row: DraftRow): VolumeHandoffDefinition {
  * 两行之后剩下的就是「正文行」——与注入侧同一个口径。
  */
 function bodyChars(row: DraftRow): number {
-  const section = renderVolumeHandoffSection(toDefinition(row), 'zh-CN', 1, Number.MAX_SAFE_INTEGER)
+  const section = renderVolumeHandoffSection(previewDefinition(row), 'zh-CN', 1, Number.MAX_SAFE_INTEGER)
   if (!section) return 0
   return section.split('\n').slice(2).join('\n').length
 }
@@ -139,14 +149,27 @@ function truncate(value: string, max: number): string {
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed
 }
 
-const POSITIVE = /^[1-9]\d*$/u
+/** 区间文案：`第41–60章 · 折算`（来源必须露出来，作者才知道能不能信）。 */
+function rangeLabel(range: VolumeRange | undefined, text: LocaleText): string {
+  if (!range) return text('—', '—')
+  if (range.first === null || range.last === null) return text('起止未定', 'unresolved')
+  const basis = range.basis === 'actual' ? text('实际', 'actual')
+    : range.basis === 'headings' ? text('精确', 'exact')
+      : range.basis === 'declared' ? text('折算', 'scaled')
+        : text('估算', 'estimated')
+  return text(`第${range.first}–${range.last}章 · ${basis}`, `ch ${range.first}–${range.last} · ${basis}`)
+}
 
 function writeErrorLabel(error: string | undefined, text: LocaleText): string {
   switch (error) {
-    case 'VOLUME_HANDOFF_VOLUME_TAKEN': return text('这个卷号已经被另一份交接单占用了', 'That volume number is already used')
-    case 'VOLUME_HANDOFF_RANGE_CONFLICT': return text('章号区间与另一份交接单重叠了', 'The chapter range overlaps another handoff')
+    case 'VOLUME_HANDOFF_VOLUME_TAKEN': return text('这一卷已经有一份交接单了', 'That volume already has a handoff')
+    case 'VOLUME_HANDOFF_VOLUME_NOT_FOUND': return text('这一卷已不在卷结构里，请重新选择', 'That volume is no longer in the structure; pick another')
     case 'VOLUME_HANDOFF_SCHEMA_MISSING': return text('这个项目的数据库还没有交接单表，无法保存', 'This project database has no handoff table yet')
     case 'VOLUME_HANDOFF_NOT_FOUND': return text('这条交接单已经不在了，刷新列表即可', 'That handoff is gone; reload the list')
+    case 'VOLUME_STRUCTURE_SCHEMA_MISSING': return text('这个项目的数据库还没有卷结构表，请先升级项目', 'This project database has no volume tables yet')
+    case 'VOLUME_STRUCTURE_UNPARSED': return text('大纲里没有可识别的卷 / 单元结构，无法建立', 'No volume/unit structure found in the outline')
+    case 'VOLUME_MARK_DONE_NO_FINALIZED': return text('这一卷还没有已定稿的章，无法标记完成', 'This volume has no finalized chapter yet')
+    case 'VOLUME_MARK_DONE_NO_PLANNED_START': return text('这一卷的起始章还没算出来，无法标记完成', 'This volume has no planned start chapter yet')
     case 'PROJECT_NOT_OPEN': return text('项目数据库未打开', 'The project database is not open')
     default:
       if (error?.startsWith('VOLUME_HANDOFF_INVALID:')) {
@@ -159,31 +182,108 @@ function writeErrorLabel(error: string | undefined, text: LocaleText): string {
 export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string }) {
   const text = useLocaleStore(state => state.text)
   const [rows, setRows] = useState<DraftRow[]>([])
+  const [volumes, setVolumes] = useState<VolumeDefinition[]>([])
+  const [volumeState, setVolumeState] = useState<VolumeState>('ready')
+  const [volumeWarnings, setVolumeWarnings] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [status, setStatus] = useState('')
   const busyRef = useRef(false)
+  const autoBuiltRef = useRef(false)
+
+  const ranges = useMemo(() => volumeEffectiveRanges(volumes), [volumes])
+  const rangeById = useMemo(() => new Map(ranges.map(range => [range.volumeId, range])), [ranges])
+  const volumeById = useMemo(() => new Map(volumes.map(volume => [volume.volumeId, volume])), [volumes])
 
   const load = useCallback(async () => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) {
-      setRows([]); setLoadError(''); setLoading(false)
+      setRows([]); setVolumes([]); setLoadError(''); setLoading(false)
       return
     }
     setLoading(true)
-    const listed = await ipc.invokeWithProjectSession(projectSession, 'db:volume-handoffs-list', projectSession.projectPath)
+    const [volumeRes, handoffRes] = await Promise.all([
+      ipc.invokeWithProjectSession(projectSession, 'db:volumes-list', projectSession.projectPath),
+      ipc.invokeWithProjectSession(projectSession, 'db:volume-handoffs-list', projectSession.projectPath),
+    ])
     if (!isProjectSessionCurrent(projectSession)) return
     setLoading(false)
-    if (!listed.success) { setLoadError(writeErrorLabel(listed.error, text)); return }
+    if (!volumeRes.success) { setLoadError(writeErrorLabel(volumeRes.error, text)); return }
+    if (!handoffRes.success) { setLoadError(writeErrorLabel(handoffRes.error, text)); return }
     setLoadError('')
-    setRows((listed.entries ?? []).map(rowFromDefinition))
+    setVolumes(volumeRes.volumes ?? [])
+    setVolumeState(volumeRes.state ?? 'ready')
+    setVolumeWarnings(volumeRes.warnings ?? [])
+    setRows((handoffRes.entries ?? []).map(rowFromDefinition))
+
+    // 表里一行都没有 ⇒ 自动建一次（没有东西可删，风险为零）。`stale` 不自动重建。
+    if (volumeRes.state === 'empty' && !autoBuiltRef.current) {
+      autoBuiltRef.current = true
+      const rebuilt = await ipc.invokeWithProjectSession(
+        projectSession, 'db:volumes-rebuild', projectSession.projectPath)
+      if (!isProjectSessionCurrent(projectSession)) return
+      if (rebuilt.success) {
+        setVolumes(rebuilt.volumes ?? [])
+        setVolumeState((rebuilt.volumes ?? []).length > 0 ? 'ready' : 'unparsed')
+        setVolumeWarnings(rebuilt.warnings ?? [])
+      } else {
+        setVolumeState('unparsed')
+        setLoadError(writeErrorLabel(rebuilt.error, text))
+      }
+    }
   }, [projectKey, text])
 
   useEffect(() => {
     // 挂载即读；不轮询 —— 本页只服务作者手工登记。
     queueMicrotask(() => void load())
   }, [load])
+
+  const rebuild = async () => {
+    if (busyRef.current) return
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    busyRef.current = true
+    setBusy(true)
+    const result = await ipc.invokeWithProjectSession(projectSession, 'db:volumes-rebuild', projectSession.projectPath)
+    busyRef.current = false
+    setBusy(false)
+    if (!isProjectSessionCurrent(projectSession)) return
+    if (!result.success) { setLoadError(writeErrorLabel(result.error, text)); return }
+    setVolumes(result.volumes ?? [])
+    setVolumeState((result.volumes ?? []).length > 0 ? 'ready' : 'unparsed')
+    setVolumeWarnings(result.warnings ?? [])
+    const removed = result.removed ?? 0
+    const retained = result.retained ?? []
+    setStatus([
+      text(`重建完成：${(result.volumes ?? []).length} 卷`, `${(result.volumes ?? []).length} volume(s) rebuilt`),
+      removed > 0 ? text(`删除 ${removed} 卷`, `${removed} removed`) : '',
+      retained.length > 0 ? text(`保留 ${retained.join('、')} 卷（有交接单）`, `kept ${retained.join(', ')}`) : '',
+    ].filter(Boolean).join('；'))
+  }
+
+  const markDone = async (row: DraftRow) => {
+    if (busyRef.current || !row.volumeId) return
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    busyRef.current = true
+    setBusy(true)
+    const result = await ipc.invokeWithProjectSession(
+      projectSession, 'db:volumes-mark-done', row.volumeId, projectSession.projectPath)
+    busyRef.current = false
+    setBusy(false)
+    if (!isProjectSessionCurrent(projectSession)) return
+    if (!result.success || !result.volume) {
+      // 只标红，不清空作者已经填好的六项。
+      setRows(previous => previous.map(item => (
+        item.key === row.key ? { ...item, error: writeErrorLabel(result.error, text) } : item)))
+      return
+    }
+    const saved = result.volume
+    setVolumes(previous => previous.map(volume => (volume.volumeId === saved.volumeId ? saved : volume)))
+    setStatus(text(`第${saved.volumeIndex}卷：实际到第${result.actualLast}章`,
+      `Volume ${saved.volumeIndex}: actual end is chapter ${result.actualLast}`))
+  }
 
   const applyField = (key: string, field: keyof DraftRow, value: string) => {
     setStatus('')
@@ -216,50 +316,33 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
   }
 
   /**
-   * 本地校验：判的是**保存后的快照**（排除被删的行、算入同批新值）。
-   * 卷号重复与区间重叠都整批拦下 —— 这两种错落库后都会静默注入错卷。
+   * 本地校验：判的是**保存后的快照**（排除被删的行）。
+   *
+   * 只剩两条 —— 必须选卷、同一卷不能两份。区间不再由作者输入，所以「重叠」这个错误形态
+   * 已经从根上消失（相邻卷的起点由上一卷末章 + 1 派生，不可能重叠）。
    */
   const validateSnapshot = (snapshot: readonly DraftRow[]): Map<string, string> => {
     const problems = new Map<string, string>()
     const active = snapshot.filter(row => !row.removing)
-    const parsed: Array<{ key: string; volume: number; first: number; last: number }> = []
     for (const row of active) {
-      if (!POSITIVE.test(row.volumeIndex.trim())) {
-        problems.set(row.key, text('卷号必须是正整数', 'Volume number must be a positive integer'))
+      if (!row.volumeId) {
+        problems.set(row.key, text('请选择卷', 'Choose a volume'))
         continue
       }
-      if (!POSITIVE.test(row.firstChapter.trim())) {
-        problems.set(row.key, text('起始章号必须是正整数', 'First chapter must be a positive integer'))
-        continue
+      if (!volumeById.has(row.volumeId)) {
+        problems.set(row.key, text('这一卷已不在卷结构里，请重新选择', 'That volume is no longer in the structure'))
       }
-      if (!POSITIVE.test(row.lastChapter.trim())) {
-        problems.set(row.key, text('结束章号必须是正整数', 'Last chapter must be a positive integer'))
-        continue
-      }
-      const volume = Number(row.volumeIndex.trim())
-      const first = Number(row.firstChapter.trim())
-      const last = Number(row.lastChapter.trim())
-      if (last < first) {
-        problems.set(row.key, text('结束章号不能小于起始章号', 'Last chapter must not be smaller than the first'))
-        continue
-      }
-      parsed.push({ key: row.key, volume, first, last })
     }
-    // 卷号重复：同一卷两条会让「上一卷是哪份」无法回答。
-    const byVolume = new Map<number, string[]>()
-    for (const item of parsed) byVolume.set(item.volume, [...(byVolume.get(item.volume) ?? []), item.key])
-    for (const [volume, keys] of byVolume) {
+    const byVolume = new Map<string, string[]>()
+    for (const row of active) {
+      if (!row.volumeId || problems.has(row.key)) continue
+      byVolume.set(row.volumeId, [...(byVolume.get(row.volumeId) ?? []), row.key])
+    }
+    for (const [volumeId, keys] of byVolume) {
       if (keys.length < 2) continue
-      for (const key of keys) problems.set(key, text(`第${volume}卷登记了不止一份`, `Volume ${volume} is registered more than once`))
-    }
-    // 区间重叠：重叠 = 同一章落在两条记录里 = 静默注入错卷。相邻（20 / 21）不算重叠。
-    for (let left = 0; left < parsed.length; left += 1) {
-      for (let right = left + 1; right < parsed.length; right += 1) {
-        const a = parsed[left]!
-        const b = parsed[right]!
-        if (a.first > b.last || b.first > a.last) continue
-        problems.set(a.key, text('章号区间与另一卷重叠了', 'The chapter range overlaps another volume'))
-        problems.set(b.key, text('章号区间与另一卷重叠了', 'The chapter range overlaps another volume'))
+      const index = volumeById.get(volumeId)?.volumeIndex
+      for (const key of keys) {
+        problems.set(key, text(`第${index}卷登记了不止一份`, `Volume ${index} is registered more than once`))
       }
     }
     return problems
@@ -272,7 +355,7 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
     const current = rows
     const problems = validateSnapshot(current)
     if (problems.size > 0) {
-      // 校验不通过就整批不提交：一行重叠不该让别的行偷偷落库。
+      // 校验不通过就整批不提交：一行有问题不该让别的行偷偷落库。
       setRows(previous => previous.map(row => problems.has(row.key) ? { ...row, error: problems.get(row.key) ?? '' } : row))
       setStatus(text(`有 ${problems.size} 行还需要修改，本次没有提交`, `${problems.size} row(s) need fixing; nothing was saved`))
       return
@@ -281,11 +364,11 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
     setBusy(true)
     let saved = 0
     let removed = 0
-    // **先删后写**：区间互换时中间态会被判成重叠，先删掉旧行才能腾出位置。
+    // **先删后写**：删掉的行不该在写入期间占着它那一卷的唯一名额。
     for (const row of current.filter(item => item.removing)) {
       const result = await ipc.invokeWithProjectSession(projectSession, 'db:volume-handoffs-delete', row.handoffId!, projectSession.projectPath)
       if (result.success) { removed += 1; continue }
-      // 删不掉就必须停下：继续写会撞上「卷号已被占用」这种假冲突。
+      // 删不掉就必须停下：继续写会撞上「这一卷已经有一份」这种假冲突。
       busyRef.current = false
       setBusy(false)
       setRows(previous => previous.map(item => (item.key === row.key ? { ...item, error: writeErrorLabel(result.error, text) } : item)))
@@ -296,9 +379,7 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
     for (const row of current.filter(item => !item.removing)) {
       const input: VolumeHandoffInput = {
         ...(row.handoffId ? { handoffId: row.handoffId } : {}),
-        volumeIndex: Number(row.volumeIndex.trim()),
-        firstChapter: Number(row.firstChapter.trim()),
-        lastChapter: Number(row.lastChapter.trim()),
+        volumeId: row.volumeId,
         worldState: row.worldState.trim(),
         heroState: row.heroState.trim(),
         events: toList(row.events),
@@ -326,18 +407,46 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
     setStatus(parts.join('；') || text('没有需要保存的改动', 'Nothing to save'))
   }
 
+  const canAdd = volumeState !== 'unparsed' && volumes.length > 0
+
   return (
     <div className="space-y-3" data-testid="volume-handoff-panel">
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" onClick={addRow} disabled={busy}>
+        <Button size="sm" onClick={addRow} disabled={busy || !canAdd}>
           <Plus size={13} />{text('新增一卷', 'Add volume')}
         </Button>
         <Button size="sm" onClick={() => void save()} disabled={busy || loading}>
           {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
           {text('保存', 'Save')}
         </Button>
+        <Button size="sm" variant="ghost" onClick={() => void rebuild()} disabled={busy || loading}>
+          <RefreshCw size={13} />{text('重建卷结构', 'Rebuild structure')}
+        </Button>
         {status && <span role="status" className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{status}</span>}
       </div>
+
+      <p data-testid="volume-structure-state" className="text-xs" style={{
+        color: volumeState === 'unparsed'
+          ? 'var(--color-danger)'
+          : volumeState === 'stale' ? 'var(--color-warning, #b45309)' : 'var(--color-text-muted)',
+      }}>
+        {volumeState === 'unparsed'
+          ? text('大纲里没有可识别的卷 / 单元结构，无法建立卷结构', 'No volume/unit structure in the outline')
+          : volumeState === 'stale'
+            ? text('卷结构已过期（大纲比表新）。重建只更新计划区间，不会清空实际末章。',
+              'Volume structure is stale. Rebuilding only refreshes planned ranges; actual end chapters are kept.')
+            : volumeState === 'empty'
+              ? text('尚未建立卷结构', 'No volume structure yet')
+              : text(`卷结构：${volumes.length} 卷`, `${volumes.length} volume(s)`) }
+      </p>
+
+      {volumeWarnings.length > 0 && (
+        <p className="text-[10px]" style={{ color: 'var(--color-warning, #b45309)' }}>
+          <AlertTriangle size={11} className="inline" />{' '}
+          {text(`有 ${volumeWarnings.length} 处观测与算出的区间不一致（大纲与实际不同步）`,
+            `${volumeWarnings.length} observation(s) fall outside the computed range`)}
+        </p>
+      )}
 
       {loadError && <p role="alert" className="text-xs" style={{ color: 'var(--color-danger)' }}>{loadError}</p>}
 
@@ -349,8 +458,8 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
               <thead>
                 <tr>
                   {[
-                    [text('卷号', 'Volume'), '4rem'],
-                    [text('章号区间', 'Chapters'), '8rem'],
+                    [text('卷', 'Volume'), '9rem'],
+                    [text('区间', 'Chapters'), '9rem'],
                     [text('卷末世界', 'World'), '12rem'],
                     [text('主角', 'Protagonist'), '10rem'],
                     [text('事件', 'Events'), '4rem'],
@@ -369,13 +478,19 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                 {rows.map(row => {
                   const chars = bodyChars(row)
                   const overBudget = chars > VOLUME_HANDOFF_MAX_CHARS
+                  const volume = volumeById.get(row.volumeId)
+                  const range = rangeById.get(row.volumeId)
                   return (
                     <Fragment key={row.key}>
                       <tr data-testid="volume-handoff-row" style={{ opacity: row.removing ? 0.5 : 1 }}>
-                        <td className="px-1 py-0.5 align-top" data-field="volumeIndex-cell">{row.volumeIndex || '—'}</td>
-                        <td className="px-1 py-0.5 align-top" data-field="range-cell">
-                          {row.firstChapter && row.lastChapter ? `第${row.firstChapter}–${row.lastChapter}章` : '—'}
+                        <td className="px-1 py-0.5 align-top" data-field="volume-cell">
+                          {volume
+                            ? `第${volume.volumeIndex}卷${volume.name ? ` · ${truncate(volume.name, 10)}` : ''}`
+                            : row.volumeId
+                              ? text('（已不在卷结构里）', '(not in structure)')
+                              : '—'}
                         </td>
+                        <td className="px-1 py-0.5 align-top" data-field="range-cell">{rangeLabel(range, text)}</td>
                         <td className="px-1 py-0.5 align-top" data-field="worldState-cell">{truncate(row.worldState, 20) || '—'}</td>
                         <td className="px-1 py-0.5 align-top" data-field="heroState-cell">{truncate(row.heroState, 20) || '—'}</td>
                         <td className="px-1 py-0.5 align-top" data-field="events-cell">{toList(row.events).length}</td>
@@ -408,46 +523,48 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                       {row.expanded && (
                         <tr data-testid="volume-handoff-detail">
                           <td colSpan={8} className="px-1 py-2 align-top">
-                            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+                            <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
                               <label className="block">
-                                <span className="block text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{text('第几卷', 'Volume number')}</span>
-                                <input
-                                  data-field="volumeIndex"
-                                  aria-label={text('第几卷', 'Volume number')}
+                                <span className="block text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{text('哪一卷', 'Volume')}</span>
+                                <select
+                                  data-field="volumeId"
+                                  aria-label={text('哪一卷', 'Volume')}
                                   aria-invalid={row.error ? true : undefined}
-                                  value={row.volumeIndex}
+                                  value={row.volumeId}
                                   disabled={row.removing || busy}
-                                  onChange={event => applyField(row.key, 'volumeIndex', event.target.value)}
+                                  onChange={event => applyField(row.key, 'volumeId', event.target.value)}
                                   style={inputStyle}
-                                />
+                                >
+                                  <option value="">{text('（请选择卷）', '(choose a volume)')}</option>
+                                  {volumes.map(volume => (
+                                    <option key={volume.volumeId} value={volume.volumeId}>
+                                      {`第${volume.volumeIndex}卷${volume.name ? ` · ${volume.name}` : ''} · ${rangeLabel(rangeById.get(volume.volumeId), text)}${volume.source === 'retained' ? text('（大纲已无此卷，保留）', ' (retained)') : ''}`}
+                                    </option>
+                                  ))}
+                                  {/* 交接单指向已删的卷：给一个失效选项，让作者能看见并改选。 */}
+                                  {row.volumeId && !volumeById.has(row.volumeId) && (
+                                    <option value={row.volumeId}>
+                                      {text('（这一卷已不在卷结构里）', '(this volume is no longer in the structure)')}
+                                    </option>
+                                  )}
+                                </select>
                               </label>
-                              <label className="block">
-                                <span className="block text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{text('起始章', 'First chapter')}</span>
-                                <input
-                                  data-field="firstChapter"
-                                  aria-label={text('起始章', 'First chapter')}
-                                  value={row.firstChapter}
-                                  disabled={row.removing || busy}
-                                  onChange={event => applyField(row.key, 'firstChapter', event.target.value)}
-                                  style={inputStyle}
-                                />
-                              </label>
-                              <label className="block">
-                                <span className="block text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{text('结束章', 'Last chapter')}</span>
-                                <input
-                                  data-field="lastChapter"
-                                  aria-label={text('结束章', 'Last chapter')}
-                                  value={row.lastChapter}
-                                  disabled={row.removing || busy}
-                                  onChange={event => applyField(row.key, 'lastChapter', event.target.value)}
-                                  style={inputStyle}
-                                />
-                              </label>
+                              <div className="block">
+                                <span className="block text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{text('区间（自动，不可编辑）', 'Range (automatic)')}</span>
+                                <div data-field="range-readonly" className="flex items-center gap-2" style={{ ...inputStyle, minHeight: 24 }}>
+                                  <span>{rangeLabel(range, text)}</span>
+                                  <Button size="sm" variant="ghost" data-action="mark-volume-done"
+                                    onClick={() => void markDone(row)}
+                                    disabled={busy || !row.volumeId || volume?.source === 'retained'}>
+                                    {text('标记本卷已完成', 'Mark volume done')}
+                                  </Button>
+                                </div>
+                              </div>
                             </div>
                             <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
                               {text(
-                                '章号请对照大纲里该卷的最后几章填写（本书不做任何区间推算）。',
-                                'Fill both chapter numbers by hand from the outline (this tool does not infer ranges).',
+                                '区间由卷结构算出：起点接着上一卷，末章优先用「实际末章」（标记完成时取该卷已定稿章的最大章号）。',
+                                'Ranges come from the volume structure: the start continues the previous volume, and the end prefers the actual last chapter (max finalized chapter when you mark it done).',
                               )}
                             </p>
                             <div className="grid gap-2 mt-2" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
@@ -508,22 +625,29 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
             </table>
             {rows.length === 0 && (
               <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
-                {text(
-                  '还没有登记任何卷末交接单。写到第 4 卷时，前 3 卷正文早已退出上下文 —— 这张表补的就是那段跨卷记忆。',
-                  'No volume handoff registered yet. By volume 4 the earlier prose is long gone from context; this table is that missing cross-volume memory.',
-                )}
+                {canAdd
+                  ? text(
+                    '还没有登记任何卷末交接单。写到第 4 卷时，前 3 卷正文早已退出上下文 —— 这张表补的就是那段跨卷记忆。',
+                    'No volume handoff registered yet. By volume 4 the earlier prose is long gone from context; this table is that missing cross-volume memory.',
+                  )
+                  : text(
+                    '先在「重建卷结构」里从大纲建出卷，才能登记交接单。',
+                    'Rebuild the volume structure from the outline first, then you can register handoffs.',
+                  )}
               </p>
             )}
             <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
               <AlertTriangle size={11} className="inline" />{' '}
               {text(
-                '正文链只注入「上一卷」（章号区间结束在本章之前的那一份）。两卷区间互换请分两次保存。',
-                'The draft chain only injects the previous volume (the range that ends before this chapter). To swap two ranges, save twice.',
+                '正文链只注入「上一卷」（有效末章在本章之前的那一份）；没有实际末章的卷按物化区间判断，界面会标「估算」。',
+                'The draft chain only injects the previous volume (the one whose effective end is before this chapter); volumes without an actual end fall back to the materialized range, marked "estimated".',
               )}
             </p>
             {rows.filter(row => row.error).map(row => (
               <p key={row.key} role="alert" className="text-xs mt-1" style={{ color: 'var(--color-danger)' }}>
-                {row.volumeIndex ? text(`第${row.volumeIndex}卷`, `Volume ${row.volumeIndex}`) : text('新行', 'new row')}：{row.error}
+                {volumeById.get(row.volumeId)
+                  ? text(`第${volumeById.get(row.volumeId)!.volumeIndex}卷`, `Volume ${volumeById.get(row.volumeId)!.volumeIndex}`)
+                  : text('新行', 'new row')}：{row.error}
               </p>
             ))}
           </div>

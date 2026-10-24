@@ -18,7 +18,12 @@ const Database = createRequire(import.meta.url)('better-sqlite3') as typeof impo
  * 4. 三个 `_json` 列的默认是 `'[]'` 而**不是 NULL**（读侧不必区分两种空）；
  * 5. 幂等：重跑不产生步骤、不改指纹；
  * 6. 三处 CHECK 真有牙齿（`last_chapter < first_chapter` 被拒）。
+ *
+ * ⚠️ 这是**历史 lane**：M19（P1-2 期 1b）把 `volume_handoffs` 重建成了 11 列 + `volume_id` 外键。
+ * 所以下面测「13 列形状」的四条必须**停在 v19**（`M18_TARGET`），不能跑 `CURRENT`——
+ * 跑到底时表已经被重建，测的就不是 M18 了。v20 的形状由 `m19-installed-lane` 守。
  */
+const M18_TARGET = 19
 function fixture() {
   const db = new Database(':memory:')
   db.pragma('foreign_keys=ON')
@@ -60,7 +65,7 @@ describe('installed M18 lane', () => {
   it('13 列、可空性与三处 CHECK；主键被判成 pk=1 而不是 notnull', () => {
     const db = fixture()
     try {
-      migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
+      migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), M18_TARGET)
       expect(columns(db, 'volume_handoffs').map(column => column.name)).toEqual([
         'handoff_id', 'volume_index', 'first_chapter', 'last_chapter', 'world_state',
         'hero_state', 'events_json', 'items_json', 'debts_json', 'open_thread', 'source',
@@ -89,7 +94,7 @@ describe('installed M18 lane', () => {
   it('volume_index 单列 UNIQUE：同卷号拒，不同卷号允许', () => {
     const db = fixture()
     try {
-      migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
+      migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), M18_TARGET)
       const insert = db.prepare(INSERT)
       insert.run('h:1', 1, 1, 20, null, null, '[]', '[]', '[]', null, 'author')
       expect(() => insert.run('h:dup', 1, 21, 40, null, null, '[]', '[]', '[]', null, 'author')).toThrow()
@@ -100,7 +105,7 @@ describe('installed M18 lane', () => {
   it('三个 JSON 列在未赋值时是 `[]` 字符串，不是 NULL；文本列留 NULL', () => {
     const db = fixture()
     try {
-      migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
+      migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), M18_TARGET)
       db.prepare('INSERT INTO volume_handoffs(handoff_id,volume_index,first_chapter,last_chapter,source) VALUES(?,?,?,?,?)')
         .run('h:default', 1, 1, 20, 'author')
       const row = db.prepare(`SELECT world_state, hero_state, events_json, items_json, debts_json,
@@ -130,7 +135,7 @@ describe('installed M18 lane', () => {
   it('CHECK 有牙齿：卷号/首章必须为正，末章不得小于首章', () => {
     const db = fixture()
     try {
-      migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
+      migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), M18_TARGET)
       const insert = db.prepare(INSERT)
       // 卷号 0 会被读成「序卷」；负卷号同样非法。
       expect(() => insert.run('h:zero-volume', 0, 1, 20, null, null, '[]', '[]', '[]', null, 'author')).toThrow()

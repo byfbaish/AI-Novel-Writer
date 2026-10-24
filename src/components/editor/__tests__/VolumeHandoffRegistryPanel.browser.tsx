@@ -8,15 +8,17 @@ import {
   type VolumeHandoffDefinition,
   type VolumeHandoffInput,
 } from '../../../shared/volume-handoff'
+import type { VolumeDefinition } from '../../../shared/volume-structure'
 import { useProjectStore } from '../../../stores/project-store'
 import { VolumeHandoffRegistryPanel } from '../VolumeHandoffRegistryPanel'
 
 /**
- * P1-2 期 1 卷末交接登记面板（8 条）。验收口径：
- * - 卷号与两个章号**全部手填**，页面不给任何区间推算（作者 2026-10-24 已裁定砍掉）；
- * - 区间重叠 / 卷号重复 / 章号非法 **整批不提交**（一行错不让别的行偷偷落库）；
- * - 三个数组字段用多行文本域，空行丢弃；
- * - 字数超限只红字提示，**照常可保存**（注入侧按顺序丢弃）。
+ * P1-2 期 1b 卷末交接登记面板（11 条）。验收口径：
+ * - **只选卷、不填章号**：区间由 `volumes` 派生，页面只读展示并标出来源（实际 / 精确 / 折算 / 估算）；
+ * - 同一卷两份 **整批不提交**（一行错不让别的行偷偷落库）；
+ * - `state='empty'` 时**自动建一次**卷结构；`stale` 只提示、重建要作者点；
+ * - 「标记本卷已完成」写的是定稿事实，失败时**不清空**已填正文；
+ * - 三个数组字段用多行文本域，空行丢弃；字数超限只红字提示，**照常可保存**。
  */
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -26,17 +28,42 @@ const session = {
   projectPath: 'C:\\synthetic\\handoff-project',
 }
 
+type PanelState = 'ready' | 'stale' | 'empty' | 'unparsed'
+
 let root: Root
 let container: HTMLDivElement
 let invoke: ReturnType<typeof vi.fn>
 let stored: VolumeHandoffDefinition[]
+let volumes: VolumeDefinition[]
+let volumeState: PanelState
+let markDoneResult: { success: boolean; volume?: VolumeDefinition; actualLast?: number; error?: string }
+
+function volumeDef(overrides: Partial<VolumeDefinition> = {}): VolumeDefinition {
+  return {
+    volumeId: 'volume:1',
+    volumeIndex: 1,
+    name: '杂役处',
+    plannedFirst: 1,
+    plannedLast: 20,
+    plannedSource: 'headings',
+    actualLast: null,
+    actualSource: null,
+    outlineHash: 'hash:1',
+    source: 'outline',
+    createdAt: '',
+    updatedAt: '',
+    ...overrides,
+  }
+}
 
 function definition(overrides: Partial<VolumeHandoffDefinition> = {}): VolumeHandoffDefinition {
   return {
     handoffId: 'handoff:1',
+    volumeId: 'volume:1',
     volumeIndex: 1,
     firstChapter: 1,
     lastChapter: 20,
+    boundaryBasis: 'headings',
     worldState: '灵潮退去，北境三城封关',
     heroState: '顾长风的左臂仍未复原',
     events: ['玄火令被夺', '沈砚投靠监天台'],
@@ -58,8 +85,9 @@ function details(): HTMLTableRowElement[] {
   return [...container.querySelectorAll<HTMLTableRowElement>('tr[data-testid="volume-handoff-detail"]')]
 }
 
-function field(detailIndex: number, name: string): HTMLInputElement | HTMLTextAreaElement {
-  const target = details()[detailIndex]?.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-field="${name}"]`)
+function field(detailIndex: number, name: string): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
+  const target = details()[detailIndex]?.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+    `[data-field="${name}"]`)
   if (!target) throw new Error(`Missing field ${name} on detail ${detailIndex}`)
   return target
 }
@@ -73,6 +101,11 @@ function button(label: string, scope: ParentNode = container): HTMLButtonElement
 async function fill(detailIndex: number, name: string, value: string) {
   await act(async () => {
     const input = field(detailIndex, name)
+    if (input instanceof HTMLSelectElement) {
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')?.set?.call(input, value)
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+      return
+    }
     const prototype = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
     Object.getOwnPropertyDescriptor(prototype, 'value')?.set?.call(input, value)
     input.dispatchEvent(new Event('input', { bubbles: true }))
@@ -89,17 +122,28 @@ function upsertCalls(): Array<[string, VolumeHandoffInput, string]> {
   >
 }
 
+function channels(): string[] {
+  return invoke.mock.calls.map(([channel]) => channel as string)
+}
+
 async function renderPanel() {
   await act(async () => {
     root.render(<VolumeHandoffRegistryPanel projectKey={session.projectPath} />)
     await new Promise(resolve => setTimeout(resolve, 0))
   })
-  await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === 'db:volume-handoffs-list')).toBe(true))
+  await vi.waitFor(() => expect(channels()).toContain('db:volumes-list'))
+  await vi.waitFor(() => expect(channels()).toContain('db:volume-handoffs-list'))
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   stored = []
+  volumes = [
+    volumeDef(),
+    volumeDef({ volumeId: 'volume:2', volumeIndex: 2, name: '百草园', plannedFirst: 21, plannedLast: 40 }),
+  ]
+  volumeState = 'ready'
+  markDoneResult = { success: true, volume: volumeDef({ actualLast: 18, actualSource: 'finalized' }), actualLast: 18 }
   useProjectStore.setState({
     currentProject: {
       id: session.projectId,
@@ -111,16 +155,31 @@ beforeEach(() => {
   })
   setActiveProjectSessionContext(session)
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+    if (channel === 'db:volumes-list') {
+      return { success: true, volumes, state: volumeState, warnings: [] }
+    }
+    if (channel === 'db:volumes-rebuild') {
+      volumes = [
+        volumeDef(),
+        volumeDef({ volumeId: 'volume:2', volumeIndex: 2, name: '百草园', plannedFirst: 21, plannedLast: 40 }),
+      ]
+      volumeState = 'ready'
+      return { success: true, volumes, warnings: [], retained: [], removed: 0 }
+    }
+    if (channel === 'db:volumes-mark-done') return markDoneResult
     if (channel === 'db:volume-handoffs-list') return { success: true, entries: stored }
     if (channel === 'db:volume-handoffs-upsert') {
       const input = args[0] as VolumeHandoffInput
+      const volume = volumes.find(item => item.volumeId === input.volumeId)
       return {
         success: true,
         entry: definition({
           handoffId: input.handoffId ?? `handoff:new-${invoke.mock.calls.length}`,
-          volumeIndex: input.volumeIndex,
-          firstChapter: input.firstChapter,
-          lastChapter: input.lastChapter,
+          volumeId: input.volumeId,
+          volumeIndex: volume?.volumeIndex ?? null,
+          firstChapter: volume?.plannedFirst ?? null,
+          lastChapter: volume?.actualLast ?? volume?.plannedLast ?? null,
+          boundaryBasis: volume?.actualLast ? 'actual' : (volume?.plannedSource ?? null),
           worldState: input.worldState ?? '',
           heroState: input.heroState ?? '',
           events: [...(input.events ?? [])],
@@ -150,20 +209,31 @@ afterEach(async () => {
 })
 
 describe('卷末交接登记面板', () => {
-  it('空表给出引导，挂载只读一个通道', async () => {
+  it('空表给出引导；挂载读两个通道，不自动重建（结构已就绪）', async () => {
     await renderPanel()
-    expect(new Set(invoke.mock.calls.map(([channel]) => channel))).toEqual(new Set(['db:volume-handoffs-list']))
+    expect(new Set(channels())).toEqual(new Set(['db:volumes-list', 'db:volume-handoffs-list']))
     expect(container.textContent).toContain('还没有登记任何卷末交接单')
     expect(summaryRows()).toHaveLength(0)
   })
 
-  it('列表渲染：卷号 / 区间 / 世界 / 主角 / 三个计数', async () => {
+  it('卷结构为空时自动建一次（表空没有东西可删）', async () => {
+    volumes = []
+    volumeState = 'empty'
+    await renderPanel()
+    await vi.waitFor(() => expect(channels()).toContain('db:volumes-rebuild'))
+    // 自动建过之后下拉里就有卷了。
+    await click(button('新增一卷'))
+    expect(details()).toHaveLength(1)
+    expect(field(0, 'volumeId')).toHaveProperty('value', '')
+  })
+
+  it('列表渲染：卷名 / 区间带来源 / 世界 / 三个计数；详情里区间只读', async () => {
     stored = [definition()]
     await renderPanel()
     expect(summaryRows()).toHaveLength(1)
     const row = summaryRows()[0]!
-    expect(row.querySelector('[data-field="volumeIndex-cell"]')?.textContent).toBe('1')
-    expect(row.querySelector('[data-field="range-cell"]')?.textContent).toBe('第1–20章')
+    expect(row.querySelector('[data-field="volume-cell"]')?.textContent).toContain('第1卷')
+    expect(row.querySelector('[data-field="range-cell"]')?.textContent).toBe('第1–20章 · 精确')
     expect(row.querySelector('[data-field="worldState-cell"]')?.textContent).toBe('灵潮退去，北境三城封关')
     expect(row.querySelector('[data-field="events-cell"]')?.textContent).toBe('2')
     expect(row.querySelector('[data-field="items-cell"]')?.textContent).toBe('1')
@@ -172,19 +242,18 @@ describe('卷末交接登记面板', () => {
     expect(details()).toHaveLength(0)
     await click(button('编辑', row))
     expect(details()).toHaveLength(1)
-    expect(field(0, 'volumeIndex')).toHaveProperty('value', '1')
-    expect(field(0, 'events')).toHaveProperty('value', '玄火令被夺\n沈砚投靠监天台')
-    // 章号手填，页面不给任何推算按钮。
-    expect(container.textContent).toContain('章号请对照大纲里该卷的最后几章填写')
+    expect(field(0, 'volumeId')).toHaveProperty('value', 'volume:1')
+    // 区间是只读展示，不是输入框。
+    expect(details()[0]!.querySelector('[data-field="range-readonly"]')?.textContent).toContain('第1–20章')
+    expect(details()[0]!.querySelector('input[data-field="firstChapter"]')).toBeNull()
+    expect(container.textContent).not.toContain('章号请对照大纲里该卷的最后几章填写')
   })
 
-  it('新增一行并保存：三个数组字段按行拆分、空行丢弃', async () => {
+  it('新增一行并保存：入参只有 volumeId（没有章号），数组按行拆分、空行丢弃', async () => {
     await renderPanel()
     await click(button('新增一卷'))
     expect(details()).toHaveLength(1)
-    await fill(0, 'volumeIndex', '2')
-    await fill(0, 'firstChapter', '21')
-    await fill(0, 'lastChapter', '40')
+    await fill(0, 'volumeId', 'volume:2')
     await fill(0, 'worldState', '北境封关')
     await fill(0, 'events', '玄火令被夺\n\n  沈砚投靠监天台  \n')
     await fill(0, 'items', '玄火令')
@@ -192,10 +261,9 @@ describe('卷末交接登记面板', () => {
     await click(button('保存'))
 
     expect(upsertCalls()).toHaveLength(1)
-    expect(upsertCalls()[0]![1]).toMatchObject({
-      volumeIndex: 2,
-      firstChapter: 21,
-      lastChapter: 40,
+    const input = upsertCalls()[0]![1]
+    expect(input).toMatchObject({
+      volumeId: 'volume:2',
       worldState: '北境封关',
       heroState: '',
       events: ['玄火令被夺', '沈砚投靠监天台'],
@@ -203,81 +271,103 @@ describe('卷末交接登记面板', () => {
       debts: [],
       openThread: '',
     })
+    // 章号字段彻底不在入参里 —— 区间由卷结构派生。
+    expect(input).not.toHaveProperty('firstChapter')
+    expect(input).not.toHaveProperty('lastChapter')
     expect(upsertCalls()[0]![2]).toBe(session.projectPath)
   })
 
-  it('区间重叠：整批不提交，两行都标红', async () => {
+  it('同一卷选两次：整批不提交，两行都标红', async () => {
     await renderPanel()
     await click(button('新增一卷'))
-    await fill(0, 'volumeIndex', '1')
-    await fill(0, 'firstChapter', '1')
-    await fill(0, 'lastChapter', '20')
+    await fill(0, 'volumeId', 'volume:1')
     await click(button('新增一卷'))
-    await fill(1, 'volumeIndex', '2')
-    await fill(1, 'firstChapter', '19')
-    await fill(1, 'lastChapter', '30')
+    await fill(1, 'volumeId', 'volume:1')
     await click(button('保存'))
 
     expect(upsertCalls()).toHaveLength(0)
     expect(container.textContent).toContain('有 2 行还需要修改，本次没有提交')
     expect(container.querySelectorAll('[role="alert"]')).toHaveLength(2)
-    expect(container.textContent).toContain('章号区间与另一卷重叠了')
-  })
-
-  it('卷号重复：整批不提交', async () => {
-    await renderPanel()
-    await click(button('新增一卷'))
-    await fill(0, 'volumeIndex', '1')
-    await fill(0, 'firstChapter', '1')
-    await fill(0, 'lastChapter', '20')
-    await click(button('新增一卷'))
-    await fill(1, 'volumeIndex', '1')
-    await fill(1, 'firstChapter', '21')
-    await fill(1, 'lastChapter', '40')
-    await click(button('保存'))
-
-    expect(upsertCalls()).toHaveLength(0)
     expect(container.textContent).toContain('第1卷登记了不止一份')
   })
 
-  it('章号非法（末章小于首章 / 0）本地拒', async () => {
+  it('没选卷就保存：整批不提交并提示「请选择卷」', async () => {
     await renderPanel()
     await click(button('新增一卷'))
-    await fill(0, 'volumeIndex', '1')
-    await fill(0, 'firstChapter', '21')
-    await fill(0, 'lastChapter', '20')
     await click(button('保存'))
     expect(upsertCalls()).toHaveLength(0)
-    expect(container.textContent).toContain('结束章号不能小于起始章号')
-
-    await fill(0, 'lastChapter', '40')
-    await fill(0, 'firstChapter', '0')
-    await click(button('保存'))
-    expect(upsertCalls()).toHaveLength(0)
-    expect(container.textContent).toContain('起始章号必须是正整数')
+    expect(container.textContent).toContain('请选择卷')
   })
 
-  it('相邻区间（20 与 21）允许保存', async () => {
+  it('卷结构建不起来（unparsed）⇒ 禁用新增并说明原因', async () => {
+    volumes = []
+    volumeState = 'unparsed'
+    await renderPanel()
+    expect(container.textContent).toContain('大纲里没有可识别的卷 / 单元结构')
+    expect(button('新增一卷').disabled).toBe(true)
+    expect(container.textContent).toContain('先在「重建卷结构」里从大纲建出卷')
+  })
+
+  it('stale：只提示，点「重建卷结构」才写库', async () => {
+    volumeState = 'stale'
+    await renderPanel()
+    expect(container.textContent).toContain('卷结构已过期')
+    // 挂载时不重建 —— 作者可能正在改大纲。
+    expect(channels()).not.toContain('db:volumes-rebuild')
+    await click(button('重建卷结构'))
+    await vi.waitFor(() => expect(channels()).toContain('db:volumes-rebuild'))
+  })
+
+  it('标记本卷已完成：调通道后区间变「实际」', async () => {
+    stored = [definition()]
+    await renderPanel()
+    await click(button('编辑', summaryRows()[0]!))
+    await click(button('标记本卷已完成', details()[0]!))
+    await vi.waitFor(() => expect(channels()).toContain('db:volumes-mark-done'))
+    // 只 patch 本地 volumes，不重载交接单（作者未保存的正文不丢）。
+    expect(channels().filter(channel => channel === 'db:volume-handoffs-list')).toHaveLength(1)
+    await vi.waitFor(() => expect(
+      summaryRows()[0]!.querySelector('[data-field="range-cell"]')?.textContent,
+    ).toBe('第1–18章 · 实际'))
+    expect(container.textContent).toContain('实际到第18章')
+  })
+
+  it('标记失败：行内报错，已填正文不清空', async () => {
+    stored = [definition({ worldState: '作者手写的卷末世界' })]
+    markDoneResult = { success: false, error: 'VOLUME_MARK_DONE_NO_FINALIZED' }
+    await renderPanel()
+    await click(button('编辑', summaryRows()[0]!))
+    await click(button('标记本卷已完成', details()[0]!))
+    await vi.waitFor(() => expect(container.textContent).toContain('这一卷还没有已定稿的章'))
+    expect(field(0, 'worldState')).toHaveProperty('value', '作者手写的卷末世界')
+  })
+
+  it('下拉文案标出来源：估算 / 折算 / 精确各一档', async () => {
+    volumes = [
+      volumeDef({ plannedSource: 'headings' }),
+      volumeDef({ volumeId: 'volume:2', volumeIndex: 2, name: '百草园', plannedFirst: 21, plannedLast: 40, plannedSource: 'declared' }),
+      volumeDef({ volumeId: 'volume:3', volumeIndex: 3, name: '执法殿', plannedFirst: 41, plannedLast: 60, plannedSource: 'even' }),
+    ]
     await renderPanel()
     await click(button('新增一卷'))
-    await fill(0, 'volumeIndex', '1')
-    await fill(0, 'firstChapter', '1')
-    await fill(0, 'lastChapter', '20')
-    await click(button('新增一卷'))
-    await fill(1, 'volumeIndex', '2')
-    await fill(1, 'firstChapter', '21')
-    await fill(1, 'lastChapter', '40')
-    await click(button('保存'))
+    const options = [...(field(0, 'volumeId') as HTMLSelectElement).options].map(option => option.textContent ?? '')
+    expect(options.some(option => option.includes('精确'))).toBe(true)
+    expect(options.some(option => option.includes('折算'))).toBe(true)
+    expect(options.some(option => option.includes('估算'))).toBe(true)
+  })
 
-    expect(upsertCalls()).toHaveLength(2)
+  it('retained 的卷在下拉里标「大纲已无此卷」', async () => {
+    volumes = [volumeDef({ source: 'retained' })]
+    await renderPanel()
+    await click(button('新增一卷'))
+    const options = [...(field(0, 'volumeId') as HTMLSelectElement).options].map(option => option.textContent ?? '')
+    expect(options.some(option => option.includes('大纲已无此卷，保留'))).toBe(true)
   })
 
   it('字数提示：超 1500 红字但**不阻断**保存', async () => {
     await renderPanel()
     await click(button('新增一卷'))
-    await fill(0, 'volumeIndex', '1')
-    await fill(0, 'firstChapter', '1')
-    await fill(0, 'lastChapter', '20')
+    await fill(0, 'volumeId', 'volume:1')
     await fill(0, 'worldState', '墨'.repeat(VOLUME_HANDOFF_MAX_CHARS + 50))
     const hint = container.querySelector('[data-testid="volume-handoff-chars"]')
     expect(hint?.textContent).toContain(`/ ${VOLUME_HANDOFF_MAX_CHARS} 字`)

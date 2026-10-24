@@ -4288,9 +4288,11 @@ ${headingPrefix}第3章：潮门
       previousFinalizedContent: '第四章定稿原文。',
       volumeHandoff: {
         handoffId: 'handoff:1',
+        volumeId: 'volume:1',
         volumeIndex: 1,
         firstChapter: 1,
         lastChapter: 4,
+        boundaryBasis: 'actual',
         worldState: '灵潮退去，北境三城封关',
         heroState: '顾长风的左臂仍未复原',
         events: ['玄火令被夺'],

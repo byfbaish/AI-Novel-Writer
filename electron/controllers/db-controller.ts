@@ -113,6 +113,12 @@ import {
   upsertVolumeHandoff,
 } from '../repositories/volume-handoff-repository'
 import type { VolumeHandoffInput } from '../../src/shared/volume-handoff'
+import {
+  hasVolumeStructureSchema,
+  markVolumeDone,
+  readVolumeStructure,
+  rebuildVolumes,
+} from '../repositories/volume-structure-repository'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
 
@@ -189,6 +195,9 @@ const MUTATING_DATABASE_CHANNELS = new Set([
   // P1-2 卷末交接单：只有写通道进集合；`-list` 与 `-before` 是只读，不进。
   'db:volume-handoffs-upsert',
   'db:volume-handoffs-delete',
+  // P1-2 卷 / 单元结构：`-list` 只读，不进；重建与「标记完成」都写库。
+  'db:volumes-rebuild',
+  'db:volumes-mark-done',
 ])
 
 function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabaseHandler): void {
@@ -1655,6 +1664,65 @@ export function registerDatabaseController() {
       return deleteVolumeHandoff(db, handoffId)
         ? { success: true }
         : { success: false, error: 'VOLUME_HANDOFF_NOT_FOUND' }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ============================================================
+  // P1-2 卷 / 单元结构（M19）。计划列从大纲物化；`actual_last` 只由「标记本卷已完成」写。
+  // ============================================================
+  ipcMain.handle('db:volumes-list', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db || !hasVolumeStructureSchema(db)) {
+        // v20 之前 / 库未打开：四态里的「建不起来」比抛错对面板友好得多。
+        return { success: true, volumes: [], state: 'unparsed', warnings: [] }
+      }
+      const read = readVolumeStructure(db)
+      return { success: true, volumes: read.volumes, state: read.state, warnings: read.warnings }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:volumes-rebuild', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      if (!hasVolumeStructureSchema(db)) return { success: false, error: 'VOLUME_STRUCTURE_SCHEMA_MISSING' }
+      const core = ProjectCoreRepository.get(db)
+      if (!core) return { success: false, error: 'VOLUME_STRUCTURE_UNPARSED' }
+      const result = rebuildVolumes(db, {
+        plan: core.plotStructurePlan,
+        synopsis: core.synopsis,
+        totalChapters: core.totalChapters,
+      })
+      return {
+        success: true,
+        volumes: result.volumes,
+        warnings: result.warnings,
+        retained: result.retained,
+        removed: result.removed,
+      }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:volumes-mark-done', async (
+    _event,
+    volumeId: string,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = markVolumeDone(db, volumeId)
+      return { success: true, volume: result.volume, actualLast: result.actualLast }
     } catch (err) {
       return { success: false, error: String(err) }
     }
