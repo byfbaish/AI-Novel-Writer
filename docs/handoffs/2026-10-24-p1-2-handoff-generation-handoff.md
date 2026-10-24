@@ -72,3 +72,46 @@ check-doc-links                     ✅
 1. 实机跑一次：卷 1 = 1–3、卷 2 = 4–6，定稿第 3 章看初稿质量，把结论补进设计稿 §8.7。
 2. 按评审 §5 继续：**12.15 剩两项**（伤势单调 / 位置可行）→ 修「第 5 维被挤出前 8 条」→ 让 `golden_finger` 进材料块 → W8。
 3. P1-2 只剩**期 3**（大纲 prompt 前缀投影 L2/L3/L4），它要动 `confirmedPrefix`，与本期无交集。
+
+---
+
+## 8. 期 2b 追加：开写闸门（同日，作者要求）
+
+> 起因：作者指出「写超计划末章可能一直不触发」这条限制不够，正确位置是**开写时**做状态检测，
+> 弹强提示要求确认人工复查 —— 一卷二十章以上，一次强提示不伤体验。
+
+### 8.1 做了什么
+
+进新一卷第一章时，若上一卷的交接单**缺失**或**只有未确认的模型初稿**，开写前拦住，要求三选一：
+
+1. **生成初稿给我看** → 跑共享生成函数 → 写 `source='generated'` → 展示摘要 → 再由作者点「就用这份」；
+2. **已人工复查，继续** → 写一条确认（`consistency_exemptions`，`volume-handoff:<volumeId>`）→ 放行；
+3. **取消，先去处理** → 什么都不写，下次还会问。
+
+单章（`ChapterCreationDialog`）与批量（`BatchChapterCreationDialog`）都盖；批量按批次第一章判。
+
+### 8.2 新增文件
+
+| 文件 | 作用 |
+|---|---|
+| `src/shared/volume-handoff-gate.ts` | `volumeHandoffGateOf`（三态判定）+ `volumeHandoffAckKey` |
+| `src/services/volume-handoff-gate.ts` | 读三条通道并判定；`acknowledgeVolumeHandoff` 写确认 |
+| `src/components/dialogs/VolumeHandoffGatePanel.tsx` | 闸门面板（三个出口 + 生成中 + 摘要） |
+| 面板追加 | 「已确认的跨卷衔接」折叠区 + 撤销（否则「可撤销」是空话） |
+
+### 8.3 两条纪律
+
+1. **生成完不自动放行**：初稿没人看过就不算交接完成，必须作者点「就用这份」。
+2. **fail-open**：读失败 / 老项目没这几张表 ⇒ 不拦 + 一行日志。这是提醒，不是数据校验。
+
+### 8.4 验证
+
+- `volume-handoff-gate.test.ts` 8 例（三态 / 按卷区分 / 起止未定 / 非卷首不打扰）
+- `VolumeHandoffGatePanel.browser.tsx` 8 例（三态文案 / 生成不自动放行 / 确认写入 / 失败不写库 / 取消）
+- `VolumeHandoffRegistryPanel.browser.tsx` 21 例（新增确认列表与撤销 2 例）
+- 全量 `src`：3 failed / 19 failed，与基线逐字相同；browser 五套件 67 passed / **1 failed（既有）**
+
+> ⚠️ **browser 套件有一条既有红**（不是本期引入，已用 `git stash` 对照确认）：
+> `chapter-writing-model-selector.browser.tsx` 的「shows the same continuable preflight in English
+> before a batch run」—— 报 `events.filter is not a function`，根因是该用例的蓝图 mock 把
+> `keyEvents` 写成字符串，而 `findBlueprintSlotAttackRisks` 期望数组。谁的活谁修，别混进本期。

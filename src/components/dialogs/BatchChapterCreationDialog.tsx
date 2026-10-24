@@ -28,6 +28,10 @@ import { readAuthoritativeNextChapter } from '../../services/authoritative-chapt
 import { readConsistencyPreflight, describeSpaceTimeCoverage, type ConsistencyPreflightResult } from '../../services/consistency-preflight'
 import { requireIpcSuccess } from '../../services/ipc-result'
 import ConsistencyPreflightPanel from './ConsistencyPreflightPanel'
+import VolumeHandoffGatePanel from './VolumeHandoffGatePanel'
+import type { ProjectSessionContext } from '../../shared/ipc-channels'
+import type { VolumeHandoffGate } from '../../shared/volume-handoff-gate'
+import { readVolumeHandoffGate } from '../../services/volume-handoff-gate'
 import {
   CHAPTER_WORDS_TARGET_MAX,
   CHAPTER_WORDS_TARGET_MIN,
@@ -92,6 +96,8 @@ function BatchChapterCreationDialogSession({ isOpen, startChapterNumber, onClose
   const [authorityError, setAuthorityError] = useState<string | null>(null)
   const [authorityLoading, setAuthorityLoading] = useState(false)
   const [consistencyPreflight, setConsistencyPreflight] = useState<ConsistencyPreflightResult | null>(null)
+  /** P1-2 期 2b：批量开写前同样要确认上一卷的跨卷记忆（一次跑十章，出问题最难收）。 */
+  const [volumeGate, setVolumeGate] = useState<{ gate: VolumeHandoffGate; session: ProjectSessionContext } | null>(null)
   const [generationModelId, setGenerationModelId] = useState<string | null>(() => (
     preferredGenerationModelId(models, defaultModelId)
   ))
@@ -203,6 +209,15 @@ function BatchChapterCreationDialogSession({ isOpen, startChapterNumber, onClose
       }
 
       if (!ignoreFindingsOnce) {
+        // P1-2 期 2b：进新一卷第一章时先确认上一卷的跨卷记忆（判定与单章对话框同一函数）。
+        const gateResult = await readVolumeHandoffGate({ projectSession, chapterNumber: frozenStart })
+        if (!isProjectSessionCurrent(projectSession)) return
+        if (gateResult.gate && gateResult.gate.state !== 'clear') {
+          setStarting(false)
+          setVolumeGate({ gate: gateResult.gate, session: projectSession })
+          return
+        }
+        setVolumeGate(null)
         try {
           const preflight = await readConsistencyPreflight(
             projectSession,
@@ -458,6 +473,19 @@ function BatchChapterCreationDialogSession({ isOpen, startChapterNumber, onClose
             </div>
           )}
         </div>
+
+        {volumeGate ? (
+          <VolumeHandoffGatePanel
+            gate={volumeGate.gate}
+            projectSession={volumeGate.session}
+            writingLanguage={currentProject?.novelConfig.writingLanguage ?? 'zh-CN'}
+            onProceed={() => {
+              setVolumeGate(null)
+              void handleStart(false)
+            }}
+            onDismiss={() => setVolumeGate(null)}
+          />
+        ) : null}
 
         {consistencyPreflight && (consistencyPreflight.findings.length > 0 || consistencyPreflight.exemptions.some(item => !item.revoked)) ? (
           <ConsistencyPreflightPanel
