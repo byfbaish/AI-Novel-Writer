@@ -303,6 +303,40 @@ describe('节奏画像的空值语义（空 = 中性）', () => {
     expect(resolveRhythmProfile('qidian', 'en-US')).toContain('Qidian')
     expect(resolveRhythmProfile('自定义节奏：每章一钩', 'zh-CN')).toBe('自定义节奏：每章一钩')
   })
+
+  // v7（2026-10-24）正文链接入后新增。这三条锁的是「接进去了」与「空值时一个字节都没变」，
+  // 而不是文案好不好 —— 文案由作者定。字节级等价是唯一能拦住「少一个空行 / 标题不匹配裁剪正则」
+  // 的手段：只要新模板在空画像下与「删掉该块的旧模板」渲染结果不完全相同，就一定红。
+  const rhythmBlock = (language: 'zh-CN' | 'en-US') =>
+    language === 'zh-CN'
+      ? '【节奏推荐（如有，由平台画像注入；只约束节奏与兑现频率，不改变本章任务）】\n{{rhythm_profile}}\n\n'
+      : '[Rhythm profile (if any) — injected from the platform; constrains pacing and payoff frequency only, never the chapter brief]\n{{rhythm_profile}}\n\n'
+
+  const chapterVars = (language: 'zh-CN' | 'en-US', rhythm: string) => {
+    const template = getBuiltinPromptTemplate('next_chapter_draft', language)!
+    return Object.fromEntries(
+      Object.keys(template.variables).map(name => [name, name === 'rhythm_profile' ? rhythm : `SENTINEL-${name}`]),
+    )
+  }
+
+  it.each(['zh-CN', 'en-US'] as const)('正文模板的空画像与「未加该块」逐字节等价（%s）', language => {
+    const template = getBuiltinPromptTemplate('next_chapter_draft', language)!
+    const block = rhythmBlock(language)
+    expect(template.content).toContain(block)
+    const legacy = { ...template, content: template.content.replace(block, '') }
+    const vars = chapterVars(language, '')
+    expect(renderPrompt(template, vars, language)).toBe(renderPrompt(legacy, vars, language))
+    expect(renderPrompt(template, vars, language)).not.toMatch(/\n{3,}/u)
+  })
+
+  it.each(['zh-CN', 'en-US'] as const)('正文模板有画像时只注入一次，且排在本章任务之前（%s）', language => {
+    const template = getBuiltinPromptTemplate('next_chapter_draft', language)!
+    const out = renderPrompt(template, chapterVars(language, 'RHYTHM_SENTINEL'), language)
+    expect(out).toContain(language === 'zh-CN' ? '【节奏推荐（如有' : '[Rhythm profile (if any)')
+    expect(out.split('RHYTHM_SENTINEL')).toHaveLength(2)
+    const taskHeading = language === 'zh-CN' ? '【本章写作方向与核心任务】' : '[Chapter brief]'
+    expect(out.indexOf('RHYTHM_SENTINEL')).toBeLessThan(out.indexOf(taskHeading))
+  })
 })
 
 describe('章纲 → 蓝图 的字段分工（选择行 / 事件序列归蓝图）', () => {

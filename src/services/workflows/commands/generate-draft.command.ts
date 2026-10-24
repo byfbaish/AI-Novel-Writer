@@ -28,6 +28,7 @@ import { hashAuthorText } from '../../../shared/source-ref'
 import { resolvePromptTemplate } from '../../prompt-templates'
 import type { PromptTemplate } from '../../builtin-prompt-templates'
 import { ChapterPromptBuilder } from '../../prompts/prompt-builder'
+import { resolveRhythmProfile } from '../../prompts/rhythm-profiles'
 import { resolveChapterRoleGuidance } from '../../prompts/chapter-role-guidance'
 import { pushTraceScope, runTraceScopeTeardown, type TraceScope } from '../../prompts/trace-scope'
 import { ipc } from '../../ipc-client'
@@ -741,6 +742,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // 否则写第 2 章时请求里已经躺着「终极谜团 / 零号档案 / 终极抉择」（ch2 实机：architecture
     // 6,854 字 = user 消息的 39.9%，是单块最大的材料）。fail-open：找不到该节则逐字返回。
     const architectureSource = await this.readArchitecture(expectedProjectPath, projectSession, authoredConfigFacts)
+    // v7：平台节奏画像。空 = 中性（模板里的【节奏推荐（如有…）】整段裁掉），
+    // 不给老项目一个它没选过的默认节奏。解析放在这里，`readArchitecture` 只做纯读。
+    const rhythmProfile = resolveRhythmProfile(architectureSource.rhythmProfile, writingLanguage)
     const architectureProjection = projectArchitectureForDraft(architectureSource.text, writingLanguage)
     const architecture = architectureProjection.text
     // P0-2：规则摘录取**落库的世界观原文**，不取投影后的 `architecture` —— 投影只保证
@@ -884,6 +888,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       .withReferenceWorks(referenceWorks)
       .withNovelConfig(novelConfigFactsJson)
       .withWordNumber(targetChars)
+      // v7：平台节奏画像是全书稳定值（与 novelConfig / wordNumber 同级），放在稳定前缀区内。
+      // 空串 = 中性，模板里的【节奏推荐（如有…）】整段会被裁掉，老项目行为不变。
+      // 注：`composeInitialPrompt` 把逐章变化的材料块拼在模板之前，真实缓存前缀断在那里，
+      // 所以这里只是"模板内部稳定"，不是整体缓存优化。
+      .withRhythmProfile(rhythmProfile)
       // ---- 章节公共区（首章与后续章都必须完整注入）----
       // P1 Phase 2：初始请求的 ★额外指导★ 块（build() 追加的 systemSuffix）已承载 user_guidance，
       // 故蓝图 JSON 投影里不再重复携带，避免同一轮内逐字出现 2 次（Phase 0 实测 D6）。
@@ -2072,12 +2081,16 @@ ${params.candidate.text}`,
    * P0-2（2026-10-23）：额外回传**未经投影**的 `worldBuilding`，给「本书规则」摘录用。
    * `text` 的语义与拼接顺序完全不变（既有 `split` 去重断言依赖它），只是把
    * `core.worldbuilding` 这一段同时留了个原件——投影会压掉整节远期设定，摘录需要原始维度。
+   *
+   * v7（2026-10-24）：再回传 `rhythmProfile` **原值**（`qidian` / `fanqie` / 自定义文本 / `''`）。
+   * 这里不解码成提示词文本，因为解析要 `writingLanguage`，而本方法只负责读库——
+   * 解码交给调用点的 `resolveRhythmProfile`，与本方法"纯读"的定位一致。
    */
   private async readArchitecture(
     projectPath: string,
     projectSession: ProjectSessionContext,
     authoredConfigFacts: readonly string[],
-  ): Promise<{ text: string; worldBuilding: string }> {
+  ): Promise<{ text: string; worldBuilding: string; rhythmProfile: string }> {
     const core = await ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectPath)
     const duplicates = authoredFactFingerprints(authoredConfigFacts)
     const parts: string[] = []
@@ -2098,6 +2111,7 @@ ${params.candidate.text}`,
     return {
       text: parts.filter(Boolean).join('\n\n---\n\n'),
       worldBuilding: typeof core?.worldbuilding === 'string' ? core.worldbuilding : '',
+      rhythmProfile: typeof core?.rhythmProfile === 'string' ? core.rhythmProfile : '',
     }
   }
 
