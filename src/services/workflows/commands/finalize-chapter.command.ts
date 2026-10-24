@@ -35,6 +35,17 @@ import {
   type FinalizedSourceIdentity,
 } from '../../../shared/finalized-continuity'
 import { parseStoryDayAnchor } from '../../../shared/story-day-anchor'
+import type { ProjectSessionContext } from '../../../shared/ipc-channels'
+import {
+  volumeRangeEndingAt,
+  type VolumeDefinition,
+  type VolumeRange,
+} from '../../../shared/volume-structure'
+import {
+  generateVolumeHandoff,
+  isAuthorOwnedHandoff,
+  type VolumeHandoffNotesEntry,
+} from '../../volume-handoff-generation'
 import { readWorkflowDraftMeta } from '../workflow-draft-meta'
 import {
   requireWorkflowProjectSession,
@@ -92,6 +103,20 @@ export interface FinalizePostProcessGeneration {
     callbacks: StepCallbacks,
     context: WorkflowContext,
   ): Promise<string>
+  /**
+   * P1-2 期 2 卷末交接单生成的模型调用（可选）。
+   *
+   * 与 `extractResourceMovements` 同一档：产物是**派生初稿**而不是定稿正文，
+   * 所以同样不走 `finalizedStage`（主进程槽位只认两个 `stepKey`，第三槽要动跑批/提交/回执
+   * 五处不变量）。不传时由 `generateVolumeHandoff` 内部的一次性结构化调用兜底。
+   *
+   * 存在的主要理由是**可测**：不桩一次模型调用，就只能连真 provider 才能验证「作者版不被覆盖」
+   * 这类不变量。
+   */
+  generateVolumeHandoffRaw?(
+    messages: { system: string; user: string },
+    context: WorkflowContext,
+  ): Promise<string>
 }
 
 // ===== 后处理步骤构建器 =====
@@ -144,6 +169,36 @@ function describeDroppedMovements(dropped: LedgerExtractionDrops, english: boole
 }
 
 /**
+ * 探测「这一章是不是本卷有效末章」（P1-2 期 2）。
+ *
+ * **fail-open**：任何异常都返回 `undefined`（= 不注册「卷末交接单」步骤），
+ * 绝不因为卷结构读不到而让定稿失败。导出是为了可测 —— 命令体里只剩一行调用，
+ * 而「判不出卷末章就静默永不生成」正是这一步最容易翻的车。
+ *
+ * 只在**卷结构建了但过期**时回调 `onStale`：那种情况作者以为机制在跑、实际判不出卷末章。
+ * 完全没建卷结构的项目（新项目常态）不吵他 —— 打开「卷末交接」页会自动建。
+ */
+export async function resolveVolumeHandoffRange(input: {
+  projectPath: string
+  projectSession: ProjectSessionContext
+  chapterNumber: number
+  onStale?: () => void
+}): Promise<VolumeRange | undefined> {
+  try {
+    const listed = await ipc.invokeWithProjectSession(
+      input.projectSession,
+      'db:volumes-list',
+      input.projectPath,
+    ) as { success?: boolean; state?: string; volumes?: VolumeDefinition[] }
+    if (!listed?.success) return undefined
+    if (listed.state === 'stale') input.onStale?.()
+    return volumeRangeEndingAt(listed.volumes ?? [], input.chapterNumber) ?? undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * 构建章节定稿后处理步骤列表
  *
  * 每个步骤都是独立的 PostProcessStep，由 runPostProcessPipeline
@@ -176,7 +231,16 @@ export function buildFinalizePostProcessSteps(
    *
    * 代码与解析器全部保留：入口关掉，想重做时打开这个开关。
    */
-  options: { includeResourceLedger?: boolean } = {},
+  options: {
+    includeResourceLedger?: boolean
+    /**
+     * P1-2 期 2：传入即表示「这一章是本卷有效末章」，注册「卷末交接单」步骤。
+     *
+     * 判定在 `RunFinalizePostProcessCommand` 里做（它才拿得到 `db:volumes-list`），
+     * 这里只做**双保险**：`last !== chapterNumber` 时一律不注册。
+     */
+    volumeHandoff?: VolumeRange
+  } = {},
 ): PostProcessStep[] {
   const steps: PostProcessStep[] = []
   const text = (zhCNText: string, enUSText: string) => localize(uiLocale, zhCNText, enUSText)
@@ -358,6 +422,119 @@ export function buildFinalizePostProcessSteps(
       },
     })
 
+  // ─── 步骤 2b: 卷末交接单（P1-2 期 2）──────────────────────────────
+  //
+  // 只在「本卷有效末章定稿」时注册，产物是下一卷开写前的跨卷记忆初稿。
+  // 三条边界：
+  // 1. **作者版永不覆盖** —— 先读现有记录，`source==='author'` 直接跳过；
+  //    面板按钮用的是同一个 `isAuthorOwnedHandoff`，两处判断只许有一份。
+  // 2. 输入只有各章定稿要点，不读正文（体积与口径都定死在 `volume-handoff-generation.ts`）。
+  // 3. 失败不改定稿：`critical: false`；「本卷还没有要点」是数据未就绪，**不算失败**。
+  //
+  // 为什么放在 `character_cards` 之前：`stopOnFailure` 会中止后续步骤，而交接单只依赖
+  // `chapter_notes` 的产物 —— 放后面等于让「角色卡失败」把跨卷记忆一起带走。
+  if (options.volumeHandoff && options.volumeHandoff.last === chapterNumber) {
+    const range = options.volumeHandoff
+    steps.push({
+      key: 'volume_handoff',
+      label: text('卷末交接单', 'Volume handoff'),
+      critical: false,
+      executor: async (callbacks, context) => {
+        if (!context) throw new Error('定稿后处理缺少冻结工作流上下文')
+        if (context.cancelled) throw new Error(workflowUiText(context, '工作流已取消', 'Workflow was cancelled.'))
+        const projectSession = requireWorkflowProjectSession(context)
+        const writingLanguage = workflowWritingLanguage(context)
+        const first = range.first
+        const last = range.last
+        if (first === null || last === null) {
+          callbacks.log(workflowUiText(
+            context,
+            '  卷末交接单未生成：本卷起止未定（到「卷末交接」页重建卷结构后重试）',
+            '  Volume handoff not generated: this volume has no chapter range yet (rebuild the volume structure on the handoff page).',
+          ))
+          return
+        }
+
+        // ① 作者版不可覆盖（硬不变量）。
+        const listed = await ipc.invokeWithProjectSession(projectSession, 'db:volume-handoffs-list', _project.path)
+        requireIpcSuccess(listed, text('读取卷末交接单', 'Read volume handoffs'))
+        const existing = (listed.entries ?? []).find(entry => entry.volumeId === range.volumeId) ?? null
+        if (isAuthorOwnedHandoff(existing)) {
+          callbacks.log(workflowUiText(
+            context,
+            '  已有作者版卷末交接单，本次不覆盖',
+            '  An author-owned volume handoff already exists, so it was not overwritten.',
+          ))
+          return
+        }
+
+        // ② 卷内各章定稿要点：一次取到上界（不含），再按区间过滤。缺章是常态，不当失败。
+        const projections = await ipc.invokeWithProjectSession(
+          projectSession,
+          'db:continuity-list-before',
+          last + 1,
+          _project.path,
+        )
+        const notes: VolumeHandoffNotesEntry[] = (projections ?? [])
+          .filter(entry => entry.chapterNumber >= first && entry.chapterNumber <= last)
+          .map(entry => ({ chapterNumber: entry.chapterNumber, chapterTitle: entry.chapterTitle, notes: entry.chapterNotes }))
+          .filter(entry => entry.notes.trim().length > 0)
+        if (notes.length === 0) {
+          callbacks.log(workflowUiText(
+            context,
+            '  本卷还没有可用的定稿要点，卷末交接单未生成（定稿「章节剧情要点」后可重试）',
+            '  This volume has no usable finalized chapter notes yet, so the handoff was not generated.',
+          ))
+          return
+        }
+
+        // ③ 生成走共享函数：面板的「重新生成」调的是同一个，措辞与裁剪不会分叉。
+        const result = await generateVolumeHandoff({
+          volumeIndex: range.volumeIndex,
+          volumeName: range.name,
+          firstChapter: first,
+          lastChapter: last,
+          notes,
+          writingLanguage,
+          projectSession,
+          ...(context.generationModelId ? { modelId: context.generationModelId } : {}),
+          ...(generation.generateVolumeHandoffRaw
+            ? { complete: (messages: { system: string; user: string }) => generation.generateVolumeHandoffRaw!(messages, context) }
+            : {}),
+        })
+        if (!result.ok) throw new Error(result.reason)
+        if (context.cancelled) throw new Error(workflowUiText(context, '工作流已取消', 'Workflow was cancelled.'))
+
+        // ④ 写库：带 `handoffId` 才保得住 `created_at`（仓储的 UPDATE 子句刻意不含它）。
+        const written = await ipc.invokeWithProjectSession(projectSession, 'db:volume-handoffs-upsert', {
+          ...(existing ? { handoffId: existing.handoffId } : {}),
+          volumeId: range.volumeId,
+          ...result.draft,
+          source: 'generated',
+        }, _project.path)
+        requireIpcSuccess(written, text('写入卷末交接单', 'Write the volume handoff'))
+
+        const total = last - first + 1
+        const missing = result.coverage.missingChapters
+        const dropped = result.coverage.droppedChapters
+        callbacks.log(workflowUiText(
+          context,
+          `  已生成卷末交接单初稿（正文 ${result.report.bodyChars}/1500 字；要点 ${result.coverage.usedChapters.length}/${total} 章`
+            + (missing.length > 0 ? `，缺第 ${missing.join('、')} 章` : '')
+            + (dropped.length > 0 ? `；第 ${dropped.join('、')} 章因输入预算省略` : '')
+            + (result.report.droppedByBudget.length > 0 ? `；已按上限丢弃 ${result.report.droppedByBudget.length} 条` : '')
+            + '）',
+          `  Volume handoff draft generated (body ${result.report.bodyChars}/1500 characters; notes from `
+            + `${result.coverage.usedChapters.length}/${total} chapters`
+            + (missing.length > 0 ? `; missing chapters ${missing.join(', ')}` : '')
+            + (dropped.length > 0 ? `; chapters ${dropped.join(', ')} omitted by the input budget` : '')
+            + (result.report.droppedByBudget.length > 0 ? `; ${result.report.droppedByBudget.length} entries trimmed` : '')
+            + ').',
+        ))
+      },
+    })
+  }
+
   // Model IDs refer only to the identity snapshot frozen by the original finalization.
   steps.push({
     key: 'character_cards',
@@ -503,6 +680,27 @@ export class RunFinalizePostProcessCommand extends BaseWorkflowCommand<PostProce
     return this.executeWithinGeneration(params)
   }
 
+  /**
+   * 卷末章探测的日志包装：判定本身在 `resolveVolumeHandoffRange`（导出、可单测），
+   * 这里只把「卷结构过期」接到步骤日志上。
+   */
+  private async probeVolumeHandoffRange(
+    projectSession: ProjectSessionContext,
+    callbacks: StepCallbacks,
+    context: WorkflowContext,
+  ): Promise<VolumeRange | undefined> {
+    return resolveVolumeHandoffRange({
+      projectPath: this.params.project.path,
+      projectSession,
+      chapterNumber: this.params.chapterNumber,
+      onStale: () => callbacks.log(workflowUiText(
+        context,
+        '  卷结构已过期，本次未判断卷末章（到「卷末交接」页重建后可重试）',
+        '  The volume structure is stale, so the volume boundary could not be checked (rebuild it on the handoff page).',
+      )),
+    })
+  }
+
   private async executeWithinGeneration({ context, callbacks }: CommandExecuteParams): Promise<PostProcessStatus> {
     const projectSession = requireWorkflowProjectSession(context)
     // 定稿后处理由 `runFinalizationGeneration` 独立驱动，不经过 `executeWithGenerationRuntime`，
@@ -549,6 +747,7 @@ export class RunFinalizePostProcessCommand extends BaseWorkflowCommand<PostProce
       }),
       complete: async () => { throw new Error('FINALIZATION_GENERATION_MAIN_REQUIRED') },
     }
+    const volumeHandoff = await this.probeVolumeHandoffRange(projectSession, callbacks, context)
     const allSteps = buildFinalizePostProcessSteps(
       this.params.project,
       this.params.chapterNumber,
@@ -561,6 +760,7 @@ export class RunFinalizePostProcessCommand extends BaseWorkflowCommand<PostProce
       this.params.finalizedSource,
       frozen.projectionGeneration,
       undefined,
+      { volumeHandoff },
     )
     const steps = this.params.stepKey
       ? allSteps.filter(step => step.key === this.params.stepKey)

@@ -1,6 +1,6 @@
 # P1-2 期 1 · 卷末交接单（volume handoff）设计稿
 
-> **状态**：✅ 期 1 已落地（2026-10-24，M18，schema 18 → 19）；✅ **期 1b 已改选卷**（M19，schema 19 → 20：区间外置到 `volumes`，作者只选卷、不再填章号）。期 2（自动生成）/ 期 3 未开工。
+> **状态**：✅ 期 1 已落地（2026-10-24，M18，schema 18 → 19）；✅ **期 1b 已改选卷**（M19，schema 19 → 20：区间外置到 `volumes`，作者只选卷、不再填章号）；✅ **期 2 已落地（2026-10-24，零迁移，schema 仍 20）**：定稿链卷末章触发 + 模型初稿 + 面板三态（见 §8）。期 3（大纲前缀投影）未开工。
 > **施工规格**：[`p1-2-volume-handoff-plan.md`](../../plans/p1-2-volume-handoff-plan.md)
 > **判据位置**：`long-form-readiness-review.md` §0（跨卷会失真）与 §3（卷级上下文一行）。
 
@@ -20,6 +20,10 @@
 ---
 
 ## 2. 形状（13 列）
+
+> ⚠️ **M19 已改形状**：现在是 **11 列 + `volume_id` 外键**，区间外置到 `volumes`，由
+> `volumeEffectiveRanges()` 派生。下表是期 1 的历史形状，保留作变更痕迹；**现行 DDL 见
+> [`volume-unit-structure-design.md`](volume-unit-structure-design.md)** 与 `electron/migrations/m19-volume-structure.ts`。
 
 ```sql
 CREATE TABLE volume_handoffs (
@@ -122,7 +126,7 @@ CREATE TABLE volume_handoffs (
 
 ## 6. 不做（防下一轮发明）
 
-- ❌ **自动生成交接单**（期 2）：要写模型调用、幂等重建、失败兜底，与本期 CRUD 完全不同级。
+- ~~❌ **自动生成交接单**（期 2）~~ → ✅ **期 2 已落地（2026-10-24）**，见 §8；期 2 自己的不做清单也在 §8。
 - ❌ **交接单失效判定**：删章、改章号都不自动更新区间（等 P2-1 findings）。
 - ❌ **在正文链推断卷边界**：不从 `plot_structure_plan` 算、不按章数等分。
 - ❌ **面板的「建议区间」**：作者 2026-10-24 明确砍掉。
@@ -134,7 +138,7 @@ CREATE TABLE volume_handoffs (
 
 ## 7. 已知限制
 
-1. **要作者手填**。本期零模型调用；不填 = 不注入 = 跨卷仍是老样子。自动生成在期 2。
+1. **期 1 要作者手填**（期 2 起可先由模型出初稿，作者再改；不填不生成 = 跨卷仍是老样子）。
 2. **章号要作者自己数**。旧格式大纲的章标题根本没有卷号（`parseOutlineChapterHeading` 对
    `## 第45章：名` 返回 `volumeIndex: null`），按章数等分推断又会随超写整体漂移。手填两个章号
    是这一期**故意接受的麻烦**。
@@ -143,7 +147,83 @@ CREATE TABLE volume_handoffs (
    > 计划 §7 原写「节首明写：若两者之间还有其他卷…」，与 §2.3 逐字渲染模板冲突；
    > 本期按 §2.3 的**逐字模板**落地（测试逐字比对快照），未追加第二句说明。
 4. **卷被重写后交接单不失效**：删章、改章号都不自动更新区间。
-5. **不校验 `source` 取值**：`author` / `generated` 只是标记，无 CHECK（本期只有 `author` 一种）。
+5. **不校验 `source` 取值**：`author` / `generated` 只是标记，无 CHECK（期 2 起两种都会出现；
+   判断「谁拥有这份记录」用代码里的 `isAuthorOwnedHandoff`，不靠库约束）。
 6. **分区交换要保存两次**：面板「先删后写」能让「删 A 建 B」通过，但两卷区间**互换**会因中间态
    重叠被拒 —— 这是刻意的（不做跨行事务），页面上有固定提示。
 7. **未验证真实效果**：本期没有跑真模型、没有 A/B。是否降低跨卷失真，要等实机观察。
+
+---
+
+## 8. 期 2 · 卷末自动生成（2026-10-24）
+
+### 8.1 触发点：定稿链的**卷末章**，不是大纲的卷翻转点
+
+计划稿原写「挂在 `architecture.command.ts:3374` 的卷翻转点」，**已推翻**。那条链跑的是**剧情大纲批次**（E3 单元游标），
+那一刻生成的是章节标题，`grep handoff` 在该文件零命中 —— 正文与要点都还不存在。用它生成交接单，
+产出的正是它本该防住的「跨卷只剩大纲文本」。
+
+改到定稿链后时机天然正确，且能直接复用 `runPostProcessPipeline` 的 `retryCount` / `onlyFailed` /
+`critical:false` 兜底，不碰架构命令的续跑与预算。
+
+- **判定**：`volumeRangeEndingAt(volumes, chapterNumber)`（`src/shared/volume-structure.ts`）——
+  有效末章 = `actual_last ?? planned_last`，与面板显示的区间是**同一个函数**。
+- **探测 fail-open**：`resolveVolumeHandoffRange()` 任何异常都返回 `undefined`（不注册该步），
+  **绝不因为卷结构读不到而让定稿失败**。只有 `state === 'stale'` 时打一行「卷结构已过期…」。
+- **步骤位置**：`kb_import → chapter_notes → volume_handoff → character_cards`。
+  放在角色卡之前，是因为 `stopOnFailure` 会中止后续步骤 —— 否则「角色卡失败」会把跨卷记忆一起带走。
+
+### 8.2 生成输入：各章定稿要点，不读正文
+
+`db:continuity-list-before(last + 1)` 一次取回区间内的投影，前端按 `>= first` 过滤，
+只取 `chapterNotes`（`summary_snapshots`）。
+
+- 输入预算 **20,000 字**；超了**整章丢最旧的**，但**末章必留**（卷末状态只能从末章读出）。
+- 返回数组天然缺章 ⇒ 日志只报「要点 N/M 章」并列出缺哪几章，**不拿 `last - first + 1` 当分子谎报**。
+- 本卷一条要点都没有 ⇒ **不生成、不算失败**（数据未就绪），日志指向「定稿章节剧情要点」。
+
+### 8.3 三条不变量
+
+1. **作者版永不自动覆盖**（硬）：定稿步骤与面板按钮调同一个 `isAuthorOwnedHandoff`；
+   面板上作者版的「重新生成」直接禁用。
+2. **零迁移 / 零新增 IPC**：读 `db:volumes-list` / `db:continuity-list-before` / `db:volume-handoffs-list`，
+   写 `db:volume-handoffs-upsert`，四条都已存在且在写通道白名单里；schema 保持 20。
+3. **单一字数口径**：`volumeHandoffBodyChars()` 直接复用 `renderVolumeHandoffSection(..., MAX_SAFE_INTEGER)`
+   去掉前两行；生成侧不许另写计数器（单测断言两者逐字相等）。
+
+### 8.4 裁剪与失败语义
+
+| 情形 | 行为 |
+|---|---|
+| 数组超 5/5/3 | 按条数上限截断，记 `droppedByLimit`（不是失败） |
+| 正文超 1500 字 | 按**注入顺序的反序**逐条整条丢（`openThread → debts → items → events → heroState → worldState`），记 `droppedByBudget`；**绝不截半句** |
+| 丢到一件不剩 | `VOLUME_HANDOFF_GENERATION_OVER_BUDGET` ⇒ 失败，不写库 |
+| 六项全空 | `VOLUME_HANDOFF_GENERATION_EMPTY` ⇒ 失败，**不写空壳**（空记录会占掉 `volume_id` UNIQUE 槽，并让注入侧渲染成空串） |
+| 输出不可解析 | `..._UNREADABLE` ⇒ 失败，不写库（不用垃圾覆盖上一次的好数据） |
+| 已有 `generated` | 覆盖重生成，带原 `handoffId`（保住 `created_at`） |
+| `onlyFailed` 修复 | 该步已 `ok` ⇒ 跳过（已有初稿视为完成）；想重生成走面板 |
+
+### 8.5 面板三态
+
+「来源」列：**作者版**（实心徽标）/ **初稿**（描边徽标）/ 空行 `—`。
+「重新生成」只在初稿与空行可用；作者版禁用并给出原因（需先删除该行）。
+生成中按钮转圈 + 「生成中…」，同时禁用保存/新增/删除；**无百分比**（一次性调用）。
+保存时 `source = 动过该行 || 新行 ? 'author' : 原值` —— 只把**动过的行**升格，
+避免整页一存就把没碰过的初稿全冻死。
+
+### 8.6 与计划稿的偏离
+
+| 计划稿 | 实际 | 理由 |
+|---|---|---|
+| 触发点 = `architecture.command.ts:3374` | 定稿链卷末章 | 那里正文还没写（见 8.1） |
+| 计划另写一份「体积/裁剪」规格 | 复用 `renderVolumeHandoffSection` 的既有五条口径 | 两套计数器是这类功能最常见的腐坏方式 |
+| 计划写「幂等重建」 | 幂等 = 同一卷重复触发只会覆盖 `generated`，`author` 永不动 | 没有跨快照重建的需求，硬做要加列（M20） |
+| 计划列一个 880 行级整合夹具 | 探测函数导出后单测 + 步骤单测 | 命令里只剩一行调用；风险点（判不出卷末章、作者版被覆盖、坏输出写库）已被 14 例覆盖 |
+
+### 8.7 验收
+
+- 单测 15 例（解析 / 裁剪 / 字数口径 / 输入预算 / 失败原因）+ 卷结构 4 例（末章判定）+ 步骤与探测 14 例
+  + 面板 browser 6 例 + electron 仓储 2 例（`generated` 往返、`created_at` 不动）。
+- 手工：卷 1 = 1–3、卷 2 = 4–6；定稿 1–2 章不触发；定稿第 3 章出现初稿；作者改后保存变作者版；
+  重新定稿日志「不覆盖」且六项不变；删行重生成出新记录；定稿第 4 章正文链注入第 1 卷那份。
+- **未验证**：真模型产出质量、30 章长卷的实际输入体积。

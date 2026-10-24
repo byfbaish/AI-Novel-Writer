@@ -229,3 +229,39 @@ describe('volume handoff repository', () => {
     } finally { db.close() }
   })
 })
+
+/**
+ * P1-2 期 2：自动生成写的是 `source='generated'`，作者手填是 `'author'`。
+ * 两件事必须在仓储层就成立，否则上层所有「作者版不被覆盖」的判断都是空的：
+ * 1. `generated` 能原样往返（不被默认值悄悄改成 `author`）；
+ * 2. 同一 `handoffId` 二次写入只刷新 `updated_at`，`created_at` 与主键都不动。
+ */
+describe('volume handoff source（P1-2 期 2）', () => {
+  it('source=generated 原样往返，不被默认值改成 author', () => {
+    const db = migratedDb()
+    try {
+      const volumeId = seedVolume(db, 1, 1, 20)
+      const saved = upsertVolumeHandoff(db, { volumeId, worldState: '模型初稿', source: 'generated' })
+      expect(saved.source).toBe('generated')
+      expect(listVolumeHandoffs(db)[0]!.source).toBe('generated')
+    } finally { db.close() }
+  })
+
+  it('同一 handoffId 二次 upsert：created_at 不动、updated_at 刷新、source 可改写', () => {
+    const db = migratedDb()
+    try {
+      const volumeId = seedVolume(db, 1, 1, 20)
+      const saved = upsertVolumeHandoff(db, { volumeId, worldState: '初稿', source: 'generated' })
+      // 把 updated_at 钉到一个肯定过去的时刻，避免同毫秒内两次写入被判成「没变」。
+      db.prepare("UPDATE volume_handoffs SET updated_at='2000-01-01T00:00:00.000Z' WHERE handoff_id=?")
+        .run(saved.handoffId)
+      const again = upsertVolumeHandoff(db, {
+        handoffId: saved.handoffId, volumeId, worldState: '作者改过', source: 'author',
+      })
+      expect(again.handoffId).toBe(saved.handoffId)
+      expect(again.createdAt).toBe(saved.createdAt)
+      expect(again.updatedAt).not.toBe('2000-01-01T00:00:00.000Z')
+      expect(again.source).toBe('author')
+    } finally { db.close() }
+  })
+})

@@ -143,6 +143,8 @@ const expectedPromptVariables: Record<string, string[]> = {
   world_building_resource_extract: ['world_building'],
   // W6b：资源变动抽取（只给名字与单位，绝不把费率/换算锚递给模型）。
   extract_resource_movements: ['chapter_content', 'chapter_number', 'chapter_title', 'resources_json'],
+  // P1-2 期 2：卷末交接单生成（输入只有本卷标签、章号区间与各章要点；不喂正文）。
+  generate_volume_handoff: ['volume_label', 'chapter_range', 'volume_notes'],
 }
 
 const expectedJsonFields: Record<string, string[]> = {
@@ -150,6 +152,8 @@ const expectedJsonFields: Record<string, string[]> = {
   world_building_self_review: ['findings', 'severity', 'category', 'quote', 'why'],
   // W6b：抽取只输出「资源名 + 整数 + 单位 + 引文」，同样没有任何余额字段（判据 DK）。
   extract_resource_movements: ['movements', 'resource', 'delta', 'unit', 'quote'],
+  // P1-2 期 2：卷末交接单六项固定键；与面板字段、渲染标签逐字对齐。
+  generate_volume_handoff: ['worldState', 'heroState', 'events', 'items', 'debts', 'openThread'],
   // W6a-4：提案只输出候选行；字段与 W6 资源表对齐，没有任何余额/合计字段（判据 DK）。
   world_building_resource_extract: ['candidates', 'name', 'familyId', 'tier', 'unit', 'period', 'anchorValue', 'anchorNote', 'anchorQuote', 'earnNote', 'costNote', 'scarcityNote', 'quote'],
   // schemaVersion 已被第五层架构改造移出角色图谱输出合同：prompt-language.ts 的
