@@ -1,7 +1,8 @@
 # 项目文档 · 唯一入口
 
 > **找文档只看这一页。** 本页给出「想干什么 → 打开哪个文件」的完整索引、每个目录的职责边界，以及**新文档该放哪里**的硬规则。
-> 更新：2026-10-20 · 分支 `exp/arc-tree-v2`（E 系列施工中）
+> 更新：2026-10-24 · 分支 `exp/resource-ledger`
+> **开工前先读**（新会话 / 新任务）：根目录 `AGENTS.md`（常驻宪法，≤60 行）→ [`agents/documentation-charter.md`](agents/documentation-charter.md)（文档纪律、四层模型、完成定义）。本页只做**索引**，不复述纪律。
 > 上一版入口是 [`plans/00-OVERVIEW.md`](plans/00-OVERVIEW.md)（2026-10-11 历史看板，已冻结，只作存档）。
 
 ---
@@ -47,6 +48,7 @@ docs/
 | 查 **Program v3 原始合同 / 审计证据** | `plans/novel-quality-*/`、[`research/novel-quality-modernization/`](research/novel-quality-modernization/) 🔒 冻结 |
 | 接手别人的会话 | [`handoffs/`](handoffs/) |
 | 发布 / 交付 / 审查流程 | [`DEVELOPMENT.md`](DEVELOPMENT.md) · [`agents/delivery.md`](agents/delivery.md) |
+| **放文档 / 归档文档 / 判断该不该新建一份** | [`agents/documentation-charter.md`](agents/documentation-charter.md) —— 四层模型 + 单一事实源 + 完成定义 + 反例库 |
 | **要跑某个构建/验收/运维脚本，或想知道「改完这个该跑什么」** | [`../scripts/README.md`](../scripts/README.md) —— 按用途分类 + 「何时跑」+ 谁调用（npm script / CI / 手工） |
 | 产品术语 / 事实源边界 | [`product-domain.md`](product-domain.md) |
 
@@ -98,6 +100,8 @@ docs/
 **不能归档**：`docs/adr/`（只增不改）、`docs/design/` 的**现行**设计稿、`plans/` 的唯一台账与 `novel-quality-*` 冻结子树。
 **迁移必须改引用**（相对路径会变），迁完跑 `check-doc-links` 兜底。
 
+> **2026-10-24 补注**：`docs/design/archive/` 此前只在本节被引用，**目录并不存在**（相当于空文）。现已建立，含一份说明性 README；`docs/handoffs/archive/` 早已存在。归档四步见 [`agents/documentation-charter.md`](agents/documentation-charter.md) §5.3。
+
 ---
 
 ## 3. 新文档放置规则（写之前先读这一节）
@@ -145,7 +149,7 @@ docs/
 
 > 完整索引即本节。**这是查找设计文档的唯一清单**，不要再去翻目录树。
 
-### 4.1 Prompt 流水线 · [`design/prompt/`](design/prompt/)（25 篇）
+### 4.1 Prompt 流水线 · [`design/prompt/`](design/prompt/)（27 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -174,8 +178,10 @@ docs/
 | [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
 | [`p14-chapter-role-guidance-design.md`](design/prompt/p14-chapter-role-guidance-design.md) | 待裁定 | 章节定位七档 → 本章「承担/不做」成对合同，落执行合同（system），未知零字节 |
 | [`prompt-clause-admission.md`](design/prompt/prompt-clause-admission.md) | ✅ 已生效 | 条款准入三问（作者要它时是否仍成立 / 合法反例 / 限定词）+ 反例库 |
+| [`prompt-three-layer-inventory.md`](design/prompt/prompt-three-layer-inventory.md) | ✅ 已入库 + 测试锁定 | **Prompt 三层全景清单**（系统级 19 处 / 工程级 29 模板含**真实消费方**列 / 作者级 8 类 / **20 条装配链路** / 覆盖矩阵 A·B·C / 缺口 G1–G10）。三个测试断言把"不必全量重扫"变成机器保证 |
+| [`prompt-three-layer-alignment-assessment.md`](design/prompt/prompt-three-layer-alignment-assessment.md) | 📝 待裁定（2026-10-24） | **工程侧**行业对标：三条锚点带 URL + 逐字摘句，12 行逐条对照（✅6/⚠️5/❌2）。结论：**工程侧基本对齐，三处口径没对齐**（层级被抹平 / 同层无冲突规则 / 作者可调高度被锁死），本轮不动任何文案；附创作自由度三条准入线 |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（38 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（47 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -196,6 +202,15 @@ docs/
 | [`world-state-w4a-wiring-plan.md`](design/architecture/world-state-w4a-wiring-plan.md) | ✅ 已实施 | 上一稿的**施工子稿**：§11.7 五维齐备性检查 + W4a 三段流水线 + W5 视图一轮做完；含「先生成后 stage」裁决、偏差全表与验证命令 |
 | [`w6-resource-ledger-design.md`](design/architecture/w6-resource-ledger-design.md) | ✅ 七期全落地（W7 未开工） | 资源账本（灵石案）：权威值 `resources` 表 · **生成期自检（防下一本，A-1/A-2 + B 层自审）** · 账本三态（已知/未知/冲突，未知不说 0）· 并入世界状态**第六类**（空间先占第五）；判据 **DI–DL**；§9.1–§9.3 是三波落地记录，§6.1 交代只覆盖六槽里的「资源」一半 |
 | [`w7-world-state-injection-design.md`](design/architecture/w7-world-state-injection-design.md) | 📝 立项待裁定 | 世界状态**前置注入**（闭环的另一半）：最小集经作者材料块注入 · 卷切片复用 E4 三层投影 · 未知不填 0 · 注入即划期界；判据 **DM–DP** |
+| [`p1-1-key-items-design.md`](design/architecture/p1-1-key-items-design.md) | ✅ 已落地（M14） | 关键物品宿体（possession continuity）：三件套 + 出处，不做枚举、不做余额 |
+| [`p1-1-institution-cadence-design.md`](design/architecture/p1-1-institution-cadence-design.md) | ✅ 已落地（M15） | 制度槽（periodic obligations）：锚 = 上次真的发生，缺则 `unknown`，只判「该不该发生」 |
+| [`p1-1-knowledge-state-design.md`](design/architecture/p1-1-knowledge-state-design.md) | ✅ 已落地（M16） | 信息流（who knows what）：人粒度，只做正向知情，不做 C1 身份分面 |
+| [`p1-1-power-ability-design.md`](design/architecture/p1-1-power-ability-design.md) | ✅ 已落地（M17） | 能力槽（power system）：Sanderson 三类限制 + 当前阶段，不判次数与冷却 |
+| [`p1-1-power-system-shape-proposal.md`](design/architecture/p1-1-power-system-shape-proposal.md) | ✅ 形状已签（G4a） | 能力槽形状提案（13 列，含 `evidence_scope`），期 4b 的形状依据 |
+| [`p1-2-volume-handoff-design.md`](design/architecture/p1-2-volume-handoff-design.md) | ✅ 期 1/1b/2/2b · 期 3 未开工 | 卷末交接单（volume handoff）+ 开写闸门；期 3 大纲前缀投影未做 |
+| [`volume-unit-structure-design.md`](design/architecture/volume-unit-structure-design.md) | ✅ 已落地（M19） | 卷 / 单元结构持久化：计划列从大纲物化、实际列只由定稿链写，区间外置成外键 |
+| [`w8-nested-world-handoff-design.md`](design/architecture/w8-nested-world-handoff-design.md) | 📋 方向已定 · 未开工 | 跨部切片交接（series bible handoff）：只做线性升级流，不做多图往返 |
+| [`long-form-craft-alignment-assessment.md`](design/architecture/long-form-craft-alignment-assessment.md) | ✅ 已裁定（2026-10-24）· C1/C2/C4 已收口 | **创作侧**行业对标（读者会不会追）：十维度 × 四问，锚点带 URL 与摘句；缺口 C1–C9。三条结论：**最具体的创作规则进不了正文链**（`pacing_guidance` 只到章纲，本轮只补了作用域说明）· **创作侧零测量**（审稿刻意不判文笔）· **平台画像逐层接线**（架构链 + 正文首稿已接，章纲链与续写轮未接）。**C1 黄金三章已关闭**（不删不搬，四法则逐条归属见 §4）。与 `long-form-readiness-review.md`（生产链：会不会自相矛盾）互补不互抄 |
 | [`blueprint-key-events-structuring-design.md`](design/architecture/blueprint-key-events-structuring-design.md) | 初稿 v2 · 待裁定 | 蓝图 `keyEvents` 结构化 |
 | [`phase2-keyevents-bprime-implementation-plan.md`](design/architecture/phase2-keyevents-bprime-implementation-plan.md) | 待过目 · 未动代码 | 阶段 2 + B′（含 R6）实施清单 |
 | [`p11-plan-validity-and-fact-registry-design.md`](design/architecture/p11-plan-validity-and-fact-registry-design.md) | 📝 待裁定 | 计划的有效期与事实登记：水位列 / `attacks` / 复核五步 / 章级「前提」 |
@@ -240,7 +255,7 @@ docs/
 | [`p2-character-card-ai-generation.md`](design/characters/p2-character-card-ai-generation.md) | ✅ 已实施 | 角色卡管理界面的 AI 生成增强 |
 | [`character-proposal-adoption-merge-design.md`](design/characters/character-proposal-adoption-merge-design.md) | ✅ 已实施 | 采用到已有角色时改为字段合并（不覆盖已引用设定）+ 候选→已有卡的关系可直接采用 |
 
-### 4.5 功能与设置 · [`design/features/`](design/features/)（5 篇）
+### 4.5 功能与设置 · [`design/features/`](design/features/)（6 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -249,6 +264,7 @@ docs/
 | [`system-notification-design.md`](design/features/system-notification-design.md) | 待裁定 | 系统级 OS 通知 + 声音提醒（主进程发通知/渲染进程播音/聚焦抑制/注册表热插拔；N1–N3 分期） |
 | [`task-completion-notify-design.md`](design/features/task-completion-notify-design.md) | 已列入待办（顺延） | 应用内 toast 统一宿主 + 热插拔注册表（作者裁先做系统级；将来可合并为双输出） |
 | [`ai-output-live-render-design.md`](design/features/ai-output-live-render-design.md) | ✅ 已实施 | AI 输出面板运行态只给状态行、不渲染流式文本（原文：审稿把渲染进程推到 10GB 的 O(n²) 取证与参数） |
+| [`p16b-prompt-config-and-trace-guide.md`](design/features/p16b-prompt-config-and-trace-guide.md) | ✅ 已实施 | 作者操作手册：三条配置边界、口味/数字之辨、三类打架、Prompt 追踪五步归因 |
 
 ---
 
@@ -280,7 +296,7 @@ docs/
 | [`docs/research/`](research/) | 调研、实施证据及实验执行说明 | 按各文件的日期和角色使用；历史回执不自动成为当前资格 |
 | [`docs/handoffs/`](handoffs/) | 指定分支或任务的交接快照 | 有日期的任务状态；完成或分支变化后可能过时 |
 
-本机 `AGENTS.md` 与 `CONTEXT.md` 是可选的本机 Agent 上下文，按仓库卫生规则保持忽略，**不是公共文档**，不能覆盖 [`product-domain.md`](product-domain.md) 或 ADR。
+本机 `AGENTS.md` 按仓库卫生规则**保持忽略、不入库**（`.gitignore:58`），但它是**新会话的常驻入口**——不是产品文档，也不能覆盖 [`product-domain.md`](product-domain.md) 或 ADR；其权威内容入库在 [`agents/documentation-charter.md`](agents/documentation-charter.md)，两边用 `charter-version` 标记同步（脚本 C7 校验）。
 
 ---
 

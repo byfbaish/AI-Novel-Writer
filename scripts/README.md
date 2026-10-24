@@ -4,7 +4,7 @@
 >
 > **不放什么**：业务代码（去 `src/`、`electron/`）、产品运行时逻辑、临时调试脚本（临时脚本请放仓库根的 `.tmp-*` 或 `.runtime/`，不要进 `scripts/`）。`scripts/` 里的东西**不进产物**，但会被 CI 与发布流程直接调用。
 
-**现状**：顶层 76 个可执行脚本 + 4 个子目录（`lib/` 3 个共享模块、`__tests__/` 46 个测试、`fixtures/` 与 `browser-fixtures/` 测试夹具）。
+**现状**：顶层 79 个可执行脚本（68 个 `.mjs` + 9 个 `.ps1` + 1 个 `.sh` + 1 个 `.cjs`）+ 4 个子目录（`lib/` 2 个共享模块与 2 个 node-test、`__tests__/` 47 个测试、`fixtures/` 与 `browser-fixtures/` 测试夹具）。
 本页只索引**顶层脚本**；子目录见文末 §7。
 
 ---
@@ -17,6 +17,7 @@
 |---|---|---|
 | 提交前确认文档没断链 | `node scripts/check-doc-links.mjs` | 唯一的文档门禁，`broken 0` 才算过 |
 | 提交前确认中英文案覆盖率 | `pnpm run check:i18n` | 包装了 `check-i18n-coverage.mjs` |
+| 查「模板声明了变量但没链路注入」 | `node scripts/check-prompt-wiring.mjs` | 报告模式恒 0；`--strict` 只对新增缺口退 1 |
 | 本地起开发环境 | `pnpm dev` | `predev` 会自动跑 `prepare-native-for-electron.mjs` |
 | 清掉旧构建产物 | `pnpm run clean:build` | 只删 `dist/` `dist-electron/` `release/<version>/` |
 | 打未打包目录做本地验证 | `pnpm run build:win-dir` | 末尾自动跑 `verify:win-package` |
@@ -35,11 +36,13 @@
 
 ---
 
-## 2. 门禁 / 提交前必跑（6）
+## 2. 门禁 / 提交前必跑（8）
 
 | 脚本 | 用途 | 何时跑 | 谁调用 |
 |---|---|---|---|
 | `check-doc-links.mjs` | 扫 `docs/` 内相对链接，断链即失败 | **每次改动 docs 后、提交前** | 手工；`docs/README.md` §2.5 硬性要求 |
+| `check-doc-placement.mjs` | 文档放置体检：状态行 / 索引登记 / 命名 / 目录存在性 / 禁放区 / 断链 | 改动或新增 `docs/**` 之后 | 手工；报告模式恒 0，存量违规进 `docs/agents/doc-placement-baseline.json` |
+| `check-prompt-wiring.mjs` | Prompt 接线体检：模板占位符是否有链路注入（零消费方 / 未注入） | 改模板、改装配链路、加新 builder 之后 | 手工；`__tests__/check-prompt-wiring.test.ts` 用 fixture 钉住 AST 判据 |
 | `check-i18n-coverage.mjs` | 检查渲染层可见文案的中英覆盖，含边界错误路径 | **改 `src/` 里任何用户可见字符串后** | `pnpm run check:i18n` |
 | `require-release-gate.mjs` | 占位闸门：校验 `AI_NOVEL_RELEASE_GATE=release-win-verify`，否则拒绝出包 | 由 `build:win:artifacts` 自动前置，**不要手动单跑** | `pnpm run build:win:artifacts` |
 | `release-win-launch-gate.mjs` | 启动门禁的 arming 包装：记录 `--armed-path` / `--release-path` 后执行子命令 | 发布流水线内部，包启动前后各一次 | CI（workflow 内联） |
