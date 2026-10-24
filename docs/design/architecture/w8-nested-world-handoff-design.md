@@ -1,6 +1,6 @@
 # W8 · 跨部切片交接（只做线性嵌套升级流）
 
-> **状态**：📋 方向已定，未开工（2026-10-23 作者裁定「先考虑线性世界（嵌套型升级流）」）
+> **状态**：⏸ **暂停（2026-10-24 作者裁定）** —— 原「📋 方向已定，未开工」。暂停理由：**先把现有链路的产出质量做稳定，再推进跨部**；解冻条件见 `plans/prompt-assembly-backlog.md` §「2026-10-23 长篇就绪度重排」P2-2 行。方向与设计内容不变，恢复时按本稿直接施工
 > **分支**：建议另开 `exp/nested-world`
 > **术语对齐（2026-10-23）**：本文的"跨部切片交接"在行业里叫 **series bible 交接 / lock canon before book two**；
 > 「未回收伏笔」= **plot promises / unresolved threads**。术语与出处见 `industry-alignment-and-stage-goals.md` §2，
