@@ -14,9 +14,21 @@ export interface WriterOverview {
   excerpt?: string
   stages?: readonly { id: ProjectOverviewStageId; status: ProjectOverviewStageStatus; count?: number | null }[]
 }
+export interface WriterShelfProject {
+  id: string
+  name: string
+  /** 目录不可读取（已被移动、删除或清单损坏）。此项只能从书架移除，磁盘上没有可删的东西。 */
+  missing: boolean
+  /** delete = 真正删除项目目录（当前已验证项目）；remove = 仅从书架移除，磁盘文件保留。 */
+  deleteKind: 'delete' | 'remove'
+  onPreview: () => void
+  onOpen: () => void
+  onDelete: () => void
+}
+
 export interface WelcomePageV2Props {
   overview: WriterOverview
-  recentProjects: readonly { id: string; name: string; onPreview: () => void; onOpen: () => void }[]
+  recentProjects: readonly WriterShelfProject[]
   onNewProject: () => void
   onOpenProject: () => void
   onImportLegacyProject?: () => void
@@ -59,7 +71,7 @@ export default function WelcomePageV2({ overview, recentProjects, onNewProject, 
         {onContinue && <button type="button" onClick={onContinue}>{text('继续写作', 'Continue writing')}</button>}
       </>}
     </section>
-    <section aria-label={text('最近作品', 'Recent projects')} className="writer-shelf"><h2>{text('书架', 'Shelf')}</h2>{recentProjects.length === 0 ? <p>{text('书架还空着，新故事值得期待。', 'Your shelf is empty. Start a new story.')}</p> : <div className="v3-bookcase"><ul>{recentProjects.map(project => <li key={project.id}><button type="button" onClick={project.onPreview} aria-label={text(`预览《${project.name}》`, `Preview ${project.name}`)}><BookOpen size={21} /><strong>{project.name}</strong></button><button type="button" onClick={project.onOpen} aria-label={text(`打开《${project.name}》`, `Open ${project.name}`)}>{text('进入作品', 'Enter project')}</button></li>)}</ul></div>}</section>
+    <section aria-label={text('最近作品', 'Recent projects')} className="writer-shelf"><h2>{text('书架', 'Shelf')}</h2>{recentProjects.length === 0 ? <p>{text('书架还空着，新故事值得期待。', 'Your shelf is empty. Start a new story.')}</p> : <div className="v3-bookcase"><ul>{recentProjects.map(project => <li key={project.id} data-missing={project.missing ? 'true' : undefined}><button type="button" onClick={project.onPreview} aria-label={text(`预览《${project.name}》`, `Preview ${project.name}`)}><BookOpen size={21} /><strong>{project.name}</strong>{project.missing && <em className="v3-shelf-missing">{text('路径不存在', 'Path missing')}</em>}</button><button type="button" onClick={project.onOpen} aria-label={text(`打开《${project.name}》`, `Open ${project.name}`)}>{text('进入作品', 'Enter project')}</button><button type="button" title={project.deleteKind === 'delete' ? text('删除项目', 'Delete project') : text('从书架移除', 'Remove from shelf')} onClick={project.onDelete}><Trash2 size={14} />{project.deleteKind === 'delete' ? text('删除项目', 'Delete project') : text('从书架移除', 'Remove from shelf')}</button></li>)}</ul></div>}</section>
     {backup && <section aria-label={text('项目存档', 'Project archives')}>{backup}</section>}{updates}
   </div>
 }

@@ -111,7 +111,7 @@ it('routes the V3 legacy import through a new copy and opens only the ready targ
   expect(container.textContent).toContain('两份项目的后续修改不会自动同步')
 })
 
-it('exposes deletion of only the verified current project on the V3 home shelf', async () => {
+it('exposes real deletion only for the verified current project and shelf removal for the rest', async () => {
   invoke.mockImplementation(async (channel: string) => channel === 'project:overview-current' || channel === 'project:peek-overview' ? ready('作品') : { success: true })
   const deleteProject = vi.fn(async () => true)
   useProjectStore.setState({
@@ -125,6 +125,7 @@ it('exposes deletion of only the verified current project on the V3 home shelf',
   expect(deleteButton).not.toBeNull()
   expect(container.textContent).toContain('继续写作')
   expect(container.querySelector('.writer-shelf [title="删除项目"]')).toBeNull()
+  expect(container.querySelector('.writer-shelf [title="从书架移除"]')).not.toBeNull()
   await act(async () => deleteButton!.click())
   await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')?.textContent).toContain('当前作品'))
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain('所有项目数据')
@@ -146,6 +147,67 @@ it('exposes deletion of only the verified current project on the V3 home shelf',
   await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="预览《另一本书》"]')!.click())
   expect(container.querySelector('.writer-overview [title="删除项目"]')).toBeNull()
   expect(container.textContent).not.toContain('继续写作')
+})
+
+it('removes a shelf entry whose project folder can no longer be read', async () => {
+  invoke.mockImplementation(async (channel: string) => channel === 'update:get-state'
+    ? { status: 'disabled', currentVersion: '', isReminderDeferred: false }
+    : { success: true })
+  const deleteProject = vi.fn(async () => true)
+  const removeRecentProject = vi.fn(async () => true)
+  useProjectStore.setState({
+    currentProject: null,
+    // 没有 previewCapabilityId ⇒ 主进程没能读出项目清单，目录已不存在或不可读。
+    recentProjects: [{ name: '失踪的书', path: 'C:\\novels\\gone', updatedAt: '' }],
+    deleteProject,
+    removeRecentProject,
+  })
+  await render(<WriterWelcomePage onNewProject={vi.fn()} />)
+
+  const item = container.querySelector<HTMLElement>('.writer-shelf li')!
+  expect(item.dataset.missing).toBe('true')
+  expect(item.textContent).toContain('路径不存在')
+  const button = item.querySelector<HTMLButtonElement>('[title="从书架移除"]')!
+  expect(button).not.toBeNull()
+
+  await act(async () => button.click())
+  await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')?.textContent).toContain('失踪的书'))
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain('不会改动磁盘')
+  await act(async () => {
+    (document.querySelector('[role="dialog"] button:last-child') as HTMLButtonElement).click()
+    await new Promise(resolve => setTimeout(resolve, 250))
+  })
+  expect(removeRecentProject).toHaveBeenCalledExactlyOnceWith('C:\\novels\\gone')
+  expect(deleteProject).not.toHaveBeenCalled()
+})
+
+it('drops the shelf entry from the shelf once removal succeeds', async () => {
+  invoke.mockImplementation(async (channel: string) => channel === 'update:get-state'
+    ? { status: 'disabled', currentVersion: '', isReminderDeferred: false }
+    : { success: true })
+  const removeRecentProject = vi.fn(async (projectPath: string) => {
+    useProjectStore.setState(state => ({
+      recentProjects: state.recentProjects.filter(project => project.path !== projectPath),
+    }))
+    return true
+  })
+  useProjectStore.setState({
+    currentProject: null,
+    recentProjects: [{ name: '失踪的书', path: 'C:\\novels\\gone', updatedAt: '' }],
+    removeRecentProject,
+  })
+  await render(<WriterWelcomePage onNewProject={vi.fn()} />)
+  expect(container.querySelectorAll('.writer-shelf li')).toHaveLength(1)
+
+  const button = container.querySelector<HTMLButtonElement>('.writer-shelf [title="从书架移除"]')!
+  await act(async () => button.click())
+  await vi.waitFor(() => expect(document.querySelector('[role="dialog"]')).not.toBeNull())
+  await act(async () => {
+    (document.querySelector('[role="dialog"] button:last-child') as HTMLButtonElement).click()
+    await new Promise(resolve => setTimeout(resolve, 250))
+  })
+  await vi.waitFor(() => expect(container.querySelectorAll('.writer-shelf li')).toHaveLength(0))
+  expect(container.textContent).toContain('书架还空着')
 })
 
 it('previews by capability only, opens on the second cover click, and direct entry uses the store gate', async () => {

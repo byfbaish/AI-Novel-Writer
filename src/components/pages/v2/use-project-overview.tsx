@@ -7,7 +7,8 @@ import { useLayoutStore } from '../../../stores/layout-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { captureProjectSession, isProjectSessionCurrent } from '../../project-session-gate'
-import { confirmDeleteCurrentProject } from '../../project-delete-action'
+import { sameProjectPathKey } from '../../../shared/project-session-context'
+import { confirmDeleteCurrentProject, confirmRemoveShelfProject } from '../../project-delete-action'
 import { UpdateSection } from '../../updates/UpdateSection'
 import WelcomePageV2, { type WriterOverview } from './WelcomePageV2'
 
@@ -90,12 +91,26 @@ function useProjectOverview() {
 
   return {
     overview,
-    recentProjects: recentProjects.map(project => ({
-      id: project.previewCapabilityId ?? project.path,
-      name: project.name,
-      onPreview: () => preview(project),
-      onOpen: () => { void useProjectStore.getState().openProject(project.path) },
-    })),
+    recentProjects: recentProjects.map(project => {
+      // 主进程只在项目清单可读时签发预览能力；签不出来即代表目录已不存在或不可读。
+      const missing = !project.previewCapabilityId
+      const isCurrent = Boolean(currentProject && sameProjectPathKey(currentProject.path, project.path))
+      const shelfProject = { name: project.name, path: project.path }
+      return {
+        id: project.previewCapabilityId ?? project.path,
+        name: project.name,
+        missing,
+        // 只有当前已打开的项目能真删目录；其余一律降级为「从书架移除」。
+        deleteKind: (isCurrent ? 'delete' : 'remove') as 'delete' | 'remove',
+        onPreview: () => preview(project),
+        onOpen: () => { void useProjectStore.getState().openProject(project.path) },
+        onDelete: () => {
+          void (isCurrent
+            ? confirmDeleteCurrentProject(shelfProject)
+            : confirmRemoveShelfProject(shelfProject, { missing }))
+        },
+      }
+    }),
     hasCurrentProject: currentProject !== null && !activeSelection,
     deletableCurrentProject: currentProject && !activeSelection ? { name: currentProject.name, path: currentProject.path } : null,
   }

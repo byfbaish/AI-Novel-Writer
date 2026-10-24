@@ -266,7 +266,7 @@ it('V3 magazine masthead, real App rail and shelf retain navigation callbacks', 
     titleBar={<span>雨夜来信 · 第一章</span>}
     rail={<LeftToolWindowBar />}
     sidebar={<div>作品资料</div>}
-    editor={<WelcomePageV2 overview={{ state: 'ready', name: '雨夜来信', totalWords: 1200, finalizedChapters: 1, characters: 2 }} recentProjects={[{ id: 'novel-1', name: '雨夜来信', onPreview: preview, onOpen: open }]} onNewProject={vi.fn()} onOpenProject={vi.fn()} onImportNovel={vi.fn()} />}
+    editor={<WelcomePageV2 overview={{ state: 'ready', name: '雨夜来信', totalWords: 1200, finalizedChapters: 1, characters: 2 }} recentProjects={[{ id: 'novel-1', name: '雨夜来信', missing: false, deleteKind: 'remove', onPreview: preview, onOpen: open, onDelete: vi.fn() }]} onNewProject={vi.fn()} onOpenProject={vi.fn()} onImportNovel={vi.fn()} />}
     aiPanel={<div>助手</div>} bottom={<div>任务</div>} statusBar={<div>本地写作</div>} />))
 
   expect(host.querySelector('.v3-masthead-band')).toBeTruthy()
