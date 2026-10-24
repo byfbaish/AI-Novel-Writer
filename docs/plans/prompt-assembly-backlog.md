@@ -84,9 +84,9 @@ W6 的教训正是反过来的：先做了"查错"（账本），而"能用"和"
 | 编号 | 裁定 | 去向 / 依据 |
 |---|---|---|
 | **A3 + A4** | ✅ **已实施** | `src/shared/visible-text-integrity.ts` 新增退化判据 · 新建 `src/shared/blueprint-verbatim-overlap.ts` · `generate-draft.command.ts` 五处挂载。回归：正文链 240/240、退化 20/20、照搬 13/13、`tsc` 通过。实施记录见评估稿 §9 |
-| **A2** | ✅ 做，接受一次迁移（「缝缝补补拖泥带水，以后都是技术债」） | **下一期**。真身 = schema v20→21 + `canonicalM03FindingSetHash` + `CURRENT_REVIEW_REPORT_VERSION` 3→4 + 一处硬编码 20 个占位符的测试。与 A3/A4 全在 `src` 层不同，混做会让回归面失控 |
+| **A2** | ✅ **已排期**（无人值守计划 T2/T3） | **轴纳入 `canonicalM03FindingSetHash`**（作者裁定：同性质的必须进）。目前**无发行版** ⇒ 迁移里直接重算存量 `finding_set_hash`，**不为旧口径留兼容分支**；存量 finding 的轴填 NULL，不按 category 猜。施工面 = M20（schema 20→21）+ 两处硬编码 20 占位符的测试 + `CURRENT_REVIEW_REPORT_VERSION` 3→4。计划 → [`handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md`](../handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md) |
 | **A1** | ⏸ **降级为「平台扩展参考材料」** | 成本过高：已定稿量少、外部完结书的校准标准难定、可能把污染语料带进语料库。前置调研已落盘 → [`research/2026-10-25-threshold-calibration-corpus/`](../research/2026-10-25-threshold-calibration-corpus/)（起点 3 条合法来源全限非商业、**番茄零**、公开世界无「AI 句式频次/误报率」可对标数据） |
-| **A5** | ⏳ 待定 | 性质已查明：不是新建机制，而是把已有断言接进生产路径——`createPromptBudgetReport` 只在渲染层 `generation-harness.ts`，生产默认走的 mainOwned 路径**不执行断言**，`electron/` 零引用 |
+| **A5** | ✅ **已排期**（无人值守计划 T4） | 性质已查明：不是新建机制，而是把已有断言接进生产路径——`createPromptBudgetReport` 只在渲染层 `generation-harness.ts`，生产默认走的 mainOwned 路径**不执行断言**，`electron/` 零引用。改法：在 `workflow-main-generation.ts` 的 `complete` 里、调 IPC 之前用渲染层函数算一次，超限复用 `PROMPT_BUDGET_EXHAUSTED`；**不动 electron 侧，也不改现有 3 个调用点** |
 
 **明确不吸收**（理由与逐字证据见评估稿 §4）：单一 JSON 状态源 + 派生视图逐字比对 · delta `retired_context_items`（我方 M13 按章向前更准）· 7 个平台扫榜爬虫 · 封面生成 · 本地 Dashboard · 7 宿主部署适配层 · 并行子代理编排。
 
@@ -130,6 +130,18 @@ W6 的教训正是反过来的：先做了"查错"（账本），而"能用"和"
 - **⇒ 结论：快照的消费者是「下一卷的一切」（规划 + 写作），现状只给正文看是半成品；大纲链现在拿全量前缀顶替 L3，等于用 plan 冒充 bible。**
 
 **边界**：未开工、不排期。**与期 3 的关系**：期 3 管「前缀怎么切」，本条管「什么时候允许写下一卷」——不是子项关系，但**守卫是期 3 能成立的前提**：只有逐卷推进，写第 N 卷大纲时第 N−1 卷才已定稿、快照才存在，L3 才有「实际」可传。
+
+---
+
+### 2026-10-25 书架：每一项都要能删（UI，已并入无人值守计划 T1）
+
+**缘起**（作者）：重启项目后的首页，书架只有「加载后才能删除」不太合理；**实际路径已不存在的项目更要能删掉**。
+
+**现状（已核实）**：`src/components/pages/v2/WelcomePageV2.tsx:62` 的 `.writer-shelf` 每项只有「预览」「进入作品」；删除入口只在「当前作品」那颗（`use-project-overview.tsx:149` 的 `onDeleteCurrentProject`）。已有测试 `writer-project-overview.browser.tsx:127` **断言书架没有删除按钮**，需随改。
+
+**目标**：每项独立删除入口（复用同一确认弹框与删除通道）；打开失败的项目标记「路径不存在」但仍可删。
+
+**边界**：不新增 IPC——若 `project:recent-list` 返回里没有路径存在性字段，改用「打开失败即标记」，不要为它加新通道。施工步骤见 [`handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md`](../handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md) T1。
 
 ---
 
