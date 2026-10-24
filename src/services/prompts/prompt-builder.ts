@@ -195,6 +195,12 @@ export class ChapterPromptBuilder extends BasePromptBuilder {
     return this;
   }
 
+  /** 平台节奏画像（正文链）。空串 = 中性，模板里的【节奏推荐】整段会被裁掉。 */
+  withRhythmProfile(profile: string) {
+    this.variables.rhythm_profile = profile;
+    return this;
+  }
+
   withNovelConfig(novelConfig: string | object) {
     this.variables.novel_config = typeof novelConfig === 'string' 
       ? novelConfig 

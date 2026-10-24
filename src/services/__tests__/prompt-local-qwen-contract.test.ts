@@ -105,6 +105,7 @@ const expectedPromptVariables: Record<string, string[]> = {
     'user_guidance',
     'filtered_context',
     'global_guidance',
+    'rhythm_profile',
     'word_number',
     'writing_style',
     'reference_works',
@@ -385,6 +386,7 @@ describe('built-in model-neutral prompt contract', () => {
         .withWordNumber('3000')
         .withWritingStyle('文风')
         .withUserGuidance('')
+        .withRhythmProfile('')
         .build()
 
       expect(rendered).toContain('不可丢失的架构事实')
@@ -404,6 +406,7 @@ describe('built-in model-neutral prompt contract', () => {
       future_blueprints: '后续蓝图',
       filtered_context: '知识库',
       global_guidance: '唯一全局要求丙',
+      rhythm_profile: '',
       word_number: '3000',
       writing_style: '唯一文风要求丁',
       suspense_hook: '唯一结尾钩子戊',
@@ -429,6 +432,7 @@ describe('built-in model-neutral prompt contract', () => {
           .withWritingStyle(variables.writing_style)
           .withSuspenseHook(variables.suspense_hook)
           .withUserGuidance(variables.user_guidance)
+          .withRhythmProfile(variables.rhythm_profile)
           .build(),
       ]
 
@@ -608,10 +612,10 @@ describe('built-in model-neutral prompt contract', () => {
 
   it.each([
     { language: 'zh-CN' as const,
-      pruned: ['【剧情记忆库与前置断点上下文】', '[全局剧情进展]', '上一章已完成的结尾状态', '【后续章节大纲预告】', '【知识库资料'],
+      pruned: ['【节奏推荐（如有', '【剧情记忆库与前置断点上下文】', '[全局剧情进展]', '上一章已完成的结尾状态', '【后续章节大纲预告】', '【知识库资料'],
       kept: ['你正在连载写作最新章节。\n\n【本章写作方向与核心任务】\n本章蓝图', '【网文连载更新核心法则】'] },
     { language: 'en-US' as const,
-      pruned: ['[Story memory and previous stopping point]', 'Overall progress:', 'Completed ending state', '[Upcoming chapter blueprints', '[Knowledge-base context]'],
+      pruned: ['[Rhythm profile', '[Story memory and previous stopping point]', 'Overall progress:', 'Completed ending state', '[Upcoming chapter blueprints', '[Knowledge-base context]'],
       kept: ['You are serializing the latest chapter.\n\n[Chapter brief]\n本章蓝图', '[Serialization requirements]'] },
   ])('prunes runtime-empty next-chapter context sections with their headings in $language', ({ language, pruned, kept }) => {
     const build = (filled: boolean) => new ChapterPromptBuilder(getBuiltinPromptTemplate('next_chapter_draft', language)!, language)
@@ -629,6 +633,7 @@ describe('built-in model-neutral prompt contract', () => {
       .withWritingStyle('文风')
       .withSuspenseHook('')
       .withUserGuidance('')
+      .withRhythmProfile(filled ? '节奏画像原文' : '')
       .build()
 
     const empty = build(false)
@@ -641,6 +646,7 @@ describe('built-in model-neutral prompt contract', () => {
     expect(filled).toContain(language === 'zh-CN' ? '【剧情记忆库与前置断点上下文】\n- [全局剧情进展]：前文进展' : '[Story memory and previous stopping point]\n- Overall progress: 前文进展')
     expect(filled).toContain(language === 'zh-CN' ? '【后续章节大纲预告】（仅供了解后续剧情发力点，请绝对不要在本章提前写出后续内容！）\n- 第3章：后续蓝图' : 'do not reveal or advance them in this chapter]\n- 第3章：后续蓝图')
     expect(filled).toContain('知识库片段')
+    expect(filled).toContain('节奏画像原文')
   })
 
   it('prunes an empty upcoming-blueprint section from the opening-chapter prompt', () => {

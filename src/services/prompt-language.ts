@@ -991,6 +991,9 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
     systemRole: 'You are an experienced fiction writer. Maintain long-form continuity and advance this chapter through motivated choices, resistance, and consequences. Never reveal reasoning or meta commentary.',
     content: `You are serializing the latest chapter.
 
+[Rhythm profile (if any) — injected from the platform; constrains pacing and payoff frequency only, never the chapter brief]
+{{rhythm_profile}}
+
 [Story memory and previous stopping point]
 - Overall progress: {{global_summary}}
 - Character states: {{character_states}}

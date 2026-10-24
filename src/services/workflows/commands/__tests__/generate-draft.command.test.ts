@@ -458,6 +458,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     keyEvents?: string
     suspenseHook?: string
     knowledgeQueryHint?: string
+    /** v7 平台节奏画像原始值（`qidian` | `fanqie` | 自定义文本 | `''`）。缺省 = 中性。 */
+    rhythmProfile?: string
     characterCards?: Array<{
       name: string
       role: string
@@ -490,6 +492,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
           charactersArch: options.charactersArch ?? '',
           worldbuilding: options.worldbuilding ?? '',
           synopsis: options.synopsis ?? '',
+          rhythmProfile: options.rhythmProfile ?? '',
         }
       }
       if (channel === 'db:blueprint-get-all') return normalizedBlueprints()
@@ -2927,6 +2930,77 @@ ${headingPrefix}第3章：潮门
     const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
     expect(completePrompt).toContain(heading)
     expect(completePrompt).toContain(referenceWorks)
+  })
+
+  // ---------------------------------------------------------------------------
+  // v7（2026-10-24）平台节奏画像进正文链。锁三件事：
+  //   ① 有值时进首稿、且只出现一次、位置在本章任务之前；
+  //   ② 空值时接缝逐字节不变（老项目升级后行为不动，`rhythm-profiles.ts` 的「空 = 中性」）；
+  //   ③ 第 1 章不受影响（本次范围只到后续章，首章有自己的「黄金第一章」法则）。
+  // ---------------------------------------------------------------------------
+  it.each([
+    { writingLanguage: 'zh-CN' as const, rhythmProfile: 'fanqie', heading: '【节奏推荐（如有，由平台画像注入；只约束节奏与兑现频率，不改变本章任务）】', body: '番茄向（强钩子、快兑现）' },
+    { writingLanguage: 'en-US' as const, rhythmProfile: 'qidian', heading: '[Rhythm profile (if any)', body: 'Qidian style (slow build, progression-driven)' },
+  ])('injects the platform rhythm profile once into the $writingLanguage draft prompt for chapter 2 ($rhythmProfile)', async ({ writingLanguage, rhythmProfile, heading, body }) => {
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask ??= task
+      return outcome(writingLanguage === 'zh-CN' ? '新事件继续发生。'.repeat(70) : 'A new event unfolds in the city. '.repeat(60), 'stop')
+    })
+    const { context, callbacks, command } = setup({
+      runtime, wordsTarget: 500, chapterNumber: 2, writingLanguage, rhythmProfile,
+      previousFinalizedContent: '上一章已完成的结尾状态。',
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
+    expect(completePrompt).toContain(heading)
+    expect(completePrompt).toContain(body)
+    // 只注入一次：同一轮出现两遍等于模型收到两份措辞
+    expect(completePrompt.split(body)).toHaveLength(2)
+    // 位置：画像紧跟在自己的标题之后。不比「在本章任务之前」——`[Chapter brief]` 这个串
+    // 在材料块的时间连续性规则里也出现，跨块比较没有意义；块内位置由 prompt-language-contract
+    // 的字节级等价用例锁（那里直接断言块字面量逐字存在于模板 content）。
+    expect(completePrompt.indexOf(heading)).toBeGreaterThanOrEqual(0)
+    expect(completePrompt.indexOf(body)).toBeGreaterThan(completePrompt.indexOf(heading))
+  })
+
+  it('keeps the chapter-2 draft seam byte-identical when the rhythm profile is empty', async () => {
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask ??= task
+      return outcome('新事件继续发生。'.repeat(70), 'stop')
+    })
+    const { context, callbacks, command } = setup({
+      runtime, wordsTarget: 500, chapterNumber: 2, writingLanguage: 'zh-CN',
+      previousFinalizedContent: '上一章已完成的结尾状态。',
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
+    expect(completePrompt).not.toContain('【节奏推荐')
+    expect(completePrompt).not.toContain('{{rhythm_profile}}')
+    // 空画像时整块连标题一起裁掉，开场句直接接本章任务 —— 老项目升级后一个字都不变
+    expect(completePrompt).toContain('你正在连载写作最新章节。\n\n【本章写作方向与核心任务】')
+  })
+
+  it('does not inject the rhythm profile into the opening-chapter prompt', async () => {
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask ??= task
+      return outcome('新事件继续发生。'.repeat(70), 'stop')
+    })
+    const { context, callbacks, command } = setup({
+      runtime, wordsTarget: 500, chapterNumber: 1, writingLanguage: 'zh-CN', rhythmProfile: 'fanqie',
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
+    expect(completePrompt).not.toContain('【节奏推荐')
+    expect(completePrompt).not.toContain('番茄向')
   })
 
   // ---------------------------------------------------------------------------
