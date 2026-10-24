@@ -102,7 +102,7 @@ describe('extractWorldBuildingRules', () => {
     expect(fromRules).toEqual(fromSpace)
   })
 
-  it('单维最多 3 条、总计最多 8 条，超出部分整条丢弃', () => {
+  it('单维最多 3 条、总计最多 8 条：按轮次交错分配，超出部分整条丢弃', () => {
     const many = `### 1.【核心规则与体系漏洞】
 
 甲必须每月缴纳一枚灵石。
@@ -127,8 +127,51 @@ describe('extractWorldBuildingRules', () => {
     const rules = extractWorldBuildingRules(many)
     expect(rules.length).toBe(WORLD_RULES_MAX_ITEMS)
     expect(rules.filter(rule => rule.dimension === 1).length).toBeLessThanOrEqual(3)
+    // 轮转分配的手算依据：r0 = d1/d2/d5 各第 1 条，r1 = 各第 2 条，r2 = 各第 3 条
+    // ⇒ 第 9 条被 8 条总量上限切掉，被切的仍是第 5 维第 3 条「每月初一必须登记」。
+    expect(rules.filter(rule => rule.dimension === 1).length).toBe(3)
+    expect(rules.filter(rule => rule.dimension === 5).length).toBe(2)
     // 第 9 条（第 5 维第三条）被总量上限切掉
     expect(JSON.stringify(rules)).not.toContain('每月初一必须登记')
+  })
+
+  it('四维都有条目时四维都出现（旧实现里第 5 维恒为 0 条）', () => {
+    // 夹具实况：d1×3 / d2×3 / d4×2 / d5×2 = 10 条候选，被 8 条上限截到 2/2/2/2。
+    // 旧实现（一维取满再换下一维）在这里是 3+3+2 = 8，第 5 维一条都拿不到。
+    const rules = extractWorldBuildingRules(FIVE_DIMENSIONS)
+    expect(new Set(rules.map(rule => rule.dimension))).toEqual(new Set([1, 2, 4, 5]))
+    expect(rules.filter(rule => rule.dimension === 5).length).toBeGreaterThan(0)
+  })
+
+  it('某维为空只跳过该维：其余维按轮次补齐，总条数不塌方', () => {
+    const twoDimensions = `### 1.【核心规则与体系漏洞】
+
+甲必须每月缴纳一枚灵石。
+乙不得在夜间外出。
+丙只能使用木属性术法。
+
+### 5.【时间历法（日序与周期）】
+
+每旬逢五开市。
+每年冬至闭市。
+每月初一必须登记。
+`
+    const rules = extractWorldBuildingRules(twoDimensions)
+    expect(rules.length).toBe(6)
+    expect(rules.filter(rule => rule.dimension === 1).length).toBe(3)
+    expect(rules.filter(rule => rule.dimension === 5).length).toBe(3)
+    // 轮次交错：偶数位是第 1 维、奇数位是第 5 维，而不是「先把第 1 维写满」。
+    expect(rules.map(rule => rule.dimension)).toEqual([1, 5, 1, 5, 1, 5])
+  })
+
+  it('可用条目不足 8 条时原样返回，不补空、不重复', () => {
+    const onlyOne = `### 2.【阶层断层与资源战场】
+
+外门弟子每月领取月例灵石三枚。
+`
+    const rules = extractWorldBuildingRules(onlyOne)
+    expect(rules).toHaveLength(1)
+    expect(new Set(rules.map(rule => rule.rule)).size).toBe(rules.length)
   })
 
   it('超长句截断到 90 字并以省略号结尾', () => {

@@ -51,7 +51,15 @@ const DIMENSION_PRIORITY: readonly RuleDimension[] = [1, 2, 4, 5]
 export const WORLD_RULES_MAX_ITEMS = 8
 /** 正文行总字数上限（不含节标题与说明句）。 */
 export const WORLD_RULES_MAX_CHARS = 640
-/** 单一维度最多占几条：防止第 1 维用长文把清单吃满，另三维一条不剩。 */
+/**
+ * 单一维度最多几条。
+ *
+ * 轮转分配（见文件末尾的选取循环）已经保证「每维都有机会」，所以这里的上限不再承担
+ * 「公平」职责，只剩两个作用：① 防止单维长文把清单吃满（另三维为空时尤其明显）；
+ * ② 让抽取阶段的工作量有界。
+ *
+ * 副作用：非空维不足 3 个时，总条数会小于 `WORLD_RULES_MAX_ITEMS`。这是刻意的 —— 不补空、不重复。
+ */
 const WORLD_RULES_PER_DIMENSION_MAX = 3
 
 /** 一条可注入的规则。`rule` 永远是世界观原文的**逐字子串**（只做空白压缩与尾部截断）。 */
@@ -211,11 +219,22 @@ export function extractWorldBuildingRules(text: string | null | undefined): Worl
     if (deduped.length > 0) byDimension.set(dimension, deduped)
   }
 
+  // 轮转分配（2026-10-24 修）：第 k 轮每维各取第 k 条，按 DIMENSION_PRIORITY 推进。
+  // 旧实现是「一维取满再换下一维」⇒ 前三维总量一旦够 8 条，第 5 维永远是 0 条
+  // （第 1 维 3 + 第 2 维 3 + 第 4 维 2 = 8，与样本无关，是算术必然）。
+  // 三条边界：
+  // 1. 某维为空只跳过该维，不影响其它维的轮次推进 —— 其余维照常逐轮补齐，不塌方；
+  // 2. 各维都被 PER_DIMENSION_MAX 截断后仍不满 8 ⇒ 原样返回，**不补空、不重复**
+  //    （`< 8` 是合法结果；旧实现在「只有两维有内容」时同样只返回 6 条）；
+  // 3. 同维内部保持原文行序，跨维按轮次交错。
+  const pools = DIMENSION_PRIORITY.map(dimension => byDimension.get(dimension) ?? [])
+  const deepest = pools.reduce((max, pool) => Math.max(max, pool.length), 0)
   const ordered: WorldBuildingRule[] = []
-  for (const dimension of DIMENSION_PRIORITY) {
-    for (const rule of byDimension.get(dimension) ?? []) {
+  for (let round = 0; round < deepest; round += 1) {
+    for (const pool of pools) {
       if (ordered.length >= WORLD_RULES_MAX_ITEMS) return ordered
-      ordered.push(rule)
+      const rule = pool[round]
+      if (rule) ordered.push(rule)
     }
   }
   return ordered
