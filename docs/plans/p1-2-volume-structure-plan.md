@@ -666,3 +666,104 @@ node scripts/check-doc-links.mjs
 - ❌ 不存章数 / 字数（ADR-0022）
 - ❌ 不给旧格式项目做「手改区间」入口（作者裁定）
 - ❌ 不在保存大纲时自动重建（作者可能正在编辑，删卷比过期危险）
+
+---
+
+## 15. 交付收据（leader 验收实测 · 2026-10-24）
+
+> **给复核者**：下面每个数字都是 leader 自己跑出来的，**不是执行者的自报**。
+> 复核时**仍要自己跑一遍** —— 这份收据只用来对照「应该看到什么」，不是结论。
+
+### 15.1 状态
+
+| 项 | 值 |
+|---|---|
+| 提交 | **`966f7c97`**（29 文件 / +915 −420；新增 5 个文件） |
+| 前置 | `afa22d01`（施工规格 + 设计稿）· `2f460496`（初稿） |
+| schema | 19 → **20**（`CURRENT_DESKTOP_SCHEMA_VERSION = 20`、`LATEST_SCHEMA_VERSION = 20`、lane `M19 from:19 to:20`） |
+| 便携 | **63 表 / 603 字段 / added 248**（实测，非预估） |
+| 归档 | `{20, 63, 603}` / donor `{20, 63, 604}` |
+
+### 15.2 A 类自动门实测
+
+| 门 | 实测 |
+|---|---|
+| A2 `tsc --noEmit` | 无输出 |
+| A3 `eslint`（本批 29 个 `.ts/.tsx`） | 无输出 |
+| A4 版本行 | `= 20`，能被 `project-migration-acceptance.mjs:41` 的正则解析（脚本输出 `targetSchemaVersion: 20`） |
+| A5 lane / IDS | `M19 from:19 to:20 owner:'P1-2'`；`MIGRATION_IDS` 末项 `'M19'` |
+| A6 便携策略 | `m19Tables=["volumes","volume_units"]`；`volumes` 12 列 / `volume_units` 9 列 / `volume_handoffs` **11 列**，全部 `"D"` |
+| A7 迁移 | **20 文件 / 137 例全绿**（`m19-installed-lane` 自己 **8** 例） |
+| A8 卷结构仓储 | **12 例** |
+| A9 交接单仓储 | **12 例** |
+| A10 渲染 | **16 例**（原 12 + 新增 4 档来源） |
+| A11 面板 browser | **13 例**（输出含 `chromium`） |
+| A12 注入窗口 | parity + generate-draft **256 例** |
+| A13 全量 `src` | `19 failed / 3834 passed / 1 skipped`，失败**恰好**是 §2 那 3 个文件 |
+| A14 便携 / 归档 | 便携 **40 例**（含清库）；归档单跑 34/34（见 §15.3） |
+
+通过数基线 3812 → **3834**（+22）。
+
+### 15.3 一条必须写下来的环境事实（会误导复核）
+
+`electron/services/__tests__/project-archive-service.test.ts` 在本机仍然随机挂 1–2 条，
+**连跑两次挂的用例不同**（本次见到 `exports canonical v7 domain data…` / `exports the shared 20-chapter corpus…` /
+`never carries X values…`），第三次 34/34 全绿。这是 P1-2 期 1 就记录过的既有抖动。
+
+**复核判据**：不看这个文件整体绿不绿，**直接看那 4 个计数断言**：
+`grep "tables: 63\|fields: 603\|toHaveLength(248)\|schemaVersion: 20, tableCount: 63"` —— 它们全绿即通过。
+
+### 15.4 B 类反例（已固化成正式测试，不是临时改坏）
+
+| # | 落在哪 | 断言 |
+|---|---|---|
+| B1 哈希 | `context-entry-parity.test.ts` | 8 条 `toBe('<hash>')` 全在，且 256 例全绿 ⇒ 字节未变 |
+| B2 **缺 volumes 表** | `volume-handoff-repository.test.ts` 第 2 条 | 只建 M18 形状的 `volume_handoffs`、不建 `volumes` ⇒ `hasVolumeHandoffSchema === false`、`list === []`、`before === null`、`upsert` 抛 `SCHEMA_MISSING` |
+| B3 重建不写 actual | `volume-structure-repository.test.ts` 第 2 条 | 先写 `actual_last=42`，重建后仍 42 / `finalized` |
+| B4 无定稿章 | 同文件第 10 条 | 抛 `VOLUME_MARK_DONE_NO_FINALIZED` 且 `actual_last` 仍 NULL |
+| B5 估算不许说成事实 | `volume-handoff.test.ts` 的「declared / even」 | `even` 档节首是「估算第…章」且**不含「全书第」** |
+| B6 旧表有数据 | `m19-installed-lane.test.ts` 第 6 条 | 抛 `M19_VOLUME_HANDOFF_NOT_EMPTY`，`user_version` 停在 19，旧表与那一行都在 |
+
+### 15.5 C 类人工判读
+
+| # | 结论 |
+|---|---|
+| C1 `actual` 分支文案 | 与 M18 **逐字一致** —— 由 `fc037298…` 未变反证 |
+| C2 「部分归属不钉卷末」 | `volume-structure.ts` 有注释；第 6 条测试断言 `plannedLast !== 8` 且 `plannedSource !== 'headings'` |
+| C3 没选卷时字数 | `previewDefinition()` 传占位区间，不再恒 0 |
+| C4 挂载行为 | `empty` 自动重建（第 2 条测试）；`stale` **不**自动重建（第 8 条测试断言 `channels()` 不含 `db:volumes-rebuild`） |
+
+### 15.6 D 类必须不变
+
+| # | 项 | 结果 |
+|---|---|---|
+| D1 第 8 条哈希 | `fc03729848c1c177f2cd08dd0c82389716034bf8f73ba304a3410c51cfaa1670` **未变** |
+| D2 前 7 条哈希 | 全部未变（grep 计数 = 8 条 `toBe('<hash>')` 用例） |
+| D3 中英逐字快照 | 两条都在 16 例里，全绿 |
+| D4 `m18-volume-handoffs.ts` | `git diff HEAD -- <该文件>` **为空** |
+
+### 15.7 与计划的偏离（6 处，均已签收）
+
+1. **`volume_units` 从 8 列变 9 列**（加 `planned_source`）：单元也有三档来源，没有这一列就没法如实标注。
+   连带便携 603 而非 602。
+2. **`markVolumeDone` 的测试语义修正**：计划 §10 举例写「planned 1–20、actual 25；`before(23)` 命中第 1 卷」——
+   **写反了**。actual=25 意味着第 23 章还在第 1 卷里，不该拿到它的交接单。实现与测试都用正确语义：
+   `before(23)` 返回 `null`、`before(26)` 命中。
+3. **`volumes` 加两条表级 CHECK**：`(planned_first IS NULL) = (planned_last IS NULL)`、
+   `(actual_last IS NULL) = (actual_source IS NULL)`。计划只提到「三组 CHECK」，落地时发现「一有一无」的中间态
+   必须被数据库拦住（否则渲染会写出「第 null 章」）。
+4. **面板挂载时 `state='empty'` 自动重建**：计划 §6.3 已写，实现照做并加了 `autoBuiltRef` 防重复触发。
+5. **`project-clear-repository` 分两处清**（计划只说「三张表一起加」）：清正文（`generatedText`）只删交接单 +
+   重置 `actual_*`（结构留着）；清创作用语（`creativeFields`）才三张表按 FK 顺序全删。理由：清正文不该
+   顺带删掉从大纲物化的结构。
+6. **`m18-installed-lane` 的四条改跑 v19**：表已被 M19 重建，跑 `CURRENT` 测的就不是 M18 了。已加
+   `M18_TARGET = 19` 常量与注释说明「这是历史 lane」。
+
+### 15.8 已知限制（复核时别当缺陷）
+
+- **`headings` 档只在「下一卷已有归属标题」时才精确**：全书最后一卷的末章永远来自 `declared` / `even`。
+- **`actual_last` 初期大面积为空**：只有作者点过「标记本卷已完成」的卷才有；在那之前正文链用计划区间
+  （节首写「计划」/「估算」）。
+- **超写跨过下一卷计划起点时，超出部分按计划归下一卷**：`markVolumeDone` 的上界是下一卷 `planned_first`。
+- **单元区间本期无消费方**：表里有，但面板不显示、正文链不用 —— 价值在后期切换 `outline-tree` 时兑现。
+- **旧格式项目**（synopsis 无卷号 + plan 无章数）只能落到 `declared` / `even`，界面上会标「折算 / 估算」。
