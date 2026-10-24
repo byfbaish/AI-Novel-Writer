@@ -210,7 +210,9 @@
 
 ### 9.4 回归
 
-`generate-draft.command.test.ts` 240/240 · `visible-text-degeneracy` 20/20 · `blueprint-verbatim-overlap` 13/13 · `bounded-completion` + `draft-units` 98/98 · `refine-draft.command.test.ts` 49/49 · `npx tsc --noEmit` 通过。
+`generate-draft.command.test.ts` **243/243**（237 既有 + 6 新增，覆盖五条挂载路径：首稿阻断 / 最终闸复读 / A4 阻断 / 短细纲降级 / 续写丢弃后恢复 / A4 advisory）· `visible-text-degeneracy` 20/20 · `blueprint-verbatim-overlap` 13/13 · `bounded-completion` + `draft-units` 98/98 · `refine-draft.command.test.ts` 49/49 · `npx tsc --noEmit` 通过。
+
+**未覆盖**：压缩轮复读（触发条件需构造超长稿，成本高；其挂载与续写同型，均为「并入 `accepted`」）。
 
 ---
 

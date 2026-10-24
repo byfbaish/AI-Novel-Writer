@@ -5485,4 +5485,51 @@ ${headingPrefix}第3章：潮门
     await expect(command.execute({ step: {}, context, callbacks })).rejects.toThrow(/照搬细纲/u)
     expect(noDraftCreated(invoke)).toBe(true)
   })
+
+  it('短细纲出现占位语时降级继续，正文仍生成', async () => {
+    const variedProse = Array.from({ length: 40 }, (_, index) => `第${index + 1}天，他推开门，屋里没有人。`).join('')
+    const runtime = fakeRuntime(() => outcome(variedProse, 'stop'))
+    runtime.outline.mockResolvedValue(outcome('作为 AI，我无法继续。', 'stop'))
+    const { invoke, context, callbacks, command } = setup({ runtime, chapterNumber: 1, wordsTarget: 500 })
+
+    await expect(command.execute({ step: {}, context, callbacks })).resolves.toContain('他推开门')
+    expect(invoke.mock.calls.some(call => call[0] === 'db:draft-create')).toBe(true)
+  })
+
+  it('续写轮复读被丢弃，一次恢复后正常入库', async () => {
+    const repeated = '他推开门，看见父亲坐在黑暗里，手里攥着一张纸。'
+    // 每一轮的恢复内容都带轮次编号：同一段复用多次会被判成复读，那是另一条判据。
+    const runtime = fakeRuntime(attempt => {
+      if (attempt === 1) return outcome('雨停了。'.repeat(20), 'stop')
+      if (attempt === 2) return outcome(`${repeated}\n${repeated}\n${repeated}`, 'stop')
+      return outcome(
+        Array.from({ length: 30 }, (_, index) => `第${attempt}-${index + 1}次，他走进里屋，看见桌上摊着一张旧地图。`).join(''),
+        'stop',
+      )
+    })
+    const { invoke, context, callbacks, command } = setup({ runtime, chapterNumber: 1, wordsTarget: 500 })
+
+    await expect(command.execute({ step: {}, context, callbacks })).resolves.toContain('旧地图')
+    expect(invoke.mock.calls.some(call => call[0] === 'db:draft-create')).toBe(true)
+  })
+
+  it('少量复用必需事件只提示不阻断', async () => {
+    const eventA = '甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳'
+    const eventB = '春夏秋冬风花雪月山川湖海日月星辰'
+    // 三段填充必须是**不同**的文字，否则同一句重复三次会先被复读判据拦下。
+    const buildFiller = (mark: string) => Array.from(
+      { length: 20 },
+      (_, index) => `${mark}${index + 1}步，风从窗缝里挤进来吹得灯焰摇晃。`,
+    ).join('')
+    const runtime = fakeRuntime(() => outcome(`${buildFiller('甲')}${eventA}${buildFiller('乙')}${eventB}${buildFiller('丙')}`, 'stop'))
+    const { invoke, context, callbacks, command } = setup({
+      runtime,
+      chapterNumber: 1,
+      wordsTarget: 500,
+      keyEvents: [eventA, eventB].join('\n'),
+    })
+
+    await expect(command.execute({ step: {}, context, callbacks })).resolves.toContain(eventA)
+    expect(invoke.mock.calls.some(call => call[0] === 'db:draft-create')).toBe(true)
+  })
 })
