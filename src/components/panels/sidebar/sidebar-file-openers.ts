@@ -105,7 +105,7 @@ export async function openArchFile(filePath: string, name: string): Promise<void
 export function openBuiltinEditor(
   id: string,
   name: string,
-  type: 'chapter-card' | 'character' | 'world-building' | 'resource-registry' | 'key-item-registry' | 'cadence-registry' | 'knowledge-registry' | 'ability-registry' | 'version-history' | 'narrative-thread',
+  type: 'chapter-card' | 'character' | 'world-building' | 'resource-registry' | 'key-item-registry' | 'cadence-registry' | 'knowledge-registry' | 'ability-registry' | 'volume-handoff-registry' | 'version-history' | 'narrative-thread',
   narrativeThreadView?: 'plot-tree' | 'plans',
   chapterNumber?: number,
 ): void {

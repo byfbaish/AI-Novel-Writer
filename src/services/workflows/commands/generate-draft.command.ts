@@ -70,6 +70,7 @@ import {
 } from '../../../shared/institution-cadence'
 import type { KnowledgeStateDefinition } from '../../../shared/knowledge-state'
 import { abilityStageState, type PowerAbilityDefinition } from '../../../shared/power-ability'
+import type { VolumeHandoffDefinition } from '../../../shared/volume-handoff'
 import { extractWorldBuildingRules } from '../../../shared/worldbuilding-rules'
 import {
   assembleChapterMaterials,
@@ -966,6 +967,9 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const knowledgeStates = await this.readKnowledgeStates(expectedProjectPath, projectSession)
     // P1-1 能力：`ahead`（`stage_chapter > 本章`）在这里就滤掉 —— 未来的能力不能进上下文。
     const abilities = await this.readAbilities(expectedProjectPath, projectSession)
+    // P1-2 跨卷记忆：`last_chapter < 本章` 里章号最大的那一份交接单（只注上一卷）。
+    // 第 1 章必然为 null —— 没有任何卷结束在它之前。
+    const volumeHandoff = await this.readVolumeHandoff(expectedProjectPath, projectSession)
 
     if (defaultMain && earlyRecovery?.selectedDraftIds.length && !earlyRecovery.selectedDrafts)
       throw new Error('GENERATION_DRAFT_SOURCE_CHANGED')
@@ -1040,6 +1044,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         ],
         // P0-2 写前查阅。规则在第 1 章也要（世界规则不受「有没有前文」影响）。
         prewrite: {
+          handoff: volumeHandoff,
           facts: consultationFacts,
           items: keyItems,
           cadences,
@@ -1068,10 +1073,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // 不必每次都去翻 prompt trace。
     if (chapterMaterials.prewrite.factCount > 0 || chapterMaterials.prewrite.ruleCount > 0
       || chapterMaterials.prewrite.itemCount > 0 || chapterMaterials.prewrite.cadenceCount > 0
-      || chapterMaterials.prewrite.knowledgeCount > 0 || chapterMaterials.prewrite.abilityCount > 0) {
+      || chapterMaterials.prewrite.knowledgeCount > 0 || chapterMaterials.prewrite.abilityCount > 0
+      || chapterMaterials.prewrite.handoffCount > 0) {
       callbacks.log(uiText(
-        `  已注入写前查阅：前文事实 ${chapterMaterials.prewrite.factCount} 条 / 关键物品 ${chapterMaterials.prewrite.itemCount} 条 / 制度 ${chapterMaterials.prewrite.cadenceCount} 条 / 知情 ${chapterMaterials.prewrite.knowledgeCount} 条 / 能力 ${chapterMaterials.prewrite.abilityCount} 条 / 本书规则 ${chapterMaterials.prewrite.ruleCount} 条`,
-        `  Injected pre-writing reference: ${chapterMaterials.prewrite.factCount} facts / ${chapterMaterials.prewrite.itemCount} key items / ${chapterMaterials.prewrite.cadenceCount} cadences / ${chapterMaterials.prewrite.knowledgeCount} knowledge states / ${chapterMaterials.prewrite.abilityCount} abilities / ${chapterMaterials.prewrite.ruleCount} world rules`,
+        `  已注入写前查阅：前文事实 ${chapterMaterials.prewrite.factCount} 条 / 关键物品 ${chapterMaterials.prewrite.itemCount} 条 / 制度 ${chapterMaterials.prewrite.cadenceCount} 条 / 知情 ${chapterMaterials.prewrite.knowledgeCount} 条 / 能力 ${chapterMaterials.prewrite.abilityCount} 条 / 本书规则 ${chapterMaterials.prewrite.ruleCount} 条 / 上一卷交接 ${chapterMaterials.prewrite.handoffCount} 份`,
+        `  Injected pre-writing reference: ${chapterMaterials.prewrite.factCount} facts / ${chapterMaterials.prewrite.itemCount} key items / ${chapterMaterials.prewrite.cadenceCount} cadences / ${chapterMaterials.prewrite.knowledgeCount} knowledge states / ${chapterMaterials.prewrite.abilityCount} abilities / ${chapterMaterials.prewrite.ruleCount} world rules / ${chapterMaterials.prewrite.handoffCount} volume handoff(s)`,
       ))
     }
     const admittedCandidateSourceIds = new Set(chapterMaterials.selection.included
@@ -2539,6 +2545,20 @@ ${params.candidate.text}`,
       return (result.abilities ?? [])
         .filter(ability => abilityStageState(ability, chapterNumber) !== 'ahead')
     } catch { return [] }
+  }
+
+  /** P1-2：上一卷交接单。本章不属于任何已登记区间之后时返回 null（第 1 章必然如此）。 */
+  private async readVolumeHandoff(
+    projectPath: string,
+    projectSession: ProjectSessionContext,
+  ): Promise<VolumeHandoffDefinition | null> {
+    try {
+      const result = await ipc.invokeWithProjectSession(
+        projectSession, 'db:volume-handoffs-before',
+        this.chapterInfo.chapterNumber, projectPath,
+      ) as { success?: boolean; entry?: VolumeHandoffDefinition | null }
+      return result?.success ? result.entry ?? null : null
+    } catch { return null }
   }
 
   private async readActiveNarrativeThreads(

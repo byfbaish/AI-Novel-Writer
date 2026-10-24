@@ -155,7 +155,7 @@ describe('renderPrewriteFactsSection', () => {
 describe('buildPrewriteConsultationBlock', () => {
   it('两节都空 ⇒ 空串（材料块逐字节不变，parity 哈希护栏靠这个成立）', () => {
     expect(buildPrewriteConsultationBlock({}, 'zh-CN'))
-      .toEqual({ text: '', factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 0, ruleCount: 0 })
+      .toEqual({ text: '', handoffCount: 0, factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 0, ruleCount: 0 })
     expect(buildPrewriteConsultationBlock({ facts: [], rules: [] }, 'zh-CN').text).toBe('')
     // 传空 cadences 与不传逐字节相同：制度缺省必须零字节。
     expect(buildPrewriteConsultationBlock({ cadences: [] }, 'zh-CN').text).toBe('')

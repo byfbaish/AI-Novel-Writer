@@ -15,6 +15,7 @@ import type { KeyItemDefinition } from '../../../../shared/key-item'
 import type { InstitutionCadence } from '../../../../shared/institution-cadence'
 import type { KnowledgeStateDefinition } from '../../../../shared/knowledge-state'
 import type { PowerAbilityDefinition } from '../../../../shared/power-ability'
+import type { VolumeHandoffDefinition } from '../../../../shared/volume-handoff'
 import {
   createGenerationRuntime,
   type GenerationRuntime,
@@ -441,6 +442,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     knowledgeStates?: KnowledgeStateDefinition[]
     /** P1-1 期 4：作者登记的能力规则（本书级）。缺省空 = 本项目还没登记。 */
     abilities?: PowerAbilityDefinition[]
+    /** P1-2：上一卷交接单。缺省 null = 本章之前没有任何卷结束（第 1 章必然如此）。 */
+    volumeHandoff?: VolumeHandoffDefinition | null
     /** P0-1：哪些章判定为「前提已变」。缺省空 = 正常路径（阻断用例显式给值）。 */
     staleChapters?: number[]
     previousFinalizedContent?: string
@@ -607,6 +610,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       if (channel === 'db:knowledge-list') return { success: true, entries: options.knowledgeStates ?? [] }
       // P1-1 期 4：能力同样每章都会读（第 1 章也可能一开场就有金手指）。
       if (channel === 'db:abilities-list') return { success: true, abilities: options.abilities ?? [] }
+      // P1-2：交接单每章都会问一次（续写轮、压缩轮也问）。缺省 null = 没有上一卷。
+      if (channel === 'db:volume-handoffs-before') return { success: true, entry: options.volumeHandoff ?? null }
       throw new Error(`unexpected IPC: ${channel}`)
     })
     vi.stubGlobal('window', {
@@ -4260,6 +4265,81 @@ ${headingPrefix}第3章：潮门
     expect(continuation).toContain('噬魂推演录')
     expect(continuation).not.toContain('未来才解锁的能力')
     expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('能力 2 条'))
+  })
+
+  /**
+   * P1-2 卷末交接：作者登记的上一卷交接单进写前查阅。
+   *
+   * 三条断言是这个功能的验收口径：
+   * 1. 首发与续写轮**都**带（续写轮不带模板变量，只带材料块 —— 这正是它必须进必需块的证据）；
+   * 2. 节首写的是**本章章号**与**上一卷的真实区间**（不是「第 1 章」，也不是卷号拍脑袋）；
+   * 3. 日志报「上一卷交接 1 份」（整节算一份，不是按行数）。
+   */
+  it('P1-2 volume handoff: injects the previous volume into initial and continuation', async () => {
+    const runtime = fakeOutcomes(
+      outcome('初'.repeat(100), 'length', 1),
+      outcome(`${'续'.repeat(400)}。`, 'stop', 2),
+    )
+    const { callbacks, context, command } = setup({
+      runtime,
+      wordsTarget: 500,
+      chapterNumber: 5,
+      characters: ['林岚'],
+      previousFinalizedContent: '第四章定稿原文。',
+      volumeHandoff: {
+        handoffId: 'handoff:1',
+        volumeIndex: 1,
+        firstChapter: 1,
+        lastChapter: 4,
+        worldState: '灵潮退去，北境三城封关',
+        heroState: '顾长风的左臂仍未复原',
+        events: ['玄火令被夺'],
+        items: ['玄火令在监天台手中'],
+        debts: ['欠沈砚一条命'],
+        openThread: '监天台为何要玄火令',
+        source: 'author',
+        createdAt: '',
+        updatedAt: '',
+      },
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const initial = runtime.complete.mock.calls[0]![0].messages
+      .find(message => message.role === 'user')!.content
+    expect(initial).toContain('【上一卷交接（第1卷 · 全书第1–4章）】')
+    expect(initial).toContain('本章为第5章')
+    expect(initial).toContain('- 卷末世界：灵潮退去，北境三城封关')
+    expect(initial).toContain('  - 玄火令被夺')
+
+    const continuation = runtime.complete.mock.calls[1]![0].messages
+      .find(message => message.role === 'user')!.content
+    expect(continuation).toContain('【上一卷交接（')
+    expect(continuation).toContain('监天台为何要玄火令')
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('上一卷交接 1 份'))
+  })
+
+  it('P1-2 volume handoff: no previous volume means the section never appears', async () => {
+    const runtime = fakeOutcomes(
+      outcome('初'.repeat(100), 'length', 1),
+      outcome(`${'续'.repeat(400)}。`, 'stop', 2),
+    )
+    const { callbacks, context, command } = setup({
+      runtime,
+      wordsTarget: 500,
+      chapterNumber: 5,
+      characters: ['林岚'],
+      previousFinalizedContent: '第四章定稿原文。',
+      volumeHandoff: null,
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    for (const call of runtime.complete.mock.calls) {
+      const prompt = call[0].messages.find(message => message.role === 'user')!.content
+      expect(prompt).not.toContain('【上一卷交接')
+    }
+    expect(callbacks.log).not.toHaveBeenCalledWith(expect.stringContaining('上一卷交接'))
   })
 
   it('previews only authored text before completion and reconciles to the persisted terminal draft', async () => {

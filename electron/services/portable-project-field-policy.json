@@ -25,6 +25,7 @@
   "m15Tables": ["institution_cadences"],
   "m16Tables": ["knowledge_states"],
   "m17Tables": ["power_abilities"],
+  "m18Tables": ["volume_handoffs"],
   "optionalFields": ["characters.avatar", "project_core.rhythm_profile", "summary_snapshots.story_day_offset", "summary_snapshots.story_day_label"],
   "deltaCharacterFields": ["character_id", "legacy_key", "static_provenance", "identity_revision", "retired"],
   "signedOverrides": {
@@ -139,6 +140,7 @@
     "reviews": {"id":"D","base_draft_id":"D","review_index":"D","source_draft_chapter_number":"D","source_draft_version":"D","source_draft_status":"D","source_content":"D","content_id":"D","created_at":"D"},
     "revisions": {"id":"D","base_draft_id":"D","revision_index":"D","revision_type":"D","status":"D","merged_to_draft_id":"D","user_prompt":"D","review_source_id":"D","source_draft_chapter_number":"D","source_draft_version":"D","source_draft_status":"D","source_content":"D","content_id":"D","word_count":"D","created_at":"D","updated_at":"D"},
     "summary_snapshots": {"id":"D","draft_id":"D","chapter_number":"D","character_states":"D","chapter_notes":"D","continuity_facts":"D","character_state_candidates":"D","source_finalization_id":"D","source_content_hash":"D","projection_generation":"D","story_day_offset":"D","story_day_label":"D","created_at":"D"},
-    "text_metric_versions": {"metric":"B","version":"B","updated_at":"B"}
+    "text_metric_versions": {"metric":"B","version":"B","updated_at":"B"},
+    "volume_handoffs": {"handoff_id":"D","volume_index":"D","first_chapter":"D","last_chapter":"D","world_state":"D","hero_state":"D","events_json":"D","items_json":"D","debts_json":"D","open_thread":"D","source":"D","created_at":"D","updated_at":"D"}
   }
 }

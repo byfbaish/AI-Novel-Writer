@@ -6,7 +6,7 @@ import { formatResourceUri } from '../../../shared/project-paths'
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins, Package, CalendarClock, Eye, Sparkles } from 'lucide-react'
+import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins, Package, CalendarClock, Eye, Sparkles, BookMarked } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { useDraftStore } from '../../../stores/draft-store'
@@ -517,6 +517,27 @@ function WorldBuildingGroup({
             </span>
             <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
               {text('能力（本书的能力规则）', 'Abilities')}
+            </span>
+          </div>
+          {/* P1-2 期 1：卷末交接（跨卷记忆）。回答的是「上一卷交接下来什么」。 */}
+          <div
+            className="tree-item gap-1.5 cursor-pointer select-none"
+            style={{ paddingLeft: 26 }}
+            onClick={() => openBuiltinEditor(
+              'volume-handoff-registry-editor',
+              text('卷末交接', 'Volume handoffs'),
+              'volume-handoff-registry',
+            )}
+            title={text(
+              '一卷写完后登记下一卷必须承接的几件事；每一章生成都会带上上一卷的这一份',
+              'Record what the next volume must carry forward; every chapter generation includes the previous handoff',
+            )}
+          >
+            <span className="flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+              <BookMarked size={13} />
+            </span>
+            <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
+              {text('卷末交接', 'Volume handoffs')}
             </span>
           </div>
         </div>

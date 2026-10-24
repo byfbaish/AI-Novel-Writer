@@ -9,19 +9,22 @@
  * 模型按 A 版本写、校验按 B 版本判，每章都在「修」一个不存在的错误。
  * 所以：**一个函数产出一行，两条链都调它**（先例 `character-state-lines.ts`）。
  *
- * ## 两节各是什么
+ * ## 七节各是什么
  *
- * 1. **前文事实**：来源是定稿连续性索引（`finalized_continuity_facts`），每条带
+ * 1. **上一卷交接**：来源是作者登记表（`volume_handoffs`），回答「上一卷交接下来、
+ *    这一章必须承接的几件事」。放在最前，因为它是背景；后面的节是细节。
+ *    节首写明「第几卷 · 全书第 a–b 章」与「本章为第 N 章」—— 区间才是机器判据。
+ * 2. **前文事实**：来源是定稿连续性索引（`finalized_continuity_facts`），每条带
  *    「来源第 N 章 + 逐字引文」—— 这是唯一能满足「能在前文找到出处」的数据。
  *    它进的是**必需材料块**，所以续写 / 压缩轮也拿得到（续写轮不带任何模板变量）。
- * 2. **关键物品**：来源是作者登记表（`key_items`），回答「谁拿着什么」。
- * 3. **制度**：来源是作者登记表（`institution_cadences`），回答「这一章该不该发生那件
+ * 3. **关键物品**：来源是作者登记表（`key_items`），回答「谁拿着什么」。
+ * 4. **制度**：来源是作者登记表（`institution_cadences`），回答「这一章该不该发生那件
  *    周期性的事」。四态由 `institution-cadence.ts` 的判定表给出，本节只渲染。
- * 4. **知情**：来源是作者登记表（`knowledge_states`），回答「这个角色此刻知道哪件事」。
- * 5. **能力**：来源是作者登记表（`power_abilities`），回答「这条能力能做什么、要付什么、
+ * 5. **知情**：来源是作者登记表（`knowledge_states`），回答「这个角色此刻知道哪件事」。
+ * 6. **能力**：来源是作者登记表（`power_abilities`），回答「这条能力能做什么、要付什么、
  *    什么情况下会被破」。三态（`active` / `ahead` / `undated`）由 `power-ability.ts` 判定，
  *    `ahead` 一律不注入。
- * 6. **本书规则**：来源是世界观原文摘录（`worldbuilding-rules.ts`），出处只标维度。
+ * 7. **本书规则**：来源是世界观原文摘录（`worldbuilding-rules.ts`），出处只标维度。
  *
  * ## 三条边界
  *
@@ -42,6 +45,11 @@ import {
 import type { WritingLanguage } from './writing-language'
 import { ABILITY_MAX_ITEMS, renderAbilitySection, type PowerAbilityDefinition } from './power-ability'
 import { renderWorldRulesSection, WORLD_RULES_MAX_ITEMS, type WorldBuildingRule } from './worldbuilding-rules'
+import { VOLUME_HANDOFF_CHARS } from './outline-prefix-budget'
+import {
+  renderVolumeHandoffSection,
+  type VolumeHandoffDefinition,
+} from './volume-handoff'
 
 /**
  * 可注入的一条前文事实。
@@ -152,10 +160,11 @@ export function renderPrewriteItemsSection(
 }
 
 /**
- * 组装六节（前文事实 / 关键物品 / 制度 / 知情 / 能力 / 本书规则）；返回实际进入提示词的条数。
+ * 组装七节（上一卷交接 / 前文事实 / 关键物品 / 制度 / 知情 / 能力 / 本书规则）；返回实际进入提示词的条数。
  *
- * 顺序按计划 §0 定死：**事实 → 物品 → 制度 → 知情 → 能力 → 规则**。能力放在规则之前，
- * 因为能力回答「能做什么」、规则回答「什么不许做」，约束条款收尾最不易被忽略。
+ * 顺序按计划 §2.6 定死：**交接 → 事实 → 物品 → 制度 → 知情 → 能力 → 规则**。
+ * 交接单放最前，因为它是背景（「这一章在第几卷、从上一卷接了什么」），后面的节是细节；
+ * 能力放在规则之前，因为能力回答「能做什么」、规则回答「什么不许做」，约束条款收尾最不易被忽略。
  *
  * 「本章出场角色优先」的排序在 `renderKnowledgeSection` 里做（它需要 `chapterCharacters`），
  * 本层只透传。调用方**必须**先滤掉未来章（`learnedChapter > 本章`）—— 纯函数不知道本章号。
@@ -165,6 +174,8 @@ export function renderPrewriteItemsSection(
  */
 export function buildPrewriteConsultationBlock(
   input: {
+    /** 上一卷交接单；`null` / 缺省 ⇒ 零字节（第一卷、或作者还没登记）。 */
+    handoff?: VolumeHandoffDefinition | null
     facts?: readonly PrewriteFact[]
     items?: readonly KeyItemDefinition[]
     /** 已按本章位置判定并排序过的周期事件（排序在调用方，本层只渲染）。 */
@@ -173,14 +184,14 @@ export function buildPrewriteConsultationBlock(
     knowledge?: readonly KnowledgeStateDefinition[]
     /** 本书级能力规则；`ahead`（`stageChapter > 本章`）由渲染层再滤一次。 */
     abilities?: readonly PowerAbilityDefinition[]
-    /** 本章章号：能力三态判定要用。缺省 1（只影响 `ahead` 过滤，不影响 `undated`）。 */
+    /** 本章章号：能力三态判定与交接单节首都要用。缺省 1（只影响 `ahead` 过滤，不影响 `undated`）。 */
     chapterNumber?: number
     /** 本章出场角色名：只用于知情节的排序，不参与渲染措辞。 */
     chapterCharacters?: readonly string[]
     rules?: readonly WorldBuildingRule[]
   },
   writingLanguage: WritingLanguage,
-): { text: string; factCount: number; itemCount: number; cadenceCount: number; knowledgeCount: number; abilityCount: number; ruleCount: number } {
+): { text: string; handoffCount: number; factCount: number; itemCount: number; cadenceCount: number; knowledgeCount: number; abilityCount: number; ruleCount: number } {
   const facts = input.facts ?? []
   const items = input.items ?? []
   const cadences = input.cadences ?? []
@@ -190,21 +201,24 @@ export function buildPrewriteConsultationBlock(
     ? input.chapterNumber as number
     : 1
   const rules = input.rules ?? []
+  const handoffSection = renderVolumeHandoffSection(input.handoff ?? null, writingLanguage, chapterNumber, VOLUME_HANDOFF_CHARS)
   const factsSection = renderPrewriteFactsSection(facts, writingLanguage)
   const itemsSection = renderPrewriteItemsSection(items, writingLanguage)
   const cadencesSection = renderCadenceSection(cadences, writingLanguage)
   const knowledgeSection = renderKnowledgeSection(knowledge, writingLanguage, input.chapterCharacters ?? [])
   const abilitiesSection = renderAbilitySection(abilities, writingLanguage, chapterNumber)
   const rulesSection = renderWorldRulesSection(rules, writingLanguage)
-  const text = [factsSection, itemsSection, cadencesSection, knowledgeSection, abilitiesSection, rulesSection]
+  const text = [handoffSection, factsSection, itemsSection, cadencesSection, knowledgeSection, abilitiesSection, rulesSection]
     .filter(Boolean).join('\n\n')
   if (!text) {
-    return { text: '', factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 0, ruleCount: 0 }
+    return { text: '', handoffCount: 0, factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 0, ruleCount: 0 }
   }
   // 条数按**通过裁剪**的行数回报：日志说"注入了 6 条"就必须真是 6 条。
   const count = (section: string) => (section ? section.split('\n').filter(line => line.startsWith('- ')).length : 0)
   return {
     text,
+    // 交接单是**整节**一份，不能用 `count()`：那一节多行（标签 + 子项），会被数成 3、5。
+    handoffCount: handoffSection ? 1 : 0,
     // 极端情况下条目多于上限：按常量兜住，避免日志与常量说法打架。
     factCount: Math.min(count(factsSection), PREWRITE_FACTS_MAX_ITEMS),
     itemCount: Math.min(count(itemsSection), PREWRITE_ITEMS_MAX_ITEMS),

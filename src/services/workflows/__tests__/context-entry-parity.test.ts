@@ -81,7 +81,7 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.text).toContain('- [timeline] 林岚抵达海港（来源第1章；证据：林岚抵达海港。）')
     expect(bundle.text).toContain('- （世界观·第 1 维【核心规则与体系漏洞】）灵潮每甲子退潮一次')
     expect(bundle.text.indexOf('【前文事实（')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
-    expect(bundle.prewrite).toEqual({ factCount: 1, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 0, ruleCount: 1 })
+    expect(bundle.prewrite).toEqual({ handoffCount: 0, factCount: 1, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 0, ruleCount: 1 })
     expect(sha(bundle.text)).toBe('a006dfb730391c7a30b5aef5cc8da1fdebdaed34a70843a46d41245a79551107')
   })
 
@@ -119,7 +119,7 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.text).toContain('- 月例 — 每10章一次；上次：第12章（作者登记）⇒ 本章：到期')
     expect(bundle.text).toContain('- 送账日 — 每7日一次；上次：第12章（书中第9日，作者登记）⇒ 本章：未知（本章日序不可知）')
     expect(bundle.text.indexOf('【制度（周期事件')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
-    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 2, knowledgeCount: 0, abilityCount: 0, ruleCount: 0 })
+    expect(bundle.prewrite).toEqual({ handoffCount: 0, factCount: 0, itemCount: 0, cadenceCount: 2, knowledgeCount: 0, abilityCount: 0, ruleCount: 0 })
     // 本条哈希是**新增**，不是改旧值：三条旧锚点在上面三条用例里一字未动。
     expect(sha(bundle.text)).toBe('9db07fa7929fba10a71c1509967fc68f617a7e3591f79c7171500251bd374455')
   })
@@ -159,7 +159,7 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.text).toContain('- 小郑：知道（事实出处：第9章「灵根检测结果被人改过」；自第13章得知）')
     expect(bundle.text.indexOf('- 顾长风：')).toBeLessThan(bundle.text.indexOf('- 小郑：'))
     expect(bundle.text.indexOf('【知情（谁知道什么）】')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
-    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 2, abilityCount: 0, ruleCount: 0 })
+    expect(bundle.prewrite).toEqual({ handoffCount: 0, factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 2, abilityCount: 0, ruleCount: 0 })
     // 本条哈希是**新增**，不是改旧值：上面四条锚点一字未动。
     expect(sha(bundle.text)).toBe('7183dafbdafe42603ebcc64883098979d297fe9b326576c295941bad04d3192e')
   })
@@ -188,7 +188,7 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.text).toContain('【能力（本书的能力规则：能做什么、要付什么、什么情况下会被破）】')
     expect(bundle.text).toContain('- 噬魂推演录（规则·功法·天赋混合；作者登记，未标章号）：硬限制——')
     expect(bundle.text.indexOf('【能力（本书的能力规则')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
-    expect(bundle.prewrite).toEqual({ factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 1, ruleCount: 0 })
+    expect(bundle.prewrite).toEqual({ handoffCount: 0, factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 1, ruleCount: 0 })
     // 本条哈希是**新增**，不是改旧值：上面五条锚点一字未动。
     expect(sha(bundle.text)).toBe('44ce3a3e2b93c9e4ee6142dcb72a2fd8d3bd76473f2ecd3caf50b15f5bdfa323')
   })
@@ -242,10 +242,48 @@ describe('S10B write-path characterization (the composed prompt must not change)
       expect(order[index - 1]).toBeLessThan(order[index]!)
     }
     expect(bundle.prewrite).toEqual({
+      handoffCount: 0,
       factCount: 1, itemCount: 1, cadenceCount: 1, knowledgeCount: 1, abilityCount: 1, ruleCount: 1,
     })
     // 本条同样是**新增**：上面六条锚点（含 {abilities}）一字未改。
     expect(sha(bundle.text)).toBe('4e63616457e22a09ad13877ab084342255c8689d3993b7927f56adb7ba5feffc')
+  })
+
+  /**
+   * P1-2 期 1：上一卷交接单单独钉一条哈希（**新增，不是改旧值**）。
+   *
+   * 上面七条旧锚点（`dcca9697…` … `bddf8727…`）一字未改 —— 因为 `handoff` 缺省 / `null`
+   * 时不产生任何字节；这一条只在**传入**时才生效，钉的是「传了是这样」。
+   * 同时钉住「交接单排在最前」：它是背景，后面的节才是细节。
+   */
+  it('composes the previous-volume handoff section when it is supplied', async () => {
+    const bundle = await assembleChapterMaterials({
+      ...baseline(),
+      prewrite: {
+        handoff: {
+          handoffId: 'handoff:1',
+          volumeIndex: 1,
+          firstChapter: 1,
+          lastChapter: 4,
+          worldState: '灵潮退去，北境三城封关',
+          heroState: '顾长风的左臂仍未复原',
+          events: ['玄火令被夺'],
+          items: ['玄火令在监天台手中'],
+          debts: ['欠沈砚一条命'],
+          openThread: '监天台为何要玄火令',
+          source: 'author',
+          createdAt: '',
+          updatedAt: '',
+        },
+        facts: [{ category: 'timeline', statement: '林岚抵达海港', sourceChapter: 1, evidence: '林岚抵达海港。' }],
+        chapterNumber: 5,
+      },
+    })
+    expect(bundle.text).toContain('【上一卷交接（第1卷 · 全书第1–4章）】')
+    expect(bundle.text).toContain('本章为第5章')
+    expect(bundle.text.indexOf('【上一卷交接（')).toBeLessThan(bundle.text.indexOf('【前文事实（'))
+    expect(bundle.prewrite).toEqual({ handoffCount: 1, factCount: 1, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 0, ruleCount: 0 })
+    expect(sha(bundle.text)).toBe('fc03729848c1c177f2cd08dd0c82389716034bf8f73ba304a3410c51cfaa1670')
   })
 
   it('fails explicitly when required author material alone exceeds the capacity', async () => {
