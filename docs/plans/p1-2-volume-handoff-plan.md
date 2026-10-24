@@ -557,3 +557,62 @@ C1–C3 逐条：读到什么
 |---|---|---|
 | **期 2** | 卷末自动生成交接单（模型生成初稿 → 作者审定）+ 卷末触发钩子（`architecture.command.ts:3374` 的卷翻转点）+ 幂等重建 | 要写模型调用、幂等、失败兜底，与本期 CRUD 完全不同级；而且必须先在期 1 用**作者手填的几份**当验收基线 |
 | **期 3** | 大纲 prompt 前缀投影（L2 本卷全文 + L3 上一卷快照 + L4 最近 K 章） | `projectSynopsisForOutline()` 零实现，要动 `confirmedPrefix`，工程量大且无现成范式 |
+
+---
+
+## 10. 交付收据（leader 验收实测 · 2026-10-24）
+
+> **这一节是给明日独立复核者的**：下面每个数字都是我（leader）自己跑出来的，**不是执行者的自报**。
+> 执行者的八项报告只当线索，一律重跑。复核时**仍要自己跑一遍**，不要把本节的数字当结论。
+
+### 10.1 状态
+
+| 项 | 值 |
+|---|---|
+| 期 1 | ✅ 已合入 **`240bb905`**（32 文件 / 32 changed，+331 / −50，新增文件 1070 行） |
+| schema | 18 → **19**（`CURRENT_DESKTOP_SCHEMA_VERSION = 19`，`LATEST_SCHEMA_VERSION = 19`，lane 末条 `M18 from:18 to:19`） |
+| 基线 | `cf10b44f`（P14 单独提交）之上、计划文档 `151c378d` 之上 |
+| 第 8 条哈希 | `fc03729848c1c177f2cd08dd0c82389716034bf8f73ba304a3410c51cfaa1670`（`context-entry-parity.test.ts:286`） |
+
+### 10.2 我跑出来的门（与计划 §6 的 A 类对应）
+
+| 门 | 实测 |
+|---|---|
+| A2 `tsc --noEmit` | 无输出 |
+| A3 `eslint`（本批 32 文件） | 无输出（exit 0） |
+| A4 / A5 | `= 19` 且整行格式可被验收脚本正则解析；lane + `MIGRATION_IDS` 均含 M18 |
+| A6 便携策略 | `["volume_handoffs"]` / **13 列** / **全为 `"D"`** |
+| A7 迁移 | **19 文件 / 129 例全绿**（m18 自己 **7** 例，计划要求 6 —— 多做一条） |
+| A8 仓储 | **9 例全绿**（要求 ≥8） |
+| A9 面板 browser | **8 例全绿**（要求 ≥7；用了 `--config vitest.browser.config.ts`，不是「no test files」） |
+| A10 注入窗口（5 文件） | **359 例全绿** |
+| A11 七条旧哈希 | grep 计数 **7**，值逐字未变 |
+| A13 全量 `src` | `19 failed / 3812 passed / 1 skipped`，失败文件**恰好**是基线那 3 个 |
+| A14 便携/归档 | 计数断言全绿：`{61,584}` / `added 229` / `{19,61,584}` / donor `{19,61,585}`（grep 逐行确认） |
+| A15 工作树 | 只有本批 32 个文件；无 `.runtime/`、无 `*.log`、无 `.bak` |
+
+通过数从基线 3797 → **3812（+15）**：11（纯函数）+ 7（m18 lane）+ 9（仓储）+ 8（面板）− 20（原本就红的 19 例仍在）≈ 对上。
+
+### 10.3 一条必须写下来的环境事实（**会误导明天的复核**）
+
+`electron/services/__tests__/project-archive-service.test.ts` **在本机已经不能当绿色门用了**：
+
+- 本批跑：每次**随机挂 1 条**（先后见到 `roundtrips a wrapped recheck … v2`、`exports runtime-replace avatar provenance …`、`exports the shared 20-chapter corpus …`、`records F03 reference-only avatars …`）
+- **`git stash` 回 HEAD 基线跑两次，同样每次挂 1 条、且挂的不是同一条**（`runtime-replace avatar` / `records F03 reference-only avatars`）
+- ⇒ **与本批无关**，是这台机器上的既有抖动（用例耗时 1.5–6s，怀疑与临时目录 / 磁盘吞吐有关）
+
+**复核时请这样判**：不要看「这个文件是否全绿」，而是**直接看那 4 个计数断言**（`grep "tables: 61\|fields: 584\|toHaveLength(229)\|schemaVersion: 19"`），它们全绿即通过；归档文件整体绿不绿不作为判据。
+
+### 10.4 与计划的偏离（我已签收的）
+
+1. **`verifyM18VolumeHandoffs` 断言 3 处 CHECK，不是计划写的 4 处** —— 计划自相矛盾：§2.1 的 DDL 里只有 3 条 CHECK（`volume_index > 0` / `first_chapter > 0` / `last_chapter >= first_chapter`）。**按 DDL 执行是对的**，不是我放宽了校验。
+2. **`db:volume-handoffs-*` 四条只登记在 `ipc-channels.ts` 的类型表里**，`db-controller.ts` 的通道白名单（`MUTATING_DATABASE_CHANNELS`）只有 upsert / delete 两条 —— 与既有 `db:abilities-*` 一致（读通道不进，失败时不该被包成 `{success:false}`）。计划里「无第三处」那句是对的。
+3. **m18 lane 做了 7 例**（计划 6）：多的一条是「JSON 列默认 `'[]'` 而非 NULL」的独立断言。加分项，不是偏离风险。
+4. **面板里出现 `parseOutlineChapterHeading` 字样，但只在注释里**（第 27 行，说明「为什么不用它」）。代码零 import、零调用 —— 符合「砍掉建议区间」的裁定。
+
+### 10.5 仍未做（期 2 / 期 3，别在复核时当缺陷）
+
+- 不自动生成交接单（要作者手填；不填 = 不注入 = 跨卷仍是老样子）
+- 不注入大纲 prompt / 不做前缀投影
+- 不做「卷被重写后交接单失效」判定
+- 缺卷时会静默注入更早那一卷（节首说明里已写「若两者之间还有其他卷，只以已定稿原文为准」；真修复要等 P2-1 findings）
