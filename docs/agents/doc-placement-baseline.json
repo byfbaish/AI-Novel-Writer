@@ -1,0 +1,204 @@
+{
+  "updatedAt": "2026-10-24",
+  "note": "存量违规基线。只允许随违规修复而缩小；新增违规不得写入本文件。",
+  "items": [
+    {
+      "key": "C1 docs/design/architecture/arc-granularity-and-enum.md",
+      "code": "C1",
+      "file": "docs/design/architecture/arc-granularity-and-enum.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/arc-layer-handoff.md",
+      "code": "C1",
+      "file": "docs/design/architecture/arc-layer-handoff.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/arc-nesting-design.md",
+      "code": "C1",
+      "file": "docs/design/architecture/arc-nesting-design.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/arc-prompt-assessment.md",
+      "code": "C1",
+      "file": "docs/design/architecture/arc-prompt-assessment.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/arc-prompt-v2-web-test.md",
+      "code": "C1",
+      "file": "docs/design/architecture/arc-prompt-v2-web-test.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/arc-prompt-v3-web-test.md",
+      "code": "C1",
+      "file": "docs/design/architecture/arc-prompt-v3-web-test.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/arc-prompt-v4-web-test.md",
+      "code": "C1",
+      "file": "docs/design/architecture/arc-prompt-v4-web-test.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/arc-prompt-v5-web-test.md",
+      "code": "C1",
+      "file": "docs/design/architecture/arc-prompt-v5-web-test.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/arc-prompt-v6-web-test.md",
+      "code": "C1",
+      "file": "docs/design/architecture/arc-prompt-v6-web-test.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/arc-prompt-v7-web-test.md",
+      "code": "C1",
+      "file": "docs/design/architecture/arc-prompt-v7-web-test.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/arc-space-causal-state-feasibility.md",
+      "code": "C1",
+      "file": "docs/design/architecture/arc-space-causal-state-feasibility.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/architecture-consistency-design.md",
+      "code": "C1",
+      "file": "docs/design/architecture/architecture-consistency-design.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/causal-vs-state-digestion.md",
+      "code": "C1",
+      "file": "docs/design/architecture/causal-vs-state-digestion.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/chapter-position-format-design.md",
+      "code": "C1",
+      "file": "docs/design/architecture/chapter-position-format-design.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/industry-alignment-and-stage-goals.md",
+      "code": "C1",
+      "file": "docs/design/architecture/industry-alignment-and-stage-goals.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/l3-arc-gap-verification.md",
+      "code": "C1",
+      "file": "docs/design/architecture/l3-arc-gap-verification.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/layered-generation-assessment.md",
+      "code": "C1",
+      "file": "docs/design/architecture/layered-generation-assessment.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/long-form-readiness-review.md",
+      "code": "C1",
+      "file": "docs/design/architecture/long-form-readiness-review.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/seven-layer-skeleton-assessment.md",
+      "code": "C1",
+      "file": "docs/design/architecture/seven-layer-skeleton-assessment.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/stage-structure-layer.md",
+      "code": "C1",
+      "file": "docs/design/architecture/stage-structure-layer.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/state-tracking-assessment.md",
+      "code": "C1",
+      "file": "docs/design/architecture/state-tracking-assessment.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/architecture/story-arc-proposal.md",
+      "code": "C1",
+      "file": "docs/design/architecture/story-arc-proposal.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/features/p1-2b-settings-period-authoring-guide.md",
+      "code": "C1",
+      "file": "docs/design/features/p1-2b-settings-period-authoring-guide.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/prompt/free-text-scoping-design.md",
+      "code": "C1",
+      "file": "docs/design/prompt/free-text-scoping-design.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/prompt/outline-setting-compatibility-guard-design.md",
+      "code": "C1",
+      "file": "docs/design/prompt/outline-setting-compatibility-guard-design.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/prompt/outline-structure-marker-assessment.md",
+      "code": "C1",
+      "file": "docs/design/prompt/outline-structure-marker-assessment.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/prompt/p0-1-short-outline-scoping-design.md",
+      "code": "C1",
+      "file": "docs/design/prompt/p0-1-short-outline-scoping-design.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/prompt/p1-literal-dedup.md",
+      "code": "C1",
+      "file": "docs/design/prompt/p1-literal-dedup.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/prompt/p3-semantic-dedup.md",
+      "code": "C1",
+      "file": "docs/design/prompt/p3-semantic-dedup.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/prompt/p4-prompt-config-merge.md",
+      "code": "C1",
+      "file": "docs/design/prompt/p4-prompt-config-merge.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/prompt/p4-reassessment.md",
+      "code": "C1",
+      "file": "docs/design/prompt/p4-reassessment.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/prompt/prompt-trace-output-sample.md",
+      "code": "C1",
+      "file": "docs/design/prompt/prompt-trace-output-sample.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    },
+    {
+      "key": "C1 docs/design/review/p7-review-material-dedup-design.md",
+      "code": "C1",
+      "file": "docs/design/review/p7-review-material-dedup-design.md",
+      "detail": "缺少头部 `> 状态：…` 行（docs/README.md §3.2 第 3 条）"
+    }
+  ]
+}
