@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   materializeVolumeStructure,
   volumeEffectiveRanges,
+  volumeRangeEndingAt,
   type VolumeDefinition,
 } from '../volume-structure'
 
@@ -243,5 +244,41 @@ describe('volumeEffectiveRanges', () => {
       volume({ volumeId: 'volume:1', volumeIndex: 1, plannedFirst: 1, plannedLast: 20 }),
     ])
     expect(ranges.map(range => range.volumeIndex)).toEqual([1, 2])
+  })
+})
+
+describe('volumeRangeEndingAt（P1-2 期 2 的「卷末章」判定）', () => {
+  const twoVolumes = () => [
+    volume({ volumeId: 'volume:1', volumeIndex: 1, plannedFirst: 1, plannedLast: 20 }),
+    volume({ volumeId: 'volume:2', volumeIndex: 2, plannedFirst: 21, plannedLast: 40 }),
+  ]
+
+  it('命中有效末章所在的那一卷', () => {
+    expect(volumeRangeEndingAt(twoVolumes(), 20)?.volumeId).toBe('volume:1')
+    expect(volumeRangeEndingAt(twoVolumes(), 40)?.volumeId).toBe('volume:2')
+  })
+
+  it('用 actual_last 判，不认计划末章', () => {
+    const volumes = [
+      volume({ volumeId: 'volume:1', volumeIndex: 1, plannedFirst: 1, plannedLast: 20, actualLast: 25, actualSource: 'finalized' }),
+      volume({ volumeId: 'volume:2', volumeIndex: 2, plannedFirst: 21, plannedLast: 40 }),
+    ]
+    expect(volumeRangeEndingAt(volumes, 20)).toBeNull()
+    expect(volumeRangeEndingAt(volumes, 25)?.volumeId).toBe('volume:1')
+    // 卷 2 的起点跟着后移到 26，末章仍是 40。
+    expect(volumeRangeEndingAt(volumes, 40)?.first).toBe(26)
+  })
+
+  it('非末章、空结构、非法章号一律 null（调用方据此「本次不触发」）', () => {
+    expect(volumeRangeEndingAt(twoVolumes(), 19)).toBeNull()
+    expect(volumeRangeEndingAt([], 1)).toBeNull()
+    for (const chapterNumber of [0, -1, 3.5, Number.NaN]) {
+      expect(volumeRangeEndingAt(twoVolumes(), chapterNumber)).toBeNull()
+    }
+  })
+
+  it('起止未定的卷（计划与实际都为空）不会被误判成「末章 = null」的命中', () => {
+    const volumes = [volume({ plannedFirst: null, plannedLast: null, plannedSource: 'even' })]
+    expect(volumeRangeEndingAt(volumes, 1)).toBeNull()
   })
 })

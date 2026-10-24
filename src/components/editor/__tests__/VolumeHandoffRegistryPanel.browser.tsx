@@ -9,8 +9,23 @@ import {
   type VolumeHandoffInput,
 } from '../../../shared/volume-handoff'
 import type { VolumeDefinition } from '../../../shared/volume-structure'
+import { useLLMStore } from '../../../stores/llm-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { VolumeHandoffRegistryPanel } from '../VolumeHandoffRegistryPanel'
+
+// P1-2 期 2：重新生成走「模板 → 渲染 → 模型 → 解析 → 裁剪 → 写库」这条链。
+// 取模板要读提示词目录（走 IPC），浏览器测试里替掉这一层，其余全用真实现。
+vi.mock('../../../services/prompt-templates', () => ({
+  resolvePromptTemplate: async () => ({
+    key: 'generate_volume_handoff',
+    content: '{{volume_label}} {{chapter_range}}\n{{volume_notes}}',
+  }),
+  renderPrompt: (template: { content: string }, variables: Record<string, string>) =>
+    Object.entries(variables).reduce(
+      (rendered: string, [key, value]) => rendered.replaceAll(`{{${key}}}`, value),
+      template.content,
+    ),
+}))
 
 /**
  * P1-2 期 1b 卷末交接登记面板（11 条）。验收口径：
@@ -37,6 +52,24 @@ let stored: VolumeHandoffDefinition[]
 let volumes: VolumeDefinition[]
 let volumeState: PanelState
 let markDoneResult: { success: boolean; volume?: VolumeDefinition; actualLast?: number; error?: string }
+/** 模型回包（`llm:generate`）；测试按需改成失败或挂起。 */
+let llmReply: unknown
+/** 非 null 时 `llm:generate` 返回一个挂起的 Promise，用来断言「生成中」这一瞬间的禁用态。 */
+let llmGate: ((value: unknown) => void) | null = null
+
+const DRAFT_JSON = JSON.stringify({
+  worldState: '灵潮退去，北境三城封关',
+  heroState: '顾长风左臂仍未复原',
+  events: ['玄火令被夺'],
+  items: ['玄火令在监天台手中'],
+  debts: ['欠沈砚一条命'],
+  openThread: '监天台为何要玄火令',
+})
+
+const NOTES = [
+  { chapterNumber: 1, chapterTitle: '一', chapterNotes: '第一章要点' },
+  { chapterNumber: 2, chapterTitle: '二', chapterNotes: '第二章要点' },
+]
 
 function volumeDef(overrides: Partial<VolumeDefinition> = {}): VolumeDefinition {
   return {
@@ -144,6 +177,9 @@ beforeEach(() => {
   ]
   volumeState = 'ready'
   markDoneResult = { success: true, volume: volumeDef({ actualLast: 18, actualSource: 'finalized' }), actualLast: 18 }
+  llmReply = { success: true, content: DRAFT_JSON, finishReason: 'stop' }
+  llmGate = null
+  useLLMStore.setState({ defaultModelId: 'model-1' })
   useProjectStore.setState({
     currentProject: {
       id: session.projectId,
@@ -190,6 +226,18 @@ beforeEach(() => {
       }
     }
     if (channel === 'db:volume-handoffs-delete') return { success: true }
+    if (channel === 'db:continuity-list-before') return NOTES
+    if (channel === 'llm:generate') {
+      if (llmGate) {
+        return new Promise(resolve => {
+          llmGate = value => {
+            llmGate = null
+            resolve(value)
+          }
+        })
+      }
+      return llmReply
+    }
     throw new Error(`Unexpected IPC ${channel}`)
   })
   Object.defineProperty(window, 'aiNovelAPI', {
@@ -376,5 +424,99 @@ describe('卷末交接登记面板', () => {
     await click(button('保存'))
     expect(upsertCalls()).toHaveLength(1)
     expect(upsertCalls()[0]![1].worldState).toHaveLength(VOLUME_HANDOFF_MAX_CHARS + 50)
+  })
+})
+
+/**
+ * P1-2 期 2：面板侧的自动生成。
+ *
+ * 验收口径三条：**来源可辨**（作者版 / 初稿）· **作者版不可重生成**（按钮禁用 + 说明）·
+ * **只把动过的行升格为作者版**（整页一存不该冻死没碰过的初稿）。
+ */
+describe('卷末交接单的自动生成', () => {
+  const expandFirstRow = async () => {
+    await click(button('编辑', summaryRows()[0]!))
+  }
+  const regenerateButton = () => {
+    const target = container.querySelector<HTMLButtonElement>('[data-action="regenerate-handoff"]')
+    if (!target) throw new Error('missing regenerate button')
+    return target
+  }
+
+  it('来源列分得清作者版与初稿', async () => {
+    stored = [
+      definition({ handoffId: 'handoff:a', volumeId: 'volume:1', source: 'author' }),
+      definition({
+        handoffId: 'handoff:g', volumeId: 'volume:2', volumeIndex: 2,
+        firstChapter: 21, lastChapter: 40, source: 'generated',
+      }),
+    ]
+    await renderPanel()
+    expect(container.querySelector('[data-testid="volume-handoff-source-author"]')).not.toBeNull()
+    expect(container.querySelector('[data-testid="volume-handoff-source-generated"]')).not.toBeNull()
+  })
+
+  it('作者版的「重新生成」禁用，并说明为什么不会被覆盖', async () => {
+    stored = [definition({ handoffId: 'handoff:a', source: 'author' })]
+    await renderPanel()
+    await expandFirstRow()
+    const target = regenerateButton()
+    expect(target.disabled).toBe(true)
+    expect(target.getAttribute('title')).toContain('不会被自动覆盖')
+  })
+
+  it('初稿行重新生成：读要点、调一次模型、覆盖时带原 handoffId', async () => {
+    stored = [definition({ handoffId: 'handoff:g', source: 'generated' })]
+    await renderPanel()
+    await expandFirstRow()
+    await click(regenerateButton())
+    await vi.waitFor(() => expect(upsertCalls()).toHaveLength(1))
+    expect(channels()).toContain('db:continuity-list-before')
+    expect(channels()).toContain('llm:generate')
+    expect(upsertCalls()[0]![1]).toMatchObject({
+      handoffId: 'handoff:g', volumeId: 'volume:1', source: 'generated',
+    })
+    await vi.waitFor(() => expect(container.textContent).toContain('已生成初稿'))
+  })
+
+  it('生成中：按钮显示「生成中…」并连同保存一起禁用', async () => {
+    stored = [definition({ handoffId: 'handoff:g', source: 'generated' })]
+    await renderPanel()
+    await expandFirstRow()
+    llmGate = () => undefined
+    await click(regenerateButton())
+    await vi.waitFor(() => expect(regenerateButton().textContent).toContain('生成中'))
+    expect(regenerateButton().disabled).toBe(true)
+    expect(button('保存').disabled).toBe(true)
+    await act(async () => { llmGate?.(llmReply) })
+    await vi.waitFor(() => expect(upsertCalls()).toHaveLength(1))
+  })
+
+  it('模型调用失败：把脱敏后的原因写在行下方，不静默', async () => {
+    stored = [definition({ handoffId: 'handoff:g', source: 'generated' })]
+    llmReply = { success: false, content: '', finishReason: 'error', error: '401 unauthorized' }
+    await renderPanel()
+    await expandFirstRow()
+    await click(regenerateButton())
+    await vi.waitFor(() => expect(container.textContent).toContain('401 unauthorized'))
+    expect(upsertCalls()).toHaveLength(0)
+  })
+
+  it('只改 A 行后保存：A 升格作者版，未编辑的 B 仍留初稿', async () => {
+    stored = [
+      definition({ handoffId: 'handoff:a', volumeId: 'volume:1', source: 'generated' }),
+      definition({
+        handoffId: 'handoff:b', volumeId: 'volume:2', volumeIndex: 2,
+        firstChapter: 21, lastChapter: 40, source: 'generated',
+      }),
+    ]
+    await renderPanel()
+    await expandFirstRow()
+    await fill(0, 'worldState', '改过的卷末世界')
+    await click(button('保存'))
+    await vi.waitFor(() => expect(upsertCalls()).toHaveLength(2))
+    const byId = new Map(upsertCalls().map(([, input]) => [input.handoffId, input]))
+    expect(byId.get('handoff:a')!.source).toBe('author')
+    expect(byId.get('handoff:b')!.source).toBe('generated')
   })
 })

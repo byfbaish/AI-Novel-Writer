@@ -1137,6 +1137,45 @@ Chapter {{chapter_number}} {{chapter_title}}
 
 When the chapter states no explicit quantity change, output {"movements":[]}.`,
   },
+
+  /**
+   * P1-2 期 2 卷末交接单生成。同样不进 `CORE_LOCALIZED_BUILTIN_PROMPT_KEYS`，
+   * 但必须自带英文：五条硬约束（只写要点支持的事实 / 不推断 / 不把计划写成已执行）缺一不可。
+   */
+  generate_volume_handoff: {
+    systemRole: 'You are a meticulous continuity editor for serialized fiction. You only consolidate facts that the finalized chapter notes explicitly support, and you never invent, infer, or design plot.',
+    content: `[Volume handoff] Do one thing only: turn the situation at the end of this volume into "the six things that must be known before writing the next volume".
+
+[This volume]
+{{volume_label}} ({{chapter_range}})
+
+[Finalized chapter notes of this volume]
+{{volume_notes}}
+
+[What each field answers]
+- worldState — the world at the END of the last chapter (who is ahead, which rules changed, what was destroyed or established). Not a retrospective of the volume.
+- heroState — the protagonist at the END of the last chapter: situation, injuries, state of mind, remaining leverage.
+- events — what already happened in this volume and must be carried forward. At most 5 entries, one per line.
+- items — things the next volume still needs, each stating who holds it. At most 5 entries.
+- debts — unsettled obligations: favours, promises, pursuit, money owed, unfulfilled conditions. At most 3 entries.
+- openThread — the single largest unresolved matter of this volume, ONE entry only; more than one turns it into a to-do list.
+
+[Five hard rules — violating any one voids this run]
+- Write only what the notes explicitly support. Do not add, guess, or import facts from general knowledge.
+- Do not infer the next volume's plot: no "next they should...", no new conflicts, no preview of the ending.
+- Never record a plan as an accomplished fact: if the notes say decided / agreed / prepared / intended, it has not happened yet.
+- Each matter appears in exactly one field; anything already resolved in this volume must not stay in openThread.
+- When notes contradict each other, the later chapter wins; do not keep both readings in the wording.
+
+[Budget]
+All six fields together must stay within 1500 characters (the program re-checks and drops whole entries; count it yourself first).
+
+[Output format — strict JSON; no Markdown, no code fence, no explanation]
+{"worldState":"...","heroState":"...","events":["..."],"items":["..."],"debts":["..."],"openThread":"..."}
+
+- All six keys must be present; never omit one. Use an empty string or empty array when there is nothing.
+- If the notes support nothing at all, leave all six empty — never invent content to fill them.`,
+  },
 } satisfies Record<CoreLocalizedBuiltinPromptKey, PromptLanguageTemplate> & Record<string, PromptLanguageTemplate>)
 
 export function promptLanguageText(

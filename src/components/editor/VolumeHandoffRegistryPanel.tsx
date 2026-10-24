@@ -9,6 +9,10 @@ import {
 } from '../../shared/volume-handoff'
 import { volumeEffectiveRanges, type VolumeDefinition, type VolumeRange } from '../../shared/volume-structure'
 import { ipc } from '../../services/ipc-client'
+import {
+  describeVolumeHandoffFailure,
+  generateVolumeHandoff,
+} from '../../services/volume-handoff-generation'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../project-session-gate'
@@ -60,6 +64,12 @@ interface DraftRow {
   items: string
   debts: string
   openThread: string
+  /** `author` = 作者版（自动生成永不覆盖）；`generated` = 模型初稿；`''` = 新行。 */
+  source: string
+  /** 本行是否被作者改过：保存时决定它升格为作者版还是保持初稿。 */
+  edited: boolean
+  /** 该行正在生成初稿（按钮转圈、整表禁用写入）。 */
+  generating: boolean
   expanded: boolean
   removing: boolean
   confirmingRemove: boolean
@@ -76,6 +86,10 @@ function emptyRow(): DraftRow {
     items: '',
     debts: '',
     openThread: '',
+    // 作者亲手新建的行本来就是作者版。
+    source: '',
+    edited: true,
+    generating: false,
     expanded: true,
     removing: false,
     confirmingRemove: false,
@@ -94,6 +108,9 @@ function rowFromDefinition(handoff: VolumeHandoffDefinition): DraftRow {
     items: handoff.items.join('\n'),
     debts: handoff.debts.join('\n'),
     openThread: handoff.openThread,
+    source: handoff.source,
+    edited: false,
+    generating: false,
     expanded: false,
     removing: false,
     confirmingRemove: false,
@@ -285,9 +302,96 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
       `Volume ${saved.volumeIndex}: actual end is chapter ${result.actualLast}`))
   }
 
+  /**
+   * 用卷内各章定稿要点重新生成初稿（P1-2 期 2）。
+   *
+   * **作者版不可重新生成** —— 这是「一次模型调用」与「作者半小时手改」之间唯一的闸门，
+   * 与定稿链的步骤用同一个 `source === 'author'` 判定（按钮本身也 disabled，这里是第二道）。
+   *
+   * 未保存且已有手打内容的新行也拒绝：先保存，否则这次生成会把打了一半的字直接换掉。
+   */
+  const regenerate = async (row: DraftRow) => {
+    if (busyRef.current || row.generating) return
+    if (row.source === 'author') return
+    const range = rangeById.get(row.volumeId)
+    if (!range) return
+    const fail = (message: string) => setRows(previous => previous.map(item => (
+      item.key === row.key ? { ...item, generating: false, error: message } : item)))
+    if (range.first === null || range.last === null) {
+      fail(text('本卷起止未定，无法生成（先重建卷结构）', 'This volume has no chapter range yet; rebuild the structure first'))
+      return
+    }
+    const typed = [row.worldState, row.heroState, row.events, row.items, row.debts, row.openThread]
+      .some(value => value.trim())
+    if (!row.handoffId && typed) {
+      fail(text('这一行还没保存。先保存，再生成初稿（否则手打的内容会被替换）',
+        'Save this row first, then generate; otherwise what you typed would be replaced'))
+      return
+    }
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    busyRef.current = true
+    setBusy(true)
+    setRows(previous => previous.map(item => (item.key === row.key ? { ...item, generating: true, error: '' } : item)))
+    try {
+      const projections = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:continuity-list-before',
+        range.last + 1,
+        projectSession.projectPath,
+      )
+      if (!isProjectSessionCurrent(projectSession)) return
+      const notes = (projections ?? [])
+        .filter(entry => entry.chapterNumber >= range.first! && entry.chapterNumber <= range.last!)
+        .map(entry => ({ chapterNumber: entry.chapterNumber, chapterTitle: entry.chapterTitle, notes: entry.chapterNotes }))
+        .filter(entry => entry.notes.trim().length > 0)
+      const result = await generateVolumeHandoff({
+        volumeIndex: range.volumeIndex,
+        volumeName: range.name,
+        firstChapter: range.first,
+        lastChapter: range.last,
+        notes,
+        writingLanguage: useProjectStore.getState().currentProject?.novelConfig?.writingLanguage ?? 'zh-CN',
+        projectSession,
+      })
+      if (!isProjectSessionCurrent(projectSession)) return
+      if (!result.ok) {
+        fail(describeVolumeHandoffFailure(result.reason, text))
+        return
+      }
+      const saved = await ipc.invokeWithProjectSession(projectSession, 'db:volume-handoffs-upsert', {
+        ...(row.handoffId ? { handoffId: row.handoffId } : {}),
+        volumeId: row.volumeId,
+        ...result.draft,
+        source: 'generated',
+      }, projectSession.projectPath)
+      if (!isProjectSessionCurrent(projectSession)) return
+      if (!saved.success || !saved.entry) {
+        fail(writeErrorLabel(saved.error, text))
+        return
+      }
+      const entry = saved.entry
+      setRows(previous => previous.map(item => (
+        item.key === row.key ? { ...rowFromDefinition(entry), expanded: item.expanded } : item)))
+      setStatus(text(
+        `已生成初稿（正文 ${result.report.bodyChars}/${VOLUME_HANDOFF_MAX_CHARS} 字；要点 ${result.coverage.usedChapters.length} 章）`,
+        `Draft generated (body ${result.report.bodyChars}/${VOLUME_HANDOFF_MAX_CHARS} chars; notes from ${result.coverage.usedChapters.length} chapters)`,
+      ))
+    } catch (error) {
+      fail(error instanceof Error ? error.message : String(error))
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+      setRows(previous => previous.map(item => (item.generating ? { ...item, generating: false } : item)))
+    }
+  }
+
   const applyField = (key: string, field: keyof DraftRow, value: string) => {
     setStatus('')
-    setRows(previous => previous.map(row => (row.key === key ? { ...row, [field]: value, error: '' } : row)))
+    setRows(previous => previous.map(row => (row.key === key
+      // 动过任何字段 ⇒ 这一行升格为作者版（保存时据此决定 `source`）。
+      ? { ...row, [field]: value, edited: true, error: '' }
+      : row)))
   }
 
   const toggleExpanded = (key: string) => {
@@ -386,6 +490,13 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
         items: toList(row.items),
         debts: toList(row.debts),
         openThread: row.openThread.trim(),
+        /**
+         * 只有**动过的行**升格为作者版。
+         *
+         * 整页点一次保存就把没碰过的初稿也冻成作者版，会让这些行永久失去「重新生成」；
+         * 而「初稿 + 作者手改」混在同一页里是常态。
+         */
+        source: row.edited || !row.handoffId ? 'author' : row.source,
       }
       const result = await ipc.invokeWithProjectSession(projectSession, 'db:volume-handoffs-upsert', input, projectSession.projectPath)
       if (!result.success) { kept.push({ ...row, error: writeErrorLabel(result.error, text) }); continue }
@@ -459,6 +570,7 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                 <tr>
                   {[
                     [text('卷', 'Volume'), '9rem'],
+                    [text('来源', 'Source'), '5rem'],
                     [text('区间', 'Chapters'), '9rem'],
                     [text('卷末世界', 'World'), '12rem'],
                     [text('主角', 'Protagonist'), '10rem'],
@@ -489,6 +601,26 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                             : row.volumeId
                               ? text('（已不在卷结构里）', '(not in structure)')
                               : '—'}
+                        </td>
+                        <td className="px-1 py-0.5 align-top" data-field="source-cell" data-source={row.source}>
+                          {row.source === 'author' ? (
+                            <span
+                              data-testid="volume-handoff-source-author"
+                              style={{
+                                background: 'var(--color-text)', color: 'var(--color-surface)',
+                                borderRadius: 3, padding: '0 4px', fontSize: 10,
+                              }}
+                            >{text('作者版', 'Author')}</span>
+                          ) : row.source === 'generated' ? (
+                            <span
+                              data-testid="volume-handoff-source-generated"
+                              style={{
+                                border: '1px solid var(--color-warning, #b45309)',
+                                color: 'var(--color-warning, #b45309)',
+                                borderRadius: 3, padding: '0 4px', fontSize: 10,
+                              }}
+                            >{text('初稿', 'Draft')}</span>
+                          ) : '—'}
                         </td>
                         <td className="px-1 py-0.5 align-top" data-field="range-cell">{rangeLabel(range, text)}</td>
                         <td className="px-1 py-0.5 align-top" data-field="worldState-cell">{truncate(row.worldState, 20) || '—'}</td>
@@ -522,7 +654,7 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                       </tr>
                       {row.expanded && (
                         <tr data-testid="volume-handoff-detail">
-                          <td colSpan={8} className="px-1 py-2 align-top">
+                          <td colSpan={9} className="px-1 py-2 align-top">
                             <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
                               <label className="block">
                                 <span className="block text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{text('哪一卷', 'Volume')}</span>
@@ -557,6 +689,27 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                                     onClick={() => void markDone(row)}
                                     disabled={busy || !row.volumeId || volume?.source === 'retained'}>
                                     {text('标记本卷已完成', 'Mark volume done')}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    data-action="regenerate-handoff"
+                                    onClick={() => void regenerate(row)}
+                                    disabled={busy || !row.volumeId || row.source === 'author' || row.generating}
+                                    title={row.source === 'author'
+                                      ? text(
+                                        '作者版不会被自动覆盖；如需模型初稿，请删除本行后重新生成',
+                                        'Author-owned handoffs are never overwritten; delete this row if you want a model draft',
+                                      )
+                                      : text(
+                                        '用本卷各章的定稿要点重新生成初稿（作者版不会被覆盖）',
+                                        'Regenerate a draft from this volume\'s finalized chapter notes (author-owned rows are never overwritten)',
+                                      )}
+                                  >
+                                    {row.generating
+                                      ? <Loader2 size={13} className="animate-spin" />
+                                      : <RefreshCw size={13} />}
+                                    {row.generating ? text('生成中…', 'Generating…') : text('重新生成', 'Regenerate')}
                                   </Button>
                                 </div>
                               </div>

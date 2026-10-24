@@ -296,3 +296,21 @@ export function volumeEffectiveRanges(volumes: readonly VolumeDefinition[]): Vol
   }
   return ranges
 }
+
+/**
+ * 有效末章正好是 `chapterNumber` 的那一卷（P1-2 期 2 的「卷末章」判定）。
+ *
+ * 判定完全走 `volumeEffectiveRanges()`：末章 = `actual_last ?? planned_last`，
+ * 起点由上一卷推出。**不在这里重算区间** —— 一旦有两份区间算法，面板显示的卷末章
+ * 与触发条件就会不一致，而这类不一致不会报错，只会表现为「某一卷的交接单永远不生成」。
+ *
+ * 三个 `null` 分支都由调用方自己决定怎么解释（通常是「本次不触发」）：
+ * 章号非法 / 卷结构为空 / 该卷起止未定（`planned_*` 与 `actual_*` 都是 NULL）。
+ */
+export function volumeRangeEndingAt(
+  volumes: readonly VolumeDefinition[],
+  chapterNumber: number,
+): VolumeRange | null {
+  if (!Number.isSafeInteger(chapterNumber) || chapterNumber < 1) return null
+  return volumeEffectiveRanges(volumes).find(range => range.last === chapterNumber) ?? null
+}

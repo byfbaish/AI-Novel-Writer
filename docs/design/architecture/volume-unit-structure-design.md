@@ -17,7 +17,7 @@ story bible 的 **structure 分区**：`book → part → volume → chapter` �
 |---|---|---|
 | **正文链**（该注入哪份交接单） | `volume_handoffs.last_chapter < 本章`（作者手填的区间） | 选卷 + `volumeEffectiveRanges` 的有效末章 |
 | **交接单面板** | 作者手填卷号 + 两个章号 | **选卷 → 区间只读展示** |
-| **P1-2 期 2**（卷末自动生成交接单） | 只有 `architecture.command.ts:3374` 的游标翻转，**不知道"这一卷从第几章到第几章"** | 触发时直接读 `volumes` 的有效区间 |
+| **P1-2 期 2**（卷末自动生成交接单） | 只有 `architecture.command.ts:3374` 的游标翻转，**不知道"这一卷从第几章到第几章"** | ✅ **已消费（2026-10-24）**：触发点改在定稿链（`volumeRangeEndingAt` 判卷末章），生成时按 `volumeEffectiveRanges` 取区间与要点 |
 | **W8 跨部**（部 → 卷 → 单元） | 无（部这一层完全靠文本） | `part` 挂在卷上，外键骨架已就位 |
 | 卷切片（W7b，未做） | 无 | 按 `volume_id` 取本卷章号区间 |
 | 大纲树（后期切换） | 每次渲染时现算 + 等分推断 | 直接读表 |
