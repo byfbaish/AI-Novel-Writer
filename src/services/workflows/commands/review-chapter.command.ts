@@ -3,8 +3,18 @@ import { reviewTimeContinuity } from '../../../shared/chapter-time-continuity'
 import { reviewExecutionContract } from '../../../shared/review-execution-contract'
 import { reviewFarTermSettingRule } from '../../../shared/review-far-term-setting'
 import type { CommandExecuteParams, WorkflowGenerationRuntimeDependencies } from './base-command'
-import type { PreparedReviewRevisionContext, ReviewRevisionRecovery } from '../../../shared/review-revision-generation'
+import type {
+  PreparedReviewRevisionContext,
+  ReviewRevisionContext,
+  ReviewRevisionRecovery,
+} from '../../../shared/review-revision-generation'
 import { authorMaterialOmitForOperation } from '../../../shared/review-revision-generation'
+import {
+  buildReviewContinuityBibleBlock,
+  type ReviewContinuityBibleBlock,
+} from '../../../shared/review-continuity-bible'
+import { readReviewContinuityCanon } from './review-continuity-canon'
+import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import { ReviewRevisionCommand, type ReviewRevisionCommandSource } from './review-revision-command'
 import { parseReviewGenerationResult } from '../../../shared/review-generation-report'
 import { buildChapterGoalReviewPrompt } from '../../../shared/chapter-goal-review'
@@ -32,6 +42,21 @@ export function canCommitRecoveredReview(recovery: ReviewRevisionRecovery | unde
   if (!recovery?.latestArtifact || recovery.latestArtifactFinishReason !== 'stop') return false
   if (recovery.context.recheck) return true
   try { parseReviewGenerationResult(redactVisibleCompletionText(recovery.latestArtifact.text)); return true } catch { return false }
+}
+
+/**
+ * 周期事件的判定位置（P2-1 期 1）：与正文链同口径 —— 取**最近一个已定稿且日序非空**的章。
+ *
+ * 待审的这一章自己还没定稿，它的「第几天」无人知道（`institution-cadence.ts` 的 `CadencePosition`
+ * 注释），所以两侧都拿上一章的日序当位置。取不到（老项目 / 快照缺投影）⇒ `null`，
+ * 日序轴上的制度一律判 `unknown` ⇒ 不判 —— 宁可少判，不可把「未知」折成「未到」。
+ */
+function latestStoryDayOffset(frozen: ReviewRevisionContext, chapterNumber: number): number | null {
+  return frozen.history
+    .filter(item => item.chapterNumber < chapterNumber)
+    .sort((left, right) => right.chapterNumber - left.chapterNumber)
+    .map(item => item.projection?.storyDayOffset)
+    .find(offset => offset !== null && offset !== undefined) ?? null
 }
 
 export class ReviewChapterCommand extends ReviewRevisionCommand {
@@ -73,6 +98,13 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
         'The required material for this review exceeds the context capacity, so the review stopped. Trim the required author material or predecessor and try again.',
       ))
     }
+    // P2-1 期 1：四类登记事实作为「核对基准」。四类皆空 ⇒ 不产生任何字节，审稿 prompt
+    // 与改动前逐字节相同（老项目没有登记时不受影响）。recheck 分支**不读不带**：
+    // 那一轮的输出合同只有 findingId/targetId/resolved/evidenceQuote/reason，产不出新 finding，
+    // 且明文「只复核下列 finding，不得新增」（与 `reviewExecutionContract` 的既有裁定同型）。
+    const continuityBlock = frozen.recheck
+      ? undefined
+      : await this.readContinuityBibleBlock(frozen, projectSession, params)
     const builder = new ReviewPromptBuilder(template, language)
       .withChapterContent(frozen.source.content)
       .withCharacterStates(frozen.characterStates)
@@ -95,6 +127,9 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
       promptLanguageText(language,
         '【证据锚点硬约束】每个 error/warning 的 items[].quote 必须是待审正文中逐字连续、且全文仅出现一次的单一摘录；不得拼接多个位置、改写原文或包含省略号。优先选择足以证明问题的最短完整句。goalReviews[].evidence 中的每个 quote 也必须分别满足上述约束；需要多处证据时拆成多个 evidence 项，绝不可在一个 quote 中拼接。',
         '[Strict evidence-anchor constraint] Each items[].quote for an error/warning must be one verbatim, contiguous excerpt that occurs exactly once in the draft under review. Do not combine multiple locations, rewrite the text, or include ellipses. Prefer the shortest complete sentence that proves the issue. Every quote in goalReviews[].evidence must independently satisfy the same constraint; when multiple excerpts are needed, use separate evidence entries and never combine them in one quote.'),
+      // P2-1 期 1：四类登记事实（物品 / 制度 / 知情 / 能力）作为核对基准，紧跟在证据锚点约束之后 ——
+      // 「quote 必须来自正文」这条先立住，再给对照材料，模型才不会把登记原文当引文。
+      ...(continuityBlock ? [continuityBlock.text] : []),
       promptLanguageText(language,
         '【时间一致性检查】只核对正文实际表达的时间精度。宽泛回指只表达先后关系时，核对事件顺序即可；顺序一致则不补推更精确的历史日期或时段。明确日期、时段和相对时间须对照作者时点与前驱同一事件，不能假设另有同类事件来放行。正文自身明确写出的跨日或时间间隔优先于同日默认；作者和正文都未交代时，按前章结尾同日紧接核对，仍须报告与作者明确时点的冲突。需要具体时点时，使用事件自身或前面最近的明确时点，不借用更早段落时点；无法确定时保留不确定性。AI 建议中的具体时点不构成来源依据。同一事件的多处日期或状态须结合正文已交代的变化核对。真实冲突报 error 或 warning：quote 定位当前正文的冲突句；description 简述来源章节、同一事件及其必要时间引文和冲突依据。修法不得新增来源不支持的具体时点或原因。',
         '[Temporal consistency checks] Check only the time precision actually expressed in the draft. When a broad reference expresses only before/after order, check that order; if consistent, do not infer a more precise historical date or time period. Check explicit dates, time periods and relative times against author timing and the same predecessor event; do not excuse conflicts by inventing another similar event. An explicit day change or time gap in the manuscript takes priority over the same-day default. When neither author nor manuscript states one, check a same-day continuation from the previous ending, still reporting conflicts with explicit author timing. When a specific time is needed, use the event itself or the nearest preceding explicit time; do not borrow a time from before that anchor. Preserve uncertainty when it cannot be determined. A specific time proposed by AI is not source evidence. Check multiple dates or states for the same event against changes established in the prose. Report genuine conflicts as error or warning: quote the conflicting current-draft sentence; briefly give the source chapter, same event, necessary time excerpts and conflict evidence in description. Remedies must not add a specific time or cause unsupported by the sources.'),
@@ -177,6 +212,45 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
       }
     }
     return this.commitReview(prepared, params)
+  }
+
+  /**
+   * 读四类登记并组装「连续性核对基准」（P2-1 期 1）。
+   *
+   * fail-open：任一类读失败只是少一节 + 一行日志，**绝不阻断审稿** —— 老项目根本没有这几张表。
+   * 「本次没判」必须能看见：日志要说清是哪几类没读到，而不是安静地少给几节。
+   */
+  private async readContinuityBibleBlock(
+    frozen: ReviewRevisionContext,
+    projectSession: ProjectSessionContext,
+    params: CommandExecuteParams,
+  ): Promise<ReviewContinuityBibleBlock | undefined> {
+    const text = (zh: string, en: string) => workflowUiText(params.context, zh, en)
+    const canon = await readReviewContinuityCanon({ projectPath: projectSession.projectPath, projectSession })
+    if (canon.failures.length > 0) {
+      params.callbacks.log(text(
+        `  连续性核对基准部分读取失败（${canon.failures.join('、')}），本次不注入对应小节`,
+        `  Part of the continuity check basis could not be read (${canon.failures.join(', ')}); those sections are not injected.`,
+      ))
+    }
+    const chapterNumber = frozen.source.chapterNumber
+    const currentBlueprint = frozen.blueprints.find(blueprint => blueprint.chapterNumber === chapterNumber)
+    const block = buildReviewContinuityBibleBlock({
+      chapterNumber,
+      writingLanguage: frozen.writingLanguage,
+      storyDayOffset: latestStoryDayOffset(frozen, chapterNumber),
+      chapterCharacters: currentBlueprint?.characters ?? [],
+      items: canon.items,
+      cadences: canon.cadences,
+      knowledge: canon.knowledge,
+      abilities: canon.abilities,
+    })
+    if (!block) return undefined
+    params.callbacks.log(text(
+      `  已注入连续性核对基准：物品 ${block.counts.items} / 制度 ${block.counts.cadences} / 知情 ${block.counts.knowledge} / 能力 ${block.counts.abilities}（${block.chars} 字）`,
+      `  Injected continuity check basis: items ${block.counts.items} / cadences ${block.counts.cadences} / knowledge ${block.counts.knowledge} / abilities ${block.counts.abilities} (${block.chars} chars)`,
+    ))
+    return block
   }
 
   private async commitReview(prepared: PreparedReviewRevisionContext, params: CommandExecuteParams) {

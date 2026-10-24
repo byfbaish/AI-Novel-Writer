@@ -99,3 +99,19 @@ export function renderKeyItemLine(item: KeyItemDefinition, writingLanguage: Writ
   const head = isEn ? `- ${item.name} — held by ${holder}` : `- ${item.name} — ${holder}持有`
   return `${head}${status ? (isEn ? ` (${status})` : `（${status}）`) : ''}${isEn ? `; source: ${source}` : `；出处：${source}`}`
 }
+
+/**
+ * 「本章出场角色持有的排前面，其余按表内顺序兜在后面」（P2-1 期 1 起正文链与审稿链共用口径）。
+ *
+ * 只做排序，**不做任何「该不该在手」的推断** —— 判断属 findings（`review-continuity-bible.ts`）。
+ * 两段都用 `filter` 保序：同一组内的相对顺序与登记表一致，测试可预期；
+ * 排序键用码元序之外的表内顺序，避免 `localeCompare` 随宿主 locale 漂。
+ */
+export function orderKeyItemsForChapter(
+  items: readonly KeyItemDefinition[],
+  chapterCharacters: readonly string[] = [],
+): KeyItemDefinition[] {
+  const onStage = new Set(chapterCharacters.map(name => name.trim()).filter(Boolean))
+  const heldOnStage = (item: KeyItemDefinition) => Boolean(item.holderCharacter) && onStage.has(item.holderCharacter)
+  return [...items.filter(heldOnStage), ...items.filter(item => !heldOnStage(item))]
+}

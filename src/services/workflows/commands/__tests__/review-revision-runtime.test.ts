@@ -42,7 +42,16 @@ const review = JSON.stringify({ summary: '模型总结', items: [{ category: '�
 const hash = (text: string) => createHash('sha256').update(text).digest('hex')
 type Response = { content: string; finishReason: LLMFinishReason } | Error
 
-function setup(responses: Response[], projections: FinalizedContinuityProjection[] = [], activeSource = source) {
+/** P2-1 期 1：审稿侧读的四类登记。缺省 = 全部为空（不注入核对基准，prompt 与改动前一致）。 */
+type CanonFixture = {
+  items?: unknown[]
+  cadences?: unknown[]
+  knowledge?: unknown[]
+  abilities?: unknown[]
+  failKnowledge?: boolean
+}
+
+function setup(responses: Response[], projections: FinalizedContinuityProjection[] = [], activeSource = source, canon: CanonFixture = {}) {
   let saveFailures = 0
   let writes = 0
   let current = { ...activeSource }
@@ -55,6 +64,14 @@ function setup(responses: Response[], projections: FinalizedContinuityProjection
     if (channel === 'db:draft-get-full') return current
     if (channel === 'db:draft-get-meta') return { ...current, source: 'write' }
     if (channel === 'db:continuity-list-before') return projections
+    // P2-1 期 1：四类连续性宿体（物品 / 制度 / 知情 / 能力）。缺省全空 ⇒ 审稿 prompt 不变。
+    if (channel === 'db:key-items-list') return { success: true, items: canon.items ?? [] }
+    if (channel === 'db:cadences-list') return { success: true, cadences: canon.cadences ?? [] }
+    if (channel === 'db:knowledge-list') {
+      if (canon.failKnowledge) throw new Error('synthetic knowledge read failed')
+      return { success: true, entries: canon.knowledge ?? [] }
+    }
+    if (channel === 'db:abilities-list') return { success: true, abilities: canon.abilities ?? [] }
     if (channel === 'db:review-get-full') return { id: 10, baseDraftId: 1, content: confirmation, sourceDraft: activeSource }
     if (channel === 'db:revision-replace-pending' || channel === 'db:review-create') {
       if (saveFailures-- > 0) return { success: false, error: 'synthetic storage failed' }
@@ -853,5 +870,82 @@ describe('review/revision consumers using the main contract (synthetic transport
     await expect(f.command('refine-draft', { recoveryHandle: f.fixture.recovery!.handle }).execute(f.args)).rejects.toThrow('RECEIPT_MISMATCH')
     expect(useEditorStore.getState().tabs).toEqual([])
     expect(f.provider).toHaveBeenCalledTimes(1)
+  })
+})
+
+/**
+ * P2-1 期 1：四类 continuity findings 的「核对基准」注进审稿链。
+ *
+ * 关键纪律两条：
+ * 1. **没有登记 ⇒ 提示词逐字节不变**（老项目不受影响），靠下面的哈希锚点守着；
+ *    改审稿提示词就要同步改这一行并记进设计稿，否则这里会红 —— 与 `context-entry-parity` 同一规矩。
+ * 2. **recheck 分支连读都不读**：那一轮只裁决既有 finding，输出合同里没有 category。
+ */
+describe('P2-1 连续性核对基准（四类宿体进审稿）', () => {
+  const canonFixture: CanonFixture = {
+    items: [{ itemId: 'item:1', name: '裁纸刀', holderCharacter: '林岚', holderLabel: '林岚', statusNote: '',
+      chapterNumber: 1, evidence: '他把刀递过去', source: 'author', createdAt: '', updatedAt: '' }],
+    cadences: [{ cadenceId: 'c:1', name: '月例', axis: 'chapter', interval: 3, anchorChapter: 1, anchorStoryDay: null,
+      fallbackIntervalChapters: null, note: '', chapterNumber: null, evidence: '', source: 'author', createdAt: '', updatedAt: '' }],
+    knowledge: [{ knowledgeId: 'k:1', characterId: 'character:linlan', characterName: '林岚', factChapter: 1,
+      factEvidence: '钥匙在井里', factEvidenceHash: 'a'.repeat(64), factKey: 'kf:0123456789abcdef', learnedChapter: 1,
+      evidence: '', source: 'author', refState: 'valid', createdAt: '', updatedAt: '' }],
+    abilities: [{ abilityId: 'a:1', name: '隔空取物', form: '', hardLimit: '不能隔着活人的身体取物', weakness: '',
+      costNote: '', stageChapter: null, stageNote: '', evidence: '', evidenceScope: null, source: 'author',
+      createdAt: '', updatedAt: '' }],
+  }
+  const userPrompt = (f: ReturnType<typeof setup>) =>
+    f.provider.mock.calls[0]![0].find(message => message.role === 'user')!.content
+
+  it('没有登记时不注入任何字节（提示词与改动前逐字节相同），但仍然读过了四类登记', async () => {
+    const f = setup([{ content: review, finishReason: 'stop' }])
+    await f.command('review-chapter').execute(f.args)
+    const prompt = userPrompt(f)
+    expect(prompt).not.toContain('【连续性核对基准')
+    expect(prompt).not.toContain('连续性核对（作者登记）')
+    // 哈希锚点：改审稿提示词必须同步这一行（并记进设计稿 §实施记录）。
+    expect(hash(prompt)).toBe('d60dd39deb4f513f780a9933294fbd98cffc23d2cfe07803ba6bfccf2e484fca')
+    // 不是「没读」，而是「读了但没有登记」—— 两者必须能分开。
+    for (const channel of ['db:key-items-list', 'db:cadences-list', 'db:knowledge-list', 'db:abilities-list']) {
+      expect(f.fixture.calls.some(call => call.channel === channel), channel).toBe(true)
+    }
+  })
+
+  it('四类齐备时按固定顺序注入，并给出固定 category 与条数额度', async () => {
+    const f = setup([{ content: review, finishReason: 'stop' }], [], source, canonFixture)
+    await f.command('review-chapter').execute(f.args)
+    const prompt = userPrompt(f)
+    const positions = ['【关键物品', '【制度', '【知情', '【能力'].map(title => prompt.indexOf(title))
+    expect(positions.every(index => index > -1)).toBe(true)
+    expect(positions).toEqual([...positions].sort((left, right) => left - right))
+    expect(prompt).toContain('连续性核对（作者登记）')
+    expect(prompt).toContain('同一类最多 2 条')
+    expect(f.args.callbacks.log.mock.calls.some(([text]) => String(text).includes('已注入连续性核对基准')))
+      .toBe(true)
+  })
+
+  it('recheck 分支既不注入也不读四类登记（那一轮只裁决既有 finding）', async () => {
+    const f = setup([{ content: 'not-json', finishReason: 'stop' }], [], source, canonFixture)
+    const selected = { draftPath: 'ai-novel://draft/1', draftContent: source.content, chapterNumber: 1,
+      sourceDraft: { id: 1, chapterNumber: 1, version: 1, status: 'draft' as const, contentRevision: 1 } }
+    f.fixture.selected = selected
+    await new ReviewChapterCommand({ ...selected, reviewCycleId: 'cycle-1',
+      expectedMergedHash: hash(source.content) }, f.dependencies).execute(f.args)
+    const prompt = userPrompt(f)
+    expect(prompt).not.toContain('【连续性核对基准')
+    for (const channel of ['db:key-items-list', 'db:cadences-list', 'db:knowledge-list', 'db:abilities-list']) {
+      expect(f.fixture.calls.some(call => call.channel === channel), channel).toBe(false)
+    }
+  })
+
+  it('某一类读取失败时只少一节 + 一行日志，审稿照常保存（fail-open）', async () => {
+    const f = setup([{ content: review, finishReason: 'stop' }], [], source, { ...canonFixture, failKnowledge: true })
+    await f.command('review-chapter').execute(f.args)
+    expect(f.writes()).toBe(1)
+    const prompt = userPrompt(f)
+    expect(prompt).toContain('【关键物品')
+    expect(prompt).not.toContain('【知情（谁知道什么）】')
+    expect(f.args.callbacks.log.mock.calls.some(([text]) => String(text).includes('连续性核对基准部分读取失败')))
+      .toBe(true)
   })
 })
