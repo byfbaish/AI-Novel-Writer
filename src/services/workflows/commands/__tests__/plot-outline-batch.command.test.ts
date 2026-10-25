@@ -66,13 +66,15 @@ const legacyFingerprint = synopsisFactsFingerprint([
 function currentFingerprint(
   range: { from: number; to: number },
   stepGuidance = '',
+  /** 弧光计划也进指纹：不传则保持既有用例的全空口径。 */
+  plotStructurePlan = '',
 ): string {
   return synopsisInputsFingerprint({
     synopsis: '',
     premise,
     charactersArch,
     worldbuilding,
-    plotStructurePlan: '',
+    plotStructurePlan,
     genre: novelConfig.genre,
     totalChapters: novelConfig.totalChapters,
     wordsPerChapter: novelConfig.wordsPerChapter,
@@ -169,6 +171,10 @@ interface IpcHarness {
 
 interface HarnessOptions {
   commitResult?: { success: boolean; error?: string }
+  /** 额外 IPC 返回（P1-2 期 3：卷表 / 交接单 / 正文权威序列）。 */
+  extraIpc?: Record<string, unknown>
+  /** 额外 project_core 字段（如 plot_structure_plan，用于弧光定位）。 */
+  coreExtras?: Record<string, unknown>
   concurrentPartialUpdate?: Record<string, unknown>
   afterPartialWrite?: (
     checkpoint: CheckpointSnapshot,
@@ -194,7 +200,9 @@ function harnessWith(
     const channel = String(_channel)
     if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
     if (channel === 'fs:check-exists') return false
-    if (channel === 'db:project-core-get') return storedDbSynopsis ? { ...coreSeed, synopsis: storedDbSynopsis } : { ...coreSeed }
+    if (channel === 'db:project-core-get') return storedDbSynopsis
+      ? { ...coreSeed, ...options.coreExtras, synopsis: storedDbSynopsis }
+      : { ...coreSeed, ...options.coreExtras }
     if (channel === 'db:project-core-update') {
       coreUpdates.push(rest[0] as Record<string, unknown>)
       return { success: true }
@@ -221,6 +229,7 @@ function harnessWith(
       return { success: true }
     }
     if (channel === 'fs:write-file') return { success: true }
+    if (options.extraIpc && channel in options.extraIpc) return options.extraIpc[channel]
     throw new Error(`Unexpected IPC channel: ${channel}`)
   })
   vi.stubGlobal('window', {
@@ -577,6 +586,114 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
     expect(dbBody).not.toContain('大纲批次进度')
   })
 
+  /** 两卷弧光：第 1 卷 10 章、第 2 卷 90 章（全书 100 章）。 */
+  const twoVolumeArcPlan = [
+    '## 大弧一：草鞋渡（约 10 章）',
+    '- 卷叙事任务：把欠债摆到台面上',
+    '- 离开状态：林舟带着税册离开渡口',
+    '### 中弧 1：起（约 5 章）',
+    '### 中弧 2：承（约 5 章）',
+    '## 大弧二：北塔（约 90 章）',
+    '### 中弧 1：起（约 45 章）',
+    '### 中弧 2：承（约 45 章）',
+  ].join('\n')
+
+  function volumeRecords() {
+    return [
+      { volumeId: 'volume:1', volumeIndex: 1, name: '草鞋渡', plannedFirst: 1, plannedLast: 10,
+        plannedSource: 'headings', actualLast: null, actualSource: null, outlineHash: 'h:1', source: 'outline',
+        createdAt: '', updatedAt: '' },
+      { volumeId: 'volume:2', volumeIndex: 2, name: '北塔', plannedFirst: 11, plannedLast: 100,
+        plannedSource: 'headings', actualLast: null, actualSource: null, outlineHash: 'h:2', source: 'outline',
+        createdAt: '', updatedAt: '' },
+    ]
+  }
+
+  function authority(lastChapterNumber: number, status: 'continuous' | 'invalid' = 'continuous') {
+    return { status, lastChapterNumber, nextChapterNumber: lastChapterNumber + 1,
+      duplicateChapterNumbers: [], authorityFingerprint: 'a'.repeat(64) }
+  }
+
+  function resumeHarness(options: HarnessOptions) {
+    const prefixBody = `第1–10章：开篇\n${'林舟依据税册追查并守住家人，行动和后果按章节连续。'.repeat(5)}\n\n第11–20章：入塔\n${'他逐层往下，代价一层比一层重。'.repeat(5)}`
+    // 与既有续批用例同形的 DB 镜像后缀（`renderSynopsisDbText` 的产物，逐字比对）。
+    const dbOutline = `# 情节大纲\n\n${prefixBody}\n\n> 本大纲已覆盖至第 20 章（全书 100 章），其余章节将在后续批次继续生成。`
+    const nextSegment = `第21–100章：终局\n${'新一批因果事件逐章推进，最终兑现传承代价。'.repeat(5)}\n\n${progressLine(21, 100, 100)}`
+    const harness = harnessWith({
+      synopsis_result: prefixBody, synopsis_covered_to: 20, synopsis_range: { from: 1, to: 20 },
+      synopsis_facts_fingerprint: currentFingerprint({ from: 1, to: 20 }, '', twoVolumeArcPlan),
+      synopsis_db_hash: dbHashOf(dbOutline), synopsis_step_guidance: '',
+    }, dbOutline, { coreExtras: { plotStructurePlan: twoVolumeArcPlan }, ...options })
+    return { harness, prefixBody, generation: mainOwnedResponses(harness, nextSegment) }
+  }
+
+  function promptOf(harness: IpcHarness): string {
+    const request = harness.invoke.mock.calls.find(([channel]) => channel === 'generation:execute')?.[1] as {
+      task: { messages: Array<{ content: string }> } }
+    return request.task.messages.map(message => message.content).join('\n')
+  }
+
+  it('上一卷正文没写完：prompt 声明「只有计划」，且这句话只出现一次', async () => {
+    useLLMStore.setState({ defaultModelId: '合成模型' })
+    const { harness, generation } = resumeHarness({
+      extraIpc: {
+        'db:volumes-list': { success: true, volumes: volumeRecords(), state: 'ready' },
+        'db:volume-handoffs-list': { success: true, entries: [] },
+        // 第 1 卷 = 第 1–10 章，正文只定稿到第 6 章
+        'db:draft-authority-sequence': authority(6),
+      },
+    })
+    await makeCommand({ synopsisRange: { from: 21, to: 100 } }, true).execute({ step: {}, context, callbacks })
+
+    const prompt = promptOf(harness)
+    expect(prompt).toContain('【上一卷（第1卷）卷纲摘要 · 计划】')
+    expect(prompt).toContain('实际结局未知')
+    // 同一请求里只能声明一次：UI 与 prompt 共用同一个文案源，重复会互相削弱
+    expect((prompt.match(/实际结局未知/gu) ?? [])).toHaveLength(1)
+    expect(prompt).toContain('只定稿到第 6 章')
+    expect(generation.execute).toHaveBeenCalledTimes(1)
+  })
+
+  it('上一卷已定稿且有交接单：用实际交接，不出现「只有计划」', async () => {
+    useLLMStore.setState({ defaultModelId: '合成模型' })
+    const { harness, generation } = resumeHarness({
+      extraIpc: {
+        'db:volumes-list': { success: true, volumes: volumeRecords(), state: 'ready' },
+        'db:volume-handoffs-list': { success: true, entries: [{
+          handoffId: 'handoff:1', volumeId: 'volume:1', volumeIndex: 1,
+          firstChapter: 1, lastChapter: 10, boundaryBasis: 'headings',
+          worldState: '灵潮退去', heroState: '林舟左臂未愈', events: ['玄火令被夺'],
+          items: [], debts: [], openThread: '监天台为何要玄火令',
+          source: 'author', createdAt: '', updatedAt: '',
+        }] },
+        'db:draft-authority-sequence': authority(10),
+      },
+    })
+    await makeCommand({ synopsisRange: { from: 21, to: 100 } }, true).execute({ step: {}, context, callbacks })
+
+    const prompt = promptOf(harness)
+    expect(prompt).toContain('【上一卷（第1卷）交接 · 实际】')
+    expect(prompt).toContain('玄火令被夺')
+    expect(prompt).not.toContain('实际结局未知')
+    expect(generation.execute).toHaveBeenCalledTimes(1)
+  })
+
+  it('分层只改注入：落库与返回内容仍是完整原文', async () => {
+    useLLMStore.setState({ defaultModelId: '合成模型' })
+    const { harness, prefixBody } = resumeHarness({
+      extraIpc: {
+        'db:volumes-list': { success: true, volumes: volumeRecords(), state: 'ready' },
+        'db:volume-handoffs-list': { success: true, entries: [] },
+        'db:draft-authority-sequence': authority(6),
+      },
+    })
+    const result = await makeCommand({ synopsisRange: { from: 21, to: 100 } }, true).execute({ step: {}, context, callbacks })
+    // 投影只发生在注入处：库里的大纲一个字都不能被压短
+    const committed = harness.synopsisCommits[0] as { synopsis: string }
+    expect(committed.synopsis).toContain(prefixBody)
+    expect(result).toContain(prefixBody)
+  })
+
   it('主进程续批只生成本批增量，确认前缀作为上下文并保留在正式大纲', async () => {
     useLLMStore.setState({ defaultModelId: '合成模型' })
     const prefixBody = `第1–20章：已确认前缀\n${'林舟依据税册追查并守住家人，行动和后果按章节连续。'.repeat(5)}`
@@ -588,7 +705,11 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
     const result = await makeCommand({ synopsisRange: { from: 21, to: 100 } }, true).execute({ step: {}, context, callbacks })
 
     const request = harness.invoke.mock.calls.find(([channel]) => channel === 'generation:execute')?.[1] as { task: { messages: Array<{ content: string }> } }
-    expect(request.task.messages.map(message => message.content).join('\n')).toContain(`【已完成大纲前缀】\n${prefixBody}`)
+    const prompt = request.task.messages.map(message => message.content).join('\n')
+    // P1-2 期 3 起前缀按层给出：外层标题保留，正文前多了分层小标题。
+    expect(prompt).toContain('【已完成大纲前缀】')
+    expect(prompt).toContain(prefixBody)
+    expect(prompt).toContain('【本卷已写大纲')
     expect(generation.execute).toHaveBeenCalledTimes(1)
     expect(generation.getComposition()?.text).toBe(nextSegment)
     expect(result).toContain(prefixBody)

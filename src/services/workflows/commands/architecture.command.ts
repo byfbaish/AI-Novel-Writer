@@ -9,6 +9,12 @@ import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, 
 import { accumulatedVolumeDeviation, arcSpanForChapters, auditArcDensity, expectedTotalChapters, parseArcStructure, planProgress, planUnitStats, renderUnitBudgetBlock, UNIT_BUDGET_TOLERANCE, upsertVolumeDeviation, volumeDeviationRecordOf, volumeDeviationValue, withProjectedArcGuide, withProjectedUnitArcGuide, type UnitBudgetState, type VolumeDeviationRecord } from '../../../shared/arc-position'
 import { auditOutlineLength, outlineLengthOf, renderOutlineLengthReport } from '../../../shared/outline-budget'
 import { planOutlinePrefixBudget } from '../../../shared/outline-prefix-budget'
+import {
+  projectSynopsisForOutline,
+  renderOutlinePrefixBlock,
+  resolveOutlineVolumePosition,
+} from '../../../shared/synopsis-projection'
+import { readOutlinePrefixContext } from '../../outline-prefix-context'
 import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../shared/arc-node'
 import { composeGenreLabel } from '../../../shared/genre-label'
 import { withSpaceConstraints } from '../../../shared/space-constraints'
@@ -954,8 +960,8 @@ function synopsisBatchInstruction(
   const leading = from > 1
     ? promptLanguageText(
         writingLanguage,
-        `第 1–${from - 1} 章的大纲已在【已完成大纲前缀】中给出：不得重复、改写或复述该前缀；从第 ${from} 章起自然衔接继续书写。`,
-        `Chapters 1-${from - 1} are already covered in the [confirmed outline prefix]: do not repeat, rewrite, or restate it; continue naturally from chapter ${from}.`,
+        `第 1–${from - 1} 章的大纲已在【已完成大纲前缀】中给出（**可能按层压缩**：更早的卷只有交接单或卷纲摘要，更早的章只有标题行）：不得重复、改写或复述其中已有的内容；从第 ${from} 章起自然衔接继续书写。`,
+        `Chapters 1-${from - 1} are covered by the [confirmed outline prefix] (**possibly layered**: earlier volumes appear only as a handoff or outline summary, earlier chapters only as heading lines): do not repeat, rewrite, or restate what it contains; continue naturally from chapter ${from}.`,
       )
     : ''
   const trailing = to < totalChapters
@@ -3164,6 +3170,55 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     }, text)
     if (prefixNote) callbacks.log(prefixNote)
 
+    // P1-2 期 3 · 前缀分层投影（2026-10-25）。**只换注入**：`confirmedPrefix` 原件仍用于
+    // 落库、指纹与 seed 拼接 —— 把投影结果写回去会把库里的大纲永久压短。
+    const outlinePosition = confirmedPrefix
+      ? resolveOutlineVolumePosition({
+          from,
+          cursor: unitContext?.cursor ?? partial.synopsis_unit_cursor ?? null,
+          arcPlan: core?.plotStructurePlan,
+          totalChapters,
+        })
+      : null
+    const outlinePrefixContext = outlinePosition && (outlinePosition.volumeIndex ?? 0) >= 2
+      ? await readOutlinePrefixContext({
+          projectSession,
+          expectedProjectPath,
+          volumeIndex: outlinePosition.volumeIndex!,
+        })
+      : null
+    if (outlinePrefixContext?.warning) {
+      callbacks.log(text(`  大纲前缀：上一卷上下文不可读（${outlinePrefixContext.warning}），按「判断不出」处理`,
+        `  Outline prefix: previous-volume context unavailable (${outlinePrefixContext.warning}); treated as unknown`))
+    }
+    const outlineProjection = confirmedPrefix && outlinePosition
+      ? projectSynopsisForOutline(confirmedPrefix, {
+          from,
+          position: outlinePosition,
+          arcPlan: core?.plotStructurePlan,
+          writingLanguage,
+          previousHandoff: outlinePrefixContext?.previousHandoff ?? null,
+          previousVolumeFinalized: outlinePrefixContext?.previousVolumeFinalized ?? null,
+          proseFinalizedThrough: outlinePrefixContext?.proseFinalizedThrough ?? 0,
+        })
+      : null
+    if (outlineProjection) {
+      const l2Range = outlineProjection.l2.firstChapter === null
+        ? '无'
+        : `${outlineProjection.l2.firstChapter}–${outlineProjection.l2.lastChapter} 章`
+      const l3Label = outlineProjection.l3.kind === 'actual' ? '交接·实际'
+        : outlineProjection.l3.kind === 'plan' ? '卷纲·计划' : '无可用摘要'
+      callbacks.log(text(
+        `  【大纲前缀分层】设定 ${outlineProjection.setting.chars} 字 / 本卷已写 ${l2Range} ${outlineProjection.l2.chars} 字`
+        + `${outlineProjection.l2.omittedGroups > 0 ? `（省略 ${outlineProjection.l2.omittedGroups} 组正文）` : ''}`
+        + ` / 上一卷 ${l3Label} / 合计 ${outlineProjection.totalChars} 字`
+        + `${outlineProjection.degraded.length > 0 ? ` / degraded=${outlineProjection.degraded.join(',')}` : ''}`,
+        `  [Outline prefix layers] setting ${outlineProjection.setting.chars} chars / this volume ${l2Range} ${outlineProjection.l2.chars} chars`
+        + ` / previous volume ${l3Label} / total ${outlineProjection.totalChars} chars`
+        + `${outlineProjection.degraded.length > 0 ? ` / degraded=${outlineProjection.degraded.join(',')}` : ''}`,
+      ))
+    }
+
     // E4a-1 · 大纲字数体检（2026-10-19）：连续超写 / 总量超写。**只提示，不阻断**。
     const lengthNote = summarizeOutlineLength(partial.synopsis_result, {
       targetUnits: this.snapshot.targetUnits ?? null,
@@ -3190,9 +3245,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
             totalChapters,
           )
         : '',
-      confirmedPrefix
-        ? promptLanguageText(writingLanguage, `【已完成大纲前缀】\n${confirmedPrefix}`, `[Confirmed outline prefix]\n${confirmedPrefix}`)
-        : '',
+      // 分层投影在这里生效。空前缀 = 一篇大纲都没写（必然还在第 1 卷），不存在「上一卷」，
+      // 所以没有单独的「只有计划」兜底 —— 那句声明已由 renderOutlinePrefixBlock 内部发出。
+      outlineProjection ? renderOutlinePrefixBlock(outlineProjection, writingLanguage) : '',
     ].filter(Boolean).join('\n\n')
 
     const previousBatchPartial = mode === 'batch' && this.requireGenerationExecution().mainOwned ? { ...partial } : undefined
