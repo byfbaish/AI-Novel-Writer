@@ -139,7 +139,8 @@ describe('M03 review cycle migration', () => {
       // v2 → 3 不列入轮换：模型没输出 stateDelta 时两个版本的重建字节完全相同，
       // 「把版本号改成 3」不改变任何字节，也就没有可检测的差异（而它本身什么也没改）。
       // 改回 v1 与改成未知版本仍然必须被拒 —— 那两种会真的改变重建规则。
-      for (const changedVersion of [version === 1 ? 2 : undefined, 4]) {
+      // 未知版本用 5：4 自 A2 起是已知版本（item 级 review 轴），不再是「未知」。
+      for (const changedVersion of [version === 1 ? 2 : undefined, 5]) {
         const usage = JSON.parse(raw)
         if (changedVersion === undefined) delete usage.reviewRevisionEffect.reportVersion
         else usage.reviewRevisionEffect.reportVersion = changedVersion

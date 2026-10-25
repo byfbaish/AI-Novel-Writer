@@ -78,9 +78,10 @@ describe('portable v7 field policy', () => {
     // P1-1 期 4 / M17：+1 表 13 列（power_abilities）—— 59/558 → 60/571，属预期变化。
     // P1-2 期 1 / M18：+1 表 13 列（volume_handoffs）—— 60/571 → 61/584，属预期变化。
     // P1-2 期 1b / M19：**+2 表 21 列**（volumes 12 / volume_units 9），
-    //   且 volume_handoffs 由 13 列重建为 **11 列**（区间外置）—— 61/584 → 63/603，属预期变化。
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 63, fields: 603 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 63, fields: 603 })
+    //   且 volume_handoffs 由 13 列重建为 **11 列**（区间外置）—— 61/584 → 63/603。
+    // A2 / M20：+1 列（review_findings.review_class）—— 63/603 → 63/604，属预期变化。
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 63, fields: 604 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 63, fields: 604 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -119,8 +120,9 @@ describe('portable v7 field policy', () => {
     // + P1-1 期 3 / M16 的 1 表 11 列（knowledge_states）—— 计数随之 +11（192 → 203），属预期变化
     // + P1-1 期 4 / M17 的 1 表 13 列（power_abilities）—— 计数随之 +13（203 → 216），属预期变化
     // + P1-2 期 1 / M18 的 1 表 13 列（volume_handoffs）—— 216 → 229，同上。
-    // + P1-2 期 1b / M19：+2 表 21 列，volume_handoffs 少 2 列（13 → 11）—— 229 → 248，同上。
-    expect(added).toHaveLength(248)
+    // + P1-2 期 1b / M19：+2 表 21 列，volume_handoffs 少 2 列（13 → 11）—— 229 → 248。
+    // + A2 / M20：+1 列（review_class）—— 248 → 249，同上。
+    expect(added).toHaveLength(249)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -209,7 +211,7 @@ describe('portable v7 field policy', () => {
         + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
       // 同上：M17 的 1 表 13 列也计入（删掉索引的 DDL fork 仍必须被拒绝）。
       // P1-2 / M18：删掉索引的 DDL fork 仍必须被拒绝；计数同步到 61/584。
-      expect({ tables: tables.length, fields }).toEqual({ tables: 63, fields: 603 })
+      expect({ tables: tables.length, fields }).toEqual({ tables: 63, fields: 604 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)

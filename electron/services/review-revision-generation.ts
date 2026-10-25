@@ -5,7 +5,7 @@ import type { MainGenerationRunHandle, MainGenerationSnapshot } from '../../src/
 import type { BeginGenerationRequest } from '../../src/shared/generation-owner-contract'
 import type { PrepareReviewRevisionRequest, PreparedReviewRevisionContext, ReviewGenerationCommitRequest,
   RevisionGenerationCommitRequest, ReviewRevisionCommitReceipt, ReviewRevisionContext, ReviewRevisionRecovery } from '../../src/shared/review-revision-generation'
-import { buildReviewGenerationReport, type ReviewReportVersion } from '../../src/shared/review-generation-report'
+import { buildReviewGenerationReport, isSavedReviewReportVersion, type ReviewReportVersion } from '../../src/shared/review-generation-report'
 import { buildReviewCycleRecheckReport, isNoopRevision } from '../../src/shared/review-cycle'
 import { countDraftUnits } from '../../src/shared/draft-units'
 import { assertMateriallyCompleteRevision } from '../../src/services/workflows/commands/refinement-completeness'
@@ -109,7 +109,7 @@ export class ReviewRevisionGeneration {
     if (!rows[0]) return undefined
     const effect = JSON.parse(rows[0].usage_receipt_json).reviewRevisionEffect as Effect
     const context = this.context(run), proof = this.proveArtifact(run, effect.artifact)
-    if (effect.reportVersion !== undefined && (![2, 3].includes(effect.reportVersion) || effect.kind !== 'review'))
+    if (effect.reportVersion !== undefined && (!isSavedReviewReportVersion(effect.reportVersion) || effect.kind !== 'review'))
       throw new Error('GENERATION_REVIEW_RECEIPT_INVALID')
     if (proof.row.attempt_id !== rows[0].attempt_id || effect.contextHash !== contextHash(context)
       || effect.kind !== (context.operation === 'review-chapter' ? 'review' : 'revision')) throw new Error('GENERATION_REVIEW_RECEIPT_INVALID')

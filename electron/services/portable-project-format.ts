@@ -38,7 +38,8 @@ const m16Tables = new Set<string>(fieldPolicyDocument.m16Tables)
 const m17Tables = new Set<string>(fieldPolicyDocument.m17Tables)
 const m18Tables = new Set<string>(fieldPolicyDocument.m18Tables)
 const m19Tables = new Set<string>(fieldPolicyDocument.m19Tables)
-const m20Tables = new Set<string>(fieldPolicyDocument.m20Tables)
+/** 字段级：M20 只新增一列，不能把整张表的来源标签从 m01-m05-delta 改掉。 */
+const m20Fields = new Set<string>(fieldPolicyDocument.m20Fields)
 const deltaCharacterFields = new Set<string>(fieldPolicyDocument.deltaCharacterFields)
 const optionalFields = new Set<string>(fieldPolicyDocument.optionalFields)
 const signedOverrides = fieldPolicyDocument.signedOverrides as Record<string, string>
@@ -58,7 +59,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
       const rule = rules[code]
       const key = `${table}.${field}`
       const delta = optionalFields.has(key) || deltaTables.has(table) || m06Tables.has(table) || m08Tables.has(table)
-        || m11Tables.has(table) || m12Tables.has(table) || m13Tables.has(table) || m14Tables.has(table) || m15Tables.has(table) || m16Tables.has(table) || m17Tables.has(table) || m18Tables.has(table) || m19Tables.has(table) || m20Tables.has(table) || table === 'characters' && deltaCharacterFields.has(field)
+        || m11Tables.has(table) || m12Tables.has(table) || m13Tables.has(table) || m14Tables.has(table) || m15Tables.has(table) || m16Tables.has(table) || m17Tables.has(table) || m18Tables.has(table) || m19Tables.has(table) || m20Fields.has(key) || table === 'characters' && deltaCharacterFields.has(field)
       const signedDisposition = delta ? null : signedOverrides[key] ?? signedDefaults[code]
       if (!field || !rule || rule.length !== 3 || !PORTABLE_FIELD_DISPOSITIONS.has(rule[0])
         || typeof rule[1] !== 'string' || !rule[1] || typeof rule[2] !== 'string' || !rule[2]
@@ -77,7 +78,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
                         : m17Tables.has(table) ? 'm17-delta'
                         : m18Tables.has(table) ? 'm18-delta'
                           : m19Tables.has(table) ? 'm19-delta'
-                            : m20Tables.has(table) ? 'm20-delta'
+                            : m20Fields.has(key) ? 'm20-delta'
                             : delta ? 'm01-m05-delta' : 'signed-s01', signedDisposition }))
     }
   }

@@ -27,7 +27,7 @@
   "m17Tables": ["power_abilities"],
   "m18Tables": ["volume_handoffs"],
   "m19Tables": ["volumes", "volume_units"],
-  "m20Tables": ["review_findings"],
+  "m20Fields": ["review_findings.review_class"],
   "optionalFields": ["characters.avatar", "project_core.rhythm_profile", "summary_snapshots.story_day_offset", "summary_snapshots.story_day_label"],
   "deltaCharacterFields": ["character_id", "legacy_key", "static_provenance", "identity_revision", "retired"],
   "signedOverrides": {
