@@ -65,7 +65,7 @@ W6 的教训正是反过来的：先做了"查错"（账本），而"能用"和"
 
 ---
 
-### 2026-10-25 外部包吸收评估（oh-story v0.9.0）—— A3/A4 ✅ 已实施 · A2 下一期 · A1 降级 · A5 待定
+### 2026-10-25 外部包吸收评估（oh-story v0.9.0）—— A2/A3/A4/A5 ✅ 全部已实施 · A1 降级
 
 **缘起**：作者要求评估第三方 agent-skill 小说流水线包，找出值得吸收的设计与工具脚本。评估全文：[`research/2026-10-25-oh-story-absorption/assessment.md`](../research/2026-10-25-oh-story-absorption/assessment.md)（含事实底册、795 文件 sha256 清单、6.0MB 原件归档）。
 
@@ -84,15 +84,15 @@ W6 的教训正是反过来的：先做了"查错"（账本），而"能用"和"
 | 编号 | 裁定 | 去向 / 依据 |
 |---|---|---|
 | **A3 + A4** | ✅ **已实施** | `src/shared/visible-text-integrity.ts` 新增退化判据 · 新建 `src/shared/blueprint-verbatim-overlap.ts` · `generate-draft.command.ts` 五处挂载。回归：正文链 240/240、退化 20/20、照搬 13/13、`tsc` 通过。实施记录见评估稿 §9 |
-| **A2** | ✅ **已排期**（无人值守计划 T2/T3） | **轴纳入 `canonicalM03FindingSetHash`**（作者裁定：同性质的必须进）。目前**无发行版** ⇒ 迁移里直接重算存量 `finding_set_hash`，**不为旧口径留兼容分支**；存量 finding 的轴填 NULL，不按 category 猜。施工面 = M20（schema 20→21）+ 两处硬编码 20 占位符的测试 + `CURRENT_REVIEW_REPORT_VERSION` 3→4。计划 → [`handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md`](../handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md) |
+| **A2** | ✅ **已实施（M20，schema 20→21）** | **轴纳入 `canonicalM03FindingSetHash`**（作者裁定：同性质必须进）；无发行版 ⇒ 迁移里直接重算存量 `finding_set_hash`，不留兼容分支；存量轴填 NULL 不猜。实测推翻原计划的顺位：外溢不在测试数量，而在**便携格式字段策略**（`assertPortableSourceSchema` 未知字段 fail-closed ⇒ 不改就导出不了 .vela-pack）与 **M03 `proveArtifact` 的 `[2,3]` 版本白名单**（不改则每份新审稿被自己的校验判死）；M03 的 v20 指纹同理不能带新列，否则旧项目 `UNRECOGNIZED_SCHEMA`。实施记录 → 评估稿 §9b；执行过程与六处偏离 → [`handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md`](../handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md) |
 | **A1** | ⏸ **降级为「平台扩展参考材料」** | 成本过高：已定稿量少、外部完结书的校准标准难定、可能把污染语料带进语料库。前置调研已落盘 → [`research/2026-10-25-threshold-calibration-corpus/`](../research/2026-10-25-threshold-calibration-corpus/)（起点 3 条合法来源全限非商业、**番茄零**、公开世界无「AI 句式频次/误报率」可对标数据） |
-| **A5** | ✅ **已排期**（无人值守计划 T4） | 性质已查明：不是新建机制，而是把已有断言接进生产路径——`createPromptBudgetReport` 只在渲染层 `generation-harness.ts`，生产默认走的 mainOwned 路径**不执行断言**，`electron/` 零引用。改法：在 `workflow-main-generation.ts` 的 `complete` 里、调 IPC 之前用渲染层函数算一次，超限复用 `PROMPT_BUDGET_EXHAUSTED`；**不动 electron 侧，也不改现有 3 个调用点** |
+| **A5** | ✅ **已实施（mainOwned 派发前断言）** | 不是新建机制，而是把已有断言接进生产路径：`workflow-main-generation.ts` 的 `complete` 在派发前用 `createPromptBudgetReport` 算字节总量，超 `limitUtf8Bytes` 抛 `PromptBudgetExceededError`（复用既有类与文案）。渲染层拿不到模型上下文与输出预留 ⇒ 只做字节硬顶，边界写进注释。新增 2 例（超限时 `import-generation:execute` 零调用 / 不带 policy 照常派发）|
 
 **明确不吸收**（理由与逐字证据见评估稿 §4）：单一 JSON 状态源 + 派生视图逐字比对 · delta `retired_context_items`（我方 M13 按章向前更准）· 7 个平台扫榜爬虫 · 封面生成 · 本地 Dashboard · 7 宿主部署适配层 · 并行子代理编排。
 
 **只归档**（评估稿 §5）：`outline_view.py` 作用域取段（**P1-2 期 3 施工时参考**「退役行不输出」「旧文档缺声明只告警、保守纳入」两个细节）· `scripts/bench/` 预注册 + 非劣效门槛 · `check-reference-gates.js` · `wordcount_core.py` 的 frontmatter 剥离三条件。
 
-**边界**：本轮只出评估与登记，不写设计稿、不改代码、不排期。A1–A5 任一要动手时，从评估稿取用并另出设计稿。
+**边界**：A1 保持「只登记、不动手」；A2–A5 已实施完毕，后续如要扩展（例如让模板真的产出 `review` 键）另出设计稿。
 
 ---
 
@@ -133,7 +133,7 @@ W6 的教训正是反过来的：先做了"查错"（账本），而"能用"和"
 
 ---
 
-### 2026-10-25 书架：每一项都要能删（UI，已并入无人值守计划 T1）
+### 2026-10-25 书架：每一项都要能删（UI）—— ✅ 已实施
 
 **缘起**（作者）：重启项目后的首页，书架只有「加载后才能删除」不太合理；**实际路径已不存在的项目更要能删掉**。
 
@@ -141,7 +141,13 @@ W6 的教训正是反过来的：先做了"查错"（账本），而"能用"和"
 
 **目标**：每项独立删除入口（复用同一确认弹框与删除通道）；打开失败的项目标记「路径不存在」但仍可删。
 
-**边界**：不新增 IPC——若 `project:recent-list` 返回里没有路径存在性字段，改用「打开失败即标记」，不要为它加新通道。施工步骤见 [`handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md`](../handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md) T1。
+**实施结果（2026-10-25）**：按「谁能拿到删除授权」分两类——当前已验证项目真删目录（复用 `confirmDeleteCurrentProject`），其余一切条目降级为「从书架移除」（`removeRecentProject`，不动磁盘）。
+
+**计划里那条判断是错的，已纠正**：计划假设每项都能「删除」，但 `project:delete` 在主进程要求会话闸门授权（`assertCurrentProjectContext` + `authorizeDeletion` 校验目标路径必须等于当前项目根并核对清单身份）。所以「书架任意项真删目录」不是 UI 改动，而是**新增一条绕过闸门的破坏性 IPC**——本轮不开，等作者裁定。
+
+**路径是否存在不需要新通道**：主进程只在项目清单可读时才签发 `previewCapabilityId`，签不出来即代表目录不存在或不可读，据此打 `data-missing` + 显示「路径不存在」。
+
+**回归**：`writer-project-overview.browser.tsx` 9/9（原 7 例 + 新增 2 例）· `v3-shell` + `writer-shell` 20/20 · `tsc` 通过。偏离细节见 [`handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md`](../handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md) 文末。
 
 ---
 

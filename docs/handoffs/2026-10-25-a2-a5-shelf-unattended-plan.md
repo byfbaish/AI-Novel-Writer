@@ -1,9 +1,8 @@
 # 三小时无人值守执行计划 · A2 + A5 + 书架删除
 
-> 状态：待执行（2026-10-25）· 执行者：`hy4`（弱模型，无人值守）· 部分外包给 Copilot CLI
-> 基准：`exp/resource-ledger` @ `a36857c2`（工作区应干净）
-> 上级依据：`docs/research/2026-10-25-oh-story-absorption/assessment.md` §7 裁定表
-> **本计划执行完毕前不改任何 prompt 文案。**
+> 状态：**已执行完毕（2026-10-25）· 由主 agent 亲自执行，未交给 hy4** —— T1/T2/T3/T4 全部落地，但有 **6 处偏离计划**，见文末「执行结果与偏离」。不要按本稿再跑一遍。
+> 基准：`exp/resource-ledger` @ `a36857c2`（实际从 `8fb02cde` 起执行）· 上级依据：`docs/research/2026-10-25-oh-story-absorption/assessment.md` §7 裁定表 · §9b 实施记录
+> **本计划执行完毕前不改任何 prompt 文案。**（已遵守：本轮零 prompt 改动）
 
 ---
 
@@ -338,3 +337,28 @@ T<N> 第 <M> 小步
 ## 建议下一步
 <一句话>
 ```
+
+---
+
+## 执行结果与偏离（2026-10-25，主 agent 亲执行）
+
+| 任务 | 结果 | 提交 |
+|---|---|---|
+| T1 书架 | ✅ 每项有入口；**语义按授权分两档** | `8fb02cde` |
+| T2 A2 迁移 + 仓库 | ✅ M20（20→21），存量指纹重算 | `9be5a686` |
+| T3 A2 报告 + UI | ✅ 报告 v4 + 徽标 | 本组提交 |
+| T4 A5 预算断言 | ✅ mainOwned 派发前字节硬顶 | 本组提交 |
+| T5 收尾 | ✅ 文档 + 体检 + 回归 | 本组提交 |
+
+**六处偏离（前四处是计划写错，后两处是计划漏项）**
+
+1. **T1 的「每项都能删」不成立**：`project:delete` 在主进程要求会话闸门授权，`authorizeDeletion` 校验目标路径必须等于当前项目根 + 清单身份。非当前项目拿不到授权 ⇒ 真删目录要**新增一条绕过闸门的破坏性 IPC**，本轮不开。改为：当前项目真删；其余「从书架移除」（不动磁盘）。
+2. **T1 的「路径存在性」也不需要新通道**：`previewCapabilityId` 缺席即代表清单读不出来（目录不存在或不可读），据此标记即可。
+3. **T2 不能在 M03 建表 SQL 里加列**：reference 库算出的 v20 指纹会带新列而真实 v20 库不带 ⇒ `probeSchema` 报 `UNRECOGNIZED_SCHEMA`，**旧项目打不开**。列只由 M20 加，M03 的 `exactSchema` 改成按「实际有没有这一列」选期望形状。
+4. **T2 的两处位置式 INSERT 改成显式列名**（而非补第 21 个占位符）：`seedValid` 被十多个只跑到 M03 的用例共用，补值会把它们全打红。
+5. **T3 漏了 M03 `proveArtifact` 的 `[2,3]` 版本白名单**：不改则每份 v4 新审稿都被自己的完整性校验判死（该文件注释里记着同类事故：15 例 `REVIEW_CYCLE_INPUT_INVALID`）。
+6. **T3 漏了便携格式**：`portable-project-field-policy.json` 未知字段 fail-closed，schema 升版必须同补 `m20Tables` + `review_findings.review_class`，否则**导出 .vela-pack 直接 `PORTABLE_SCHEMA_UNSUPPORTED`**。
+
+**迁移自检**（真实项目库副本，不动原库）：v20 库（3 cycle/16 finding）→ 仅 M20 → 3/3 指纹重算、轴全 NULL、`verifyM03ReviewCycle` 仍 true；另两个老库（v9/v10）走完整车道到 v21，均自洽。
+
+**既有红（已在干净树复现）**：`draft-source-dependency` 4 例 · `ReviewReport.confirmation.browser.tsx` 2 例。

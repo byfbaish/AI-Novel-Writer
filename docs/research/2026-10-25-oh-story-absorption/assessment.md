@@ -1,6 +1,6 @@
 # oh-story-claudecode 吸收评估
 
-> 状态：**已裁定（2026-10-25）** · A3/A4 **已实施** · A2 排下一期 · A5 待定 · **A1 降级为「平台扩展参考材料」**（作者裁定：成本过高，见 §9）
+> 状态：**已裁定（2026-10-25）** · A2/A3/A4/A5 **均已实施** · **A1 降级为「平台扩展参考材料」**（作者裁定：成本过高，见 §9）
 > 评估对象：`oh-story-claudecode` v0.9.0（MIT，zenstory-ai）· 795 文件 / 11.7MB / 13 个 skill
 > 证据：[`facts-01-skills.md`](facts-01-skills.md)（13 skill 职责）· [`facts-02-scripts.md`](facts-02-scripts.md)（脚本判据逐字摘录）
 > 判定 canon：[`industry-alignment-and-stage-goals.md`](../../design/architecture/industry-alignment-and-stage-goals.md) §2 术语表与 §5 四问 · [`long-form-readiness-review.md`](../../design/architecture/long-form-readiness-review.md) · [`long-form-craft-alignment-assessment.md`](../../design/architecture/long-form-craft-alignment-assessment.md) · [`p2-1-continuity-findings-design.md`](../../design/review/p2-1-continuity-findings-design.md) §5
@@ -178,9 +178,9 @@
 | 项 | 裁定 | 去向 |
 |---|---|---|
 | **A3** 退化指纹 + **A4** 照搬检测 | ✅ **已实施** | 见 §9 实施记录。四项里最省的一对，纯函数 + 命令层挂载，零迁移 |
-| **A2** findings 双轴 | ✅ **做，接受一次迁移**（「缝缝补补拖泥带水，以后都是技术债」） | **下一期**。真身是 schema v20→21 + `canonicalM03FindingSetHash` + `CURRENT_REVIEW_REPORT_VERSION` 3→4 + 一处硬编码 20 个占位符的测试；与 A3/A4 全在 `src` 层不同，混做会让回归面失控 |
+| **A2** findings 双轴 | ✅ **已实施（M20，schema 20→21）** | 见 §10 实施记录。原计划「下一期、混做会让回归面失控」在实测中被推翻：真正的外溢不是测试数量，而是**便携格式的字段策略**与**M03 的自证哈希校验**两处硬编码——不一起改就等于把「新库打不开 / 导出被拒」写进代码 |
 | **A1** 风格 lint | ⏸ **降级：平台扩展参考材料** | 成本过高。前置语料调研已落盘 → [`../2026-10-25-threshold-calibration-corpus/`](../2026-10-25-threshold-calibration-corpus/) |
-| **A5** 加载预算硬上限 | ⏳ **待定** | 已查明性质：不是「新建机制」，而是「把已有断言接进生产路径」——`createPromptBudgetReport` 只在渲染层 `generation-harness.ts`，生产默认走的 mainOwned 路径**不执行断言**，`electron/` 零引用 |
+| **A5** 加载预算硬上限 | ✅ **已实施（mainOwned 派发前断言）** | 见 §10。性质确认为「把已有断言接进生产路径」：`createPromptBudgetReport` 原只在渲染层 harness 里跑，而生产默认走 mainOwned，配了 `promptBudget` 也无人执行 |
 | B 类 | 📦 归档 | 不排期；`outline_view.py` 的取段细节留给 P1-2 期 3 重定义时参考 |
 | C 类 | 🚫 明确不做 | 此表即理由，不再重复讨论 |
 
@@ -213,6 +213,45 @@
 `generate-draft.command.test.ts` **243/243**（237 既有 + 6 新增，覆盖五条挂载路径：首稿阻断 / 最终闸复读 / A4 阻断 / 短细纲降级 / 续写丢弃后恢复 / A4 advisory）· `visible-text-degeneracy` 20/20 · `blueprint-verbatim-overlap` 13/13 · `bounded-completion` + `draft-units` 98/98 · `refine-draft.command.test.ts` 49/49 · `npx tsc --noEmit` 通过。
 
 **未覆盖**：压缩轮复读（触发条件需构造超长稿，成本高；其挂载与续写同型，均为「并入 `accepted`」）。
+
+---
+
+## 9b. 实施记录（A2 + A5，2026-10-25）
+
+### 9b.1 A2 落了什么
+
+`review_findings` 增 `review_class TEXT CHECK(review_class IS NULL OR review_class IN ('mechanical','semantic'))`，由 **M20（schema 20→21）** 加；轴纳入 `canonicalM03FindingSetHash`，存量 cycle 的 `finding_set_hash` 在同一迁移里按新口径重算（存量 finding 轴一律 NULL，不按 category 猜）。报告合同 v4 允许 item 级可选 `review`；UI 每条 finding 显示「机械可改 / 需读上下文」，未标注不显示徽标。
+
+> **没有单建设计稿**：本轮按作者批准的无人值守计划执行，A2/A5 的行为变更以本节为唯一记录（写入位置、口径、四处被迫偏离、自检证据都在这里）。要扩展它（例如让模板真的产出 `review` 键）时，另出 `docs/design/` 下的设计稿，不要在这节继续加。
+
+### 9b.2 四处与计划不同（都是实测逼出来的，不改就是坏）
+
+| 计划说的 | 实际必须这样 | 不改的后果 |
+|---|---|---|
+| M03 建表 SQL 末尾加列（新库直接带） | **M03 保持 20 列**，列只由 M20 加；M03 的 `exactSchema` 按「实际有没有这一列」选择期望形状 | reference 库算出的 v20 指纹会带新列，而真实 v20 库不带 ⇒ `probeSchema` 报 `UNRECOGNIZED_SCHEMA`，**旧项目直接打不开** |
+| 两处 `INSERT ... VALUES(20 个 ?)` 改成 21 个占位符 | 改成**显式列名** | `seedValid` 被十多个只跑到 M03 的用例共用，加第 21 个值会把它们全打红 |
+| 只升 `CURRENT_REVIEW_REPORT_VERSION` | 还要放宽 M03 `proveArtifact` 的 `[2,3]` 白名单 | M03 每次 `create` 都对全库 receipt 重跑校验，不认 v4 ⇒ 每份新审稿都被自己的完整性校验判死 |
+| 只升 schema 版本 | 还要给便携格式补 `m20Tables` + `review_class` 字段策略 | `assertPortableSourceSchema` 未知字段即 fail-closed ⇒ **导出 .vela-pack 直接 `PORTABLE_SCHEMA_UNSUPPORTED`** |
+
+### 9b.3 迁移自检（真实项目库的副本，不动原库）
+
+| 库 | 迁移前 | 步数 | 结果 |
+|---|---|---|---|
+| A | v10，无审稿历史 | 11 步（M10–M20） | v21；轴全 NULL |
+| B | **v20，3 cycle / 16 finding** | **仅 M20** | v21；**3/3 指纹重算**；轴全 NULL；`verifyM03ReviewCycle` 仍 true |
+| C | v9，4 cycle / 10 finding | 12 步（M09–M20） | v21；**4/4 指纹重算**；同上 |
+
+B 是本轮最关键的证据：真实 v20 库能被 `probeSchema` 识别、只跑一步就到位、且重算后旧库自洽。
+
+### 9b.4 A5 落了什么
+
+`workflow-main-generation.ts` 的 `complete` 在**派发前**断言：`task.promptBudget` 存在时用 `createPromptBudgetReport` 算总量，超 `limitUtf8Bytes` 抛 `PromptBudgetExceededError`（复用既有错误类与文案）。渲染层拿不到模型上下文与输出预留，故只做字节硬顶（`contextWindowTokens: null` / `reservedOutputTokens: 0`），注释写明这个边界。新增 2 例：超限时 `import-generation:execute` 零调用；同一任务去掉 `promptBudget` 后照常派发。
+
+### 9b.5 回归
+
+`m03+m20+仓库+runner 车道` **124/124** · 契约与报告 **95/95** · 便携导出与恢复 **61/61** · `generation-harness` + `prompt-budget-failure` + `workflow-main-reasoning` + 新增预算测试 **45/45** · `review-report-i18n` 72/72 · 书架浏览器测试 9/9 · `tsc --noEmit` 通过。
+
+**既有红（均已在干净树上复现，与本轮无关）**：`draft-source-dependency` 4 例 · `ReviewReport.confirmation.browser.tsx` 2 例（断言「已解决」文案与目标行渲染，与 review 轴无交集）。
 
 ---
 
