@@ -24,7 +24,9 @@ import { parseArcStructure, scaledBoundaries, arcWeight, type ParsedArcStructure
  * | L3 上一卷快照 | 只保上一卷的 `handoff`（§5.4），此处按**估算**计入 | 固定 ≤1,500 字 |
  * | L4 最近 K 章 | 末尾 3 章全文 | 3 × 每章字数 |
  *
- * 本模块**只做估算**，不真的切分文本——切分要等 E4d 拿到实测对比后再做。
+ * 本模块**只做估算**。真正的切分在 `synopsis-projection.ts` 的
+ * `projectSynopsisForOutline`（P1-2 期 3，2026-10-25 已落地）；本文件留在原处是因为
+ * 日志仍需要「投影前 vs 投影后」的**估算**读数，两者不是同一件事（估算不看游标）。
  */
 
 /** 投影保留的「最近 K 章」全文。 */
