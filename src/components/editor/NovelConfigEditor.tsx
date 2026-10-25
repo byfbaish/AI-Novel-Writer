@@ -582,7 +582,7 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
           {/* 全局写作要求 */}
           <Section
             title={text('全局写作要求', 'Global writing guidance')}
-            desc={text('写作风格、禁忌事项、节奏控制等全局规则（AI 填充配置时会自动生成）。排版类要求（如"一句一段"）只对正文有意义，可用下方标签标出。', 'Global rules for style, pacing, and content restrictions. Formatting rules (e.g. "one sentence per paragraph") only matter for drafts — scope them with the tags below.')}
+            desc={text('全局规则：写作风格、禁忌事项、节奏控制，以及可数的硬指标（单段字数上限、对话占比、同一句式全章次数上限）。需要 AI 真正兑现的条款写这里——提示词把它归入「作者指导」，优先级高于文风。（AI 填充配置时会自动生成）排版类要求（如"一句一段"）只对正文有意义，可用下方标签标出。', 'Global rules: style, restrictions, pacing, and countable limits (max characters per paragraph, dialogue ratio, per-chapter caps on a repeated pattern). Put any clause you want actually enforced here — the prompt treats it as author guidance, ranked above writing style. Formatting rules (e.g. "one sentence per paragraph") only matter for drafts — scope them with the tags below.')}
             aiFieldKey="globalGuidance"
             generatingField={generatingField}
             onAIGenerate={handleFieldGenerate}
@@ -603,10 +603,14 @@ function NovelConfigEditorSession({ projectKey }: { projectKey: string }) {
             />
           </Section>
 
-          {/* 文风配置 */}
+          {/* 文风配置
+              P17-4：原文案承诺「严格遵循」，但提示词里该槽位紧跟【文风适用边界】
+              （"文风仅用于选择表达方式…无需逐条强行兑现"），模型因此有合法理由不做。
+              照实写，并把硬指标指引到真正会被当作要求落实的槽位（全局写作要求），
+              否则作者会继续把可数阈值写在这里。 */}
           <Section
             title={text('文风配置', 'Writing style')}
-            desc={text('AI 写稿/修稿时会严格遵循这里的风格要求。可手动填写或由 AI 自动生成。', 'AI follows these style requirements when drafting and revising. Enter them manually or generate with AI.')}
+            desc={text('决定 AI 选词、句式与叙述方式。这里的要求用于「选择表达方式」，不会被逐条强制兑现；必须兑现的硬指标（如单段不超过 120 字、对话占比 25%–40%）请写进上方「全局写作要求」。', 'Decides word choice, sentence shape, and narrative manner. These requirements guide how to express, and are not enforced item by item. Hard countable limits (e.g. max 120 characters per paragraph, 25%–40% dialogue) belong in "Global writing guidance" above.')}
             aiFieldKey="writingStyle"
             generatingField={generatingField}
             onAIGenerate={handleFieldGenerate}
