@@ -1,7 +1,7 @@
 # 写作能力家底与定位空白评估
 
-> 状态：待裁定（2026-10-26）
-> 日期：2026-10-26
+> 状态：待裁定（2026-10-25）
+> 日期：2026-10-25
 > 核对基准：分支 `exp/resource-ledger` · HEAD `97406deb` · schema v21
 > 上游：[`industry-alignment-and-stage-goals.md`](../architecture/industry-alignment-and-stage-goals.md) §5 四问
 > 互补稿（**本稿不重复其内容**）：
@@ -187,7 +187,7 @@ A1 的裁定理由里，真正致命的是中间那半句：**「用外部完结
 | 排除 | `plans/novel-quality-*` 与 `research/novel-quality-modernization/` 为冻结证据，**不计入家底、不改动** |
 | **不重做** | 外部包的逐条吸收评估（已由 `research/2026-10-25-oh-story-absorption/` 完成）；创作侧十维度（已由 craft-alignment 完成） |
 | 未取证 | 我没有逐份精读 skill 包的 45 份 references —— 本轮只核规模与文件名。因 A1 已降级、其余吸收项已有结论，本稿不需要精读 |
-| 口径 | 规模数字为 `ls` / `grep -c` 实测值，采集日 2026-10-26；外部包会随上游升级而变，数字需重核 |
+| 口径 | 规模数字为 `ls` / `grep -c` 实测值，采集日 2026-10-25；外部包会随上游升级而变，数字需重核 |
 | 不覆盖 | **产品级竞品分析**（Sudowrite / NovelCrafter / NovelAI 等成品）：没有做，也没找到仓内既有材料。这是 §3 的第四项缺口本身，不是本稿遗漏 |
 
 ---
