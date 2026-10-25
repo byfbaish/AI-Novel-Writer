@@ -32,6 +32,13 @@ export interface SpaceRule {
   hours?: TimeWindow
   /** 声明原文，仅用于 finding 取证。 */
   hoursRaw?: string
+  /**
+   * 作者显式声明「本空间没有时段概念」（`hours=none`）。
+   *
+   * 与「未声明 `hours=`」必须分开：后者是缺数据（要报「不可判定」），前者是一个决定
+   * （该空间本来就不参与钟点判定，不该每章冒一条 info）。
+   */
+  noWindow?: true
   /** `entry=` 的原文（本校验器不判定准入，只随证据带出）。 */
   entry?: string
 }
@@ -172,6 +179,9 @@ export function parseSpaceRules(worldBuildingText: string | null | undefined): S
         // `每月D日…` 与跨日区间需要「当月第几日」，本系统不做历法推演 ⇒ 保持 undefined，
         // 由判定层产出 info「未提供可判定形式」，而不是把它当成缺失或当成合规。
         const parsed = parseSpaceHours(value)
+        // `hours=none`：作者声明该空间无时段概念 ⇒ 显式记 noWindow，别让它掉进
+        // 「按月窗口」那条分支（否则会给出「需要月历换算」的错误解释）。
+        if (parsed.kind === 'none') rule.noWindow = true
         rule.hours = parsed.kind === 'daily' ? { start: parsed.start, end: parsed.end } : undefined
       } else if (value) rule.entry = value
     }
@@ -280,6 +290,8 @@ export function findSpaceTimeConflicts(input: SpaceTimeValidationInput): SpaceTi
         },
       }]
     }
+    // 作者显式声明「无时段概念」⇒ 这一格不参与钟点判定，也不逐章冒 info。
+    if (rule.noWindow) return []
     // 缺任一结构化字段 ⇒ 没有可判定形式：只记 info，绝不判冲突（判据 ⑫）。
     if (rule.hours === undefined || ref.timeRef === undefined) {
       // 三种「不可判定」必须分开说，否则作者会照着错的提示去补一个本来就在的东西：

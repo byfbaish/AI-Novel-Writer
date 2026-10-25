@@ -347,6 +347,8 @@ export function evaluateSpaceAccess(
   if (parsed.kind === 'day-range') {
     return unknown(`hours 跨日历日（每月 ${parsed.startDay} 日–${parsed.endDay} 日），锚点没有当月日期，未判`)
   }
+  // 作者显式声明「本空间无时段概念」⇒ 不存在越界这回事，但也**不是**合规（判据 CL）。
+  if (parsed.kind === 'none') return unknown(`「${target}」登记为 hours=none（无时段概念），钟点不判`)
 
   const overnight = parsed.start > parsed.end
   const inside = overnight

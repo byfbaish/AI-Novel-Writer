@@ -211,7 +211,8 @@ describe('label tables', () => {
 
   it('labels every space-audit issue kind in both languages', () => {
     const kinds = Object.keys(SPACE_AUDIT_KIND_LABELS)
-    expect(kinds).toHaveLength(10)
+    // 11 种：新增 `staging-unverified`（自评一次性/低频却无窗口 ⇒ 汇总一条待核对）。
+    expect(kinds).toHaveLength(11)
     for (const kind of kinds) {
       expect(SPACE_AUDIT_KIND_LABELS[kind as keyof typeof SPACE_AUDIT_KIND_LABELS].zh.length).toBeGreaterThan(0)
       expect(SPACE_AUDIT_KIND_LABELS[kind as keyof typeof SPACE_AUDIT_KIND_LABELS].en.length).toBeGreaterThan(0)

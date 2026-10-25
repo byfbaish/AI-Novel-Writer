@@ -22,19 +22,24 @@
  * - 解析失败一律 `unreadable`：**不猜、不当合规**（判据 CL：缺数据必须显式「未判」）。
  * - 不修改世界观正文、不写库。
  *
- * ## 两档 severity（2026-10-26 作者实测后加）
+ * ## 两档 severity + 三态窗口（2026-10-26，作者两轮实测后定）
  *
- * 作者真实数据：10 个空间报 7 处待确认，**7 处没有一处是真问题** —— 5 条是「一次性场景没写
- * hours」（一次性场景本来就没有开放窗口），2 条是「约束装不下」（这条约束的归属地就是 prompt
- * 里的规则原文，作者既补不了也关不掉）。结果是这一节被训练成「看见就跳过」。
+ * 作者真实数据：10 个空间报 7 处待确认，其中 5 条是「一次性场景没写 hours」、2 条是「约束装不下」。
+ * 第一版把前者降级成提示，被作者当场否掉且理由成立：**分级声明是模型自己写的**，
+ * 给一切空间贴「低频」就能免于时间判定（实测 5 个自评低频里至少 3 个明显会复发）。
  *
- * 因此 issue 分两档：`attention`（真需要动手，计入「N 处待确认」）与 `info`（设计内提示，
- * 单独成组展示、不计数）。降级只发生在三个**可证明没事可做**的形态上：`rule-not-encoded`、
- * `end-of-day-2400`、以及**声明为一次性/低频**场景的 `no-hours`。后者读的是模板第 4 维要求的
- * 「说明哪些空间是长期舞台、哪些是一次性场景」，见 `extractSpaceStaging`。
+ * 作者的第二句话给出了正确的轴：「不是所有地图都有窗口期」。缺的不是容错，是**第三种表达** ——
+ * `entry=` 写满而 `hours=` 缺失的行是二义的：「漏写」与「本来就不适用」长得一样。于是：
  *
- * 两条 fail-open：抽不到分级声明、或声明里一个真实空间名都对不上 ⇒ 一律保持原判定。
- * 「降级」永远不会让一条本该报的问题消失，只会让不该报的不占计数。
+ * | 写法 | 含义 | 判定 |
+ * |---|---|---|
+ * | `hours=HH:MM-HH:MM` | 有时段 | 参与钟点判定 |
+ * | `hours=none` | 显式声明无时段概念（低敏感区/通过型场景） | 不报、不判定 |
+ * | 不写 `hours=` | 缺失（漏写或还没决定） | **报 `no-hours`，要作者二选一** |
+ *
+ * 分级只改**措辞**（一次性场景多给一句「若确实没有时段概念就写 hours=none」），不减免条数。
+ * `rule-not-encoded` 与 `end-of-day-2400` 固定为 `info`：这两类作者既补不了也关不掉，计进「待确认」
+ * 只会把真正的漏写淹掉。计数只有一处实现（`spaceAuditCounts`），面板与步骤日志共用。
  */
 
 import { extractSpaceConstraints } from './space-constraints'
@@ -56,6 +61,8 @@ export type ParsedSpaceHours =
   | { kind: 'daily'; start: number; end: number; note?: string }
   | { kind: 'monthly'; day: number; start: number; end: number; note?: string }
   | { kind: 'day-range'; startDay: number; start: number; endDay: number; end: number; note?: string }
+  /** 显式声明「这个空间没有时段概念」（低敏感区、通过型场景）。**不是**漏写。 */
+  | { kind: 'none' }
   | { kind: 'unreadable'; reason: string }
 
 /** 一条机读行。 */
@@ -171,17 +178,24 @@ const MONTHLY_PATTERN = new RegExp(
 )
 
 /**
- * 解析 `hours=` 的值。支持三种形态：
+ * 解析 `hours=` 的值。支持三种窗口形态 + 一种显式「无时段」：
  *
  * - `HH:MM-HH:MM` / `当日HH:MM-HH:MM` / `每日…`  → `daily`
  * - `每月DD日HH:MM-HH:MM`                        → `monthly`
  * - `每月DD日HH:MM-DD日HH:MM`                    → `day-range`
+ * - `none`（大小写不敏感）                        → `none` = 作者声明「本空间无时段概念」
  *
  * `24:00` 作为结束时刻被容忍（`note` 里说明），其余越界一律 `unreadable`。
+ *
+ * 为什么要有 `none`：`entry=` 写满、`hours=` 缺失的行是**二义**的 —— 「漏写」与「本来就不适用」
+ * 长得一模一样。作者实测的一句话点破了这件事：**不是所有地图都有窗口期**（低敏感区、通过型场景
+ * 本来就没有开放时间）。但机器没有第三种表达，就只能把两者都报成「缺窗口」，报到最后没人看。
+ * 加一个显式取值，机器就能把「没写」和「写了不适用」分开 —— 前者是漏，后者是决定。
  */
 export function parseSpaceHours(raw: string): ParsedSpaceHours {
   const text = raw.trim()
   if (!text) return { kind: 'unreadable', reason: 'hours 为空' }
+  if (/^none$/iu.test(text)) return { kind: 'none' }
 
   const dayRange = DAY_RANGE_PATTERN.exec(text)
   if (dayRange) {
@@ -413,20 +427,25 @@ export function auditSpaceLocations(worldbuilding: string | null | undefined): S
     if (line.hours === null) {
       const freeAccess = line.entry ? FREE_ACCESS_HINT.test(line.entry) : false
       if (!freeAccess) {
+        // **缺字段一律报**，不管它是长期舞台还是自评一次性：机器分不清「漏写」与「不适用」，
+        // 而分不清就必须问（判据 CL）。自评分级只用来把问题问得更准，不用来免检 ——
+        // 否则模型给一切空间贴「低频」就能让整期检查名存实亡（作者 2026-10-26 当面指出）。
         const oneOff = stageOf(line.name) === 'one-off'
         issues.push({
           kind: 'no-hours',
-          // 一次性/低频场景本来就没有「开放窗口」这回事：缺 hours 是正确状态，不该进待确认。
-          severity: oneOff ? 'info' : 'attention',
+          severity: 'attention',
           space: line.name,
           detail: oneOff
-            ? '世界观已声明这是一次性/低频场景，故未写 hours ⇒ 缺窗口是正常的；若它其实会反复出现，请补 hours。'
-            : '机读行没有 hours，entry 里也没写"自由进出/不限"⇒ 请确认是全天开放还是漏写。',
+            ? '该空间自评为「一次性/低频」但没有 hours ⇒ 若它确实没有时段概念（低敏感区、通过型场景），'
+              + '请把机读行写成 hours=none 显式声明；若它会再次出现，请补窗口。现在「没写」两者都算。'
+            : '机读行既没有 hours 也没有 hours=none ⇒ 请写窗口，或写 hours=none 声明「本空间无时段概念」。',
         })
       }
     } else {
       const parsed = parseSpaceHours(line.hours)
-      if (parsed.kind === 'unreadable') {
+      if (parsed.kind === 'none') {
+        // 显式「无时段」：作者已经做过决定，不算漏写、不参与窗口判定。
+      } else if (parsed.kind === 'unreadable') {
         issues.push({
           kind: 'hours-unreadable',
           severity: 'attention',
@@ -488,7 +507,8 @@ export function auditSpaceLocations(worldbuilding: string | null | undefined): S
     }
 
     // 4) 语义压缩：规则是"申请/办理窗口"，但被压成了空间开放 hours
-    if (line.hours !== null && APPLICATION_WINDOW_HINT.test(rule)) {
+    //    `hours=none` 不算"有窗口"，所以这一条对它不适用。
+    if (line.hours !== null && !/^none$/iu.test(line.hours.trim()) && APPLICATION_WINDOW_HINT.test(rule)) {
       issues.push({
         kind: 'window-semantics-ambiguous',
         severity: 'attention',
@@ -512,6 +532,9 @@ export function auditSpaceLocations(worldbuilding: string | null | undefined): S
       }
     }
   }
+
+  // 6) 「自评一次性/低频」不再单独成条：分级只影响 `no-hours` 的措辞，不再是免检依据。
+  //    免检的唯一凭据是**显式** `hours=none` —— 作者做过的决定，而不是模型贴的标签。
 
   return {
     tableSpaces: tableEntries.length,

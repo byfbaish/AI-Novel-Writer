@@ -12,6 +12,7 @@ import { Compass } from 'lucide-react'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { selectWorldStateSnapshot, useWorldStateStore } from '../../../stores/world-state-store'
+import { spaceAuditCounts } from '../../../shared/space-machine-line'
 import { EmptyState } from '../../ui/EmptyState'
 import {
   WORLD_STATE_SECTION_LABELS,
@@ -59,8 +60,11 @@ export default function WorldStateNav() {
     // 资源计数是「已登记的资源条数」，不是余额、也不是变动条数。
     resources: data?.resources.items.length ?? 0,
     facts: data?.continuityFacts.length ?? 0,
-    // 空间检查的计数是「待确认处数」，不是条目数。
-    space: data?.spaceAudit.issues.length ?? 0,
+    // 空间检查的计数是「待确认处数」，不是条目数 —— 且只数 `attention`：
+    // 设计内提示（约束装不下 / 一次性场景缺窗口）不是待办，混进来这一栏永远清不零。
+    // 计数必须走同一个 helper：2026-10-26 这里还留着 `issues.length`，
+    // 于是主区已经显示 0 处、左栏还在显示 7 处（判据 DG 同型：同一事实两处各算一遍）。
+    space: data ? spaceAuditCounts(data.spaceAudit).attention : 0,
   }
   const spaceUnreadable = data?.spaceAudit.unreadable ?? true
   // 资源表没读到 ≠ 0 个资源：左栏同样显示「—」，与空间检查同一条规矩。
