@@ -54,6 +54,7 @@ docs/
 | **放文档 / 归档文档 / 判断该不该新建一份** | [`agents/documentation-charter.md`](agents/documentation-charter.md) —— 四层模型 + 单一事实源 + 完成定义 + 反例库 |
 | **要跑某个构建/验收/运维脚本，或想知道「改完这个该跑什么」** | [`../scripts/README.md`](../scripts/README.md) —— 按用途分类 + 「何时跑」+ 谁调用（npm script / CI / 手工） |
 | 产品术语 / 事实源边界 | [`product-domain.md`](product-domain.md) |
+| **这工具该为谁做、什么算写得好**（定位空白 + 五份评估稿导航） | [`design/product/writing-capability-assessment.md`](design/product/writing-capability-assessment.md) —— 定位只写了形态没写价值；`目标用户`/`用户画像` 全库 0 命中；「写得好」缺位是 C8 与 A1 降级的共同根因 |
 
 ---
 
@@ -268,6 +269,12 @@ docs/
 | [`task-completion-notify-design.md`](design/features/task-completion-notify-design.md) | 已列入待办（顺延） | 应用内 toast 统一宿主 + 热插拔注册表（作者裁先做系统级；将来可合并为双输出） |
 | [`ai-output-live-render-design.md`](design/features/ai-output-live-render-design.md) | ✅ 已实施 | AI 输出面板运行态只给状态行、不渲染流式文本（原文：审稿把渲染进程推到 10GB 的 O(n²) 取证与参数） |
 | [`p16b-prompt-config-and-trace-guide.md`](design/features/p16b-prompt-config-and-trace-guide.md) | ✅ 已实施 | 作者操作手册：三条配置边界、口味/数字之辨、三类打架、Prompt 追踪五步归因 |
+
+### 4.6 产品与方法论 · [`design/product/`](design/product/)（1 篇）
+
+| 文档 | 状态 | 一句话 |
+|---|---|---|
+| [`writing-capability-assessment.md`](design/product/writing-capability-assessment.md) | 待裁定 | **五份评估稿的导航** + 定位三问（用户 / 质量标准 / 竞品）+ 「写得好」缺位为何让所有质量判据必然降级 |
 
 ---
 
