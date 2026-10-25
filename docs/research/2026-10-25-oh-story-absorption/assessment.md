@@ -249,9 +249,18 @@ B 是本轮最关键的证据：真实 v20 库能被 `probeSchema` 识别、只�
 
 ### 9b.5 回归
 
-`m03+m20+仓库+runner 车道` **124/124** · 契约与报告 **95/95** · 便携导出与恢复 **61/61** · `generation-harness` + `prompt-budget-failure` + `workflow-main-reasoning` + 新增预算测试 **45/45** · `review-report-i18n` 72/72 · 书架浏览器测试 9/9 · `tsc --noEmit` 通过。
+**改动面全绿**：`m03+m20+仓库+runner 车道` **124/124** · 便携字段策略与导出/恢复 **90/90**（`portable-project-format` 29 + `project-archive-service`/`portable-project-archive` 61）· `review-revision-generation` **44/44** · 契约与报告 **95/95** · `generation-harness` + `prompt-budget-failure` + `workflow-main-reasoning` + 新增预算测试 **45/45** · `generate-draft.command` **243/243** · `review-report-i18n` 72/72 · 书架浏览器测试 9/9 · `tsc --noEmit` 通过 · doc links 925/0 · placement 新增 0。
 
-**既有红（均已在干净树上复现，与本轮无关）**：`draft-source-dependency` 4 例 · `ReviewReport.confirmation.browser.tsx` 2 例（断言「已解决」文案与目标行渲染，与 review 轴无交集）。
+**升 v4 时抓到的三处外溢**（都不是「测试数量」问题，而是不修就坏）：
+1. `review-revision-generation.saved()` 里第二处 `[2,3]` 白名单 ⇒ 新审稿读回即抛 `GENERATION_REVIEW_RECEIPT_INVALID`。
+2. 便携策略若按**整表**归入 m20，会把 `review_findings` 全部 21 列的 origin 从 `m01-m05-delta` 改成 `m20-delta`（历史来源标签被篡改，m01-m05 计数 123→103）⇒ 改成**字段级** `m20Fields`。
+3. 两个测试把「4」当成未知版本探针，4 变已知后这些探针不再被拒 ⇒ 改 5；并保留「v2↔v3 重建字节相同故查不出」的原判据。
+
+**既有红（本轮改动前的 `8fb02cde` 树上以同一条命令复跑，失败数相同或更多）**：`draft-source-dependency` 4 · `llm-controller-connection` 2 · `m02-project-upgrade` 3 · `main-generation-owner` 1 · `project-peek-readonly` 8 · `legacy-project-copy-import` 3 · `project-archive-service`（ENOTEMPTY）· `project-format-migration`（safe-delete）· `project-restore-service` / `user-settings-package-controller`（ENOTEMPTY）· `vector-migration-snapshot`（NONREGULAR）· `generation-controller`（5s 超时；基线整份 42 全红，现在只剩 1 例超时）。
+
+**两条环境事实（不记下来下轮还会踩）**：
+- `electron/` 全量一次跑在沙箱里必炸：`safe-delete` 阈值 50（栈落在 teardown 的 `fs.rmSync`）+ 10s hook 超时。摘 `CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR` / `CODEBUDDY_TOOL_CALL_ID` 可把红从 1145 降到 104，但**全量跑法本身不可信**，只能按文件/按目录跑。
+- 临时 `git worktree` **不能放在仓库内**：vitest 的 include 会把它一起扫进去，测试数翻倍、失败项里出现 `.wt-baseline/...`，对照实验直接作废。
 
 ---
 
