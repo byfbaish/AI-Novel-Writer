@@ -21,6 +21,8 @@ export interface ReviewCycleFindingProjection {
   kind: 'objective' | 'literary'
   status: ReviewFindingStatus
   targetId?: string
+  /** M20 起：这条能不能机械地改。缺失即未标注，不要推断。 */
+  reviewClass?: 'mechanical' | 'semantic'
 }
 export interface ReviewCycleProjection {
   cycleId: string

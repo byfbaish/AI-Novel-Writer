@@ -13,6 +13,7 @@ import {
   canonicalM03FindingSetHash,
   verifyM03ReviewCycle,
 } from '../../migrations/m03-review-cycle'
+import { applyM20ReviewClass } from '../../migrations/m20-review-class'
 import { RevisionRepository } from '../revision-repository'
 import {
   ReviewCycleRepository,
@@ -28,7 +29,7 @@ function fixture() {
   db.pragma('foreign_keys=ON')
   db.transaction(() => {
     initializeLegacyBaselineSchema(db); db.exec(M01_GENERATION_SQL)
-    applyM03ReviewCycle(db); applyM06ReviewCycleMerge(db)
+    applyM03ReviewCycle(db); applyM06ReviewCycleMerge(db); applyM20ReviewClass(db)
   })()
   return db
 }

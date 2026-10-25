@@ -9,6 +9,7 @@ import { M01_GENERATION_SQL } from '../m01-generation-runs'
 import { applyM03ReviewCycle, applyM06ReviewCycleMerge, canonicalM03FindingSetHash, createM03Migration,
   verifyM03ReviewCycle,
   type M03FindingDescriptor } from '../m03-review-cycle'
+import { applyM20ReviewClass } from '../m20-review-class'
 import { buildReviewGenerationReport } from '../../../src/shared/review-generation-report'
 import { buildReviewCycleRecheckReport, type ReviewCycleRecheckContext } from '../../../src/shared/review-cycle'
 
@@ -98,7 +99,10 @@ function seedValid(db: import('better-sqlite3').Database, options: { longReport?
   status: 'unresolved', evidenceHash: null, confirmationItemIndex: null }
   db.prepare(`INSERT INTO review_cycles VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run('cycle-1', root, reviewId, hash(reviewBody),
     confirmationId, hash(confirmationBody), revisionId, hash(source), canonicalM03FindingSetHash([finding]), 1, 'generated', null, 0, null)
-  db.prepare(`INSERT INTO review_findings VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run('cycle-1', finding.findingId,
+  // 显式列名，不用位置式：M20 会再加一列，位置式会把「加列」变成「改测试」。
+  db.prepare(`INSERT INTO review_findings(cycle_id,finding_id,source_project_id,source_epoch,source_id,source_revision,
+    source_content_hash,span_start,span_end,span_unit,excerpt_hash,occurrence,category,target_id,kind,problem_text,
+    expected_text,status,evidence_hash,confirmation_item_index) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run('cycle-1', finding.findingId,
     finding.source.projectId, finding.source.epoch, finding.source.sourceId, finding.source.revision, finding.source.contentHash,
     finding.source.span!.start, finding.source.span!.end, finding.source.span!.unit, finding.excerptHash, finding.occurrence,
     finding.category, finding.targetId, finding.kind, finding.problemText, finding.expectedText,
@@ -282,7 +286,9 @@ describe('M03 review cycle migration', () => {
       status: 'unverified', evidenceHash: null, confirmationItemIndex: null }
       db.prepare('INSERT INTO review_cycles VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run('cycle-u', root, reviewId, hash(reviewBody), null, null, null,
         hash(source), canonicalM03FindingSetHash([finding]), 1, 'not-generated', null, 0, null)
-      db.prepare('INSERT INTO review_findings VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run('cycle-u', finding.findingId,
+      db.prepare(`INSERT INTO review_findings(cycle_id,finding_id,source_project_id,source_epoch,source_id,source_revision,
+        source_content_hash,span_start,span_end,span_unit,excerpt_hash,occurrence,category,target_id,kind,problem_text,
+        expected_text,status,evidence_hash,confirmation_item_index) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run('cycle-u', finding.findingId,
         finding.source.projectId, finding.source.epoch, finding.source.sourceId, finding.source.revision, finding.source.contentHash,
         null, null, null, null, null, finding.category, null, finding.kind, finding.problemText, finding.expectedText,
         finding.status, null, null)
@@ -316,7 +322,8 @@ describe('M03 review cycle migration', () => {
   it.each([1, 2] as const)('accepts one same-root recheck with report derivation v%i and bound evidence', reportVersion => {
     const db = fixture()
     try {
-      db.transaction(() => applyM03ReviewCycle(db))()
+      // 仓库按当前车道（含 M20 的 review_class 列）读表，所以这里要把库升到位。
+      db.transaction(() => { applyM03ReviewCycle(db); applyM20ReviewClass(db) })()
       const seeded = seedValid(db), merged = '甲推开门，先抖落袖口的雨水，再确认门闩完好。'
       const excerpt = '雨水顺着袖口落下'
       const start = seeded.source.indexOf(excerpt)

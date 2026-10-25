@@ -35,6 +35,8 @@ export interface M03FindingDescriptor {
   status: 'unverified' | 'unresolved' | 'unknown' | 'resolved' | 'author-waived'
   evidenceHash: string | null
   confirmationItemIndex: number | null
+  /** M20 起：这条能不能机械地改。null = 未标注（存量 finding 不猜）。 */
+  reviewClass?: 'mechanical' | 'semantic' | null
 }
 
 /** Canonical order is finding identity order; a null span is the explicit unverified-anchor marker. */
@@ -45,7 +47,8 @@ export function canonicalM03FindingSetHash(findings: readonly M03FindingDescript
     spanStart: finding.source.span?.start ?? null, spanEnd: finding.source.span?.end ?? null,
     spanUnit: finding.source.span?.unit ?? null, excerptHash: finding.excerptHash, occurrence: finding.occurrence,
     category: finding.category, targetId: finding.targetId, kind: finding.kind,
-    problemText: finding.problemText, expectedText: finding.expectedText }))
+    problemText: finding.problemText, expectedText: finding.expectedText,
+    reviewClass: finding.reviewClass ?? null }))
   return hash(JSON.stringify(immutable.sort((left, right) => left.findingId < right.findingId ? -1 : left.findingId > right.findingId ? 1 : 0)))
 }
 
@@ -145,6 +148,8 @@ interface FindingRow {
   span_unit: string | null; excerpt_hash: string | null; occurrence: number | null; category: string
   target_id: string | null; kind: string; problem_text: string; expected_text: string | null
   status: string; evidence_hash: string | null; confirmation_item_index: number | null
+  /** M20 之前的表没有这一列。 */
+  review_class?: string | null
 }
 interface ReviewRow { id: number; base_draft_id: number; source_draft_chapter_number: number | null; source_draft_version: number | null;
   source_draft_status: string | null; source_content: string | null; body: string }
@@ -287,14 +292,15 @@ function proveEffect(db: Database.Database, row: AttemptRow, expected: {
   } else if (stored.compositionHash !== undefined) return false
   return true
 }
-function descriptor(row: FindingRow): M03FindingDescriptor {
+export function descriptor(row: FindingRow): M03FindingDescriptor {
   return { findingId: row.finding_id, source: { projectId: row.source_project_id, epoch: row.source_epoch,
     sourceId: row.source_id, revision: row.source_revision, contentHash: row.source_content_hash,
     span: row.span_start === null ? null : { start: row.span_start, end: row.span_end!, unit: 'utf16-code-unit' } },
   excerptHash: row.excerpt_hash, occurrence: row.occurrence, category: row.category,
   targetId: row.target_id, kind: row.kind as M03FindingDescriptor['kind'], problemText: row.problem_text,
   expectedText: row.expected_text, status: row.status as M03FindingDescriptor['status'],
-  evidenceHash: row.evidence_hash, confirmationItemIndex: row.confirmation_item_index }
+  evidenceHash: row.evidence_hash, confirmationItemIndex: row.confirmation_item_index,
+  reviewClass: (row.review_class ?? null) as M03FindingDescriptor['reviewClass'] }
 }
 
 function exactSchema(db: Database.Database, table: string, columns: readonly string[], fragments: readonly string[]): boolean {
@@ -303,6 +309,22 @@ function exactSchema(db: Database.Database, table: string, columns: readonly str
   if (JSON.stringify(actual) !== JSON.stringify(columns) || !row) return false
   const compact = row.sql.replace(/\s/gu, '').toLowerCase()
   return fragments.every(fragment => compact.includes(fragment.replace(/\s/gu, '').toLowerCase()))
+}
+
+const REVIEW_FINDING_COLUMNS_M03 = Object.freeze(['cycle_id', 'finding_id', 'source_project_id', 'source_epoch', 'source_id',
+  'source_revision', 'source_content_hash', 'span_start', 'span_end', 'span_unit', 'excerpt_hash', 'occurrence', 'category',
+  'target_id', 'kind', 'problem_text', 'expected_text', 'status', 'evidence_hash', 'confirmation_item_index'] as const)
+/** M20 追加在末尾；校验按「实际有没有这一列」选择期望形状，这样 M03 的校验对 M20 前后的库都成立。 */
+const REVIEW_FINDING_COLUMNS_M20 = Object.freeze([...REVIEW_FINDING_COLUMNS_M03, 'review_class'] as const)
+const REVIEW_FINDING_REVIEW_CLASS_CHECK = "CHECK(review_class IS NULL OR review_class IN ('mechanical','semantic'))"
+
+function reviewFindingHasClass(db: Database.Database): boolean {
+  return (db.prepare("PRAGMA table_info(review_findings)").all() as { name: string }[])
+    .some(row => row.name === 'review_class')
+}
+
+function expectedReviewFindingColumns(db: Database.Database): readonly string[] {
+  return reviewFindingHasClass(db) ? REVIEW_FINDING_COLUMNS_M20 : REVIEW_FINDING_COLUMNS_M03
 }
 
 export function verifyM03ReviewCycle(db: Database.Database): boolean {
@@ -320,11 +342,10 @@ export function verifyM03ReviewCycle(db: Database.Database): boolean {
       'review_id INTEGER NOT NULL UNIQUE REFERENCES reviews(id) ON DELETE CASCADE', 'confirmation_review_id INTEGER UNIQUE REFERENCES reviews(id)',
       'revision_id INTEGER UNIQUE REFERENCES revisions(id)', 'recheck_attempt_id TEXT UNIQUE REFERENCES generation_attempts(attempt_id)',
       "CHECK(recheck_count IN (0,1))", "revision_status='merge-committed'",
-    ]) || !exactSchema(db, 'review_findings', ['cycle_id', 'finding_id', 'source_project_id', 'source_epoch', 'source_id',
-      'source_revision', 'source_content_hash', 'span_start', 'span_end', 'span_unit', 'excerpt_hash', 'occurrence', 'category',
-      'target_id', 'kind', 'problem_text', 'expected_text', 'status', 'evidence_hash', 'confirmation_item_index'], [
+    ]) || !exactSchema(db, 'review_findings', expectedReviewFindingColumns(db), [
       'cycle_id TEXT NOT NULL REFERENCES review_cycles(cycle_id) ON DELETE CASCADE',
       "status IN ('unverified','author-waived')", "span_unit='utf16-code-unit'", "status='author-waived'",
+      ...(reviewFindingHasClass(db) ? [REVIEW_FINDING_REVIEW_CLASS_CHECK] : []),
     ])) return false
     const cycles = db.prepare('SELECT * FROM review_cycles ORDER BY cycle_id').all() as CycleRow[]
     const snapshots = mergeTable ? new Map((db.prepare('SELECT cycle_id,body FROM review_cycle_merges').all() as Array<{

@@ -18,13 +18,15 @@ import { stripDraftThinkingTags } from './draft-visible-text'
 const REVIEW_SUMMARY_MAX_CHARACTERS = 120
 const REVIEW_DESCRIPTION_MAX_CHARACTERS = 200
 const REVIEW_QUOTE_MAX_CHARACTERS = 160
-export type ReviewReportVersion = 1 | 2 | 3
+export type ReviewReportVersion = 1 | 2 | 3 | 4
 
 interface ReviewResultItem extends Record<string, unknown> {
   category: string
   severity: 'error' | 'warning' | 'pass'
   description: string
   quote?: string
+  /** v4 起（A2）：这条能不能机械地改。缺省即「未标注」，不填默认值。 */
+  review?: 'mechanical' | 'semantic'
 }
 
 interface ReviewResult extends Record<string, unknown> {
@@ -112,6 +114,12 @@ const REVIEW_TOP_LEVEL_KEYS: Record<ReviewReportVersion, readonly string[]> = {
   1: ['summary', 'items', 'goalReviews'],
   2: ['summary', 'items', 'goalReviews'],
   3: ['summary', 'items', 'goalReviews', 'stateDelta'],
+  4: ['summary', 'items', 'goalReviews', 'stateDelta'],
+}
+
+/** 轴是 v4 才有的形状：v3 报告体要能被原字节重算，多一个键就等于换一种形状。 */
+export function reviewReportCarriesClass(version: ReviewReportVersion): boolean {
+  return version >= 4
 }
 
 function isReviewShape(value: unknown, version: ReviewReportVersion): value is ReviewResult {
@@ -130,11 +138,13 @@ function isReviewShape(value: unknown, version: ReviewReportVersion): value is R
     if (!item || typeof item !== 'object' || Array.isArray(item)) return false
     const record = item as Record<string, unknown>
     const severity = record.severity
+    const allowsClass = reviewReportCarriesClass(version)
     return !Object.keys(record).some(key => (
       key !== 'category'
       && key !== 'severity'
       && key !== 'description'
       && key !== 'quote'
+      && !(allowsClass && key === 'review')
     ))
       && typeof record.category === 'string'
       && (severity === 'error' || severity === 'warning' || severity === 'pass')
@@ -142,6 +152,8 @@ function isReviewShape(value: unknown, version: ReviewReportVersion): value is R
       && (record.quote === undefined
         ? severity === 'pass'
         : typeof record.quote === 'string')
+      && (record.review === undefined
+        || (allowsClass && (record.review === 'mechanical' || record.review === 'semantic')))
   })
 }
 
@@ -177,6 +189,7 @@ export function parseReviewGenerationResult(content: string, reportVersion: Revi
       ...(item.quote === undefined || (item.severity === 'pass' && !item.quote.trim())
         ? {}
         : { quote: reportText(item.quote, REVIEW_QUOTE_MAX_CHARACTERS, reportVersion) }),
+      ...(item.review === undefined ? {} : { review: item.review }),
     })),
     // 只在 v3 透传。v1/v2 走到这里时 `stateDelta` 必然 undefined（形状门已拒收）。
     ...(reportVersion !== 3 || parsed.stateDelta === undefined ? {} : {

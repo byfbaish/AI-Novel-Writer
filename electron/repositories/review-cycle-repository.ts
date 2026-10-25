@@ -159,6 +159,8 @@ interface SavedItem {
   quote?: string
   goalId?: string
   stableFactKey?: string
+  /** v4 报告才有；v3 及更早的存量报告一律 undefined（不猜）。 */
+  review?: 'mechanical' | 'semantic'
 }
 
 interface SavedGoal {
@@ -371,6 +373,7 @@ function finding(input: {
   quote: string | null
   anchoredStatus: 'unresolved' | 'unknown'
   logicalIdentity: string
+  reviewClass?: 'mechanical' | 'semantic'
 }): M03FindingDescriptor {
   const span = input.quote === null ? null : locateUnique(input.sourceText, input.quote)
   const anchored = input.targetId !== null && span !== null
@@ -387,6 +390,8 @@ function finding(input: {
     status: anchored ? input.anchoredStatus : 'unverified',
     evidenceHash: null,
     confirmationItemIndex: null,
+    // 轴不参与 findingId —— 身份由 category/kind/targetId/span 定，能不能机械改是它的属性。
+    reviewClass: input.reviewClass ?? null,
   }
   const identity = { sourceProjectId: descriptor.source.projectId, sourceEpoch: descriptor.source.epoch,
     sourceId: descriptor.source.sourceId, sourceRevision: descriptor.source.revision,
@@ -415,6 +420,7 @@ function buildFindings(report: SavedReport, source: ReviewCycleSource, sourceTex
     const quote = goal.evidence.length === 1 ? goal.evidence[0]!.quote : null
     add(finding({ source, sourceText, category: projection.category, targetId: goal.id, kind: 'objective', quote,
       problemText: projection.description, expectedText: `${goal.text}\n${goal.description}`,
+      ...(projection.review ? { reviewClass: projection.review } : {}),
       anchoredStatus: goal.status === 'unknown' ? 'unknown' : 'unresolved', logicalIdentity: `goal:${goal.id}` }))
   }
   for (const item of report.items) {
@@ -422,6 +428,7 @@ function buildFindings(report: SavedReport, source: ReviewCycleSource, sourceTex
     const objective = item.stableFactKey !== undefined
     add(finding({ source, sourceText, category: item.category, targetId: item.stableFactKey ?? null,
       kind: objective ? 'objective' : 'literary', quote: item.quote ?? null, problemText: item.description,
+      ...(item.review ? { reviewClass: item.review } : {}),
       anchoredStatus: 'unresolved',
       logicalIdentity: objective ? `preflight:${item.stableFactKey}` : `free:${item.index}` }))
   }
@@ -449,6 +456,7 @@ function persistedFinding(row: Record<string, unknown>): M03FindingDescriptor {
     status: row.status as M03FindingDescriptor['status'],
     evidenceHash: row.evidence_hash as string | null,
     confirmationItemIndex: row.confirmation_item_index as number | null,
+    reviewClass: (row.review_class ?? null) as M03FindingDescriptor['reviewClass'],
   }
 }
 
@@ -637,9 +645,10 @@ export class ReviewCycleRepository {
     const sourceRow = db.prepare(`SELECT source_project_id,source_epoch,source_id,source_revision,source_content_hash
       FROM review_findings WHERE cycle_id=? LIMIT 1`).get(cycle.cycle_id) as { source_project_id: string; source_epoch: string;
         source_id: string; source_revision: number; source_content_hash: string } | undefined
-    const persisted = db.prepare(`SELECT finding_id,category,target_id,kind,status FROM review_findings
+    const persisted = db.prepare(`SELECT finding_id,category,target_id,kind,status,review_class FROM review_findings
       WHERE cycle_id=? ORDER BY finding_id`).all(cycle.cycle_id) as Array<{ finding_id: string; category: string;
-        target_id: string | null; kind: 'objective' | 'literary'; status: ReviewCycleProjection['findings'][number]['status'] }>
+        target_id: string | null; kind: 'objective' | 'literary'; status: ReviewCycleProjection['findings'][number]['status'];
+        review_class: string | null }>
     if (!sourceRow && persisted.length) conflict()
     const itemIndex = new Map<string, number>()
     if (sourceRow) {
@@ -663,7 +672,8 @@ export class ReviewCycleRepository {
       revisionStatus: cycle.revision_status, ...(cycle.merged_hash ? { mergedHash: cycle.merged_hash } : {}),
       recheckCount: cycle.recheck_count, findings: persisted.map(row => ({ findingId: row.finding_id,
         reviewItemIndex: itemIndex.get(row.finding_id) ?? null, category: row.category, kind: row.kind, status: row.status,
-        ...(row.target_id ? { targetId: row.target_id } : {}) })) }
+        ...(row.target_id ? { targetId: row.target_id } : {}),
+        ...(row.review_class ? { reviewClass: row.review_class as 'mechanical' | 'semantic' } : {}) })) }
     if (cycle.revision_status === 'merge-committed') {
       if (cycle.merged_hash && isCurrentMergedCycle(cycle.cycle_id, cycle.merged_hash, db)) {
         projection.recheckDisposition = this.planRecheck(cycle.cycle_id, db).disposition
@@ -715,12 +725,12 @@ export class ReviewCycleRepository {
         .run(id, input.rootActionId, input.reviewId, input.reviewContentHash, input.source.contentHash, findingSetHash)
       const insert = db.prepare(`INSERT INTO review_findings(cycle_id,finding_id,source_project_id,source_epoch,source_id,
         source_revision,source_content_hash,span_start,span_end,span_unit,excerpt_hash,occurrence,category,target_id,kind,
-        problem_text,expected_text,status,evidence_hash,confirmation_item_index) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+        problem_text,expected_text,status,evidence_hash,confirmation_item_index,review_class) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       for (const item of findings) insert.run(id, item.findingId, item.source.projectId, item.source.epoch, item.source.sourceId,
         item.source.revision, item.source.contentHash, item.source.span?.start ?? null, item.source.span?.end ?? null,
         item.source.span?.unit ?? null, item.excerptHash, item.occurrence, item.category, item.targetId, item.kind,
         item.problemText, item.expectedText, item.status,
-        item.evidenceHash, item.confirmationItemIndex)
+        item.evidenceHash, item.confirmationItemIndex, item.reviewClass ?? null)
       if (!verifyM03ReviewCycle(db)) invalid()
       return { cycleId: id, findingSetHash, findingCount: findings.length }
     })()
