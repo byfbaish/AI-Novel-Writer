@@ -115,7 +115,7 @@
 | **P20-2** | 秘密宿体（secrets） | 先裁定「新表 vs 并 M16」 | ✅ **m21**（当前最大 m20） | ❌ | 改库 ⇒ 必须等实机验证收口，否则读数会被迁移噪声干扰 |
 | **P20-3** | 章末后处理提议 | **P20-1 的候选面** | ❌（复用现有 `summary_snapshots`） | ❌ | 幂等 / 中断 / 引文定位是 W6b 那一整套，风险最高，放最后 |
 
-### P20-1. 能力候选抽取（期 1）
+### P20-1. 能力候选抽取（期 1 · **1a 已落地 2026-10-26**）
 
 **现状（2026-10-26 逐条查过，别重复查）**：
 
@@ -129,6 +129,11 @@
 **做法（两段，可分别交付）**：
 1. **1a 确定性**（零模型）：解析第 1 维等级表 → 候选 `{ name: 等级名, costNote: 升级代价, hardLimit: 卡点 }`，`evidenceScope='worldbuilding'` + `evidence=原表格行`。新解析器放 `src/shared/`，配单测。
 2. **1b（可选）LLM 补 `weakness`**：「体系漏洞」句是散文，确定性抽不到。若做，必须走 `generationOutputForPurpose`（判据 CU：合同可能带 `overrides`），且抽出的 `evidence` 必须在原文里**精确命中**，命中不了整条丢弃。
+
+> **1a 落地**（2026-10-26）：`src/shared/worldbuilding-ability-extract.ts` + 14 例单测。
+> 零模型、零 schema、零 prompt、零 IPC；候选现算于面板，不落 `partial_arch.json`。
+> 采纳走既有 `db:abilities-upsert`，`source` 仍由仓储写 `'author'`（确定性解析不是「模型提议」）。
+> 第 2 列「相邻差距」不抽，只随 `evidence` 全行保留。
 
 **验收**：抽不到就空（不产占位行）；同名不覆盖（标冲突让你选）；候选不进 prompt、不写库，直到你逐条采纳；`npx tsc --noEmit` + 新解析器单测。
 
