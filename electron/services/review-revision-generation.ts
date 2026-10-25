@@ -18,7 +18,7 @@ import { captureReviewRevisionContext, reviewRevisionRequest, REVIEW_REVISION_OP
 type ArtifactRef = ReviewGenerationCommitRequest['artifact']
 interface Effect {
   kind: 'review' | 'revision'; id: number; index: number; contentHash: string; contextHash: string
-  artifact: ArtifactRef; compositionHash?: string; reportVersion?: 2 | 3
+  artifact: ArtifactRef; compositionHash?: string; reportVersion?: 2 | 3 | 4
 }
 interface AttemptRow { attempt_id: string; run_id: string; usage_receipt_json: string }
 const handleOf = (run: DurableGenerationRun): MainGenerationRunHandle => ({ projectId: run.binding.projectId,
@@ -31,8 +31,11 @@ const handleOf = (run: DurableGenerationRun): MainGenerationRunHandle => ({ proj
  * 报告里该键缺失，v3 解析照旧通过（缺失 ≠ 空数组，见 `SavedReport.stateDelta`）。
  * 反过来，模板要求了但代码仍停在 v2，则会因「v2 不允许 stateDelta 键」**整份报告作废**，
  * 所以这里宁可先升版本、模板随后跟上。
+ *
+ * v4（A2）加的是 item 级可选的 `review`（mechanical / semantic）。同一套降级逻辑成立：
+ * 模板尚未要求这个键，报告里就没有它，解析照旧通过，轴落库为 NULL；等模板跟上再产出。
  */
-const CURRENT_REVIEW_REPORT_VERSION = 3 as const
+const CURRENT_REVIEW_REPORT_VERSION = 4 as const
 const contextHash = (context: ReviewRevisionContext) => textHash(JSON.stringify(context))
 
 /** Admission contexts are disposable; recovery and formal-effect truth live in the existing run ledger. */

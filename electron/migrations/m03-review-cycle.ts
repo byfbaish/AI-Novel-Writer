@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import type Database from 'better-sqlite3'
-import { buildReviewGenerationReport } from '../../src/shared/review-generation-report'
+import { buildReviewGenerationReport, isSavedReviewReportVersion } from '../../src/shared/review-generation-report'
 import { buildReviewCycleRecheckReport, classifyFindingEvidenceChange, unshownMustShowRecheckFindings,
   type ReviewCycleRecheckContext, type ReviewCycleRecheckFinding } from '../../src/shared/review-cycle'
 import { parseHumanConfirmedReviewSnapshot, type HumanConfirmedReviewSnapshot } from '../../src/shared/human-confirmed-review'
@@ -180,8 +180,8 @@ function proveEffect(db: Database.Database, row: AttemptRow, expected: {
   // 时对**全库** receipt 重跑 —— 不认新版本不是「老迁移只管老数据」，而是让每一份新审稿
   // 都被自己的完整性校验判死（实测：15 例 REVIEW_CYCLE_INPUT_INVALID，且失败点看起来
   // 停在 create 的 verify 上，不像版本问题）。
-  if (stored.reportVersion !== undefined && (![2, 3].includes(stored.reportVersion as number) || expected.kind !== 'review')) return false
-  const currentReportVersion = stored.reportVersion === 2 || stored.reportVersion === 3
+  if (stored.reportVersion !== undefined && (!isSavedReviewReportVersion(stored.reportVersion) || expected.kind !== 'review')) return false
+  const currentReportVersion = isSavedReviewReportVersion(stored.reportVersion)
   const allowed = expected.kind === 'revision'
     ? ['artifact', 'compositionHash', 'contentHash', 'contextHash', 'id', 'index', 'kind']
     : ['artifact', 'contentHash', 'contextHash', 'id', 'index', 'kind', ...(currentReportVersion ? ['reportVersion'] : [])]
@@ -245,12 +245,12 @@ function proveEffect(db: Database.Database, row: AttemptRow, expected: {
     const frozen = context as unknown as ReviewRevisionContext
     const rebuilt = JSON.stringify(expected.recheck
       ? (() => { const report = buildReviewCycleRecheckReport(artifact.text as string, frozen.source.content, expected.recheck!, frozen.uiLocale,
-        currentReportVersion ? stored.reportVersion as 2 | 3 : 1)
+        currentReportVersion ? stored.reportVersion as 2 | 3 | 4 : 1)
         return { summary: report.summary, items: report.items } })()
       : buildReviewGenerationReport({ content: artifact.text as string,
         sourceContent: frozen.source.content, frozenGoals: frozen.frozenGoals, writingLanguage: frozen.writingLanguage,
         uiLocale: frozen.uiLocale, preflightFindings: frozen.preflightFindings,
-        reportVersion: currentReportVersion ? stored.reportVersion as 2 | 3 : 1 }), null, 2)
+        reportVersion: currentReportVersion ? stored.reportVersion as 2 | 3 | 4 : 1 }), null, 2)
     if (hash(rebuilt) !== expected.contentHash) return false
   }
   if (expected.kind === 'revision') {

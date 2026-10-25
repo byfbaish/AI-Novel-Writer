@@ -57,6 +57,8 @@ interface ReviewIssue {
   stableFactKey?: string
   sourceChapter?: number
   findingId?: string
+  /** v4 报告才有：这条能不能机械地改。缺失即未标注，不显示徽标。 */
+  review?: 'mechanical' | 'semantic'
 }
 
 /** AI 返回的 JSON 审稿结构 */
@@ -71,6 +73,7 @@ interface ReviewJSON {
     stableFactKey?: string
     sourceChapter?: number
     findingId?: string
+    review?: string
   }>
   summary: string
 }
@@ -105,6 +108,8 @@ interface EditableReviewItem extends HumanConfirmedReviewItem {
   reviewItemIndex: number
   severity: ReviewIssue['severity']
   findingStatus?: ReviewFindingStatus
+  /** 只用于渲染徽标，**不进确认单**：确认单形状由 createHumanConfirmedReviewSnapshot 定死。 */
+  reviewClass?: 'mechanical' | 'semantic'
 }
 
 interface ConfirmedChecklist {
@@ -163,6 +168,7 @@ function parseReport(text: string, fallbackCategory: string): { issues: ReviewIs
             ? item.sourceChapter
             : undefined,
           findingId: typeof item.findingId === 'string' ? item.findingId : undefined,
+          review: item.review === 'mechanical' || item.review === 'semantic' ? item.review : undefined,
         }))
         return { issues, summary: data.summary || '', goalReview: parseChapterGoalReview(data.goalReview) ?? undefined }
       }
@@ -332,6 +338,7 @@ function editableItemsFromReview(
         severity: normalizeSeverity(item.severity),
         decision: finding?.status === 'author-waived' ? 'waive' : item.decision,
         findingStatus: item.decision === 'waive' ? 'author-waived' : finding?.status,
+        ...(finding?.reviewClass ? { reviewClass: finding.reviewClass } : {}),
       }
     })
   }
@@ -350,6 +357,9 @@ function editableItemsFromReview(
       ...(issue.goalId ? { goalId: issue.goalId } : {}),
       ...(issue.findingId || finding?.findingId ? { findingId: issue.findingId ?? finding?.findingId } : {}),
       findingStatus: finding?.status,
+      ...(issue.review || finding?.reviewClass
+        ? { reviewClass: issue.review ?? finding?.reviewClass }
+        : {}),
       decision: finding?.status === 'author-waived'
         ? 'waive'
         : !issue.goalId && (issue.severity === 'error' || issue.severity === 'warning') ? 'apply' : 'ignore',
@@ -1070,6 +1080,13 @@ function ReviewReportSession({
                   [{copy.actionLabel}]
                 </span>
               </div>
+            )}
+            {item.reviewClass && (
+              <p className="text-[0.7rem] text-[var(--color-text-muted)]">
+                {item.reviewClass === 'mechanical'
+                  ? text('机械可改：不需要读上下文', 'Mechanical fix: no context needed')
+                  : text('需读上下文：不宜机械替换', 'Needs context: not a mechanical fix')}
+              </p>
             )}
             {item.sourceChapter && (
               <p className="text-[0.7rem] text-[var(--color-text-muted)]">

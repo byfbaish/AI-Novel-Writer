@@ -20,6 +20,12 @@ const REVIEW_DESCRIPTION_MAX_CHARACTERS = 200
 const REVIEW_QUOTE_MAX_CHARACTERS = 160
 export type ReviewReportVersion = 1 | 2 | 3 | 4
 
+/** 会出现在 effect receipt / 便携投影里的版本。v1 只用来校验历史字节，从不进 receipt。 */
+export const SAVED_REVIEW_REPORT_VERSIONS = [2, 3, 4] as const
+export type SavedReviewReportVersion = (typeof SAVED_REVIEW_REPORT_VERSIONS)[number]
+export const isSavedReviewReportVersion = (value: unknown): value is SavedReviewReportVersion =>
+  typeof value === 'number' && (SAVED_REVIEW_REPORT_VERSIONS as readonly number[]).includes(value)
+
 interface ReviewResultItem extends Record<string, unknown> {
   category: string
   severity: 'error' | 'warning' | 'pass'
