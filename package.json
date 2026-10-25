@@ -17,6 +17,7 @@
     "prepare:native-node": "node scripts/prepare-native-for-node.mjs",
     "typecheck": "tsc --noEmit",
     "check:i18n": "node scripts/check-i18n-coverage.mjs",
+    "check:prompt-overrides": "node scripts/audit-prompt-overrides.mjs",
     "test": "node scripts/run-tests-electron.mjs",
     "test:node": "pnpm run prepare:native-node && vitest run",
     "test:browser": "vitest run --config vitest.browser.config.ts",
