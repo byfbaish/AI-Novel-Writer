@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, Loader2, Plus, Save, Trash2, Undo2 } from 'lucide-react'
 
 import {
@@ -9,6 +9,11 @@ import {
   type PowerAbilityDefinition,
   type PowerAbilityInput,
 } from '../../shared/power-ability'
+import {
+  abilityCandidateToInput,
+  extractAbilityCandidates,
+  type AbilityCandidate,
+} from '../../shared/worldbuilding-ability-extract'
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useProjectStore } from '../../stores/project-store'
@@ -37,6 +42,14 @@ import { Button } from '../ui/Button'
  *
  * 与知情、制度、物品登记同一纪律：本地校验通过才逐行提交；一个重名就让整批留在本地
  * （一行失败不该让别的行偷偷落库）。
+ *
+ * ## 候选区（P20-1a）：只做「展示 + 勾选」，不做行内编辑
+ *
+ * 候选是**零模型确定性解析**的结果（第 1 维等级表的四列），因此现算于本面板、不落
+ * `partial_arch.json`，也不写库 —— 只有作者勾选后点「采纳所选」才走 `db:abilities-upsert`。
+ *
+ * 候选区刻意**不做行内编辑**：要改字段就先采纳，再到下方表格里改。理由是可编辑的候选会
+ * 变成第二套草稿状态（`DraftRow` 已经有一套），两套草稿谁覆盖谁说不清。
  */
 type LocaleText = (zh: string, en: string) => string
 
@@ -110,7 +123,7 @@ function writeErrorLabel(error: string | undefined, text: LocaleText): string {
   }
 }
 
-export function AbilityRegistryPanel({ projectKey }: { projectKey: string }) {
+export function AbilityRegistryPanel({ projectKey, worldbuilding }: { projectKey: string; worldbuilding: string }) {
   const text = useLocaleStore(state => state.text)
   const [rows, setRows] = useState<DraftRow[]>([])
   const [goldenFinger, setGoldenFinger] = useState('')
@@ -118,6 +131,7 @@ export function AbilityRegistryPanel({ projectKey }: { projectKey: string }) {
   const [busy, setBusy] = useState(false)
   const [loadError, setLoadError] = useState('')
   const [status, setStatus] = useState('')
+  const [selectedNames, setSelectedNames] = useState<readonly string[]>([])
   const busyRef = useRef(false)
 
   const load = useCallback(async () => {
@@ -149,6 +163,60 @@ export function AbilityRegistryPanel({ projectKey }: { projectKey: string }) {
   }, [load])
 
   const candidates = abilityNameCandidates(goldenFinger)
+
+  /**
+   * P20-1a：世界观第 1 维等级表 → 能力候选。
+   *
+   * 纯函数、现算于本面板：**不落 `partial_arch.json`、不写库、不进 prompt**。
+   * 零模型解析拿到世界观就能算，多一个存储来源就多一处「两份候选打架」的可能。
+   */
+  const ladderSet = useMemo(() => extractAbilityCandidates(worldbuilding), [worldbuilding])
+
+  /** 已登记的能力名：同名候选不给重复勾选（`name` 是 UNIQUE，后端会报 ABILITY_NAME_DUPLICATED）。 */
+  const registeredNames = useMemo(
+    () => new Set(rows.filter(row => !row.removing).map(row => row.name.trim()).filter(Boolean)),
+    [rows],
+  )
+
+  const selectable = ladderSet.candidates.filter(candidate => !registeredNames.has(candidate.name))
+  const chosen: AbilityCandidate[] = selectable.filter(candidate => selectedNames.includes(candidate.name))
+
+  const toggleCandidate = (name: string) => {
+    setSelectedNames(previous => (
+      previous.includes(name) ? previous.filter(item => item !== name) : [...previous, name]
+    ))
+  }
+
+  /** 逐条采纳：一条失败不阻断其余，但错误要可见（重名由 `writeErrorLabel` 翻译）。 */
+  const adoptSelected = async () => {
+    if (busyRef.current || chosen.length === 0) return
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    busyRef.current = true
+    setBusy(true)
+    let saved = 0
+    let failure = ''
+    for (const candidate of chosen) {
+      const result = await ipc.invokeWithProjectSession(
+        projectSession,
+        'db:abilities-upsert',
+        abilityCandidateToInput(candidate),
+        projectSession.projectPath,
+      )
+      if (result.success) { saved += 1; continue }
+      if (!failure) failure = writeErrorLabel(result.error, text)
+    }
+    busyRef.current = false
+    setBusy(false)
+    if (!isProjectSessionCurrent(projectSession)) return
+    setSelectedNames([])
+    const parts: string[] = []
+    if (saved > 0) parts.push(text(`已登记 ${saved} 条候选`, `${saved} candidate(s) registered`))
+    if (failure) parts.push(failure)
+    setStatus(parts.join('；'))
+    // 立刻重载：新登记的名字要让对应候选行当场变成「已登记」。
+    void load()
+  }
 
   const applyField = (key: string, field: keyof DraftRow, value: string) => {
     setStatus('')
@@ -281,6 +349,76 @@ export function AbilityRegistryPanel({ projectKey }: { projectKey: string }) {
           {text('保存', 'Save')}
         </Button>
         {status && <span role="status" className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{status}</span>}
+      </div>
+
+      {/* P20-1a 候选区：展示 + 勾选，不做行内编辑（理由见文件头注释）。 */}
+      <div data-testid="ability-candidate-zone" className="space-y-1.5">
+        {ladderSet.candidates.length > 0
+          ? (
+            <>
+              <p className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>
+                {text('从世界观第 1 维的等级表抽出的候选（勾选后才会登记）', 'Candidates from the dimension-1 ladder table (registered only after you select them)')}
+              </p>
+              {ladderSet.candidates.map(candidate => {
+                const registered = registeredNames.has(candidate.name)
+                return (
+                  <div key={candidate.name} data-testid="ability-candidate-row" className="flex items-start gap-2 text-xs">
+                    <input
+                      type="checkbox"
+                      data-field="candidate-select"
+                      aria-label={candidate.name}
+                      checked={!registered && selectedNames.includes(candidate.name)}
+                      disabled={registered || busy}
+                      onChange={() => toggleCandidate(candidate.name)}
+                    />
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                        <span data-field="candidate-name" className="font-medium" style={{ color: 'var(--color-text)' }}>
+                          {candidate.name}
+                        </span>
+                        {registered && (
+                          <span className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                            {text('已登记：改上面那一行', 'Already registered: change the row above')}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                        {candidate.hardLimit && (
+                          <span data-field="candidate-hard-limit">{candidate.hardLimit}</span>
+                        )}
+                        {candidate.costNote && (
+                          <span data-field="candidate-cost">{candidate.costNote}</span>
+                        )}
+                      </div>
+                      <span data-testid="candidate-evidence" title={candidate.evidence} className="block truncate text-[10px]"
+                        style={{ color: 'var(--color-text-muted)' }}>
+                        {candidate.evidence}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={() => void adoptSelected()} disabled={busy || chosen.length === 0}>
+                  {text(`采纳所选（${chosen.length}）`, `Adopt selected (${chosen.length})`)}
+                </Button>
+              </div>
+              {ladderSet.dropped > 0 && (
+                <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                  {text(`已丢弃 ${ladderSet.dropped} 条（重名 / 字段超长 / 超出上限）`, `${ladderSet.dropped} discarded (duplicate / too long / over the limit)`)}
+                </p>
+              )}
+            </>
+          )
+          : (
+            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              {!worldbuilding.trim()
+                ? text('还没有世界观内容，先生成或填写世界观再回来抽取。', 'No worldbuilding yet: generate or write it first, then come back to extract.')
+                : !ladderSet.dimensionFound
+                  ? text('没识别到第 1 维【核心规则与体系漏洞】标题，无法抽取（若用了覆盖版模板，请确认标题文字未被改动）。', 'Dimension 1 [Core rules and exploitable asymmetry] heading not recognized; cannot extract (if you use an override template, check that its heading text is unchanged).')
+                  : text('世界观第 1 维里没找到四列等级表（等级名｜相邻差距｜卡点｜升级代价）。', 'No four-column ladder table found in dimension 1 (name | gap | hard limit | upgrade cost).')}
+            </p>
+          )}
       </div>
 
       {loadError && <p role="alert" className="text-xs" style={{ color: 'var(--color-danger)' }}>{loadError}</p>}

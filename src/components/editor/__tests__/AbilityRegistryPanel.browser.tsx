@@ -8,11 +8,13 @@ import { useProjectStore } from '../../../stores/project-store'
 import { AbilityRegistryPanel } from '../AbilityRegistryPanel'
 
 /**
- * P1-1 期 4b 能力登记面板（7 条）。验收口径：
+ * P1-1 期 4b 能力登记面板（11 条）。验收口径：
  * - 可增删改、**保存前不落库**、重名整批不提交、删除要确认；
  * - `form` 用 `datalist` 提示但允许自由输入（词表外值原样提交）；
  * - **`name` 有「从金手指原文取名字」入口**（取样里 2/3 的书没有现成名字）；
- * - 三类限制全空时只有本页黄条，**不进提示词**（黄条不得混进提交载荷）。
+ * - 三类限制全空时只有本页黄条，**不进提示词**（黄条不得混进提交载荷）；
+ * - **候选区（P20-1a）**：第 1 维等级表抽出候选 ⇒ **勾选后才登记**，入参不带 `source`，
+ *   已登记同名的候选行不给再勾一次。
  */
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -23,6 +25,32 @@ const session = {
 }
 
 const GOLDEN_FINGER = '**金手指名称：噬魂推演录**\n\n掠夺后可推演，代价是雷劫。\n另有一个「每日一次的现实编辑权」的旧版本。'
+
+/** P20-1a：一份带第 1 维四列等级表的世界观（候选的唯一输入）。 */
+const LADDER_WORLD = [
+  '### 1.【核心规则与体系漏洞】',
+  '',
+  '| 等级名 | 相邻差距 | 卡点 | 升级代价 |',
+  '| --- | --- | --- | --- |',
+  '| **练气一层** | 略 | 需引气入体 | 三年苦修 |',
+  '| **筑基期** | 十倍 | 需筑基丹一枚 | 一枚中品灵石 |',
+  '| **金丹期** | 百倍 | 需渡三劫 | 损耗三十年寿元 |',
+  '',
+  '### 2.【阶层断层与资源战场】',
+  '',
+  '外门与内门隔着三道考核。',
+].join('\n')
+
+/** 有第 1 维标题、但节内没有表格 ⇒ 走「没找到四列等级表」那一档空态。 */
+const PROSE_ONLY_WORLD = [
+  '### 1.【核心规则与体系漏洞】',
+  '',
+  '本界的灵气有上限，一人一生只能结一次丹。',
+  '',
+  '### 2.【阶层断层与资源战场】',
+  '',
+  '外门与内门隔着三道考核。',
+].join('\n')
 
 let root: Root
 let container: HTMLDivElement
@@ -103,12 +131,28 @@ function deleteCalls(): unknown[][] {
   return invoke.mock.calls.filter(([channel]) => channel === 'db:abilities-delete') as unknown[][]
 }
 
-async function renderPanel() {
+async function renderPanel(worldbuilding = '') {
   await act(async () => {
-    root.render(<AbilityRegistryPanel projectKey={session.projectPath} />)
+    root.render(<AbilityRegistryPanel projectKey={session.projectPath} worldbuilding={worldbuilding} />)
     await new Promise(resolve => setTimeout(resolve, 0))
   })
   await vi.waitFor(() => expect(invoke.mock.calls.some(([channel]) => channel === 'db:abilities-list')).toBe(true))
+}
+
+function candidateRows(): HTMLElement[] {
+  return [...container.querySelectorAll<HTMLElement>('[data-testid="ability-candidate-row"]')]
+}
+
+function candidateField(rowIndex: number, name: string): HTMLElement {
+  const target = candidateRows()[rowIndex]?.querySelector<HTMLElement>(`[data-field="${name}"]`)
+  if (!target) throw new Error(`Missing candidate field ${name} on row ${rowIndex}`)
+  return target
+}
+
+function candidateCheckbox(rowIndex: number): HTMLInputElement {
+  const target = candidateRows()[rowIndex]?.querySelector<HTMLInputElement>('input[data-field="candidate-select"]')
+  if (!target) throw new Error(`Missing candidate checkbox on row ${rowIndex}`)
+  return target
 }
 
 beforeEach(() => {
@@ -259,5 +303,58 @@ describe('能力登记面板', () => {
     await fill(0, 'form', '规则·功法·天赋混合（寄生于重生神魂）')
     await click(button('保存'))
     expect(upsertCalls()[0]![1].form).toBe('规则·功法·天赋混合（寄生于重生神魂）')
+  })
+
+  it('候选区：第 1 维四列等级表抽出 3 行，等级名逐字对上', async () => {
+    await renderPanel(LADDER_WORLD)
+    expect(container.querySelector('[data-testid="ability-candidate-zone"]')).not.toBeNull()
+    expect(candidateRows()).toHaveLength(3)
+    expect([0, 1, 2].map(index => candidateField(index, 'candidate-name').textContent))
+      .toEqual(['练气一层', '筑基期', '金丹期'])
+    expect(candidateField(0, 'candidate-hard-limit').textContent).toBe('需引气入体')
+    expect(candidateField(0, 'candidate-cost').textContent).toBe('三年苦修')
+    // 引文必须带两侧竖线（整行原文，不是 squash 后的片段）。
+    expect(container.querySelector('[data-testid="candidate-evidence"]')?.textContent)
+      .toBe('| **练气一层** | 略 | 需引气入体 | 三年苦修 |')
+  })
+
+  it('候选不写库：勾选后点「采纳所选（1）」才走 db:abilities-upsert，且入参不带 source', async () => {
+    await renderPanel(LADDER_WORLD)
+    expect(upsertCalls()).toHaveLength(0)
+
+    await click(candidateCheckbox(1))
+    await click(button('采纳所选（1）'))
+
+    expect(upsertCalls()).toHaveLength(1)
+    const payload = upsertCalls()[0]![1]
+    expect(payload).toMatchObject({
+      name: '筑基期',
+      hardLimit: '需筑基丹一枚',
+      costNote: '一枚中品灵石',
+      evidence: '| **筑基期** | 十倍 | 需筑基丹一枚 | 一枚中品灵石 |',
+      evidenceScope: 'worldbuilding',
+      stageChapter: null,
+    })
+    // source 由仓储硬编码成 'author'，前端传不进去也不该传。
+    expect('source' in payload).toBe(false)
+    expect(container.textContent).toContain('已登记 1 条候选')
+  })
+
+  it('已登记同名的候选行不给再勾一次（勾选框 disabled）', async () => {
+    stored = [definition({ name: '筑基期' })]
+    await renderPanel(LADDER_WORLD)
+    expect(candidateRows()).toHaveLength(3)
+    expect(candidateCheckbox(1).disabled).toBe(true)
+    expect(candidateCheckbox(0).disabled).toBe(false)
+    expect(candidateRows()[1]?.textContent).toContain('已登记：改上面那一行')
+    // 按钮只数可勾选的那几条：选不了的行不该算进「采纳所选（N）」。
+    expect(button('采纳所选（0）')).toBeDefined()
+  })
+
+  it('第 1 维没有表格 ⇒ 走「没找到四列等级表」那一档空态，不产占位行', async () => {
+    await renderPanel(PROSE_ONLY_WORLD)
+    expect(candidateRows()).toHaveLength(0)
+    expect(container.textContent).toContain('世界观第 1 维里没找到四列等级表')
+    expect(upsertCalls()).toHaveLength(0)
   })
 })
