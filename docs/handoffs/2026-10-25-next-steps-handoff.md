@@ -9,7 +9,7 @@
 ## 0. 十分钟上手（按顺序读，不要通读 `docs/`）
 
 1. `AGENTS.md`（8 条硬规则）+ `docs/agents/documentation-charter.md`（§6 完成定义）
-2. `docs/plans/prompt-assembly-backlog.md` **顶部**「★ 2026-10-23 长篇就绪度重排」——那是现行优先级，下方历史条目只作背景
+2. `docs/plans/prompt-assembly-backlog.md` **顶部**「★ 2026-10-25 路线裁决」——那是**现行优先级**（Q1–Q4 已由作者裁定）；再下面「2026-10-23 长篇就绪度重排」只保留**各项状态**，其排序原则已作废
 3. 本组实施记录：`docs/research/2026-10-25-oh-story-absorption/assessment.md` §9（A3/A4）与 **§9b**（A2/A5 + 四处被迫偏离 + 迁移自检）
 
 **当前结论一句话**：单卷能用；**跨卷失真、300 章不可行**（`docs/design/architecture/long-form-readiness-review.md`）。排序原则：先能用（改稿）→ 再写对（查阅+宿体）→ 再查错（findings）→ 最后跨部。
@@ -153,3 +153,5 @@ ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/electron.exe ./node_modules/
 ```
 
 四项都过 → 按 N1 → N3 走（**N2 已于 2026-10-25 完成**）；D1/D2 已拍定并落地，**不再阻塞**。
+
+> ⚠️ **本节顺序已被 2026-10-25 晚间裁决取代**：作者答完 Q1–Q4 后，台账顶部新增「★ 2026-10-25 路线裁决」——主线改为 **P17 出厂质检（A3 接线 + 形态统计按平台参数化 + 定向重写）→ N1 第 1/2 维问句改硬 → 长线**。上面这份 N 系列仍然都成立，但**不再是第一件**：N3（W7c）属「写对」不属「写好」，不挡路，可当填充。
