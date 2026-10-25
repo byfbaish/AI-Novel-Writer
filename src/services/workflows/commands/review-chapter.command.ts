@@ -98,8 +98,9 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
         'The required material for this review exceeds the context capacity, so the review stopped. Trim the required author material or predecessor and try again.',
       ))
     }
-    // P2-1 期 1：四类登记事实作为「核对基准」。四类皆空 ⇒ 不产生任何字节，审稿 prompt
-    // 与改动前逐字节相同（老项目没有登记时不受影响）。recheck 分支**不读不带**：
+    // P2-1 期 1：四类登记事实作为「核对基准」；期 2 追加第五类（人物状态转移，指针型）。
+    // 五类都没有可核对数据 ⇒ 不产生任何字节，审稿 prompt 与改动前逐字节相同
+    // （老项目没有登记时不受影响）。recheck 分支**不读不带**：
     // 那一轮的输出合同只有 findingId/targetId/resolved/evidenceQuote/reason，产不出新 finding，
     // 且明文「只复核下列 finding，不得新增」（与 `reviewExecutionContract` 的既有裁定同型）。
     const continuityBlock = frozen.recheck
@@ -127,7 +128,8 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
       promptLanguageText(language,
         '【证据锚点硬约束】每个 error/warning 的 items[].quote 必须是待审正文中逐字连续、且全文仅出现一次的单一摘录；不得拼接多个位置、改写原文或包含省略号。优先选择足以证明问题的最短完整句。goalReviews[].evidence 中的每个 quote 也必须分别满足上述约束；需要多处证据时拆成多个 evidence 项，绝不可在一个 quote 中拼接。',
         '[Strict evidence-anchor constraint] Each items[].quote for an error/warning must be one verbatim, contiguous excerpt that occurs exactly once in the draft under review. Do not combine multiple locations, rewrite the text, or include ellipses. Prefer the shortest complete sentence that proves the issue. Every quote in goalReviews[].evidence must independently satisfy the same constraint; when multiple excerpts are needed, use separate evidence entries and never combine them in one quote.'),
-      // P2-1 期 1：四类登记事实（物品 / 制度 / 知情 / 能力）作为核对基准，紧跟在证据锚点约束之后 ——
+      // P2-1 期 1：四类登记事实（物品 / 制度 / 知情 / 能力）+ 期 2 的人物状态转移指针，
+      // 作为核对基准，紧跟在证据锚点约束之后 ——
       // 「quote 必须来自正文」这条先立住，再给对照材料，模型才不会把登记原文当引文。
       ...(continuityBlock ? [continuityBlock.text] : []),
       promptLanguageText(language,
@@ -215,10 +217,15 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
   }
 
   /**
-   * 读四类登记并组装「连续性核对基准」（P2-1 期 1）。
+   * 读四类登记、并组装「连续性核对基准」（P2-1 期 1；期 2 加第五类）。
    *
    * fail-open：任一类读失败只是少一节 + 一行日志，**绝不阻断审稿** —— 老项目根本没有这几张表。
    * 「本次没判」必须能看见：日志要说清是哪几类没读到，而不是安静地少给几节。
+   *
+   * 第五类（人物状态转移）**不走 IPC**：它的基准是 `frozen.characterStates`，
+   * 在上下文冻结时就已渲染好（与模板 `{{character_states}}` 同一份字节）。
+   * 因此它也不会出现在 `canon.failures` 里 —— 读角色失败会让整次审稿准备直接抛错，
+   * 不存在「本次没判」的降级态。
    */
   private async readContinuityBibleBlock(
     frozen: ReviewRevisionContext,
@@ -244,11 +251,13 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
       cadences: canon.cadences,
       knowledge: canon.knowledge,
       abilities: canon.abilities,
+      // 只传不算：纯函数自己数「可核对的基准行」，`（暂无）` 与只有姓名的快照都不算有数据。
+      renderedCharacterStates: frozen.characterStates,
     })
     if (!block) return undefined
     params.callbacks.log(text(
-      `  已注入连续性核对基准：物品 ${block.counts.items} / 制度 ${block.counts.cadences} / 知情 ${block.counts.knowledge} / 能力 ${block.counts.abilities}（${block.chars} 字）`,
-      `  Injected continuity check basis: items ${block.counts.items} / cadences ${block.counts.cadences} / knowledge ${block.counts.knowledge} / abilities ${block.counts.abilities} (${block.chars} chars)`,
+      `  已注入连续性核对基准：物品 ${block.counts.items} / 制度 ${block.counts.cadences} / 知情 ${block.counts.knowledge} / 能力 ${block.counts.abilities} / 人物状态行 ${block.counts.characters}（${block.chars} 字）`,
+      `  Injected continuity check basis: items ${block.counts.items} / cadences ${block.counts.cadences} / knowledge ${block.counts.knowledge} / abilities ${block.counts.abilities} / character-state lines ${block.counts.characters} (${block.chars} chars)`,
     ))
     return block
   }

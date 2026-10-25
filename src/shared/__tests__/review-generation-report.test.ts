@@ -334,4 +334,45 @@ describe('P2-1 连续性 findings 走既有报告合同', () => {
     const report = build({ content, sourceContent: '乙从怀里摸出那把刀。', frozenGoals: freezeChapterGoals(1, '') })
     expect(report.items[0]).toEqual(item)
   })
+
+  it('期 2 的人物状态转移用独立 category，与作者登记类共存且逐字保留', () => {
+    // 两类同块产出时必须能被 UI 分成两组（`ReviewReport.tsx` 按 category 原字符串分组），
+    // 所以这里同时验证「两个字符串都在、顺序不变、互不归一」。
+    const registryItem = {
+      category: '连续性核对（作者登记）',
+      quote: '乙从怀里摸出那把刀。',
+      description: '登记：第1章刀在林岚手里；本章换手且无转交过程。改本章：补出转交过程。',
+      severity: 'warning',
+    }
+    const stateItem = {
+      category: '连续性核对（角色状态）',
+      quote: '他身上的伤口早已好透。',
+      description: '基准：第1章左肩刀伤未愈；本章直接痊愈且全章无治疗过程。改本章：补出治疗或休养过程。',
+      severity: 'error',
+    }
+    const content = JSON.stringify({ summary: '发现两处连续性问题。', items: [registryItem, stateItem] })
+    const parsed = parseReviewGenerationResult(content)
+    expect(parsed.items).toEqual([registryItem, stateItem])
+    expect(parsed.items[0]!.category).not.toBe(parsed.items[1]!.category)
+    const report = build({ content, sourceContent: '乙从怀里摸出那把刀。他身上的伤口早已好透。', frozenGoals: freezeChapterGoals(1, '') })
+    // `build` 会在模型 items 之后追加「本章目标」派生项，所以只看前两条（模型原序不变）。
+    expect(report.items.slice(0, 2).map(item => item.category))
+      .toEqual(['连续性核对（作者登记）', '连续性核对（角色状态）'])
+  })
+
+  it('新 category 仍不需要任何 item 新字段（加字段必须被合同拒掉）', () => {
+    // 想给「人物状态转移」标状态槽（例如 `stateField`）会直接被拒 —— 这正是它只能
+    // 走既有 category/quote/description/severity 通道的保证。
+    const content = JSON.stringify({
+      summary: '发现一处连续性问题。',
+      items: [{
+        category: '连续性核对（角色状态）',
+        quote: '他身上的伤口早已好透。',
+        description: '改本章：补出治疗过程。',
+        severity: 'warning',
+        stateField: 'physicalState',
+      }],
+    })
+    expect(() => parseReviewGenerationResult(content)).toThrow('invalid review contract')
+  })
 })

@@ -28,6 +28,14 @@ export class ReviewRevisionRuntimeFixture {
   recovery?: ReviewRevisionRecovery
   selections: unknown[] = []
   materialDecisions: MaterialDecisionReceipt[] = []
+  /**
+   * 覆盖冻结上下文里的 `characterStates`。
+   *
+   * 默认值是「只有姓名」的角色行（不含 `  - field@chapterN:` 事实行）—— 这恰好是
+   * 「有角色但没有任何状态」的形态，用来钉住「不注入第五类规则」。
+   * 要测真的注入，把这个设成 `formatCharacterStateLines` 的真实输出。
+   */
+  characterStatesOverride?: string
   calls: Array<{ channel: string; args: unknown[] }> = []
   artifacts = new Map<string, MainGenerationSnapshot>()
   private sequence = 0
@@ -77,7 +85,9 @@ export class ReviewRevisionRuntimeFixture {
       const frozen: PreparedReviewRevisionContext['context'] = {
         version: 1, operation: request.operation, source, sourceHash: digest(source.content), config,
         writingLanguage: config.writingLanguage ?? this.writingLanguage, uiLocale: request.uiLocale,
-        authorInputs: request.authorInputs, characterStates: characters.map(c => `${c.name} (${c.role || 'unknown'})`).join('\n'),
+        authorInputs: request.authorInputs,
+        characterStates: this.characterStatesOverride
+          ?? characters.map(c => `${c.name} (${c.role || 'unknown'})`).join('\n'),
         worldbuilding: core.worldbuilding || '', history: projections.map(p => ({ draftId: p.draftId,
           chapterNumber: p.chapterNumber, chapterTitle: p.chapterTitle, content: p.chapterNotes, projection: p,
           identity: { projectId: project.id, sourceId: `finalized:${p.draftId}`,

@@ -49,6 +49,11 @@ type CanonFixture = {
   knowledge?: unknown[]
   abilities?: unknown[]
   failKnowledge?: boolean
+  /**
+   * P2-1 期 2：人物状态转移的基准（`frozen.characterStates` 的真实渲染形态）。
+   * 缺省 = 夹具默认的「只有姓名」行 ⇒ 数不到事实行 ⇒ **不注入**第五类。
+   */
+  characterStates?: string
 }
 
 function setup(responses: Response[], projections: FinalizedContinuityProjection[] = [], activeSource = source, canon: CanonFixture = {}) {
@@ -81,6 +86,9 @@ function setup(responses: Response[], projections: FinalizedContinuityProjection
     throw new Error(`unexpected IPC: ${channel}`)
   })
   const fixture = new ReviewRevisionRuntimeFixture(backend)
+  // P2-1 期 2：人物状态转移的基准来自冻结上下文，**不走 IPC**。
+  // 不设置时保留夹具默认的「只有姓名」形态（正是「有角色但无状态」）。
+  if (canon.characterStates !== undefined) fixture.characterStatesOverride = canon.characterStates
   const providerBindCounts: number[] = []
   const provider = vi.fn<ReturnType<typeof useLLMStore.getState>['generateStream']>(async (_messages, callbacks) => {
     providerBindCounts.push(fixture.materialDecisions.length)
@@ -881,7 +889,7 @@ describe('review/revision consumers using the main contract (synthetic transport
  *    改审稿提示词就要同步改这一行并记进设计稿，否则这里会红 —— 与 `context-entry-parity` 同一规矩。
  * 2. **recheck 分支连读都不读**：那一轮只裁决既有 finding，输出合同里没有 category。
  */
-describe('P2-1 连续性核对基准（四类宿体进审稿）', () => {
+describe('P2-1 连续性核对基准（四类登记 + 人物状态转移进审稿）', () => {
   const canonFixture: CanonFixture = {
     items: [{ itemId: 'item:1', name: '裁纸刀', holderCharacter: '林岚', holderLabel: '林岚', statusNote: '',
       chapterNumber: 1, evidence: '他把刀递过去', source: 'author', createdAt: '', updatedAt: '' }],
@@ -933,9 +941,59 @@ describe('P2-1 连续性核对基准（四类宿体进审稿）', () => {
       expectedMergedHash: hash(source.content) }, f.dependencies).execute(f.args)
     const prompt = userPrompt(f)
     expect(prompt).not.toContain('【连续性核对基准')
+    expect(prompt).not.toContain('人物状态转移')
     for (const channel of ['db:key-items-list', 'db:cadences-list', 'db:knowledge-list', 'db:abilities-list']) {
       expect(f.fixture.calls.some(call => call.channel === channel), channel).toBe(false)
     }
+  })
+
+  // ---- 期 2：第五类（人物状态转移，指针型）----
+
+  /** `formatCharacterStateLines` 的真实中文形态（两空格缩进的事实行）。 */
+  const renderedStates = [
+    '顾长风（杂役）状态（按标注章节理解，非永久约束）：',
+    '  - location@chapter3: 百草园外园',
+    '  - physicalState@chapter7·派生: 左肩刀伤未愈',
+  ].join('\n')
+
+  it('四类齐备但没有角色状态时，第五类零字节（另有锚点守：额度句 6→8 是期 2 的明示变更）', async () => {
+    const f = setup([{ content: review, finishReason: 'stop' }], [], source, canonFixture)
+    await f.command('review-chapter').execute(f.args)
+    const prompt = userPrompt(f)
+    expect(prompt).toContain('【连续性核对基准')
+    expect(prompt).not.toContain('人物状态转移')
+    expect(prompt).not.toContain('连续性核对（角色状态）')
+    // 新锚点：期 1 的旧值作废——合计额度从 6 提到 8，四类有数据时块首那句必然变一次。
+    expect(hash(prompt)).toBe('7557d87f711b16877a2bcb16228179ce64f90da3b5c0bb5699d77e5e811766c5')
+  })
+
+  it('有角色状态时在四类之后注入指针段，日志报出覆盖的状态行数', async () => {
+    const f = setup([{ content: review, finishReason: 'stop' }], [], source,
+      { ...canonFixture, characterStates: renderedStates })
+    await f.command('review-chapter').execute(f.args)
+    const prompt = userPrompt(f)
+    // 指针必须排在四类之后、【时间一致性检查】之前。
+    const pointer = prompt.indexOf('【人物状态转移')
+    expect(pointer).toBeGreaterThan(prompt.indexOf('【能力'))
+    expect(pointer).toBeLessThan(prompt.indexOf('【时间一致性检查】'))
+    // 两个 category 同时在场，分工才说得清。
+    expect(prompt).toContain('连续性核对（作者登记）')
+    expect(prompt).toContain('连续性核对（角色状态）')
+    expect(prompt).toContain('合计不超过 8 条')
+    // 数据不被复制：同一批事实在整份 prompt 里**恰好出现一次**（即开头【角色状态】那份，
+    // 指针节只给规则）。出现两次就说明又渲染了一份。
+    expect(prompt.split('左肩刀伤未愈').length - 1).toBe(1)
+    expect(f.args.callbacks.log.mock.calls.some(([text]) => String(text).includes('人物状态行 2'))).toBe(true)
+  })
+
+  it('角色快照只有姓名、没有事实行时不注入（夹具默认形态，老项目不受影响）', async () => {
+    const f = setup([{ content: review, finishReason: 'stop' }], [], source,
+      { ...canonFixture, characterStates: '顾长风 (杂役)' })
+    await f.command('review-chapter').execute(f.args)
+    const prompt = userPrompt(f)
+    expect(prompt).toContain('【关键物品')
+    expect(prompt).not.toContain('人物状态转移')
+    expect(prompt).not.toContain('连续性核对（角色状态）')
   })
 
   it('某一类读取失败时只少一节 + 一行日志，审稿照常保存（fail-open）', async () => {

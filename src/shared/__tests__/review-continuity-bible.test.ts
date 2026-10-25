@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildReviewContinuityBibleBlock,
+  REVIEW_CONTINUITY_CATEGORIES,
   REVIEW_CONTINUITY_CATEGORY,
+  REVIEW_CONTINUITY_CHARACTER_STATE_CATEGORY,
   REVIEW_CONTINUITY_MAX_FINDINGS,
   REVIEW_CONTINUITY_MAX_FINDINGS_PER_CLASS,
 } from '../review-continuity-bible'
@@ -207,7 +209,8 @@ describe('buildReviewContinuityBibleBlock — 双语、体积与注入安全', (
     const block = buildReviewContinuityBibleBlock({ ...base, items: [item()] })!
     expect(block.text).toContain(`${REVIEW_CONTINUITY_MAX_FINDINGS_PER_CLASS} 条`)
     expect(block.text).toContain(`${REVIEW_CONTINUITY_MAX_FINDINGS} 条`)
-    expect(REVIEW_CONTINUITY_MAX_FINDINGS).toBeLessThanOrEqual(6)
+    // 期 2 由 6 提到 8（五类，新类 2 条）；8 仍在报告 1–10 条的口径内。
+    expect(REVIEW_CONTINUITY_MAX_FINDINGS).toBeLessThanOrEqual(8)
   })
 
   it('控制体积：四类填满时块长仍在预算内', () => {
@@ -250,6 +253,96 @@ describe('buildReviewContinuityBibleBlock — 双语、体积与注入安全', (
   })
 })
 
+describe('buildReviewContinuityBibleBlock — 人物状态转移（指针型，期 2）', () => {
+  const renderedStates = [
+    '顾长风（杂役）状态（按标注章节理解，非永久约束）：',
+    '  - location@chapter3: 百草园外园',
+    '  - physicalState@chapter7·派生: 左肩刀伤未愈',
+  ].join('\n')
+
+  it('没有可解析的状态事实行时整块不产出（含兜底文案、只有姓名、只有卡头）', () => {
+    // 生产侧兜底 `（暂无）`、测试夹具的「只有姓名」、以及空串 —— 三者都非空却无一条可比对的基准。
+    for (const renderedCharacterStates of ['', '（暂无）', '(none)', '顾长风 (杂役)',
+      '顾长风（杂役）状态（按标注章节理解，非永久约束）：']) {
+      expect(buildReviewContinuityBibleBlock({ ...base, renderedCharacterStates }), renderedCharacterStates)
+        .toBeUndefined()
+    }
+  })
+
+  it('有状态行时只给指针与规则，不复制任何状态值', () => {
+    const block = buildReviewContinuityBibleBlock({ ...base, renderedCharacterStates: renderedStates })!
+    expect(block.counts.characters).toBe(2)
+    expect(block.text).toContain('【人物状态转移')
+    // 数据不得二次渲染：同一批事实只能出现在 prompt 开头那一份（判据 DM）。
+    expect(block.text).not.toContain('左肩刀伤未愈')
+    expect(block.text).not.toContain('location@chapter3: 百草园外园')
+  })
+
+  it('指针点名模板里逐字的标题，并给结构锚点（按「上一段」找必然找错）', () => {
+    const zh = buildReviewContinuityBibleBlock({ ...base, renderedCharacterStates: renderedStates })!
+    expect(zh.text).toContain('【角色状态】')
+    expect(zh.text).toContain('紧跟【待审章节】之后')
+    const en = buildReviewContinuityBibleBlock({
+      ...base, writingLanguage: 'en-US', renderedCharacterStates: renderedStates,
+    })!
+    expect(en.text).toContain('[Known character states]')
+    expect(en.text).toContain('[Chapter under review]')
+  })
+
+  it('规则写死四条边界：只判过程缺失 / 不判可达性 / 不用等于本章的基准行 / 与维度 3 不双报', () => {
+    const block = buildReviewContinuityBibleBlock({ ...base, renderedCharacterStates: renderedStates })!
+    for (const clause of [
+      '不判角色行为是否合情理',
+      '一炷香走三百里',
+      '标注章号等于本章的行',
+      '同一现象只报一次',
+      '归【检查维度】第 3 条',
+      '基准陈旧时从严',
+    ]) expect(block.text, clause).toContain(clause)
+  })
+
+  it('与四类同块时排在能力之后，五项计数各自独立', () => {
+    const block = buildReviewContinuityBibleBlock({
+      ...base,
+      items: [item({ chapterNumber: 1 })],
+      cadences: [cadence()],
+      knowledge: [knowledge()],
+      abilities: [ability()],
+      renderedCharacterStates: renderedStates,
+    })!
+    expect(block.counts).toEqual({ items: 1, cadences: 1, knowledge: 1, abilities: 1, characters: 2 })
+    expect(block.text.indexOf('【能力')).toBeLessThan(block.text.indexOf('【人物状态转移'))
+    expect(block.text).toContain(REVIEW_CONTINUITY_CATEGORIES.items['zh-CN'])
+    expect(block.text).toContain(REVIEW_CONTINUITY_CHARACTER_STATE_CATEGORY['zh-CN'])
+  })
+
+  it('只有角色状态时也产出块，且同时给出两个 category 名', () => {
+    const block = buildReviewContinuityBibleBlock({ ...base, renderedCharacterStates: renderedStates })!
+    expect(block.text).not.toContain('【关键物品')
+    expect(block.text).toContain(REVIEW_CONTINUITY_CATEGORY['zh-CN'])
+    expect(block.text).toContain(REVIEW_CONTINUITY_CHARACTER_STATE_CATEGORY['zh-CN'])
+  })
+
+  it('既有四类且无状态时不含任何新类字节（老项目零影响）', () => {
+    const block = buildReviewContinuityBibleBlock({ ...base, items: [item()] })!
+    expect(block.counts.characters).toBe(0)
+    expect(block.text).not.toContain('人物状态转移')
+    expect(block.text).not.toContain(REVIEW_CONTINUITY_CHARACTER_STATE_CATEGORY['zh-CN'])
+    // 有第五类时标题才带「+ 角色状态」；没数据时标题保持原样。
+    expect(block.text).toContain('【连续性核对基准（作者登记；')
+  })
+
+  it('英文模板用 ·derived 标记，也要能数出来', () => {
+    const en = buildReviewContinuityBibleBlock({
+      ...base,
+      writingLanguage: 'en-US',
+      renderedCharacterStates: 'Gu (servant) state (read as of the annotated chapter, not permanent):\n'
+        + '  - physicalState@chapter7·derived: wounded left shoulder',
+    })!
+    expect(en.counts.characters).toBe(1)
+  })
+})
+
 describe('写稿口径防漂移（读源码型）', () => {
   const source = readFileSync(
     new URL('../../services/workflows/commands/generate-draft.command.ts', import.meta.url),
@@ -266,5 +359,15 @@ describe('写稿口径防漂移（读源码型）', () => {
     ]) {
       expect(source, clause).toContain(clause)
     }
+  })
+
+  it('审稿模板的【检查维度】第 3 条原文未被改动 —— 与第五类的分工由条件规则承担，不靠改模板', () => {
+    // 改模板会改变**所有**项目的 prompt（含无状态的老项目），并直接打破「空即零字节」。
+    // 与第五类的分工（同一时点归第 3 条、跨章转移归本条）全部写在 CHARACTER_STATE_RULE 里。
+    const template = readFileSync(
+      new URL('../../services/builtin-prompt-templates.ts', import.meta.url),
+      'utf8',
+    )
+    expect(template).toContain('3. 角色状态：角色行为、能力、位置、情感是否与角色状态档案一致？')
   })
 })
