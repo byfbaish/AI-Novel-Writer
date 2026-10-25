@@ -3,7 +3,7 @@ import { useLLMStore } from '../../stores/llm-store'
 import type { BeginGenerationRequest } from '../../shared/generation-owner-contract'
 import { createMainGenerationTransport } from '../generation/main-generation-transport'
 import { createMainOwnedGenerationRuntime, type GenerationRuntime, type MainGenerationRunHandle, type MainGenerationRunView, type MainGenerationSnapshot } from '../generation/generation-runtime'
-import { GenerationAttemptError, type GenerationSession } from '../generation/generation-harness'
+import { createPromptBudgetReport, GenerationAttemptError, PromptBudgetExceededError, type GenerationSession } from '../generation/generation-harness'
 import { requireWorkflowProjectSession } from './workflow-project-session'
 import { ipc } from '../ipc-client'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../shared/project-session-context'
@@ -159,6 +159,22 @@ export async function createWorkflowMainGenerationRuntime(request: WorkflowMainG
       if (context.cancelled || options?.signal?.aborted) { await cancel(); throw new Error('GENERATION_WORKFLOW_CANCELLED') }
       if (cancelFailure) throw cancelFailure
       if (options?.onChunk) throw new Error('MAIN_SNAPSHOT_CALLBACK_REQUIRED')
+      // A5：预算断言必须在**派发前**执行。生产默认走 mainOwned，渲染层不再经过 harness 的
+      // 规划路径，所以「配了 promptBudget」在过去只是一句没人执行的声明。这里只做字节硬顶
+      // （模型上下文与输出预留由主进程持有，渲染层拿不到，故不参与判定）。
+      if (task.promptBudget) {
+        const promptBudgetReport = createPromptBudgetReport({
+          messages: task.messages,
+          policy: task.promptBudget,
+          contextWindowTokens: null,
+          reservedOutputTokens: 0,
+          modelId: context.generationModelId ?? 'main-owned',
+        })
+        if (promptBudgetReport.errorCode === 'PROMPT_BUDGET_EXHAUSTED') {
+          console.info('[GenerationPromptBudget]', promptBudgetReport)
+          throw new PromptBudgetExceededError(promptBudgetReport)
+        }
+      }
       const invocationNonce = options?.invocationNonce ?? crypto.randomUUID()
       const abort = () => { void cancel() }
       options?.signal?.addEventListener('abort', abort, { once: true })
