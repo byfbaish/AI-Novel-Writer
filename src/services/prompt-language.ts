@@ -293,13 +293,27 @@ Build five connected dimensions. The first three each need a concrete source of 
 ### 4. Spatial structure (map and regions)
 ### 5. Calendar (day order and cycles)
 
+★ In every dimension below, items marked ★ are **writing requirements for you**, not setting content: output only the setting you write by following them, and do not copy the requirements themselves into the output.
+
 1. Core rules and exploitable asymmetry
 - Define the rules that govern power, technology, institutions, or the supernatural.
-- Explain precisely how {{golden_finger}} creates an asymmetric advantage inside those rules and what limits it.
+- What is the **hard scale** of these rules — the quantity a reader uses to tell who ranks ahead, or who beats whom, and how is it read off?
+- ★ [Progression ladder — decidable] List the ladder completely, lowest to highest, as a markdown table with four columns in exactly this order: Tier name (bold, in the first column), Adjacent gap, Blocking point, Advancement cost.
+  - Use this world's own tier names in the first column; do not substitute generic words such as "early / mid / late stage".
+  - **Adjacent gap** must be comparable ("one tier up can hold off three tiers down", "crossing one tier takes double the spirit stones"), never "much stronger" or "a huge gap".
+  - **Blocking point** is the most common way people die or get stuck on this path.
+  - **Advancement cost** states what is paid, to whom, and how often; this column has to be arithmetically usable (whenever an amount appears, give its settlement period and payment method in the same sentence).
+- What is the **highest tier**, and is there anything above it?
+- ★ Where does this system **break from the inside** (the systemic hole)? Give at least one **concretely exploitable gap**: who exploits it, what it costs them, and why the rules cannot close it.
+- Where does {{golden_finger}} sit **asymmetrically** on this ladder — which cost can it bypass, or which tier can it see that others cannot?
+- ⚠️ If this world is not tiered (pure realism, pure mystery, and so on), use another hard scale that orders ahead and behind (wealth magnitude / rank in an office hierarchy / information level held) and still present it as the table above; do not leave this dimension at "it varies from person to person".
 
 2. Factions, hierarchy, and scarce resources
-- Identify irreconcilable faction or class interests.
+- Identify irreconcilable faction or class interests. **Name each one** and add one line on what keeps it alive (do not stop at "two major factions").
+- What is the **relationship** between them (hostile / dependent / parasitic / colluding / outwardly cooperative)? Give at least one pair together with its **breaking condition** — what makes them turn on each other at once.
 - Define the scarce resource, its allocation, the protagonist's current position, and the party they must challenge.
+- ★ **Can people move between classes?** What carries someone upward (exams / military merit / marriage / money / a patron)? What does one step cost? Who is shut out, and how?
+- ★ State one **core contradiction the protagonist cannot route around**: what he wants collides with the rule blocking him, and he cannot have both. One sentence; do not write "many layered conflicts".
 - ★ Whenever you state a concrete amount (wage, monthly allowance, price, tax, rent), state its **settlement period and payment method in the same sentence**: settled per day / per month / per dose, paid by whom, paid when, and whether it can be advanced or deducted. One quantity gets exactly one period — later chapters do their arithmetic from that sentence, and a second period is a bug planted in advance.
 
 3. Hidden history and deep crisis
@@ -346,7 +360,8 @@ Build five connected dimensions. The first three each need a concrete source of 
 5. The **five-dimension structure must still be complete**: even when part of a dimension already appears in the World foundation, fill in the parts that dimension does not cover — in particular dimension 4 (spatial structure / map and regions) must at least list the main spaces and their entry or restriction rules, and dimension 5 (calendar / day order and cycles) must at least give the year notation, days per month, the division of a day, and the **origin day**. **Returning only the first three dimensions is a failure.**
 6. The two kinds of names fixed in dimension 4 are the single key for later references; do not use multiple aliases for one entity: (a) space names; (b) named people listed on their own line in the [Named cast registry]. **A registered person matters as much as a space name** — the arc structure, plot outline, and chapter blueprints will reference them by the same name.
 7. [Named cast registry] Register only anchored supporting roles with a fixed identity who will recur (stall owner, gatekeeper, receptionist, permanent colleague). Do not register one-off passers-by or crowd members. If there are none, write "none".
-8. Return the world-building text only, with no code, analysis, or explanation.
+8. **Do not substitute unjudgeable words for a scale**: "powerful", "unfathomably deep", "an enormous gap", "each with its own strengths", "mysterious and unknowable", "hard to estimate", "grows geometrically" make that dimension fail — they can neither be compared nor accounted for. Express strength as a tier name or a numeric relation; express scarcity as an allocation method and a share.
+9. Return the world-building text only, with no code, analysis, or explanation.
 
 [Reference works — borrow systems/mechanics/tone; obey stated prohibitions]
 {{reference_works}}
