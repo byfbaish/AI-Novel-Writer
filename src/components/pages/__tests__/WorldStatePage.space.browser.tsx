@@ -23,8 +23,10 @@ const audited: SpaceLocationAudit = {
   tableSpaces: 2,
   machineLines: 1,
   issues: [
-    { kind: 'missing-machine-line', space: '藏经阁', detail: '表格里写了这个空间的规则，但机读行里没有它 ⇒ 窗口无法参与判定。' },
-    { kind: 'window-semantics-ambiguous', space: '执法殿·审讯室', detail: '表格里的时间是「申请/受理/办理」窗口，机读行却当成空间开放时段。' },
+    { kind: 'missing-machine-line', severity: 'attention', space: '藏经阁', detail: '表格里写了这个空间的规则，但机读行里没有它 ⇒ 窗口无法参与判定。' },
+    { kind: 'window-semantics-ambiguous', severity: 'attention', space: '执法殿·审讯室', detail: '表格里的时间是「申请/受理/办理」窗口，机读行却当成空间开放时段。' },
+    // 设计内提示：不进计数，单独一组渲染（作者实测「7 处待确认」里 7 条全是这一类）。
+    { kind: 'rule-not-encoded', severity: 'info', space: '试药房', detail: '规则含「禁止/离开限制」，机读行装不下 ⇒ 只能靠 prompt 里的规则原文。' },
   ],
   unreadable: false,
 }
@@ -89,7 +91,8 @@ describe('世界状态页 · 空间检查', () => {
 
     const text = container.textContent ?? ''
     expect(text).toContain('空间检查')
-    expect(text).toContain('表格 2 个空间 · 机读行 1 条 · 2 处待确认')
+    // 只数 attention（2 条），info（1 条）另附 —— 混数会让这一行永远清不零。
+    expect(text).toContain('表格 2 个空间 · 机读行 1 条 · 2 处待确认（另 1 条设计内提示）')
     // 每条 issue 必须带空间名 + kind 中文标签 + detail。
     expect(text).toContain('藏经阁')
     expect(text).toContain('缺机读行')
@@ -97,10 +100,29 @@ describe('世界状态页 · 空间检查', () => {
     expect(text).toContain('执法殿·审讯室')
     expect(text).toContain('窗口语义待确认')
     expect(text).toContain('当成空间开放时段')
+    // 设计内提示独立成组，带「不需要处理」的口径。
+    expect(text).toContain('设计内提示（1 条，不需要处理）')
+    expect(text).toContain('约束装不下')
     // 机器判不了的两条固定提示。
     expect(text).toContain('机器判不了，需人工确认')
     expect(text).toContain('申请/办理窗口')
     expect(text).toContain('机读行装不下')
+  })
+
+  it('只有设计内提示时，待确认数为 0 且不渲染「未发现结构问题」以外的待办', async () => {
+    await mount({
+      tableSpaces: 1,
+      machineLines: 1,
+      issues: [
+        { kind: 'rule-not-encoded', severity: 'info', space: '试药房', detail: '机读行装不下。' },
+      ],
+      unreadable: false,
+    })
+
+    const text = container.textContent ?? ''
+    expect(text).toContain('0 处待确认（另 1 条设计内提示）')
+    expect(text).toContain('未发现需确认的结构问题')
+    expect(text).toContain('设计内提示（1 条，不需要处理）')
   })
 
   it('未检查时写明「本次未检查」，不渲染任何计数', async () => {

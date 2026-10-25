@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { CastLedgerEntry } from '../../../../shared/cast-ledger'
 import { CHARACTER_STATE_TEXT_FIELDS } from '../../../../shared/character-roster'
 import type { WorldStateChapter } from '../../../../shared/world-state-view'
+import type { SpaceLocationAudit } from '../../../../shared/space-machine-line'
 import { emptyWorldStateView } from '../../../../shared/world-state-view'
 import {
   SPACE_AUDIT_KIND_LABELS,
@@ -119,19 +120,26 @@ describe('summarizeUnreadable', () => {
 })
 
 describe('summarizeSpaceAudit', () => {
-  const audit = {
+  const audit: SpaceLocationAudit = {
     tableSpaces: 3,
     machineLines: 2,
     issues: [
-      { kind: 'missing-machine-line' as const, space: '藏经阁', detail: '…' },
-      { kind: 'hours-unreadable' as const, space: '', detail: '…' },
+      { kind: 'missing-machine-line', severity: 'attention', space: '藏经阁', detail: '…' },
+      { kind: 'hours-unreadable', severity: 'attention', space: '', detail: '…' },
+      { kind: 'rule-not-encoded', severity: 'info', space: '试药房', detail: '…' },
     ],
     unreadable: false,
   }
 
-  it('renders the three counts in both languages', () => {
-    expect(summarizeSpaceAudit(audit, 'zh-CN')).toBe('表格 3 个空间 · 机读行 2 条 · 2 处待确认')
-    expect(summarizeSpaceAudit(audit, 'en-US')).toBe('3 table space(s) · 2 machine line(s) · 2 to confirm')
+  it('counts only attention items and reports informational ones separately', () => {
+    expect(summarizeSpaceAudit(audit, 'zh-CN')).toBe('表格 3 个空间 · 机读行 2 条 · 2 处待确认（另 1 条设计内提示）')
+    expect(summarizeSpaceAudit(audit, 'en-US')).toBe('3 table space(s) · 2 machine line(s) · 2 to confirm (plus 1 informational)')
+  })
+
+  it('omits the informational tail when there is none', () => {
+    const attentionOnly: SpaceLocationAudit = { ...audit, issues: audit.issues.slice(0, 2) }
+    expect(summarizeSpaceAudit(attentionOnly, 'zh-CN')).toBe('表格 3 个空间 · 机读行 2 条 · 2 处待确认')
+    expect(summarizeSpaceAudit(attentionOnly, 'en-US')).toBe('3 table space(s) · 2 machine line(s) · 2 to confirm')
   })
 
   it('returns null when the audit did not run (never renders 0 issues for unchecked data)', () => {

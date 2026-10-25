@@ -4,6 +4,7 @@ import {
   describeSpaceReviewChecklist,
   extractSpaceMachineLines,
   parseSpaceHours,
+  spaceAuditCounts,
 } from '../space-machine-line'
 
 /** 作者真实第 4 维（2026-10-22）：三列表格 + 末尾机读行。 */
@@ -144,7 +145,86 @@ describe('describeSpaceReviewChecklist', () => {
 
     const text = describeSpaceReviewChecklist(auditSpaceLocations(clean), 'zh-CN')
 
-    expect(text).toContain('未发现结构问题')
+    expect(text).toContain('未发现需确认的结构问题')
     expect(text).toContain('申请')
+  })
+})
+
+/**
+ * 舞台分级容错（2026-10-26，作者实测：10 个空间报 7 条，其中 5 条是一次性场景误报）。
+ *
+ * 契约三条：① 声明为一次性/低频 ⇒ 缺 hours 降为 info；② 声明为长期舞台 ⇒ 仍然报；
+ * ③ 抽不到分级声明 ⇒ 一律照原判定（绝不因为解析失败而放行）。
+ */
+const STAGED = `### 4.【空间结构（地图与区域）】
+
+**碑坪**：外门弟子居所。关键规则：凭外门腰牌进入；每月初一小考（05:00–07:00）。长期舞台。
+
+碑坪｜hours=05:00-21:00｜entry=需外门腰牌
+
+**试药房**：试药灌残篇的地方。关键规则：凭试药名额进入；试药期间不得外出。一次性/低频场景。
+
+试药房｜entry=需试药名额
+
+**山门**：玄阙宗对外出入口。关键规则：凭宗门令牌进出。一次性场景。
+
+山门｜entry=需宗门令牌或执事以上引荐
+
+长期舞台：碑坪。低频/一次性：试药房、山门。`
+
+describe('auditSpaceLocations · 舞台分级容错', () => {
+  it('downgrades missing windows on one-off scenes to informational', () => {
+    const audit = auditSpaceLocations(STAGED)
+    const noHours = audit.issues.filter(issue => issue.kind === 'no-hours')
+
+    expect(noHours).toHaveLength(2)
+    expect(noHours.every(issue => issue.severity === 'info')).toBe(true)
+    expect(noHours.every(issue => issue.detail.includes('一次性/低频场景'))).toBe(true)
+  })
+
+  it('keeps rule-not-encoded informational but still visible', () => {
+    const audit = auditSpaceLocations(STAGED)
+    const notEncoded = audit.issues.filter(issue => issue.kind === 'rule-not-encoded')
+
+    expect(notEncoded).toHaveLength(1)
+    expect(notEncoded[0].space).toBe('试药房')
+    expect(notEncoded[0].severity).toBe('info')
+  })
+
+  it('counts nothing as to-confirm when only informational notes remain', () => {
+    const audit = auditSpaceLocations(STAGED)
+
+    expect(spaceAuditCounts(audit)).toEqual({ attention: 0, info: 3 })
+    expect(describeSpaceReviewChecklist(audit, 'zh-CN')).toContain('0 处需要确认')
+    expect(describeSpaceReviewChecklist(audit, 'zh-CN')).toContain('另有 3 条设计内提示')
+  })
+
+  it('keeps a declared long-running stage in the to-confirm bucket', () => {
+    const text = STAGED.replace('碑坪｜hours=05:00-21:00｜entry=需外门腰牌', '碑坪｜entry=需外门腰牌')
+    const noHours = auditSpaceLocations(text).issues.filter(issue => issue.kind === 'no-hours' && issue.space === '碑坪')
+
+    expect(noHours).toHaveLength(1)
+    expect(noHours[0].severity).toBe('attention')
+  })
+
+  it('never tolerates a missing window when no staging is declared (fail-open)', () => {
+    const unstaged = STAGED
+      .replace(/。(?:一次性\/低频场景|一次性场景|长期舞台)。/gu, '。')
+      .replace(/\n长期舞台：[^\n]*$/u, '')
+    const audit = auditSpaceLocations(unstaged)
+    const noHours = audit.issues.filter(issue => issue.kind === 'no-hours')
+
+    expect(noHours).toHaveLength(2)
+    expect(noHours.every(issue => issue.severity === 'attention')).toBe(true)
+  })
+
+  it('ignores a staging declaration that matches no real space name', () => {
+    // 散文里顺带提到「一次性」被误吃：一个名字都对不上 ⇒ 不生效。
+    const drifted = STAGED.replace(/\n长期舞台：[^\n]*$/u, '').replace('。一次性场景。', '。\n\n本维不写一次性场景。')
+    const noHours = auditSpaceLocations(drifted).issues.filter(issue => issue.kind === 'no-hours')
+
+    // 「试药房」仍有条目后缀声明 ⇒ 降级；「山门」的声明被换成了无名字的散文 ⇒ 升级回待确认。
+    expect(noHours.find(issue => issue.space === '试药房')?.severity).toBe('info')
+    expect(noHours.find(issue => issue.space === '山门')?.severity).toBe('attention')
   })
 })

@@ -211,6 +211,7 @@ docs/
 | [`p1-1-knowledge-state-design.md`](design/architecture/p1-1-knowledge-state-design.md) | ✅ 已落地（M16） | 信息流（who knows what）：人粒度，只做正向知情，不做 C1 身份分面 |
 | [`p1-1-power-ability-design.md`](design/architecture/p1-1-power-ability-design.md) | ✅ 已落地（M17） | 能力槽（power system）：Sanderson 三类限制 + 当前阶段，不判次数与冷却 |
 | [`p1-1-power-system-shape-proposal.md`](design/architecture/p1-1-power-system-shape-proposal.md) | ✅ 形状已签（G4a） | 能力槽形状提案（13 列，含 `evidence_scope`），期 4b 的形状依据 |
+| [`p1-1-worldbuilding-extraction-assessment.md`](design/architecture/p1-1-worldbuilding-extraction-assessment.md) | 📝 待裁定（2026-10-26） | **三格为什么抽不出来**：写入通道只有手填，`derived` 留的是「从定稿抽」且另立项 ⇒ 来源轴不同（键挂章号 + 引文，世界观没有章号）。逐格结论：**能力该抽**（来源 100% 是设定文本，卡在 8 条 / 第 1 维 2 个名额）· 制度只能抽一半（锚抽不出，全 `unknown`）· 知情**宿体不符**（要的是 secrets 不是 knowledge state）· 物品不该抽。方案 = 抽取 → 候选草稿 → 逐条采纳，豁免「不写库、不进 prompt」 |
 | [`p1-2-volume-handoff-design.md`](design/architecture/p1-2-volume-handoff-design.md) | ✅ 期 1/1b/2/2b · 期 3 未开工 | 卷末交接单（volume handoff）+ 开写闸门；期 3 大纲前缀投影未做 |
 | [`volume-unit-structure-design.md`](design/architecture/volume-unit-structure-design.md) | ✅ 已落地（M19） | 卷 / 单元结构持久化：计划列从大纲物化、实际列只由定稿链写，区间外置成外键 |
 | [`w8-nested-world-handoff-design.md`](design/architecture/w8-nested-world-handoff-design.md) | 📋 方向已定 · 未开工 | 跨部切片交接（series bible handoff）：只做线性升级流，不做多图往返 |

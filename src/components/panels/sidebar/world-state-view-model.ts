@@ -11,6 +11,7 @@
 import type { CastLedgerEntry, CastLedgerMentionSource, CastLedgerStatus } from '../../../shared/cast-ledger'
 import type { CharacterStateTextField } from '../../../shared/character-roster'
 import type { SpaceLocationAudit } from '../../../shared/space-machine-line'
+import { spaceAuditCounts } from '../../../shared/space-machine-line'
 import type {
   WorldStateChapter,
   WorldStateContinuityFact,
@@ -238,15 +239,23 @@ export { SPACE_AUDIT_ISSUE_LABELS as SPACE_AUDIT_KIND_LABELS } from '../../../sh
  *
  * `unreadable` 时返回 null —— 没检查过的数据不能渲染成「0 处待确认」，
  * 与 `summarizeUnreadable` 的 null 语义一致。
+ *
+ * 只数 `attention`（2026-10-26）：`info` 是设计内提示（约束装不下、一次性场景缺窗口、
+ * 24:00 已归一），把它们算进「待确认」会让这一行永远清不零 —— 作者实测 10 个空间
+ * 报 7 条，其中 7 条全是设计内提示。提示条数另附，不混进计数。
  */
 export function summarizeSpaceAudit(
   audit: SpaceLocationAudit,
   language: WorldStateLanguage,
 ): string | null {
   if (audit.unreadable) return null
-  return language === 'zh-CN'
-    ? `表格 ${audit.tableSpaces} 个空间 · 机读行 ${audit.machineLines} 条 · ${audit.issues.length} 处待确认`
-    : `${audit.tableSpaces} table space(s) · ${audit.machineLines} machine line(s) · ${audit.issues.length} to confirm`
+  const { attention, info } = spaceAuditCounts(audit)
+  if (language === 'zh-CN') {
+    const base = `表格 ${audit.tableSpaces} 个空间 · 机读行 ${audit.machineLines} 条 · ${attention} 处待确认`
+    return info > 0 ? `${base}（另 ${info} 条设计内提示）` : base
+  }
+  const base = `${audit.tableSpaces} table space(s) · ${audit.machineLines} machine line(s) · ${attention} to confirm`
+  return info > 0 ? `${base} (plus ${info} informational)` : base
 }
 
 /** 日序未知的章归到这一组，且永远排在已知日序之后。 */

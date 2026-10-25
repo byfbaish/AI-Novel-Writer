@@ -21,6 +21,20 @@
  * - 只解析**窗口**，不判断"某事件是否越界"（那需要「事件时空锚点」，目前无来源）。
  * - 解析失败一律 `unreadable`：**不猜、不当合规**（判据 CL：缺数据必须显式「未判」）。
  * - 不修改世界观正文、不写库。
+ *
+ * ## 两档 severity（2026-10-26 作者实测后加）
+ *
+ * 作者真实数据：10 个空间报 7 处待确认，**7 处没有一处是真问题** —— 5 条是「一次性场景没写
+ * hours」（一次性场景本来就没有开放窗口），2 条是「约束装不下」（这条约束的归属地就是 prompt
+ * 里的规则原文，作者既补不了也关不掉）。结果是这一节被训练成「看见就跳过」。
+ *
+ * 因此 issue 分两档：`attention`（真需要动手，计入「N 处待确认」）与 `info`（设计内提示，
+ * 单独成组展示、不计数）。降级只发生在三个**可证明没事可做**的形态上：`rule-not-encoded`、
+ * `end-of-day-2400`、以及**声明为一次性/低频**场景的 `no-hours`。后者读的是模板第 4 维要求的
+ * 「说明哪些空间是长期舞台、哪些是一次性场景」，见 `extractSpaceStaging`。
+ *
+ * 两条 fail-open：抽不到分级声明、或声明里一个真实空间名都对不上 ⇒ 一律保持原判定。
+ * 「降级」永远不会让一条本该报的问题消失，只会让不该报的不占计数。
  */
 
 import { extractSpaceConstraints } from './space-constraints'
@@ -55,6 +69,38 @@ export interface SpaceMachineLine {
   raw: string
 }
 
+/**
+ * issue 的处置档。
+ *
+ * - `attention`：**需要作者动手**。计入「N 处待确认」，缺了就是真的缺（漏写窗口、区间倒置、
+ *   两处时间不一致、表里有这个空间却没机读行）。
+ * - `info`：**设计内提示**，作者没事可做。典型两类：① 机读行按设计就装不下的语义约束
+ *   （`rule-not-encoded`）—— 它的事实归属是 prompt 里的规则原文，报出来只是告诉作者
+ *   「这条不走机器判定」；② 已经归一过的写法（`end-of-day-2400`）；③ 声明为一次性/低频
+ *   场景却缺 `hours` —— 一次性场景没有「开放窗口」这回事，缺是正确状态。
+ *
+ * 分开的理由（2026-10-26，作者实测反馈「空间检查没有容错」）：两档混在一个计数里，
+ * 作者确认过的固定项会**每次刷新都重新数一遍**，7 条一堆、永远清不掉，于是这一节被
+ * 训练成"看见就跳过"—— 真正的漏写（两处时间不一致）反而没人看。
+ */
+export type SpaceAuditSeverity = 'attention' | 'info'
+
+/**
+ * 空间的出场分级：长期舞台 vs 一次性/低频场景。
+ *
+ * 世界观模板第 4 维要求「说明哪些空间是长期舞台、哪些是一次性场景」（`builtin-prompt-templates.ts`
+ * 第 4 维），因此这是一条**模板声明过的结构**，不是从散文里猜语义。
+ */
+export type SpaceStage = 'recurring' | 'one-off'
+
+/** `extractSpaceStaging` 的产出。`declared=false` 时调用方**必须**保持原判定（fail-open）。 */
+export interface SpaceStaging {
+  /** 分级声明是否覆盖到至少一个真实空间名。 */
+  declared: boolean
+  /** 归一化空间名 → 分级。未被声明的空间不在表里。 */
+  byName: ReadonlyMap<string, SpaceStage>
+}
+
 export type SpaceAuditIssueKind =
   /** 表格里有这个空间，机读行里没有。 */
   | 'missing-machine-line'
@@ -79,6 +125,8 @@ export type SpaceAuditIssueKind =
 
 export interface SpaceAuditIssue {
   kind: SpaceAuditIssueKind
+  /** `attention` 计入「待确认」；`info` 只是设计内提示，不需要作者动手。 */
+  severity: SpaceAuditSeverity
   /** 空间名；无法定位到具体空间时为空串。 */
   space: string
   /** 给作者看的具体说明（含原文片段或数值）。 */
@@ -213,6 +261,96 @@ const APPLICATION_WINDOW_HINT = /申请|受理|办理|登记时间|接待窗口/
 /** entry 里出现这些词 ⇒ 缺 hours 是合理的（自由进出）。 */
 const FREE_ACCESS_HINT = /自由|无限制|不限|任意进出|开放/u
 
+/** 分级提示词：长期舞台侧。 */
+const RECURRING_STAGE_HINT = /长期舞台|长期场景|复访场景|反复出现的空间|反复出场/u
+/** 分级提示词：一次性/低频侧。 */
+const ONE_OFF_STAGE_HINT = /一次性|低频|单次到访|过场场景/u
+
+/**
+ * 判断一段文字把空间归到哪一级。
+ *
+ * 两侧都出现时取**最后出现的那个**：模板要求把分级写在条目末尾，汇总句也写在整段末尾，
+ * 所以「后出现的声明」才是结论（「…长期舞台。低频/一次性场景。」这类混写里，后者生效）。
+ */
+function stageOfText(text: string): SpaceStage | null {
+  const recurring = RECURRING_STAGE_HINT.exec(text)
+  const oneOff = ONE_OFF_STAGE_HINT.exec(text)
+  if (!recurring && !oneOff) return null
+  if (recurring && !oneOff) return 'recurring'
+  if (oneOff && !recurring) return 'one-off'
+  return (oneOff as RegExpExecArray).index > (recurring as RegExpExecArray).index ? 'one-off' : 'recurring'
+}
+
+/** 分级声明里的名字清洗：去 markdown、去句读、去「等」；不是名字的碎句返回空串。 */
+function cleanStageName(raw: string): string {
+  const cleaned = raw
+    .replace(/[*_`]/gu, '')
+    .replace(/^[\s（(【]+/u, '')
+    .replace(/[\s）)】。、，,：:；;]+$/u, '')
+    .replace(/等$/u, '')
+    .trim()
+  if (!cleaned || cleaned.length > 20) return ''
+  // 声明句里的说明词不是空间名（「一次性场景」「哪些空间」会被切成这种碎句）。
+  if (/场景|空间|哪些|说明|条目|本条|本维/u.test(cleaned)) return ''
+  return cleaned
+}
+
+/** 形态 1：逐条后缀（`**碑坪**：…。长期舞台。`）。 */
+function stagingFromEntries(text: string): Map<string, SpaceStage> {
+  const found = new Map<string, SpaceStage>()
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim()
+    const bold = /^(?:[-*+]\s*)?\*\*(.+?)\*\*/u.exec(line)
+    if (!bold) continue
+    const stage = stageOfText(line)
+    if (!stage) continue
+    const name = cleanStageName(bold[1])
+    if (name) found.set(normalizeName(name), stage)
+  }
+  return found
+}
+
+/** 形态 2：汇总句（`长期舞台：碑坪、断脉岭矿洞。低频/一次性：内门活脉、山门。`）。 */
+function stagingFromDeclarations(text: string): Map<string, SpaceStage> {
+  const found = new Map<string, SpaceStage>()
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim()
+    if (!line) continue
+    for (const clause of line.split(/[。；;]/u)) {
+      const stage = stageOfText(clause)
+      if (!stage) continue
+      const colon = clause.search(/[：:]/u)
+      if (colon < 0) continue
+      for (const part of clause.slice(colon + 1).split(/[、，,／/]/u)) {
+        const name = cleanStageName(part)
+        if (name) found.set(normalizeName(name), stage)
+      }
+    }
+  }
+  return found
+}
+
+/**
+ * 抽「长期舞台 / 一次性场景」的分级声明。
+ *
+ * 为什么需要它：`no-hours` 原先对所有缺 `hours` 的空间一视同仁 —— 但一次性场景
+ * （山门、下山道、试药房）**本来就没有开放窗口**，报「请确认是全天开放还是漏写」
+ * 是假警报。作者实测 10 个空间里 5 个是一次性场景，7 条提示里 5 条来自这个误判。
+ *
+ * 边界：**只用于降级、不用于升级**。识别到的分级只能把 `no-hours` 从「待确认」降到
+ * 「提示」，永远不会让一条本该报的问题消失；识别不到（`declared=false`）时调用方
+ * 保持原判定 —— 解析失败绝不放行（判据 CL：缺数据必须显式「未判」，不能当合规）。
+ */
+export function extractSpaceStaging(worldbuilding: string | null | undefined): SpaceStaging {
+  const byName = new Map<string, SpaceStage>()
+  if (!worldbuilding) return { declared: false, byName }
+  const text = worldbuilding.replace(/\r\n?/gu, '\n')
+  for (const [name, stage] of stagingFromEntries(text)) byName.set(name, stage)
+  // 汇总句后写：同一空间两处冲突时以汇总句为准（它是一条显式清单，不是散文里的顺带一提）。
+  for (const [name, stage] of stagingFromDeclarations(text)) byName.set(name, stage)
+  return { declared: byName.size > 0, byName }
+}
+
 /**
  * 表格规则 × 机读行 对账。
  *
@@ -230,11 +368,25 @@ export function auditSpaceLocations(worldbuilding: string | null | undefined): S
   for (const line of machineLines) byName.set(normalizeName(line.name), line)
   const tableNames = new Set(tableEntries.map(entry => normalizeName(entry.name)))
 
+  /**
+   * 分级声明只在**命中真实空间名**时才生效。
+   *
+   * 两条独立的失效保护：① 抽不到声明 ⇒ `declared=false`，一切照原判定；
+   * ② 抽到了但一个名字都对不上（散文里顺带提到「一次性」被误吃）⇒ 同样不生效。
+   * 少了这两道，一次解析漂移就会把真正的漏写静默降级成「提示」。
+   */
+  const staging = extractSpaceStaging(worldbuilding)
+  const stagingUsable = staging.declared
+    && [...staging.byName.keys()].some(name => byName.has(name) || tableNames.has(name))
+  const stageOf = (space: string): SpaceStage | null =>
+    (stagingUsable ? staging.byName.get(normalizeName(space)) ?? null : null)
+
   // 1) 表格有、机读行没有
   for (const entry of tableEntries) {
     if (!byName.has(normalizeName(entry.name))) {
       issues.push({
         kind: 'missing-machine-line',
+        severity: 'attention',
         space: entry.name,
         detail: '表格里写了这个空间的规则，但机读行里没有它 ⇒ 窗口无法参与判定。',
       })
@@ -246,6 +398,7 @@ export function auditSpaceLocations(worldbuilding: string | null | undefined): S
     if (!tableNames.has(normalizeName(line.name))) {
       issues.push({
         kind: 'missing-table-entry',
+        severity: 'attention',
         space: line.name,
         detail: '只有机读行、表格里没有这个空间 ⇒ 没有语义规则可参照，只有窗口。',
       })
@@ -260,10 +413,15 @@ export function auditSpaceLocations(worldbuilding: string | null | undefined): S
     if (line.hours === null) {
       const freeAccess = line.entry ? FREE_ACCESS_HINT.test(line.entry) : false
       if (!freeAccess) {
+        const oneOff = stageOf(line.name) === 'one-off'
         issues.push({
           kind: 'no-hours',
+          // 一次性/低频场景本来就没有「开放窗口」这回事：缺 hours 是正确状态，不该进待确认。
+          severity: oneOff ? 'info' : 'attention',
           space: line.name,
-          detail: '机读行没有 hours，entry 里也没写"自由进出/不限"⇒ 请确认是全天开放还是漏写。',
+          detail: oneOff
+            ? '世界观已声明这是一次性/低频场景，故未写 hours ⇒ 缺窗口是正常的；若它其实会反复出现，请补 hours。'
+            : '机读行没有 hours，entry 里也没写"自由进出/不限"⇒ 请确认是全天开放还是漏写。',
         })
       }
     } else {
@@ -271,16 +429,23 @@ export function auditSpaceLocations(worldbuilding: string | null | undefined): S
       if (parsed.kind === 'unreadable') {
         issues.push({
           kind: 'hours-unreadable',
+          severity: 'attention',
           space: line.name,
           detail: `hours="${line.hours}" 解析不了（${parsed.reason}）⇒ 本次按「未判」处理，不当合规。`,
         })
       } else {
         if (parsed.kind === 'daily' && parsed.note) {
-          issues.push({ kind: 'end-of-day-2400', space: line.name, detail: `hours="${line.hours}"：${parsed.note}。` })
+          issues.push({
+            kind: 'end-of-day-2400',
+            severity: 'info',
+            space: line.name,
+            detail: `hours="${line.hours}"：${parsed.note}。`,
+          })
         }
         if (parsed.kind === 'day-range' && parsed.endDay < parsed.startDay) {
           issues.push({
             kind: 'inverted-range',
+            severity: 'attention',
             space: line.name,
             detail: `hours="${line.hours}"：结束日早于开始日，跨月区间暂不支持。`,
           })
@@ -291,12 +456,14 @@ export function auditSpaceLocations(worldbuilding: string | null | undefined): S
           if (duration <= 0) {
             issues.push({
               kind: 'inverted-range',
+              severity: 'attention',
               space: line.name,
               detail: `hours="${line.hours}"：结束不晚于开始；若想表达跨夜请拆成两段。`,
             })
           } else if (duration <= SHORT_WINDOW_MINUTES) {
             issues.push({
               kind: 'short-window',
+              severity: 'attention',
               space: line.name,
               detail: `hours="${line.hours}" 只有 ${duration} 分钟 —— 若这是瞬时事件（如传送开启）则正常，若是开放时段请确认不是笔误。`,
             })
@@ -311,6 +478,7 @@ export function auditSpaceLocations(worldbuilding: string | null | undefined): S
           if (ruleStart !== null && ruleEnd !== null && (ruleStart !== parsed.start || ruleEnd !== parsed.end)) {
             issues.push({
               kind: 'hours-mismatch',
+              severity: 'attention',
               space: line.name,
               detail: `表格写 ${formatMinutes(ruleStart)}-${formatMinutes(ruleEnd)}，机读行写 ${line.hours} ⇒ 两处不一致。`,
             })
@@ -323,6 +491,7 @@ export function auditSpaceLocations(worldbuilding: string | null | undefined): S
     if (line.hours !== null && APPLICATION_WINDOW_HINT.test(rule)) {
       issues.push({
         kind: 'window-semantics-ambiguous',
+        severity: 'attention',
         space: line.name,
         detail: '表格里的时间是「申请/受理/办理」窗口，机读行却当成空间开放时段 ⇒ 判定前请确认这两者是不是一回事。',
       })
@@ -334,6 +503,9 @@ export function auditSpaceLocations(worldbuilding: string | null | undefined): S
       if (hits.length > 0) {
         issues.push({
           kind: 'rule-not-encoded',
+          // 设计内提示，不是待办：这条约束的归属地就是 prompt 里的规则原文，
+          // 作者既无法「补齐」也无法「关掉」它 —— 计数只会把真正的漏写淹掉。
+          severity: 'info',
           space: line.name,
           detail: `规则含「${hits.join('、')}」，机读行装不下 ⇒ 只能靠 prompt 里的规则原文。`,
         })
@@ -347,6 +519,22 @@ export function auditSpaceLocations(worldbuilding: string | null | undefined): S
     issues,
     unreadable: false,
   }
+}
+
+/**
+ * 两个计数：`attention` 进「N 处待确认」，`info` 只作为设计内提示展示。
+ *
+ * 唯一实现放在这里：面板（`summarizeSpaceAudit`）与步骤日志（`describeSpaceReviewChecklist`）
+ * 都调它 —— 两处各数一遍，迟早会出现「面板说 0 处、日志说 7 处」。
+ */
+export function spaceAuditCounts(audit: SpaceLocationAudit): { attention: number; info: number } {
+  let attention = 0
+  let info = 0
+  for (const issue of audit.issues) {
+    if (issue.severity === 'info') info += 1
+    else attention += 1
+  }
+  return { attention, info }
 }
 
 function normalizeName(name: string): string {
@@ -386,6 +574,9 @@ export const SPACE_AUDIT_ISSUE_LABELS: Record<SpaceAuditIssueKind, { zh: string;
  *
  * 为什么不是一份通用 checklist：本书的真实问题（申请窗口、离开限制、截止日）
  * 只有对着数据才点得出来；通用清单作者看两眼就会跳过。
+ *
+ * 计数口径（2026-10-26）：只数 `attention`。`info` 汇总成一句「设计内提示」——
+ * 逐条列出来会把真正的漏写埋掉，而它们本来就没有可执行动作。
  */
 export function describeSpaceReviewChecklist(
   audit: SpaceLocationAudit,
@@ -399,27 +590,42 @@ export function describeSpaceReviewChecklist(
   }
 
   const zh = language !== 'en-US'
+  const { attention, info } = spaceAuditCounts(audit)
+  const pending = audit.issues.filter(issue => issue.severity !== 'info')
+  const hints = audit.issues.filter(issue => issue.severity === 'info')
   const head = zh
-    ? `空间检查：表格 ${audit.tableSpaces} 个空间 / 机读行 ${audit.machineLines} 条，发现 ${audit.issues.length} 处需要确认（不阻断写作）。`
-    : `Space check: ${audit.tableSpaces} table space(s) / ${audit.machineLines} machine line(s); ${audit.issues.length} item(s) to confirm (does not block drafting).`
+    ? `空间检查：表格 ${audit.tableSpaces} 个空间 / 机读行 ${audit.machineLines} 条，${attention} 处需要确认（不阻断写作）。`
+    : `Space check: ${audit.tableSpaces} table space(s) / ${audit.machineLines} machine line(s); ${attention} item(s) to confirm (does not block drafting).`
 
-  if (audit.issues.length === 0) {
+  const hintLine = (): string => {
+    if (hints.length === 0) return ''
+    const byKind = new Map<SpaceAuditIssueKind, number>()
+    for (const issue of hints) byKind.set(issue.kind, (byKind.get(issue.kind) ?? 0) + 1)
+    const parts = [...byKind.entries()].map(([kind, count]) => `${zh ? SPACE_AUDIT_ISSUE_LABELS[kind].zh : SPACE_AUDIT_ISSUE_LABELS[kind].en} ×${count}`)
     return zh
-      ? `${head} 未发现结构问题。仍需人工确认一项：机读行 hours 装的是「空间开放时段」，不是「申请/办理窗口」。`
-      : `${head} No structural issue found. One manual check remains: whether each hours window is the space's opening time rather than an application window.`
+      ? `另有 ${hints.length} 条设计内提示（${parts.join('、')}），不需要处理。`
+      : `Plus ${hints.length} informational note(s) (${parts.join(', ')}), no action needed.`
   }
 
-  const visible = audit.issues.slice(0, Math.max(1, maxItems))
+  if (attention === 0) {
+    const tail = zh
+      ? '未发现需确认的结构问题。仍需人工确认一项：机读行 hours 装的是「空间开放时段」，不是「申请/办理窗口」。'
+      : 'No structural issue needs confirmation. One manual check remains: whether each hours window is the space\u2019s opening time rather than an application window.'
+    return [head, tail, hintLine()].filter(Boolean).join('\n')
+  }
+
+  const visible = pending.slice(0, Math.max(1, maxItems))
   const lines = visible.map((issue, index) => {
     const label = zh ? SPACE_AUDIT_ISSUE_LABELS[issue.kind].zh : SPACE_AUDIT_ISSUE_LABELS[issue.kind].en
     return zh
       ? `${index + 1}. 【${label}】${issue.space || '（未定位）'}：${issue.detail}`
       : `${index + 1}. [${label}] ${issue.space || '(unlocated)'}: ${issue.detail}`
   })
-  const rest = audit.issues.length - visible.length
+  const rest = pending.length - visible.length
   if (rest > 0) {
     lines.push(zh ? `…另 ${rest} 处同类，未逐条展开。` : `... ${rest} more of the same kind not listed.`)
   }
+  if (info > 0) lines.push(hintLine())
 
   const manual = zh
     ? [
@@ -433,5 +639,5 @@ export function describeSpaceReviewChecklist(
       '② deadlines, exit limits and behavioural duties cannot fit in the machine line — confirm they stay in the table text (which is sent to the model).',
     ]
 
-  return [head, ...lines, '', ...manual].join('\n')
+  return [head, ...lines, '', ...manual].filter(line => line !== '').join('\n')
 }

@@ -1232,32 +1232,60 @@ function SpaceSection({ audit }: { audit: SpaceLocationAudit }) {
     )
   }
 
+  // 两档分开渲染（2026-10-26）：`attention` 才需要作者动手；`info` 是设计内提示
+  // （约束装不下 / 一次性场景缺窗口 / 24:00 已归一），混在一起会让真问题被淹掉。
+  const pending = audit.issues.filter(issue => issue.severity !== 'info')
+  const hints = audit.issues.filter(issue => issue.severity === 'info')
+
+  const renderCard = (issue: SpaceLocationAudit['issues'][number], index: number, dim: boolean) => (
+    <Card key={`${issue.kind}:${issue.space}:${index}`}>
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+        <span
+          className="flex-shrink-0 rounded px-1 text-[0.65rem]"
+          style={{ color: SPACE_ISSUE_COLOR[issue.kind], border: '1px solid var(--color-border)' }}
+        >
+          {pickLabel(SPACE_AUDIT_KIND_LABELS[issue.kind], language)}
+        </span>
+        <span className="truncate text-xs font-medium" style={{ color: 'var(--color-text)' }}>
+          {issue.space || text('（未定位到空间）', '(space not located)')}
+        </span>
+        {dim && (
+          <span className="flex-shrink-0 text-[0.65rem]" style={{ color: 'var(--color-text-muted)' }}>
+            {text('设计内', 'by design')}
+          </span>
+        )}
+      </div>
+      <div className="mt-1 text-[0.7rem] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
+        {issue.detail}
+      </div>
+    </Card>
+  )
+
   return (
     <div className="space-y-3">
       <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{summary}</div>
 
-      {audit.issues.length === 0 ? (
-        <SectionHint>{text('未发现结构问题。', 'No structural issue found.')}</SectionHint>
+      {pending.length === 0 ? (
+        <SectionHint>{text('未发现需确认的结构问题。', 'No structural issue needs confirmation.')}</SectionHint>
       ) : (
         <div className="grid gap-2" style={gridStyle(18)}>
-          {audit.issues.map((issue, index) => (
-            <Card key={`${issue.kind}:${issue.space}:${index}`}>
-              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
-                <span
-                  className="flex-shrink-0 rounded px-1 text-[0.65rem]"
-                  style={{ color: SPACE_ISSUE_COLOR[issue.kind], border: '1px solid var(--color-border)' }}
-                >
-                  {pickLabel(SPACE_AUDIT_KIND_LABELS[issue.kind], language)}
-                </span>
-                <span className="truncate text-xs font-medium" style={{ color: 'var(--color-text)' }}>
-                  {issue.space || text('（未定位到空间）', '(space not located)')}
-                </span>
-              </div>
-              <div className="mt-1 text-[0.7rem] leading-relaxed" style={{ color: 'var(--color-text-secondary)' }}>
-                {issue.detail}
-              </div>
-            </Card>
-          ))}
+          {pending.map((issue, index) => renderCard(issue, index, false))}
+        </div>
+      )}
+
+      {hints.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>
+            <span>
+              {text(
+                `设计内提示（${hints.length} 条，不需要处理）`,
+                `Informational (${hints.length}, no action needed)`,
+              )}
+            </span>
+          </div>
+          <div className="grid gap-2" style={gridStyle(18)}>
+            {hints.map((issue, index) => renderCard(issue, index, true))}
+          </div>
         </div>
       )}
 

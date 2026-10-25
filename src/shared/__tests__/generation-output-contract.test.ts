@@ -67,7 +67,7 @@ describe('output contract is never compared as a raw string', () => {
   ]
 
   it.each(files)('%s resolves the contract through the shared helper', file => {
-    const source = withoutComments(readFileSync(resolve(file), 'utf8'))
+    const source = withoutComments(file, readFileSync(resolve(file), 'utf8'))
     const raw = /outputContract\s*[!=]==?\s*'(?:visible-text|structured-data)'/u.test(source)
     expect(raw, `${file} 用字符串硬比 outputContract；带 outputOverrides 的 run 会整批失败`).toBe(false)
   })
