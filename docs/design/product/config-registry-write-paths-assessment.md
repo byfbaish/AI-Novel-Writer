@@ -24,6 +24,8 @@
 
 **读法**：1 与 2 是「模型直接改作者的表单」，3 与 4 是「模型只提议、作者点头」。同一个产品里两种信任模型并存，而**最常用的 1 和 2 恰好是最不受控的那两条**。
 
+> 补充一条易混点：设计稿里的「统一」指的是**运行边界**统一（`plans/novel-quality-modernization/specs/S06A.md:93`：世界观、架构、角色规划、大纲和单字段等入口都经过统一运行边界），不是 prompt 统一，更不是写入语义统一。**路径 1 与路径 2 用的确实是两份不同 prompt**（`generate_global_config` vs `generate_novel_config_field`，后者的字段要求还硬编码在 `generate-field.command.ts:259` 的 `fieldRequirements`），两处措辞已漂移。
+
 ### 1.1 对照：正文侧同一件事是怎么做的（作者 2026-10-26 指出，第一版漏了）
 
 | 正文侧入口 | 落点 | 确认面 |
@@ -36,8 +38,6 @@
 **读法**：正文侧的动作序列是「**AI 产出 → 先并排对比 → 作者逐段采纳 → 才落库**」，而且已经跑了很久——`diff` 是被写进 `EditorTab['type']` 枚举（`editor-store.ts:32`）的一等类型，不是临时弹窗。
 
 ⇒ **方案 B 的性质因此改变**：不是「给配置造一个 diff」，而是「**把已经在跑的 `ThreeWayMerge` 接到配置字段上**」。工作量大头不在对比视图（现成），在**落库语义**——现有的三种意图（替换 / 追加 / 放弃）必须先和 `preserveAuthorText` 的追加规则对齐（§5.3）。
-
-> 补充一条易混点：设计稿里的「统一」指的是**运行边界**统一（`plans/novel-quality-modernization/specs/S06A.md:93`：世界观、架构、角色规划、大纲和单字段等入口都经过统一运行边界），不是 prompt 统一，更不是写入语义统一。**路径 1 与路径 2 用的确实是两份不同 prompt**（`generate_global_config` vs `generate_novel_config_field`，后者的字段要求还硬编码在 `generate-field.command.ts:259` 的 `fieldRequirements`），两处措辞已漂移。
 
 ---
 
