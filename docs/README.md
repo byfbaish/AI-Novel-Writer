@@ -270,13 +270,14 @@ docs/
 | [`ai-output-live-render-design.md`](design/features/ai-output-live-render-design.md) | ✅ 已实施 | AI 输出面板运行态只给状态行、不渲染流式文本（原文：审稿把渲染进程推到 10GB 的 O(n²) 取证与参数） |
 | [`p16b-prompt-config-and-trace-guide.md`](design/features/p16b-prompt-config-and-trace-guide.md) | ✅ 已实施 | 作者操作手册：三条配置边界、口味/数字之辨、三类打架、Prompt 追踪五步归因 |
 
-### 4.6 产品与方法论 · [`design/product/`](design/product/)（3 篇）
+### 4.6 产品与方法论 · [`design/product/`](design/product/)（4 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
 | [`writing-capability-assessment.md`](design/product/writing-capability-assessment.md) | 待裁定 | **五份评估稿的导航** + 定位三问（用户 / 质量标准 / 竞品）+ 「写得好」缺位为何让所有质量判据必然降级 |
 | [`prose-shape-measurement-design.md`](design/product/prose-shape-measurement-design.md) | ✅ 已实施 | P17-2 正文形态统计器：阈值取自作者自己的 v7 正文规则（不是外部口径）；测量仪不做裁判、只写日志；钩子整个不做（标点判语义会奖励 AI 腔） |
 | [`live-verification-checklist.md`](design/product/live-verification-checklist.md) | 待执行 | **一次新项目跑批要验什么**：按世界观→架构→第一章→修稿四阶段排好，标零成本/人工判读；P17-3 明确不在本轮 |
+| [`config-registry-write-paths-assessment.md`](design/product/config-registry-write-paths-assessment.md) | 待裁定 | 配置与登记格**五条写入路径只有两条带确认面**；手填的真负担是「护锚」不是建账；「抽卡变追加」与「输入框看不清」是同一个缺口（缺显式替换动作），diff 面板正好补它 |
 
 ---
 
