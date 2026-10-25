@@ -10,6 +10,7 @@ import {
 import { volumeEffectiveRanges, type VolumeDefinition, type VolumeRange } from '../../shared/volume-structure'
 import type { ConsistencyExemption } from '../../shared/consistency-preflight'
 import { volumeHandoffAckKey } from '../../shared/volume-handoff-gate'
+import { outlineProgressAckKey } from '../../shared/outline-progress-gate'
 import { ipc } from '../../services/ipc-client'
 import {
   describeVolumeHandoffFailure,
@@ -54,6 +55,11 @@ type LocaleText = (zh: string, en: string) => string
 
 /** 「已人工复查」的确认键前缀：与开写闸门共用同一个拼法（`volumeHandoffAckKey`）。 */
 const ACK_PREFIX = volumeHandoffAckKey('')
+/**
+ * 大纲领先正文的确认键前缀（P1-2 期 1）。同一张 `consistency_exemptions`、不同前缀：
+ * 这里必须一并列出并可撤销 —— 否则那些键成了孤儿，作者只能改库才能重新被提醒。
+ */
+const OUTLINE_ACK_PREFIX = outlineProgressAckKey('')
 
 type VolumeState = 'ready' | 'stale' | 'empty' | 'unparsed'
 
@@ -241,7 +247,8 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
     setVolumeState(volumeRes.state ?? 'ready')
     setVolumeWarnings(volumeRes.warnings ?? [])
     setRows((handoffRes.entries ?? []).map(rowFromDefinition))
-    setAcknowledged((exemptions ?? []).filter(entry => !entry.revoked && entry.stableFactKey.startsWith(ACK_PREFIX)))
+    setAcknowledged((exemptions ?? []).filter(entry => !entry.revoked
+      && (entry.stableFactKey.startsWith(ACK_PREFIX) || entry.stableFactKey.startsWith(OUTLINE_ACK_PREFIX))))
 
     // 表里一行都没有 ⇒ 自动建一次（没有东西可删，风险为零）。`stale` 不自动重建。
     if (volumeRes.state === 'empty' && !autoBuiltRef.current) {
@@ -839,16 +846,23 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                 </summary>
                 <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
                   {text(
-                    '这些卷在开写下一卷时不会再提醒。撤销一条，下次进入该卷第一章会重新提醒。',
-                    'These volumes no longer prompt when the next volume starts. Revoke one to be asked again.',
+                    '这些记录让你不再被同一件事重复询问。撤销一条，下次进同一卷或规划同一卷大纲时会重新提醒。',
+                    'These notes stop the same prompt from repeating. Revoke one to be asked again on that volume.',
                   )}
                 </p>
                 {acknowledged.map(entry => {
-                  const volumeId = entry.stableFactKey.slice(ACK_PREFIX.length)
+                  const isHandoffAck = entry.stableFactKey.startsWith(ACK_PREFIX)
+                  const volumeId = entry.stableFactKey.slice((isHandoffAck ? ACK_PREFIX : OUTLINE_ACK_PREFIX).length)
                   const index = volumeById.get(volumeId)?.volumeIndex
+                  const sourceLabel = isHandoffAck
+                    ? text('开写闸门', 'Chapter gate')
+                    : text('大纲领先正文', 'Outline ahead of prose')
                   return (
                     <div key={entry.stableFactKey} className="mt-1 flex items-start justify-between gap-2 text-xs">
-                      <span>{index ? text(`第${index}卷`, `Volume ${index}`) : volumeId}：{entry.reason}</span>
+                      <span>
+                        {text(`[${sourceLabel}] `, `[${sourceLabel}] `)}
+                        {index ? text(`第${index}卷`, `Volume ${index}`) : volumeId}：{entry.reason}
+                      </span>
                       <Button size="sm" variant="ghost" data-action="revoke-handoff-ack" disabled={busy}
                         onClick={() => void revokeAck(entry.stableFactKey)}>
                         <RotateCcw size={13} />{text('撤销', 'Revoke')}

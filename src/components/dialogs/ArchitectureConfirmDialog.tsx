@@ -28,6 +28,9 @@ import {
   type SynopsisUnitRewindPlan,
 } from '../../services/workflows/synopsis-unit-rewind'
 import { confirm } from '../ui/Confirm'
+import OutlineProgressGatePanel from './OutlineProgressGatePanel'
+import { readOutlineProgressGate } from '../../services/outline-progress-gate'
+import type { OutlineProgressGate } from '../../shared/outline-progress-gate'
 import { alertError } from '../ui/AlertDialog'
 
 type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'plotStructure' | 'synopsis'
@@ -136,6 +139,13 @@ export default function ArchitectureConfirmDialog({
   const [unitChainTotal, setUnitChainTotal] = useState('1')
   const [preferenceLoading, setPreferenceLoading] = useState(true)
   const [isConfirming, setIsConfirming] = useState(false)
+  /**
+   * 大纲领先正文的闸门（P1-2 期 1）。非空 ⇒ 本次发射被拦下，等作者选一个出口。
+   * `bypassProgressGate` 只用于「刚确认完、这次别再问同一句」——豁免已落库，重进一次
+   * 即使重读也会 `aligned`，这个 ref 只是省一次 IPC 与一次闪烁。
+   */
+  const [progressGate, setProgressGate] = useState<OutlineProgressGate | null>(null)
+  const bypassProgressGate = useRef(false)
   const [guardError, setGuardError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -202,6 +212,8 @@ export default function ArchitectureConfirmDialog({
   }, [isOpen, currentProject, totalChapterCount])
   /** 本次走单元模式时，章号区间与「续写」都不再参与生成。 */
   const unitMode = unitPreview?.unit ?? null
+  /** 闸门读侧与面板共用的会话；`null` = 还没有可用的项目会话（不拦）。 */
+  const dialogSession = captureProjectSession(currentProject)
   /** 连写的硬上限 = 本卷还剩几个单元（v1 不跨卷）。读不到卷结构就只让写 1 个。 */
   const unitChainCapacity = Math.max(1, unitPreview?.volume?.remainingUnits ?? 1)
   /** 真正会发出去的个数：走单元模式且选了多个才算数。 */
@@ -321,8 +333,14 @@ export default function ArchitectureConfirmDialog({
     .join(' · ')
   const audience = text(config.targetAudience, AUDIENCE_EN[config.targetAudience] ?? config.targetAudience)
 
-  const toggleStep = (key: ArchStepKey) =>
+  const toggleStep = (key: ArchStepKey) => {
+    if (key === 'synopsis') {
+      // 取消勾选 ⇒ 上一轮的面板与「本次放行」都不能留：否则下次勾回来会错误放行一次。
+      setProgressGate(null)
+      bypassProgressGate.current = false
+    }
     setChecked(prev => ({ ...prev, [key]: !prev[key] }))
+  }
 
   const selectedSteps = (Object.keys(checked) as ArchStepKey[]).filter(k => checked[k])
   const noneSelected = selectedSteps.length === 0
@@ -410,6 +428,17 @@ export default function ArchitectureConfirmDialog({
           setGuardError(text(`每章大纲目标须为 1–${PLANNING_TARGET_UNITS_LIMIT} 的整数。`, `The outline target must be an integer from 1 to ${PLANNING_TARGET_UNITS_LIMIT}.`))
           return
         }
+        // 闸门在落偏好之前：作者在闸门前取消时，不该已经写进 config。
+        if (!bypassProgressGate.current) {
+          // 区间可能为空（`resolveSynopsisRange` 允许），此时不知道本批从第几章起 —— 不猜，直接放行。
+          const chapterNumber = unitMode ? unitMode.from : resolution.range?.from
+          if (dialogSession && chapterNumber !== undefined) {
+            const { gate, warning } = await readOutlineProgressGate({ projectSession: dialogSession, chapterNumber })
+            if (warning) console.warn('[outline-progress-gate]', warning)
+            if (gate?.state === 'ahead') { setProgressGate(gate); return }
+          }
+        }
+        bypassProgressGate.current = false
         try {
           const saved = await ipc.invoke('config:set', { outlineTargetUnits: target })
           if (!saved.success) throw new Error(saved.error)
@@ -874,6 +903,18 @@ export default function ArchitectureConfirmDialog({
               {text('请至少勾选一个步骤', 'Select at least one section.')}
             </p>
           )}
+          {progressGate && dialogSession && (
+            <OutlineProgressGatePanel
+              gate={progressGate}
+              projectSession={dialogSession}
+              onProceed={() => {
+                bypassProgressGate.current = true
+                setProgressGate(null)
+                void handleConfirm()
+              }}
+              onDismiss={() => setProgressGate(null)}
+            />
+          )}
           {/* 前置校验失败提示 */}
           {guardError && (
             <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg text-xs bg-yellow-500/10 border border-yellow-500/30 text-[var(--color-warning-text)]">
@@ -885,7 +926,7 @@ export default function ArchitectureConfirmDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isConfirming}>{text('取消', 'Cancel')}</Button>
-          <Button variant="default" onClick={handleConfirm} disabled={noneSelected || isConfirming || (checked.synopsis && preferenceLoading)}>
+          <Button variant="default" onClick={handleConfirm} disabled={noneSelected || isConfirming || progressGate !== null || (checked.synopsis && preferenceLoading)}>
             <Wand2 size={13} />
             {isConfirming ? text('校验中...', 'Validating...') : text(`确认生成（${selectedSteps.length}/${ARCH_STEP_COUNT}）`, `Generate (${selectedSteps.length}/${ARCH_STEP_COUNT})`)}
           </Button>

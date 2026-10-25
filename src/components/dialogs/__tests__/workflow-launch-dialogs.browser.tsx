@@ -20,6 +20,8 @@ let blueprintChapterNumbers: number[]
 let planningPreferences: { outlineTargetUnits?: number; blueprintTargetUnits?: number }
 /** 大纲覆盖到第几章（`null` = 不提供 synopsis，旧行为：不限制） */
 let outlineChapters: number | null
+/** 卷表（P1-2 期 1 的闸门要读它；默认空 = 老项目，闸门不适用） */
+let volumes: unknown[]
 
 const project = {
   id: 'dialogs', sessionLease: 'lease-dialogs', name: 'Dialogs', path: 'C:\\novels\\dialogs',
@@ -36,6 +38,7 @@ beforeEach(() => {
   blueprintChapterNumbers = []
   planningPreferences = {}
   outlineChapters = null
+  volumes = []
   useLocaleStore.setState({ locale: 'zh-CN' })
   useProjectStore.setState({ currentProject: project as never })
   useWorkflowStore.setState({
@@ -61,6 +64,9 @@ beforeEach(() => {
           `第${index + 1}章：标题${index + 1}\n本章正文。`).join('\n\n'),
       }
     }
+    if (channel === 'db:volumes-list') return volumes.length > 0
+      ? { success: true, volumes, state: 'ready' }
+      : { success: true, volumes: [], state: 'empty' }
     if (channel === 'db:blueprint-character-sync-list-pending') return []
     if (channel === 'db:blueprint-get-all') {
       return blueprintChapterNumbers.map(chapterNumber => ({ chapterNumber }))
@@ -322,6 +328,80 @@ describe('workflow launch dialogs', () => {
       600,
       undefined, // 非单元模式，同第 5 参说明
     ))
+  })
+
+  it('上一卷正文没定稿：点确认不发射，先让作者选一个出口', async () => {
+    // 第 1 卷 = 第 1–20 章；正文只定稿到第 12 章 ⇒ 从第 21 章开始规划属「大纲领先正文」
+    authoritativeNextChapter = 13
+    useProjectStore.setState({
+      currentProject: {
+        ...project,
+        novelConfig: { ...project.novelConfig, totalChapters: 100 },
+      } as never,
+    })
+    volumes = [{
+      volumeId: 'volume:1', volumeIndex: 1, name: '第1卷',
+      plannedFirst: 1, plannedLast: 20, plannedSource: 'headings',
+      actualLast: null, actualSource: null,
+      outlineHash: 'hash:1', source: 'outline', createdAt: '', updatedAt: '',
+    }]
+    const onConfirm = vi.fn().mockResolvedValue(undefined)
+    await act(async () => root.render(
+      <ArchitectureConfirmDialog
+        isOpen
+        onClose={vi.fn()}
+        archStatus={{ premise: true, characters: true, worldbuilding: true, plotStructure: true, synopsis: true }}
+        initialSelectedSteps={['synopsis']}
+        initialSynopsisRange={{ from: 21, to: 40 }}
+        onConfirm={onConfirm}
+      />,
+    ))
+
+    await act(async () => page.getByRole('button', { name: /确认生成/ }).click())
+
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="outline-progress-gate"]')).not.toBeNull())
+    expect(document.querySelector('[data-testid="outline-progress-gate-reason"]')?.textContent).toContain('第12章')
+    expect(onConfirm).not.toHaveBeenCalled()
+
+    // 出口之一：记一条可撤销的确认，然后才真的发射
+    await act(async () => page.getByRole('button', { name: '我知道，仍按计划继续' }).click())
+    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledOnce())
+    // `invokeWithProjectSession` 会在末尾追加会话上下文，所以按通道取调用再检查前几个实参。
+    const save = invoke.mock.calls.find(([channel]) => channel === 'db:consistency-exemption-save')
+    expect(save?.[1]).toBe('outline-progress:volume:1')
+    expect(String(save?.[2])).toContain('第12章')
+  })
+
+  it('上一卷已整卷定稿：闸门不出现，确认即发射', async () => {
+    authoritativeNextChapter = 21
+    useProjectStore.setState({
+      currentProject: {
+        ...project,
+        novelConfig: { ...project.novelConfig, totalChapters: 100 },
+      } as never,
+    })
+    volumes = [{
+      volumeId: 'volume:1', volumeIndex: 1, name: '第1卷',
+      plannedFirst: 1, plannedLast: 20, plannedSource: 'headings',
+      actualLast: 20, actualSource: 'finalized',
+      outlineHash: 'hash:1', source: 'outline', createdAt: '', updatedAt: '',
+    }]
+    const onConfirm = vi.fn().mockResolvedValue(undefined)
+    await act(async () => root.render(
+      <ArchitectureConfirmDialog
+        isOpen
+        onClose={vi.fn()}
+        archStatus={{ premise: true, characters: true, worldbuilding: true, plotStructure: true, synopsis: true }}
+        initialSelectedSteps={['synopsis']}
+        initialSynopsisRange={{ from: 21, to: 40 }}
+        onConfirm={onConfirm}
+      />,
+    ))
+
+    await act(async () => page.getByRole('button', { name: /确认生成/ }).click())
+
+    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledOnce())
+    expect(document.querySelector('[data-testid="outline-progress-gate"]')).toBeNull()
   })
 
   it.each(['', '0', '-1', '1.5'])('rejects invalid synopsis range value %s without falling back to the whole book', async invalidFrom => {

@@ -557,6 +557,27 @@ describe('已确认的跨卷衔接', () => {
     expect(container.textContent).toContain('已撤销确认')
   })
 
+  it('大纲领先正文的确认也列出来，标明来源且可撤销', async () => {
+    // 同一张 consistency_exemptions、不同前缀。不列出来的话这些键就成了孤儿：
+    // 作者看不到、撤不掉，也就永远无法让那条提醒重新出现。
+    exemptions = [{
+      stableFactKey: 'outline-progress:volume:2',
+      reason: '作者已知第2卷正文仅定稿至第18章，仍继续规划第3卷大纲',
+      revoked: false,
+    }]
+    await renderPanel()
+    const section = container.querySelector('[data-testid="volume-handoff-acks"]')
+    expect(section).not.toBeNull()
+    expect(section!.textContent).toContain('大纲领先正文')
+    expect(section!.textContent).toContain('第2卷')
+    expect(section!.textContent).toContain('第18章')
+
+    const revoke = section!.querySelector<HTMLButtonElement>('[data-action="revoke-handoff-ack"]')!
+    await click(revoke)
+    await vi.waitFor(() => expect(channels()).toContain('db:consistency-exemption-revoke'))
+    expect(exemptions.every(item => item.stableFactKey !== 'outline-progress:volume:2' || item.revoked)).toBe(true)
+  })
+
   it('没有确认时不渲染这一块（不制造空面板）', async () => {
     await renderPanel()
     expect(container.querySelector('[data-testid="volume-handoff-acks"]')).toBeNull()
