@@ -23,18 +23,19 @@
 
 ```bash
 pnpm install
-pnpm run rebuild:electron   # 跑 pnpm dev 前必须做，Node ABI ≠ Electron ABI
-pnpm dev
+pnpm dev            # predev 会先探测 better-sqlite3 是否匹配 Electron ABI，不匹配才重建；无需手动 rebuild
 
-# 测试：两套 ABI，别混用
-node ./node_modules/vitest/vitest.mjs run <paths>                                                                # src/**
-ELECTRON_RUN_AS_NODE=1 ./node_modules/electron/dist/electron.exe ./node_modules/vitest/vitest.mjs run <paths>    # electron/**
+# 测试：统一走 Electron 运行时（一份 ABI，可与 pnpm dev 同时跑）
+pnpm test <paths>
+node scripts/run-tests-electron.mjs <paths>                                                                      # pnpm shim 坏掉时直调
 node ./node_modules/vitest/vitest.mjs run --config vitest.browser.config.ts <paths>                               # *.browser.tsx
 
 npx tsc --noEmit
 node scripts/check-doc-links.mjs        # 断链：有错即失败
 node scripts/check-doc-placement.mjs    # 放置/状态行/索引：只报新增
 ```
+
+**为什么测试不再走裸 Node**（2026-10-25 改）：`better-sqlite3` 是原生模块，Node 22 的 ABI 是 127、Electron 41 是 145，二者不能共存于同一个编译产物。原先靠 `prepare:native-*` 来回切，代价是 **`pnpm dev` 开着时切不动**（Electron 持有 `.node`，`prebuild-install` 报 `EBUSY`），以及每次切错都表现为一条跟业务无关的 ABI 报错，极易被误读成「刚改的代码弄坏了库」。现在 `pnpm test` 固定用 `ELECTRON_RUN_AS_NODE=1` 跑（此时 Electron 是纯 Node，不启动 Chromium），**全工程只有一份 ABI**。真需要纯 Node 时用 `pnpm test:node`（它会先切 ABI，因此必须关掉 `pnpm dev`）。
 
 ## 硬规则（8 条）
 
