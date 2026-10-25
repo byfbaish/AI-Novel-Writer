@@ -2164,9 +2164,13 @@ export class GenerateWorldBuildingCommand extends BaseWorkflowCommand<string> {
           const handle = context.mainGenerationRunHandle
           const artifact = initial.receipt.visibleArtifact
           if (!handle || !artifact) throw new Error('GENERATION_COMPOSITION_ARTIFACT_REQUIRED')
-          const candidateHash = await hashAuthorText(candidate)
-          const composition = await ipc.invokeWithProjectSession(projectSession, 'generation:compose-visible', handle, [artifact.artifactId], candidateHash)
-          if (composition.text !== candidate || composition.textHash !== candidateHash) throw new Error('GENERATION_COMPOSITION_RECEIPT_MISMATCH')
+          // ★ 这里的 expectedTextHash 必须用 **artifact 自己的 hash**，不能用 `candidate` 的。
+          //   `candidate` 是 `stripThinkingTags`（含 trim）之后的值，而 artifact.text 是 provider
+          //   流式累积的原文（未 trim）⇒ 拿 candidate 的 hash 去 compose 必然先撞
+          //   GENERATION_COMPOSITION_HASH_MISMATCH，再撞 RECEIPT_MISMATCH，与模型输出无关。
+          //   登记以 artifact 原文为准，业务文本再用 trim 结果核对。
+          const composition = await ipc.invokeWithProjectSession(projectSession, 'generation:compose-visible', handle, [artifact.artifactId], artifact.textHash)
+          if (composition.textHash !== artifact.textHash || composition.text.trim() !== candidate) throw new Error('GENERATION_COMPOSITION_RECEIPT_MISMATCH')
         }
         if (initial.finishReason === 'stop') {
           result = candidate

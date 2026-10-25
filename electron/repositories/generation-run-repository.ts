@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
 import type { VisibleCompositionReceipt, VisibleCompositionAlgorithm, DirectoryGenerationProgress, PlanningContinuationReceipt, BlueprintAuthorEditReceipt, GenerationAuthorInput } from '../../src/shared/generation-owner-contract';
+import { generationPrimaryOutput } from '../../src/shared/generation-owner-contract';
 import { composeVisibleContinuation, VISIBLE_CONTINUATION_VERSION } from '../../src/shared/visible-continuation';
 import { composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, isDraftVisibleTextVersion, sanitizeDraftText } from '../../src/shared/draft-visible-text';
 import { DRAFT_RECONCILE_PURPOSE } from '../../src/shared/draft-reconciliation';
@@ -532,7 +533,7 @@ export class GenerationRunRepository {
             return;
         }
         const run = this.get(progress.sourceHandle.runId);
-        if (run.binding.sourceManifest.outputContract !== 'structured-data') fail('GENERATION_DIRECTORY_OUTPUT_INVALID');
+        if (generationPrimaryOutput(run.binding.sourceManifest.outputContract) !== 'structured-data') fail('GENERATION_DIRECTORY_OUTPUT_INVALID');
         const row = this.db().prepare('SELECT attempt_id,usage_receipt_json FROM generation_attempts WHERE run_id=? ORDER BY rowid DESC LIMIT 1').get(progress.sourceHandle.runId) as { attempt_id: string; usage_receipt_json: string } | undefined;
         if (!row || JSON.parse(row.usage_receipt_json).directoryProgress) fail('GENERATION_DIRECTORY_PROGRESS_CONFLICT');
         if (!['settled', 'unknown'].includes(this.receipt(row.attempt_id).attempt.status)) fail('GENERATION_DIRECTORY_ATTEMPT_NOT_TERMINAL');
@@ -578,7 +579,9 @@ export class GenerationRunRepository {
         return this.transaction(() => {
             this.assertPlotOutlineWritable(runId);
             const run = this.get(runId);
-            if (run.binding.sourceManifest.outputContract !== 'visible-text') fail('GENERATION_COMPOSITION_OUTPUT_INVALID');
+            // 主产物通道只看 primary：例外 purpose 的 structured-data 产物（世界观自审 / 资源抽取）
+            // 是同一 run 里的只读检查，不改变「这个 run 的主产物是正文」这一事实。
+            if (generationPrimaryOutput(run.binding.sourceManifest.outputContract) !== 'visible-text') fail('GENERATION_COMPOSITION_OUTPUT_INVALID');
             const read = this.readState(run);
             const next = this.visibleComposition(read, artifactIds, algorithm), previous = this.compositionFrom(read);
             if (previous && previous.algorithm !== algorithm) fail('GENERATION_COMPOSITION_ALGORITHM_CHANGED');

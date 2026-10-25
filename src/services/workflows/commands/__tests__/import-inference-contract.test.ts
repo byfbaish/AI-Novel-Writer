@@ -83,6 +83,31 @@ describe('decodeImportInferenceJson', () => {
     expectInvalidJson('下面是说明性文字，但没有结构化对象。')
   })
 
+  // 判据 CT：合同写了四个英文枚举，模型仍可能写中文语义标签（架构链 2026-10-26 实机
+  // 就栽在 role="主角"）。别名归一吸收「同一个概念的不同写法」，不放松判定。
+  it('normalizes a Chinese role label instead of failing the whole import', () => {
+    const inference = validInference()
+    inference.characterCards[0] = { ...inference.characterCards[0], role: '主角' as CharacterRosterEntry['role'] }
+    inference.characterCards[2] = { ...inference.characterCards[2], role: '反派' as CharacterRosterEntry['role'] }
+
+    const parsed = decodeImportInferenceJson(JSON.stringify(inference))
+
+    expect(parsed.characterCards.map(card => card.role)).toEqual(['protagonist', 'supporting', 'antagonist'])
+  })
+
+  it('still rejects a role label that is not a known alias', () => {
+    const inference = validInference()
+    inference.characterCards[1] = { ...inference.characterCards[1], role: '师叔祖' as CharacterRosterEntry['role'] }
+
+    expect(() => decodeImportInferenceJson(JSON.stringify(inference))).toThrow(StructuredContractDiagnostic)
+    try {
+      decodeImportInferenceJson(JSON.stringify(inference))
+    } catch (error) {
+      expect((error as StructuredContractDiagnostic).code).toBe('invalid_value')
+      expect((error as StructuredContractDiagnostic).path).toBe('characterCards[1].role')
+    }
+  })
+
   it('preserves separate same-name occurrences and ambiguous relationship labels for approval', () => {
     const inference = validInference()
     inference.characterCards[1].name = '陆舟'

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import type { BeginGenerationRequest, ExecuteGenerationRequest, BeginGenerationBatchRequest, GenerationDraftCommitRequest, GenerationRecoveryContext, MaterialDecisionReceipt, VisibleCompositionAlgorithm, GenerationOwnerChannels, ShortOutlineRetry, PlanningContinuation } from '../../src/shared/generation-owner-contract'
 import { isDraftVisibleTextVersion } from '../../src/shared/draft-visible-text'
-import { architecturePlanningRange, generationOutputContract, type GenerationAuthorInput } from '../../src/shared/generation-owner-contract'
+import { architecturePlanningRange, generationOutputContract, generationOutputForPurpose, type GenerationAuthorInput } from '../../src/shared/generation-owner-contract'
 import type { MainGenerationExecuteReceipt, MainGenerationRunHandle, MainGenerationRunView, MainGenerationSnapshot } from '../../src/services/generation/generation-runtime'
 import type { ModelProfile, ModelExecutionLeaseReceipt, LLMFinishReason } from '../../src/shared/ipc-channels'
 import type { CreativeStrategy } from '../../src/shared/reasoning-types'
@@ -573,8 +573,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       }
     }
     const contract = run.binding.sourceManifest.outputContract
-    const composite = contract as { primary?: string; overrides?: { purpose: string; output: string }[] }
-    const expectedOutput = typeof contract === 'string' ? contract : composite.overrides?.find(item => item.purpose === task.purpose)?.output ?? composite.primary
+    const expectedOutput = generationOutputForPurpose(contract, task.purpose)
     if (task.output !== expectedOutput) throw new Error('GENERATION_OUTPUT_CONTRACT_CHANGED')
     const requestHash = textHash(JSON.stringify([task, run.binding.fingerprint.modelLeaseRevision, run.binding.fingerprint.policyHash]))
     const key = JSON.stringify([run.runId, request.invocationNonce])

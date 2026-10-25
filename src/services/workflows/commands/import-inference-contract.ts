@@ -1,5 +1,5 @@
 import type { CharacterRosterEntry } from '../../../shared/character-roster'
-import { CHARACTER_ROSTER_ROLES } from '../../../shared/character-roster'
+import { resolveCharacterRole } from '../../../shared/character-role'
 import { StructuredContractDiagnostic } from '../../../shared/structured-contract-diagnostic'
 import type { NovelConfig } from '../../../shared/ipc-channels'
 import type { WritingLanguage } from '../../../shared/writing-language'
@@ -204,8 +204,12 @@ function decodeCards(value: unknown): CharacterRosterEntry[] {
     const path = `characterCards[${index}]`
     const card = record(raw, path)
     const name = text(required(card, 'name', path), `${path}.name`)
-    const role = required(card, 'role', path)
-    if (typeof role !== 'string' || !(CHARACTER_ROSTER_ROLES as readonly string[]).includes(role)) {
+    // 与架构链同一处理（判据 CT）：合同已明写四个英文枚举，也明说「不得使用中文枚举」，
+    // 但模型仍会写「主角」这类语义标签。能识别的别名归一到枚举，识别不出的照旧报
+    // invalid_value —— 归一只吸收同一个概念的不同写法，不把答错静默改成别的合法值。
+    const rawRole = required(card, 'role', path)
+    const role = typeof rawRole === 'string' ? resolveCharacterRole(rawRole) : undefined
+    if (role === undefined) {
       throw new StructuredContractDiagnostic('invalid_value', `${path}.role`)
     }
     const rawRelationships = required(card, 'relationships', path)

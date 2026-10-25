@@ -405,3 +405,41 @@ export function generationOutputContract(selection: BeginGenerationRequest): str
     throw new Error('GENERATION_OUTPUT_CONTRACT_INVALID')
   return overrides ? { primary: selection.output, overrides: structuredClone(overrides) } : selection.output
 }
+
+/**
+ * 输出合同的解析出口。
+ *
+ * ★ 合同有两种形态，**判形态只能走这两个函数，不要在调用点 `contract === 'visible-text'` 硬比**：
+ * - 无 `outputOverrides` ⇒ 合同就是字符串 `'visible-text' | 'structured-data'`
+ * - 有 `outputOverrides` ⇒ 合同是 `{ primary, overrides }` 对象
+ *
+ * 硬比字符串的后果是「带例外的 run 一律判失败」：W6 波 1 给世界观加了自审 + 资源抽取两个
+ * `structured-data` 例外后，世界观主产物的 `composeVisible` 必然抛
+ * `GENERATION_COMPOSITION_OUTPUT_INVALID`，而主产物本身完全合法。
+ */
+export function generationPrimaryOutput(contract: unknown): string | undefined {
+  if (typeof contract === 'string') return contract
+  if (!contract || typeof contract !== 'object') return undefined
+  const primary = (contract as { primary?: unknown }).primary
+  return typeof primary === 'string' ? primary : undefined
+}
+
+/**
+ * 某次具体调用该产出什么形态：先在该 purpose 的显式例外里找，找不到回退主产物。
+ *
+ * 与 `generationPrimaryOutput` 的分工：**主产物通道**（`composeVisible` / 目录进度）
+ * 只看 primary——例外 purpose 的结构化产物不是正文，不该被拼成 visible 正文；
+ * **单次调用校验**（`main-generation-owner` 派发前比对 `task.output`）必须按 purpose 解析。
+ */
+export function generationOutputForPurpose(contract: unknown, purpose: string): string | undefined {
+  if (typeof contract === 'string') return contract
+  if (!contract || typeof contract !== 'object') return undefined
+  const overrides = (contract as { overrides?: unknown }).overrides
+  if (Array.isArray(overrides)) {
+    const hit = overrides.find(item => !!item && typeof item === 'object'
+      && (item as { purpose?: unknown }).purpose === purpose)
+    const output = (hit as { output?: unknown } | undefined)?.output
+    if (typeof output === 'string') return output
+  }
+  return generationPrimaryOutput(contract)
+}
