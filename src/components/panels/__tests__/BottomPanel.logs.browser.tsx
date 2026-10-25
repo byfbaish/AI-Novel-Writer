@@ -44,6 +44,40 @@ describe('workflow logs', () => {
     expect(container.textContent).toContain(`AI Novel Writer v${__APP_VERSION__}`)
   })
 
+  /**
+   * 守卫实机验证的抄读数方式：一次跑批几十次模型调用、日志只留最近 500 条，
+   * 想在几百行里找到「正文形态」那行只能靠筛选。筛掉之后计数必须跟着变，
+   * 否则作者会以为筛中了一堆其实没筛。
+   */
+  it('filters log lines by substring and reports the visible count', async () => {
+    await act(async () => {
+      useWorkflowStore.setState({
+        ...useWorkflowStore.getState(),
+        globalLogs: [
+          { time: '10:00:00', level: 'info', message: 'Prose shape: paragraphs=12 hits=1' },
+          { time: '10:00:01', level: 'info', message: 'Worldbuilding self-review: 2 findings' },
+        ],
+      })
+    })
+
+    expect(container.textContent).toContain('Prose shape')
+    expect(container.textContent).toContain('Worldbuilding self-review')
+    expect(container.textContent).toContain('AI Novel Writer v')
+
+    const input = container.querySelector<HTMLInputElement>('[aria-label="Filter logs"]')
+    expect(input).not.toBeNull()
+
+    await act(async () => {
+      const setValue = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+      setValue?.call(input, 'Prose shape')
+      input?.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+
+    expect(container.textContent).toContain('Prose shape')
+    expect(container.textContent).not.toContain('Worldbuilding self-review')
+    expect(container.textContent).toContain('1/2')
+  })
+
   it('shows a readable candidate preview and explicit confirmation actions', async () => {
     const confirmContinue = vi.fn()
     const cancelWorkflow = vi.fn()

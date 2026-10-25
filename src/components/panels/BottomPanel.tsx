@@ -605,12 +605,39 @@ function LogsView() {
   const clearLogs = useWorkflowStore(s => s.clearLogs)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
+  /**
+   * 子串筛选。存在的理由很具体：`globalLogs` 只保留最近 500 条（`workflow-store.ts` 的
+   * `slice(-500)`）、不落盘、关应用即丢，而一次完整跑批有几十次模型调用。没有筛选时
+   * 想找「正文形态（单章样本）」那几行只能靠肉眼翻，实机验证抄读数会漏行。
+   */
+  const [filter, setFilter] = useState('')
+
+  const visibleLogs = useMemo(() => {
+    const query = filter.trim().toLowerCase()
+    if (!query) return globalLogs
+    return globalLogs.filter(log => log.message.toLowerCase().includes(query))
+  }, [globalLogs, filter])
 
   useEffect(() => {
     if (autoScroll && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [globalLogs.length, autoScroll])
+  }, [visibleLogs.length, autoScroll])
+
+  /** 复制当前**可见**行（筛过的就是筛过的）——验证时直接粘进记录表，不用手抄。 */
+  const copyVisibleLogs = async () => {
+    const payload = visibleLogs.map(log => `${log.time} ${log.message}`).join('\n')
+    if (!payload) {
+      toast.error(text('没有可复制的日志', 'No logs to copy'))
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(payload)
+      toast.success(text(`已复制 ${visibleLogs.length} 行`, `Copied ${visibleLogs.length} lines`))
+    } catch {
+      toast.error(text('复制失败，请手动选中', 'Copy failed; select manually'))
+    }
+  }
 
   const levelColor = (level: string) => {
     switch (level) {
@@ -623,8 +650,27 @@ function LogsView() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between gap-1 px-2 py-1 flex-shrink-0">
-        <span className="text-[0.68rem] text-[var(--color-text-muted)]">AI Novel Writer v{__APP_VERSION__}</span>
+        <span className="text-[0.68rem] text-[var(--color-text-muted)]">
+          AI Novel Writer v{__APP_VERSION__}
+          {filter.trim() && ` · ${visibleLogs.length}/${globalLogs.length}`}
+        </span>
         <div className="flex items-center gap-1">
+          <input
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder={text('筛选日志…', 'Filter logs…')}
+            aria-label={text('筛选日志', 'Filter logs')}
+            className="h-6 w-32 rounded border border-[var(--color-border)] bg-transparent px-1.5 text-[0.68rem] outline-none focus:border-[var(--color-accent)]"
+          />
+          <Button
+            variant="ghost" size="icon"
+            onClick={() => { void copyVisibleLogs() }}
+            title={filter.trim()
+              ? text(`复制筛出的 ${visibleLogs.length} 行`, `Copy ${visibleLogs.length} filtered lines`)
+              : text('复制全部日志', 'Copy all logs')}
+          >
+            <Copy size={13} />
+          </Button>
           <Button
             variant="ghost" size="icon"
             onClick={() => setAutoScroll(!autoScroll)}
@@ -640,10 +686,14 @@ function LogsView() {
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 pb-2 font-mono text-xs leading-5">
-        {globalLogs.length === 0 && (
-          <div className="text-center py-8 opacity-30">{text('暂无日志', 'No logs')}</div>
+        {visibleLogs.length === 0 && (
+          <div className="text-center py-8 opacity-30">
+            {filter.trim()
+              ? text('没有匹配的日志', 'No matching logs')
+              : text('暂无日志', 'No logs')}
+          </div>
         )}
-        {globalLogs.map((log, i) => (
+        {visibleLogs.map((log, i) => (
           <div key={i} className="flex gap-2">
             <span style={{ color: 'var(--color-text-muted)' }}>{log.time}</span>
             <span style={{ color: levelColor(log.level) }}>{log.message}</span>
