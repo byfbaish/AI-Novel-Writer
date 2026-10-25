@@ -1,7 +1,7 @@
 import { CHARACTER_ROSTER_ROLES, type CharacterRosterEntry } from './character-roster'
 import { stripDraftThinkingTags as stripThinkingTags } from './draft-visible-text'
 import { StructuredContractDiagnostic } from './structured-contract-diagnostic'
-import { CHARACTER_ROLES } from './character-role'
+import { CHARACTER_ROLES, resolveCharacterRole } from './character-role'
 import type { CharacterProposalItem } from './character-proposal'
 
 export interface CharacterProposalArtifact { artifactId: string; text: string }
@@ -171,16 +171,21 @@ export function decodeCharacterIdentityManifest(content: string): CharacterIdent
     const relations = candidate.relations
     if (!Array.isArray(relations)) throw new Error(`角色身份清单第 ${index + 1} 项缺少关系列表`)
     const slotId = normalizeCharacterSlotId(candidate.slotId)
+    // role 走别名解析而不是严格包含判断：模型会把「定位」当成中文语义字段，
+    // 反手输出「主角」——中文项目尤其如此。别名表本来就收着「主角 / 反派 /
+    // 配角 / 龙套」，这里不用它，等于让一次措辞选择报废整份清单。认不出来
+    // 的值仍然报错（`resolveCharacterRole` 严格版不会兜底成 supporting）。
+    const role = resolveCharacterRole(candidate.role)
     if (
       slotId === undefined
       || typeof candidate.name !== 'string' || !candidate.name.trim()
-      || typeof candidate.role !== 'string' || !CHARACTER_ROSTER_ROLES.includes(candidate.role as CharacterRosterEntry['role'])
+      || role === undefined
       || typeof candidate.narrativeDuty !== 'string' || !candidate.narrativeDuty.trim()
     ) throw new Error(`角色身份清单第 ${index + 1} 项字段不完整`)
     return {
       slotId,
       name: candidate.name.trim(),
-      role: candidate.role as CharacterRosterEntry['role'],
+      role,
       narrativeDuty: candidate.narrativeDuty.trim(),
       relations: relations.map((relation, relationIndex) => {
         const targetSlotId = isRecord(relation)
@@ -389,8 +394,14 @@ export function decodeCharacterDetails(content: string, version: ArchitectureDer
       }
       currentState = normalizedState
     }
+    // 与清单同一处理：能识别的别名（「主角」等）归一到枚举，识别不了的原样
+    // 留下，交给 `validateCharacterDetail` 报「不是允许的定位」。归一只吸收
+    // 同一个概念的不同写法，不改变「详情 role 必须等于清单 role」这条判定——
+    // 两边都归一后仍然比对，写错定位照样拦。
+    const role = resolveCharacterRole(candidate.role)
     return {
       ...normalizedCandidate,
+      ...(role ? { role } : {}),
       ...(typeof age === 'number' && Number.isFinite(age) ? { age: String(age) } : {}),
       currentState,
     } as unknown as CharacterDetailOutput

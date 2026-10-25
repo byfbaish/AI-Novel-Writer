@@ -42,15 +42,27 @@ const CHARACTER_ROLE_ALIASES: Readonly<Record<string, CharacterRole>> = {
 }
 
 /**
+ * Strict lookup: only values the alias table actually recognizes resolve.
+ *
+ * Use this wherever an unrecognized value must stay an *error* — model output
+ * contracts included. `normalizeCharacterRole` is the forgiving counterpart and
+ * cannot be used there: it collapses everything unknown into `supporting`, which
+ * would silently rewrite a wrong answer into a plausible one instead of
+ * rejecting it.
+ */
+export function resolveCharacterRole(value: unknown): CharacterRole | undefined {
+  if (typeof value !== 'string') return undefined
+  const candidate = value.trim()
+  return CHARACTER_ROLE_ALIASES[candidate]
+    ?? CHARACTER_ROLE_ALIASES[candidate.toLowerCase()]
+}
+
+/**
  * Normalize persisted or external role values before they enter application state.
  * Unknown legacy values deliberately fall back to the least surprising editable role.
  */
 export function normalizeCharacterRole(value: unknown): CharacterRole {
-  if (typeof value !== 'string') return 'supporting'
-  const candidate = value.trim()
-  return CHARACTER_ROLE_ALIASES[candidate]
-    ?? CHARACTER_ROLE_ALIASES[candidate.toLowerCase()]
-    ?? 'supporting'
+  return resolveCharacterRole(value) ?? 'supporting'
 }
 
 /** Locale-neutral display data for renderer consumers. */

@@ -117,6 +117,52 @@ describe('main-safe source-local character proposal parsing', () => {
     const ids = mutation === 'missing' ? ['1:1'] : mutation === 'duplicate' ? ['1:1', '1:1'] : ['1:1', '3:1']
     expect(() => parsePlanningMaterialCharacterProposal({ expectedSourceIds: ['1:1', '2:1'], artifacts: [{ artifactId: 'a', text: JSON.stringify({ results: ids.map(sourceId => ({ sourceId, characterCards: [] })) }) }] })).toThrow()
   })
+  it('resolves Chinese role labels instead of failing the whole detail batch', () => {
+    // 实测（2026-10-26）：清单合同里写了「role 仅 protagonist/antagonist/supporting/minor」，
+    // 模型照做；详情合同漏写这句，模型把 role 当语义字段，反手输出「主角」「反派」，
+    // 整批详情作废、架构生成中断。别名表本来就收着这些词，是校验没接上。
+    const roles = ['protagonist', 'antagonist', 'supporting'] as const
+    const labels = { protagonist: '主角', antagonist: '反派', supporting: '配角' } as const
+    const slots = ['陈砚', '赵铎', '许小满'].map((name, index) => ({
+      slotId: `slot-${index}`, name, role: roles[index], narrativeDuty: '推动冲突',
+      relations: [{ targetSlotId: `slot-${(index + 1) % 3}`, relation: '原始关系' }],
+    }))
+    const entries = slots.map(slot => ({
+      slotId: slot.slotId, name: slot.name, role: labels[slot.role],
+      gender: '男', age: 18, appearance: '外貌', personality: '性格', background: '背景', abilities: '能力',
+      motivation: '动机', arc: '弧光', notes: '备注',
+      currentState: { location: '城中', powerLevel: '普通', physicalState: '健康', mentalState: '警觉',
+        keyItems: '无', recentEvents: '无', updatedAtChapter: 1 },
+    }))
+    const proposal = parseArchitectureCharacterProposal({
+      manifest: { artifactId: 'manifest', text: JSON.stringify({ slots }) },
+      details: [{ artifactId: 'details', text: JSON.stringify({ entries }) }],
+    })
+    expect(proposal.map(item => item.fields.role)).toEqual([...roles])
+  })
+  it('still rejects an unresolvable role and a detail that contradicts the frozen manifest', () => {
+    const slots = ['陈砚', '赵铎', '许小满'].map((name, index) => ({
+      slotId: `slot-${index}`, name, role: (['protagonist', 'antagonist', 'supporting'] as const)[index]!,
+      narrativeDuty: '推动冲突',
+      relations: [{ targetSlotId: `slot-${(index + 1) % 3}`, relation: '原始关系' }],
+    }))
+    const entry = (index: number, role: string) => ({
+      slotId: `slot-${index}`, name: slots[index].name, role,
+      gender: '男', age: 18, appearance: '外貌', personality: '性格', background: '背景', abilities: '能力',
+      motivation: '动机', arc: '弧光', notes: '备注',
+      currentState: { location: '城中', powerLevel: '普通', physicalState: '健康', mentalState: '警觉',
+        keyItems: '无', recentEvents: '无', updatedAtChapter: 1 },
+    })
+    const manifest = { artifactId: 'manifest', text: JSON.stringify({ slots }) }
+    // 别名表认不出来 ⇒ 不兜底成 supporting，仍然是错
+    expect(() => parseArchitectureCharacterProposal({ manifest,
+      details: [{ artifactId: 'd', text: JSON.stringify({ entries: [entry(0, '神秘人'), entry(1, '反派'), entry(2, '配角')] }) }] }))
+      .toThrow('不是允许的定位')
+    // 归一后与清单矛盾 ⇒ 仍然拦（写错定位不能被别名掩盖）
+    expect(() => parseArchitectureCharacterProposal({ manifest,
+      details: [{ artifactId: 'd', text: JSON.stringify({ entries: [entry(0, '配角'), entry(1, '反派'), entry(2, '配角')] }) }] }))
+      .toThrow('CHARACTER_PROPOSAL_SLOT_MISMATCH')
+  })
   it('rebuilds exact material chunk selection without splitting a Unicode surrogate pair', () => {
     const text = `${'中'.repeat(11999)}😀后续`
     const chunks = characterProposalMaterialChunks([{ fileName: '原稿', text }])
