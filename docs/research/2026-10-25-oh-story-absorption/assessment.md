@@ -106,7 +106,7 @@
 | 定级 | 复读/截断/占位/纯工程词 = blocking；章节歧义词、对话行里的工程词 = advisory |
 | 修复语义 | **重新生成该段，不是改写**——退化是模型故障（`skills/story-review/SKILL.md:157`） |
 | 闸 3 | 消费方：生成链返回后、入库前；审稿链 S1 级 |
-| 我方现状 | ~~无退化检测~~ **本条 2026-10-25 复核作废**：`src/shared/visible-text-integrity.ts:270` 已有 `findVisibleTextDegeneracies`（三类 = `verbatim-repeat` / `placeholder-leak` / `meta-leak`，阈值 `REPEAT_MIN_SENTENCE_UNITS_ZH=12` / `REPEAT_MIN_COUNT=3` / `ADJACENT_MIN_PARAGRAPH_UNITS_ZH=8`），并有 `visible-text-degeneracy.test.ts` 5 例。真实状态不是「没有」，而是「**有模块、生产链零调用点**」——`assertNotDegenerateVisibleText` 只被测试引用。见 `design/product/writing-capability-assessment.md` §7.5 |
+| 我方现状 | ~~无退化检测~~ **本条 2026-10-25 复核作废**：`src/shared/visible-text-integrity.ts:270` 已有 `findVisibleTextDegeneracies`（三类 = `verbatim-repeat` / `placeholder-leak` / `meta-leak`，阈值 `REPEAT_MIN_SENTENCE_UNITS_ZH=12` / `REPEAT_MIN_COUNT=3` / `ADJACENT_MIN_PARAGRAPH_UNITS_ZH=8`），并有 `visible-text-degeneracy.test.ts` 5 例。真实状态不是「没有」，而是**已接线且是阻断级**：`assertNotDegenerateVisibleText` 在首稿（`generate-draft.command.ts:1422`）与终稿（`:1512`）各抛错一次，`findVisibleTextDegeneracies` 另有短细纲（`:1342`）、续写增量（`:1938`）、压缩修订（`:2114`）三处。**此处「生产链零调用点」的旧判断已于 2026-10-25 二次复核推翻**——根因是只 grep 了定义与单测、没反查调用方。见 `design/product/writing-capability-assessment.md` §7.5 第 4 条 |
 | 成本 | **极低**（349 行纯 Node，无依赖，判据全是计数比较） |
 
 ### A4 · 正文照搬细纲检测

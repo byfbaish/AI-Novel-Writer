@@ -3,6 +3,7 @@ import { formatStoryDayAnchorLine, type StoryDaySource } from '../../../shared/s
 import { keyEventsText } from '../../../shared/blueprint-key-events'
 import { analyzeBlueprintVerbatimCopy } from '../../../shared/blueprint-verbatim-overlap'
 import { assertNotDegenerateVisibleText, findVisibleTextDegeneracies } from '../../../shared/visible-text-integrity'
+import { describeProseShapeViolation, measureProseShape } from '../../../shared/prose-shape'
 import { buildBoundaryNotice } from '../../../shared/chapter-boundary'
 import { projectArchitectureForDraft } from '../../../shared/architecture-projection'
 import { notePromptProjection } from '../../prompts/prompt-trace'
@@ -96,6 +97,13 @@ const CROSS_CHAPTER_REUSE_LONG_RUN_CHARS = 80
 const ACTIVE_THREAD_CONTEXT_MAX_CHARS = 1200
 const ACTIVE_THREAD_CONTEXT_MAX_ITEMS = 6
 const STREAM_PREVIEW_INTERVAL_MS = 250
+/**
+ * 形态读数单次最多列出的命中条数。
+ *
+ * 这是**日志卫生**，不是判据：一章排比长句扎堆时报几十条同质行会淹掉真正有用的日志。
+ * P17-3 定向重写不受此限——它从 `measureProseShape` 的返回对象取全量 `violations`。
+ */
+const PROSE_SHAPE_LOG_LIMIT = 5
 
 // 情节大纲的章级投影统一由 `src/shared/synopsis-projection.ts` 提供（见顶部 import/export）：
 // 正文侧（设定层投影）与蓝图侧（三段切分投影）共用同一份章标题解析与失败姿态，
@@ -1529,6 +1537,46 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           '新章节开头与上一章结尾存在大段重演，结果未保存。请重新生成，并让本章从上一章已完成事件之后继续。',
           'The new chapter substantially replays the previous ending, so it was not saved. Regenerate it and continue after the events already completed in the previous chapter.',
         ))
+      }
+
+      // P17-2 形态读数：**测量仪，不是裁判**（`docs/design/product/prose-shape-measurement-design.md`）。
+      // 位置与上面两处退化闸同址：中间轮次的结果会被续写 / 压缩替换，只有这里的
+      // `cleanDraftText` 才是最终落库的那一版。
+      // **只写日志，不抛错、不落库、不进审稿报告**——平台是可换的属性，
+      // 一旦落成 findings，作者把番茄改成起点后旧结论全部失效（评估稿 §7.2 定则三）。
+      // 入参取 `architectureSource.rhythmProfile` **原值**，不是上面 `rhythmProfile` 变量：
+      // 那个是 `resolveRhythmProfile` 解析出的**整段模板译文**，不是 id。
+      // 空值 / 自定义文本由 `measureProseShape` 自己返回 `null` 并静默跳过——
+      // 老项目没选过平台档位是常态，每章打一行「跳过」纯属噪音。
+      if (!alreadySaved) {
+        const proseShape = measureProseShape(cleanDraftText, architectureSource.rhythmProfile)
+        if (proseShape) {
+          const { metrics, violations } = proseShape
+          const dialoguePercent = (metrics.dialogueRatio * 100).toFixed(1)
+          callbacks.log(uiText(
+            `  正文形态（单章样本）：段数=${metrics.paragraphCount} 对白段=${metrics.dialogueParagraphCount} `
+              + `段长P50=${metrics.narrativeParagraphUnitsP50} 最长段=${metrics.paragraphUnitsMax} `
+              + `句长均值=${metrics.narrativeSentenceUnitsMean} 对话占比=${dialoguePercent}% 命中=${violations.length}`,
+            `  Prose shape (single-chapter sample): paragraphs=${metrics.paragraphCount} `
+              + `dialogueParagraphs=${metrics.dialogueParagraphCount} `
+              + `paragraphUnitsP50=${metrics.narrativeParagraphUnitsP50} longestParagraph=${metrics.paragraphUnitsMax} `
+              + `sentenceUnitsMean=${metrics.narrativeSentenceUnitsMean} dialogueRatio=${dialoguePercent}% `
+              + `violations=${violations.length}`,
+          ))
+          const proseShapeLocale = context.uiLocale ?? 'zh-CN'
+          for (const violation of violations.slice(0, PROSE_SHAPE_LOG_LIMIT)) {
+            callbacks.log(uiText(
+              `    [形态] ${describeProseShapeViolation(violation, proseShapeLocale)}`,
+              `    [shape] ${describeProseShapeViolation(violation, proseShapeLocale)}`,
+            ))
+          }
+          if (violations.length > PROSE_SHAPE_LOG_LIMIT) {
+            callbacks.log(uiText(
+              `    [形态] 另有 ${violations.length - PROSE_SHAPE_LOG_LIMIT} 条未列出`,
+              `    [shape] ${violations.length - PROSE_SHAPE_LOG_LIMIT} more not listed`,
+            ))
+          }
+        }
       }
 
       // 落于数据库

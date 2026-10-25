@@ -1,4 +1,5 @@
 import type { WritingLanguage } from '../../shared/writing-language'
+import { RHYTHM_PROFILE_IDS, type RhythmProfileId } from '../../shared/rhythm-profile-ids'
 
 /**
  * 平台节奏画像（v7）。
@@ -10,8 +11,7 @@ import type { WritingLanguage } from '../../shared/writing-language'
  * 空串 = 中性：模板里【节奏推荐】整段被裁掉，模型按内容自己定 —— 老项目升级后
  * 不该被静默改节奏，所以**不要**给空值一个"默认起点"。
  */
-export const RHYTHM_PROFILE_IDS = ['qidian', 'fanqie'] as const
-export type RhythmProfileId = typeof RHYTHM_PROFILE_IDS[number]
+export { RHYTHM_PROFILE_IDS, type RhythmProfileId }
 
 const PROFILE_TEXT: Record<RhythmProfileId, Record<WritingLanguage, string>> = {
   qidian: {
