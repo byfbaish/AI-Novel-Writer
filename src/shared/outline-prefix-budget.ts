@@ -31,6 +31,16 @@ import { parseArcStructure, scaledBoundaries, arcWeight, type ParsedArcStructure
 export const OUTLINE_RECENT_CHAPTERS = 3
 /** 上一卷交接单的估算体积上限（设计稿 §5.4.1）。 */
 export const VOLUME_HANDOFF_CHARS = 1500
+/**
+ * L2（本卷已写）的**软上限**（P1-2 期 3，2026-10-25）。
+ *
+ * 常态卷（20–40 章 × 300 字）永远碰不到它；只有病态长卷才会触发。超限时保留最近
+ * `OUTLINE_L2_RECENT_FULL_CHAPTERS` 章全文、更早的只留章组标题行，并在块首注明已省略 ——
+ * **不截半章**：半章比没有更糟，模型会把它当成完整事件往下接。
+ */
+export const OUTLINE_L2_SOFT_LIMIT_CHARS = 20_000
+/** L2 超软上限时，仍保留全文的最近章数。 */
+export const OUTLINE_L2_RECENT_FULL_CHAPTERS = 12
 /** 中文 token 折算区间：1 token ≈ 1–1.5 字（设计稿 §3 口径）。 */
 export const CHARS_PER_TOKEN_MIN = 1
 export const CHARS_PER_TOKEN_MAX = 1.5
