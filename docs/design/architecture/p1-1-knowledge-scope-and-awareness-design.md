@@ -1,240 +1,141 @@
-# P1-1 增补 · 知情的粒度（scope + awareness）
+# P1-1 增补 · 知情粒度（评估结论：**不做扩展**）
 
-> **状态**：📝 待裁定（2026-10-26）—— 未写一行代码。
-> **触发**：作者问「当一群人知情的时候，知情等级机制能约束这种程度的信息么？」
-> **答案**：不能。而且不是「不够细」，是**会主动说出反话**（见 §1 墙 3）。
-> **行业名**：know-what 关系的**量化域**（quantification domain）与**认知模态**（epistemic modality）。
-> 前者管「这条事实对哪些主体成立」，后者管「成立到什么程度」。现在的 M16 两样都没有。
+> **状态**：❌ **撤回原方案**（2026-10-26，作者裁定 + 行业证据）。
+> 原三期方案（期 1 全集 + 差集 · 期 2 程度 · 期 3 势力层）**全部不做**。
+> 本文保留，是因为三件事仍有价值：① M16 的形状限制是**事实**（§3）；② 行业对照有长期参考价值（§2）；
+> ③ §5 那个断链是**真缺陷**，与本次裁定无关，应单独修。
 
 ---
 
-## 0. 四问
+## 1. 作者的裁定
 
-| 问 | 答 |
+> 「关于知情机制我们只管事关主线极度机密的事吧，正常来说全书都不一定能用到几回，不应该如此复杂的，可能我和你都跑偏了。」
+
+**判断成立。** 上一稿把 M16 往「通用知识图谱 + 认知模态」推：对所有人 × 所有事实做登记，
+再加全集、差集、程度、势力层。这是工程自洽，但**写作实践里没有对应需求**。
+行业数据是「3 行示例」，设计出来的却是支撑 300 行的机制。
+
+---
+
+## 2. 行业怎么做（5 个来源，同一结论）
+
+| 来源 | 原话 / 模板 |
 |---|---|
-| 行业里叫什么 | ① 量化域 = 知识/权限条目的**主体选择器**。最贴近的成熟形状是数据库权限模型：`GRANT … TO PUBLIC`（全集）+ `REVOKE … FROM 某人`（例外）—— **M16 现在只有逐个用户 GRANT，没有 PUBLIC，也没有 REVOKE**。② 认知模态 = epistemic logic 的 `knows` / `believes` 二分（Hintikka），叙事侧再细分成「亲眼/被告知/听说/怀疑」 |
-| 谁消费产出 | 同上（写前查阅 / 登记页 / 审稿 findings）。但**消费后果变了**：群体知情写不进去 ⇒ 写前查阅会把「全宗都知道」教成「只有柳长老知道」 |
-| 失败形态 | 仍是「未卜先知 / 集体失忆」，但多了第三种：**我们自己的预算裁剪制造出来的集体失忆** —— 模型没错，是我们把已知的事实从上下文里删掉了，还附了一句「未列出的视为不知道」 |
-| 已有产品做过什么 | 叙事设计工具（ink / Articy 一类事实数据库）表达群体普遍用**变量 + 查询**（`faction.Qingyun.knows(X)`）而不是逐实体枚举。我们不做查询语言（那要执行引擎），只做**静态选择器**：`全体 / 有限定语的全体 / 例外名单` |
+| [Novelium](https://novelium.com/blog/how-to-write-a-series-bible) | 「**stop trying to document everything. Track the load-bearing facts.**」角色台账按章记**增量**（Chapter 5 learns X），不是三元组表 |
+| [AuthorFlows](https://www.authorflows.com/blogs/how-to-create-a-story-bible) | 正式的 "Who knows what" 表，四列 `Fact ｜ Who knows ｜ Who does not ｜ Revealed`。**示例只有 3 行**；并建议「delete what you do not need」 |
+| [Funny Face Fiction](https://funnyfacefiction.com/series-bible/) | 「Secrets, Clues, and Reveals」：秘密 / 谁知道 / 谁不知道 / 读者何时知道 / 每个角色何时知道 / 线索 / **假线索** / 何时真相大白。明确限定「especially useful for **mysteries, thrillers, fantasy, and twist-heavy** stories」 |
+| [aibookcraft](https://aibookcraft.app/blog/story-bible-template) | 「You do not need to inventory every cup in a kitchen」——只记会改变角色选项的东西 |
+| [StudyRaid](https://app.studyraid.com/en/read/95851/4332555/managing-information-revelation-and-mystery) | 「Mystery Matrix」= **每个秘密**一行，记录何时向读者揭晓。是账本，但不是全量账本 |
+
+**三条共识**：
+
+1. **只记承重事实**（load-bearing），不做全量；
+2. **没有任何模板有「知道程度」列** —— 全是「谁知道 / 谁不知道 / 何时揭晓」；
+3. 「谁知道什么」这一节**只对悬念型故事存在**（mystery / thriller / twist-heavy）。
+   普通种田文、日常流根本不建这张表。
+
+### 2.1 唯一被提到的"等级"是另一根轴
+
+Funny Face Fiction 说「keep different levels of knowledge separate」，例子是：
+**作者一开始就知道反派是主角的叔叔；主角不知道；读者可能中途开始怀疑。**
+它称之为「three different timelines」—— 这是**作者 / 读者 / 角色**三方之间的信息差（dramatic irony），
+**不是**「听说 → 确信」这种模态分级。
+
+这个区别很重要：上一稿的 `witnessed / told / heard / suspects` 四种值，在行业模板里**一个都不存在**。
+因为它们回答的是「他把握有多大」，而写作要问的是「他到底知不知道，以及读者什么时候知道」。
 
 ---
 
-## 1. 已确证的三件事（都有行号，不靠记忆）
+## 3. 保留的事实：M16 的三道墙（结论不变，定位变了）
 
 | # | 事实 | 出处 |
 |---|---|---|
-| 墙 1 | `character_id TEXT NOT NULL REFERENCES characters(character_id)` —— **群体不是实体**。全库 60+ 张表里没有任何 faction/group | `m16-knowledge-states.ts:41` |
-| 墙 2 | 字段只有 `character_id / fact_chapter / fact_evidence(_hash) / fact_key / learned_chapter / evidence / source` —— **没有「知道程度」这一列** | `knowledge-state.ts:64-87` |
-| 墙 3 | `KNOWLEDGE_MAX_ITEMS = 6`，渲染时 `usable.slice(0, 6)` —— **按行切**，而节首是封闭默认 | `knowledge-state.ts:132`、`:269` |
+| 墙 1 | `character_id TEXT NOT NULL REFERENCES characters(character_id)` —— 群体不是实体 | `m16-knowledge-states.ts:41` |
+| 墙 2 | 无「程度」列，只有 `learned_chapter` | `knowledge-state.ts:64-87` |
+| 墙 3 | `KNOWLEDGE_MAX_ITEMS = 6` + `slice(0, 6)` **按行切**，叠加节首封闭默认 ⇒ 被裁掉的人被**明确告知为不知道** | `knowledge-state.ts:132`、`:269` |
 
-墙 3 的完整链路：
+墙 1、墙 2 现在**不需要修**：主线机密归 `secrets`（M21），而 secrets 的 `holders` / `unaware`
+是自由字符串，群体天然可写；它也没有「程度」需求，因为秘密是**二元**的 —— 要么知道真相，要么不知道。
 
-```mermaid
-flowchart LR
-  A["10 人知道事实 F<br/>(10 行)"] --> B["slice(0, 6)"]
-  B --> C["6 行进上下文"]
-  B --> D["4 行被丢"]
-  C --> E["节首：未列出的角色视为不知道"]
-  D --> E
-  E --> F["模型被告知：<br/>那 4 个人不知道 F"]
-```
-
-> **读法**：被预算裁掉的那 4 个人，不是「没显示」，是被**明确告知为不知道**。这是静默翻转，不是省略。
-
-同一份文件里其实已经有正确范式：`renderPrewriteFactsSection` 的节标题写着「**不保证穷尽**」，并声明「与定稿原文冲突时以定稿原文为准」（`prewrite-consultation.ts:122-126`）。事实节用开放世界，知情节用封闭世界 —— 而后者把封闭世界的边界画在了**预算**上，这是 bug。
+墙 3 是**真 bug**，与定位无关：它现在就在往正文上下文里写错东西。见 §6。
 
 ---
 
-## 2. 为什么必须保留封闭默认（不能简单照抄事实节）
+## 4. 结论：M21 的形状本来就是对的
 
-知情节存在的唯一理由是**约束力**：告诉模型「这个人不知道」，它才不会写未卜先知。所以「未列出 = 不知道」不能删。
+| 行业模板列 | M21 字段 |
+|---|---|
+| The secret / Fact | `title` |
+| （真相本体） | `detail` |
+| Who knows | `holders` |
+| Who does not know | `unaware` |
+| When revealed | `revealChapter` |
+| Clues / Red herrings | `evidence` |
 
-但封闭默认必须**逐事实**成立，不能逐节成立：
+**每一列都对齐。** P20-2 落地时把它写成「三处偏离验收口径」，其实形状是对的 ——
+偏离的是**验收口径**（它要求"写前查阅注入秘密"，那是错的），不是表。
 
-> **一条事实，只有在它的主体集合完整进入上下文时，才允许对它施加封闭默认。**
-> 凡是被预算裁掉、被合并省略的事实，那条事实整体降级为「不判」。
+M16 的定位随之收窄：
 
-这一句是本设计稿的骨架。由此推出两条实现规则：
-
-1. **裁剪单位是事实（`fact_key`），不是行** —— 一条事实的所有主体原子进出；
-2. **有省略时必须说出来** —— 节首追加「本次另有 N 条已登记事实未列出，那 N 条不适用下述规则」。
-
-第 2 条是判据 DN 的直接应用：不能把「没排进来」说成「没人知道」。
+- ✅ 它仍是「**给模型的备忘**」——模型没有记忆，作者靠重读能补，模型不能。这是它存在的唯一理由；
+- ❌ 它**不是**「主线机密的账本」，不承担 secret 级事实；
+- ❌ 不再手工扩展它的登记面（成本远大于收益，全书用不了几回）。
 
 ---
 
-## 3. 期 0（先做，与 §4 无依赖）：修静默翻转
+## 5. 本轮新发现的一个真断链（与裁定无关，应单独修）
 
-> 这一项是 bug 级，不涉及表结构，可独立提交、独立验证。
+`secret.ts` 的 `ZH_LEAD` 第 3 句：
+
+> 写不出真相、但让角色知道了不该知道的事，**按知情格判**。
+
+它把判断推给了 M16。而 M16 **没有这条秘密的数据** —— 主线机密只登记在 `secrets` 里。
+于是「阿七突然知道了秘密，但正文没写出真相」这件事：
+
+- `secrets` 判不了：它的规则只管「写出真相栏内容」；
+- M16 判不了：那条秘密不在 `knowledge_states` 里，没登记。
+
+**两头都不管。** 而这恰恰是最常见、也最伤书的泄密形态 —— 秘密不是被说出来的，是被**演**出来的。
+
+修法（改文案 + 一条规则，不建表）：
+
+`ZH_LEAD` 第 3 句改为让 secrets 自己判：
+
+> 写不出真相，但让「尚不知情」栏里的人表现出知情（说出、用上、据此行动、避开相关话题）——
+> 同样按提前泄密判。**「尚不知情」为「未填」时不适用本条。**
+
+英文对应句同步改。这条修完，`secrets` 就自洽了，不再依赖 M16 承载主线机密。
+
+---
+
+## 6. 保留的唯一工程项：修墙 3
+
+> 与 §1 的裁定无关。这是 bug，不是取舍。
 
 | 改动 | 位置 |
 |---|---|
-| 按 `fact_key` 分组后整组进出 | `knowledge-state.ts:renderKnowledgeSection` |
-| 节首说明改成三句：完整列出的事实才适用封闭默认 / 未列出的已登记事实不适用 / 未登记的事实一概不判 | 同文件 `ZH_LEAD` / `EN_LEAD` |
-| `counts` 之外另出 `omittedFacts`，让日志能报「省略 N 条事实」 | `review-continuity-bible.ts`、`prewrite-consultation.ts` |
+| 裁剪单位从「行」改为「事实（`fact_key`）」，一条事实的所有主体原子进出 | `knowledge-state.ts:renderKnowledgeSection` |
+| 节首说明改成三句：完整列出的事实才适用封闭默认 / 本次未列出的已登记事实不适用 / 未登记的事实一概不判 | 同文件 `ZH_LEAD` / `EN_LEAD` |
+| 新增 `omittedFacts` 计数，日志能报「省略 N 条事实」 | `review-continuity-bible.ts`、`prewrite-consultation.ts` |
 
-期 0 的验收标准只有一条：**构造 10 人 × 1 事实 + 6 条上限，输出里必须出现「省略 4 人」的显式说明，且不得出现「那 4 人视为不知道」的可读含义。**
+核心裁定一句话：
 
----
+> **封闭默认必须逐事实成立，不能逐节成立。** 一条事实只有在其主体集合**完整进入**上下文时，
+> 才允许对它施加「未列出 = 不知道」；被预算裁掉的整条降级为「不判」。
 
-## 4. 期 1：全集 + 差集（作者已选 A）
-
-### 4.1 语义
-
-一条知情行从「谁 + 事实」变成「**主体选择器** + 事实」：
-
-| 形态 | 写法 | 渲染（中文） |
-|---|---|---|
-| 单人（现状） | `subject_kind='character'` | `- 柳长老：知道（…）` |
-| 全域全体 | `subject_kind='scope'`, `scope_label=''` | `- 全体角色：知道（…）；明确不知道：阿七` |
-| 限定全体 | `subject_kind='scope'`, `scope_label='青云宗弟子'` | `- 青云宗弟子：知道（…）；明确不知道：阿七、外门弟子` |
-
-**`scope_label` 是自由文本，作者承诺语义，机器不校验。** 它直接渲染进提示词，模型读得懂「青云宗弟子」是什么。这是刻意选择：做势力表（方案 B）才能校验，代价是维护成员关系并牵动历史章节，本期不做（§6）。
-
-**`except_names` 不只是差集，它是 M16 现在完全缺失的「明确不知道」。** 原设计明说「只做正向知情，不记谁不知道」（`knowledge-state.ts:42-47`）。而「全宗都知道，只有阿七蒙在鼓里」是网文最常见的悬念装置之一 —— 这个表达式在本期第一次出现。
-
-### 4.2 表结构（M22，v22 → v23）
-
-SQLite 不能 `ALTER COLUMN`，`character_id NOT NULL` → 可空必须**重建表**（照 M02 的 `characters_m02` 模式：建新表 → 拷数据 → drop → rename → 重建索引）。
-
-```sql
-CREATE TABLE knowledge_states (
-  knowledge_id TEXT PRIMARY KEY,
-  subject_kind TEXT NOT NULL DEFAULT 'character' CHECK(subject_kind IN ('character','scope')),
-  character_id TEXT REFERENCES characters(character_id),  -- scope 行为 NULL
-  scope_label TEXT NOT NULL DEFAULT '',                   -- 空串 = 全体；用空串不用 NULL
-  except_names TEXT NOT NULL DEFAULT '[]',                -- 仅 scope 行有值
-  fact_chapter INTEGER NOT NULL CHECK(fact_chapter > 0),
-  fact_evidence TEXT NOT NULL,
-  fact_evidence_hash TEXT NOT NULL,
-  fact_key TEXT NOT NULL,
-  learned_chapter INTEGER NOT NULL CHECK(learned_chapter >= fact_chapter),
-  evidence TEXT,
-  source TEXT NOT NULL,
-  created_at TEXT,
-  updated_at TEXT,
-  CHECK (
-    (subject_kind = 'character' AND character_id IS NOT NULL AND scope_label = '' AND except_names = '[]')
-    OR (subject_kind = 'scope' AND character_id IS NULL)
-  )
-);
--- 唯一性拆成两条 partial index：NULL 在 SQLite 唯一索引里不参与去重，所以不能靠 UNIQUE()
-CREATE UNIQUE INDEX uq_knowledge_character ON knowledge_states(character_id, fact_key)
-  WHERE subject_kind = 'character';
-CREATE UNIQUE INDEX uq_knowledge_scope ON knowledge_states(scope_label, fact_key)
-  WHERE subject_kind = 'scope';
-```
-
-三点说明：
-
-- `scope_label` 用**空串**而不是 NULL —— SQLite 的唯一索引对 NULL 不去重，用 NULL 会让「全体」行凭空重复；
-- `except_names` 存 JSON 数组，沿 M21 秘密宿体与 M14 的既有做法；写入侧严格、读取侧容错；
-- 外键对 NULL 值不校验，所以 `LEFT JOIN characters` 的既有查询（`knowledge-state-repository.ts:143-145`）**不用改**，`characterName` 自然是空串。
-
-### 4.3 迁移幂等
-
-靠 `PRAGMA table_info(knowledge_states)` 探测是否已有 `subject_kind` 列：有 ⇒ 跳过；没有 ⇒ 重建。**不做 down**（与既有 22 个 lane 一致）。
-
-### 4.4 渲染
-
-单行入口（`renderKnowledgeLine`）加 scope 分支，仍只有三个数字来源（事实章 / 得知章 / 引文），不推算：
-
-```
-- 青云宗弟子：知道（事实出处：第3章「…」；自第5章得知）；明确不知道：阿七、外门弟子
-- Everyone in Qingyun Sect: knows (fact: Chapter 3 "…"; learned in Chapter 5); explicitly does NOT know: A-Qi
-```
-
-`except_names` 与「知道」**同行**是刻意的：一行 = 一条完整断言，预算裁剪天然以行为单位，不会把「知道」和「不知道」切开。
+旁证：同一文件里 `renderPrewriteFactsSection` 的标题已写着「不保证穷尽」「以定稿原文为准」——
+事实节用开放世界，知情节用封闭世界，而封闭世界的边界被画在了**预算**上。这是 bug。
 
 ---
 
-## 5. 期 2：程度（作者要「两者都要」，这一项必须做，但枚举值待你裁定）
+## 7. 撤回的方案（留档，别再重开）
 
-> 期 1 解决**规模**，不解决**程度**。把「只是怀疑」写成「知道」，对写作的约束力是反的。
-
-### 5.1 一个先要划清的界：knowledge vs belief
-
-| | 存什么 | 真假 | M16 现在能存吗 |
-|---|---|---|---|
-| **知识**（knowledge） | 绑定稿逐字引文（`fact_evidence` 是原文切片） | 必然为真 | ✅ |
-| **信念**（belief） | 角色以为的事，**可能为假**（「他以为城主是他爹」） | 可能假 | ❌ 而且**不该**：M16 的引文机制保证它必然真，塞进来就撞判据 DE（一个真相两份存法） |
-
-⇒ 「误解 / 以为」不属于 M16，是另一类宿体。本稿不设计它，只在这里划界，避免以后硬塞。
-
-### 5.2 待裁定的枚举（我不替你定）
-
-候选来自写作惯例而非我的想象，每个都标出它约束什么：
-
-| 值 | 含义 | 对生成的实际约束 |
-|---|---|---|
-| `witnessed` | 亲眼看见 | 可以主动行动、可以指认 |
-| `told` | 被明确告知 | 可以说出细节，但可能转述失真 |
-| `heard` | 听说 / 传言 | 语气必须不确定，细节可能是错的 |
-| `suspects` | 怀疑 / 推断 | 可以试探，**不能直接点破** |
-| `unaware` | 明确不知道 | 与 `except_names` 语义重叠，需决定是否合并 |
-
-两个必须先定的问题：
-
-1. **`unaware` 与 `except_names` 要不要合并？** 合并 ⇒ 少一个概念，但 `except_names` 就成了「一行里的特例」，而 `unaware` 是独立一条，两者预算与排序行为不同；
-2. **升格要不要留痕？** 第 5 章「听说」→ 第 9 章「亲眼」，是两条记录还是一条记录 + `learned_chapter` 更新？**改历史会影响已定稿章节的审稿判定**，我倾向追加新行 + 旧行标 `superseded`，但那要加列。
-
-### 5.3 判据影响
-
-`review-continuity-bible.ts:313` 现在写死一句话：
-
-> Never report "why does he not know" — the registry only records positive knowledge and a lower bound.
-
-**期 1 之后这句话就不成立了**（有了 `except_names`）。期 2 之后更不成立（有了 `suspects` / `unaware`）。这条规则必须随期改，不能忘 —— 忘了就是守卫自己说反话。
-
----
-
-## 6. 期 3：势力层（方案 B，明确不做，只留位）
-
-不做，但设计上**不与期 1 冲突**：`scope_label` 现在存自由文本，将来若建 `factions` 表，只需把「自由文本」换成「`faction_id` 外键」或加一列做映射，`subject_kind='scope'` 的语义不变。
-
-不做的理由：维护成员关系 + 成员变动牵动历史章节判定，收益（能校验"青云宗弟子"）低于成本。而 `scope_label` 已经能让模型读懂。
-
----
-
-## 7. 判据核对
-
-| 判据 | 本期怎么守 |
+| 原方案 | 为什么不做 |
 |---|---|
-| **DN**（没抽到 ≠ 没有） | §3 省略必须显式说明；§4 `except_names` 未被填时渲染成「未填写」，绝不反推「没人不知道」 |
-| **DE**（不造第二个真相） | 拒绝把「误解」塞进 M16（§5.1）；`scope_label` 不复制角色名到别处 |
-| **DP**（第 3 维防剧透） | `learnedChapter > 本章` 整行不注入 —— scope 行同样适用，过滤点不变 |
-| **DM**（两条链同一写法） | 正文链与审稿链共用 `renderKnowledgeSection`，期 0/期 1 都只改这一处 |
-| **AO**（全局覆盖静默遮蔽） | 本期不改 prompt 模板，只改注入文本，不触 AO |
+| 期 1 全集 + 差集（`scope_label` / `except_names`） | 主线机密的群落表达由 `secrets.holders` / `unaware`（自由字符串）覆盖。给 M16 加这个，是为一个它不该承担的场景改表 |
+| 期 2 程度（`witnessed` / `told` / `heard` / `suspects`） | 行业模板无此列；秘密是二元的。真正有价值的那根轴是「作者 / 读者 / 角色」三方信息差，不是模态分级 |
+| 期 3 势力层（`factions` 表） | 同期 1 的理由，且成本最高（成员变动牵动历史章节） |
+| M22 迁移（重建 `knowledge_states`） | 随期 1 一起撤回，版本号不动 |
 
----
-
-## 8. 对既有测试的冲击（预估，不是实测）
-
-| 文件 | 预期 |
-|---|---|
-| `knowledge-state.test.ts` | 新增：按事实分组裁剪、省略声明、scope 渲染、`except_names` 空值不反推 |
-| `knowledge-state-repository.test.ts` | 新增：scope 行插入 / 唯一约束 / CHECK 拒绝 character 行带 `except_names` |
-| `m16-installed-lane.test.ts` | 可能受影响：若该 lane 测试断言表结构，M22 重建后需同步（**待核实**） |
-| `review-continuity-bible.test.ts` | `counts.knowledge` 语义可能变（行数 vs 事实数），需重新定义 |
-| `prewrite-consultation.test.ts` | 节首说明文案变更；`omittedFacts` 新断言 |
-| `portable-project-format.test.ts` | M22 若进便携格式，计数要从 64 表 / 614 字段再算 |
-
----
-
-## 9. 不做的事
-
-- ❌ 不做查询语言 / 表达式引擎（`faction.X.knows(Y)` 那种），静态选择器足够；
-- ❌ 不做势力成员表（§6）；
-- ❌ 不把「信念 / 误解」塞进 M16（§5.1）；
-- ❌ 不为了容纳群体而放宽 `KNOWLEDGE_MAX_ITEMS` —— 全集的收益正是**不占条数**，靠枚举解决规模是错的方向；
-- ❌ 不改 `factKey` 算法（键变 = 所有既有登记全部失效）。
-
----
-
-## 10. 落点索引（实施时按此顺序）
-
-| 期 | 落点 |
-|---|---|
-| 期 0 | `src/shared/knowledge-state.ts`（`renderKnowledgeSection` / `ZH_LEAD` / `EN_LEAD`）· `review-continuity-bible.ts`（`counts`）· `prewrite-consultation.ts`（拼接与说明） |
-| 期 1 | 新 `electron/migrations/m22-knowledge-scope.ts`（重建表 + 两条 partial index）· `registry.ts` / `desktop-registry.ts` / `project-storage.ts` 三处版本号 · `knowledge-state-repository.ts`（upsert 分支、`hasSchema` 探测）· `KnowledgeRegistryPanel.tsx`（主体选择器 UI）· `ipc-channels.ts`（若 `KnowledgeStateInput` 形状变，需同步）· 便携格式 |
-| 期 2 | 待 §5.2 两个问题定案后再排期 |
+> ⚠️ 如果将来真的出现「需要按势力判断谁知道」，正确做法是**先有真实需求实例**（哪本书、哪一章卡住了），
+> 再回来讨论 —— 不为假设的场景改表。
