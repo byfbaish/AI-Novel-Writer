@@ -209,7 +209,7 @@ docs/
 | [`p1-1-key-items-design.md`](design/architecture/p1-1-key-items-design.md) | ✅ 已落地（M14） | 关键物品宿体（possession continuity）：三件套 + 出处，不做枚举、不做余额 |
 | [`p1-1-institution-cadence-design.md`](design/architecture/p1-1-institution-cadence-design.md) | ✅ 已落地（M15） | 制度槽（periodic obligations）：锚 = 上次真的发生，缺则 `unknown`，只判「该不该发生」 |
 | [`p1-1-knowledge-state-design.md`](design/architecture/p1-1-knowledge-state-design.md) | ✅ 已落地（M16） | 信息流（who knows what）：人粒度，只做正向知情，不做 C1 身份分面 |
-| [`p1-1-knowledge-scope-and-awareness-design.md`](design/architecture/p1-1-knowledge-scope-and-awareness-design.md) | ❌ 撤回扩展（2026-10-26） | **不做全集/差集/程度/势力层**。行业只记「承重事实」，模板是四列且**无「程度」列** ⇒ 主线机密归 M21。保留：M16 三道墙的事实 + **唯一工程项 = 修预算按行切导致的静默翻转** + `secrets` 与 M16 之间的一处真断链 |
+| [`p1-1-knowledge-scope-and-awareness-design.md`](design/architecture/p1-1-knowledge-scope-and-awareness-design.md) | ❌ 撤回扩展 · ✅ 修两处 | **不做全集/差集/程度/势力层**（行业只记「承重事实」，模板四列且**无「程度」列**）⇒ 主线机密归 M21。**已修**：① 裁剪单位从「行」改成「事实」（旧的按行切 + 封闭默认会把「知道」静默翻成「不知道」）② `secrets` 不再把「角色知道了但没写出真相」推给知情格（那边没有秘密，两头都不判） |
 | [`p1-1-power-ability-design.md`](design/architecture/p1-1-power-ability-design.md) | ✅ 已落地（M17） | 能力槽（power system）：Sanderson 三类限制 + 当前阶段，不判次数与冷却 |
 | [`p1-1-power-system-shape-proposal.md`](design/architecture/p1-1-power-system-shape-proposal.md) | ✅ 形状已签（G4a） | 能力槽形状提案（13 列，含 `evidence_scope`），期 4b 的形状依据 |
 | [`p1-1-worldbuilding-extraction-assessment.md`](design/architecture/p1-1-worldbuilding-extraction-assessment.md) | 📝 待裁定（2026-10-26） | **三格为什么抽不出来**：写入通道只有手填，`derived` 留的是「从定稿抽」且另立项 ⇒ 来源轴不同（键挂章号 + 引文，世界观没有章号）。逐格结论：**能力该抽**（来源 100% 是设定文本，卡在 8 条 / 第 1 维 2 个名额）· 制度只能抽一半（锚抽不出，全 `unknown`）· 知情**宿体不符**（要的是 secrets 不是 knowledge state）· 物品不该抽。方案 = 抽取 → 候选草稿 → 逐条采纳，豁免「不写库、不进 prompt」 |

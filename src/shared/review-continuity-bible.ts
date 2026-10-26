@@ -45,7 +45,7 @@ import {
 import { orderKeyItemsForChapter, type KeyItemDefinition } from './key-item'
 import {
   knowledgeUsableAtChapter,
-  renderKnowledgeSection,
+  planKnowledgeSection,
   type KnowledgeStateDefinition,
 } from './knowledge-state'
 import { renderAbilitySection, type PowerAbilityDefinition } from './power-ability'
@@ -161,6 +161,8 @@ export interface ReviewContinuityBibleBlock {
    */
   counts: {
     items: number; cadences: number; knowledge: number; abilities: number
+    /** 因预算未进上下文的事实条数（`knowledge: 0` 的第二种含义；这些事实不适用封闭默认）。 */
+    knowledgeOmitted: number
     secrets: number
     /** 被作者豁免、因此**没进提示词**的秘密条数（`secrets: 0` 的第二种含义）。 */
     secretsExempted: number
@@ -517,13 +519,16 @@ export function buildReviewContinuityBibleBlock(
     orderCadenceEntries((canon.cadences ?? []).map(collapseNewlines), chapterNumber, storyDayOffset),
     writingLanguage,
   )
-  const knowledgeSection = renderKnowledgeSection(
+  // 用 plan 而不是 render：需要同时拿到「文本」和「有几条事实没进来」。
+  // 后者必须进 counts（判据 DN）—— `knowledge: 0` 有「没登记」和「登记了但一条都进不来」两种含义。
+  const knowledgePlan = planKnowledgeSection(
     (canon.knowledge ?? [])
       .map(collapseNewlines)
       .filter(entry => knowledgeUsableAtChapter(entry, chapterNumber)),
     writingLanguage,
     chapterCharacters,
   )
+  const knowledgeSection = knowledgePlan.text
   const abilitiesSection = renderAbilitySection(
     (canon.abilities ?? []).map(collapseNewlines),
     writingLanguage,
@@ -544,6 +549,14 @@ export function buildReviewContinuityBibleBlock(
     items: countLines(itemsSection),
     cadences: countLines(cadencesSection),
     knowledge: countLines(knowledgeSection),
+    /**
+     * 因预算/条数上限**没进上下文**的事实条数。
+     *
+     * 判据 DN：`knowledge: 0` 有「一条都没登记」和「登记了但一条都排不进来」两种含义。
+     * 只报 0 会让作者以为这本书里没人知道任何事。这些事实**不适用**「未列出即不知道」
+     * —— 渲染函数已把这句话写进节首，这里只是让日志也说得出来。
+     */
+    knowledgeOmitted: knowledgePlan.omittedFacts,
     abilities: countLines(abilitiesSection),
     secrets: countLines(secretsSection),
     /**

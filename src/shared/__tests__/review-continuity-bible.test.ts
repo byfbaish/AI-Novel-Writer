@@ -327,7 +327,8 @@ describe('buildReviewContinuityBibleBlock — 人物状态转移（指针型，�
       renderedCharacterStates: renderedStates,
     })!
     expect(block.counts).toEqual({
-      items: 1, cadences: 1, knowledge: 1, abilities: 1, secrets: 1, secretsExempted: 0, characters: 2,
+      items: 1, cadences: 1, knowledge: 1, knowledgeOmitted: 0, abilities: 1,
+      secrets: 1, secretsExempted: 0, characters: 2,
     })
     expect(block.text.indexOf('【能力')).toBeLessThan(block.text.indexOf('【秘密守卫'))
     expect(block.text.indexOf('【秘密守卫')).toBeLessThan(block.text.indexOf('【人物状态转移'))
@@ -403,7 +404,8 @@ describe('buildReviewContinuityBibleBlock — 秘密守卫（P20-2）', () => {
     const block = buildReviewContinuityBibleBlock({ ...base, secrets: [secret()] })
     expect(block).toBeDefined()
     expect(block!.counts).toEqual({
-      items: 0, cadences: 0, knowledge: 0, abilities: 0, secrets: 1, secretsExempted: 0, characters: 0,
+      items: 0, cadences: 0, knowledge: 0, knowledgeOmitted: 0, abilities: 0,
+      secrets: 1, secretsExempted: 0, characters: 0,
     })
     expect(block!.text).toContain('【秘密守卫（未揭穿的真相）】')
     expect(block!.text).toContain('真相：钥匙是林岚自己放的')
@@ -510,5 +512,43 @@ describe('buildReviewContinuityBibleBlock — 秘密豁免', () => {
     })!
     expect(block.counts.secrets).toBe(0)
     expect(block.counts.secretsExempted).toBe(0)
+  })
+})
+
+/**
+ * 知情裁剪按**事实**算（2026-10-26）。
+ *
+ * 旧实现按行 `slice(0, 6)`，而节首是封闭默认 ⇒ 一条事实有 8 个人知道时，
+ * 被切掉的那 2 个人**被明确告知为不知道**。这组用例守的是「不许半条事实」+
+ * 「省略必须自己说出来」（判据 DN）。
+ */
+describe('buildReviewContinuityBibleBlock — 知情裁剪', () => {
+  const crowd = (count: number, factKey: string, over: Partial<KnowledgeStateDefinition> = {}) =>
+    Array.from({ length: count }, (_, index) => knowledge({
+      knowledgeId: `knowledge:${factKey}:${index}`,
+      characterName: `弟子${index}`,
+      factKey,
+      ...over,
+    }))
+
+  it('一条事实 8 个人知道 ⇒ 整组进，counts 里没有省略', () => {
+    const block = buildReviewContinuityBibleBlock({ ...base, knowledge: crowd(8, 'kf:fff0000000000000') })!
+    expect(block.counts.knowledge).toBe(8)
+    expect(block.counts.knowledgeOmitted).toBe(0)
+    expect(block.text).not.toContain('因篇幅未列出')
+  })
+
+  it('预算装不下的事实计入 knowledgeOmitted，节首明说「那几条不适用封闭默认」', () => {
+    // 一条 30 人的事实（约 30 行）必然超出 640 字预算；再加一条小事实验证「跳过 ≠ 停止」。
+    const small = [knowledge({ knowledgeId: 'knowledge:small', characterName: '小郑', factKey: 'kf:sss0000000000000' })]
+    const block = buildReviewContinuityBibleBlock({
+      ...base,
+      chapterNumber: 5,
+      knowledge: [...crowd(30, 'kf:hhh0000000000000'), ...small],
+    })!
+    expect(block.counts.knowledgeOmitted).toBe(1)
+    expect(block.text).toContain('另有 1 条已登记事实因篇幅未列出')
+    // 小事实仍然进来 —— 一条装不下不该连带作废后面所有事实。
+    expect(block.text).toContain('小郑')
   })
 })

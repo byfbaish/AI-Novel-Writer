@@ -310,9 +310,10 @@ describe('knowledge section', () => {
     expect(block).toMatchObject({ factCount: 0, itemCount: 0, cadenceCount: 1, knowledgeCount: 1, abilityCount: 0, ruleCount: 1 })
   })
 
-  it('节首说明逐字包含「未登记的事实一概不判」（封闭默认只在注入文本里成立）', () => {
+  it('节首说明逐字包含封闭默认、它的边界与「名单完整」这句承诺', () => {
     const block = buildPrewriteConsultationBlock({ knowledge: [knowledge()] }, 'zh-CN')
-    expect(block.text).toContain('登记过的事实，未列出的角色视为不知道；未登记的事实一概不判。')
+    expect(block.text).toContain('每条事实的知情名单都完整')
+    expect(block.text).toContain('未登记的事实一概不判')
     // 英文对称：不能只写前半句。
     const en = buildPrewriteConsultationBlock({ knowledge: [knowledge()] }, 'en-US')
     expect(en.text).toContain('facts that were never registered are not judged at all')
@@ -324,15 +325,20 @@ describe('knowledge section', () => {
   })
 
   it('条数按上限截断，超出的整条丢弃（不截半行）', () => {
+    // 每条不同 factKey = 各自的独立事实，才谈得上「按条数上限截断」。
+    // 同一 factKey 的多人知情属于一条事实，现在会整组一起进（见 knowledge-state 的用例）。
     const many = Array.from({ length: KNOWLEDGE_MAX_ITEMS + 3 }, (_, index) => knowledge({
       knowledgeId: `knowledge:${index}`,
       characterName: `角色${index}`,
       learnedChapter: 12 - index,
+      factKey: `kf:${String(index).padStart(16, '0')}`,
     }))
     const block = buildPrewriteConsultationBlock({ knowledge: many }, 'zh-CN')
     expect(block.knowledgeCount).toBe(KNOWLEDGE_MAX_ITEMS)
     // 被裁掉的最后一条：整行都不出现（不是只少半句）。
     expect(block.text).not.toContain(`角色${KNOWLEDGE_MAX_ITEMS + 2}：`)
+    // 判据 DN：裁掉了就要说出来，否则模型把「没列出」读成「不知道」。
+    expect(block.text).toContain('因篇幅未列出')
   })
 })
 

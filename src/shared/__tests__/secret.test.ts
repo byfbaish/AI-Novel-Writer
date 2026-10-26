@@ -248,3 +248,52 @@ describe('renderSecretReviewSection · 豁免生效', () => {
     expect(text).toContain('城主的儿子还活着')
   })
 })
+
+/**
+ * 2026-10-26：规则改口径 —— 不再把判断推给知情格。
+ *
+ * 原第 3 句是「写不出真相、但让角色知道了不该知道的事，按知情格判」。
+ * 但**知情格（M16）里没有秘密** —— 秘密只登记在 secrets 表。于是这条两头都不判：
+ * secrets 只管「写出真相栏内容」，M16 查不到这条事实。
+ * 而「角色知道了但没写出真相」恰恰是最常见的泄密形态：秘密不是被说出来的，是被演出来的。
+ */
+describe('renderSecretReviewSection · 规则自洽（不推给知情格）', () => {
+  // revealChapter 必须晚于被审章，否则是 `already-revealed`，整条不渲染 —— 测试会拿到空串并"假通过"。
+  const guarded = () => secret({ revealChapter: 40 })
+  const zh = () => renderSecretReviewSection([guarded()], 30, 'zh-CN')
+
+  it('不再出现「按知情格判」—— 那是一条死路', () => {
+    const text = zh()
+    expect(text).not.toBe('')
+    expect(text).not.toContain('按知情格判')
+    expect(renderSecretReviewSection([guarded()], 30, 'en-US')).not.toContain('knowledge-state grid')
+  })
+
+  it('「尚不知情」的人表现出知情，也算提前泄密（三种表现都列出来）', () => {
+    const text = zh()
+    expect(text).toContain('表现出知情')
+    expect(text).toContain('说出相关内容')
+    expect(text).toContain('用上只可能由真相得出的信息')
+    expect(text).toContain('据此改变行动')
+  })
+
+  it('主体边界写死：本条只针对「尚不知情」，隐瞒者的遮掩仍不算泄密', () => {
+    const text = zh()
+    expect(text).toContain('本条只针对「尚不知情」栏里的人')
+    // 第 2 句的保护不能因为新规则而失效，两句必须能同时成立。
+    expect(text).toContain('只写到「有人在遮掩 / 暗示 / 回避」不算泄密')
+  })
+
+  it('「尚不知情」未填时新规则不适用（不能拿没登记的名单去判，判据 DN）', () => {
+    const text = zh()
+    expect(text).toContain('「尚不知情」为「未填」时，本条不适用')
+    expect(text).toContain('不得据此推断没有任何人不知道')
+  })
+
+  it('英文侧同步（`prompt-language` 独立整套，漏改不报错）', () => {
+    const en = renderSecretReviewSection([guarded()], 30, 'en-US')
+    expect(en).toContain('premature reveal')
+    expect(en).toContain('listed under "unaware"')
+    expect(en).toContain('this clause does not apply')
+  })
+})

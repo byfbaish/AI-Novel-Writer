@@ -286,14 +286,17 @@ export function renderSecretReviewLine(
 const ZH_LEAD = [
   '以下是本书尚未揭穿的秘密（作者登记）。**判定依据：正文若在被审章写出了「真相」栏的内容，判为提前泄密。**',
   '只写到「有人在遮掩 / 暗示 / 回避」不算泄密；行尾标注「本章就是计划揭穿章」的那条不算泄密（那正是它该穿的时候）。',
-  '写不出真相、但让角色知道了不该知道的事，按知情格判。',
+  // 2026-10-26 改：原句是「按知情格判」，而知情格（M16）里**没有秘密** —— 秘密只登记在本表。
+  // 于是「角色知道了但没写出真相」两头都不判，而这恰恰是最常见的泄密形态：秘密不是被说出来的，是被演出来的。
+  '写不出真相，但让「尚不知情」栏里的人表现出知情（说出相关内容 / 用上只可能由真相得出的信息 / 据此改变行动）—— 同样判为提前泄密。**本条只针对「尚不知情」栏里的人**；「隐瞒者」做遮掩、暗示、回避仍不算泄密（见上一条）。「尚不知情」为「未填」时，本条不适用。',
   '「尚不知情」栏为「未填」时，只说明作者没登记，**不得据此推断没有任何人不知道**。',
 ].join('')
 const EN_LEAD = [
   'Secrets of this book that are not yet revealed (author-registered). ',
   '**Rule: if the reviewed chapter states the truth shown in the "truth" field, that is a premature reveal.** ',
   'Hints, avoidance, or someone being evasive are not leaks; a line flagged "this is the planned reveal chapter" is not a leak either (that is exactly when it should come out). ',
-  'A character learning something they should not know is judged by the knowledge-state grid instead. ',
+  // See the Chinese counterpart: "judged by the knowledge-state grid" was a dead end — the grid has no secrets.
+  'Even without stating the truth, if a person listed under "unaware" shows knowledge (mentions it, acts on information obtainable only from the truth, or changes course because of it), that is also a premature reveal. **This clause applies only to people listed under "unaware"**; the "hiders" being evasive or hinting is still not a leak (see above). When "unaware" reads "not filled in", this clause does not apply. ',
   'When "unaware" reads "not filled in", it only means the author did not register it; never infer that nobody is unaware.',
 ].join('')
 

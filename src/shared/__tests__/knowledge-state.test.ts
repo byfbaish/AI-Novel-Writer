@@ -7,6 +7,7 @@ import {
   knowledgeFactEvidenceHash,
   knowledgeFactKey,
   normalizeFactQuote,
+  planKnowledgeSection,
   renderKnowledgeLine,
   renderKnowledgeSection,
   type KnowledgeStateDefinition,
@@ -91,10 +92,13 @@ describe('renderKnowledgeLine / renderKnowledgeSection', () => {
     expect(renderKnowledgeSection([entry()], 'en-US')).toContain('[Knowledge state (who knows what)]')
   })
 
-  it('节首说明逐字包含封闭默认与它的边界（未登记的事实一概不判）', () => {
+  it('节首说明逐字包含封闭默认、它的边界、以及「名单完整」这句承诺', () => {
     const section = renderKnowledgeSection([entry()], 'zh-CN')
     expect(section.split('\n')[0]).toBe('【知情（谁知道什么）】')
-    expect(section).toContain('以下只列已登记的事实：登记过的事实，未列出的角色视为不知道；未登记的事实一概不判。')
+    // 「每条事实的知情名单都完整」不是修辞：它由「按事实整组进出」保证（见本轮新增的用例）。
+    // 没有这句，模型会以为随手列的几个人就是全部；有了这句，未列出才敢读成「不知道」。
+    expect(section).toContain('每条事实的知情名单都完整')
+    expect(section).toContain('未登记的事实一概不判')
     // 英文侧同样要带上后半句，否则只说了封闭、没说过滤范围。
     expect(renderKnowledgeSection([entry()], 'en-US'))
       .toContain('facts that were never registered are not judged at all')
@@ -132,13 +136,19 @@ describe('renderKnowledgeLine / renderKnowledgeSection', () => {
     expect(lines[2]).toContain('甲')
   })
 
-  it('条数与字数双上限：超出的整条丢弃，不截半行', () => {
+  it('条数上限按**事实**算：8 条不同事实只进 6 条，且明说省略了 2 条', () => {
+    // factKey 必须各不相同 —— 同一 factKey = 同一条事实的多个知情者，那本来就该整组一起进。
     const many = Array.from({ length: KNOWLEDGE_MAX_ITEMS + 2 }, (_, index) => entry({
-      knowledgeId: `k:${index}`, characterName: `角色${index}`, learnedChapter: 20 - index,
+      knowledgeId: `k:${index}`,
+      characterName: `角色${index}`,
+      learnedChapter: 20 - index,
+      factKey: `kf:${String(index).padStart(16, '0')}`,
     }))
     const byCount = renderKnowledgeSection(many, 'zh-CN')
     expect(byCount.split('\n').filter(line => line.startsWith('- '))).toHaveLength(KNOWLEDGE_MAX_ITEMS)
     expect(byCount).not.toContain('角色7：')
+    // 判据 DN：省略必须说出来，否则模型会读成「没列出 = 没人知道」。
+    expect(byCount).toContain('另有 2 条已登记事实因篇幅未列出')
 
     // 字数上限：单行就能吃掉整个预算时，一条都不出（也不出半行）。
     const tight = renderKnowledgeSection([entry()], 'zh-CN', [], 10)
@@ -146,5 +156,56 @@ describe('renderKnowledgeLine / renderKnowledgeSection', () => {
     // 默认上限下正常出。（第一条断言用默认值，保证常量没被悄悄改小）
     expect(KNOWLEDGE_MAX_CHARS).toBeGreaterThan(100)
     expect(renderKnowledgeSection([entry()], 'zh-CN').split('\n')).toHaveLength(3)
+  })
+})
+
+/**
+ * 2026-10-26：裁剪单位从「行」改成「事实」。
+ *
+ * 旧实现按行切，而节首是封闭默认 ⇒ 一条事实有 10 个人知道、上限 6 行时，
+ * 被切掉的 4 个人**被明确告知为不知道**。这组用例钉的就是「不许再出现半条事实」。
+ */
+describe('裁剪单位 = 事实（整组进出）', () => {
+  const sameFact = (count: number, prefix: string, factKey: string, over: Partial<KnowledgeStateDefinition> = {}) =>
+    Array.from({ length: count }, (_, index) => entry({
+      knowledgeId: `k:${prefix}${index}`,
+      characterName: `${prefix}${index}`,
+      factKey,
+      ...over,
+    }))
+
+  it('一条事实 8 个人知道 ⇒ 8 行全进，不被「条数上限 6」砍掉 2 个人', () => {
+    const plan = planKnowledgeSection(sameFact(8, '弟子', 'kf:ffffffffffffffff'), 'zh-CN')
+    expect(plan.includedFacts).toBe(1)
+    expect(plan.omittedFacts).toBe(0)
+    expect(plan.lines).toBe(8)
+    // 这条事实是完整的，所以不该出现省略声明 —— 封闭默认可以放心生效。
+    expect(plan.text).not.toContain('因篇幅未列出')
+  })
+
+  it('一组装不下 ⇒ 整组不进（不切半组），并且报出「省略 1 条事实」', () => {
+    const plan = planKnowledgeSection(sameFact(10, '长老', 'kf:eeeeeeeeeeeeeeee'), 'zh-CN', [], 120)
+    expect(plan.includedFacts).toBe(0)
+    expect(plan.omittedFacts).toBe(1)
+    // 整节为空 ⇒ 什么都没说 ⇒ 不施加任何封闭默认（安全方向）。
+    expect(plan.text).toBe('')
+  })
+
+  it('一组装不下时继续试后面的组（跳过 ≠ 停止），省略条数照实报', () => {
+    const huge = sameFact(10, '长老', 'kf:bbbbbbbbbbbbbbbb', { learnedChapter: 15 })
+    const small = [entry({ knowledgeId: 'k:small', characterName: '小郑', factKey: 'kf:cccccccccccccccc' })]
+    const plan = planKnowledgeSection([...huge, ...small], 'zh-CN', [], 120)
+    expect(plan.includedFacts).toBe(1)
+    expect(plan.omittedFacts).toBe(1)
+    expect(plan.text).toContain('小郑')
+    expect(plan.text).not.toContain('长老0')
+    expect(plan.text).toContain('另有 1 条已登记事实因篇幅未列出')
+  })
+
+  it('「本章出场优先」仍成立：一条事实里只要有出场角色，整组一起前移', () => {
+    const onStage = sameFact(2, '甲', 'kf:aaaaaaaaaaaaaaa1', { characterName: '甲一' })
+    const other = [entry({ knowledgeId: 'k:zz', characterName: '乙', factKey: 'kf:aaaaaaaaaaaaaaa2', learnedChapter: 15 })]
+    const plan = planKnowledgeSection([...other, ...onStage], 'zh-CN', ['甲一'])
+    expect(plan.text.indexOf('甲一')).toBeLessThan(plan.text.indexOf('乙：'))
   })
 })

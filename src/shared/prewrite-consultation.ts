@@ -223,7 +223,10 @@ export function buildPrewriteConsultationBlock(
     factCount: Math.min(count(factsSection), PREWRITE_FACTS_MAX_ITEMS),
     itemCount: Math.min(count(itemsSection), PREWRITE_ITEMS_MAX_ITEMS),
     cadenceCount: Math.min(count(cadencesSection), CADENCE_MAX_ITEMS),
-    knowledgeCount: Math.min(count(knowledgeSection), KNOWLEDGE_MAX_ITEMS),
+    // 报**行数**（一行 = 一条知情关系）。这里不能再 `Math.min(…, KNOWLEDGE_MAX_ITEMS)`：
+    // 2026-10-26 起上限是按**事实**算的，一条事实 8 个人知道就是 8 行、仍然只占 1 条额度。
+    // 拿 6 去兜 8 行会让日志说「6 条」而上下文里明明有 8 行。
+    knowledgeCount: count(knowledgeSection),
     abilityCount: Math.min(count(abilitiesSection), PREWRITE_ABILITIES_MAX_ITEMS),
     ruleCount: Math.min(count(rulesSection), WORLD_RULES_MAX_ITEMS),
   }

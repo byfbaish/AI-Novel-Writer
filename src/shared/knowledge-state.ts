@@ -208,9 +208,16 @@ export function renderKnowledgeLine(
     : `- ${name}：知道（事实出处：第${entry.factChapter}章「${quote}」；自第${entry.learnedChapter}章得知）`
 }
 
-/** 节首说明（中文逐字；测试钉「未登记的事实一概不判」）。 */
-const ZH_LEAD = '以下只列已登记的事实：登记过的事实，未列出的角色视为不知道；未登记的事实一概不判。'
-const EN_LEAD = 'Only registered facts are listed: for any registered fact, characters not listed here are treated as not knowing it; facts that were never registered are not judged at all.'
+/**
+ * 节首说明（中文逐字；测试钉「未登记的事实一概不判」）。
+ *
+ * **「每条事实的知情名单都完整」这句是承诺，不是修辞** —— 它由 `planKnowledgeSection`
+ * 的「按事实整组进出」保证。旧文案只写「未列出的角色视为不知道」，而当时是**按行**裁剪的，
+ * 于是被切掉的人被这句话判成了「不知道」（静默翻转）。改文案必须与裁剪方式同时改，
+ * 否则两句话里必有一句是假的。
+ */
+const ZH_LEAD = '以下只列已登记的事实，且**每条事实的知情名单都完整**：凡未在某条下列出的角色，视为不知道；未登记的事实一概不判。'
+const EN_LEAD = 'Only registered facts are listed, and **each fact\'s list of knowers is complete**: any character not listed under a fact is treated as not knowing it; facts that were never registered are not judged at all.'
 
 /**
  * 排序：**本章出场角色优先** → `learnedChapter` 降序 → 角色名。
@@ -232,12 +239,9 @@ function orderKnowledgeStates(
 }
 
 /**
- * 渲染【知情】整节；没有可注入的条目就返回空串（**不要**产出只有标题的空节）。
- *
- * 只注入 `refState === 'valid'`：`stale` / `unverifiable` 跳过并在登记页提示重选 ——
- * 它们指的是「这条登记已对不上定稿」，不是「这个角色不知道」。
- *
- * @param maxChars 正文行总字数上限；预算外**整条丢弃**，不截半行（半行会读成另一条事实）。
+ * 渲染【知情】整节 —— 实现与全部裁剪判断在文件末尾的 `planKnowledgeSection`
+ * （含「为什么必须按事实整组进出」的理由）。这个函数只是它的薄壳，保留是为了
+ * 既有调用点与测试不必跟着改签名。
  */
 /**
  * 一条知情关系在某一章是否可用：`learnedChapter <= 本章` 且引用仍对得上定稿。
@@ -254,27 +258,114 @@ export function knowledgeUsableAtChapter(
   return entry.learnedChapter <= chapterNumber && entry.refState === 'valid'
 }
 
+/** 分组键：一条事实 = 一个 `factKey`。空键退回 `knowledgeId`，让每条自成一事实而不是并成一组。 */
+function factGroupKey(entry: KnowledgeStateDefinition): string {
+  return entry.factKey.trim() || entry.knowledgeId
+}
+
+/**
+ * 渲染计划 —— 「哪些行进了上下文、哪些没进」全部只在这里判断一次。
+ *
+ * ## 为什么必须有这一层（旧实现是个会产生错误上下文的 bug）
+ *
+ * 旧实现按**行**执行 `slice(0, KNOWLEDGE_MAX_ITEMS)`，而节首写的是封闭默认
+ * （「未列出的角色视为不知道」）。于是当一条事实有 10 个人知道、上限却是 6 行时，
+ * 被切掉的那 4 个人不是「没显示」，是**被明确告知为不知道** —— 我们亲手造出了集体失忆。
+ *
+ * 所以裁剪单位必须是**事实**：一条事实的所有主体**整组进或整组不进**。
+ * 由此得到两条配套规则，缺一不可：
+ * 1. `KNOWLEDGE_MAX_ITEMS` 的语义是**事实条数上限**，不是行数上限（一行 = 一条知情关系）；
+ * 2. 只要有事实没进来，节首必须**说出来**（判据 DN：没排进来 ≠ 没人知道）。
+ *
+ * ## 装不下就跳过、不停止
+ *
+ * 用 `continue` 而不是 `break`：一条超长事实装不下，不该连带后面所有短事实一起作废。
+ * 排序仍然是「本章出场优先」，只是它决定**先试谁**，不决定「试完这个就不许试别人」。
+ */
+export interface KnowledgePlan {
+  /** 可直接拼接的节文本（含标题与说明句）；无可渲染内容时为空串。 */
+  text: string
+  /** 完整进入上下文的事实条数。 */
+  includedFacts: number
+  /** 未进入上下文的事实条数。**这些事实不适用「未列出即不知道」。** */
+  omittedFacts: number
+  /** 正文行数 = 进入上下文的知情关系条数。 */
+  lines: number
+}
+
+export function planKnowledgeSection(
+  entries: readonly KnowledgeStateDefinition[],
+  writingLanguage: WritingLanguage,
+  chapterCharacters: readonly string[] = [],
+  maxChars: number = KNOWLEDGE_MAX_CHARS,
+): KnowledgePlan {
+  const usable = orderKnowledgeStates(
+    entries.filter(entry => entry.refState === 'valid' && entry.factEvidence.trim() && entry.characterName.trim()),
+    chapterCharacters,
+  )
+  // 分组但不打乱顺序：组的次序 = 组内首行在排序结果里的位置。
+  // 「本章出场优先」因此仍然成立 —— 一条事实只要有一个出场角色，整组一起前移。
+  const groups: KnowledgeStateDefinition[][] = []
+  const groupIndex = new Map<string, number>()
+  for (const entry of usable) {
+    const key = factGroupKey(entry)
+    const existing = groupIndex.get(key)
+    if (existing === undefined) {
+      groupIndex.set(key, groups.length)
+      groups.push([entry])
+    } else {
+      groups[existing]!.push(entry)
+    }
+  }
+
+  const lines: string[] = []
+  let used = 0
+  let includedFacts = 0
+  for (const group of groups) {
+    if (includedFacts >= KNOWLEDGE_MAX_ITEMS) break
+    const groupLines = group.map(entry => renderKnowledgeLine(entry, writingLanguage))
+    // 组内换行 + 与上一组之间的换行都算进预算，否则最后一组会悄悄超出上限。
+    const cost = groupLines.reduce((sum, line) => sum + line.length, 0)
+      + (groupLines.length - 1)
+      + (lines.length > 0 ? 1 : 0)
+    if (used + cost > maxChars) continue
+    lines.push(...groupLines)
+    used += cost
+    includedFacts += 1
+  }
+
+  const omittedFacts = groups.length - includedFacts
+  if (lines.length === 0) {
+    return { text: '', includedFacts: 0, omittedFacts, lines: 0 }
+  }
+  const isEn = writingLanguage === 'en-US'
+  const heading = isEn ? '[Knowledge state (who knows what)]' : '【知情（谁知道什么）】'
+  const omittedLine = omittedFacts > 0
+    ? (isEn
+      ? ` ${omittedFacts} further registered fact(s) could not be listed here for space — the rule above does NOT apply to them: not listed means not included, not unknown.`
+      : `另有 ${omittedFacts} 条已登记事实因篇幅未列出 —— 上一句**不适用于那 ${omittedFacts} 条**：那是没排进来，不是没人知道。`)
+    : ''
+  return {
+    text: `${heading}\n${isEn ? EN_LEAD : ZH_LEAD}${omittedLine}\n${lines.join('\n')}`,
+    includedFacts,
+    omittedFacts,
+    lines: lines.length,
+  }
+}
+
+/**
+ * 渲染【知情】整节；没有可注入的条目就返回空串（**不要**产出只有标题的空节）。
+ *
+ * 只注入 `refState === 'valid'`：`stale` / `unverifiable` 跳过并在登记页提示重选 ——
+ * 它们指的是「这条登记已对不上定稿」，不是「这个角色不知道」。
+ *
+ * @param maxChars 正文行总字数上限；预算外**整条事实丢弃**（不截半条：半条会读成另一条事实）。
+ */
 export function renderKnowledgeSection(
   entries: readonly KnowledgeStateDefinition[],
   writingLanguage: WritingLanguage,
   chapterCharacters: readonly string[] = [],
   maxChars: number = KNOWLEDGE_MAX_CHARS,
 ): string {
-  const lines: string[] = []
-  let used = 0
-  const usable = orderKnowledgeStates(
-    entries.filter(entry => entry.refState === 'valid' && entry.factEvidence.trim() && entry.characterName.trim()),
-    chapterCharacters,
-  )
-  for (const entry of usable.slice(0, KNOWLEDGE_MAX_ITEMS)) {
-    const line = renderKnowledgeLine(entry, writingLanguage)
-    const next = line.length + (lines.length > 0 ? 1 : 0)
-    if (used + next > maxChars) break
-    lines.push(line)
-    used += next
-  }
-  if (lines.length === 0) return ''
-  const isEn = writingLanguage === 'en-US'
-  const heading = isEn ? '[Knowledge state (who knows what)]' : '【知情（谁知道什么）】'
-  return `${heading}\n${isEn ? EN_LEAD : ZH_LEAD}\n${lines.join('\n')}`
+  return planKnowledgeSection(entries, writingLanguage, chapterCharacters, maxChars).text
 }
