@@ -327,7 +327,7 @@ describe('buildReviewContinuityBibleBlock — 人物状态转移（指针型，�
       renderedCharacterStates: renderedStates,
     })!
     expect(block.counts).toEqual({
-      items: 1, cadences: 1, knowledge: 1, abilities: 1, secrets: 1, characters: 2,
+      items: 1, cadences: 1, knowledge: 1, abilities: 1, secrets: 1, secretsExempted: 0, characters: 2,
     })
     expect(block.text.indexOf('【能力')).toBeLessThan(block.text.indexOf('【秘密守卫'))
     expect(block.text.indexOf('【秘密守卫')).toBeLessThan(block.text.indexOf('【人物状态转移'))
@@ -403,7 +403,7 @@ describe('buildReviewContinuityBibleBlock — 秘密守卫（P20-2）', () => {
     const block = buildReviewContinuityBibleBlock({ ...base, secrets: [secret()] })
     expect(block).toBeDefined()
     expect(block!.counts).toEqual({
-      items: 0, cadences: 0, knowledge: 0, abilities: 0, secrets: 1, characters: 0,
+      items: 0, cadences: 0, knowledge: 0, abilities: 0, secrets: 1, secretsExempted: 0, characters: 0,
     })
     expect(block!.text).toContain('【秘密守卫（未揭穿的真相）】')
     expect(block!.text).toContain('真相：钥匙是林岚自己放的')
@@ -448,5 +448,67 @@ describe('buildReviewContinuityBibleBlock — 秘密守卫（P20-2）', () => {
     const withoutSecrets = buildReviewContinuityBibleBlock({ ...base, items: [item()] })!
     expect(withoutSecrets.text).not.toContain('秘密守卫')
     expect(withoutSecrets.text).not.toContain('SECRET')
+  })
+})
+
+/**
+ * 豁免（2026-10-26 作者要求）。
+ *
+ * 为什么审稿守卫要认豁免：审稿员判「本章写出了真相」是对的，但作者可能就是**故意**提前揭穿，
+ * 或者真相已经人尽皆知。没有出口，作者只能每章看着同一条问题重复出现，最后学会无视整个守卫节。
+ *
+ * 两个出口的作用域不同，这是本段的全部要点：
+ * - **章级（临时）**：`secret-exempt:<id>#ch<N>` —— 只免那一章，下一章照旧报；
+ * - **永久**：`secret-exempt:<id>` —— 真相人尽皆知，守卫从此不管这条。
+ */
+describe('buildReviewContinuityBibleBlock — 秘密豁免', () => {
+  it('永久豁免 ⇒ 这条不进提示词，且 counts 如实报「被豁免 N 条」', () => {
+    const block = buildReviewContinuityBibleBlock({
+      ...base,
+      secrets: [secret()],
+      secretExemptions: [{ stableFactKey: 'secret-exempt:secret:1', reason: '真相人尽皆知', revoked: false }],
+    })
+    // 只有这一条秘密且被豁免 ⇒ 整块没有可渲染内容，返回 undefined（不产只有标题的空节）
+    expect(block).toBeUndefined()
+  })
+
+  it('章级豁免只免那一章；被免的条数与仍守卫的条数分别可见', () => {
+    const other = secret({ secretId: 'secret:2', title: '城主的儿子还活着' })
+    const exemptions = [{ stableFactKey: 'secret-exempt:secret:1#ch4', reason: '本章提前揭穿', revoked: false }]
+    const atFour = buildReviewContinuityBibleBlock({ ...base, secrets: [secret(), other], secretExemptions: exemptions })!
+    expect(atFour.text).not.toContain('井里的钥匙是谁放的')
+    expect(atFour.text).toContain('城主的儿子还活着')
+    expect(atFour.counts.secrets).toBe(1)
+    expect(atFour.counts.secretsExempted).toBe(1)
+
+    // 第 5 章 ⇒ 章级豁免不再生效
+    const atFive = buildReviewContinuityBibleBlock({
+      ...base, chapterNumber: 5, secrets: [secret(), other], secretExemptions: exemptions,
+    })!
+    expect(atFive.text).toContain('井里的钥匙是谁放的')
+    expect(atFive.counts.secretsExempted).toBe(0)
+  })
+
+  it('已撤销（revoked=1）的豁免不算数 —— 撤销后守卫必须回来', () => {
+    const revoked = [{ stableFactKey: 'secret-exempt:secret:1', reason: '改主意了', revoked: true }]
+    const block = buildReviewContinuityBibleBlock({ ...base, secrets: [secret()], secretExemptions: revoked })!
+    expect(block.text).toContain('井里的钥匙是谁放的')
+    expect(block.counts.secretsExempted).toBe(0)
+  })
+
+  it('别的闸门的豁免键不被误读（volume-handoff: 不该免掉任何秘密）', () => {
+    const foreign = [{ stableFactKey: 'volume-handoff:vol-1', reason: '已人工复查', revoked: false }]
+    const block = buildReviewContinuityBibleBlock({ ...base, secrets: [secret()], secretExemptions: foreign })!
+    expect(block.text).toContain('井里的钥匙是谁放的')
+    expect(block.counts.secretsExempted).toBe(0)
+  })
+
+  it('已揭穿的秘密不计入 secretsExempted（那是期界，不是豁免）', () => {
+    const block = buildReviewContinuityBibleBlock({
+      ...base, chapterNumber: 10, items: [item()], secrets: [secret()],
+      secretExemptions: [{ stableFactKey: 'secret-exempt:secret:1', reason: 'x', revoked: false }],
+    })!
+    expect(block.counts.secrets).toBe(0)
+    expect(block.counts.secretsExempted).toBe(0)
   })
 })

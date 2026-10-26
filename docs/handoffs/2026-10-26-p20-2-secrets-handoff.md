@@ -114,3 +114,63 @@
   但幂等 / 中断可续 / 引文定位要用上 W6b 那一整套，**风险最高**。开工前必须先出设计稿讨论。
 - **第 3 维机读化**：任何「秘密抽取」的前置条件，撞判据 AO（改内置模板必须同步全局覆盖版）。
 - 秘密**跨项目作用域**（伏笔五态同款待办）不在本期范围。
+
+---
+
+# 追加：揭穿后的两级豁免（同日 21:45 作者裁定）
+
+> 作者原话：「揭穿章需要另一条知情事实我同意，所以在审稿后对于知情该项应该至少给予『临时豁免 + 知情页信息更新』以及『永久豁免（真相人尽皆知，正常剧情走向）』。」
+>
+> 三个分叉作者都选了推荐项：**临时 = 章级** · **欠知情只提示不预填** · **两个按钮审稿报告 + 秘密页都放**。
+
+## 为什么必须有这个出口
+
+守卫只会报「本章写出了真相」，但这句话底下有三种情形：真写错了（改稿）／作者就是要在本章提前揭穿
+（**临时豁免**）／真相已人尽皆知（**永久豁免**）。没有后两种，作者只能每章看着同一条问题重复出现，
+最后学会无视整个守卫节 —— **一个总在报警的守卫等于没有守卫**。
+
+## 落点（零迁移、零新 IPC）
+
+| 层 | 落点 |
+|---|---|
+| 键格式 | `src/shared/secret.ts`：`secret-exempt:<secretId>`（永久）／`secret-exempt:<secretId>#ch<N>`（章级） |
+| 存储 | 复用 `consistency_exemptions`（稳定键 + 理由 + **可撤销**），与 `volume-handoff:` / `outline-progress:` 同表 |
+| 守卫过滤 | `renderSecretReviewSection` 第 5 参收未撤销键；`buildReviewContinuityBibleBlock` 另算 `counts.secretsExempted` |
+| 处置入口 | **审稿报告** `SecretGuardDisposition.tsx`（两按钮 + 撤销 + 欠知情名单）；**秘密页** `SecretRegistryPanel`（状态 + 撤销 + 欠知情） |
+| 读侧 | `review-continuity-canon.ts` 多读 `db:consistency-exemption-list`，新增失败类 `secretExemptions` |
+
+## ★ 知情页信息更新只能提醒、不能代写（本次唯一被技术事实挡回来的部分）
+
+- M16 引用键 = `sha256(章号 + 归一化逐字引文)`，`refState` 只认**该章 current 连续性投影里**的键；
+- 投影的 `evidence` 是定稿正文的**唯一精确切片**（`content.slice(start,end) === evidence.text`）；
+- 审稿发生在定稿之前 ⇒ 当场写进去必然 `unverifiable` → 定稿后大概率 `stale`（**永不注入**）。
+
+所以做成「**欠一条知情登记：<名单> 自第 N 章起知道**」，登记留到定稿后由作者在知情页选事实完成。
+**宁可明说欠着，也不写一条看起来已生效、实际永远不注入的行**（判据 DN）。
+
+## 三条实现纪律（都有测试钉着）
+
+1. **期界先于豁免** —— 已揭穿的秘密不出现在处置块（否则作者会以为豁免能把「已揭穿」捞回来）；
+2. **撤销立即写库**，不走秘密页的「保存」批量流程（混进去会让作者在点保存前一直看不到撤销生效）；
+3. **fail-open** —— 处置块读不到数据就整块不出现，绝不因为一块附注把整份审稿报告搞挂。
+   （这条是被 `ReviewReport.confirmation.browser.tsx` 的 13 条未处理拒绝逼出来的：那个测试的 IPC mock
+   对未知通道直接抛，而处置块挂在报告里 ⇒ 必须自己兜住，不能指望调用方。）
+
+## 验证
+
+| 命令 | 结果 |
+|---|---|
+| `secret.test.ts` | 13 → **23 例 ✅** |
+| `review-continuity-bible.test.ts` | 29 → **34 例 ✅** |
+| `SecretGuardDisposition.browser.tsx` | **9 例 ✅**（新） |
+| `SecretRegistryPanel.browser.tsx` | 8 → **14 例 ✅** |
+| `src/shared/__tests__` 全量 | **86 文件 / 1432 例 ✅** |
+| `generate-draft.command.test.ts` + `review-revision-runtime.test.ts` | 243 + 53 ✅ |
+| `src/components/editor/__tests__` 浏览器全量 | **339 例 / 3 失败 = 既有基线失败集**（324 → 339，失败名单一字不差） |
+| `npx tsc --noEmit` | exit 0 ✅ |
+| `check-doc-links` | checked 975, broken 0 ✅ |
+
+## 仍未做
+
+- **知情页登记的自动化**：等「定稿后从本章候选里一键生成知情行」——那需要 P20-3 的引文定位能力，
+  本期不碰（否则就是上面说的 `stale` 陷阱）。

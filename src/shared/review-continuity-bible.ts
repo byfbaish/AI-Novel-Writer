@@ -50,7 +50,15 @@ import {
 } from './knowledge-state'
 import { renderAbilitySection, type PowerAbilityDefinition } from './power-ability'
 import { renderPrewriteItemsSection } from './prewrite-consultation'
-import { renderSecretReviewSection, type SecretDefinition } from './secret'
+import {
+  activeExemptionKeys,
+  renderSecretReviewSection,
+  secretExemptionScope,
+  secretGuardsChapter,
+  SECRET_MAX_CHARS,
+  type SecretDefinition,
+} from './secret'
+import type { ConsistencyExemption } from './consistency-preflight'
 import type { WritingLanguage } from './writing-language'
 
 /**
@@ -122,6 +130,16 @@ export interface ReviewContinuityCanon {
    */
   secrets?: readonly SecretDefinition[]
   /**
+   * 秘密豁免（落在 `consistency_exemptions`）。
+   *
+   * 两种键：`secret-exempt:<secretId>`（永久，真相人尽皆知）与
+   * `secret-exempt:<secretId>#ch<N>`（临时，只免第 N 章）。语义与键格式在 `secret.ts`。
+   *
+   * 这里收**原始行**而不是已过滤的键集合：`revoked` 由 `activeExemptionKeys` 统一过滤，
+   * 免得调用方各写一份「怎么算生效」。
+   */
+  secretExemptions?: readonly ConsistencyExemption[]
+  /**
    * **已渲染好**的角色状态行（`frozen.characterStates`，即模板 `{{character_states}}`
    * 的同一份字节）。只用来数出「有几条可核对的基准行」并决定是否 push 指针，
    * **不解析内容、不重排、不改写、不复制**。
@@ -141,7 +159,13 @@ export interface ReviewContinuityBibleBlock {
    * ⚠️ `characters` 的口径与其它四项**不同**：本节本身不产出数据行（第五节是指针型），
    * 它数的是「指针覆盖了几条可核对的基准状态行」。写日志时说的是「覆盖」，不是「产出」。
    */
-  counts: { items: number; cadences: number; knowledge: number; abilities: number; secrets: number; characters: number }
+  counts: {
+    items: number; cadences: number; knowledge: number; abilities: number
+    secrets: number
+    /** 被作者豁免、因此**没进提示词**的秘密条数（`secrets: 0` 的第二种含义）。 */
+    secretsExempted: number
+    characters: number
+  }
   /** `text.length`，供调用方打日志观测体积。 */
   chars: number
 }
@@ -506,10 +530,13 @@ export function buildReviewContinuityBibleBlock(
     chapterNumber,
   )
   // P20-2：期界在渲染函数内部按章号判（`secretChapterState`），这里只压换行与去空。
+  const secretKeys = activeExemptionKeys(canon.secretExemptions ?? [])
   const secretsSection = renderSecretReviewSection(
     (canon.secrets ?? []).map(collapseNewlines),
     chapterNumber,
     writingLanguage,
+    SECRET_MAX_CHARS,
+    secretKeys,
   )
   const characterStateFacts = countCharacterStateFacts(canon.renderedCharacterStates)
 
@@ -519,6 +546,15 @@ export function buildReviewContinuityBibleBlock(
     knowledge: countLines(knowledgeSection),
     abilities: countLines(abilitiesSection),
     secrets: countLines(secretsSection),
+    /**
+     * 被作者豁免、因此**没进提示词**的秘密条数。
+     *
+     * 单独报的理由是判据 DN：`secrets: 0` 有两种完全不同的含义 ——
+     * 「没有未揭穿的秘密」和「有，但都被豁免了」。只报 0 会让作者以为守卫在干活。
+     */
+    secretsExempted: (canon.secrets ?? []).filter(entry => entry.title.trim() && entry.detail.trim()
+      && secretGuardsChapter(entry, chapterNumber)
+      && secretExemptionScope(entry, chapterNumber, secretKeys) !== 'none').length,
     characters: characterStateFacts,
   }
   if (counts.items + counts.cadences + counts.knowledge + counts.abilities

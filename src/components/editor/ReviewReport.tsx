@@ -28,6 +28,7 @@ import { Textarea } from '../ui/Textarea'
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../project-session-gate'
 import { useProjectStore } from '../../stores/project-store'
 import { rememberElementScroll, startScrollRestore } from './editor-scroll-memory'
+import { SecretGuardDisposition } from './SecretGuardDisposition'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useLLMStore } from '../../stores/llm-store'
 import { ipc } from '../../services/ipc-client'
@@ -1292,6 +1293,11 @@ function ReviewReportSession({
             {recheckMessage.text}
           </p>
         )}
+        {/*
+          秘密守卫处置（P20-2 出口）。
+          没有可守卫的秘密时组件自己返回 null —— 不给每份审稿报告都加一段噪音。
+        */}
+        <SecretGuardDisposition projectKey={projectKey} chapterNumber={chapterNumber} />
         {/* 分类展示 */}
         {items.length === 0 ? (
           <div className="text-center py-8 text-[var(--color-text-muted)] text-sm">

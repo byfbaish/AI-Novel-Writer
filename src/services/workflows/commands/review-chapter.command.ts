@@ -252,13 +252,14 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
       knowledge: canon.knowledge,
       abilities: canon.abilities,
       secrets: canon.secrets,
+      secretExemptions: canon.secretExemptions,
       // 只传不算：纯函数自己数「可核对的基准行」，`（暂无）` 与只有姓名的快照都不算有数据。
       renderedCharacterStates: frozen.characterStates,
     })
     if (!block) return undefined
     params.callbacks.log(text(
-      `  已注入连续性核对基准：物品 ${block.counts.items} / 制度 ${block.counts.cadences} / 知情 ${block.counts.knowledge} / 能力 ${block.counts.abilities} / 秘密守卫 ${block.counts.secrets} / 人物状态行 ${block.counts.characters}（${block.chars} 字）`,
-      `  Injected continuity check basis: items ${block.counts.items} / cadences ${block.counts.cadences} / knowledge ${block.counts.knowledge} / abilities ${block.counts.abilities} / secret guards ${block.counts.secrets} / character-state lines ${block.counts.characters} (${block.chars} chars)`,
+      `  已注入连续性核对基准：物品 ${block.counts.items} / 制度 ${block.counts.cadences} / 知情 ${block.counts.knowledge} / 能力 ${block.counts.abilities} / 秘密守卫 ${block.counts.secrets}${block.counts.secretsExempted > 0 ? `（另有 ${block.counts.secretsExempted} 条被作者豁免）` : ''} / 人物状态行 ${block.counts.characters}（${block.chars} 字）`,
+      `  Injected continuity check basis: items ${block.counts.items} / cadences ${block.counts.cadences} / knowledge ${block.counts.knowledge} / abilities ${block.counts.abilities} / secret guards ${block.counts.secrets}${block.counts.secretsExempted > 0 ? ` (${block.counts.secretsExempted} waived by author)` : ''} / character-state lines ${block.counts.characters} (${block.chars} chars)`,
     ))
     return block
   }

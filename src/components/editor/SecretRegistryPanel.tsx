@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Loader2, Plus, Save, Trash2, Undo2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, Loader2, Plus, RotateCcw, Save, Trash2, Undo2 } from 'lucide-react'
 
+import type { ConsistencyExemption } from '../../shared/consistency-preflight'
 import {
   SECRET_DETAIL_MAX,
   SECRET_TEXT_MAX,
+  activeExemptionKeys,
+  parseSecretExemptionKey,
+  secretChapterExemptionKey,
+  secretExemptionKey,
+  secretPendingKnowledge,
   type SecretDefinition,
   type SecretInput,
 } from '../../shared/secret'
@@ -109,8 +115,10 @@ function writeErrorLabel(error: string | undefined, text: LocaleText): string {
 export function SecretRegistryPanel({ projectKey }: { projectKey: string }) {
   const text = useLocaleStore(state => state.text)
   const [rows, setRows] = useState<DraftRow[]>([])
+  const [exemptions, setExemptions] = useState<ConsistencyExemption[]>([])
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [exemptionBusy, setExemptionBusy] = useState('')
   const [loadError, setLoadError] = useState('')
   const [status, setStatus] = useState('')
   const busyRef = useRef(false)
@@ -119,18 +127,70 @@ export function SecretRegistryPanel({ projectKey }: { projectKey: string }) {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
     if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) {
       setRows([])
+      setExemptions([])
       setLoadError('')
       setLoading(false)
       return
     }
     setLoading(true)
-    const listed = await ipc.invokeWithProjectSession(projectSession, 'db:secrets-list', projectSession.projectPath)
+    const [listed, exemptionRows] = await Promise.all([
+      ipc.invokeWithProjectSession(projectSession, 'db:secrets-list', projectSession.projectPath),
+      // 豁免读失败不挡登记：读不到只意味着「这里不显示豁免状态」，秘密本身照常读写。
+      ipc.invokeWithProjectSession(projectSession, 'db:consistency-exemption-list', projectSession.projectPath)
+        .catch(() => [] as ConsistencyExemption[]),
+    ])
     if (!isProjectSessionCurrent(projectSession)) return
     setLoading(false)
+    setExemptions(Array.isArray(exemptionRows) ? exemptionRows : [])
     if (!listed.success) { setLoadError(writeErrorLabel(listed.error, text)); return }
     setLoadError('')
     setRows((listed.entries ?? []).map(rowFromDefinition))
   }, [projectKey, text])
+
+  /**
+   * 豁免状态按秘密 id 归并。
+   *
+   * 章级豁免可能有多条（第 30 章免过、第 34 章又免过），所以是**列表**而不是一个值 ——
+   * 只留最新一条会让作者忘了前面还欠着知情登记。
+   */
+  const exemptionBySecret = useMemo(() => {
+    const map = new Map<string, { permanent: boolean; chapters: number[] }>()
+    for (const key of activeExemptionKeys(exemptions)) {
+      const parsed = parseSecretExemptionKey(key)
+      if (!parsed) continue
+      const entry = map.get(parsed.secretId) ?? { permanent: false, chapters: [] }
+      if (parsed.chapterNumber === null) entry.permanent = true
+      else if (!entry.chapters.includes(parsed.chapterNumber)) entry.chapters.push(parsed.chapterNumber)
+      map.set(parsed.secretId, entry)
+    }
+    for (const entry of map.values()) entry.chapters.sort((left, right) => left - right)
+    return map
+  }, [exemptions])
+
+  /**
+   * 撤销豁免：直接写库，不走「保存」批量流程。
+   *
+   * 它改的是 `consistency_exemptions` 而不是 `secrets`，与页面上那批草稿无关 ——
+   * 塞进批量保存会让「撤销」在作者点保存前一直不生效，那是最容易让人以为坏了的行为。
+   */
+  const revokeExemption = async (key: string) => {
+    if (exemptionBusy) return
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) return
+    setExemptionBusy(key)
+    setStatus('')
+    const result = await ipc.invokeWithProjectSession(
+      projectSession, 'db:consistency-exemption-revoke', key, projectSession.projectPath,
+    )
+    setExemptionBusy('')
+    if (!isProjectSessionCurrent(projectSession)) return
+    if (!result?.success) {
+      setStatus(text(`没能撤销豁免（${result?.error ?? '未知原因'}）`, `Could not revoke the waiver (${result?.error ?? 'unknown'})`))
+      return
+    }
+    setStatus(text('已撤销豁免，守卫从此恢复', 'Waiver revoked; guarding resumes'))
+    await load()
+  }
 
   useEffect(() => {
     // 挂载即读；不轮询 —— 本页只服务作者手工登记。
@@ -386,6 +446,65 @@ export function SecretRegistryPanel({ projectKey }: { projectKey: string }) {
                 disabled={row.removing}
                 onChange={event => applyField(row.key, 'evidence', event.target.value)}
               />
+
+              {(() => {
+                if (!row.secretId) return null
+                const state = exemptionBySecret.get(row.secretId)
+                if (!state || (!state.permanent && state.chapters.length === 0)) return null
+                const names = secretPendingKnowledge({
+                  holders: splitNames(row.holders), unaware: splitNames(row.unaware),
+                }).names
+                return (
+                  <div data-testid="secret-exemption" className="space-y-1">
+                    {state.permanent && (
+                      <div className="flex items-center gap-1.5 text-[10px]">
+                        <span className="px-1.5 py-0.5 rounded bg-yellow-500/20 text-[var(--color-warning-text)]">
+                          {text('已永久豁免（真相人尽皆知，守卫不再管这条）', 'Permanently waived (truth is common knowledge; no longer guarded)')}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          data-testid="secret-exemption-revoke"
+                          disabled={exemptionBusy !== ''}
+                          onClick={() => void revokeExemption(secretExemptionKey(row.secretId!))}
+                        >
+                          {exemptionBusy === secretExemptionKey(row.secretId!) ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+                          {text('撤销豁免', 'Revoke')}
+                        </Button>
+                      </div>
+                    )}
+                    {state.chapters.map(chapterNumber => (
+                      <div key={chapterNumber} data-testid="secret-exemption-chapter" className="flex flex-wrap items-center gap-1.5 text-[10px]">
+                        <span className="px-1.5 py-0.5 rounded bg-yellow-500/20 text-[var(--color-warning-text)]">
+                          {text(`已在第 ${chapterNumber} 章临时豁免（只免那一章）`, `Waived for Chapter ${chapterNumber} only`)}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          data-testid="secret-exemption-revoke"
+                          disabled={exemptionBusy !== ''}
+                          onClick={() => void revokeExemption(
+                            secretChapterExemptionKey(row.secretId!, chapterNumber),
+                          )}
+                        >
+                          {text('撤销豁免', 'Revoke')}
+                        </Button>
+                        <span style={{ color: 'var(--color-text-muted)' }}>
+                          {names.length > 0
+                            ? text(
+                              `欠知情登记：${names.join('、')} 自第 ${chapterNumber} 章起知道 —— 定稿后到知情页登记（审稿阶段写会立刻失效）`,
+                              `Knowledge owed: ${names.join(', ')} learn it in Chapter ${chapterNumber} — register after finalization (writing it now would go stale)`,
+                            )
+                            : text(
+                              '欠知情登记：谁在这一章知道了还没登记 —— 定稿后到知情页补',
+                              'Knowledge owed: who learned it here is not registered — add it after finalization',
+                            )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
 
               {row.revealChapter.trim() === '' && !row.removing && (
                 <p data-testid="secret-undecided" className="text-[10px] flex items-center gap-1" style={{ color: 'var(--color-text-muted)' }}>

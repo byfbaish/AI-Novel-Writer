@@ -134,6 +134,106 @@ export function secretGuardsChapter(
 }
 
 /**
+ * 豁免键前缀。落在 `consistency_exemptions.stable_fact_key` 上 —— **不建新表**。
+ *
+ * 那三列（稳定键 + 理由 + 可撤销）正好是豁免需要的全部，而且已经被两个闸门用着：
+ * 卷末交接 `volume-handoff:<volumeId>`、大纲进度 `outline-progress:<volumeId>`。
+ * 本模块沿用同一个约定，第三种键前缀。
+ *
+ * 两种键：
+ * - `secret-exempt:<secretId>`：**永久豁免** —— 真相人尽皆知，守卫从此不管这条；
+ * - `secret-exempt:<secretId>#ch<N>`：**临时豁免** —— 只免第 N 章，第 N+1 章照旧报。
+ *
+ * ⚠️ `secretId` 本身形如 `secret:<uuid>`（见仓储），**已经带冒号**，所以本章的分隔符
+ * 不能用冒号，用 `#ch`。
+ */
+export const SECRET_EXEMPTION_PREFIX = 'secret-exempt:'
+const SECRET_EXEMPTION_CHAPTER_MARK = '#ch'
+
+/** 永久豁免的键。 */
+export function secretExemptionKey(secretId: string): string {
+  return `${SECRET_EXEMPTION_PREFIX}${secretId.trim()}`
+}
+
+/** 章级（临时）豁免的键。章号非正整数直接抛：静默生成一个错键比不生成更坏。 */
+export function secretChapterExemptionKey(secretId: string, chapterNumber: number): string {
+  if (!Number.isSafeInteger(chapterNumber) || chapterNumber < 1) {
+    throw new Error('SECRET_INVALID:chapterNumber')
+  }
+  return `${SECRET_EXEMPTION_PREFIX}${secretId.trim()}${SECRET_EXEMPTION_CHAPTER_MARK}${chapterNumber}`
+}
+
+export interface ParsedSecretExemptionKey {
+  secretId: string
+  /** `null` = 永久豁免。 */
+  chapterNumber: number | null
+}
+
+/**
+ * 解析豁免键；不是本模块的键（或形状不对）返回 `null`。
+ *
+ * **不做「看起来像就认」**：`consistency_exemptions` 是三类键共用的表，
+ * 认错一条就等于把 A 的豁免挂到 B 上（判据 DE 同族）。所以前缀与章号都必须严格匹配。
+ */
+export function parseSecretExemptionKey(key: string): ParsedSecretExemptionKey | null {
+  if (typeof key !== 'string' || !key.startsWith(SECRET_EXEMPTION_PREFIX)) return null
+  const rest = key.slice(SECRET_EXEMPTION_PREFIX.length)
+  if (!rest.trim()) return null
+  const marked = new RegExp(`^(.*)${SECRET_EXEMPTION_CHAPTER_MARK}([1-9]\\d*)$`, 'u').exec(rest)
+  if (!marked) return rest.includes(SECRET_EXEMPTION_CHAPTER_MARK) ? null : { secretId: rest, chapterNumber: null }
+  const secretId = marked[1] ?? ''
+  const chapterNumber = Number(marked[2])
+  if (!secretId.trim() || !Number.isSafeInteger(chapterNumber)) return null
+  return { secretId, chapterNumber }
+}
+
+/** 一条秘密在某一章被豁免的程度。 */
+export type SecretExemptionScope = 'none' | 'chapter' | 'permanent'
+
+/**
+ * 这条秘密在被审章是否被豁免、豁免到哪一档。
+ *
+ * 永久优先于章级：两条键同时存在时按永久算（作者既然后来说「人尽皆知」，
+ * 就不该再被一个旧的章级键提醒）。
+ *
+ * @param activeKeys **只传未撤销的键**（`revoked=1` 的行不算数）。这里不判 `revoked`：
+ *   那是仓储层读出来的一个字段，两处判会飘。
+ */
+export function secretExemptionScope(
+  secret: Pick<SecretDefinition, 'secretId'>,
+  chapterNumber: number,
+  activeKeys: ReadonlySet<string>,
+): SecretExemptionScope {
+  if (activeKeys.has(secretExemptionKey(secret.secretId))) return 'permanent'
+  if (activeKeys.has(secretChapterExemptionKey(secret.secretId, chapterNumber))) return 'chapter'
+  return 'none'
+}
+
+/** 从一组豁免行里取**未撤销**的键。两个消费点（守卫、登记页）共用，别各写一份过滤。 */
+export function activeExemptionKeys(
+  exemptions: readonly { stableFactKey: string; revoked: boolean }[],
+): Set<string> {
+  return new Set(exemptions.filter(item => !item.revoked).map(item => item.stableFactKey))
+}
+
+/**
+ * 临时豁免欠下的那条知情登记：**谁**从**第几章**起知道了。
+ *
+ * 为什么要求作者去知情页补：M16 的引用键是 `sha256(章号 + 定稿逐字引文)`，而
+ * `refState` 只认落在该章 current 连续性投影里的键。审稿发生在**定稿之前** ——
+ * 此刻写进去的行当场 `unverifiable`，定稿后大概率 `stale`（永不注入）。
+ * 所以这里只能给名单，不能代写。
+ */
+export function secretPendingKnowledge(
+  secret: Pick<SecretDefinition, 'holders' | 'unaware'>,
+): { names: string[] } {
+  const names = [...secret.holders, ...secret.unaware]
+    .map(name => flatten(name))
+    .filter(Boolean)
+  return { names: [...new Set(names)] }
+}
+
+/**
  * 压掉换行。
  *
  * 调用方（`review-continuity-bible` 的 `collapseNewlines`）会压**顶层字符串**，但压不到
@@ -203,17 +303,21 @@ const EN_LEAD = [
  * @param chapterNumber 被审的章号。守卫与章号强相关：同一份登记在第 5 章和第 40 章
  *   结论不同，所以章号是必填参数，没有默认值 —— 给默认值就等于允许调用方不思考期界。
  * @param maxChars 正文行总字数上限；预算外**整条丢弃**（不截半行：半行真相会被读成另一件事）。
+ * @param activeExemptionKeys 未撤销的豁免键。被永久豁免或**本章**被临时豁免的秘密不渲染。
+ *   这是作者显式决定，与「已揭穿」是两条不同的轴：前者说「这次别管」，后者说「它不是秘密了」。
  */
 export function renderSecretReviewSection(
   entries: readonly SecretDefinition[],
   chapterNumber: number,
   writingLanguage: WritingLanguage,
   maxChars: number = SECRET_MAX_CHARS,
+  activeExemptionKeys: ReadonlySet<string> = new Set<string>(),
 ): string {
   const isEn = writingLanguage === 'en-US'
   const usable = entries
     .filter(entry => entry.title.trim() && entry.detail.trim())
     .filter(entry => secretGuardsChapter(entry, chapterNumber))
+    .filter(entry => secretExemptionScope(entry, chapterNumber, activeExemptionKeys) === 'none')
     // 揭穿章越近越该看一眼；未定揭穿章的排后面（它们最不确定）。
     .sort((left, right) => {
       const rank = (secret: SecretDefinition) => secret.revealChapter ?? Number.MAX_SAFE_INTEGER

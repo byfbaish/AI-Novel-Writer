@@ -2,17 +2,19 @@ import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { ConsistencyExemption } from '../../../shared/consistency-preflight'
 import type { SecretDefinition, SecretInput } from '../../../shared/secret'
 import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
 import { useProjectStore } from '../../../stores/project-store'
 import { SecretRegistryPanel } from '../SecretRegistryPanel'
 
 /**
- * P20-2 秘密宿体登记面板（8 条）。验收口径：
- * - 挂载只读一个通道（`db:secrets-list`），不写库；空表给引导而不是空白；
+ * P20-2 秘密宿体登记面板（11 条）。验收口径：
+ * - 挂载只读两个通道（`db:secrets-list` + `db:consistency-exemption-list`），不写库；空表给引导而不是空白；
  * - **保存前不落库**、页内重名整批不提交、删除要确认；
  * - 名字用顿号/逗号分隔，提交前拆成数组；**揭穿章留空提交 `null`**（不是 0、不是空串）；
- * - 真相互填：没有真相的登记，审稿员没有判定依据，所以本地就拦下。
+ * - 真相互填：没有真相的登记，审稿员没有判定依据，所以本地就拦下；
+ * - 豁免（2026-10-26 加）**不走「保存」**：撤销立即生效，且章级豁免要显示「欠一条知情登记」。
  */
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -26,8 +28,10 @@ let root: Root
 let container: HTMLDivElement
 let invoke: ReturnType<typeof vi.fn>
 let stored: SecretDefinition[]
+let exemptions: ConsistencyExemption[]
 let writeOutcome: { success: boolean; error?: string }
 let deleteOutcome: { success: boolean; error?: string }
+let revokeOutcome: { success: boolean; error?: string }
 
 function definition(overrides: Partial<SecretDefinition> = {}): SecretDefinition {
   return {
@@ -96,8 +100,10 @@ async function renderPanel() {
 beforeEach(() => {
   vi.clearAllMocks()
   stored = []
+  exemptions = []
   writeOutcome = { success: true }
   deleteOutcome = { success: true }
+  revokeOutcome = { success: true }
   useProjectStore.setState({
     currentProject: {
       id: session.projectId,
@@ -116,6 +122,13 @@ beforeEach(() => {
       return { success: true, secretId: input.secretId ?? `secret:new-${invoke.mock.calls.length}` }
     }
     if (channel === 'db:secrets-delete') return deleteOutcome
+    if (channel === 'db:consistency-exemption-list') return exemptions
+    if (channel === 'db:consistency-exemption-revoke') {
+      if (!revokeOutcome.success) return revokeOutcome
+      const key = String(args[0])
+      exemptions = exemptions.map(entry => (entry.stableFactKey === key ? { ...entry, revoked: true } : entry))
+      return { success: true }
+    }
     throw new Error(`Unexpected IPC ${channel}`)
   })
   Object.defineProperty(window, 'aiNovelAPI', {
@@ -135,9 +148,10 @@ afterEach(async () => {
 })
 
 describe('秘密宿体登记面板', () => {
-  it('挂载只读一个通道，不写库；空表给出引导', async () => {
+  it('挂载只读两个通道，不写库；空表给出引导', async () => {
     await renderPanel()
-    expect(new Set(invoke.mock.calls.map(([channel]) => channel))).toEqual(new Set(['db:secrets-list']))
+    expect(new Set(invoke.mock.calls.map(([channel]) => channel)))
+      .toEqual(new Set(['db:secrets-list', 'db:consistency-exemption-list']))
     expect(rows()).toHaveLength(0)
     expect(container.textContent).toContain('还没有登记任何秘密')
   })
@@ -244,5 +258,69 @@ describe('秘密宿体登记面板', () => {
     // 失败的行留在页面上，作者不用重填
     expect(rows()).toHaveLength(1)
     expect(field(0, 'title')).toHaveProperty('value', '库里已存在的秘密')
+  })
+})
+
+/**
+ * 豁免状态（2026-10-26 作者要求）。
+ *
+ * 三条边界：① 永久与章级分开显示，章级要带章号；② 撤销**立即**写库（不跟着「保存」走，
+ * 否则作者会以为坏了）；③ 章级豁免要显示「欠一条知情登记」—— 因为 M16 的引用键要求
+ * 定稿逐字引文，审稿阶段写不进去，只能提醒。
+ */
+describe('秘密宿体登记面板 · 豁免状态', () => {
+  it('永久豁免 ⇒ 显示「已永久豁免」，并给撤销入口', async () => {
+    stored = [definition()]
+    exemptions = [{ stableFactKey: 'secret-exempt:secret:trial', reason: '真相人尽皆知', revoked: false }]
+    await renderPanel()
+    expect(container.textContent).toContain('已永久豁免')
+    expect(container.querySelectorAll('[data-testid="secret-exemption-revoke"]')).toHaveLength(1)
+  })
+
+  it('章级豁免 ⇒ 显示章号 + 欠知情名单（隐瞒者 ∪ 尚不知情）', async () => {
+    stored = [definition()]
+    exemptions = [{ stableFactKey: 'secret-exempt:secret:trial#ch30', reason: '第30章提前揭穿', revoked: false }]
+    await renderPanel()
+    expect(container.textContent).toContain('已在第 30 章临时豁免')
+    expect(container.textContent).toContain('欠知情登记：柳长老、众弟子 自第 30 章起知道')
+  })
+
+  it('撤销立即写库，且不经过「保存」', async () => {
+    stored = [definition()]
+    exemptions = [{ stableFactKey: 'secret-exempt:secret:trial', reason: 'x', revoked: false }]
+    await renderPanel()
+    await click(container.querySelector<HTMLElement>('[data-testid="secret-exemption-revoke"]')!)
+
+    const revokeCalls = invoke.mock.calls.filter(([channel]) => channel === 'db:consistency-exemption-revoke')
+    expect(revokeCalls).toHaveLength(1)
+    expect(revokeCalls[0]!.slice(0, 2)).toEqual(['db:consistency-exemption-revoke', 'secret-exempt:secret:trial'])
+    // 撤销后不该顺手提交秘密本身
+    expect(upsertCalls()).toHaveLength(0)
+    expect(container.textContent).toContain('已撤销豁免')
+    // 重读后徽标消失（守卫恢复）
+    expect(container.textContent).not.toContain('已永久豁免')
+  })
+
+  it('已撤销（revoked=1）的豁免不显示 —— 守卫已经恢复了', async () => {
+    stored = [definition()]
+    exemptions = [{ stableFactKey: 'secret-exempt:secret:trial', reason: 'x', revoked: true }]
+    await renderPanel()
+    expect(container.querySelectorAll('[data-testid="secret-exemption"]')).toHaveLength(0)
+  })
+
+  it('别人的豁免键（volume-handoff:）不会被认成本秘密的豁免', async () => {
+    stored = [definition()]
+    exemptions = [{ stableFactKey: 'volume-handoff:vol-1', reason: '已人工复查', revoked: false }]
+    await renderPanel()
+    expect(container.querySelectorAll('[data-testid="secret-exemption"]')).toHaveLength(0)
+  })
+
+  it('撤销失败要说出来，不能静默', async () => {
+    stored = [definition()]
+    exemptions = [{ stableFactKey: 'secret-exempt:secret:trial', reason: 'x', revoked: false }]
+    revokeOutcome = { success: false, error: 'PROJECT_NOT_OPEN' }
+    await renderPanel()
+    await click(container.querySelector<HTMLElement>('[data-testid="secret-exemption-revoke"]')!)
+    expect(container.textContent).toContain('没能撤销豁免')
   })
 })

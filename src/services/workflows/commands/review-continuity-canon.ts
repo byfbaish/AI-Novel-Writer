@@ -14,6 +14,7 @@
  * 「本次没判」与「判了没问题」必须能分开（`ConsistencyPreflightCoverage` 的同一条教训）。
  */
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
+import type { ConsistencyExemption } from '../../../shared/consistency-preflight'
 import type { InstitutionCadence } from '../../../shared/institution-cadence'
 import type { KeyItemDefinition } from '../../../shared/key-item'
 import type { KnowledgeStateDefinition } from '../../../shared/knowledge-state'
@@ -21,7 +22,8 @@ import type { PowerAbilityDefinition } from '../../../shared/power-ability'
 import type { SecretDefinition } from '../../../shared/secret'
 import { ipc } from '../../ipc-client'
 
-export type ReviewContinuityCanonClass = 'items' | 'cadences' | 'knowledge' | 'abilities' | 'secrets'
+export type ReviewContinuityCanonClass =
+  | 'items' | 'cadences' | 'knowledge' | 'abilities' | 'secrets' | 'secretExemptions'
 
 export interface ReviewContinuityCanonSources {
   items: KeyItemDefinition[]
@@ -29,6 +31,7 @@ export interface ReviewContinuityCanonSources {
   knowledge: KnowledgeStateDefinition[]
   abilities: PowerAbilityDefinition[]
   secrets: SecretDefinition[]
+  secretExemptions: ConsistencyExemption[]
   /** 读取失败（或表不存在）的类别；调用方据此打一行可见说明，不阻断审稿。 */
   failures: ReviewContinuityCanonClass[]
 }
@@ -87,7 +90,25 @@ async function readSecrets(session: ProjectSessionContext, projectPath: string):
 }
 
 /**
- * 并发读五类登记。**期界过滤不在这里做**（需要本章号，在 `buildReviewContinuityBibleBlock` 里统一做），
+ * 秘密豁免（永久 / 章级）。和秘密本体**分开读**：豁免读失败时守卫应该照常报，
+ * 只是作者上次的豁免这次不生效 —— 那是「多报」，比「漏报」安全。
+ *
+ * 失败时返回空数组并记进 `failures`，不要退回缓存或猜测。
+ */
+async function readSecretExemptions(
+  session: ProjectSessionContext,
+  projectPath: string,
+): Promise<ReadResult<ConsistencyExemption>> {
+  try {
+    const result = await ipc.invokeWithProjectSession(session, 'db:consistency-exemption-list', projectPath)
+    return Array.isArray(result) ? { ok: true, value: result } : { ok: false }
+  } catch {
+    return { ok: false }
+  }
+}
+
+/**
+ * 并发读五类登记 + 秘密豁免。**期界过滤不在这里做**（需要本章号，在 `buildReviewContinuityBibleBlock` 里统一做），
  * 本函数只负责「拿回来 + 失败可见」。
  */
 export async function readReviewContinuityCanon(input: {
@@ -95,12 +116,13 @@ export async function readReviewContinuityCanon(input: {
   projectSession: ProjectSessionContext
 }): Promise<ReviewContinuityCanonSources> {
   const { projectPath, projectSession } = input
-  const [items, cadences, knowledge, abilities, secrets] = await Promise.all([
+  const [items, cadences, knowledge, abilities, secrets, secretExemptions] = await Promise.all([
     readItems(projectSession, projectPath),
     readCadences(projectSession, projectPath),
     readKnowledge(projectSession, projectPath),
     readAbilities(projectSession, projectPath),
     readSecrets(projectSession, projectPath),
+    readSecretExemptions(projectSession, projectPath),
   ])
   // 失败清单按固定顺序汇总：并发完成顺序不确定，日志不能跟着抖。
   const failures: ReviewContinuityCanonClass[] = []
@@ -109,12 +131,14 @@ export async function readReviewContinuityCanon(input: {
   if (!knowledge.ok) failures.push('knowledge')
   if (!abilities.ok) failures.push('abilities')
   if (!secrets.ok) failures.push('secrets')
+  if (!secretExemptions.ok) failures.push('secretExemptions')
   return {
     items: items.ok ? items.value : [],
     cadences: cadences.ok ? cadences.value : [],
     knowledge: knowledge.ok ? knowledge.value : [],
     abilities: abilities.ok ? abilities.value : [],
     secrets: secrets.ok ? secrets.value : [],
+    secretExemptions: secretExemptions.ok ? secretExemptions.value : [],
     failures,
   }
 }

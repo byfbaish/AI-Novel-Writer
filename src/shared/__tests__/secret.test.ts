@@ -2,10 +2,16 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   SECRET_MAX_ITEMS,
+  activeExemptionKeys,
+  parseSecretExemptionKey,
   renderSecretReviewLine,
   renderSecretReviewSection,
+  secretChapterExemptionKey,
   secretChapterState,
+  secretExemptionKey,
+  secretExemptionScope,
   secretGuardsChapter,
+  secretPendingKnowledge,
   type SecretDefinition,
 } from '../secret'
 
@@ -152,5 +158,93 @@ describe('★ 正文链不许读秘密（判据 DP 同族）', () => {
     expect(source).not.toContain("from '../../shared/secret'")
     expect(source).not.toContain('renderSecretReviewSection')
     expect(source).not.toContain('renderSecretReviewLine')
+  })
+})
+
+/**
+ * 豁免（2026-10-26 作者要求：审稿后对「知情」该项至少给两个出口）。
+ *
+ * 键落在 `consistency_exemptions.stable_fact_key` 上 —— 复用那张「稳定键 + 理由 + 可撤销」的表，
+ * 不建新表。两种键的区别是**作用域**：章级只免一次，永久从此不管。
+ */
+describe('豁免键 · 临时（章级）与永久（秘密级）', () => {
+  it('键形状固定：永久不带章号，章级带 #ch<N>', () => {
+    expect(secretExemptionKey('secret:abc')).toBe('secret-exempt:secret:abc')
+    expect(secretChapterExemptionKey('secret:abc', 30)).toBe('secret-exempt:secret:abc#ch30')
+  })
+
+  it('secretId 自带冒号也不会把章级键切错', () => {
+    // 仓储生成的 id 是 `secret:<uuid>`，本身就含冒号 —— 分隔符因此不能用冒号。
+    expect(parseSecretExemptionKey('secret-exempt:secret:abc#ch30'))
+      .toEqual({ secretId: 'secret:abc', chapterNumber: 30 })
+    expect(parseSecretExemptionKey('secret-exempt:secret:abc'))
+      .toEqual({ secretId: 'secret:abc', chapterNumber: null })
+  })
+
+  it('章号非正整数直接抛，不许静默生成一个错键', () => {
+    expect(() => secretChapterExemptionKey('secret:abc', 0)).toThrow('SECRET_INVALID:chapterNumber')
+    expect(() => secretChapterExemptionKey('secret:abc', 1.5)).toThrow('SECRET_INVALID:chapterNumber')
+  })
+
+  it('别人家的豁免键解析成 null，绝不被误认（判据 DE 同族：认错一条就把 A 的豁免挂到 B 上）', () => {
+    expect(parseSecretExemptionKey('volume-handoff:vol-1')).toBeNull()
+    expect(parseSecretExemptionKey('outline-progress:vol-1')).toBeNull()
+    expect(parseSecretExemptionKey('secret-exempt:')).toBeNull()
+    // 带 #ch 但章号不是正整数 ⇒ 不认，而不是当成永久豁免
+    expect(parseSecretExemptionKey('secret-exempt:secret:abc#ch0')).toBeNull()
+    expect(parseSecretExemptionKey('secret-exempt:secret:abc#ch')).toBeNull()
+  })
+
+  it('永久优先于章级；章级只在被免的那一章生效', () => {
+    const entry = secret({ secretId: 'secret:abc', revealChapter: 40 })
+    expect(secretExemptionScope(entry, 30, new Set())).toBe('none')
+    expect(secretExemptionScope(entry, 30, new Set(['secret-exempt:secret:abc#ch30']))).toBe('chapter')
+    // 免了 30 不等于免了 31 —— 那正是「临时」的含义。
+    expect(secretExemptionScope(entry, 31, new Set(['secret-exempt:secret:abc#ch30']))).toBe('none')
+    expect(secretExemptionScope(entry, 31, new Set([
+      'secret-exempt:secret:abc#ch30', 'secret-exempt:secret:abc',
+    ]))).toBe('permanent')
+  })
+
+  it('已撤销的豁免不算数（过滤只在 activeExemptionKeys 一处做）', () => {
+    const keys = activeExemptionKeys([
+      { stableFactKey: 'secret-exempt:secret:abc', revoked: true },
+      { stableFactKey: 'secret-exempt:secret:abc#ch30', revoked: false },
+      { stableFactKey: 'volume-handoff:vol-1', revoked: false },
+    ])
+    expect(keys.has('secret-exempt:secret:abc')).toBe(false)
+    expect(keys.has('secret-exempt:secret:abc#ch30')).toBe(true)
+    expect(secretExemptionScope(secret({ secretId: 'secret:abc' }), 30, keys)).toBe('chapter')
+  })
+
+  it('欠知情名单 = 隐瞒者 ∪ 尚不知情，去重、去空、压换行', () => {
+    const pending = secretPendingKnowledge({
+      holders: ['柳长老', '柳长老'], unaware: [' 众弟子 ', '', '阿七\n（外门）'],
+    })
+    expect(pending.names).toEqual(['柳长老', '众弟子', '阿七 （外门）'])
+  })
+})
+
+describe('renderSecretReviewSection · 豁免生效', () => {
+  const entry = secret({ secretId: 'secret:abc', revealChapter: 40 })
+
+  it('永久豁免 ⇒ 这条不进审稿清单', () => {
+    const text = renderSecretReviewSection([entry], 30, 'zh-CN', 720,
+      new Set([secretExemptionKey('secret:abc')]))
+    expect(text).toBe('')
+  })
+
+  it('章级豁免只免那一章，下一章照旧报', () => {
+    const keys = new Set([secretChapterExemptionKey('secret:abc', 30)])
+    expect(renderSecretReviewSection([entry], 30, 'zh-CN', 720, keys)).toBe('')
+    expect(renderSecretReviewSection([entry], 31, 'zh-CN', 720, keys)).toContain('柳长老拿弟子试药')
+  })
+
+  it('只免一条时其余照旧渲染（豁免不是一刀切）', () => {
+    const other = secret({ secretId: 'secret:xyz', title: '城主的儿子还活着', revealChapter: 50 })
+    const text = renderSecretReviewSection([entry, other], 30, 'zh-CN', 720,
+      new Set([secretExemptionKey('secret:abc')]))
+    expect(text).not.toContain('柳长老拿弟子试药')
+    expect(text).toContain('城主的儿子还活着')
   })
 })
