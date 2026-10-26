@@ -307,6 +307,8 @@ Build five connected dimensions. The first three each need a concrete source of 
   - **Blocking point** is the most common way people die or get stuck on this path.
   - **Advancement cost** states what is paid, to whom, and how often; this column has to be arithmetically usable (whenever an amount appears, give its settlement period and payment method in the same sentence).
 - What is the **highest tier**, and is there anything above it?
+- ★ Is there anything in this system that **keeps accumulating until it hits a threshold** (marks, tribulations, brands, lifespan, debt)? If so, how many units from zero to full?
+- ★ **What does each stage cost**? Split the range into three to five stages, one line per stage: "stage → what is paid on the spot → who notices first". Body, lifespan, reputation, being noticed, losing something — all count. **At which stage can it no longer be hidden**, and **who can read the number**? The road before full should not be flat: charging only at the last stage leaves the reader unable to count "how many more", so the pressure collapses into one final beat.
 - ★ Where does this system **break from the inside** (the systemic hole)? Give at least one **concretely exploitable gap**: who exploits it, what it costs them, and why the rules cannot close it.
 - Where does {{golden_finger}} sit **asymmetrically** on this ladder — which cost can it bypass, or which tier can it see that others cannot?
 - ⚠️ If this world is not tiered (pure realism, pure mystery, and so on), use another hard scale that orders ahead and behind (wealth magnitude / rank in an office hierarchy / information level held) and still present it as the table above; do not leave this dimension at "it varies from person to person".
@@ -833,7 +835,7 @@ Return exactly one JSON object:
     systemRole: 'You are a rigorous narrative-information editor. You judge only who is explicitly shown to learn an already registered fact, and you never summarise, merge, or invent facts.',
     content: `Decide which characters newly learn one of the registered facts below, in this chapter's manuscript.
 
-[Chapter {{chapter_number}} manuscript]
+[Chapter {{chapter_number}} — {{chapter_title}}]
 {{chapter_content}}
 
 [Registered continuity facts for this chapter — pick only from these, never rewrite them]
@@ -1097,7 +1099,7 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
 
 [What counts]
 1. Self-contradiction: two statements that cannot both hold. Example: "labor earns payment" alongside "checking in grants it for free"; "resources are scarce" alongside "everyone is wealthy".
-2. Underspecification: a key rule is missing a condition required for it to hold, so later chapters cannot decide it. Example: a resource is named but never says how it is obtained; a prohibition is named but not its consequence.
+2. Underspecification: a key rule is missing a condition required for it to hold, so later chapters cannot decide it. Example: a resource is named but never says how it is obtained; a prohibition is named but not its consequence; "when it fills up, tribulation strikes" is stated but never how much counts as full, nor what each stage along the way costs.
 
 [Hard constraints — violating any one voids this review]
 - quote must be a contiguous fragment copied verbatim from [Worldbuilding text]: do not paraphrase, splice, summarize, or add punctuation. If you cannot copy an exact sentence, do not report that item.

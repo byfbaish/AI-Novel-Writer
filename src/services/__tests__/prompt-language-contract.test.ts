@@ -35,6 +35,7 @@ const REQUIRED_CORE_KEYS = [
   'refine_from_review',
   'generate_chapter_notes',
   'update_character_cards',
+  'propose_knowledge_candidates',
   'analyze_writing_style',
   'infer_novel_config',
   'extract_initial_characters',

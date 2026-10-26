@@ -153,7 +153,7 @@ docs/
 
 > 完整索引即本节。**这是查找设计文档的唯一清单**，不要再去翻目录树。
 
-### 4.1 Prompt 流水线 · [`design/prompt/`](design/prompt/)（27 篇）
+### 4.1 Prompt 流水线 · [`design/prompt/`](design/prompt/)（28 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -182,8 +182,9 @@ docs/
 | [`p9-platform-style-layer-design.md`](design/prompt/p9-platform-style-layer-design.md) | ⏸ 待裁定 | 平台文风层：用写作 Skill 承载平台口味，`.vela-pack` 加 platform 字段，按平台选择加载 |
 | [`p14-chapter-role-guidance-design.md`](design/prompt/p14-chapter-role-guidance-design.md) | 待裁定 | 章节定位七档 → 本章「承担/不做」成对合同，落执行合同（system），未知零字节 |
 | [`prompt-clause-admission.md`](design/prompt/prompt-clause-admission.md) | ✅ 已生效 | 条款准入三问（作者要它时是否仍成立 / 合法反例 / 限定词）+ 反例库 |
-| [`prompt-three-layer-inventory.md`](design/prompt/prompt-three-layer-inventory.md) | ✅ 已入库 + 测试锁定 | **Prompt 三层全景清单**（系统级 19 处 / 工程级 29 模板含**真实消费方**列 / 作者级 8 类 / **20 条装配链路** / 覆盖矩阵 A·B·C / 缺口 G1–G10）。三个测试断言把"不必全量重扫"变成机器保证 |
+| [`prompt-three-layer-inventory.md`](design/prompt/prompt-three-layer-inventory.md) | ✅ 已入库 + 测试锁定 | **Prompt 三层全景清单**（系统级 19 处 / 工程级 30 模板含**真实消费方**列 / 作者级 8 类 / **20 条装配链路** / 覆盖矩阵 A·B·C / 缺口 G1–G10）。三个测试断言把"不必全量重扫"变成机器保证 |
 | [`prompt-three-layer-alignment-assessment.md`](design/prompt/prompt-three-layer-alignment-assessment.md) | 📝 待裁定（2026-10-24） | **工程侧**行业对标：三条锚点带 URL + 逐字摘句，12 行逐条对照（✅6/⚠️5/❌2）。结论：**工程侧基本对齐，三处口径没对齐**（层级被抹平 / 同层无冲突规则 / 作者可调高度被锁死），本轮不动任何文案；附创作自由度三条准入线 |
+| [`worldbuilding-capacity-and-stage-cost-design.md`](design/prompt/worldbuilding-capacity-and-stage-cost-design.md) | ✅ 已落地（2026-10-27） | 世界观第 1 维补「容量 / 阶段性代价」两格：缺口是**设定缺口**不是记述漏洞；实测分档内容进规则精选但只认带模态词的档（capacity / escalating cost / legibility，Sanderson 第二定律对照） |
 
 ### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（47 篇）
 

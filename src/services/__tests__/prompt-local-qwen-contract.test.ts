@@ -126,6 +126,8 @@ const expectedPromptVariables: Record<string, string[]> = {
   refine_from_review: ['review_report', 'draft_content', 'global_guidance', 'user_refine_prompt'],
   generate_chapter_notes: ['chapter_content', 'chapter_number', 'chapter_title'],
   update_character_cards: ['chapter_content', 'chapter_number', 'existing_cards_json'],
+  // P20-3：章末知情候选。模型只拿编号清单与角色名单，输出只有索引与 characterId。
+  propose_knowledge_candidates: ['chapter_content', 'chapter_number', 'chapter_title', 'facts_list', 'characters_json'],
   infer_novel_config: ['sample_content'],
   extract_initial_characters: ['character_dynamics', 'genre'],
   infer_single_chapter_blueprint: ['chapter_content', 'chapter_number', 'chapter_title', 'novel_config_summary'],

@@ -137,6 +137,11 @@ export const PROMPT_VARIABLE_DESCRIPTIONS_EN: Readonly<Record<string, string>> =
   chapter_number: 'Chapter number',
   chapter_title: 'Chapter title',
   existing_cards_json: 'Existing character records as JSON',
+  // P20-3（章末知情候选）引入的两个变量。这是「可编辑模板的英文变量说明必须齐全」
+  // 那条审计第三次为红（前两次见下方 character_background_synthesis / rhythm_profile）——
+  // 加模板变量时**必须**同步这张表，否则类型检查与其余测试全绿，只有这条审计红。
+  facts_list: 'Numbered list of continuity facts registered for this chapter (pick from it only)',
+  characters_json: 'Character roster as JSON (characterId must come from here)',
   // `character_background_synthesis`（2026-10-10 引入）的四个变量；此前漏登记，
   // 导致「可编辑模板的英文变量说明必须齐全」这条审计长期为红。
   character_name: 'Name of the character to flesh out (one at a time)',
@@ -600,6 +605,8 @@ export const BUILTIN_PROMPTS: PromptTemplate[] = [
   - **卡点**写这条路上最常见的死法或卡住的原因；
   - **升级代价**写清付出什么、付给谁、多久一次，且这一列要能算账（凡涉数额，同句写明结算周期与发放方式）。
 - 等级**最高到哪一级封顶**？封顶之上还有没有东西？
+- ★ 这套体系里有没有某个**会越攒越多、攒到某个量就出事**的东西（纹／劫／印记／寿数／债）？如果有：从零到满是多少个单位？
+- ★ 它的**每一档各付什么**？把全程分成三到五档，一行一档写「第几档 → 当场付什么 → 谁先察觉」，身体、寿元、名誉、被人盯上、失去某样东西都算代价。**哪一档开始瞒不住**、**谁看得见这个读数**？攒满之前不该是平路 —— 只在最后一档收账，读者就数不出「还差几道」，压力只剩下结局那一下。
 - ★ 这套体系**最容易从内部崩掉的地方在哪**（体系漏洞）？至少写一条**能被具体利用的缺口**：谁能利用、付出什么、为什么规则本身堵不住它。
 - 主角的金手指「{{golden_finger}}」在这套阶梯上占据什么**非对称位置**——他能绕过哪一条代价，或看见别人看不见的哪一格？
 - ⚠️ 若本世界不按等级划分（纯现实／纯悬疑等），换一个能判先后的硬刻度（财富量级／职务序列／掌握的信息层级），同样列成上表；不要让这一维停在「因人而异」「视情况而定」上。
@@ -1999,7 +2006,7 @@ severity 取值：error=严重的上述客观问题，强烈建议修复；warni
 
 【只找这两类】
 1. 自相矛盾：两处设定不能同时成立。例：「劳作换取报酬」与「签到即得」并存；「资源稀缺」与「人人富足」并存。
-2. 设定不足：关键规则缺了成立所必需的条件，导致后文无法判定。例：只写了资源名却没写它怎么获得；只写了禁忌却没写违反的后果。
+2. 设定不足：关键规则缺了成立所必需的条件，导致后文无法判定。例：只写了资源名却没写它怎么获得；只写了禁忌却没写违反的后果；只写了「攒满会遭天劫」却没写多少算满，也没写攒的过程中每一档各付什么。
 
 【硬约束（违反任意一条，本次自审作废）】
 - quote 只能逐字照抄【世界观原文】里的连续片段：不改写、不拼接、不概括、不补标点。抄不出原句就不要报这一条。

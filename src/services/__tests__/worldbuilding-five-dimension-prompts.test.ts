@@ -53,6 +53,18 @@ describe('N1 · 五维世界观第 1/2 维问句合同', () => {
   })
 
   it.each([
+    ['zh-CN', '攒满', '每一档各付什么'],
+    ['en-US', 'keeps accumulating until it hits a threshold', 'What does each stage cost'],
+  ] as const)('%s：第 1 维问到了「攒满的阈值」与「阶段性代价」', (language, threshold, stageCost) => {
+    const content = getBuiltinPromptTemplate('world_building', language)!.content
+    // 两格缺一不可（2026-10-26 作者现场发现「纹满遭天劫」没写多少算满）：
+    // 只有边界没有坡度 ⇒ 中段读起来一样安全，紧张感全压在「满」那一章；
+    // 只有坡度没有边界 ⇒ 读者不知道终点，先疲劳。行业里分别叫 capacity 与 escalating cost。
+    expect(content).toContain(threshold)
+    expect(content).toContain(stageCost)
+  })
+
+  it.each([
     ['zh-CN', '阶层能不能流动', '翻脸条件'],
     ['en-US', 'move between classes', 'breaking condition'],
   ] as const)('%s：第 2 维问到了「阶层流动」与「关系翻脸条件」', (language, mobility, breaking) => {
@@ -80,5 +92,29 @@ describe('N1 · 五维世界观第 1/2 维问句合同', () => {
     expect(rules.map(rule => rule.name)).toEqual(['炼气', '筑基'])
     // 取的是末列（升级代价），不是「相邻差距」或「卡点」——列序改了这条就会红。
     expect(rules[0]!.rule).toContain('每月三块灵石')
+  })
+
+  it('按新要求写出的分档代价能进第 1 维规则精选（但只认带模态词的那几档）', () => {
+    const output = [
+      '### 1.【核心规则与体系漏洞】',
+      '| **炼气** | 高一阶可压制三个低一阶 | 走火入魔 | 每月三块灵石 |',
+      '| **筑基** | 跨一阶需两倍灵石 | 经脉逆行 | 每阶一枚筑基丹 |',
+      '等级最高到筑基封顶。',
+      '道纹九道为满。',
+      '第 1 到 3 道：无代价。',
+      '第 4 到 6 道：寿元每次减一年。',
+      '第 7 道起：瞒不住，宗门会盯着。',
+      '第 9 道：天劫必至。',
+    ].join('\n')
+    const rules = extractWorldBuildingRules(output)
+    // ★ 这条**如实记录现状，不是设计目标**（2026-10-27 实测）：
+    // 抽取按 `RULE_MARKERS` 词表筛句、按原文行序每维只取前 3 条，于是
+    // 「无代价」「每次」命中词表 ⇒ 分档进得去；「瞒不住」「必至」不在词表里 ⇒ 那两档进不去。
+    // 最后一档抽不到**不影响正确性**：世界观原文另有整篇全量注入路径（首章在正文、
+    // 后续章在 systemSuffix），精选清单只是 8 条预算内的聚焦，不是完整性保证。
+    // 谁要动 `RULE_MARKERS`，先看这条会怎么变。
+    expect(rules.every(rule => rule.dimension === 1)).toBe(true)
+    expect(rules.some(rule => rule.rule.includes('无代价'))).toBe(true)
+    expect(rules.some(rule => rule.rule.includes('必至'))).toBe(false)
   })
 })
