@@ -1,6 +1,7 @@
 # 交接：P20-3 章末知情候选（M22 + 步骤表收敛 + 提议条）
 
 > 状态：**已交付**（2026-10-26 夜）。分支 `exp/resource-ledger`。
+> 提交：**`03031dfe`**（28 文件 / +1939 −64）。
 > 设计稿：`docs/design/architecture/p20-3-knowledge-candidates-design.md`（§10 = 实施记录）。
 > 排期：`docs/plans/prompt-assembly-backlog.md` §P20-3。
 
