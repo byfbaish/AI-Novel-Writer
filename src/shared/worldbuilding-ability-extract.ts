@@ -40,7 +40,7 @@ import {
 export interface AbilityCandidate {
   /** 等级名（表格首列，已去 markdown 装饰）。 */
   name: string
-  /** 卡点（表格第 3 列）；列数不为 4 时为空串。 */
+  /** 卡点（表格第 3 列）；该单元格为空时为空串（列数不为 4 的整行不产候选）。 */
   hardLimit: string
   /** 升级代价（表格末列）。 */
   costNote: string
@@ -56,6 +56,15 @@ export interface AbilityCandidateSet {
   dimensionFound: boolean
   /** 被丢弃的条数（字段超长 / 引文未命中 / 重名 / 超上限）。 */
   dropped: number
+  /**
+   * 第 1 维里「确实是表格、但列数不是 4」的那几张表的列数（去重、升序）。
+   *
+   * **为什么需要这个字段**：`dropped` 只数「该抽却没抽成」的行，而列数不符是「整表不认」，
+   * 计入 `dropped` 会让「丢了 N 条」与真丢行混为一谈。但没有它，界面只能对一张五列表说
+   * 「没找到四列等级表」—— 源文本里**明明有表格**，这是判据 DN 同型错误（「没抽到」不能说成「没有」）。
+   * 所以单独报出来：抽取行为不变（严格四列，绝不猜末列语义），只把事实交给界面去说清楚。
+   */
+  mismatchedColumnCounts: number[]
 }
 
 /** 一次最多给多少条候选。**不要**复用 ABILITY_MAX_ITEMS(5)——那是正文注入上限，不是候选上限。 */
@@ -88,6 +97,13 @@ function splitCells(line: string): string[] {
 }
 
 /**
+ * 空集（含「没识别到第 1 维」）。抽不到就是抽不到，不补占位行。
+ */
+function emptySet(): AbilityCandidateSet {
+  return { candidates: [], dimensionFound: false, dropped: 0, mismatchedColumnCounts: [] }
+}
+
+/**
  * 解析世界观第 1 维的等级表 → 能力候选。
  *
  * 纯函数：零 IO、不抛错。空文本 / 没识别到第 1 维 ⇒ 空集。
@@ -97,30 +113,47 @@ export function extractAbilityCandidates(
   worldbuilding: string | null | undefined,
 ): AbilityCandidateSet {
   const text = String(worldbuilding ?? '')
-  if (!text.trim()) return { candidates: [], dimensionFound: false, dropped: 0 }
+  if (!text.trim()) return emptySet()
 
   const section = locateWorldBuildingSections(text).find(entry => entry.dimension === 1)
-  if (!section) return { candidates: [], dimensionFound: false, dropped: 0 }
+  if (!section) return emptySet()
 
   const body = section.body
   const candidates: AbilityCandidate[] = []
   const seen = new Set<string>()
+  const mismatched = new Set<number>()
   let dropped = 0
+  /** 当前表格块的列数（取自块首行 / 表头）。0 = 还没进过表格块。 */
+  let blockColumns = 0
 
-  // 需要看下一行判表头 ⇒ 索引 for 循环，不能 for-of。
+  // 需要看上一行判「块首」⇒ 索引 for 循环，不能 for-of。
   for (let index = 0; index < body.length; index += 1) {
     const line = (body[index] ?? '').trim()
     if (!isTableRow(line)) continue
 
-    // 下一行是分隔行 ⇒ 当前行是表头，不是数据。
-    const next = (body[index + 1] ?? '').trim()
-    if (SEPARATOR_ROW.test(next)) continue
-    // 当前行自身就是分隔行。
+    const cells = splitCells(line)
+    const previousIsTableRow = isTableRow((body[index - 1] ?? '').trim())
+
+    // ── 漏洞 1 修法：**表格块的首行恒为表头**，一律跳过 ──
+    //
+    // markdown 表格以表头行起始（语法强制），而分隔行 `| --- |` 是**可选**的 ——
+    // 模型漏写分隔行时，原来的「下一行是分隔行 ⇒ 本行是表头」判定失效，表头会被当成一条数据，
+    // 产出 `name = '等级名'` 的脏候选（作者勾选后会真的登记进库）。
+    // 按「块首即表头」判定，有无分隔行两种形态一条覆盖，也不再依赖分隔行这个可省略的语法糖。
+    if (!previousIsTableRow) {
+      blockColumns = cells.length
+      continue
+    }
+
+    // 分隔行自身不是数据。
     if (SEPARATOR_ROW.test(line)) continue
 
-    const cells = splitCells(line)
     // 列数不对 ⇒ 不是等级表。**不计 dropped**：价格表、多列表本来就不该抽，不是「丢了」。
-    if (cells.length !== LADDER_COLUMNS) continue
+    // 但要记下「这里有表格、列数是 N」，好让界面说「找到表格但列数不对」而不是「没找到表格」。
+    if (cells.length !== LADDER_COLUMNS) {
+      mismatched.add(blockColumns > 0 ? blockColumns : cells.length)
+      continue
+    }
 
     const name = squash(cells[0] ?? '')
     // 首列空 ⇒ 不是数据行（续行 / 空单元格），不计 dropped。
@@ -156,7 +189,12 @@ export function extractAbilityCandidates(
     candidates.push({ name, hardLimit, costNote, evidence, evidenceScope: 'worldbuilding' })
   }
 
-  return { candidates, dimensionFound: true, dropped }
+  return {
+    candidates,
+    dimensionFound: true,
+    dropped,
+    mismatchedColumnCounts: [...mismatched].sort((left, right) => left - right),
+  }
 }
 
 /**

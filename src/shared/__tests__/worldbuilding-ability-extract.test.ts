@@ -36,6 +36,7 @@ describe('extractAbilityCandidates · 入口与维度定位', () => {
         candidates: [],
         dimensionFound: false,
         dropped: 0,
+        mismatchedColumnCounts: [],
       })
     }
   })
@@ -94,7 +95,7 @@ describe('extractAbilityCandidates · 表格形状', () => {
     expect(extractAbilityCandidates(noBold).candidates.map(c => c.name)).toEqual(['练气一层', '筑基期'])
   })
 
-  it('表头行不被当成数据（下一行是分隔行 ⇒ 当前行是表头）', () => {
+  it('表头行不被当成数据（表格块首行恒为表头）', () => {
     const set = extractAbilityCandidates(STANDARD)
     expect(set.candidates.map(c => c.name)).not.toContain('等级名')
     expect(set.candidates.map(c => c.name)).not.toContain('相邻差距')
@@ -109,12 +110,14 @@ describe('extractAbilityCandidates · 表格形状', () => {
     expect(set.dropped).toBe(0)
   })
 
-  it('纯三列表（价格表）⇒ 候选 0 条、dropped 0（不是等级表形状，不算「丢了」）', () => {
+  it('纯三列表（价格表）⇒ 候选 0 条、dropped 0，但要把「找到表格、列数 3」报出来', () => {
     const price = [HEADING_1, '', '| 物品 | 价格 | 说明 |', '| --- | --- | --- |', '| 散气丹 | 三枚下品灵石 | 最劣等丹药 |', '', HEADING_2, ''].join('\n')
     const set = extractAbilityCandidates(price)
     expect(set.dimensionFound).toBe(true)
     expect(set.candidates).toEqual([])
     expect(set.dropped).toBe(0)
+    // 源文本里明明有表格 ⇒ 界面不许说成「没找到表格」（判据 DN 同型）。
+    expect(set.mismatchedColumnCounts).toEqual([3])
   })
 
   it('三列表在前 + 四列表在后（同一维）⇒ 只抽四列表那几行', () => {
@@ -127,6 +130,81 @@ describe('extractAbilityCandidates · 表格形状', () => {
     const set = extractAbilityCandidates(mixed)
     expect(set.candidates.map(c => c.name)).toEqual(['练气一层', '筑基期'])
     expect(set.dropped).toBe(0)
+    expect(set.mismatchedColumnCounts).toEqual([3])
+  })
+})
+
+/**
+ * 对抗形态（2026-10-26 验收补齐）。
+ *
+ * 这几条都是「模型真会这么写」的变体，而原规格没写、实现也就没防 —— 属于规格漏洞，
+ * 不是实现偏离。每条都对应一个真实后果，注释里写清是哪个。
+ */
+describe('extractAbilityCandidates · 对抗形态（验收补齐）', () => {
+  it('★ 没有分隔行时表头仍不进候选（块首恒为表头，不依赖可省略的分隔行）', () => {
+    // 判据：markdown 的 `| --- |` 是**可选**语法，模型常省略。旧实现靠「下一行是分隔行」认表头，
+    // 漏写分隔行 ⇒ 表头变成一条 `name='等级名'` 的候选，勾选后真的会被登记进库（脏数据）。
+    const noSeparator = [HEADING_1, '',
+      TABLE_HEADER,
+      '| **练气一层** | 略 | 需引气入体 | 三年苦修 |',
+      '| **筑基期** | 十倍 | 需筑基丹一枚 | 一枚中品灵石 |',
+      '', HEADING_2, ''].join('\n')
+    const set = extractAbilityCandidates(noSeparator)
+    expect(set.candidates.map(c => c.name)).toEqual(['练气一层', '筑基期'])
+    expect(set.candidates.map(c => c.name)).not.toContain('等级名')
+    expect(set.dropped).toBe(0)
+  })
+
+  it('★ 五列表（多写一列「备注」）⇒ 不抽，但必须报出「找到表格、列数是 5」', () => {
+    // 判据 DN 同型：「没抽到」不能说成「没有」。源文本里有表格，界面的空态文案必须据此区分。
+    const five = [HEADING_1, '',
+      '| 等级名 | 相邻差距 | 卡点 | 升级代价 | 备注 |',
+      '| --- | --- | --- | --- | --- |',
+      '| **练气一层** | 略 | 需引气入体 | 三年苦修 | 外门 |',
+      '', HEADING_2, ''].join('\n')
+    const set = extractAbilityCandidates(five)
+    expect(set.dimensionFound).toBe(true)
+    expect(set.candidates).toEqual([])
+    // 不计 dropped：整表不认 ≠ 丢了某几行，混进去会让「已丢弃 N 条」说谎。
+    expect(set.dropped).toBe(0)
+    expect(set.mismatchedColumnCounts).toEqual([5])
+  })
+
+  it('行首缩进的表格照样识别（判定前先 trim，缩进不影响）', () => {
+    const indented = [HEADING_1, '',
+      '   | 等级名 | 相邻差距 | 卡点 | 升级代价 |',
+      '   | --- | --- | --- | --- |',
+      '   | **练气一层** | 略 | 需引气入体 | 三年苦修 |',
+      '', HEADING_2, ''].join('\n')
+    const set = extractAbilityCandidates(indented)
+    expect(set.candidates.map(c => c.name)).toEqual(['练气一层'])
+    expect(set.dropped).toBe(0)
+  })
+
+  it('两个表格块被散文隔开 ⇒ 两块的首行都跳过，只有数据行成为候选', () => {
+    const two = [HEADING_1, '',
+      TABLE_HEADER, TABLE_SEPARATOR,
+      '| **练气一层** | 略 | 需引气入体 | 三年苦修 |', '',
+      '本界的灵气有上限，一人一生只能结一次丹。', '',
+      TABLE_HEADER, TABLE_SEPARATOR,
+      '| **筑基期** | 十倍 | 需筑基丹一枚 | 一枚中品灵石 |',
+      '', HEADING_2, ''].join('\n')
+    const set = extractAbilityCandidates(two)
+    expect(set.candidates.map(c => c.name)).toEqual(['练气一层', '筑基期'])
+    expect(set.dropped).toBe(0)
+  })
+
+  it('已知代价：完全没写表头、首行直接是数据 ⇒ 首行被当表头跳过（不是丢了数据行）', () => {
+    // 这条**不是**缺陷，是「块首即表头」的必然代价：markdown 表格以表头起始，
+    // 没有表头的 `| a | b |` 连续行在语法上本来就是一张表的表头 + 数据。
+    // 锁住它是为了让将来改这块的人看见「首行消失」时知道这是设计，不是要修的 bug。
+    const noHeader = [HEADING_1, '',
+      '| **练气一层** | 略 | 需引气入体 | 三年苦修 |',
+      '| **筑基期** | 十倍 | 需筑基丹一枚 | 一枚中品灵石 |',
+      '', HEADING_2, ''].join('\n')
+    const set = extractAbilityCandidates(noHeader)
+    expect(set.candidates.map(c => c.name)).toEqual(['筑基期'])
+    expect(set.dropped).toBe(0) // 表头不是「丢了的数据」
   })
 })
 

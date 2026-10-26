@@ -8,13 +8,15 @@ import { useProjectStore } from '../../../stores/project-store'
 import { AbilityRegistryPanel } from '../AbilityRegistryPanel'
 
 /**
- * P1-1 期 4b 能力登记面板（11 条）。验收口径：
+ * P1-1 期 4b 能力登记面板（13 条）。验收口径：
  * - 可增删改、**保存前不落库**、重名整批不提交、删除要确认；
  * - `form` 用 `datalist` 提示但允许自由输入（词表外值原样提交）；
  * - **`name` 有「从金手指原文取名字」入口**（取样里 2/3 的书没有现成名字）；
  * - 三类限制全空时只有本页黄条，**不进提示词**（黄条不得混进提交载荷）；
  * - **候选区（P20-1a）**：第 1 维等级表抽出候选 ⇒ **勾选后才登记**，入参不带 `source`，
- *   已登记同名的候选行不给再勾一次。
+ *   已登记同名的候选行不给再勾一次；
+ * - **对抗形态（2026-10-26 补齐）**：表头在任何情况下都不许成为候选（不依赖可省略的分隔行）；
+ *   「有表格但列数不对」与「没找到表格」必须说成两句不同的话。
  */
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -46,6 +48,32 @@ const PROSE_ONLY_WORLD = [
   '### 1.【核心规则与体系漏洞】',
   '',
   '本界的灵气有上限，一人一生只能结一次丹。',
+  '',
+  '### 2.【阶层断层与资源战场】',
+  '',
+  '外门与内门隔着三道考核。',
+].join('\n')
+
+/** 五列表（模型多写了一列「备注」）⇒ 不抽，但必须说「找到表格、列数不对」，不能说「没找到表格」。 */
+const FIVE_COLUMN_WORLD = [
+  '### 1.【核心规则与体系漏洞】',
+  '',
+  '| 等级名 | 相邻差距 | 卡点 | 升级代价 | 备注 |',
+  '| --- | --- | --- | --- | --- |',
+  '| **练气一层** | 略 | 需引气入体 | 三年苦修 | 外门 |',
+  '',
+  '### 2.【阶层断层与资源战场】',
+  '',
+  '外门与内门隔着三道考核。',
+].join('\n')
+
+/** 模型漏写分隔行（`| --- |` 在 markdown 里是可选的）⇒ 表头仍然不许变成候选。 */
+const NO_SEPARATOR_WORLD = [
+  '### 1.【核心规则与体系漏洞】',
+  '',
+  '| 等级名 | 相邻差距 | 卡点 | 升级代价 |',
+  '| **练气一层** | 略 | 需引气入体 | 三年苦修 |',
+  '| **筑基期** | 十倍 | 需筑基丹一枚 | 一枚中品灵石 |',
   '',
   '### 2.【阶层断层与资源战场】',
   '',
@@ -356,5 +384,21 @@ describe('能力登记面板', () => {
     expect(candidateRows()).toHaveLength(0)
     expect(container.textContent).toContain('世界观第 1 维里没找到四列等级表')
     expect(upsertCalls()).toHaveLength(0)
+  })
+
+  it('★ 有表格但列数是 5 ⇒ 说「找到表格、列数是 5」，不许说成「没找到表格」', async () => {
+    // 判据 DN 同型：「没抽到」不能表述成「没有」。源文本里明明有表格，界面必须区分这两件事。
+    await renderPanel(FIVE_COLUMN_WORLD)
+    expect(candidateRows()).toHaveLength(0)
+    expect(container.textContent).toContain('第 1 维里找到表格，但列数是 5')
+    expect(container.textContent).not.toContain('没找到四列等级表')
+  })
+
+  it('★ 没有分隔行时表头不进候选（不会出现一条叫「等级名」的候选）', async () => {
+    await renderPanel(NO_SEPARATOR_WORLD)
+    expect(candidateRows()).toHaveLength(2)
+    expect([0, 1].map(index => candidateField(index, 'candidate-name').textContent))
+      .toEqual(['练气一层', '筑基期'])
+    expect(container.textContent).not.toContain('等级名')
   })
 })

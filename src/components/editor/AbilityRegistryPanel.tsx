@@ -416,7 +416,13 @@ export function AbilityRegistryPanel({ projectKey, worldbuilding }: { projectKey
                 ? text('还没有世界观内容，先生成或填写世界观再回来抽取。', 'No worldbuilding yet: generate or write it first, then come back to extract.')
                 : !ladderSet.dimensionFound
                   ? text('没识别到第 1 维【核心规则与体系漏洞】标题，无法抽取（若用了覆盖版模板，请确认标题文字未被改动）。', 'Dimension 1 [Core rules and exploitable asymmetry] heading not recognized; cannot extract (if you use an override template, check that its heading text is unchanged).')
-                  : text('世界观第 1 维里没找到四列等级表（等级名｜相邻差距｜卡点｜升级代价）。', 'No four-column ladder table found in dimension 1 (name | gap | hard limit | upgrade cost).')}
+                  : ladderSet.mismatchedColumnCounts.length > 0
+                    // 源文本里**有表格**，只是列数不对 ⇒ 必须说「找到表格」，不能说「没找到表格」（判据 DN 同型）。
+                    ? text(
+                      `第 1 维里找到表格，但列数是 ${ladderSet.mismatchedColumnCounts.join(' / ')}（等级表需要 4 列：等级名｜相邻差距｜卡点｜升级代价）。`,
+                      `A table was found in dimension 1, but it has ${ladderSet.mismatchedColumnCounts.join(' / ')} column(s) (the ladder table needs 4: name | gap | hard limit | upgrade cost).`,
+                    )
+                    : text('世界观第 1 维里没找到四列等级表（等级名｜相邻差距｜卡点｜升级代价）。', 'No four-column ladder table found in dimension 1 (name | gap | hard limit | upgrade cost).')}
             </p>
           )}
       </div>
