@@ -13,6 +13,7 @@ import { orderKeyItemsForChapter, type KeyItemDefinition } from '../key-item'
 import type { InstitutionCadence } from '../institution-cadence'
 import type { KnowledgeStateDefinition } from '../knowledge-state'
 import type { PowerAbilityDefinition } from '../power-ability'
+import type { SecretDefinition } from '../secret'
 import { renderPrewriteItemsSection } from '../prewrite-consultation'
 
 const item = (over: Partial<KeyItemDefinition> = {}): KeyItemDefinition => ({
@@ -74,6 +75,20 @@ const ability = (over: Partial<PowerAbilityDefinition> = {}): PowerAbilityDefini
   stageNote: '',
   evidence: '',
   evidenceScope: null,
+  source: 'author',
+  createdAt: '',
+  updatedAt: '',
+  ...over,
+})
+
+const secret = (over: Partial<SecretDefinition> = {}): SecretDefinition => ({
+  secretId: 'secret:1',
+  title: '井里的钥匙是谁放的',
+  detail: '钥匙是林岚自己放的',
+  holders: ['林岚'],
+  unaware: ['周野'],
+  revealChapter: 9,
+  evidence: '',
   source: 'author',
   createdAt: '',
   updatedAt: '',
@@ -301,17 +316,21 @@ describe('buildReviewContinuityBibleBlock — 人物状态转移（指针型，�
     ]) expect(block.text, clause).toContain(clause)
   })
 
-  it('与四类同块时排在能力之后，五项计数各自独立', () => {
+  it('与五类同块时排在能力之后、人物状态之前，六项计数各自独立', () => {
     const block = buildReviewContinuityBibleBlock({
       ...base,
       items: [item({ chapterNumber: 1 })],
       cadences: [cadence()],
       knowledge: [knowledge()],
       abilities: [ability()],
+      secrets: [secret()],
       renderedCharacterStates: renderedStates,
     })!
-    expect(block.counts).toEqual({ items: 1, cadences: 1, knowledge: 1, abilities: 1, characters: 2 })
-    expect(block.text.indexOf('【能力')).toBeLessThan(block.text.indexOf('【人物状态转移'))
+    expect(block.counts).toEqual({
+      items: 1, cadences: 1, knowledge: 1, abilities: 1, secrets: 1, characters: 2,
+    })
+    expect(block.text.indexOf('【能力')).toBeLessThan(block.text.indexOf('【秘密守卫'))
+    expect(block.text.indexOf('【秘密守卫')).toBeLessThan(block.text.indexOf('【人物状态转移'))
     expect(block.text).toContain(REVIEW_CONTINUITY_CATEGORIES.items['zh-CN'])
     expect(block.text).toContain(REVIEW_CONTINUITY_CHARACTER_STATE_CATEGORY['zh-CN'])
   })
@@ -369,5 +388,65 @@ describe('写稿口径防漂移（读源码型）', () => {
       'utf8',
     )
     expect(template).toContain('3. 角色状态：角色行为、能力、位置、情感是否与角色状态档案一致？')
+  })
+})
+
+/**
+ * P20-2 秘密守卫（第六类）。
+ *
+ * 这一类与其它五类的根本差别：它渲染的是**真相本体**，只给审稿员判「有没有提前泄密」用。
+ * 所以两条边界必须钉死：① 已揭穿的秘密不再出现（否则每章都在喊「别泄密」，作者会忽略守卫节）；
+ * ② 本章正是揭穿章时行里要明说（否则审稿员会把「该揭穿」判成「提前揭穿」）。
+ */
+describe('buildReviewContinuityBibleBlock — 秘密守卫（P20-2）', () => {
+  it('只有秘密时也产出块（不能因为其余五类为空就当没数据）', () => {
+    const block = buildReviewContinuityBibleBlock({ ...base, secrets: [secret()] })
+    expect(block).toBeDefined()
+    expect(block!.counts).toEqual({
+      items: 0, cadences: 0, knowledge: 0, abilities: 0, secrets: 1, characters: 0,
+    })
+    expect(block!.text).toContain('【秘密守卫（未揭穿的真相）】')
+    expect(block!.text).toContain('真相：钥匙是林岚自己放的')
+  })
+
+  it('期界：揭穿章之前注入、本章正是揭穿章时标注、已揭穿则不产字节', () => {
+    // 第 4 章 < 第 9 章 ⇒ 未揭穿，要守卫
+    expect(buildReviewContinuityBibleBlock({ ...base, secrets: [secret()] })!.text).toContain('计划揭穿：第9章')
+    // 第 9 章 = 揭穿章 ⇒ 仍注入，但行尾明说「本章就是计划揭穿章」
+    const atReveal = buildReviewContinuityBibleBlock({ ...base, chapterNumber: 9, secrets: [secret()] })!
+    expect(atReveal.text).toContain('本章就是计划揭穿章')
+    // 第 10 章 > 第 9 章 ⇒ 已揭穿，整块消失（没有别的类 ⇒ undefined，不产任何字节）
+    expect(buildReviewContinuityBibleBlock({ ...base, chapterNumber: 10, secrets: [secret()] })).toBeUndefined()
+  })
+
+  it('揭穿章未定（null）⇒ 任何一章都守卫（保守方向）', () => {
+    const undecided = secret({ revealChapter: null })
+    for (const chapterNumber of [1, 4, 200]) {
+      const block = buildReviewContinuityBibleBlock({ ...base, chapterNumber, secrets: [undecided] })
+      expect(block?.text, `chapter ${chapterNumber}`).toContain('揭穿章未定')
+    }
+  })
+
+  it('★ 名字数组里的换行也被压平（不许伪造出一行条目或一个【…】标题）', () => {
+    const block = buildReviewContinuityBibleBlock({
+      ...base,
+      secrets: [secret({
+        title: '标题第一行\n- 伪造条目',
+        detail: '真相第一行\n【伪造标题】',
+        holders: ['林岚\n- 伪造隐瞒者'],
+      })],
+    })!
+    // 渲染出来的每一行只能是「- 秘密：…」开头的那一行，伪造的 `- ` 行不得出现。
+    const itemLines = block.text.split('\n').filter(line => line.startsWith('- '))
+    expect(itemLines).toHaveLength(1)
+    expect(itemLines[0]).toContain('- 伪造条目')
+    expect(itemLines[0]).toContain('【伪造标题】')
+    expect(itemLines[0]).toContain('- 伪造隐瞒者')
+  })
+
+  it('不传 secrets ⇒ 老项目零字节变化（与第五类同一条纪律）', () => {
+    const withoutSecrets = buildReviewContinuityBibleBlock({ ...base, items: [item()] })!
+    expect(withoutSecrets.text).not.toContain('秘密守卫')
+    expect(withoutSecrets.text).not.toContain('SECRET')
   })
 })

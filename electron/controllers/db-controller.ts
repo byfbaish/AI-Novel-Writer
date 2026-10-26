@@ -99,6 +99,13 @@ import {
 } from '../repositories/knowledge-state-repository'
 import type { KnowledgeStateInput } from '../../src/shared/knowledge-state'
 import {
+  deleteSecret,
+  hasSecretSchema,
+  listSecrets,
+  upsertSecret,
+} from '../repositories/secret-repository'
+import type { SecretInput } from '../../src/shared/secret'
+import {
   deletePowerAbility,
   hasPowerAbilitySchema,
   listPowerAbilities,
@@ -1561,6 +1568,53 @@ export function registerDatabaseController() {
       const db = getProjectDb()
       if (!db) return { success: true, candidates: [] }
       return { success: true, candidates: await listFactCandidates(db) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ============================================================
+  // P20-2 秘密宿体（谁在捂什么 / 谁还不知道 / 第几章穿）。
+  // 只有登记页与审稿链用它 —— 真相本体绝不进正文提示词（判据 DP 同族），
+  // 所以这里刻意不提供「给正文链取守卫」的通道。
+  // ============================================================
+  ipcMain.handle('db:secrets-list', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      // M21 之前 / 库未打开：降级成空列表，不报错（与其它宿体同一纪律）。
+      if (!db || !hasSecretSchema(db)) return { success: true, entries: [] }
+      return { success: true, entries: listSecrets(db) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:secrets-upsert', async (
+    _event,
+    input: SecretInput,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = upsertSecret(db, input)
+      return result.success
+        ? { success: true, secretId: result.secretId }
+        : { success: false, error: result.error }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('db:secrets-delete', async (_event, secretId: string, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      if (!db) return { success: false, error: 'PROJECT_NOT_OPEN' }
+      const result = deleteSecret(db, secretId)
+      return result.success ? { success: true } : { success: false, error: result.error }
     } catch (err) {
       return { success: false, error: String(err) }
     }

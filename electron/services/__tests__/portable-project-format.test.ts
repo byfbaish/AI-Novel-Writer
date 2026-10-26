@@ -80,8 +80,9 @@ describe('portable v7 field policy', () => {
     // P1-2 期 1b / M19：**+2 表 21 列**（volumes 12 / volume_units 9），
     //   且 volume_handoffs 由 13 列重建为 **11 列**（区间外置）—— 61/584 → 63/603。
     // A2 / M20：+1 列（review_findings.review_class）—— 63/603 → 63/604，属预期变化。
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 63, fields: 604 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 63, fields: 604 })
+    // P20-2 / M21：+1 表 10 列（secrets）—— 63/604 → 64/614，属预期变化。
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 64, fields: 614 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 64, fields: 614 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -122,7 +123,8 @@ describe('portable v7 field policy', () => {
     // + P1-2 期 1 / M18 的 1 表 13 列（volume_handoffs）—— 216 → 229，同上。
     // + P1-2 期 1b / M19：+2 表 21 列，volume_handoffs 少 2 列（13 → 11）—— 229 → 248。
     // + A2 / M20：+1 列（review_class）—— 248 → 249，同上。
-    expect(added).toHaveLength(249)
+    // + P20-2 / M21：+1 表 10 列（secrets）—— 249 → 259，同上。
+    expect(added).toHaveLength(259)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -156,6 +158,13 @@ describe('portable v7 field policy', () => {
       'resources.earn_note', 'resources.family_id', 'resources.name', 'resources.period',
       'resources.resource_id', 'resources.scarcity_note', 'resources.tier', 'resources.unit',
       'resources.updated_at',
+    ])
+    // P20-2 / M21：秘密宿体整表新增，与 M16 同构（作者权威数据，跨机迁移必须保留）。
+    expect(listPortableFieldPolicyKeys().filter(key => getPortableFieldPolicy(
+      ...key.split('.') as [string, string]).origin === 'm21-delta')).toEqual([
+      'secrets.created_at', 'secrets.detail', 'secrets.evidence', 'secrets.holder_names',
+      'secrets.reveal_chapter', 'secrets.secret_id', 'secrets.source', 'secrets.title',
+      'secrets.unaware_names', 'secrets.updated_at',
     ])
   })
 
@@ -211,7 +220,8 @@ describe('portable v7 field policy', () => {
         + (database.prepare(`PRAGMA table_info("${table.name}")`).all() as unknown[]).length, 0)
       // 同上：M17 的 1 表 13 列也计入（删掉索引的 DDL fork 仍必须被拒绝）。
       // P1-2 / M18：删掉索引的 DDL fork 仍必须被拒绝；计数同步到 61/584。
-      expect({ tables: tables.length, fields }).toEqual({ tables: 63, fields: 604 })
+      // P20-2 / M21：再 +1 表 10 列 ⇒ 64/614。
+      expect({ tables: tables.length, fields }).toEqual({ tables: 64, fields: 614 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)

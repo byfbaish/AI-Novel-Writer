@@ -6,7 +6,7 @@ import { formatResourceUri } from '../../../shared/project-paths'
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins, Package, CalendarClock, Eye, Sparkles, BookMarked } from 'lucide-react'
+import { ChevronRight, ChevronDown, RefreshCw, CheckCircle2, Circle, FolderOpen, Copy, FolderTree, Trash2, Coins, Package, CalendarClock, Eye, EyeOff, Sparkles, BookMarked } from 'lucide-react'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { useDraftStore } from '../../../stores/draft-store'
@@ -517,6 +517,27 @@ function WorldBuildingGroup({
             </span>
             <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
               {text('能力（本书的能力规则）', 'Abilities')}
+            </span>
+          </div>
+          {/* P20-2：秘密宿体。与知情并列，但回答的是「谁在瞒、谁还不知道、第几章穿」。 */}
+          <div
+            className="tree-item gap-1.5 cursor-pointer select-none"
+            style={{ paddingLeft: 26 }}
+            onClick={() => openBuiltinEditor(
+              'secret-registry-editor',
+              text('秘密（谁在捂什么）', 'Secrets'),
+              'secret-registry',
+            )}
+            title={text(
+              '登记谁在隐瞒什么、谁还不知道、计划第几章揭穿；审稿用它查有没有提前写出真相，真相本身不进正文提示词',
+              'Register who hides what, who does not know yet, and the planned reveal chapter; review uses it to detect premature reveals',
+            )}
+          >
+            <span className="flex-shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+              <EyeOff size={13} />
+            </span>
+            <span className="text-sm flex-1 truncate" style={{ color: 'var(--color-text)' }}>
+              {text('秘密（谁在捂什么）', 'Secrets')}
             </span>
           </div>
           {/* P1-2 期 1：卷末交接（跨卷记忆）。回答的是「上一卷交接下来什么」。 */}

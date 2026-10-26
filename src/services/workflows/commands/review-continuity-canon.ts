@@ -18,15 +18,17 @@ import type { InstitutionCadence } from '../../../shared/institution-cadence'
 import type { KeyItemDefinition } from '../../../shared/key-item'
 import type { KnowledgeStateDefinition } from '../../../shared/knowledge-state'
 import type { PowerAbilityDefinition } from '../../../shared/power-ability'
+import type { SecretDefinition } from '../../../shared/secret'
 import { ipc } from '../../ipc-client'
 
-export type ReviewContinuityCanonClass = 'items' | 'cadences' | 'knowledge' | 'abilities'
+export type ReviewContinuityCanonClass = 'items' | 'cadences' | 'knowledge' | 'abilities' | 'secrets'
 
 export interface ReviewContinuityCanonSources {
   items: KeyItemDefinition[]
   cadences: InstitutionCadence[]
   knowledge: KnowledgeStateDefinition[]
   abilities: PowerAbilityDefinition[]
+  secrets: SecretDefinition[]
   /** 读取失败（或表不存在）的类别；调用方据此打一行可见说明，不阻断审稿。 */
   failures: ReviewContinuityCanonClass[]
 }
@@ -70,7 +72,22 @@ async function readAbilities(session: ProjectSessionContext, projectPath: string
 }
 
 /**
- * 并发读四类登记。**期界过滤不在这里做**（需要本章号，在 `buildReviewContinuityBibleBlock` 里统一做），
+ * P20-2 秘密宿体。
+ *
+ * 只有审稿链读它 —— 真相本体（`detail`）一旦进正文 prompt，模型会把谜底写出来
+ * （判据 DP 同族：第 3 维整维跳过就是为了防剧透）。
+ */
+async function readSecrets(session: ProjectSessionContext, projectPath: string): Promise<ReadResult<SecretDefinition>> {
+  try {
+    const result = await ipc.invokeWithProjectSession(session, 'db:secrets-list', projectPath)
+    return result?.success ? { ok: true, value: result.entries ?? [] } : { ok: false }
+  } catch {
+    return { ok: false }
+  }
+}
+
+/**
+ * 并发读五类登记。**期界过滤不在这里做**（需要本章号，在 `buildReviewContinuityBibleBlock` 里统一做），
  * 本函数只负责「拿回来 + 失败可见」。
  */
 export async function readReviewContinuityCanon(input: {
@@ -78,11 +95,12 @@ export async function readReviewContinuityCanon(input: {
   projectSession: ProjectSessionContext
 }): Promise<ReviewContinuityCanonSources> {
   const { projectPath, projectSession } = input
-  const [items, cadences, knowledge, abilities] = await Promise.all([
+  const [items, cadences, knowledge, abilities, secrets] = await Promise.all([
     readItems(projectSession, projectPath),
     readCadences(projectSession, projectPath),
     readKnowledge(projectSession, projectPath),
     readAbilities(projectSession, projectPath),
+    readSecrets(projectSession, projectPath),
   ])
   // 失败清单按固定顺序汇总：并发完成顺序不确定，日志不能跟着抖。
   const failures: ReviewContinuityCanonClass[] = []
@@ -90,11 +108,13 @@ export async function readReviewContinuityCanon(input: {
   if (!cadences.ok) failures.push('cadences')
   if (!knowledge.ok) failures.push('knowledge')
   if (!abilities.ok) failures.push('abilities')
+  if (!secrets.ok) failures.push('secrets')
   return {
     items: items.ok ? items.value : [],
     cadences: cadences.ok ? cadences.value : [],
     knowledge: knowledge.ok ? knowledge.value : [],
     abilities: abilities.ok ? abilities.value : [],
+    secrets: secrets.ok ? secrets.value : [],
     failures,
   }
 }

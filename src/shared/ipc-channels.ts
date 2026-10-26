@@ -41,6 +41,7 @@ import type { KeyItemDefinition, KeyItemInput } from './key-item'
 import type { InstitutionCadence, InstitutionCadenceInput } from './institution-cadence'
 import type { KnowledgeFactCandidate, KnowledgeStateDefinition, KnowledgeStateInput } from './knowledge-state'
 import type { PowerAbilityDefinition, PowerAbilityInput } from './power-ability'
+import type { SecretDefinition, SecretInput } from './secret'
 import type { VolumeHandoffDefinition, VolumeHandoffInput } from './volume-handoff'
 import type { VolumeDefinition } from './volume-structure'
 import type {
@@ -1315,6 +1316,13 @@ export interface DatabaseChannels {
   'db:volumes-list': { args: [expectedProjectPath: string]; return: { success: boolean; volumes?: VolumeDefinition[]; state?: 'ready' | 'stale' | 'empty' | 'unparsed'; warnings?: string[]; error?: string } }
   'db:volumes-rebuild': { args: [expectedProjectPath: string]; return: { success: boolean; volumes?: VolumeDefinition[]; warnings?: string[]; retained?: number[]; removed?: number; error?: string } }
   'db:volumes-mark-done': { args: [volumeId: string, expectedProjectPath: string]; return: { success: boolean; volume?: VolumeDefinition; actualLast?: number; error?: string } }
+
+  // 7i. secrets — P20-2 秘密宿体（谁在捂什么 / 谁还不知道 / 第几章穿）。
+  // **只有一个消费者：审稿链**。真相本体（`detail`）绝不进正文提示词（判据 DP 同族），
+  // 所以这里**没有** `db:secrets-guard` 之类供正文链调用的通道 —— 有的话就会有人去接。
+  'db:secrets-list': { args: [expectedProjectPath: string]; return: { success: boolean; entries?: SecretDefinition[]; error?: string } }
+  'db:secrets-upsert': { args: [input: SecretInput, expectedProjectPath: string]; return: { success: boolean; secretId?: string; error?: string } }
+  'db:secrets-delete': { args: [secretId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
 
   // 沿用旧表
   'db:log-llm-call': { args: [call: Record<string, unknown>, expectedProjectPath: string]; return: { success: boolean } }

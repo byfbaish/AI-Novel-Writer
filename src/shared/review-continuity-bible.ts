@@ -50,6 +50,7 @@ import {
 } from './knowledge-state'
 import { renderAbilitySection, type PowerAbilityDefinition } from './power-ability'
 import { renderPrewriteItemsSection } from './prewrite-consultation'
+import { renderSecretReviewSection, type SecretDefinition } from './secret'
 import type { WritingLanguage } from './writing-language'
 
 /**
@@ -114,6 +115,13 @@ export interface ReviewContinuityCanon {
   knowledge?: readonly KnowledgeStateDefinition[]
   abilities?: readonly PowerAbilityDefinition[]
   /**
+   * P20-2 秘密宿体。**只有审稿链读它** —— `detail` 是真相本体，进正文提示词等于把谜底交给写手。
+   *
+   * 期界过滤不在调用方做：`renderSecretReviewSection` 自己按 `chapterNumber` 排除
+   * 「已经揭穿」的秘密（`secretChapterState`），因为那个判断与章号是同一个量，分两处判会飘。
+   */
+  secrets?: readonly SecretDefinition[]
+  /**
    * **已渲染好**的角色状态行（`frozen.characterStates`，即模板 `{{character_states}}`
    * 的同一份字节）。只用来数出「有几条可核对的基准行」并决定是否 push 指针，
    * **不解析内容、不重排、不改写、不复制**。
@@ -133,7 +141,7 @@ export interface ReviewContinuityBibleBlock {
    * ⚠️ `characters` 的口径与其它四项**不同**：本节本身不产出数据行（第五节是指针型），
    * 它数的是「指针覆盖了几条可核对的基准状态行」。写日志时说的是「覆盖」，不是「产出」。
    */
-  counts: { items: number; cadences: number; knowledge: number; abilities: number; characters: number }
+  counts: { items: number; cadences: number; knowledge: number; abilities: number; secrets: number; characters: number }
   /** `text.length`，供调用方打日志观测体积。 */
   chars: number
 }
@@ -329,6 +337,40 @@ const ABILITY_RULE = {
  * - 「不得判一炷香走三百里」：本项目**没有任何**移动耗时 / 距离 / 可达性数据，
  *   放这条口子出去，模型只能凭空造判据（与设计稿 §5「拒绝伪造判据」同一条边界）。
  */
+/**
+ * 第六节「秘密守卫」的判定规则（P20-2）。
+ *
+ * 三件事是刻意写死的，动它之前先想清楚：
+ * - **只判「写出了真相」**：写出谜底才算泄密；遮掩、暗示、回避、"你别问了" 都是合规写法。
+ *   放宽到「暗示太重」会让守卫节变成文风批评，作者会开始忽略它。
+ * - **本章就是计划揭穿章时不算泄密**：`revealed-now` 的行自带一句提示，审稿员不能把
+ *   「该揭穿」判成「提前揭穿」—— 这是最容易被误判的一类。
+ * - **「尚不知情」为「未填」时不得反推**：与知情格那条「未登记的事实一概不判」同一条边界，
+ *   否则作者没填的空格会被读成「所有人都不知道」。
+ */
+const SECRET_RULE = {
+  'en-US': [
+    '[Rules — secret guard] Report only when the reviewed chapter states the truth of a secret listed above '
+    + '(the "truth" field), while that secret is not yet revealed in this chapter.',
+    'Do not report: hints, evasions, someone refusing to answer, a character suspecting something, or a partial '
+    + 'clue that does not state the truth; a chapter listed as "this is the planned reveal chapter".',
+    'Never infer "nobody is unaware" from an "unaware: not filled in" line; that only means the author did not '
+    + 'register it.',
+    'severity: error = the truth itself appears in prose before its reveal chapter; warning = a single line states '
+    + 'the conclusion rather than the evidence.',
+    'Remedy: "change this chapter: cut the truth and keep only the hint"; if the reveal chapter itself is wrong, '
+    + 'write "check the registry: reveal chapter".',
+  ].join('\n'),
+  'zh-CN': [
+    '核对规则（秘密守卫）：正文在被审章里写出了上列某个秘密的「真相」栏内容，而该秘密在本章尚未揭穿 —— '
+    + '只有这一条成立才算泄密。',
+    '不判：暗示、回避、不肯说、角色起疑、只给出线索而没说出真相；标注「本章就是计划揭穿章」的不算泄密。',
+    '「尚不知情」写「未填」时不得反推「所有人都知道」或「没有人不知道」—— 那只表示作者没登记。',
+    'severity：error = 真相本体在揭穿章之前出现在正文；warning = 一句话直接给出结论而不是证据。',
+    '改法：「改本章：删去真相，只保留暗示」；揭穿章本身定错时写「核对登记：揭穿章」。',
+  ].join('\n'),
+}
+
 const CHARACTER_STATE_RULE = {
   'en-US': [
     '[Rules — character state transitions] The basis is the "[Known character states]" section near the top of this '
@@ -428,10 +470,11 @@ function countCharacterStateFacts(rendered: string | undefined): number {
 }
 
 /**
- * 组装整块；五类都没有可渲染内容时返回 `undefined`（调用方据此不产生任何字节）。
+ * 组装整块；六类都没有可渲染内容时返回 `undefined`（调用方据此不产生任何字节）。
  *
- * 顺序与写稿节序一致：物品 → 制度 → 知情 → 能力 → 人物状态转移。
- * **本函数不做任何判定**，只排版事实与规则。
+ * 顺序与写稿节序一致：物品 → 制度 → 知情 → 能力 → 秘密守卫 → 人物状态转移。
+ * **本函数不做任何判定**，只排版事实与规则（唯一例外是秘密的期界：它与章号是同一个量，
+ * 分两处判会飘，所以留在 `renderSecretReviewSection` 里）。
  */
 export function buildReviewContinuityBibleBlock(
   canon: ReviewContinuityCanon,
@@ -462,6 +505,12 @@ export function buildReviewContinuityBibleBlock(
     writingLanguage,
     chapterNumber,
   )
+  // P20-2：期界在渲染函数内部按章号判（`secretChapterState`），这里只压换行与去空。
+  const secretsSection = renderSecretReviewSection(
+    (canon.secrets ?? []).map(collapseNewlines),
+    chapterNumber,
+    writingLanguage,
+  )
   const characterStateFacts = countCharacterStateFacts(canon.renderedCharacterStates)
 
   const counts = {
@@ -469,9 +518,11 @@ export function buildReviewContinuityBibleBlock(
     cadences: countLines(cadencesSection),
     knowledge: countLines(knowledgeSection),
     abilities: countLines(abilitiesSection),
+    secrets: countLines(secretsSection),
     characters: characterStateFacts,
   }
-  if (counts.items + counts.cadences + counts.knowledge + counts.abilities + counts.characters === 0) {
+  if (counts.items + counts.cadences + counts.knowledge + counts.abilities
+    + counts.secrets + counts.characters === 0) {
     return undefined
   }
 
@@ -480,6 +531,7 @@ export function buildReviewContinuityBibleBlock(
   if (cadencesSection) parts.push(cadencesSection, CADENCE_RULE[writingLanguage])
   if (knowledgeSection) parts.push(knowledgeSection, KNOWLEDGE_RULE[writingLanguage])
   if (abilitiesSection) parts.push(abilitiesSection, ABILITY_RULE[writingLanguage])
+  if (secretsSection) parts.push(secretsSection, SECRET_RULE[writingLanguage])
   // 第五类只 push「指针 + 规则」：数据已在 prompt 开头，这里再渲染一份就是判据 DM 反着做。
   if (characterStateFacts > 0) {
     parts.push(characterStateSectionHeader(chapterNumber, isEn), CHARACTER_STATE_RULE[writingLanguage])
