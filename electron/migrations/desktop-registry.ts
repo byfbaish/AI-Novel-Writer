@@ -22,13 +22,14 @@ import { applyM18VolumeHandoffs, createM18Migration, verifyM18VolumeHandoffs } f
 import { applyM19VolumeStructure, createM19Migration, verifyM19VolumeStructure } from './m19-volume-structure'
 import { applyM20ReviewClass, createM20Migration, verifyM20ReviewClass } from './m20-review-class'
 import { applyM21Secrets, createM21Migration, verifyM21Secrets } from './m21-secrets'
+import { applyM22KnowledgeCandidates, createM22Migration, verifyM22KnowledgeCandidates } from './m22-knowledge-candidates'
 import { initializeLegacyBaselineSchema, applyBaselineTables } from './baseline-schema'
 import { ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
 import { SqliteSchemaAdapter, sqliteSchemaFingerprint } from './sqlite-schema-adapter'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-export const CURRENT_DESKTOP_SCHEMA_VERSION = 22
+export const CURRENT_DESKTOP_SCHEMA_VERSION = 23
 let installed: MigrationRegistry | undefined
 
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -169,7 +170,12 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
     const m21 = createM21Migration({ database: native,
       verifyKnownSchema: db => secretFingerprints.has(sqliteSchemaFingerprint(native(db)))
         && verifyM21Secrets(native(db)) })
-    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14, m15, m16, m17, m18, m19, m20, m21], [
+    for (const db of references) db.transaction(() => applyM22KnowledgeCandidates(db))()
+    const knowledgeCandidateSchemas = schemas(23), knowledgeCandidateFingerprints = new Set(knowledgeCandidateSchemas.map(item => item.fingerprint))
+    const m22 = createM22Migration({ database: native,
+      verifyKnownSchema: db => knowledgeCandidateFingerprints.has(sqliteSchemaFingerprint(native(db)))
+        && verifyM22KnowledgeCandidates(native(db)) })
+    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14, m15, m16, m17, m18, m19, m20, m21, m22], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),
       ...baselineSchemas, ...generationSchemas, ...identitySchemas,
       ...reviewCycleSchemas, ...importEffectSchemas, ...characterAssetSchemas, ...mergeSnapshotSchemas,
@@ -184,6 +190,7 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
       ...volumeStructureSchemas,
       ...reviewClassSchemas,
       ...secretSchemas,
+      ...knowledgeCandidateSchemas,
     ])
     return installed
   } finally { reference.close(); donor.close() }

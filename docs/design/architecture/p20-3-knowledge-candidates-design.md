@@ -1,7 +1,10 @@
 # P20-3 · 章末知情候选（模型只能挑，不能写）
 
-> 状态：**📝 设计稿待审（2026-10-26）**。作者已裁定范围：**只做知情一格**（物品 / 制度锚不做）。
-> 上游：`docs/plans/prompt-assembly-backlog.md` P20-3 原定义（已被本稿大幅收窄）。
+> 状态：**✅ 已落地（2026-10-26）**。作者已裁定范围：**只做知情一格**（物品 / 制度锚不做）。  
+> 上游：`docs/plans/prompt-assembly-backlog.md` P20-3 原定义（已被本稿大幅收窄）。  
+> 实施记录见 §10（**两处与原稿不同的地方**：删了 `factKey` 字段、前置检查挪到 `begin`）。
+
+
 
 ---
 
@@ -9,21 +12,21 @@
 
 原定义说「在同一处挂三个新的候选类别（物品 / 知情 / 制度锚），全部走候选→采纳面」。查完代码后本稿把它砍成一格，有三条各自独立的理由：
 
-| 格 | 为什么不抽 | 依据 |
-|---|---|---|
-| 物品 | 行业共识是 `key_items` 只收**承重物品**，一章里绝大多数物件是「他拿起了刀」这类一次性道具，逐章自动产候选会把真正重要的那几件淹掉 | 行业评估稿 §2（Novelium「only load-bearing facts」/ aibookcraft「不必清点厨房里每个杯子」） |
-| 制度锚 | `institution_cadences` 的「锚」不是文本片段，是作者对「多久一次 / 什么条件下触发」的判断，抽不出来 | `p1-1-worldbuilding-extraction-assessment.md`「制度只能抽一半」 |
-| 知情 | **唯一必须等定稿的一格**（`factKey` 要求定稿逐字引文），而且已有真实欠账 | 见 §2 |
+| 格   | 为什么不抽                                                                     | 依据                                                                    |
+| --- | ------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| 物品  | 行业共识是 `key_items` 只收**承重物品**，一章里绝大多数物件是「他拿起了刀」这类一次性道具，逐章自动产候选会把真正重要的那几件淹掉 | 行业评估稿 §2（Novelium「only load-bearing facts」/ aibookcraft「不必清点厨房里每个杯子」） |
+| 制度锚 | `institution_cadences` 的「锚」不是文本片段，是作者对「多久一次 / 什么条件下触发」的判断，抽不出来            | `p1-1-worldbuilding-extraction-assessment.md`「制度只能抽一半」                |
+| 知情  | **唯一必须等定稿的一格**（`factKey` 要求定稿逐字引文），而且已有真实欠账                               | 见 §2                                                                  |
 
 ## 2. 现状：这一格已经做了 80%，缺的正好是最后一环
 
 「选事实」这一半**已经完成并接线**：
 
-| 已存在 | 位置 |
-|---|---|
-| 候选事实列表 | `db:knowledge-fact-candidates` |
-| 数据源 | `listFactCandidates()`：全书**已定稿且投影 `current`** 的各章 fact，新章在前，每条带 `factKey` / `factEvidence` / `statement` |
-| 消费方 | `KnowledgeRegistryPanel` —— 下拉选一条 fact，再选角色、填「从第几章起知道」，保存落 M16 |
+| 已存在    | 位置                                                                                                       |
+| ------ | -------------------------------------------------------------------------------------------------------- |
+| 候选事实列表 | `db:knowledge-fact-candidates`                                                                           |
+| 数据源    | `listFactCandidates()`：全书**已定稿且投影 `current`** 的各章 fact，新章在前，每条带 `factKey` / `factEvidence` / `statement` |
+| 消费方    | `KnowledgeRegistryPanel` —— 下拉选一条 fact，再选角色、填「从第几章起知道」，保存落 M16                                           |
 
 **缺的是「谁知道了」。** 模型读完定稿是知道「这一章阿七在门外偷听到了」的，但没有任何一处问过它。作者现在的动作是：打开知情页 → 在那份**全书平铺**的列表里翻找（300 章 × ≤12 条 ≈ 最多 3600 条）→ 自己回忆本章谁在场 → 填。
 
@@ -64,16 +67,16 @@ flowchart TD
 
 ## 4. 落点
 
-| 层 | 落点 | 说明 |
-|---|---|---|
-| 迁移 **M22** | `summary_snapshots` 加 `knowledge_candidates TEXT NOT NULL DEFAULT '[]'` | `ALTER TABLE ADD COLUMN`，**不重建表**（无约束变更）。v22→v23 |
-| 类型 | `FinalizationGenerationSlot.stepKey` 加 `'knowledge_candidates'` | 字面量联合 |
-| **六处二元判断** | `finalizationSlotKey` 白名单 · `readFinalizationGenerationContext` 的 operation · `finalizationGenerationTask` 的分支 · `main-generation-owner.ts:364/515` 白名单 · `:1116` 三元 · `finalized-character-generation-proof.ts:23` | ⚠️ 见 §7 |
-| Prompt | 新 purpose `finalized-knowledge-candidates`，输出 `structured-data` | 走 `generationOutputForPurpose`（判据 CU） |
-| 共享层 | `src/shared/knowledge-candidate.ts`：类型 + `parseKnowledgeCandidates()`（纯函数，含全部校验） | 可单测，不碰 DB |
-| 仓储 | `SummaryRepository.saveKnowledgeCandidates()` / `readKnowledgeCandidates()` | 只按 `draft_id` 写同一行，**不动 `projection_generation`** |
-| IPC | `db:knowledge-candidates-list`（读候选，带 `refState` 式的失效标记） | 只读，**没有**「自动写 M16」的通道 |
-| 界面 | 知情页顶部「第 N 章提议（K 条 · 未采纳）」——逐条「采纳」把 4 个字段预填进表单，作者点保存才落库 | 复用 `KnowledgeRegistryPanel` 既有表单 |
+| 层          | 落点                                                                                                                                                                                                                  | 说明                                                |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| 迁移 **M22** | `summary_snapshots` 加 `knowledge_candidates TEXT NOT NULL DEFAULT '[]'`                                                                                                                                             | `ALTER TABLE ADD COLUMN`，**不重建表**（无约束变更）。v22→v23  |
+| 类型         | `FinalizationGenerationSlot.stepKey` 加 `'knowledge_candidates'`                                                                                                                                                     | 字面量联合                                             |
+| **六处二元判断** | `finalizationSlotKey` 白名单 · `readFinalizationGenerationContext` 的 operation · `finalizationGenerationTask` 的分支 · `main-generation-owner.ts:364/515` 白名单 · `:1116` 三元 · `finalized-character-generation-proof.ts:23` | ⚠️ 见 §7                                           |
+| Prompt     | 新 purpose `finalized-knowledge-candidates`，输出 `structured-data`                                                                                                                                                     | 走 `generationOutputForPurpose`（判据 CU）             |
+| 共享层        | `src/shared/knowledge-candidate.ts`：类型 + `parseKnowledgeCandidates()`（纯函数，含全部校验）                                                                                                                                    | 可单测，不碰 DB                                         |
+| 仓储         | `SummaryRepository.saveKnowledgeCandidates()` / `readKnowledgeCandidates()`                                                                                                                                         | 只按 `draft_id` 写同一行，**不动 `projection_generation`** |
+| IPC        | `db:knowledge-candidates-list`（读候选，带 `refState` 式的失效标记）                                                                                                                                                             | 只读，**没有**「自动写 M16」的通道                             |
+| 界面         | 知情页顶部「第 N 章提议（K 条 · 未采纳）」——逐条「采纳」把 4 个字段预填进表单，作者点保存才落库                                                                                                                                                              | 复用 `KnowledgeRegistryPanel` 既有表单                  |
 
 **候选形状**：
 
@@ -92,11 +95,11 @@ interface KnowledgeCandidate {
 
 ## 5. 原定义的「三个老问题」：全部复用，不新建
 
-| 老问题 | 现成解法 | 证据 |
-|---|---|---|
-| 幂等 | `finalizationSlotKey(slot)` 含 `draftId + finalizationId + chapterNumber + contentHash + stepKey`；重跑命中 `find()` 复用同一 run，重试覆盖**同一列**而不是追加 | `finalization-generation-source.ts:12-17`、`finalization-generation.ts:21-33` |
-| 中断可续 | `generation_runs` 持久化 + `readEffect()` 收据 + `retryable()`；关窗重开从 run 恢复 | `finalization-generation.ts:34-40`、`:63-82` |
-| 引文定位 | **不需要做** —— 引文由系统反查（见 §3 约束 1） | 本稿的设计产物 |
+| 老问题  | 现成解法                                                                                                                                     | 证据                                                                           |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| 幂等   | `finalizationSlotKey(slot)` 含 `draftId + finalizationId + chapterNumber + contentHash + stepKey`；重跑命中 `find()` 复用同一 run，重试覆盖**同一列**而不是追加 | `finalization-generation-source.ts:12-17`、`finalization-generation.ts:21-33` |
+| 中断可续 | `generation_runs` 持久化 + `readEffect()` 收据 + `retryable()`；关窗重开从 run 恢复                                                                   | `finalization-generation.ts:34-40`、`:63-82`                                  |
+| 引文定位 | **不需要做** —— 引文由系统反查（见 §3 约束 1）                                                                                                           | 本稿的设计产物                                                                      |
 
 **所以这一项的真实成本不在「机制」，在「加一个步骤要改的通路」+「候选的失效判定」。**
 
@@ -108,11 +111,11 @@ interface KnowledgeCandidate {
 
 读取侧按 `factKey` 在当前投影里反查：
 
-| 反查结果 | 标记 | 界面 |
-|---|---|---|
-| 命中且投影 `current` | `valid` | 可采纳 |
-| 找不到（facts 已变） | `stale` | 显示「所依据的定稿事实已变更，已失效」，不可采纳 |
-| 投影 `conflict` / 无投影 | `orphaned` | 同上，另给「重新生成」入口 |
+| 反查结果                | 标记         | 界面                       |
+| ------------------- | ---------- | ------------------------ |
+| 命中且投影 `current`     | `valid`    | 可采纳                      |
+| 找不到（facts 已变）       | `stale`    | 显示「所依据的定稿事实已变更，已失效」，不可采纳 |
+| 投影 `conflict` / 无投影 | `orphaned` | 同上，另给「重新生成」入口            |
 
 **这也是 probeless 的**：不需要新表、不需要新列、不需要定时清理。
 
@@ -150,3 +153,54 @@ interface KnowledgeCandidate {
 6. 无 `chapter_notes` 的章 → 候选为空，并明说「本章没有可用的定稿事实」（判据 DN，不产占位）；
 7. 模型返回越界 `factIndex` / 名单外 `characterId` → 逐条丢弃，不整批失败、不静默成功（`dropped` 计数可见）；
 8. `npx tsc --noEmit` + 纯函数单测 + 面板浏览器测试。
+
+## 10. 实施记录（2026-10-26）
+
+### 10.1 落地清单
+
+| 层   | 文件                                                                                              | 内容                                                                                                       |
+| --- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 迁移  | `electron/migrations/m22-knowledge-candidates.ts`                                               | `M22`，`ALTER TABLE summary_snapshots ADD COLUMN knowledge_candidates TEXT NOT NULL DEFAULT '[]'`，v22→v23 |
+| 步骤表 | `src/shared/finalization-generation.ts`                                                         | `FINALIZATION_STEP_SPECS` 三行（原六处二元判断收敛成这一张表）                                                             |
+| 纯函数 | `src/shared/knowledge-candidate.ts`                                                             | 编号清单渲染 / 解析 / 反查 / 失效标记 / 上限                                                                             |
+| 提示词 | `builtin-prompt-templates.ts` + `prompt-language.ts`                                            | 新 key `propose_knowledge_candidates`，中英各一份，变量 `facts_list` / `characters_json`                           |
+| 提示词台账 | `docs/design/prompt/prompt-three-layer-inventory.md` | §3.2 加第 30 行（`EDITABLE_PROMPT_KEYS` 23→24 项）。**新模板必须登记**，否则 `prompt-inventory-coverage.test.ts` 会红 |
+| 链   | `finalization-generation-source.ts` / `finalization-generation.ts` / `main-generation-owner.ts` | 上下文捕获 `continuityFacts`、commit 分支、begin 前置检查                                                             |
+| 编排  | `finalize-chapter.command.ts`                                                                   | 步骤 2c，`critical: false`，日志报候选数与丢弃数                                                                       |
+| 存储  | `summary-repository.ts`                                                                         | `saveKnowledgeCandidates` / `readKnowledgeCandidates` / `listKnowledgeCandidateViews`                    |
+| 通道  | `db:knowledge-candidates-list`                                                                  | 只读；`!db` 降级空列表                                                                                           |
+| 界面  | `KnowledgeRegistryPanel.tsx`                                                                    | 提议条，按得知章分组；失效项禁用并写明原因；采纳 = 填草稿                                                                           |
+
+### 10.2 与原稿不同的两处（实施期调整）
+
+**① 删掉了 `KnowledgeCandidate.factKey` 字段，改用「事实身份」。**
+
+原稿让每条候选自带 `factKey`。实施时发现 `knowledgeFactKey()` 是 `async`（走 `crypto.subtle`），  
+而 `commit` 在 `db.transaction(...).immediate()` 里 —— **`await` 进不去同步事务**。
+
+改为 `knowledgeCandidateFactIdentity(chapterNumber, evidence)` = `` `${章号}\u001f${归一化引文}` ``。  
+它与 `factKey` **同定义域**（`factKey` 就是对这个二元组做 sha256），所以反查等价，但同步。  
+副产物是少一条脱节路径：不必再担心「键对了、引文已经被改过」。
+
+**② 前置检查放在 `begin`，不在 `commit`。**
+
+原稿把「没有可用事实」当成提交期错误。实施时发现那样会**白花一次模型调用**，而且失败留在最后一步，  
+作者只看到「后处理失败」却不知道是前置没跑。
+
+现在 `beginFinalizationGeneration` 里就抛 `GENERATION_FINALIZATION_PREREQUISITE_MISSING`；  
+commit 里保留同语义的 `GENERATION_FINALIZATION_FACT_SOURCE_MISSING` 作为第二道闸（防御 run 复用）。  
+两条都**不落空候选**：落空会让作者以为「本章确实没人新得知」，真相是这一步没有材料可判（判据 DN）。
+
+### 10.3 守门测试（新增 5 个文件 / 43 例）
+
+| 文件                                                                           | 例数 | 钉住什么                                                           |
+| ---------------------------------------------------------------------------- | -- | -------------------------------------------------------------- |
+| `src/shared/__tests__/knowledge-candidate.test.ts`                           | 20 | 编号一致性、只解析两个字段、坏 JSON 不抛、逐条记账、上限、失效三态                           |
+| `src/shared/__tests__/knowledge-candidate-isolation.test.ts`                 | 4  | **全库只有 14 个白名单文件能提到候选**；正文链 / 审稿链逐个文件点名不得命中                    |
+| `electron/migrations/__tests__/m22-installed-lane.test.ts`                   | 5  | 旧行读到 `'[]'` 而非 NULL / 空串；重跑幂等；verify 失败回滚                      |
+| `electron/repositories/__tests__/knowledge-candidate-store.test.ts`          | 8  | 覆盖不合并、无快照行拒绝、不动 `projection_generation`、`stale` 可见不消失、坏列降级     |
+| `electron/services/__tests__/finalization-generation.test.ts`（新增 3 例）        | 3  | 模型只给编号 → 引文/章号由系统反查；越界逐条丢弃不整批失败；无 `chapter_notes` 在 `begin` 就拒 |
+| `src/components/editor/__tests__/KnowledgeRegistryPanel.browser.tsx`（新增 5 例） | 14 | 按章分组、采纳不写库、已登记不再出现、失效不可采纳、读提议失败不挡整页                            |
+
+> 隔离测试的反向断言同样重要：白名单里写进去的文件**必须真的还在提它**。  
+> 否则白名单会慢慢退化成「历史文件清单」，下次有人往里加正文链文件也不会被发现。

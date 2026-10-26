@@ -40,6 +40,7 @@ import type {
 import type { KeyItemDefinition, KeyItemInput } from './key-item'
 import type { InstitutionCadence, InstitutionCadenceInput } from './institution-cadence'
 import type { KnowledgeFactCandidate, KnowledgeStateDefinition, KnowledgeStateInput } from './knowledge-state'
+import type { KnowledgeCandidateView } from './knowledge-candidate'
 import type { PowerAbilityDefinition, PowerAbilityInput } from './power-ability'
 import type { SecretDefinition, SecretInput } from './secret'
 import type { VolumeHandoffDefinition, VolumeHandoffInput } from './volume-handoff'
@@ -1295,6 +1296,16 @@ export interface DatabaseChannels {
   'db:knowledge-delete': { args: [knowledgeId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   /** 只读：已定稿各章可用于引用的事实候选（面板选事实用，永不入库）。 */
   'db:knowledge-fact-candidates': { args: [expectedProjectPath: string]; return: { success: boolean; candidates?: KnowledgeFactCandidate[]; error?: string } }
+  /**
+   * P20-3：章末知情候选（只读）。
+   *
+   * 三条纪律：
+   * 1. **只读** —— 采纳走既有的 `db:knowledge-upsert`；这里刻意不提供「自动写知情行」的通道，
+   *    否则「模型提议 + 作者采纳」就退化成「模型写入」（P20-3 定义里点名的头号风险）。
+   * 2. 失效三态（`valid` / `stale` / `orphaned`）由主进程算好，渲染层不自己拼。
+   * 3. 正文链与审稿链**都不许**调用它（有源码扫描测试钉住）。候选不是事实。
+   */
+  'db:knowledge-candidates-list': { args: [expectedProjectPath: string]; return: { success: boolean; entries?: KnowledgeCandidateView[]; error?: string } }
 
   // 7f. abilities — P1-1 能力（本书级能力规则：能做什么 / 要付什么 / 怎么被破）。
   // 只读的 `db:golden-finger-read` 只服务登记页的「从金手指原文取名字」，永不写库。

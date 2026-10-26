@@ -1574,6 +1574,24 @@ export function registerDatabaseController() {
   })
 
   // ============================================================
+  // P20-3 章末知情候选（只读）。
+  // 采纳走既有的 `db:knowledge-upsert` —— 这里**刻意没有**「自动写知情行」的通道，
+  // 否则「模型提议 + 作者采纳」就退化成「模型写入」。
+  // 失效三态由 `listKnowledgeCandidateViews` 算好，渲染层不自己拼。
+  // ============================================================
+  ipcMain.handle('db:knowledge-candidates-list', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      // 库未打开 / M22 之前：降级成空列表，不报错（与其它宿体同一纪律）。
+      if (!db) return { success: true, entries: [] }
+      return { success: true, entries: SummaryRepository.listKnowledgeCandidateViews(db) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // ============================================================
   // P20-2 秘密宿体（谁在捂什么 / 谁还不知道 / 第几章穿）。
   // 只有登记页与审稿链用它 —— 真相本体绝不进正文提示词（判据 DP 同族），
   // 所以这里刻意不提供「给正文链取守卫」的通道。

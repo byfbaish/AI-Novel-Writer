@@ -566,3 +566,87 @@ it.each(['cancelled', 'notes-changed'] as const)('starts an explicit fresh final
  expect(f.db.prepare("SELECT COUNT(*) FROM generation_runs WHERE json_extract(binding_json,'$.sourceManifest.finalizationGenerationSlotKey') IS NOT NULL").pluck().get()).toBe(2)
  expect(f.dispatch).toHaveBeenCalledTimes(2)
 })
+
+/**
+ * P20-3 章末知情候选（3 条）。
+ *
+ * 只测「接上之后这一步该做什么」——解析 / 反查 / 失效标记在
+ * `src/shared/__tests__/knowledge-candidate.test.ts` 里按纯函数测过，存储语义在
+ * `electron/repositories/__tests__/knowledge-candidate-store.test.ts` 里按库测过。
+ * 这里钉的是只有整条链才看得出来的三件事：
+ * - **模型只给编号**，落库的引文与章号是系统反查出来的（模型写的字进不了库）；
+ * - **越界编号逐条丢弃**，不拖垮整批，也不静默成功；
+ * - **没有 `chapter_notes` 就在 `begin` 就拒**，不白花一次模型调用。
+ */
+const CANDIDATE_CONTENT = '林岚走进了北塔。她手里提着一盏灯。'
+const CANDIDATE_NOTES = '林岚走进了北塔。'
+
+/**
+ * 先跑完 `chapter_notes`（候选的事实来源），再跑候选这一步。
+ *
+ * `reply` 要等 fixture 建好才知道 `characterId`，所以先接一个闭包变量：
+ * dispatch 的第二次调用才读它，那时早已赋值。
+ */
+async function runKnowledgeCandidates(buildReply: (characterId: string) => string) {
+  let call = 0
+  let reply = ''
+  const f = fixture(async (_request, options) => {
+    options.onVisible({ kind: 'delta', text: call++ === 0 ? CANDIDATE_NOTES : reply })
+    return { finishReason: 'stop', usage: null }
+  }, { content: CANDIDATE_CONTENT })
+  reply = buildReply(f.characterId)
+
+  const notes = f.owner.beginFinalizationGeneration({ slot: { source: f.prepared.context.source, stepKey: 'chapter_notes' }, modelId: 'synthetic' })
+  const notesReceipt = await f.owner.executeFinalizationGeneration({ handle: notes.view.handle })
+  f.owner.commitFinalizationGeneration({ handle: notes.view.handle, artifact: f.artifactOf(notesReceipt) })
+
+  const begin = f.owner.beginFinalizationGeneration({ slot: { source: f.prepared.context.source, stepKey: 'knowledge_candidates' }, modelId: 'synthetic' })
+  const receipt = await f.owner.executeFinalizationGeneration({ handle: begin.view.handle })
+  return { f, begin, receipt, commit: () => f.owner.commitFinalizationGeneration({ handle: begin.view.handle, artifact: f.artifactOf(receipt) }) }
+}
+
+it('候选：模型只给编号与角色 id，落库的引文和章号由系统反查（模型写的字进不了库）', async () => {
+  const { f, commit } = await runKnowledgeCandidates(characterId =>
+    JSON.stringify({ knowledge: [{ factIndex: 1, characterId,
+      // 下面这些字段模型不该给；给了也必须被无视（它没有任何位置写事实）。
+      factEvidence: '模型瞎编的引文', factChapter: 99, statement: '模型编的陈述' }] }))
+
+  const committed = commit()
+  expect(committed).toMatchObject({ success: true, stepKey: 'knowledge_candidates', candidateCount: 1, factCount: 1, dropped: [] })
+
+  const [stored] = SummaryRepository.readKnowledgeCandidates(1, f.db)
+  // 引文与章号来自投影里的那条事实，不是模型给的。
+  expect(stored).toMatchObject({
+    factChapter: 1, factEvidence: '林岚走进了北塔。', characterId: f.characterId, learnedChapter: 1,
+  })
+  expect(stored!.statement).not.toBe('模型编的陈述')
+  // 步骤确实把编号清单和名单给了模型（否则它只能猜）。
+  const prompt = lastUserMessage(f.dispatch.mock.calls[1]![0])
+  expect(prompt).toContain('林岚走进了北塔。')
+  expect(prompt).toContain(f.characterId)
+})
+
+it('候选：越界编号与名单外角色逐条丢弃，整批仍提交（不静默成功）', async () => {
+  const { f, commit } = await runKnowledgeCandidates(characterId => JSON.stringify({ knowledge: [
+    { factIndex: 1, characterId },
+    { factIndex: 99, characterId },
+    { factIndex: 1, characterId: 'character:not-in-roster' },
+    { factIndex: 1, characterId },
+  ] }))
+
+  const committed = commit()
+  expect(committed).toMatchObject({ success: true, candidateCount: 1, factCount: 1 })
+  // 收据是三支联合，先窄下来才能看 `dropped`（也顺带钉住 stepKey）。
+  if (committed.stepKey !== 'knowledge_candidates') throw new Error(`unexpected receipt ${committed.stepKey}`)
+  expect(committed.dropped.map(item => item.reason).sort())
+    .toEqual(['character-not-in-roster', 'duplicated', 'fact-index-out-of-range'])
+  expect(SummaryRepository.readKnowledgeCandidates(1, f.db)).toHaveLength(1)
+})
+
+it('候选：没有 chapter_notes 就在 begin 就拒，不白花一次模型调用', async () => {
+  const f = fixture(undefined, { content: CANDIDATE_CONTENT })
+  expect(() => f.owner.beginFinalizationGeneration({
+    slot: { source: f.prepared.context.source, stepKey: 'knowledge_candidates' }, modelId: 'synthetic',
+  })).toThrow('GENERATION_FINALIZATION_PREREQUISITE_MISSING')
+  expect(f.dispatch).not.toHaveBeenCalled()
+})

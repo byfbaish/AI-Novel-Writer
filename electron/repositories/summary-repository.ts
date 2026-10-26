@@ -36,8 +36,39 @@ import { readReviewStateDeltaForDraft } from './review-cycle-repository'
 import { hasCharacterIdentitySchema } from './character-repository'
 import { refreshCharacterStateProjection } from './character-roster-repository'
 import type { ProjectEpoch } from '../../src/shared/source-ref'
+import {
+  markKnowledgeCandidates,
+  knowledgeCandidateFactIdentity,
+  type KnowledgeCandidate,
+  type KnowledgeCandidateView,
+} from '../../src/shared/knowledge-candidate'
+import type { FinalizedContinuityFactCategory } from '../../src/shared/finalized-continuity'
 
 const FACT_CATEGORIES = new Set(['character-state', 'timeline', 'open-thread', 'plot'])
+
+/** M22 之前的库没有这一列。缺列时读侧降级、写侧拒绝（不许假装写了）。 */
+function hasKnowledgeCandidateColumn(db: BetterSqlite3.Database): boolean {
+  return (db.prepare('PRAGMA table_info(summary_snapshots)').all() as Array<{ name: string }>)
+    .some(column => column.name === 'knowledge_candidates')
+}
+
+/**
+ * 读候选 JSON。坏数据（手工改库、旧格式）**整列降级为空数组**，不抛错 ——
+ * 候选是可再生的建议，一条坏的都不该让整个登记页打不开。
+ */
+function parseKnowledgeCandidateStore(raw: string | null | undefined): KnowledgeCandidate[] {
+  if (typeof raw !== 'string' || !raw.trim()) return []
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) } catch { return [] }
+  if (!Array.isArray(parsed)) return []
+  return parsed.filter((item): item is KnowledgeCandidate => {
+    const entry = item as Partial<KnowledgeCandidate> | null
+    return !!entry && typeof entry.factEvidence === 'string'
+      && typeof entry.statement === 'string' && typeof entry.characterId === 'string'
+      && typeof entry.characterName === 'string' && Number.isSafeInteger(entry.factChapter)
+      && Number.isSafeInteger(entry.learnedChapter)
+  })
+}
 const CHARACTER_STATE_FIELDS = new Set<string>(CHARACTER_STATE_TEXT_FIELDS)
 const STATE_COLUMNS: Record<CharacterStateTextField, string> = {
   location: 'cs_location', powerLevel: 'cs_power_level', physicalState: 'cs_physical_state',
@@ -963,6 +994,67 @@ export class SummaryRepository {
         WHERE draft_id = ?
       `).run(JSON.stringify(store), input.draftId)
     })()
+  }
+
+  /**
+   * P20-3：把本章知情候选写进快照（`summary_snapshots.knowledge_candidates`）。
+   *
+   * **覆盖而不是合并**：一个 draft 对应一个已定稿版本，候选只描述这一版。
+   * 同 slot 重跑会被 `finalizationSlotKey` 拦住并复用同一 run，所以正常流程下不会
+   * 出现「两份候选」；真要重跑时覆盖旧值是唯一说得通的行为 —— 合并会让同一章
+   * 每重跑一次就多堆一批。
+   *
+   * **不动 `projection_generation`**：候选不是连续性投影的一部分，改了它会让
+   * 改稿连锁误以为投影推进过（那是另一个真相）。
+   */
+  static saveKnowledgeCandidates(input: { draftId: number; candidates: readonly KnowledgeCandidate[] }, db = getProjectDb()): void {
+    if (!db) throw new Error('项目数据库未打开')
+    if (!Number.isSafeInteger(input.draftId) || input.draftId < 1) throw new Error('KNOWLEDGE_CANDIDATE_INVALID:draftId')
+    if (!hasKnowledgeCandidateColumn(db)) throw new Error('KNOWLEDGE_CANDIDATE_SCHEMA_MISSING')
+    const result = db.prepare('UPDATE summary_snapshots SET knowledge_candidates=? WHERE draft_id=?')
+      .run(JSON.stringify(input.candidates), input.draftId)
+    // 没有快照行 = 前置步骤（`chapter_notes`）没跑。绝不 INSERT 一行占位，
+    // 那会造出一份没有连续性事实、却有候选的投影。
+    if (result.changes === 0) throw new Error('KNOWLEDGE_CANDIDATE_SNAPSHOT_MISSING')
+  }
+
+  /** 读某一稿的候选。列缺失（M22 之前的库）降级成空数组，不报错 —— 与其它宿体同一条纪律。 */
+  static readKnowledgeCandidates(draftId: number, db = getProjectDb()): KnowledgeCandidate[] {
+    if (!db || !hasKnowledgeCandidateColumn(db)) return []
+    const raw = db.prepare('SELECT knowledge_candidates FROM summary_snapshots WHERE draft_id=?').pluck().get(draftId) as string | undefined
+    return parseKnowledgeCandidateStore(raw)
+  }
+
+  /**
+   * 全书候选 + 失效标记，供知情登记页读取。
+   *
+   * 失效判定**用 `(章号, 归一化引文)` 在当前投影里反查**，而不是重算 sha256：
+   * 那个二元组正是 `factKey` 的定义，等价但不用为全书每条事实算一次哈希。
+   */
+  static listKnowledgeCandidateViews(db = getProjectDb()): KnowledgeCandidateView[] {
+    if (!db || !hasKnowledgeCandidateColumn(db)) return []
+    const rows = db.prepare(`
+      SELECT draft_id AS draftId, chapter_number AS chapterNumber, knowledge_candidates AS candidates
+      FROM summary_snapshots
+      WHERE knowledge_candidates <> '[]'
+      ORDER BY chapter_number DESC, id DESC
+    `).all() as Array<{ draftId: number; chapterNumber: number; candidates: string }>
+    if (rows.length === 0) return []
+    const maxChapter = rows.reduce((max, row) => Math.max(max, row.chapterNumber), 0)
+    const projections = SummaryRepository.listFinalizedContinuityBefore(maxChapter + 1, db)
+    const available = new Set<string>()
+    const chaptersWithProjection = new Set<number>()
+    const categories = new Map<string, FinalizedContinuityFactCategory>()
+    for (const projection of projections) {
+      if (projection.sourceStatus !== 'current') continue
+      chaptersWithProjection.add(projection.chapterNumber)
+      for (const fact of projection.facts ?? []) {
+        const identity = knowledgeCandidateFactIdentity(projection.chapterNumber, fact.evidence)
+        available.add(identity)
+        categories.set(identity, fact.category)
+      }
+    }
+    return rows.flatMap(row => markKnowledgeCandidates(parseKnowledgeCandidateStore(row.candidates), available, chaptersWithProjection, categories))
   }
 
   static listFinalizedContinuityBefore(chapterNumber: number, db = getProjectDb()): FinalizedContinuityProjection[] {

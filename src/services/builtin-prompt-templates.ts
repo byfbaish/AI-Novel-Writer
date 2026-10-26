@@ -55,6 +55,7 @@ export const EDITABLE_PROMPT_KEYS: string[] = [
   'refine_from_review',
   'generate_chapter_notes',
   'update_character_cards',
+  'propose_knowledge_candidates',
   'infer_novel_config',
   'infer_single_chapter_blueprint',
   'infer_novel_config_with_vectors',
@@ -1653,6 +1654,41 @@ severity 取值：error=严重的上述客观问题，强烈建议修复；warni
 }
 
 如果本章无任何角色发生状态变化且无新角色，返回 {"updates": [], "newCharacters": []}。`,
+  },
+
+  // ================================================================
+  // 章末知情候选（P20-3）：模型只能在既有事实里挑，不写事实
+  // ================================================================
+
+  {
+    key: 'propose_knowledge_candidates',
+    name: '章末知情候选',
+    description: '定稿后从本章已登记的连续性事实里，挑出「谁在本章新得知了哪一条」，供作者逐条采纳',
+    systemRole: '你是一位严谨的叙事信息编辑。只判断正文明确写出谁获知了某条已登记事实，不概括、不合并、不新增任何事实。',
+    variables: {
+      chapter_content: '章节正文内容',
+      chapter_number: '章节编号',
+      chapter_title: '章节标题',
+      facts_list: '本章已登记的连续性事实编号清单（只能从中挑选）',
+      characters_json: '角色名单（只能从这里的 characterId 取值）',
+    },
+    content: `请判断：在本章正文里，有哪些角色**新得知**了下列已登记事实中的某一条。
+
+【本章正文】
+第{{chapter_number}}章 {{chapter_title}}
+{{chapter_content}}
+
+【本章已登记的连续性事实（只能从中挑选，不得改写）】
+{{facts_list}}
+
+【角色名单（characterId 只能从这里原样复制）】
+{{characters_json}}
+
+判断要点：
+- 只判「本章新得知」。本章之前就已经知道的不算。
+- 判定依据是正文明确写出了获知：在场听见、被对方告知、看到证据、或据此改口与改变行动。
+- 仅仅同时在场、被旁人提到名字、或读者知道而角色没表现出知道，都不算。
+- 拿不准就不写。宁可少提，一条也不许猜。`,
   },
 
   // ================================================================

@@ -10,6 +10,7 @@ import { SummaryRepository } from '../repositories/summary-repository'
 import { BlueprintRepository } from '../repositories/blueprint-repository'
 import { buildFinalizedContinuityFacts } from '../../src/shared/finalized-continuity-facts'
 import { parseStoryDayAnchor } from '../../src/shared/story-day-anchor'
+import { parseKnowledgeCandidateResponse, resolveKnowledgeCandidates } from '../../src/shared/knowledge-candidate'
 import { proveFinalizedCharacterGeneration } from './finalized-character-generation-proof'
 import type { CharacterProposalService } from './character-proposal-service'
 import { needsFinalizedOccurrenceBatch } from './character-proposal-service'
@@ -111,6 +112,29 @@ export class FinalizationGeneration {
         const blueprintUpdated = BlueprintRepository.updateNotes(source.chapterNumber, chapterNotes, this.db)
         receipt = { success: true, stepKey: 'chapter_notes', chapterNotes, factCount: facts.length, blueprintUpdated,
           storyDayOffset: storyDay?.offset ?? null, storyDayMissing: !storyDay }
+      } else if (context.slot.stepKey === 'knowledge_candidates') {
+        // ── 知情候选：模型只给了 {factIndex, characterId}，引文与章号在这里由系统反查 ──
+        const facts = context.continuityFacts ?? []
+        // 空事实 = 前置（`chapter_notes`）没跑或投影已失效。**抛错而不是落一份空候选**：
+        // 落空会让作者以为「本章确实没人新得知」，而真相是这一步根本没材料可判（判据 DN）。
+        if (facts.length === 0) throw new Error('GENERATION_FINALIZATION_FACT_SOURCE_MISSING')
+        const candidateProof = this.artifact(run, reference)
+        const parsed = parseKnowledgeCandidateResponse(candidateProof.artifact.text)
+        const resolution = resolveKnowledgeCandidates({
+          proposals: parsed.proposals,
+          facts,
+          roster: context.identity.characters.map(character => ({ characterId: character.characterId, name: character.displayNameSnapshot })),
+          chapterNumber: context.slot.source.chapterNumber,
+          dropped: parsed.dropped,
+        })
+        SummaryRepository.saveKnowledgeCandidates({ draftId: context.slot.source.draftId, candidates: resolution.candidates }, this.db)
+        receipt = {
+          success: true,
+          stepKey: 'knowledge_candidates',
+          candidateCount: resolution.candidates.length,
+          dropped: structuredClone(resolution.dropped),
+          factCount: facts.length,
+        }
       } else {
         const characterProof = proveFinalizedCharacterGeneration(this.db, this.runs, this.projectId, handle, reference)
         // transferOrigin 同步读取已验证的转移凭据，与本事务同属一次同步执行；凭据被篡改只会读出 null/抛错，趋向冲突而非放行。

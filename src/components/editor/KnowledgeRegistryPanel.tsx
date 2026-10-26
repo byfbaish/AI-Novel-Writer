@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Loader2, Plus, Save, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, Check, Loader2, Plus, Save, Trash2, Undo2 } from 'lucide-react'
 
 import {
   KNOWLEDGE_EVIDENCE_MAX,
@@ -10,6 +10,7 @@ import {
   type KnowledgeStateDefinition,
   type KnowledgeStateInput,
 } from '../../shared/knowledge-state'
+import type { KnowledgeCandidateView } from '../../shared/knowledge-candidate'
 import type { CharacterData } from '../../../electron/repositories/character-repository'
 import { ipc } from '../../services/ipc-client'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -133,6 +134,7 @@ export function KnowledgeRegistryPanel({ projectKey }: { projectKey: string }) {
   const [rows, setRows] = useState<DraftRow[]>([])
   const [characters, setCharacters] = useState<CharacterData[]>([])
   const [candidates, setCandidates] = useState<KnowledgeFactCandidate[]>([])
+  const [proposals, setProposals] = useState<KnowledgeCandidateView[]>([])
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [loadError, setLoadError] = useState('')
@@ -145,21 +147,25 @@ export function KnowledgeRegistryPanel({ projectKey }: { projectKey: string }) {
       setRows([])
       setCharacters([])
       setCandidates([])
+      setProposals([])
       setLoadError('')
       setLoading(false)
       return
     }
     setLoading(true)
-    const [listed, roster, facts] = await Promise.all([
+    const [listed, roster, facts, proposed] = await Promise.all([
       ipc.invokeWithProjectSession(projectSession, 'db:knowledge-list', projectSession.projectPath),
       ipc.invokeWithProjectSession(projectSession, 'db:character-get-all', projectSession.projectPath),
       ipc.invokeWithProjectSession(projectSession, 'db:knowledge-fact-candidates', projectSession.projectPath),
+      ipc.invokeWithProjectSession(projectSession, 'db:knowledge-candidates-list', projectSession.projectPath),
     ])
     if (!isProjectSessionCurrent(projectSession)) return
     setLoading(false)
     setCharacters(Array.isArray(roster) ? roster : [])
     // 候选读不到只影响「选事实」，手动填写照常可用 —— 不因此挡住整页。
     setCandidates(facts?.success ? facts.candidates ?? [] : [])
+    // 章末提议同理：读不到只是没有建议可采纳，不影响这一页的任何写操作。
+    setProposals(proposed?.success ? proposed.entries ?? [] : [])
     if (!listed.success) { setLoadError(writeErrorLabel(listed.error, text)); return }
     setLoadError('')
     setRows((listed.entries ?? []).map(rowFromDefinition))
@@ -176,6 +182,52 @@ export function KnowledgeRegistryPanel({ projectKey }: { projectKey: string }) {
     [characters],
   )
   const withoutIdCount = characters.length - selectableCharacters.length
+
+  /**
+   * 章末提议：按章号分组，滤掉「已经有一条相同事实 + 相同角色」的行。
+   *
+   * 过滤看的是**当前草稿行**而不是库：作者刚采纳、还没保存的那条也不该再出现在提议里
+   * （否则同一条会被采纳两次）；反过来，作者删掉那条草稿后提议会重新出现 —— 正确。
+   */
+  const proposalGroups = useMemo(() => {
+    const identity = (characterId: string, chapter: string, evidence: string) =>
+      `${characterId}\u001f${chapter.trim()}\u001f${evidence.trim()}`
+    const registered = new Set(rows.filter(row => !row.removing)
+      .map(row => identity(row.characterId, row.factChapter, row.factEvidence)))
+    const byChapter = new Map<number, KnowledgeCandidateView[]>()
+    for (const item of proposals) {
+      if (registered.has(identity(item.characterId, String(item.factChapter), item.factEvidence))) continue
+      byChapter.set(item.learnedChapter, [...(byChapter.get(item.learnedChapter) ?? []), item])
+    }
+    return [...byChapter.entries()].sort((left, right) => right[0] - left[0])
+  }, [proposals, rows])
+
+  /**
+   * 采纳一条提议 = **填好一行草稿**，不是写库。
+   *
+   * 刻意不直接落库：模型提议本来就可能认错人，这里直接写等于让模型替作者登记。
+   * 点「保存」才生效，与面板其余行走完全同一条路径。
+   */
+  const adoptProposal = (item: KnowledgeCandidateView) => {
+    setStatus('')
+    // 不在这里从 `proposals` 里删：可见性由 `proposalGroups` 按草稿行过滤，
+    // 这样作者把那条草稿删掉之后，提议会自己回来（删了才发现不用采纳 —— 应该能反悔）。
+    setRows(previous => [...previous, {
+      ...emptyRow(),
+      characterId: item.characterId,
+      // 手填模式，但章号与引文都已给出，作者只需核对。
+      // `pickedFactKey` 留空是**有意的**：提议走的是另一条通道（章末候选），它的 key
+      // 不在「选事实」下拉的候选集里，硬塞一个 key 会让下拉显示空白、作者以为选项丢了。
+      mode: 'manual',
+      factChapter: String(item.factChapter),
+      factEvidence: item.factEvidence,
+      learnedChapter: String(item.learnedChapter),
+    }])
+    setStatus(text(
+      '已加入一条待保存的知情关系 —— 点「保存」后才生效',
+      'Added one pending entry; it takes effect only after you press Save.',
+    ))
+  }
 
   const applyField = (key: string, field: keyof DraftRow, value: string) => {
     setStatus('')
@@ -356,6 +408,48 @@ export function KnowledgeRegistryPanel({ projectKey }: { projectKey: string }) {
             `${withoutIdCount} character(s) have no character id (legacy data) and are not selectable \u2014 knowledge must bind to a character, not a name.`,
           )}
         </p>
+      )}
+
+      {/* ── 章末提议（P20-3）。采纳只是填草稿，保存才落库。 ─────────────── */}
+      {proposalGroups.length > 0 && (
+        <div className="rounded border p-2 space-y-2" data-testid="knowledge-proposals"
+          style={{ borderColor: 'var(--color-border)' }}>
+          <p className="text-[11px]" style={{ color: 'var(--color-text-muted)' }}>
+            {text(
+              '下面是定稿后模型给出的知情提议：它只在「本章已有的事实」里挑人，没有写任何新事实。点「采纳」只是填好一行草稿 —— 还要点上面的「保存」才生效。',
+              'These are suggestions from the finalization step: the model only picked people from facts that already exist, and wrote no new facts. "Adopt" just fills in a draft row — it takes effect only after you press Save.',
+            )}
+          </p>
+          {proposalGroups.map(([chapterNumber, items]) => (
+            <div key={chapterNumber} className="space-y-1" data-testid="knowledge-proposal-group">
+              <p className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>
+                {text(`第 ${chapterNumber} 章提议（${items.length} 条 · 未采纳）`, `Chapter ${chapterNumber} suggestions (${items.length}, not adopted)`)}
+              </p>
+              {items.map(item => {
+                const broken = item.refState !== 'valid'
+                return (
+                  <div key={`${item.factChapter}:${item.factEvidence}:${item.characterId}`}
+                    data-testid="knowledge-proposal"
+                    className="flex flex-wrap items-baseline gap-2 text-xs"
+                    style={{ opacity: broken ? 0.6 : 1 }}>
+                    <span className="font-medium" style={{ color: 'var(--color-text)' }}>{item.characterName}</span>
+                    <span style={{ color: 'var(--color-text-muted)' }}>· {item.statement}</span>
+                    {broken && (
+                      <span data-testid="knowledge-proposal-broken" style={{ color: 'var(--color-danger)' }}>
+                        {item.refState === 'stale'
+                          ? text('所依据的定稿事实已变更，不可采纳', 'the underlying fact changed; cannot adopt')
+                          : text('该章定稿投影已失效，不可采纳', 'that chapter\u2019s projection is gone; cannot adopt')}
+                      </span>
+                    )}
+                    <Button size="sm" disabled={broken || busy} onClick={() => adoptProposal(item)}>
+                      <Check size={12} />{text('采纳', 'Adopt')}
+                    </Button>
+                  </div>
+                )
+              })}
+            </div>
+          ))}
+        </div>
       )}
 
       {loading

@@ -72,7 +72,7 @@
 | 生成归属 / 传输 | `generation-owner-contract`（渲染层↔主进程归属）· `generation-contract`（诊断与哈希）· `agent-response-protocol` · `structured-contract-diagnostic` / `json-text-repair` |
 | 正文其它 | `text-scope-tags`（自由文本段级标签 + 作用域字段）· `novel-config-localization` · `draft-short-outline`（短细纲契约与提示词）· `volume-handoff` / `volume-handoff-gate` · `draft-units`（字数口径）· `world-state-view` |
 
-### 3.2 内置模板 key（29 个）与**真实消费方**
+### 3.2 内置模板 key（30 个）与**真实消费方**
 
 | # | key | 用途 | EDITABLE | 有消费方 |
 |---|---|---|---|---|
@@ -105,8 +105,9 @@
 | 27 | `world_building_resource_extract` | 资源登记提案 | **否** | ✅ |
 | 28 | `extract_resource_movements` | 定稿后资源变动抽取 | **否** | ✅（默认不注册步骤） |
 | 29 | `generate_volume_handoff` | 卷末交接单生成 | **否** | ✅ |
+| 30 | `propose_knowledge_candidates` | 章末知情候选（P20-3） | 是 | ✅（定稿后处理链步骤 2c，`critical: false`） |
 
-`EDITABLE_PROMPT_KEYS` 23 项（`src/services/builtin-prompt-templates.ts:37`）· `ARCHITECTURE_PROMPT_KEYS` 6 项（同文件 `:74`，仅 UI 标注"不建议修改"）。
+`EDITABLE_PROMPT_KEYS` 24 项（`src/services/builtin-prompt-templates.ts:37`）· `ARCHITECTURE_PROMPT_KEYS` 6 项（同文件 `:74`，仅 UI 标注"不建议修改"）。
 
 ### 3.3 变量契约与兜底注入
 

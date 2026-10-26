@@ -24,6 +24,7 @@ import { captureImportGenerationContext, importGenerationSlotKey } from './impor
 import type { EditorInlineInput } from '../../src/shared/editor-inline-generation';
 import { buildEditorInlineContext, validateEditorInlineInput, editorInlineTask } from './editor-inline-generation';
 import type { FinalizationGenerationContext, FinalizationGenerationSlot } from '../../src/shared/finalization-generation';
+import { finalizationStepSpec } from '../../src/shared/finalization-generation';
 import { captureFinalizationGenerationContext, finalizationSlotKey, finalizationGenerationTask } from './finalization-generation-source';
 import type { GraphGenerationContext, GraphGenerationInput } from '../../src/shared/graph-generation';
 import { captureGraphGenerationContext, graphGenerationTask, validateGraphGenerationInput } from './graph-generation-source';
@@ -548,7 +549,7 @@ export function buildGenerationSourceBinding(deps: GenerationSourceBindingDepend
     const agentContext = agentInput && agentPrompt ? buildAgentGenerationContext(agentInput, facts.core, facts.language, agentPrompt.selected, agentPrompt.builtin) : undefined;
     const editorInlineContext = editorInlineInput ? buildEditorInlineContext(editorInlineInput, facts.language, importPrompts.edit_selected_text!) : undefined;
     const finalizationContext = input.finalizationGenerationSlot ? captureFinalizationGenerationContext(deps.db, input.finalizationGenerationSlot, input, facts.language,
-        importPrompts[input.finalizationGenerationSlot.stepKey === 'chapter_notes' ? 'generate_chapter_notes' : 'update_character_cards']!, input.finalizationGenerationContext) : undefined;
+        importPrompts[finalizationStepSpec(input.finalizationGenerationSlot.stepKey).promptKey]!, input.finalizationGenerationContext) : undefined;
     if (finalizationContext) add('finalization-generation-context', 0, JSON.stringify(finalizationContext), 'finalized-fact', 'main captured finalization identity, original field baselines and selected prompt');
     if (editorInlineContext) add('editor-inline:author-draft', 0, JSON.stringify(editorInlineContext), 'author-constraint', 'explicit unsaved author manuscript and UTF16 selection; not a canonical document');
     const importContext = input.importSlot ? captureImportGenerationContext(deps.db, input.importSlot) : undefined;

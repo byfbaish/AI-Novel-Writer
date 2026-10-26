@@ -42,6 +42,7 @@ export const CORE_LOCALIZED_BUILTIN_PROMPT_KEYS = Object.freeze([
   'refine_from_review',
   'generate_chapter_notes',
   'update_character_cards',
+  'propose_knowledge_candidates',
   'analyze_writing_style',
   'infer_novel_config',
   'extract_initial_characters',
@@ -826,7 +827,26 @@ recentEvents records this character's latest state at the end of the chapter, wi
 Return exactly one JSON object:
 {"updates":[{"name":"exact existing name","currentState":{"location":"...","powerLevel":"...","physicalState":"...","mentalState":"...","keyItems":"...","recentEvents":"...","updatedAtChapter":{{chapter_number}}}}],"newCharacters":[{"name":"exact new name","role":"protagonist|antagonist|supporting|minor","currentState":{"location":"...","powerLevel":"...","physicalState":"...","mentalState":"...","keyItems":"...","recentEvents":"...","updatedAtChapter":{{chapter_number}}}}]}
 
-If nothing changed and no important character was introduced, return {"updates":[],"newCharacters":[]}. Output JSON only, with no Markdown or explanation.`,
+    If nothing changed and no important character was introduced, return {"updates":[],"newCharacters":[]}. Output JSON only, with no Markdown or explanation.`,
+  },
+  propose_knowledge_candidates: {
+    systemRole: 'You are a rigorous narrative-information editor. You judge only who is explicitly shown to learn an already registered fact, and you never summarise, merge, or invent facts.',
+    content: `Decide which characters newly learn one of the registered facts below, in this chapter's manuscript.
+
+[Chapter {{chapter_number}} manuscript]
+{{chapter_content}}
+
+[Registered continuity facts for this chapter — pick only from these, never rewrite them]
+{{facts_list}}
+
+[Roster — copy characterId verbatim from here]
+{{characters_json}}
+
+Rules:
+- Only newly learned in this chapter. Prior knowledge does not count.
+- Count it only when the prose explicitly shows the character acquiring it: hearing it on the spot, being told, seeing the evidence, or acting on it.
+- Mere co-presence, being mentioned by name, or the reader knowing while the character shows no sign of knowing, does not count.
+- If unsure, omit. Fewer is better; never guess.`,
   },
   analyze_writing_style: {
     systemRole: 'You are a rigorous fiction-style analyst. Turn observable craft in a reference novel into a small set of concise, optional writing techniques without retelling its plot.',

@@ -24,9 +24,10 @@ export const MIGRATION_LANE = Object.freeze([
   Object.freeze({ id: 'M19', from: 19, to: 20, owner: 'P1-2' }),
   Object.freeze({ id: 'M20', from: 20, to: 21, owner: 'A2' }),
   Object.freeze({ id: 'M21', from: 21, to: 22, owner: 'P20' }),
+  Object.freeze({ id: 'M22', from: 22, to: 23, owner: 'P20' }),
 ] as const)
 
-export const LATEST_SCHEMA_VERSION = 22
+export const LATEST_SCHEMA_VERSION = 23
 export type { MigrationId } from '../../src/shared/project-storage'
 
 /** This adapter is supplied for an already authorized, exclusive staging DB by S04.

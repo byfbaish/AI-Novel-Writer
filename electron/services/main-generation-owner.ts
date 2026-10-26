@@ -39,7 +39,9 @@ import type { AgentGenerationContext, AgentGenerationInput } from '../../src/sha
 import type { EditorInlineInput, EditorInlineRecovery, EditorInlineGenerationChannels } from '../../src/shared/editor-inline-generation'
 import { validateEditorInlineInput, readEditorInlineContext, readEditorInlineTask } from './editor-inline-generation'
 import type { FinalizationGenerationChannels, FinalizationGenerationSlot, FinalizationGenerationRecovery } from '../../src/shared/finalization-generation'
+import { finalizationStepSpec, isFinalizationOperation } from '../../src/shared/finalization-generation'
 import { FinalizationGeneration } from './finalization-generation'
+import { readChapterContinuityFacts } from './finalization-generation-source'
 import { finalizationSlotKey, readFinalizationGenerationContext } from './finalization-generation-source'
 import { proveFinalizedCharacterGeneration } from './finalized-character-generation-proof'
 import { parseFinalizedCharacterStateResponse } from '../../src/shared/finalized-continuity'
@@ -361,7 +363,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       || typeof selection.uiActionNonce !== 'string' || !selection.uiActionNonce.trim() || selection.uiActionNonce.length > 256
       || Object.keys(selection).some(key => !['operation', 'uiActionNonce', 'modelId', 'chapterNumber', 'selectedDraftIds', 'selectedFinalizedDraftIds', 'selectedBlueprintChapterNumbers', 'promptKeys', 'skillStages', 'authorInputs', 'output', 'outputOverrides', 'parentRootActionId', 'continueDirectoryOperationId', 'batchId', 'batchIntent', 'preparationId', 'finalizedCharacterContextId', 'reviewRevisionContextId', 'agentWorkflowRegistrationId', 'materialDecision', 'importSlot', 'importExecution', ...(agentInitialization ? ['agentInput', 'agentSession'] : []), ...(editorInitialization ? ['editorInlineInput'] : []), ...(finalizationInitialization ? ['finalizationGenerationSlot'] : []), ...(graphInitialization ? ['graphGenerationInput', 'graphGenerationKey'] : []), ...(legacyInitialization ? ['legacyRosterKey'] : [])].includes(key))) throw new Error('GENERATION_BEGIN_INVALID')
     if (selection.operation === 'editor-inline' && !editorInitialization) throw new Error('GENERATION_EDITOR_ADMISSION_REQUIRED')
-    if (['finalized-chapter-notes', 'finalized-character-state'].includes(selection.operation) && !finalizationInitialization) throw new Error('GENERATION_FINALIZATION_ADMISSION_REQUIRED')
+    if (isFinalizationOperation(selection.operation) && !finalizationInitialization) throw new Error('GENERATION_FINALIZATION_ADMISSION_REQUIRED')
     if (Object.values(graphOperations).includes(selection.operation as typeof graphOperations[keyof typeof graphOperations]) && !graphInitialization) throw new Error('GENERATION_GRAPH_ADMISSION_REQUIRED')
     if (selection.operation === 'legacy-character-roster-repair' && !legacyInitialization) throw new Error('GENERATION_LEGACY_ADMISSION_REQUIRED')
     const importAdmission = imports.admit(selection)
@@ -512,7 +514,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     if (run.binding.sourceManifest.operation === 'agent-round' && !agentExecution) throw new Error('GENERATION_AGENT_ADMISSION_REQUIRED')
     if (run.binding.sourceManifest.importSlot && !importExecution) throw new Error('GENERATION_IMPORT_ADMISSION_REQUIRED')
     if (run.binding.sourceManifest.operation === 'editor-inline' && !editorExecution) throw new Error('GENERATION_EDITOR_ADMISSION_REQUIRED')
-    if (['finalized-chapter-notes', 'finalized-character-state'].includes(run.binding.sourceManifest.operation as string) && !finalizationExecution) throw new Error('GENERATION_FINALIZATION_ADMISSION_REQUIRED')
+    if (isFinalizationOperation(run.binding.sourceManifest.operation) && !finalizationExecution) throw new Error('GENERATION_FINALIZATION_ADMISSION_REQUIRED')
     if (Object.values(graphOperations).includes(run.binding.sourceManifest.operation as typeof graphOperations[keyof typeof graphOperations]) && !graphExecution) throw new Error('GENERATION_GRAPH_ADMISSION_REQUIRED')
     if (run.binding.sourceManifest.operation === 'legacy-character-roster-repair' && !legacyExecution) throw new Error('GENERATION_LEGACY_ADMISSION_REQUIRED')
     assertSemanticGenerationTask(request.task)
@@ -1113,9 +1115,15 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       const prepared = finalizedCharacters.readContext(slot.source.draftId)
       if (!isDeepStrictEqual(prepared.context.source, slot.source)) throw new Error('GENERATION_FINALIZATION_SOURCE_CHANGED')
       const characterStep = slot.stepKey === 'character_cards'
-      const view = begin({ operation: characterStep ? 'finalized-character-state' : 'finalized-chapter-notes', uiActionNonce: `finalization:${finalizationSlotKey(slot)}${prior ? `:retry:${prior.runId}` : ''}`,
+      // 知情候选的前置是 `chapter_notes`（事实由那一步产出）。这里就让 begin 失败，
+      // 而不是跑完一次模型再在 commit 里抛 —— 那会白花一次调用，还把失败留到最后一步，
+      // 作者只看到「后处理失败」却不知道是前置没跑。
+      if (slot.stepKey === 'knowledge_candidates' && readChapterContinuityFacts(deps.database, slot).length === 0)
+        throw new Error('GENERATION_FINALIZATION_PREREQUISITE_MISSING')
+      const spec = finalizationStepSpec(slot.stepKey)
+      const view = begin({ operation: spec.operation, uiActionNonce: `finalization:${finalizationSlotKey(slot)}${prior ? `:retry:${prior.runId}` : ''}`,
         modelId: selectedModelId, chapterNumber: slot.source.chapterNumber, selectedDraftIds: [], selectedFinalizedDraftIds: [slot.source.draftId],
-        promptKeys: [characterStep ? 'update_character_cards' : 'generate_chapter_notes'], skillStages: ['review'], output: characterStep ? 'structured-data' : 'visible-text',
+        promptKeys: [spec.promptKey], skillStages: [spec.skillStage], output: spec.output,
         authorInputs: [{ id: 'finalized-character-context', text: JSON.stringify(prepared.context) }],
         ...(characterStep ? { finalizedCharacterContextId: prepared.contextId } : {}), ...(parentRootActionId ? { parentRootActionId } : {}), finalizationGenerationSlot: slot }, false, false, false, true)
       return finalizationRecovery(repository.get(view.handle.runId))

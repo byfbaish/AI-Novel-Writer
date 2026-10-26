@@ -76,7 +76,7 @@ export interface FinalizeChapterParams {
 }
 
 export interface FinalizePostProcessGeneration {
-  finalizedStage?(stepKey: 'chapter_notes' | 'character_cards', context: WorkflowContext): Promise<FinalizationGenerationEffect>
+  finalizedStage?(stepKey: 'chapter_notes' | 'character_cards' | 'knowledge_candidates', context: WorkflowContext): Promise<FinalizationGenerationEffect>
   complete(
     builder: { build: () => string; getSystemRole: () => string },
     callbacks: StepCallbacks,
@@ -92,9 +92,10 @@ export interface FinalizePostProcessGeneration {
   /**
    * W6b 资源变动抽取的模型调用（可选）。
    *
-   * 为什么不走 `finalizedStage`：主进程的定稿生成槽位只认两个 `stepKey`
-   * （`finalization-generation-source.ts:13` 的白名单、`main-generation-owner.ts:1100` 的
-   * 兄弟槽前置校验），第三槽要动的是跑批/提交/回执五处不变量，不属于本波范围。
+   * 为什么不走 `finalizedStage`：定稿生成槽位要求「一步一条可复用 run + 只从冻结清单读数」，
+   * 而资源账本要的是「明确的数量变化」+ 整章重建（`replaceChapterMovements`），
+   * 两者的幂等单位不同（槽位按 run，账本按章）。P20-3 的知情候选能进槽位，正是因为它
+   * 只挑既有事实、产出的是**建议**而不是事实。
    * 因此账本走一次性调用（`completeResourceLedgerExtraction`），由 `critical: false` 兜底：
    * 它失败只让「该章起账本中断」，不会把已经提交的定稿判成失败。
    */
@@ -534,6 +535,35 @@ export function buildFinalizePostProcessSteps(
       },
     })
   }
+
+  // ─── 步骤 2c: 章末知情候选（P20-3）────────────────────────────────
+  //
+  // 依赖 `chapter_notes` 已产出本章连续性事实：没有事实，`beginFinalizationGeneration`
+  // 会直接抛 `GENERATION_FINALIZATION_PREREQUISITE_MISSING`，作者在步骤状态里就能看到
+  // 「前置没跑」，而不是拿到一份空候选以为「本章确实没人新得知」。
+  //
+  // 模型只挑不写（只给 factIndex + characterId），所以这一步失败最坏只是少一批**建议**，
+  // 不影响定稿事实与后续识别 ⇒ `critical: false`。
+  // 只在主进程驱动路径注册：兼容路径（`generation.complete`）没有冻结事实的来源。
+  if (generation.finalizedStage) steps.push({
+    key: 'knowledge_candidates',
+    label: text('知情候选', 'Knowledge candidates'),
+    critical: false,
+    executor: async (callbacks, context) => {
+      if (!context || context.cancelled) throw new Error('GENERATION_WORKFLOW_CANCELLED')
+      const effect = await generation.finalizedStage!('knowledge_candidates', context)
+      if (effect.stepKey !== 'knowledge_candidates') throw new Error('FINALIZATION_GENERATION_EFFECT_MISMATCH')
+      callbacks.log(workflowUiText(
+        context,
+        `已生成知情候选 ${effect.candidateCount} 条（本章可用事实 ${effect.factCount} 条`
+          + (effect.dropped.length > 0 ? `，丢弃 ${effect.dropped.length} 条` : '')
+          + '）—— 到「知情」页逐条采纳后才生效，未采纳的候选不进任何提示词',
+        `Generated ${effect.candidateCount} knowledge candidate(s) from ${effect.factCount} available fact(s)`
+          + (effect.dropped.length > 0 ? `, ${effect.dropped.length} rejected` : '')
+          + '. They take effect only after you adopt them on the Knowledge page; unadopted candidates never enter any prompt.',
+      ))
+    },
+  })
 
   // Model IDs refer only to the identity snapshot frozen by the original finalization.
   steps.push({
