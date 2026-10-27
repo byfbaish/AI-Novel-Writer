@@ -109,6 +109,57 @@ function rowFromDefinition(ability: PowerAbilityDefinition): DraftRow {
 
 const POSITIVE = /^[1-9]\d*$/u
 
+/**
+ * 能力表的**阅读顺序**（只影响界面，不改后端 SQL、不改提示词里那一份）。
+ *
+ * ## 为什么后端那份顺序不能直接用
+ *
+ * `listPowerAbilities` 是 `ORDER BY name`（码元序），注释写明理由是「与提示词里的排序同一口径」。
+ * 那个理由对**模型**成立（缓存友好、顺序稳定），对**作者**不成立：码元序把一整套体系打散了。
+ * 本项目实测 13 条其实是两拨——「因果纹」7 条（0 / 1–8 / 9–17 / 18–26 / 27 / 28–35 / 36 道）
+ * 与「境界」6 条（引气→合道）——按汉字码元序排出来是
+ * 倒计纹、催收线、催纹、凝丹、化神、合道……，既不是纹的递进，也不是境界的递进。
+ *
+ * ## 三档，各用**已有的**信息排，一个新字段都不加
+ *
+ * 1. **在等级表里出现过**（`ladderOrder`，即第 1 维四列表的首列顺序）⇒ 按表序。
+ *    这是境界递进的权威来源：作者写等级表时本来就把引气排在前、合道排在后。
+ * 2. **不在表里、但 `hardLimit` 以数字开头**（如「28—35道」）⇒ 按起始数升序。
+ * 3. **其余** ⇒ 保持后端顺序（码元序），即「排不出来就不装成排得出来」。
+ *
+ * 三档的先后也是按信息强度排的：体系主干在最前，有刻度的碎片其次，排不动的垫底。
+ */
+export function orderAbilityRows<T extends { name: string; hardLimit: string }>(
+  rows: readonly T[],
+  ladderOrder: readonly string[] = [],
+): T[] {
+  const ladderRank = new Map<string, number>()
+  for (const [index, raw] of ladderOrder.entries()) {
+    const name = raw.trim()
+    // 同名只认第一次出现：等级表里重复的等级名不该让位次来回跳。
+    if (name && !ladderRank.has(name)) ladderRank.set(name, index)
+  }
+  const leadingNumber = (value: string): number | null => {
+    const match = /^\s*(\d+)/u.exec(value)
+    if (!match) return null
+    const parsed = Number(match[1])
+    return Number.isSafeInteger(parsed) ? parsed : null
+  }
+  const keyed = rows.map((row, index) => {
+    const rank = ladderRank.get(row.name.trim())
+    const start = leadingNumber(row.hardLimit)
+    return { row, index, rank: rank ?? null, start, tier: rank !== undefined ? 0 : start !== null ? 1 : 2 }
+  })
+  keyed.sort((a, b) => {
+    if (a.tier !== b.tier) return a.tier - b.tier
+    if (a.tier === 0 && a.rank !== b.rank) return (a.rank ?? 0) - (b.rank ?? 0)
+    if (a.tier === 1 && a.start !== b.start) return (a.start ?? 0) - (b.start ?? 0)
+    // 同档内：保持后端给的码元序（`index` 即读回来的顺序）。
+    return a.index - b.index
+  })
+  return keyed.map(item => item.row)
+}
+
 function writeErrorLabel(error: string | undefined, text: LocaleText): string {
   switch (error) {
     case 'ABILITY_NAME_DUPLICATED': return text('这个能力名已经登记过了', 'That ability name is already registered')
@@ -171,6 +222,16 @@ export function AbilityRegistryPanel({ projectKey, worldbuilding }: { projectKey
    * 零模型解析拿到世界观就能算，多一个存储来源就多一处「两份候选打架」的可能。
    */
   const ladderSet = useMemo(() => extractAbilityCandidates(worldbuilding), [worldbuilding])
+
+  /**
+   * 界面阅读顺序（见 `orderAbilityRows`）。**用等级表的首列名序当境界顺序** ——
+   * 这是作者写第 1 维时已经给过的权威位次，不必再加一个序位字段。
+   * 只影响渲染，`rows` 本身仍是后端顺序，保存/删除都按 `key` 走，不受影响。
+   */
+  const orderedRows = useMemo(
+    () => orderAbilityRows(rows, ladderSet.candidates.map(candidate => candidate.name)),
+    [rows, ladderSet],
+  )
 
   /** 已登记的能力名：同名候选不给重复勾选（`name` 是 UNIQUE，后端会报 ABILITY_NAME_DUPLICATED）。 */
   const registeredNames = useMemo(
@@ -458,7 +519,7 @@ export function AbilityRegistryPanel({ projectKey, worldbuilding }: { projectKey
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, index) => {
+                {orderedRows.map((row, index) => {
                   const limitsEmpty = !row.hardLimit.trim() && !row.weakness.trim() && !row.costNote.trim()
                   return (
                     <tr key={row.key} data-testid="ability-row" style={{ opacity: row.removing ? 0.5 : 1 }}>

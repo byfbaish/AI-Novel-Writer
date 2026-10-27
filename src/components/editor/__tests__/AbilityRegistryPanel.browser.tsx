@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ABILITY_FORM_HINTS, type PowerAbilityDefinition, type PowerAbilityInput } from '../../../shared/power-ability'
 import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
 import { useProjectStore } from '../../../stores/project-store'
-import { AbilityRegistryPanel } from '../AbilityRegistryPanel'
+import { AbilityRegistryPanel, orderAbilityRows } from '../AbilityRegistryPanel'
 
 /**
  * P1-1 期 4b 能力登记面板（13 条）。验收口径：
@@ -400,5 +400,72 @@ describe('能力登记面板', () => {
     expect([0, 1].map(index => candidateField(index, 'candidate-name').textContent))
       .toEqual(['练气一层', '筑基期'])
     expect(container.textContent).not.toContain('等级名')
+  })
+})
+
+/**
+ * 界面阅读顺序（`orderAbilityRows`）。
+ *
+ * 这条与「后端 ORDER BY name」是**故意不一致**的两份顺序：后端那份要喂给提示词（缓存稳定），
+ * 这份要给作者看（体系可读）。测试用本项目实机跑出来的 13 条真实名称，
+ * 免得日后有人把它改成「跟后端一致」时以为是在修 bug。
+ */
+describe('能力表阅读顺序', () => {
+  const LIVE = [
+    ['倒计纹', '28—35道'], ['催收线', '27道'], ['催纹', '18—26道'],
+    ['凝丹', '凝丹需“脉芯”，一条活脉只够一人凝丹，长老会三分之二票通过，十年一遇'],
+    ['化神', '末法无脉可依，化神需吞一枚同阶凝丹'],
+    ['合道', '天道收债，合道即天劫'],
+    ['开脉', '开脉需活脉灵气灌体'],
+    ['引气', '末法吐纳效率仅一成，外门弟子每月三块下品灵石'],
+    ['微纹', '1—8道'], ['无纹', '0'], ['显纹', '9—17道'], ['满纹', '36道'],
+    ['筑基', '需筑基荐额，外门每年一个'],
+  ] as const
+  // 后端码元序（`ORDER BY name`）读回来的实际顺序。
+  const BACKEND_ORDER = [
+    '倒计纹', '催收线', '催纹', '凝丹', '化神', '合道',
+    '开脉', '引气', '微纹', '无纹', '显纹', '满纹', '筑基',
+  ]
+  const rows = BACKEND_ORDER.map(name => {
+    const found = LIVE.find(([n]) => n === name)!
+    return { name: found[0], hardLimit: found[1] }
+  })
+
+  it('纹那一拨按道数升序（0 → 1–8 → 9–17 → 18–26 → 27 → 28–35 → 36）', () => {
+    const ordered = orderAbilityRows(rows).filter(row => /^\s*\d/u.test(row.hardLimit)).map(row => row.name)
+    expect(ordered).toEqual(['无纹', '微纹', '显纹', '催纹', '催收线', '倒计纹', '满纹'])
+  })
+
+  it('有刻度的档整体排在无刻度档之前；不传等级表时无刻度档只保持后端顺序', () => {
+    const ordered = orderAbilityRows(rows).map(row => row.name)
+    expect(ordered.slice(0, 7)).toEqual(['无纹', '微纹', '显纹', '催纹', '催收线', '倒计纹', '满纹'])
+    // 没有等级表可用时，境界那 6 条排不出来 —— 不许假装排得出，退回码元序。
+    expect(ordered.slice(7)).toEqual(['凝丹', '化神', '合道', '开脉', '引气', '筑基'])
+  })
+
+  it('★ 传入等级表首列名序后，境界按表序（引气→合道）排在体系主干位', () => {
+    const ladder = ['引气', '筑基', '开脉', '凝丹', '化神', '合道']
+    const ordered = orderAbilityRows(rows, ladder).map(row => row.name)
+    expect(ordered.slice(0, 6)).toEqual(['引气', '筑基', '开脉', '凝丹', '化神', '合道'])
+    // 等级表里没有的那一拨继续按硬限制起始数 —— 两套体系各自成序，互不干扰。
+    expect(ordered.slice(6)).toEqual(['无纹', '微纹', '显纹', '催纹', '催收线', '倒计纹', '满纹'])
+  })
+
+  it('等级表里的重名只认第一次出现（位次不来回跳）', () => {
+    const ladder = ['引气', '引气', '筑基']
+    const two = [{ name: '筑基', hardLimit: '' }, { name: '引气', hardLimit: '' }]
+    expect(orderAbilityRows(two, ladder).map(r => r.name)).toEqual(['引气', '筑基'])
+  })
+
+  it('空表与单行不炸；稳定排序（相同起始数保持原序）', () => {
+    expect(orderAbilityRows([])).toEqual([])
+    expect(orderAbilityRows([{ name: '甲', hardLimit: '' }]).map(r => r.name)).toEqual(['甲'])
+    const tied = [{ name: '乙', hardLimit: '5道' }, { name: '甲', hardLimit: '5' }]
+    expect(orderAbilityRows(tied).map(r => r.name)).toEqual(['乙', '甲'])
+  })
+
+  it('不可解析的硬限制（中文数字、空串）进无刻度档，不参与数字比较', () => {
+    const mixed = [{ name: '乙', hardLimit: '十二道' }, { name: '甲', hardLimit: '3道' }, { name: '丙', hardLimit: '' }]
+    expect(orderAbilityRows(mixed).map(r => r.name)).toEqual(['甲', '乙', '丙'])
   })
 })
