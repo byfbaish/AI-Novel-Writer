@@ -1,4 +1,5 @@
 import type { NovelConfig } from '../../../shared/ipc-channels'
+import { STORY_BEAT_KEYS } from '../../../shared/story-beats'
 import { useProjectStore } from '../../../stores/project-store'
 import { ipc } from '../../ipc-client'
 import { buildAgentTool, type AgentExecutionContext } from '../tool-registry'
@@ -10,7 +11,7 @@ const STRING_FIELDS = new Set<keyof NovelConfig>([
 ])
 const NUMBER_FIELDS = new Set<keyof NovelConfig>(['totalChapters', 'wordsPerChapter'])
 const ENUM_FIELDS: Partial<Record<keyof NovelConfig, readonly string[]>> = {
-  plotStructure: ['three_act', 'heros_journey', 'save_the_cat', 'kishotenketsu', 'multi_thread', 'freeform'],
+  plotStructure: STORY_BEAT_KEYS,
   narrativePOV: ['third_limited', 'first_person', 'third_omniscient', 'multi_pov'],
   writingLanguage: ['zh-CN', 'en-US'],
 }

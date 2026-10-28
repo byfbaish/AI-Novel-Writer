@@ -1,6 +1,6 @@
 import type Database from 'better-sqlite3'
 import { isDeepStrictEqual } from 'node:util'
-import type { ApproveCharacterProposalRequest, CancelCharacterProposalRequest, CharacterCastDecisionView, CharacterIdentitySnapshot, CharacterProposalBatch, CharacterProposalHistoryEntry, CharacterProposalItem, CharacterProposalSource, CharacterStaticFields, PendingFinalizedCharacterProposalSummary, RegisterCharacterCastRequest, RevokeCharacterCastRequest } from '../../src/shared/character-proposal'
+import type { ApproveCharacterProposalRequest, CancelCharacterProposalRequest, CharacterCastDecisionView, CharacterIdentitySnapshot, CharacterProposalBatch, CharacterProposalDecision, CharacterProposalHistoryEntry, CharacterProposalItem, CharacterProposalSource, CharacterStaticFields, PendingFinalizedCharacterProposalSummary, RegisterCharacterCastRequest, RevokeCharacterCastRequest } from '../../src/shared/character-proposal'
 import { isAdoptedCharacterDecision } from '../../src/shared/character-proposal'
 import { resolveScopedCharacterIdentity, type CharacterStaticProvenance } from '../../src/shared/character-identity'
 import { CHARACTER_ROLES } from '../../src/shared/character-role'
@@ -77,6 +77,95 @@ function normalizeForMerge(value: string): string {
     .toLowerCase()
     .replace(/\s+/gu, '')
     .replace(/[，。；、,.;:：!！?？"'“”‘’（）()【】[\]]/gu, '')
+}
+
+/** 一条待写入的关系边（面板/默认决策都用这个形状）。 */
+export interface ProposalRelationshipInput {
+  sourceSelectionKey?: string
+  sourceCharacterId?: string
+  targetSelectionKey?: string
+  targetCharacterId?: string
+  relation: string
+}
+
+type CommittedRelationship = NonNullable<CharacterIdentityCommitRequest['relationships']>[number]
+
+/**
+ * 关系边的合法性判定与规范化。**纯函数，导出以便单测。**
+ *
+ * ## 合同（两端各二选一）
+ * - 来源：本批候选的 `sourceSelectionKey`（该候选必须被 create/map 采用）**或**已有卡的
+ *   `sourceCharacterId`；
+ * - 目标：本批候选的 `targetSelectionKey`（同样必须被采用）**或**已有卡的 `targetCharacterId`。
+ * 暂不采用 / 功能配角不会产生角色，任何一端落在它们身上都必须拒绝 —— 否则边无处可写。
+ *
+ * ## 为什么目标绑定到已有卡时只核对关系文本（2026-10-28 修）
+ * 面板给每一行都提供「绑定到已有角色卡」。候选自己声明的边写的是**候选键**，作者把目标改成
+ * 已有卡之后，批内根本没有那个键可等值比较。此前的判据是
+ * `item.targetSelectionKey === relation.targetSelectionKey`，在目标为已有卡时必然为假
+ * ⇒ 这个选项**只要点就一定炸** `CHARACTER_RELATIONSHIP_PROPOSAL_INVALID`。
+ * 正确的问法是「来源候选有没有声明过这条关系」：目标还是候选时要求键相等，
+ * 目标改成已有卡时只要求同文本的边存在（改的是**对象身份**，不是关系内容）。
+ *
+ * 判据不清时宁可拒绝，也不静默丢边：丢边没有任何提示，作者会以为关系存上了。
+ */
+export function resolveProposalRelationships(input: {
+  relationships: readonly ProposalRelationshipInput[]
+  decisions: ReadonlyMap<string, { action: CharacterProposalDecision['action']; characterId?: string }>
+  items: ReadonlyMap<string, CharacterProposalItem>
+  existingCharacterIds: ReadonlySet<string>
+}): CommittedRelationship[] {
+  const { relationships, decisions, items, existingCharacterIds } = input
+  const adopted = (key: string | undefined) => {
+    const decision = key === undefined ? undefined : decisions.get(key)
+    return decision && isAdoptedCharacterDecision(decision.action) ? decision : undefined
+  }
+  const fail = (index: number, relation: string, reason: string): never => {
+    throw new Error(`CHARACTER_RELATIONSHIP_PROPOSAL_INVALID（第 ${index + 1} 条「${relation.slice(0, 24)}」：${reason}）`)
+  }
+  return relationships.map((edge, index) => {
+    const relation = typeof edge.relation === 'string' ? edge.relation.trim() : ''
+    if (!relation) fail(index, '', '关系描述为空')
+
+    const sourceKey = edge.sourceSelectionKey
+    const sourceId = edge.sourceCharacterId
+    if ((sourceKey === undefined) === (sourceId === undefined)) fail(index, relation, '来源必须二选一：候选键或已有角色 id')
+    const sourceDecision = adopted(sourceKey)
+    if (sourceKey !== undefined && !sourceDecision) fail(index, relation, '来源候选没有被创建或采用，关系无处可写')
+    if (sourceId !== undefined && !existingCharacterIds.has(sourceId)) fail(index, relation, '来源角色不存在或已退休')
+    if (sourceKey !== undefined) {
+      const source = items.get(sourceKey)
+      if (!source) fail(index, relation, '来源候选不在本批提议里')
+      const declared = source!.relationships.filter(item => item.relation === relation)
+      // 目标还是候选：键必须相等（模型声明的就是这条边）。
+      // 目标改成已有卡：批内没有键可比，只要求来源声明过同文本的边。
+      const matches = edge.targetSelectionKey !== undefined
+        ? declared.some(item => item.targetSelectionKey === edge.targetSelectionKey)
+        : declared.length > 0
+      if (!matches) fail(index, relation, '来源候选没有声明过这条关系，不能凭空新建')
+    }
+
+    const targetKey = edge.targetSelectionKey
+    const targetId = edge.targetCharacterId
+    if ((targetKey === undefined) === (targetId === undefined)) fail(index, relation, '目标必须二选一：候选键或已有角色 id；两端都没选说明这条边还没填完')
+    const targetDecision = adopted(targetKey)
+    if (targetKey !== undefined && !targetDecision) fail(index, relation, '目标候选没有被创建或采用，关系无处可写')
+
+    return {
+      // map 的候选在本批里落成的是那张已有卡，提交层要的是它的 id。
+      ...(sourceDecision
+        ? sourceDecision.action === 'map'
+          ? { sourceCharacterId: sourceDecision.characterId! }
+          : { sourceSelectionKey: sourceKey! }
+        : { sourceCharacterId: sourceId! }),
+      ...(targetDecision
+        ? targetDecision.action === 'map'
+          ? { targetCharacterId: targetDecision.characterId! }
+          : { targetSelectionKey: targetKey! }
+        : { targetCharacterId: targetId! }),
+      relation,
+    } as CommittedRelationship
+  })
 }
 
 /**
@@ -602,35 +691,21 @@ export class CharacterProposalService {
           && !this.identitySnapshot().characters.some(character => character.characterId === selection.characterId && !character.retired))
           throw new Error('CHARACTER_ID_UNKNOWN')
       }
-      for (const relation of request.relationships ?? []) {
-        // `from` is a candidate of this batch that actually produces a character (`create`/`map`)
-        // or, when the author attaches an outgoing edge to an existing card, that card's own id.
-        // `keep-unresolved` and `functional` produce no character, so neither can be an edge source.
-        const from = relation.sourceSelectionKey
-          ? request.selections.find(item => item.selectionKey === relation.sourceSelectionKey) : undefined
-        const to = relation.targetSelectionKey
-          ? request.selections.find(item => item.selectionKey === relation.targetSelectionKey) : undefined
-        const fromExisting = relation.sourceCharacterId !== undefined
-        const fromCandidate = from !== undefined
-        if (fromExisting === fromCandidate
-          || fromExisting && (relation.sourceSelectionKey !== undefined || !nonempty(relation.sourceCharacterId))
-          || fromCandidate && (!isAdoptedCharacterDecision(from!.action)
-            || !byKey.get(from!.selectionKey)!.relationships.some(item => item.relation === relation.relation
-              && (item.targetSelectionKey ? item.targetSelectionKey === relation.targetSelectionKey : Boolean(item.targetName))))
-          || to !== undefined && !isAdoptedCharacterDecision(to.action)
-          || Boolean(to) === Boolean(relation.targetCharacterId)) throw new Error('CHARACTER_RELATIONSHIP_PROPOSAL_INVALID')
-        // An existing source can only point at a resolvable target, and relabelling it would
-        // rewrite an identity the batch has no authority over.
-        if (fromExisting && !existingCharacters.some(character => character.characterId === relation.sourceCharacterId && !character.retired))
-          throw new Error('CHARACTER_ID_UNKNOWN')
-        identityRequest.relationships.push({
-          ...(fromExisting ? { sourceCharacterId: relation.sourceCharacterId }
-            : from!.action === 'map' ? { sourceCharacterId: from!.characterId }
-              : { sourceSelectionKey: from!.selectionKey }),
-          ...(to ? to.action === 'map' ? { targetCharacterId: to.characterId }
-            : { targetSelectionKey: to.selectionKey } : { targetCharacterId: relation.targetCharacterId }),
-          relation: relation.relation })
-      }
+      // 两端各二选一、以及「来源候选必须声明过这条边」的判定全部收在
+      // `resolveProposalRelationships`（纯函数、有单测）。这里只负责把当次的选择与
+      // 既有名单摊平成它要的三张表 —— 判定规则只允许有一份实现。
+      identityRequest.relationships = resolveProposalRelationships({
+        relationships: request.relationships ?? [],
+        decisions: new Map(request.selections
+          .filter(selection => selection.action !== 'functional')
+          .map(selection => [selection.selectionKey, {
+            action: selection.action,
+            ...(selection.action === 'map' ? { characterId: selection.characterId } : {}),
+          }])),
+        items: byKey,
+        existingCharacterIds: new Set(existingCharacters
+          .filter(character => !character.retired).map(character => character.characterId)),
+      })
       const frozenRequest = JSON.stringify(identityRequest)
       const receipt = commitCharacterIdentities(this.db, identityRequest, candidate => JSON.stringify(candidate) === frozenRequest)
       let finalRevision = receipt.revision

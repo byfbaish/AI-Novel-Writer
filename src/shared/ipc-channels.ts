@@ -1,4 +1,5 @@
 import type { GenerationOwnerChannels, GenerationOwnerEvents } from './generation-owner-contract'
+import type { StoryBeatKey } from './story-beats'
 import type { CharacterProposalChannels } from './character-proposal'
 import type { FinalizedCharacterGenerationChannels } from './finalized-character-generation'
 import type { ReviewRevisionGenerationInvokeChannels } from './review-revision-generation'
@@ -680,7 +681,7 @@ export interface NovelConfig {
   targetAudience: string
   totalChapters: number
   wordsPerChapter: number
-  plotStructure: 'three_act' | 'heros_journey' | 'save_the_cat' | 'kishotenketsu' | 'multi_thread' | 'freeform'
+  plotStructure: StoryBeatKey
   narrativePOV: 'third_limited' | 'first_person' | 'third_omniscient' | 'multi_pov'
   coreOutline: string
   worldSetting: string

@@ -35,7 +35,11 @@ const PLOT_STRUCTURE_LABELS: Readonly<Record<string, LocalizedLabel>> = {
   三幕式: { zhCN: '三幕式', enUS: 'Three-act' },
   heros_journey: { zhCN: '英雄之旅', enUS: 'Hero’s journey' },
   save_the_cat: { zhCN: '节拍表', enUS: 'Beat sheet' },
+  seven_point: { zhCN: '七点结构', enUS: 'Seven-point' },
+  eight_sequence: { zhCN: '八序列', enUS: 'Eight sequences' },
+  story_circle: { zhCN: '故事圈', enUS: 'Story circle' },
   kishotenketsu: { zhCN: '起承转合', enUS: 'Kishōtenketsu' },
+  escalation_321: { zhCN: '三二一递进', enUS: 'Three-two-one' },
   multi_thread: { zhCN: '多线叙事', enUS: 'Multi-thread' },
   freeform: { zhCN: '弧光结构', enUS: 'Arc structure' },
 }
