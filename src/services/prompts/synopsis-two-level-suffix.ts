@@ -29,7 +29,7 @@ import type { WritingLanguage } from '../../shared/writing-language'
 const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 每章按以下顺序输出，除这些行以外不要加任何说明行、标签行或注释：
 - 第一行：章标题「## 第N章：章名」；
-- 第二行：「选择：<躲 | 拖 | 换 | 认> —— <他这一章主动选了什么>」；
+- 第二行：「选择：<力源，或例外值 破／守> —— <他这一章做了什么>｜否掉了 <他本可以做的另一件事>，因为 <D编号>：<那条倾向>」；
 - 其后：正文，连贯段落；
 - 最后一行：「收尾：<一句话>」。
 
@@ -37,10 +37,38 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 严禁输出「正文前的声明行」「格式说明」「以下为正文」这类标签行，也不得把本节任何一句话抄进正文。
 
 【选择：行的写法】
-- 四选一，各有明确含义：躲 = 回避接触、不让他人靠近；拖 = 争取时间、把事推到之后；换 = 拿一样东西换另一样；认 = 主动承担、把账记到自己头上；
-- 它回答的是"这一章他做了什么决定"，不是"他遇到了什么"。写"他决定面对现实""他决定查清楚"不算 —— 那不是四选一里的任何一个动作；
-- 这一行决定的不是情节，是语气与主动权的归属：同一件事，他选躲和选认，写出来是两章完全不同的东西；
-- 后面章节蓝图会继承这一行（蓝图的任务描述必须以同一个选择开头），所以不得在这里写一个选择、正文里又演成另一个。
+这一行不是你在挑，是他挑。写之前按下面的顺序走完四步，**只在内部走，过程一个字都不许写进输出**。
+
+力源只有四个值（他靠什么动）：
+- **自己** = 亲自上手，用他自己的本事、身体、时间；
+- **他人** = 拉一个具体的人入场替他出力、传话、背书；
+- **规则** = 搬出制度、名分、约定、众人的眼睛压对方；
+- **交换** = 拿一样对方想要的东西，换自己想要的。
+另有两个**例外值**（不是第五、第六个力源，是"不接受题目"与"不动"）：
+- **破** = 题目给的选项他一个都不接，另开一条；
+- **守** = 他什么都不动：等、拖、装作没这回事。
+
+四步（顺序不能颠倒）：
+1. 先读他的**性格倾向**（角色卡里带编号、带方括号档位标签的那几条：D<n>〔日常〕／D<n>〔代价〕／D<n>〔破例〕）：这一章的压力属于哪一条的「局面」？那一条现在的「倾向」是什么？
+   ★ **必须把这个编号记下来**：本行末尾的「因为」后面要写 D<n> —— 写下编号，这一章才算他做的决定；不写编号，等于他不在场。
+   一条都对不上时写 D0，并用一句话说明为什么这一章没有他的性格戏：允许没有，但不许不写。
+   ★ 压力若碰到他的**锚点**（标着〔破例〕那一条的赌注），这一章的分量天然更重 —— 这种章不要连着写；反过来，一整卷都没引用过一次〔破例〕那条，说明这一卷从头到尾没碰到他真正在乎的东西。
+2. 列三个他够得着的动作：不是最聪明的三个，是他这个处境下真能伸手的三个；
+3. 用当前「倾向」逐条筛：**他再聪明，也不能做一件不符合他当前倾向的事**；不准用"这次情况特殊"给他开绿灯 —— 一个强项抵消不了一条倾向。唯一的例外是这一章本来就是他登记过的位移点（见下方判定句②）；
+4. 取第一个剩下的，不是最好的那个。人做决定是找到能接受的第一个就停，不是把方案比一遍挑最优 —— 所以**他选的多半不是最优解，这很正常**。他用自己的方式把事情解决，才叫爽；他直接选了个聪明方案，那是你替他解决了。
+
+其余约束：
+- 不得因为"这样更爽、更好推进、更合理"而选一个他不会做的动作。角色卡里一条倾向都读不到时，写 D0 并写明你推断的依据，不得默认让他选最有利的那个；
+- 「否掉了…因为…」是这一行的判定句，因为 后面**先写编号**。按四分支判，只有前三支放行：
+  ① 他做的正是 D<n> 那条的当前「倾向」⇒ 正常，不必解释；
+  ② 不是，但这一章是 D<n> 里**已登记的位移点** ⇒ 正常，且正文必须写出「他第一次这么做」的生涩与代价；
+  ③ 谁都对不上 ⇒ 写 D0，并说明为什么这一章没有他的性格戏；
+  ④ 编号写了，但这一章的局面和那条的「局面」根本不是一类 ⇒ **走形，重写**。引用是凑的，等于没引用；
+- **写位移的那一章必须付代价**：登记了位移却不付代价，等于白送成长 —— 读者看到的是作者开恩，不是人物长大；
+- **「守」不得连续三章出现，单个单元内不超过三成章数** —— 超了说明这一段该压成一场戏，不是该多写几章；「守」本身是逃避型倾向的正常表达时不算偷懒；
+- **写「破」必须有前置**：时间、资源、知识三样里至少一样在前文埋过；没埋过就写「破」= 天降；
+- 这一行决定的不是情节，是**他在这一章里是谁**：同一件事，他动「他人」和动「规则」，写出来是两章完全不同的东西；
+- 后面章节蓝图会继承这一行（蓝图的任务描述必须以同一个力源开头），所以不得在这里写一个、正文里又演成另一个。
 
 【收尾：行的写法】
 - 必须独立成行，不得并入正文段落，也不得写成「收尾，……」这种句中插入；
@@ -60,7 +88,8 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 
 【每章正文写成一件事的因果与代价】
 不是事件流水账，也不是分场清单。先想清楚再动笔，写成连贯段落，不要写成字段列表 —— 包括「叙事任务」「进入状态」「离开状态」「段间推进」「逼法」这些结构里的标签，它们是结构层用语，不是正文写法：
-- 他这一章主动选了什么：就是上面「选择：」行的四选一，正文要展开它具体长什么样 —— 选「躲」就写他怎么绕、绕开谁、拿什么当借口；不要只重复"他选择了躲"这句话；
+- 他这一章做了什么：就是上面「选择：」行的力源，正文要展开**它具体长什么样** —— 选「他人」就写他去求的是谁、许了什么、对方怎么讨价；选「规则」就写他抬出哪一条、谁认、谁不认、当众还是私下；不要只重复"他选择了借力"这句话；
+- 他否掉了什么：就是「否掉了…因为…」那半句。**被否掉的那个选项必须真的存在** —— 他真的动过念、真的够得着，读者要看见它摆在那儿。正文里那条路一次都没出现过，却说"他本可以那样"，这个选择就没有分量，只是一句辩解；
 - 因为什么：上一章留下的哪个未决项、哪笔账、哪句没答的话，逼出了这个选择。这一条是本章与前文的接口，不许省；
 - 谁在挡他：具体的人、规矩、时间、钱、身体；且不得与上一章是同一种挡法；
 - 代价落在谁身上：丢了什么、欠下什么、露了什么底、谁的处境因此更糟。代价只落在"他自己心情不好"不算代价；
@@ -93,7 +122,7 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 const EN_TWO_LEVEL_SUFFIX = `[Fixed per-chapter format — mandatory]
 Output each chapter in exactly this order, with no extra labels, headings or commentary lines:
 - Line 1: chapter heading "## Chapter N: Title";
-- Line 2: "Choice: <avoid | stall | trade | own> — what he actively chose in this chapter";
+- Line 2: "Choice: <Self | Others | Rules | Trade | Break | Hold> — what he did in this chapter | ruled out: the other thing he could have done, because <D-number>: <that tendency>";
 - Then: the prose, as connected paragraphs;
 - Last line: "Hook: <one sentence>".
 
@@ -101,9 +130,37 @@ Never output a "Covers:" line — this structure has only two levels (volume / u
 Never output labels such as "declaration line before the prose", "format note" or "the following is the prose", and never copy any sentence of this section into the prose.
 
 [The Choice line]
-- One of four, each with a fixed meaning: avoid = stay away from contact; stall = buy time and push it later; trade = give one thing to get another; own = take the debt onto himself;
-- It answers "what did he decide", not "what happened to him". "He decided to face reality" is not one of the four;
-- This line decides the tone and who holds the initiative, not the plot. The chapter blueprint inherits it, so do not write one choice here and play another in the prose.
+You are not choosing here — he is. Work through the four steps below, **inside your head only; not one word of the process may appear in the output**.
+
+The source of force has exactly four values (what he moves with):
+- **Self** = he does it himself, with his own skill, body, time;
+- **Others** = he brings one specific person in to act, carry word, or vouch for him;
+- **Rules** = he invokes an institution, a title, a compact, or the eyes of the crowd to press the other side;
+- **Trade** = he gives something the other side wants, for something he wants.
+Two **exception values** (not a fifth and sixth source — they are "refuse the premise" and "no action"):
+- **Break** = he takes none of the options the situation offered and opens a road of his own;
+- **Hold** = he does not move at all: waits, stalls, acts as if none of this were happening.
+
+The four steps, in this order:
+1. Read his **standing tendencies** first — the numbered entries on his card, each with a bracketed tier tag (D<n> [Daily] / D<n> [Costed] / D<n> [Exception]): which entry's Situation does this chapter's pressure belong to, and what is that entry's current Tendency?
+   ★ **Note the number down**: the "because" clause at the end of this line must carry D<n>. With the number written, this chapter is his decision; without it, he is not in the scene.
+   If nothing matches, write D0 and say in one clause why this chapter has no disposition scene — that is allowed, silently skipping is not.
+   ★ If the pressure touches his **anchor** (the stake of the entry tagged [Exception]), this chapter carries more weight than usual — do not run several such chapters back to back. Conversely, a whole volume that never cites the [Exception] entry once never touched what he actually cares about;
+2. List three moves he can actually reach: not the three cleverest, the three he could genuinely put a hand on from where he stands;
+3. Filter them through the current Tendency: **being clever never licenses doing something his current tendency rules out**; never let "this time is special" wave him through — one strength does not buy back one tendency. The only exception is a chapter that is itself a registered Shift (see the test clause below);
+4. Take the first survivor, not the best one. People stop at the first acceptable option; they do not compare every plan and pick the optimum. So **his choice is usually not the optimal solution, and that is correct**. Solving it his own way is what reads as satisfying; handing him the clever solution means you solved it for him.
+
+Other constraints:
+- Never pick a move he would not make because it is "more exciting, easier to advance, more sensible". If his card carries no tendency entries, write D0 and state what you based the choice on — never default to the most advantageous move;
+- "ruled out … because …" is the test clause of this line, and because **starts with the number**. Judge it in four branches, and only the first three pass:
+  ① what he does IS the current Tendency of D<n> ⇒ correct, no explanation needed;
+  ② it is not, but this chapter is a **registered Shift** inside D<n> ⇒ correct, and the prose must show the awkwardness and the cost of his doing it for the first time;
+  ③ nothing matches ⇒ write D0 and say why this chapter has no disposition scene;
+  ④ a number is written, but this chapter's situation is not the same kind as that entry's Situation ⇒ **out of character, rewrite**. A borrowed citation is no citation at all;
+- **A chapter that plays a Shift must make him pay for it**: a registered shift with no cost is growth handed out for free — the reader sees the author being kind, not a person growing;
+- **"Hold" must not appear in three consecutive chapters, and not in more than a third of a unit's chapters** — over that, the stretch should be compressed into one scene, not stretched into more chapters. When Hold is simply the honest expression of an avoidant tendency, it is not laziness;
+- **"Break" requires setup**: at least one of time, resources, or knowledge must have been planted earlier; without it, "Break" is a rescue from nowhere;
+- This line does not fix the plot; it fixes **who he is in this chapter**. The chapter blueprint inherits it, so do not write one thing here and play another in the prose.
 
 [The Hook line]
 - Must stand on its own line; one sentence only: the question, threat or cost still unresolved when the chapter ends;
@@ -120,7 +177,8 @@ Never output labels such as "declaration line before the prose", "format note" o
 
 [Write each chapter as the causality and cost of one thing]
 Not a chronicle of events, not a scene list. Write connected paragraphs, not field lists — "narrative task", "entry state", "exit state", "inter-unit progression" and "pressure" are structure-level labels, not prose.
-- What he actively chose: expand what the Choice line actually looks like in practice;
+- What he did: the source of force from the Choice line, expanded into **what it concretely looks like** — if Others, show whom he goes to, what he promises, how that person bargains; if Rules, show which clause he invokes, who honours it and who does not, whether it is public or private. Do not merely restate "he called in help";
+- What he ruled out: the "ruled out … because …" half. **The ruled-out option must really exist** — he genuinely entertained it, he could genuinely have reached it, and the reader must see it sitting there. If that road never appears in the prose, "he could have done otherwise" is an excuse, not a choice;
 - Because of what: which unresolved item, debt or unanswered line from the previous chapter forced this choice. This is the chapter's interface with what came before — never omit it;
 - Who blocks him: a specific person, rule, deadline, money, body; and not the same kind of block as the previous chapter;
 - Who pays the cost: what was lost, owed, exposed, whose situation got worse. "He felt bad" is not a cost;
