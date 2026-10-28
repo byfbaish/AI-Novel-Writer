@@ -48,6 +48,7 @@ docs/
 | **评估外部 agent-skill 流水线包**（oh-story v0.9.0 吸收评估） | [`research/2026-10-25-oh-story-absorption/`](research/2026-10-25-oh-story-absorption/) —— 结论：**它强在文本质检、弱在连续性**，与我方互补；**A2/A3/A4/A5 全部已实施**（§9 与 §9b）、A1 降级、C1–C8 刻意不为 |
 | **重校「AI 味」阈值要怎么找语料** | [`research/2026-10-25-threshold-calibration-corpus/`](research/2026-10-25-threshold-calibration-corpus/) —— 起点 3 条合法来源（全限非商业）· **番茄零** · 书面许可边界与「内主外辅」校准路径 |
 | 查 **Program v3 原始合同 / 审计证据** | `plans/novel-quality-*/`、[`research/novel-quality-modernization/`](research/novel-quality-modernization/) 🔒 冻结 |
+| **问「这套工作流能写哪些题材」**（市场边界估算） | [`research/2026-10-28-platform-genre-coverage-bounds.md`](research/2026-10-28-platform-genre-coverage-bounds.md) —— 番茄主分类 + 起点 14 类 · **九槽判定** · A/B/C/D 四档（A 原生约 30%、D 骨架冲突约 35%）· 结论：**结构层通用、素材层不通用**，扩展应沿素材层做 |
 | 接手别人的会话 | [`handoffs/`](handoffs/) —— **最近一份**：[`handoffs/2026-10-26-p20-3-knowledge-candidates-handoff.md`](handoffs/2026-10-26-p20-3-knowledge-candidates-handoff.md)（P20-3 已交付：步骤表收敛、M22、提议条、43 例守门测试、基线失败集）；上一份：[`handoffs/2026-10-26-extraction-schedule-handoff.md`](handoffs/2026-10-26-extraction-schedule-handoff.md)（实机验证入口、两项空间检查修复、P20 三期排期与裁定点） |
 | 发布 / 交付 / 审查流程 | [`DEVELOPMENT.md`](DEVELOPMENT.md) · [`agents/delivery.md`](agents/delivery.md) |
 | **把活派给 Copilot CLI**（无头、另一进程、可校验副作用） | [`agents/copilot-channel.md`](agents/copilot-channel.md) —— 落点/PATH · 参数速查 · 权限模型 · 工具别名 · 已验证与未验证清单 |
@@ -153,7 +154,7 @@ docs/
 
 > 完整索引即本节。**这是查找设计文档的唯一清单**，不要再去翻目录树。
 
-### 4.1 Prompt 流水线 · [`design/prompt/`](design/prompt/)（28 篇）
+### 4.1 Prompt 流水线 · [`design/prompt/`](design/prompt/)（34 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -185,8 +186,17 @@ docs/
 | [`prompt-three-layer-inventory.md`](design/prompt/prompt-three-layer-inventory.md) | ✅ 已入库 + 测试锁定 | **Prompt 三层全景清单**（系统级 19 处 / 工程级 30 模板含**真实消费方**列 / 作者级 8 类 / **20 条装配链路** / 覆盖矩阵 A·B·C / 缺口 G1–G10）。三个测试断言把"不必全量重扫"变成机器保证 |
 | [`prompt-three-layer-alignment-assessment.md`](design/prompt/prompt-three-layer-alignment-assessment.md) | 📝 待裁定（2026-10-24） | **工程侧**行业对标：三条锚点带 URL + 逐字摘句，12 行逐条对照（✅6/⚠️5/❌2）。结论：**工程侧基本对齐，三处口径没对齐**（层级被抹平 / 同层无冲突规则 / 作者可调高度被锁死），本轮不动任何文案；附创作自由度三条准入线 |
 | [`worldbuilding-capacity-and-stage-cost-design.md`](design/prompt/worldbuilding-capacity-and-stage-cost-design.md) | ✅ 已落地（2026-10-27） | 世界观第 1 维补「容量 / 阶段性代价」两格：缺口是**设定缺口**不是记述漏洞；实测分档内容进规则精选但只认带模态词的档（capacity / escalating cost / legibility，Sanderson 第二定律对照） |
+| [`choice-source-and-elimination-design.md`](design/prompt/choice-source-and-elimination-design.md) | ✅ 已落地（2026-10-28） | 选择行改**力源四面 + 元层两个例外**（4+2）：六词横跨五个面是一维枚举的 category mistake，不是粒度问题；写死淘汰顺序（Tversky EBA / Simon 满意化）让选择由角色做；判定句「否掉的理由指不回角色卡 ⇒ 模型替他选的」；`守` 防拖沓、`破` 防降神；蓝图侧改去枚举化 |
+| [`author-persona-mode-design.md`](design/prompt/author-persona-mode-design.md) | 📝 提案，待裁定（2026-10-28） | **作者人格**（以性格驱动生成）：四层概念分离（文风 / 人格 / 全局要求 / 章级微操，现缺第二层）· 归因到 `writing_style` 的**明文降权句**（"仅用于选择表达方式，不是新增事实或事件要求"）· 数据模型（`decisionBias` 直引六选一）· 抽卡 · 优先级链 · **三条可判定验收（含"性格驱动 vs 禁令驱动"的分离测法）** · 三个待裁定分叉 |
+| [`character-core-lie-design.md`](design/prompt/character-core-lie-design.md) | ⛔ 已部分推翻（2026-10-28） | **角色内核层**：动机 / 禁区 / 恐惧是**同一条 Lie 的三个投影**（禁区=保护它不被证伪的动作、恐惧=它被当众证伪的场面、动机=能证明它为真的目标）。保留三学科分层查证与机制下限；**落点被推翻**——作者裁定只要性格特征层，且按卷位移（见下一条） |
+| [`character-disposition-state-design.md`](design/prompt/character-disposition-state-design.md) | ✅ 已落地（2026-10-28；**落点经下行勘误稿修正后**） | **性格即选择倾向，作卷级状态维护**：性格 = **if–then 响应函数**（CAPS，Mischel & Shoda 1995；「情境换了 then 跟着换，但对应关系是稳的」）· 成长 = **均值位移被登记**（WTT，Fleeson & Jayawickreme 2015）· 赫拉克利特断片 D119 出处考（daimon 取荷马「分得一份」义）· 三条判据 K1 可复现 / K2 有来处 / K3 **位移必须有后果** · 反滥用条款 · 主角 3–5 条 / 反派 ≥1 条 / `minor` 不写。**本稿按模板 `content` 落地的写法在架构链里是死信（实机两轮未生效），真实落点见下一行** |
+| [`protagonist-golden-traits.md`](design/prompt/protagonist-golden-traits.md) | ✅ A+B 已落地（2026-10-29 凌晨；当日第三版实测后再收紧） | **金色词条：主角性格由作者覆盖，模型只演绎**：性格必须作者定（**功能约束**：没有突破因子的胆小鬼在那个世界活不过三章）· 题库只做**翻译**不做测量 · 查证魅力三刻度（proactivity / competence **under constraint** / 具体而克制的 vulnerability；"别追着 likable 跑"）· 两类主角的闪光点（李长寿：「仅有稳健撑不起 300 万字」+「'苟'不是目的是手段」+「稳到最后稳不住」（作者言归正传访谈）；石昊/叶凡/萧炎：豪横与腹黑的落点都是"护住身后"）· **金色词条 = 矛盾结构**：底色 + **破例条件** + 不可让渡（+ 代价）· **编号是条目号、档位是方括号标签**（〔日常〕〔代价〕〔破例〕，破例恰好一条）· 零迁移映射到 `personality`/`motivation`/`arc`。**2026-10-29 第三版实测三错并补五道闸**：禁本书专名（换世界要听懂）／〔破例〕必须与〔日常〕**反方向**（"日常+更用力"不算）／〔破例〕位移右端**必须就是它自己的倾向**／〔破例〕局面他**极少遇到**／位移是**条件**不是程度 |
+| [`golden-trait-experiment-manual.md`](design/prompt/golden-trait-experiment-manual.md) | 🆕 可用（2026-10-29） | **实验手册：可交给任意大模型独立复现，不需要本项目上下文**。四层串行验收（L0 可复现 → L1 区分度 → L2 反身性 → L3 一致性）· 三张**信息量相同、只差组织形态**的人物卡（无样例 / 范例 / 范例+编号）× 20 章固定处境序列（第 11·12 章重复第 8·6 章测反身性，第 14 章测泛化，第 17·18 章测一致性）· 手工可算的四张判定表 · **五条已知陷阱**（`presence_penalty=1.5` 是抖动主因，关闭后方向稳定 3/20→15/20 ／ 稳定与塌缩是一体两面 ／ 编号会被滥用成万能答案 ／ 无样例时模型会自创设定并逐章漂移 ／ 上下文不是瓶颈，实测仅 349–509 token）· 结果回填模板。脚本版 `scripts/experiments/golden-trait-minimal-loop.mjs`（`--round2` `--group` `--seed` `--temp` `--pp` `--ctx`） |
+| [`character-behavior-four-layers.md`](design/prompt/character-behavior-four-layers.md) | 🆕 设计稿，待裁定（2026-10-29） | **角色行为四层：从「性格描述」到「可判定的人格」**——取代 `detailTask` 现有的「D1 日常 / D2 代价 / D3 破例」扁平三档。**四层**：① 在乎什么（底线排序，参照 **Schwartz 十项基本价值**，补锚点与 **Truby 的 psychological/moral weakness**）② 什么算一件事（**归章纲**，实测模型「不作为」最难生成）③ 各类做法（处境类型 × 策略两层相乘，**每条必须写「不适用」**）④ 具体动作（模型唯一职责）。**例外不是第四条策略**，是「该给的答案缺席的那一次」，必须挂到某一条底线上（v2 随意破 → 17/18 方向相反且错；v3 挂底线 → 两章都对）。**噪音**：代价不碰底线时允许「神经」，但**一致性的强度与价值项成正比**（底线必须一致、面子/好玩不必）。零 schema。实验依据 `scripts/experiments/` 400+ 条 |
+| [`character-disposition-questionnaire.md`](design/prompt/character-disposition-questionnaire.md) | 📝 提案，待裁定（2026-10-28，**其"题库用途"已被下一行修正为翻译而非测量**） | **性格从哪来**：现行条款「局面必须本卷出现两次」把**因果链倒置**（未来剧情 → 性格），而性格底色来自**过去**、只决定未来的**倾向**；作者判断成立。业内四类方法（**SJT 情境判断测验**＝作者描述的那件事，但只有 behavioural-tendency 版测人格、knowledge 版测理想人格；Kohlberg 两难故事法「不问选什么问为什么」；D&D 九宫格只借两根轴不借标签；角色问卷是题型参考但最易 cookie-cutter）· 三个坑（产标签 / 题目与世界观不搭 / 把人拆成零件）· 提案：8–12 道前史两难题（四组轴对应下游力源）· 判据 J1 不含本作专有名词 / J2 至少 1 条对他不利 / J3 至少 1 对互相打架 / J4 至少导出两种力源 · 分两步（先改文本判据，后加阶段的题库） |
+| [`character-dynamics-effective-site.md`](design/prompt/character-dynamics-effective-site.md) | ✅ 已落地（2026-10-28，方案甲；当晚二次收紧） | **角色性格倾向的实际生效点**：架构链「角色」步只读模板 `systemRole` + `taskGuidance`，**`content` 无出路**（`architecture.command.ts` 的 `creativeSystem` / `creativeGuidance` 两条赋值）；真正条款在 `prompt-language.ts` 的 `CHARACTER_ARCHITECTURE_PROMPTS`（中英各一套）· **120 字符是话术不是硬墙**（v2 解析不校验，模型照写所以被压缩）· 两轮白跑时间线 · **已落方案甲**：detailTask 加【主角的性格倾向】三行式 + 四条硬要求、`personality` 上限 120→400、测试锚定生效点 · **二次收紧**：「局面」必须写成**条件句**且含**当场要做的选择**（首轮实测写成"同门当众递状纸"这类具体事件；`personality` 会原样进 `characters_arch` 被大纲/正文读到 ⇒ 等于开第二个事实源） |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（47 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（48 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -246,6 +256,7 @@ docs/
 | [`e3-unit-batch-implementation-plan.md`](design/architecture/e3-unit-batch-implementation-plan.md) | 🟡 T1–T3 / T5–T7 / T4a 已实施 · T4b + T8–T10 待做 | **E3 实施拆解**：请求 `{from,unitIndex,maxChapters}`、落库 `{from,to}` + 游标三元组；预算按本卷剩余章数冻结；T1–T11 每步可独立验证 + 检查点回归清单 |
 | [`e3-unit-batch-chain-design.md`](design/architecture/e3-unit-batch-chain-design.md) | 🟡 T12 已实施 · 待实机复验 | **连续单元（链式新 run）**：一次确认连写 N 个，**只到本卷末**；判定顺序 卷界 > 配额；每批必须重读检查点 / 重探 / 重放 author inputs / 等上一批退出活跃列表；重启不续链 |
 | [`chapter-position-format-design.md`](design/architecture/chapter-position-format-design.md) | 🟡 P0/P1/P2 已落地 · P3 待做 | **章节位置表达统一**：`## 第3卷第2单元第3章（全书第45章）：章名`——把「属哪卷哪单元」从**事后折算**变成**生成时写进标题**，给 `outline-tree` 补第四种 source（`heading`），终结「单元写超 ⇒ 后续章号与单元整体错位」；三个各写各的章标题正则已抽成共享解析器（P0 零行为变化），存量永久双格式兼容。**P2 三个坑见 §5**：`naming==='volume'` 只是措辞不是层数、格式段只在 suffix 出现一次、逐章模式刻意不改 |
+| [`story-beat-library.md`](design/architecture/story-beat-library.md) | ✅ 已实施（2026-10-28，拍子格当晚改形见 §6.1） | **故事节拍库与分层换拍**：旧口径「严格按结构组织大纲 + 百分比切章」在 150 章书上等于**82 章共用一句职责**（中段无分段依据 ⇒ 只能同构循环填，读感＝拖沓＋一个套路）。新口径：`shared/story-beats.ts` 为唯一事实源（十套拍子 × 原生跨度），**全书层只定两端**、卷／单元各选一套、**同一层只准一套**（防叠层：*layering gives a spreadsheet, not a book*）、相邻不同拍／卷内不重样／跨度匹配四条机检（`ARC_SAME_BEAT` / `ARC_BEAT_REPEAT` / `ARC_BEAT_OVERSPAN` / `ARC_BEAT_UNKNOWN`）。只查下限，不承诺质量。**§6.1：首版「一拍一句话」把卷纲撑爆（7 卷 + 26 单元、节拍表 15 拍 ⇒ 整份被截断），已改成「名字 + 落位」两行；骨架只在库里，拍子到单元层为止，章纲层是场景清单不是拍子** |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（4 篇）
 
