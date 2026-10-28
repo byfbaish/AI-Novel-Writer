@@ -1,0 +1,159 @@
+# 角色行为四层 · 落地进度（2026-10-29 06:58）
+
+> 状态：**已完成**（期 1 · 期 2 · 期 4 · 期 3 全部做完）。硬停时间 07:50，实际停于 **06:58**（未触发硬停）。
+> 分支 `exp/resource-ledger` · 计划源：`docs/handoffs/2026-10-29-four-layers-unattended-plan.md`（未入库，本地）
+> 前置 P1/P2/P3 均通过；收尾四项校验全过。
+
+---
+
+## 各期状态
+
+| 期 | 内容 | 状态 |
+|---|---|---|
+| 期 1 | `detailTask` 改四层 + 守卫测试 | ✅ 完成（`92f8c81e`） |
+| 期 2 | 情节大纲加「定性」前置行 | ✅ 完成（`e5ec1971`） |
+| 期 4 | 词条补底线排序（Schwartz 十项） | ✅ 完成（`1094d8b7`） |
+| 期 3 | 处境类型库 **只出草案，未落代码** | ✅ 完成（`d141ffa7`） |
+
+---
+
+## 验收读数（实际输出，非"通过"二字）
+
+### 前置
+
+```
+P1 branch: exp/resource-ledger                                   ✓
+P2 git status --short → 仅 ?? docs/handoffs/2026-10-29-four-layers-unattended-plan.md   ✓
+P3 基线（自己重跑，摘 safe-delete 环境变量）：
+   Test Files  3 failed | 231 passed (234)
+   Tests  7 failed | 3688 passed | 1 skipped (3696)
+   三个套件：context-entry-parity(2) · finalize-chapter.blueprint-entities(1) · finalize-postprocess-character(4)
+   ⇒ 与 §8 的 3688/7 及套件名**逐条一致**
+```
+
+⚠️ **基线第一次跑出 13 failed，不是 7**。多出的 6 条失败栈全部落在 cleanup 阶段，报错
+`[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":51,"threshold":50}`——沙箱批量删除阈值，
+不是断言失败。改用 `env -u CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR -u CODEBUDDY_TOOL_CALL_ID` 后为 7。
+**后续所有跑测统一带这个前缀。**
+
+### 期 1（1.1–1.8）
+
+```
+1.1 第一层: 1              1.2 旧三档〔日常〕/〔代价〕/〔破例〕: 0
+1.3 不适用: 2              1.4 普世、仁善: 1
+1.5 layer 1: 1 / Layer 1: 1
+1.6 npx tsc --noEmit → 无输出，exit 0
+1.7 prompt-language-contract.test.ts → Tests 58 passed (58)   （原 55：删 1 旧闸用例，加 4 个四层用例）
+1.8 synopsis-two-level-suffix(15) + disposition-citation(9) → Tests 24 passed (24)
+```
+
+### 期 2（2.1–2.4）
+
+```
+2.1 定性：  synopsis-two-level-suffix.ts = 3 ／ builtin-prompt-templates.ts = 4
+    Qualify:（英文侧）synopsis-two-level-suffix.ts = 2 ／ prompt-language.ts = 4
+2.2 ARC_CHOICE_MISMATCH 在 disposition-citation.ts = 3
+2.3 npx tsc --noEmit → exit 0
+2.4 synopsis(15) + disposition-citation(14) + prompt-language-contract(58) → Tests 87 passed (87)
+    disposition-citation 9 → 14（新增 5 例，含 MISMATCH 中英各一）
+```
+
+### 期 4（4.1–4.4）
+
+```
+4.1 values: 5
+4.2 npx tsc --noEmit → exit 0
+4.3 story-beats(13) + prompt-language-contract(58) → Tests 71 passed (71)
+4.4 人工核对：
+    稳健型      安全 · 自主 · 仁善 · 传统      ok
+    以力证道型    成就 · 权力 · 仁善 · 自主      ok
+    算计型      成就 · 自主 · 权力 · 安全      ok
+    反派型（魅力反派） 权力 · 刺激 · 自主 · 成就    ok
+    ⇒ PASS：四条都没有把仁善/普世排在前两位
+```
+
+### 期 3
+
+```
+文件存在：docs/design/prompt/character-event-types-draft.md
+四问齐全：粒度（12 候选，每个带反例）· 来源（卷纲节点，不取正文）· 存放（不进 DB，常量）· 与策略关系（稀疏矩阵）
+check-doc-links → checked 1006, broken 0
+check-doc-placement → 新增违规 0（新文档已登记 docs/README.md §4）
+```
+
+### 收尾（§7.1）
+
+```
+1. npx tsc --noEmit → exit 0
+2. src/services + src/shared 全量 → Test Files 3 failed | 231 passed (234)
+                                   Tests 7 failed | 3696 passed | 1 skipped (3704)
+   失败套件与基线**逐条一致**：context-entry-parity(2) · finalize-chapter.blueprint-entities(1) · finalize-postprocess-character(4)
+   passed 3688 → 3696（+8 = 期 1 净 +3 〔55→58〕 + 期 2 +5 〔disposition-citation 9→14〕）
+3. check-doc-links → checked 1006, broken 0
+4. check-doc-placement → 新增违规 0
+5. 已停止改代码
+```
+
+---
+
+## 与基线的差异
+
+- **新增失败：无**
+- **消失的失败：无**
+- passed +8（见上），全部来自新增用例
+
+---
+
+## 提交清单
+
+```
+d141ffa7 docs(character): 处境类型库草案（只出方案，未落代码）+ 索引登记
+1094d8b7 feat(character): 词条补底线排序（Schwartz 十项参照）
+e5ec1971 feat(synopsis): 情节大纲加「定性」前置行，编号不再边写边填
+92f8c81e feat(character): detailTask 改为四层结构
+```
+
+（开工前 HEAD = `41ec0da8`。未 push，符合 §10。）
+
+---
+
+## 未决 / 风险（**都要作者裁定**）
+
+1. **⚠️ 电源：系统已改为「从不休眠」，原值没记录下来。** 我第一次读原值的正则把
+   「当前交流电源设置索引」误写成「索引值」，匹配落空；等发现时已经改完。
+   现在 `powercfg /query` 读到 `0x00000000`（AC/DC 均从不）。
+   **恢复命令**（按你原来的设置改数值；若记不清，平衡模式出厂默认是睡眠 AC 30 分钟 / DC 15 分钟）：
+   `powercfg /change standby-timeout-ac 30` · `powercfg /change standby-timeout-dc 15`
+
+2. **期 1 有两处计划外的补丁**（都是为了让期 2 能落地，不是设计判据）：
+   - **中文标题补回 protagonist 限定** —— 计划 §3.2 的"照抄文本"里中文标题是
+     `【主角的性格：四层，不是形容词清单】`，**没有**「role 为 protagonist 的那一条必写」；
+     但同一份计划的英文段要求里写了 `required for the entry whose role is protagonist`。
+     按中文照抄会导致中英不一致 + 配角也被套格式 + 旧守卫断言失效，所以我按英文把中文补齐了。
+   - **第三层补回编号 `D<n>`** —— 计划 §3.2 的四层文案**没有编号**，但期 2 的定性行、
+     以及既有的选择行都要引用 `D<n>`。不补则定性行无从引用。补的是"编号只是条目号，不是轻重次序"，
+     与旧病根（编号=档位）不冲突。
+
+3. **`golden-traits.ts` 头部注释仍写着「三档压力〔日常〕/〔代价〕/〔破例〕」，已过期。** 期 4 只加了
+   `values`，没动注释（怕扩大改动面）。下一轮要改。
+
+4. **`personality` 上限 800 字未复核**：四层内容比旧三档长，是否截断没验。
+
+5. **定性行的"哪一类"目前没有类型库支撑**：期 3 只出草案，未接线。定性行引用的仍是角色卡上的 `D<n>`。
+
+6. **MISMATCH 判据可能偏严**：我把「定性写"无"、选择行却引用具体编号」判为 MISMATCH。
+   若作者认为"定性无 + 选择行仍可引用"合法，改 `qualifyOf` 一处即可。
+
+7. **英文 synopsis 的三级结构版不在 `builtin-prompt-templates.ts`**（那个文件只有中文），
+   而在 `prompt-language.ts` 的 `EN_US_BUILTIN_PROMPTS.synopsis`。计划 §4.3 只点名了前者，
+   两处我都改了（中英各一）。
+
+8. **全部实验数据来自单一被试**（本环境子 Agent），换模型要重跑 `scripts/experiments/`。
+
+---
+
+## 下一轮从哪接
+
+**先裁定期 1 那两处计划外补丁（编号补全 + protagonist 限定）要不要回写进设计稿 `character-behavior-four-layers.md`**——
+不回写的话，设计稿与代码会对不上；回写则要动判据文件，需作者点头。
+之后按 2026-10-29 夜间的裁定继续：**接线 `auditDispositionCitations`**（它仍是纯函数，是反身性闭环的唯一输入）。
