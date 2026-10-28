@@ -39,6 +39,35 @@ import type { WritingLanguage } from './writing-language'
 
 export type GoldenTraitId = 'steady' | 'force' | 'calculating' | 'villain'
 
+/**
+ * 底线价值的取值 —— Schwartz 十项（2012 理论，44 国 25000 人；刺激/享乐是正式项）。
+ * 用于给每条词条标注"这类主角的底线通常怎么排"，对应性格四层的**第一层**。
+ */
+export type GoldenTraitValue =
+  | '自主'
+  | '刺激'
+  | '享乐'
+  | '成就'
+  | '权力'
+  | '安全'
+  | '顺从'
+  | '传统'
+  | '仁善'
+  | '普世'
+
+const GOLDEN_TRAIT_VALUE_EN: Record<GoldenTraitValue, string> = {
+  自主: 'Self-direction',
+  刺激: 'Stimulation',
+  享乐: 'Hedonism',
+  成就: 'Achievement',
+  权力: 'Power',
+  安全: 'Security',
+  顺从: 'Conformity',
+  传统: 'Tradition',
+  仁善: 'Benevolence',
+  普世: 'Universalism',
+} as const
+
 export interface GoldenTrait {
   readonly id: GoldenTraitId
   readonly name: string
@@ -64,6 +93,11 @@ export interface GoldenTrait {
   /** 适用说明，给作者看 */
   readonly fit: string
   readonly fitEn: string
+  /**
+   * 这个词条的主角，底线通常怎么排（Schwartz 十项里的名字，从重到轻，3–5 项）。
+   * 硬约束：**仁善、普世不许出现在前两位**（排上去就是圣母，不是人）。
+   */
+  readonly values: readonly GoldenTraitValue[]
 }
 
 export const GOLDEN_TRAITS: readonly GoldenTrait[] = Object.freeze([
@@ -85,6 +119,7 @@ export const GOLDEN_TRAITS: readonly GoldenTrait[] = Object.freeze([
     arcHintEn: 'From "keep myself alive" to "keep them alive until I cannot" — the base tendency does not change; he still prepares exits, he just walks further',
     fit: '长篇连载最稳的一条：读者粘性来自"他一出现就安心"',
     fitEn: 'The most reliable choice for a long serial: readers stay because "when he shows up, things are under control"',
+    values: ['安全', '自主', '仁善', '传统'],
   },
   {
     id: 'force',
@@ -104,6 +139,7 @@ export const GOLDEN_TRAITS: readonly GoldenTrait[] = Object.freeze([
     arcHintEn: 'From fighting for himself to fighting for whoever stands behind him — he still only knows how to hit things head-on',
     fit: '爽感最直接，但"无脑"风险最高：〔代价〕那条必须写出他真的会算错',
     fitEn: 'The most direct payoff, and the highest risk of reading as mindless: the [Costed] entry must show him genuinely misjudging',
+    values: ['成就', '权力', '仁善', '自主'],
   },
   {
     id: 'calculating',
@@ -123,6 +159,7 @@ export const GOLDEN_TRAITS: readonly GoldenTrait[] = Object.freeze([
     arcHintEn: 'From keeping only his own books to keeping someone else\u2019s — he still counts everything first',
     fit: '最适合"规则流/权谋流"；风险是算得太多、读者觉得冷',
     fitEn: 'Best for rules-and-schemes stories; the risk is that too much calculation reads cold',
+    values: ['成就', '自主', '权力', '安全'],
   },
   {
     id: 'villain',
@@ -142,6 +179,7 @@ export const GOLDEN_TRAITS: readonly GoldenTrait[] = Object.freeze([
     arcHintEn: 'No positive arc required — only intelligibility: "in his position, with his information, I might have chosen the same"',
     fit: '作者的偏好类型（《诡秘之主》阿蒙那一类）；写反派的弧光允许反向',
     fitEn: 'The author\u2019s preferred villain type (an Amon-like figure); a villain arc may run backwards',
+    values: ['权力', '刺激', '自主', '成就'],
   },
 ])
 
@@ -177,6 +215,23 @@ export function goldenTraitCatalogMarkdown(language: WritingLanguage): string {
     lines.push(`- ${en ? 'Price' : '代价'}：${en ? trait.priceEn : trait.price}`)
     lines.push(`- ${en ? 'Arc' : '弧光'}：${en ? trait.arcHintEn : trait.arcHint}`)
     lines.push('')
+  }
+  return lines.join('\n').trimEnd()
+}
+
+/**
+ * 底线排序 markdown —— 给 UI/导出用；**不注入写作 prompt**（模型不选词条，作者选）。
+ *
+ * 输出的是「词条 → 底线从重到轻」，对应性格四层的第一层。
+ * V6 硬约束在此处只做展示，真正的拦截在作者侧：**仁善 / 普世不得排在前两位**。
+ */
+export function goldenTraitValuesMarkdown(language: WritingLanguage): string {
+  const en = language === 'en-US'
+  const lines: string[] = []
+  for (const trait of GOLDEN_TRAITS) {
+    const name = en ? trait.nameEn : trait.name
+    const rendered = trait.values.map(value => (en ? GOLDEN_TRAIT_VALUE_EN[value] : value)).join(' · ')
+    lines.push(`- ${name}：${rendered}`)
   }
   return lines.join('\n').trimEnd()
 }
