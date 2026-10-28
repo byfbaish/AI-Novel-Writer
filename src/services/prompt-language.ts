@@ -118,7 +118,7 @@ ${input.validatedPrefix}
 - 跟他没干系的闲事 → 不算。
 - 每一类「不算」的事，都必须离上面那些底线项都远。
 
-第三层【他对各类事的做法】写 3–4 条配对，每条两行：
+第三层【他对各类事的做法】写 3–4 条配对。每条开头写编号 D<n>（**编号只是条目号，不是轻重次序**），下面两行：
 - 什么事 → 他一贯怎么做（写做法，不写这一次的具体动作）
 - 不适用：什么情况下这条让位
 每条都必须有「不适用」。没写的那条会变成万能答案，把所有处境都吸过去。
@@ -648,7 +648,7 @@ Produce a complete outline in which every chapter states a concrete cause and a 
 6. Preserve the project-wide writing guidance.
 7. Return only the plot architecture, with no analysis or explanation.`,
     systemSuffix: `[Fixed per-chapter format — mandatory]
-Every chapter has three parts in this exact order: (1) chapter heading, (2) the declaration lines ("Covers:" and "Choice:"), (3) the outline prose followed by a mandatory "Closes:" line.
+Every chapter has three parts in this exact order: (1) chapter heading, (2) the declaration lines ("Covers:", "Qualify:" and "Choice:"), (3) the outline prose followed by a mandatory "Closes:" line.
 
 (1) Chapter heading: "## Chapter N: title".
 
@@ -662,10 +662,15 @@ Every chapter has three parts in this exact order: (1) chapter heading, (2) the 
 - Write "Covers: none" only when no minor arc contains this chapter. Never invent an ID, never put a mid-arc or major-arc ID (such as M1-1) here, and never claim a whole-mid-arc spec field (Causality / Ordering / Goal / Motivation / Path / Attempt N) as if it were a one-off slot — it spans the entire mid arc, so claiming it carries no information.
 - The chapter's outline text follows that line; do not repeat the ID in the prose.
 
+(2a) "Qualify:" line — mandatory in every chapter, whether or not the arc-position block is present:
+- Place it immediately after the "Covers:" line (or immediately after the chapter heading when there is no arc-position block), on its own line, as "Qualify: <D-number> — <which entry this chapter runs into, one clause naming the kind of situation>". Write "Qualify: none — <why>" when this chapter truly touches no entry.
+- It answers only "what kind of thing is this" and **must not say what he did**.
+- The D-number here **must be the same number the "Choice:" line below cites**. If the two disagree, the chapter is not thought through — rewrite it.
+
 (2b) "Choice:" line — mandatory in every chapter, whether or not the arc-position block is present:
-- Place it immediately after the "Covers:" line (or immediately after the chapter heading when there is no arc-position block), on its own line, as "Choice: <source of force> — <what he did in this chapter> | ruled out: <the other thing> because <D-number>: <that tendency>".
+- Place it immediately after the "Qualify:" line, on its own line, as "Choice: <source of force> — <what he did in this chapter> | ruled out: <the other thing> because <D-number>: <that tendency>".
 - Four sources of force: **Self** = he does it with his own hands; **Others** = he brings one specific person in to act, carry word, or vouch; **Rules** = he invokes an institution, a title, or a compact to press the other side; **Trade** = he gives something the other side wants for something he wants. Two **exception values**: **Break** = he takes none of the offered options and opens a road of his own; **Hold** = he does not move at all (waits, stalls, acts as if none of this is happening).
-- because **must start with the number** (D<n>, matching the entries on his card). **The number is the entry id, not the tier**: the tier is the bracketed tag after it, and citing the entry tagged [Exception] means this chapter touched his **anchor**.
+- because **must start with the number** (D<n>, matching the practices in layer 3 of his card). **The number is the entry id, not a ranking**; touching the **exception** written in layer 4 means this chapter reached what he actually cares about.
 - If nothing matches, write D0 and say why this chapter has no disposition scene — allowed, but never omit the field.
 - It answers "what did he decide", not "what happened to him". "He decided to face reality" or "he decided to investigate" is not one of the sources.
 - This line does not fix plot; it fixes whose hands the initiative is in. The chapter blueprint inherits it (its purpose must open with the same source), so never declare one here and dramatize another in the prose.

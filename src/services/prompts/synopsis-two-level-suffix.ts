@@ -29,12 +29,19 @@ import type { WritingLanguage } from '../../shared/writing-language'
 const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 每章按以下顺序输出，除这些行以外不要加任何说明行、标签行或注释：
 - 第一行：章标题「## 第N章：章名」；
-- 第二行：「选择：<力源，或例外值 破／守> —— <他这一章做了什么>｜否掉了 <他本可以做的另一件事>，因为 <D编号>：<那条倾向>」；
+- 第二行：「定性：<D编号> — <这一章碰到的是哪一条，一句话说清是哪类处境>」（这一章确实不沾任何一条时写「定性：无 — <为什么不沾>」）；
+- 第三行：「选择：<力源，或例外值 破／守> —— <他这一章做了什么>｜否掉了 <他本可以做的另一件事>，因为 <D编号>：<那条做法>」；
 - 其后：正文，连贯段落；
 - 最后一行：「收尾：<一句话>」。
 
 严禁输出「覆盖：」行 —— 本结构只有「卷 / 单元」两级，没有可声明的结构位；不得自造任何形如 V1-U1-Start、M1-1 的编号。
 严禁输出「正文前的声明行」「格式说明」「以下为正文」这类标签行，也不得把本节任何一句话抄进正文。
+
+【定性：行的写法】
+先定类，再定选择 —— 这一步只回答「这是哪一类事」，**不回答他怎么做**：
+- 这一行**不许写他做了什么**，只写这一章碰到的是哪一类处境；
+- 定性的 D<n> **必须与下面「选择：」行引用的编号一致**；两处不一致就是没想清楚，重写这一章；
+- 确实不沾任何一条时写「定性：无 — <一句话说清为什么不沾>」：允许没有，但不许不写。
 
 【选择：行的写法】
 这一行不是你在挑，是他挑。写之前按下面的顺序走完四步，**只在内部走，过程一个字都不许写进输出**。
@@ -49,10 +56,10 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 - **守** = 他什么都不动：等、拖、装作没这回事。
 
 四步（顺序不能颠倒）：
-1. 先读他的**性格倾向**（角色卡里带编号、带方括号档位标签的那几条：D<n>〔日常〕／D<n>〔代价〕／D<n>〔破例〕）：这一章的压力属于哪一条的「局面」？那一条现在的「倾向」是什么？
+1. 先读他的**性格倾向**（角色卡第三层那几条做法，D<n>）：这一章的压力属于哪一条？那一条的做法是什么？
    ★ **必须把这个编号记下来**：本行末尾的「因为」后面要写 D<n> —— 写下编号，这一章才算他做的决定；不写编号，等于他不在场。
    一条都对不上时写 D0，并用一句话说明为什么这一章没有他的性格戏：允许没有，但不许不写。
-   ★ 压力若碰到他的**锚点**（标着〔破例〕那一条的赌注），这一章的分量天然更重 —— 这种章不要连着写；反过来，一整卷都没引用过一次〔破例〕那条，说明这一卷从头到尾没碰到他真正在乎的东西。
+   ★ 压力若碰到他第四层写的那次**例外**，这一章的分量天然更重 —— 这种章不要连着写；反过来，一整卷都没出现过一次例外，说明这一卷从头到尾没碰到他真正在乎的东西。
 2. 列三个他够得着的动作：不是最聪明的三个，是他这个处境下真能伸手的三个；
 3. 用当前「倾向」逐条筛：**他再聪明，也不能做一件不符合他当前倾向的事**；不准用"这次情况特殊"给他开绿灯 —— 一个强项抵消不了一条倾向。唯一的例外是这一章本来就是他登记过的位移点（见下方判定句②）；
 4. 取第一个剩下的，不是最好的那个。人做决定是找到能接受的第一个就停，不是把方案比一遍挑最优 —— 所以**他选的多半不是最优解，这很正常**。他用自己的方式把事情解决，才叫爽；他直接选了个聪明方案，那是你替他解决了。
@@ -122,12 +129,19 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 const EN_TWO_LEVEL_SUFFIX = `[Fixed per-chapter format — mandatory]
 Output each chapter in exactly this order, with no extra labels, headings or commentary lines:
 - Line 1: chapter heading "## Chapter N: Title";
-- Line 2: "Choice: <Self | Others | Rules | Trade | Break | Hold> — what he did in this chapter | ruled out: the other thing he could have done, because <D-number>: <that tendency>";
+- Line 2: "Qualify: <D-number> — <which entry this chapter runs into, one clause naming the kind of situation>" (write "Qualify: none — <why>" when it truly touches no entry);
+- Line 3: "Choice: <Self | Others | Rules | Trade | Break | Hold> — what he did in this chapter | ruled out: the other thing he could have done, because <D-number>: <that tendency>";
 - Then: the prose, as connected paragraphs;
 - Last line: "Hook: <one sentence>".
 
 Never output a "Covers:" line — this structure has only two levels (volume / unit) and no claimable arc slots; never invent identifiers such as V1-U1-Start or M1-1.
 Never output labels such as "declaration line before the prose", "format note" or "the following is the prose", and never copy any sentence of this section into the prose.
+
+[The Qualify line]
+Classify first, choose second — this line answers only "what kind of thing is this", **never what he does**:
+- It must **not say what he did**, only which kind of situation this chapter runs into;
+- The D<n> here **must be the same number the Choice line below cites**; if the two disagree, the chapter is not thought through — rewrite it;
+- When it truly touches no entry, write "Qualify: none — <one clause saying why>". Having none is allowed; leaving it out is not.
 
 [The Choice line]
 You are not choosing here — he is. Work through the four steps below, **inside your head only; not one word of the process may appear in the output**.
@@ -142,10 +156,10 @@ Two **exception values** (not a fifth and sixth source — they are "refuse the 
 - **Hold** = he does not move at all: waits, stalls, acts as if none of this were happening.
 
 The four steps, in this order:
-1. Read his **standing tendencies** first — the numbered entries on his card, each with a bracketed tier tag (D<n> [Daily] / D<n> [Costed] / D<n> [Exception]): which entry's Situation does this chapter's pressure belong to, and what is that entry's current Tendency?
+1. Read his **standing tendencies** first — the practices in layer 3 of his card (D<n>): which one does this chapter's pressure belong to, and what is that practice?
    ★ **Note the number down**: the "because" clause at the end of this line must carry D<n>. With the number written, this chapter is his decision; without it, he is not in the scene.
    If nothing matches, write D0 and say in one clause why this chapter has no disposition scene — that is allowed, silently skipping is not.
-   ★ If the pressure touches his **anchor** (the stake of the entry tagged [Exception]), this chapter carries more weight than usual — do not run several such chapters back to back. Conversely, a whole volume that never cites the [Exception] entry once never touched what he actually cares about;
+   ★ If the pressure touches the **exception** written in layer 4, this chapter carries more weight than usual — do not run several such chapters back to back. Conversely, a whole volume in which the exception never once appears never touched what he actually cares about;
 2. List three moves he can actually reach: not the three cleverest, the three he could genuinely put a hand on from where he stands;
 3. Filter them through the current Tendency: **being clever never licenses doing something his current tendency rules out**; never let "this time is special" wave him through — one strength does not buy back one tendency. The only exception is a chapter that is itself a registered Shift (see the test clause below);
 4. Take the first survivor, not the best one. People stop at the first acceptable option; they do not compare every plan and pick the optimum. So **his choice is usually not the optimal solution, and that is correct**. Solving it his own way is what reads as satisfying; handing him the clever solution means you solved it for him.

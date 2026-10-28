@@ -7,30 +7,34 @@
  * 模型随手写一句"因为他谨慎"就是一个理由，机器也没法反驳。
  * 改成「因为 D2」之后就有了可寻址的锚：**写编号可以被查，写形容词不能。**
  *
- * 编号即档位（见 `golden-traits.ts` / `docs/design/prompt/protagonist-golden-traits.md`）：
- * - `D1` 日常档、`D2` 代价档、`D3` 破例档
+ * **编号只是条目号，不是档位**（2026-10-29 起：角色卡改为四层，旧的三档
+ * 〔日常〕/〔代价〕/〔破例〕已取消，编号指向第三层「他对各类事的做法」里的一条）：
+ * - `D1`…`D4` = 第三层里的第几条做法
  * - `D0` 是**显式声明**"这一章没有他的性格戏"，合法，不算缺引用
  *
- * ## 三条判据（只报信号，不判质量）
+ * ## 四条判据（只报信号，不判质量）
  *
  * | 码 | 含义 | 治什么 |
  * |---|---|---|
  * | `ARC_CHOICE_NO_D` | 这一章的选择行没有出现任何 `D<n>` | 模型绕过性格自由发挥 |
  * | `ARC_CHOICE_UNKNOWN_D` | 引用了角色卡上不存在的编号 | 引用是编的 |
  * | `ARC_CHOICE_SAME_D` | 连续 N 章引用同一条 | 一条倾向推所有局面 ⇒ 角色扁平 |
+ * | `ARC_CHOICE_MISMATCH` | 定性行与选择行写的不是同一条 | 一边定类一边落动作，两处没想在一起 |
  *
  * 这是**必要条件**，不是充分条件：全都不报不等于写得好，但报出来的一定有问题。
  *
  * ## 口径
  *
- * 只读「选择：」行（英文 `Choice:`），不猜语义、不做 NLP。
+ * 只读「定性：」行（英文 `Qualify:`）与「选择：」行（英文 `Choice:`），不猜语义、不做 NLP。
  * 与 `arc-position.ts` 的拍子体检同族：**只读标注，不推断内容**。
+ * 没有定性行时不做一致性比较 —— 那是旧格式的大纲，不是错误。
  */
 
 export type DispositionCitationCode =
   | 'ARC_CHOICE_NO_D'
   | 'ARC_CHOICE_UNKNOWN_D'
   | 'ARC_CHOICE_SAME_D'
+  | 'ARC_CHOICE_MISMATCH'
 
 export interface DispositionCitationFinding {
   readonly code: DispositionCitationCode
@@ -55,6 +59,14 @@ const CHAPTER_HEADING = /^#{2,4}\s*(第\s*[0-9一二三四五六七八九十百�
 const CHOICE_LINE = /^(?:[-*+]\s*)?(?:选择|[Cc]hoice)\s*[:：]\s*(.*)$/
 /** 行内编号：`D2` / `D 2`，大小写不敏感。 */
 const CITATION = /\bD\s*(\d{1,2})\b/i
+/** 定性行：中文「定性：」/ 英文 `Qualify:`。 */
+const QUALIFY_LINE = /^(?:[-*+]\s*)?(?:定性|[Qq]ualify)\s*[:：]\s*(.*)$/
+/**
+ * 定性行写「无」/ `none` —— 显式声明这一章不沾任何一条。
+ * 不用 `\b` 收尾：中文不是 `\w`，「无 — …」里 \b 在"无"与空格之间不成立（两边都非词字符）。
+ * 改用"后面不能紧跟拉丁字母"来把 none 与 nonexistent 区分开。
+ */
+const QUALIFY_NONE = /^\s*(?:无|none)(?![A-Za-z])/i
 
 interface ChapterBlock {
   heading: string
@@ -90,6 +102,23 @@ function citationOf(body: string): string | undefined {
 }
 
 /**
+ * 取定性行申报的编号。定性行只回答「这是哪一类事」，**不许写他做了什么**。
+ * 写「无」/ `none` 视为 D0（显式声明不沾任何一条）。
+ * 没有定性行、或定性行里解析不出编号时返回 undefined（不参与一致性比较）。
+ */
+function qualifyOf(body: string): string | undefined {
+  for (const line of body.split(/\r?\n/u)) {
+    const match = QUALIFY_LINE.exec(line.trim())
+    if (!match) continue
+    const rest = match[1] ?? ''
+    if (QUALIFY_NONE.test(rest)) return 'D0'
+    const found = CITATION.exec(rest)
+    return found ? `D${Number(found[1])}` : undefined
+  }
+  return undefined
+}
+
+/**
  * 扫描整份大纲，返回引用问题清单。
  *
  * 没有章节标题时退化成"整份当一个块"，仍能查出"完全没有编号"这类问题。
@@ -119,6 +148,17 @@ export function auditDispositionCitations(input: DispositionCitationInput): Disp
         chapter: block.heading,
         zh: `${block.heading}：引用了 ${citation}，但角色卡上只有 ${[...known].join(' / ')} —— 这个编号是编的。`,
         en: `${block.heading}: cites ${citation}, but the character card only carries ${[...known].join(' / ')} — the number is invented.`,
+      })
+    }
+
+    // 定性行与选择行必须是同一条：定性先定类，选择再落动作，两处不一致 = 这一章没想清楚
+    const qualify = qualifyOf(block.body)
+    if (qualify && citation && qualify !== citation) {
+      findings.push({
+        code: 'ARC_CHOICE_MISMATCH',
+        chapter: block.heading,
+        zh: `${block.heading}：定性行写 ${qualify}，选择行却引用 ${citation} —— 两处不是同一条。定性只回答「这是哪一类事」，两处必须是同一个编号，否则重写这一章。`,
+        en: `${block.heading}: the qualify line says ${qualify} but the choice line cites ${citation} — not the same entry. The qualify line only names the kind of situation; both must carry the same number, otherwise rewrite the chapter.`,
       })
     }
 
