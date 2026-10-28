@@ -1,4 +1,5 @@
 import { decodeCharacterDetails } from '../../../../shared/character-proposal-parser'
+import { STORY_BEAT_KEYS } from '../../../../shared/story-beats'
 import { proposalRuntimeFixture, proposalBatchFixture } from './character-proposal-runtime.fixture'
 import type { CharacterProposalSource, CharacterProposalBatch } from '../../../../shared/character-proposal'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -398,7 +399,9 @@ describe('GenerateConfigCommand error boundaries', () => {
     expect(generateStream).toHaveBeenCalledTimes(2)
     for (const prompt of observedPrompts) {
       expect(prompt).toContain('genre、targetAudience、subGenre、coreOutline、worldSetting、goldenFinger、protagonistProfile、globalGuidance、writingStyle')
-      expect(prompt).toContain('three_act | heros_journey | save_the_cat | kishotenketsu | multi_thread | freeform')
+      // 枚举清单由 `shared/story-beats.ts` 单点生成，这里只查"每个键都在"，不查顺序 ——
+      // 抄一份完整串进断言等于又养了一份词表（2026-10-28 起节拍库扩容为十套）。
+      for (const key of STORY_BEAT_KEYS) expect(prompt).toContain(key)
       expect(prompt).toContain('third_limited | first_person | third_omniscient | multi_pov')
       expect(prompt).toContain('totalChapters 若输出必须严格等于 100')
       expect(prompt).toContain('wordsPerChapter 若输出必须严格等于 3000')

@@ -2,6 +2,7 @@ import type { CharacterRosterEntry } from '../../../shared/character-roster'
 import { resolveCharacterRole } from '../../../shared/character-role'
 import { StructuredContractDiagnostic } from '../../../shared/structured-contract-diagnostic'
 import type { NovelConfig } from '../../../shared/ipc-channels'
+import { STORY_BEAT_KEYS } from '../../../shared/story-beats'
 import type { WritingLanguage } from '../../../shared/writing-language'
 import { promptLanguageText } from '../../prompt-language'
 
@@ -17,7 +18,7 @@ export interface ImportInferenceResult {
   characterCards: CharacterRosterEntry[]
 }
 
-const PLOT_STRUCTURES = ['three_act', 'heros_journey', 'save_the_cat', 'kishotenketsu', 'multi_thread', 'freeform'] as const
+const PLOT_STRUCTURES = STORY_BEAT_KEYS
 const NARRATIVE_POVS = ['third_limited', 'first_person', 'third_omniscient', 'multi_pov'] as const
 const EDGE_INVISIBLE_WRAPPER_RESIDUE = new Set(['\uFEFF', '\u200B', '\u200C', '\u200D', '\u2060'])
 
@@ -27,7 +28,7 @@ export const IMPORT_INFERENCE_JSON_CONTRACT = `
 {
   "novelConfig": {
     "genre": "非空文本", "subGenre": "非空文本", "targetAudience": "非空文本",
-    "plotStructure": "three_act | heros_journey | save_the_cat | kishotenketsu | multi_thread | freeform",
+    "plotStructure": "${PLOT_STRUCTURES.join(' | ')}",
     "narrativePOV": "third_limited | first_person | third_omniscient | multi_pov",
     "coreOutline": "非空文本", "worldSetting": "非空文本", "goldenFinger": "非空文本",
     "protagonistProfile": "非空文本", "globalGuidance": "非空文本"
@@ -52,7 +53,7 @@ Output one direct JSON object only, with no Markdown fence or explanation. It mu
 {
   "novelConfig": {
     "genre": "non-empty text", "subGenre": "non-empty text", "targetAudience": "non-empty text",
-    "plotStructure": "three_act | heros_journey | save_the_cat | kishotenketsu | multi_thread | freeform",
+    "plotStructure": "${PLOT_STRUCTURES.join(' | ')}",
     "narrativePOV": "third_limited | first_person | third_omniscient | multi_pov",
     "coreOutline": "non-empty text", "worldSetting": "non-empty text", "goldenFinger": "non-empty text",
     "protagonistProfile": "non-empty text", "globalGuidance": "non-empty text"

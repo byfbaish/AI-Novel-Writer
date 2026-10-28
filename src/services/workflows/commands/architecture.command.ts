@@ -1,4 +1,5 @@
 import { parsePlanningTargetUnits, planningTargetInstruction, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../../shared/plot-outline-contract'
+import { STORY_BEAT_KEYS } from '../../../shared/story-beats'
 import { toApproveCharacterProposalRequest, type CharacterProposalChoices } from '../../character-proposal-choices'
 import { decodeCharacterIdentityManifest, decodeCharacterDetails, validateCharacterDetail, type CharacterIdentitySlot, type CharacterDetailOutput } from '../../../shared/character-proposal-parser'
 import type { CharacterProposalBatch } from '../../../shared/character-proposal'
@@ -1175,14 +1176,7 @@ export function isRecoverableSynopsisCheckpoint(
   return Boolean((value as PartialArchData | null)?.synopsis_incomplete)
     && isUsableSynopsisCheckpoint(value, dbOutlineText, writingLanguage, totalChapters)
 }
-const PLOT_STRUCTURES = new Set<NovelConfig['plotStructure']>([
-  'three_act',
-  'heros_journey',
-  'save_the_cat',
-  'kishotenketsu',
-  'multi_thread',
-  'freeform',
-])
+const PLOT_STRUCTURES = new Set<NovelConfig['plotStructure']>(STORY_BEAT_KEYS)
 const NARRATIVE_POVS = new Set<NovelConfig['narrativePOV']>([
   'third_limited',
   'first_person',
@@ -1210,14 +1204,14 @@ function buildNovelConfigJSONContract(
 ): string {
   return promptLanguageText(writingLanguage, `【不可变小说配置 JSON 合同】
 - 必填且必须为非空字符串的 9 个字段：genre、targetAudience、subGenre、coreOutline、worldSetting、goldenFinger、protagonistProfile、globalGuidance、writingStyle。
-- plotStructure 必填，且值必须严格为以下英文枚举之一：three_act | heros_journey | save_the_cat | kishotenketsu | multi_thread | freeform。
+- plotStructure 必填，且值必须严格为以下英文枚举之一：${STORY_BEAT_KEYS.join(' | ')}。
 - narrativePOV 必填，且值必须严格为以下英文枚举之一：third_limited | first_person | third_omniscient | multi_pov。
 - totalChapters 与 wordsPerChapter 是作者权威设置，可以省略；totalChapters 若输出必须严格等于 ${totalChapters}；wordsPerChapter 若输出必须严格等于 ${wordsPerChapter}。
 - globalGuidance 必须是 4–8 条跨章节长期有效的简短规则，总计不得超过 ${GENERATED_GLOBAL_GUIDANCE_MAX_CHARS} 字符；禁止逐章列大纲或分配章节区间。
 - referenceWorks 可省略；若输出必须是字符串。
 - 只输出一个完整 JSON 对象。枚举只允许上述英文值，不得输出中文枚举、近义词、说明文字、Markdown、代码围栏或思考过程。`, `[Immutable novel-configuration JSON contract]
 - The following nine fields are required non-empty strings: genre, targetAudience, subGenre, coreOutline, worldSetting, goldenFinger, protagonistProfile, globalGuidance, writingStyle.
-- plotStructure is required and must be exactly one of: three_act | heros_journey | save_the_cat | kishotenketsu | multi_thread | freeform.
+- plotStructure is required and must be exactly one of: ${STORY_BEAT_KEYS.join(' | ')}.
 - narrativePOV is required and must be exactly one of: third_limited | first_person | third_omniscient | multi_pov.
 - totalChapters and wordsPerChapter are authoritative author settings and may be omitted. If present, they must equal ${totalChapters} and ${wordsPerChapter} respectively.
 - globalGuidance must contain 4–8 short, stable cross-chapter rules within ${GENERATED_GLOBAL_GUIDANCE_MAX_CHARS} characters. Do not enumerate chapters or allocate chapter ranges.
