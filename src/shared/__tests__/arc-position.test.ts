@@ -782,3 +782,87 @@ describe('unitBudgetStateOf：阈值边界', () => {
     expect(unitBudgetStateOf(Number.NaN)).toBe('balanced')
   })
 })
+
+/**
+ * 拍子体检（2026-10-28）。
+ *
+ * 这组守的是"越写越像一个模子"的那条下限：同一个骨架连着用几段，读者一定腻。
+ * 它**不承诺好看**——全都不同不等于好看；但全都一样等于一定腻，这个能测。
+ */
+describe('v7 拍子体检：相邻不同拍 / 卷内不重样 / 跨度匹配', () => {
+  const plan = (units: string[], volumes: string[] = ['三幕']) => {
+    const lines = ['# 卷 / 单元结构']
+    volumes.forEach((beat, volumeIndex) => {
+      lines.push(`## 卷${volumeIndex + 1}：门牌全歪了`)
+      lines.push('- 卷叙事任务：立规则。')
+      lines.push(`- 拍子：${beat}`)
+    })
+    units.forEach((beat, index) => {
+      lines.push(`### 单元${index + 1}：面摊`)
+      lines.push('- 叙事任务：立规则。')
+      lines.push(`- 拍子：${beat}`)
+    })
+    return lines.join('\n')
+  }
+
+  const codesOf = (text: string, totalChapters?: number) =>
+    auditArcDensity(parseArcStructure(text), totalChapters).map(item => item.code)
+
+  it('相邻两个单元同拍 ⇒ ARC_SAME_BEAT', () => {
+    expect(codesOf(plan(['三幕', '三幕']))).toContain('ARC_SAME_BEAT')
+  })
+
+  it('同一卷内隔一个单元又用回同一套 ⇒ ARC_BEAT_REPEAT（不是相邻，但仍是重样）', () => {
+    const codes = codesOf(plan(['三幕', '起承转合', '三幕']))
+    expect(codes).toContain('ARC_BEAT_REPEAT')
+    expect(codes).not.toContain('ARC_SAME_BEAT')
+  })
+
+  it('四套轮着来 ⇒ 零告警', () => {
+    expect(codesOf(plan(['三幕', '起承转合', '七点', '故事圈']))).toEqual([])
+  })
+
+  it('拍子名字不在库里 ⇒ ARC_BEAT_UNKNOWN，且提示里带全表', () => {
+    const findings = auditArcDensity(parseArcStructure(plan(['四幕'])))
+    const unknown = findings.find(item => item.code === 'ARC_BEAT_UNKNOWN')
+    expect(unknown).toBeTruthy()
+    expect(unknown!.zh).toContain('三幕')
+    expect(unknown!.zh).toContain('起承转合')
+  })
+
+  it('「拍子：三幕 —— 建置 / 对抗 / 收束」这种带解释的写法照样认', () => {
+    const text = plan(['三幕 —— 建置 / 对抗 / 收束', '起承转合 —— 起 / 承 / 转 / 合'])
+    expect(codesOf(text)).toEqual([])
+  })
+
+  it('单元折算 20 章却用「起承转合」⇒ ARC_BEAT_OVERSPAN', () => {
+    // 2 卷 × 1 单元 = 2 个单元分 60 章 → 每单元 30 章，远超起承转合的 1–10
+    const text = ['# 卷 / 单元结构',
+      '## 卷一：甲', '- 拍子：三幕', '### 单元一：甲一', '- 拍子：起承转合',
+      '## 卷二：乙', '- 拍子：七点', '### 单元一：乙一', '- 拍子：故事圈',
+    ].join('\n')
+    expect(codesOf(text, 60)).toContain('ARC_BEAT_OVERSPAN')
+  })
+
+  it('相邻两卷同拍 ⇒ ARC_SAME_BEAT（卷这一层也查）', () => {
+    // 注意：没有单元的卷会被 `parseArcStructure` 丢掉（`usable` 只留 mids > 0 的），
+    // 所以两卷都得各带一个单元，否则"相邻两卷"根本不存在。
+    const text = ['# 卷 / 单元结构',
+      '## 卷一：甲', '- 拍子：三幕', '### 单元一：甲一', '- 拍子：起承转合',
+      '## 卷二：乙', '- 拍子：三幕', '### 单元一：乙一', '- 拍子：七点',
+    ].join('\n')
+    expect(codesOf(text)).toContain('ARC_SAME_BEAT')
+  })
+
+  it('一个拍子都没写的老 plan 不报（v7 之前的历史产出无从修）', () => {
+    expect(codesOf(V7_PLAN.replace(/（交手：[^）]*）/gu, ''))).toEqual([])
+  })
+
+  it('拍子与逼法是两套标注：只有拍子、没有逼法时，拍子照样查', () => {
+    const text = ['# 卷 / 单元结构',
+      '## 卷一：甲', '### 单元一：甲一', '- 拍子：三幕',
+      '### 单元二：甲二', '- 拍子：三幕',
+    ].join('\n')
+    expect(codesOf(text)).toContain('ARC_SAME_BEAT')
+  })
+})

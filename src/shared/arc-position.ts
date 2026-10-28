@@ -1,4 +1,11 @@
 import type { WritingLanguage } from './writing-language'
+import {
+  normalizeStoryBeatKey,
+  STORY_BEATS,
+  storyBeatFitsSpan,
+  storyBeatOf,
+  storyBeatSpanText,
+} from './story-beats'
 
 /**
  * 弧位圈定（2026-10-11）。
@@ -1429,6 +1436,14 @@ export interface ArcDensityFinding {
     | 'ARC_TIER_STUCK'
     /** 两级结构：按全书章数折算后单元过长 —— 一次「逼法换代」撑不住这么多章 */
     | 'UNIT_TOO_LONG'
+    /** 两级结构：相邻两个单元（或相邻两卷）用了同一套拍子 —— 连续同构，读者会腻 */
+    | 'ARC_SAME_BEAT'
+    /** 两级结构：同一卷内同一套拍子用了两次 —— 卷内重样 */
+    | 'ARC_BEAT_REPEAT'
+    /** 两级结构：拍子的原生跨度盖不住这一段折算后的章数 */
+    | 'ARC_BEAT_OVERSPAN'
+    /** 两级结构：`拍子：` 写了一个不在节拍库里的名字 —— 自造词表 */
+    | 'ARC_BEAT_UNKNOWN'
   /** 出问题的层级，如 `大弧1【门牌错位与三方围猎】` */
   where: string
   zh: string
@@ -1503,8 +1518,128 @@ function pressureTagOf(mid: ArcMid): PressureTag | null {
  */
 export const UNIT_CHAPTER_SOFT_CAP = 9
 
-function auditTwoLevelDensity(parsed: ParsedArcStructure, totalChapters?: number): ArcDensityFinding[] {
+/**
+ * 两级结构（v7+）的**拍子标注**：单元卡上的 `- 拍子：<名字>`。
+ *
+ * ## 为什么只查"换没换"，不查"好不好"
+ *
+ * 节拍同质化在读者那儿是一种**感觉** —— 机器测不出好看，但能测出"一定难看"：
+ * 连续几段用同一副骨架，读者必然腻（读者记不住前期写了什么，只记得那种起伏的感觉）。
+ * 这是**必要条件**，不是充分条件：全都不同不等于好看，全都一样等于一定腻。
+ * 所以这几条给的是**下限告警**，不承诺质量。
+ *
+ * 作者 2026-10-28 的定性：这类节奏问题"篇幅越长暴露得越明显"，是长篇中后期弃书的
+ * 主因；而它恰好可机检 —— 前提是模型把拍子写成一个**能认出来的名字**。
+ */
+const BEAT_FIELD = /^(拍子|beat)$/iu
+/** `拍子：三幕 —— 建置 / 对抗 / 收束`：名字到破折号、冒号、括号、竖线为止。 */
+const BEAT_NAME_CUT = /[—–\-（(；;|｜:：]/u
+
+function beatNameOf(fields: readonly (readonly [string, string])[]): string | null {
+  const line = fields.find(([name]) => BEAT_FIELD.test(name))
+  if (!line) return null
+  const head = (line[1].split(BEAT_NAME_CUT)[0] ?? '').trim()
+  return head || null
+}
+
+function auditBeatVariety(parsed: ParsedArcStructure, totalChapters?: number): ArcDensityFinding[] {
   const findings: ArcDensityFinding[] = []
+  let previousVolumeBeat: string | null = null
+  /** 跨卷不清零：相邻两个单元不许同拍，卷与卷的交界也算相邻。 */
+  let previousUnitBeat: string | null = null
+
+  parsed.majors.forEach((major, majorOffset) => {
+    const volumeIndex = majorOffset + 1
+    const volumeBeatName = beatNameOf(major.fields)
+    const volumeBeatKey = volumeBeatName ? normalizeStoryBeatKey(volumeBeatName) : null
+    if (volumeBeatName && !volumeBeatKey) {
+      findings.push({
+        code: 'ARC_BEAT_UNKNOWN',
+        where: `卷${volumeIndex}`,
+        zh: `卷${volumeIndex} 的拍子「${volumeBeatName}」不在节拍库里 —— 只能从表里照抄：${STORY_BEATS.map(beat => beat.zh).join(' / ')}。自造一个名字等于没选。`,
+        en: `Volume ${volumeIndex} names the beat "${volumeBeatName}", which is not in the library: ${STORY_BEATS.map(beat => beat.en).join(' / ')}.`,
+      })
+    }
+    if (volumeBeatKey && previousVolumeBeat === volumeBeatKey) {
+      const beat = storyBeatOf(volumeBeatKey)
+      if (beat) {
+        findings.push({
+          code: 'ARC_SAME_BEAT',
+          where: `卷${volumeIndex}`,
+          zh: `卷${volumeIndex} 与卷${volumeIndex - 1} 都用「${beat.zh}」—— 相邻两卷同拍。两卷读起来会是同一个形状，换一卷。`,
+          en: `Volume ${volumeIndex} uses the same beat as volume ${volumeIndex - 1} ("${beat.en}").`,
+        })
+      }
+    }
+    if (volumeBeatKey) previousVolumeBeat = volumeBeatKey
+
+    /** 本卷已用过的拍子 → 首次出现的单元号。 */
+    const usedInVolume = new Map<string, number>()
+
+    major.mids.forEach((mid, midOffset) => {
+      const unitIndex = midOffset + 1
+      const where = `卷${volumeIndex}/单元${unitIndex}【${mid.name}】`
+      const rawName = beatNameOf(mid.fields)
+      if (!rawName) return
+      const beatKey = normalizeStoryBeatKey(rawName)
+      if (!beatKey) {
+        findings.push({
+          code: 'ARC_BEAT_UNKNOWN',
+          where,
+          zh: `${where} 的拍子「${rawName}」不在节拍库里 —— 只能从表里照抄：${STORY_BEATS.map(beat => beat.zh).join(' / ')}。自造一个名字等于没选。`,
+          en: `${where} names the beat "${rawName}", which is not in the library: ${STORY_BEATS.map(beat => beat.en).join(' / ')}.`,
+        })
+        return
+      }
+      const beat = storyBeatOf(beatKey)
+      if (!beat) return
+
+      if (previousUnitBeat === beatKey) {
+        findings.push({
+          code: 'ARC_SAME_BEAT',
+          where,
+          zh: `${where} 与上一个单元都用「${beat.zh}」—— 连着两段同一个骨架，读者会觉得"又是这个套路"。换一套，或者把这两段并成一段。`,
+          en: `${where} uses the same beat as the previous unit ("${beat.en}"). Swap it or merge the two units.`,
+        })
+      } else {
+        const firstUnit = usedInVolume.get(beatKey)
+        if (firstUnit !== undefined) {
+          findings.push({
+            code: 'ARC_BEAT_REPEAT',
+            where,
+            zh: `${where} 的「${beat.zh}」在本卷的单元${firstUnit} 已经用过 —— 同一卷内不许重样。表里还有别的，换一套。`,
+            en: `${where} reuses "${beat.en}", already used by unit ${firstUnit} of this volume.`,
+          })
+        }
+      }
+      usedInVolume.set(beatKey, unitIndex)
+      previousUnitBeat = beatKey
+
+      if (typeof totalChapters === 'number' && totalChapters > 0) {
+        const span = arcSpanForUnit(parsed, totalChapters, volumeIndex, unitIndex)
+        if (span) {
+          const chapters = span.midRange[1] - span.midRange[0] + 1
+          if (!storyBeatFitsSpan(beat, chapters)) {
+            findings.push({
+              code: 'ARC_BEAT_OVERSPAN',
+              where,
+              zh: `${where} 用「${beat.zh}」撑 ${chapters} 章，但这套拍子的原生跨度是 ${storyBeatSpanText(beat, 'zh-CN')} —— 装不下。用短拍子硬撑长篇，中段只能靠重复填：换一套跨度够的拍子，或者把这一段切短。`,
+              en: `${where} stretches "${beat.en}" over ${chapters} chapters, but its native span is ${storyBeatSpanText(beat, 'en-US')}. Change the beat or cut the stretch shorter.`,
+            })
+          }
+        }
+      }
+    })
+  })
+
+  return findings
+}
+
+function auditTwoLevelDensity(parsed: ParsedArcStructure, totalChapters?: number): ArcDensityFinding[] {
+  // 拍子体检排在**最前面**，而且不受下面「没有逼法标注就整体跳过」的限制：
+  // 拍子与逼法是两套独立标注，一个单元可能只写了其中一套。若跟着逼法的早退一起跳过，
+  // 「全卷同拍」这种最该报的情况反而会静默。
+  const findings: ArcDensityFinding[] = [...auditBeatVariety(parsed, totalChapters)]
   // 单元跨度检查排在标注检查**之前**：它只依赖个数与总章数，不依赖模型有没有写标注。
   // 一个单元只有「一次逼法换代」，能承载的局面数有上限；折算后过长时，靠重复与拖延
   // 填满几乎是必然的 —— 这不是"写多了"，是"切少了"。

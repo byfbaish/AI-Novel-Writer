@@ -90,10 +90,121 @@ describe('core model prompt language contract', () => {
     expect(enUS.detailSystem).toContain('Explicit author facts')
     expect(enUS.manifestSystem).not.toMatch(/[\u3400-\u9fff]/u)
     expect(enUS.detailContract).toContain('Immutable character-detail JSON contract')
-    expect(zhCN.detailContract).toContain('appearance、personality、background、abilities、motivation、arc、notes 每项不超过 120 字符')
+    expect(zhCN.detailContract).toContain('appearance、background、abilities、motivation、arc、notes 每项不超过 120 字符')
+    expect(zhCN.detailContract).toContain('personality 例外：上限 800 字符')
     expect(zhCN.detailContract).toContain('currentState 的文本字段每项不超过 80 字符')
-    expect(enUS.detailContract).toContain('appearance, personality, background, abilities, motivation, arc, and notes within 120 characters each')
+    expect(enUS.detailContract).toContain('Keep personality within 800 characters')
     expect(enUS.detailContract).toContain('each currentState text field within 80 characters')
+  })
+
+  // 2026-10-28 勘误：性格倾向的真正载体是这里，不是 character_dynamics 的 content
+  // （架构链只取 systemRole 与 taskGuidance，content 在角色步没有任何出路）。
+  // 这组断言把「生效点」钉住：谁把条款挪回模板 content，测试就会红。
+  it('states the protagonist disposition clause at the only site the character step reads', () => {
+    const zhCN = characterArchitecturePrompts('zh-CN')
+    const enUS = characterArchitecturePrompts('en-US')
+    const markerInput = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
+
+    // 三行式的三个行首必须中英都在，且都在 detailTask（真正的 user 段）
+    for (const marker of ['局面：', '倾向：', '位移：']) expect(zhCN.detailTask(markerInput)).toContain(marker)
+    for (const marker of ['Situation:', 'Tendency:', 'Shift:']) expect(enUS.detailTask(markerInput)).toContain(marker)
+
+    // 硬要求缺一不可：可替换 / 必须是动作 / 位移是条件不是程度 / 留白 / 说得出代价
+    expect(zhCN.detailTask(markerInput)).toContain('每条都要能换成三个不同场合而倾向不变')
+    expect(zhCN.detailTask(markerInput)).toContain('倾向必须是动作，不能是形容词')
+    expect(zhCN.detailTask(markerInput)).toContain('位移移动的是条件，不是程度')
+    expect(zhCN.detailTask(markerInput)).toContain('至少 1 条写「尚无」')
+    expect(zhCN.detailTask(markerInput)).toContain('吃过什么亏')
+
+    // 反标签、反数值、弱点必须落进日常/代价档（不是"低档"这种含糊说法）
+    expect(zhCN.detailTask(markerInput)).toContain('禁止写成标签清单')
+    expect(zhCN.detailTask(markerInput)).toContain('禁止出现数值')
+    expect(zhCN.detailTask(markerInput)).toContain('必须落进某条〔日常〕或〔代价〕的倾向里展开')
+
+    // 只对主角生效，避免给配角也套格式导致全員同质
+    expect(zhCN.detailTask(markerInput)).toContain('role 为 protagonist 的那一条必写')
+    expect(enUS.detailTask(markerInput)).toContain('required for the entry whose role is protagonist')
+
+    // 英文那套是独立维护的，漏改不报错 —— 这里直接拦中文泄漏
+    expect(enUS.detailTask(markerInput)).not.toMatch(/[\u3400-\u9fff]/u)
+  })
+
+  // 2026-10-29 作者实机读数（第二版仍不合格）：三处同时错 ——
+  // ① 局面里全是本书专名（残简／灵配袋／因果纹／内门残卷），换个世界就听不懂；
+  // ② 〔破例〕写成了「日常 + 更用力」（被逼认账就顶回去，对一个本来就顶回去的人不叫破例）；
+  // ③ 〔破例〕的倾向与它自己的位移对不上（倾向「这字我不认」，位移却写「肯为别人的账出手」）。
+  // 另外模型写第四条时只能编出"D4 代价档" —— 因为旧条款把编号当成了档位。
+  // 下面每一道闸都对应其中一处，缺一个就会退回同一批产物。
+  it('pins the gates that keep the exception tier from collapsing into daily life', () => {
+    const zhCN = characterArchitecturePrompts('zh-CN')
+    const enUS = characterArchitecturePrompts('en-US')
+    const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
+
+    // 闸一：编号只是条目号，档位是方括号标签；〔破例〕恰好一条
+    expect(zhCN.detailTask(input)).toContain('编号是条目号，不是档位')
+    expect(zhCN.detailTask(input)).toContain('D<n>〔日常〕')
+    expect(zhCN.detailTask(input)).toContain('D<n>〔代价〕')
+    expect(zhCN.detailTask(input)).toContain('D<n>〔破例〕')
+    expect(zhCN.detailTask(input)).toContain('恰好 1 条，必须有')
+    expect(enUS.detailTask(input)).toContain('The number is the entry id, not the tier')
+    expect(enUS.detailTask(input)).toContain('exactly one, and it is mandatory')
+
+    // 闸二：只禁本书专名，判定是「换个世界还听不听得懂」
+    expect(zhCN.detailTask(input)).toContain('不许出现这本书里的任何专名')
+    expect(zhCN.detailTask(input)).toContain('他若要先问「XX 是什么」才听得懂')
+    expect(enUS.detailTask(input)).toContain('No proper noun from this book may appear')
+    expect(enUS.detailTask(input)).toContain('what is X')
+
+    // 闸三：破例必须与日常反方向；「日常 + 更用力」不算破例
+    expect(zhCN.detailTask(input)).toContain('必须与〔日常〕反方向')
+    expect(zhCN.detailTask(input)).toContain('「日常 + 更用力」不算破例')
+    expect(enUS.detailTask(input)).toContain('It must run opposite to [Daily]')
+    expect(enUS.detailTask(input)).toContain('is not an exception')
+
+    // 闸四：破例的局面他极少遇到（隔三差五就碰上的，早有一套熟练应对 = 日常）
+    expect(zhCN.detailTask(input)).toContain('他极少遇到这个局面')
+    expect(enUS.detailTask(input)).toContain('He rarely meets this situation')
+
+    // 闸五：破例的位移右端必须就是它自己的倾向（治"倾向说不认、位移说替人出手"）
+    expect(zhCN.detailTask(input)).toContain('右端，必须就是这一条自己的「倾向」')
+    expect(enUS.detailTask(input)).toContain("must end exactly on this entry's own Tendency")
+
+    // 尖锐只属于破例，且不要求他赢
+    expect(zhCN.detailTask(input)).toContain('聪明救不了他')
+    expect(zhCN.detailTask(input)).toContain('不许写「必要时」')
+    expect(zhCN.detailTask(input)).toContain('不要求他赢')
+    expect(zhCN.detailTask(input)).toContain('两档都写成生死局')
+    // 身体反应是硬要求（底色没变的可观测证据）
+    expect(zhCN.detailTask(input)).toContain('一个身体反应')
+    // 两条否决：排他 / 可失败
+    expect(zhCN.detailTask(input)).toContain('排他')
+    expect(zhCN.detailTask(input)).toContain('可失败')
+
+    expect(enUS.detailTask(input)).toContain('write an archetype, not the setting')
+    expect(enUS.detailTask(input)).toContain('Cleverness cannot save him')
+    expect(enUS.detailTask(input)).toContain('He does not have to win')
+    expect(enUS.detailTask(input)).toContain('a bodily tell')
+  })
+
+  // 拍子格曾经要求"一拍一句话"，7 卷 + 26 单元直接把卷纲撑爆（2026-10-28 实测被截断）。
+  // 骨架只该有一份，就 story-beats.ts 那张表里；本层只写名字 + 落位。
+  it('keeps each beat line to a name plus a landing', () => {
+    const zh = getBuiltinPromptTemplate('plot_structure', 'zh-CN')!
+    const en = getBuiltinPromptTemplate('plot_structure', 'en-US')!
+
+    expect(zh.content).toContain('拍子：<名字>')
+    expect(zh.content).toContain('落位：')
+    expect(en.content).toContain('Beat: <name from the table>')
+    expect(en.content).toContain('Landing:')
+
+    // 旧写法必须彻底消失——它就是截断的直接原因
+    expect(zh.content).not.toContain('一拍一句话')
+    expect(zh.content).not.toContain('一拍一句')
+    expect(en.content).not.toContain('one sentence per slot')
+
+    // 单一权威：骨架只在库里
+    expect(zh.content).toContain('骨架只有一份')
+    expect(en.content).toContain('the skeleton lives in this table and only in this table')
   })
 
   it('appends authoritative project facts omitted by a custom architecture template', () => {
@@ -344,13 +455,29 @@ describe('章纲 → 蓝图 的字段分工（选择行 / 事件序列归蓝图�
   const synopsis = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('synopsis', language)!
   const blueprint = (language: 'zh-CN' | 'en-US') => getBuiltinPromptTemplate('chapter_blueprint', language)!
 
-  it('章纲要求每章写「选择：」行，四选一（中英一致）', () => {
+  it('章纲要求每章写「选择：」行：力源 + D 编号（中英一致）', () => {
     const zh = `${synopsis('zh-CN').content}${synopsis('zh-CN').systemSuffix ?? ''}`
     const en = `${synopsis('en-US').content}${synopsis('en-US').systemSuffix ?? ''}`
     expect(zh).toContain('「选择：」行')
-    expect(zh).toContain('躲 | 拖 | 换 | 认')
+    // 力源四值 + 两个例外值（2026-10-28 起不再是"躲/拖/换/认"）
+    expect(zh).toContain('自己')
+    expect(zh).toContain('他人')
+    expect(zh).toContain('规则')
+    expect(zh).toContain('交换')
+    expect(zh).toContain('破')
+    expect(zh).toContain('守')
+    // 2026-10-29：必须写编号 —— 「因为他的哪一条」永远能过关，「因为 D2」可以被查
+    expect(zh).toContain('D编号')
+    expect(zh).toContain('D0')
     expect(en).toContain('"Choice:" line')
-    expect(en).toContain('hide | stall | trade | own')
+    expect(en).toContain('Self')
+    expect(en).toContain('Others')
+    expect(en).toContain('Rules')
+    expect(en).toContain('Trade')
+    expect(en).toContain('D-number')
+    // 旧四选一必须彻底消失，否则两套词表打架
+    expect(zh).not.toContain('躲 | 拖 | 换 | 认')
+    expect(en).not.toContain('hide | stall | trade | own')
   })
 
   it('章纲不再写「他试了什么」——试法归蓝图的 keyEvents', () => {
@@ -368,8 +495,12 @@ describe('章纲 → 蓝图 的字段分工（选择行 / 事件序列归蓝图�
   })
 
   it('蓝图 purpose 必须继承章纲的选择（中英都写死）', () => {
+    // 去枚举化：条款只要求"照抄大纲里的那个词"，不列词表 —— 词表换版时蓝图侧不必同改。
     expect(blueprint('zh-CN').content).toContain('purpose 必须承接情节大纲该章的「选择：」行')
+    expect(blueprint('zh-CN').content).toContain('把那一行冒号后的第一个词原样搬过来')
     expect(blueprint('en-US').content).toContain('[Choice authority]')
-    expect(blueprint('en-US').content).toContain('purpose must open with that same choice')
+    expect(blueprint('en-US').content).toContain('the exact token that follows "Choice:"')
+    // 旧四选一不得再出现在蓝图侧，否则与章纲新口径断链。
+    expect(blueprint('zh-CN').content).not.toContain('躲|拖|换|认')
   })
 })

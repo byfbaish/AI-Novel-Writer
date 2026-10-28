@@ -1,4 +1,9 @@
 import { writingLanguageText, type WritingLanguage } from '../shared/writing-language'
+import { storyBeatCatalogMarkdown, storyBeatRulesMarkdown, STORY_BEAT_KEYS } from '../shared/story-beats'
+
+/** Beat library text for the volume/unit template. Single source: `shared/story-beats.ts`. */
+const STORY_BEAT_CATALOG_EN = storyBeatCatalogMarkdown('en-US')
+const STORY_BEAT_RULES_EN = storyBeatRulesMarkdown('en-US')
 
 export interface PromptLanguageTemplate {
   systemRole: string
@@ -71,7 +76,7 @@ const CHARACTER_ARCHITECTURE_PROMPTS: Readonly<Record<WritingLanguage, Character
 ★ role 只能取 protagonist、antagonist、supporting、minor 这四个英文词之一，且必须与该 slotId 在【冻结身份与关系清单】里的 role 逐字相同；不要译成中文语义标签（写「主角」「反派」会使整批详情作废）。
 ★ 上述每一个字段都必须是**非空文本**：不得为空字符串、纯空白、null 或省略。「必填」的判定标准是**非空**，不是"键存在"。确实未知时填写「未知」「待补充」之类的占位文本，不得留空——空值会让整批详情作废。最常被留空的是 gender 与 age，这两项同样必须填写。
 currentState 必填，必须包含 location、powerLevel、physicalState、mentalState、keyItems、recentEvents、updatedAtChapter；updatedAtChapter 必须是非负整数。
-appearance、personality、background、abilities、motivation、arc、notes 每项不超过 120 字符；currentState 的文本字段每项不超过 80 字符。
+appearance、background、abilities、motivation、arc、notes 每项不超过 120 字符；**personality 例外：上限 800 字符**（主角要放 3–4 条 ×「局面／倾向／位移」三行，压到 120 字会把每一条都挤成一句空话）；currentState 的文本字段每项不超过 80 字符。
 keyItems 可为非空字符串或非空字符串数组；recentEvents 可为非空字符串或非空字符串数组。数组每项必须是非空字符串，不得混入数字、对象或 null；没有内容时使用字符串“无”，不得输出空数组。
 禁止输出 relationships、schemaVersion、角色图谱 Markdown、解释、代码围栏或思考过程。`,
     manifestTask: (context, minimum, maximum) => `【身份规划上下文】
@@ -96,6 +101,57 @@ ${input.validatedPrefix}
 【详情精炼要求】
 保持每个字段具体、紧凑且与叙事有关；currentState 必填。禁止输出 relationships，关系由冻结身份清单唯一生成。
 
+【主角的性格：四格、档位标签、带编号（role 为 protagonist 的那一条必写，其余 role 不套此格式）】
+性格不是形容词清单，也不是日记。只写**他会怎么动**，而且要能让别人在另一章里一眼认出这是同一个人。
+
+★ 先看作者的补充创作指导：若那里给了「底色／破例／锚点／代价」或某一条现成词条，**以它为准**，你只负责把它落成下面这几条；
+没有给，就从主角档案里推出这四格，并在第一条末尾用一句话写明依据。
+
+★ 写 3–4 条。**编号是条目号，不是档位**；档位用方括号标在编号后面，共三种：
+- **D<n>〔日常〕**：没人逼他时，他遇到这类事会怎么做（测「他平时是谁」）—— 1–2 条；
+- **D<n>〔代价〕**：照习惯做会亏，他还照做不照做（测「他的边界在哪」）—— 1–2 条；
+- **D<n>〔破例〕**：他真正在乎的东西被押上赌桌（测「他到底在乎什么」）—— **恰好 1 条，必须有**。
+
+每条三行，行首原样写：
+- 局面：<这一类处境>
+- 倾向：<他第一秒做的事，必须是一个动作>，<一个身体反应：手抖／耳鸣／指节发白／呼吸变了>
+- 位移：<从 旧条件 → 新条件，因为 哪件事；还没发生过的写「尚无」>
+
+【局面：写原型，不写设定】
+- **不许出现这本书里的任何专名**：人名、地名、境界、货币、法器、功法、机构、材料，一个都不许写。
+- **判定**：把这一行念给一个没看过这本书的人。他若要先问「XX 是什么」才听得懂，那 XX 就是设定 ——
+  换成通用词：「一样他缺的东西」「一笔账」「一份名额」「一样他舍不得用的东西」。
+- 换成三个不同章节的具体版本，这一条仍成立；只在一个场合成立的，是记录，不是性格。
+
+【〔破例〕那一条的五条硬要求】（全书最贵的一条，逐条都要过）
+1. **他极少遇到这个局面**：他要是隔三差五就碰上，早有一套熟练应对 —— 那是日常，不是破例。
+2. **必须与〔日常〕反方向**：把两条的「倾向」对调，读者必须觉得不对劲。
+   - 日常先退 → 破例往前；日常守自己的账 → 破例替别人背账；日常按字面 → 破例撕字面。
+   - **「日常 + 更用力」不算破例**：同方向再加码，还是同一个人在同一天。
+3. **这一条的「位移」右端，必须就是这一条自己的「倾向」**：左端写〔日常〕怎么做，右端写〔破例〕怎么做。
+   两头接不上，说明破例没想清楚，或者位移是编的。
+4. **聪明救不了他**：能靠算计、翻册子、找漏洞过关的，是智力题不是性格题，重写。
+5. **赌注是他的锚点**：他真正珍视、且已经为它付过代价的那样东西（一个人、一本账、一句承诺）。
+   不许写「必要时」「危及生命时」这类笼统条件，要写清**谁、拿什么、怎么押上桌**。
+   不要求他赢：允许两条路都是坏结果，只写第一秒做了什么，不必写结局。
+
+【〔日常〕〔代价〕不必尖锐】：两档都写成生死局，读者会疲劳，也看不出他平时是谁。
+
+【四条硬要求】
+1. 每条都要能换成三个不同场合而倾向不变。只在一个场合成立的是情节，不是性格。
+2. 倾向必须是动作，不能是形容词。「退半步、把话岔开」可用；「谨慎」「腹黑」不可用。
+3. **位移移动的是条件，不是程度**：「从 只有自己被逼才动 → 别人被逼也动」是位移；
+   「从 常做 → 少做、慢做」只是程度，不算。并且至少 1 条写「尚无」—— 那是本卷要去的地方，别把每条都写成已完成。
+4. 每一条都要能说出他吃过什么亏才变成这样。说不出来，那就是标签，不是人。
+
+【两条否决】
+- **排他**：把这一条套到另一个角色身上应当不成立。套得上，说明写的是「一般人」，不是他。
+- **可失败**：这个动作有时候会害了他。只赚不赔的是外挂，不是性格。
+
+不要复述 background 里已经写过的那整段前史，原因一句话点到。
+禁止写成标签清单（勇敢／隐忍／腹黑），禁止出现数值（勇气 +1）。
+主角档案里已经写明的弱点，必须落进某条〔日常〕或〔代价〕的倾向里展开，不能换个形容词抄回来。
+
 只输出 {"entries":[...]}。每项必须额外回显 slotId，name/role 必须与冻结清单完全一致。不得复制、改写或补充关系。`,
   },
   'en-US': {
@@ -106,7 +162,7 @@ Output {"entries":[...]} only. Every entry must contain slotId, name, role, gend
 ★ role must be exactly one of protagonist, antagonist, supporting, or minor, and must match that slotId's role in [Frozen identities and relationships] verbatim. Never restate it as a translated or prose label; a mismatch invalidates the whole batch.
 ★ Every field above must be **non-empty text**: never an empty string, whitespace only, null, or omitted. "Required" means non-empty, not merely present as a key. When a fact is genuinely unknown, write a placeholder such as "unknown" instead of leaving it blank — a blank field invalidates the whole batch. gender and age are the fields most often left blank; both are still mandatory.
 currentState is required and must contain location, powerLevel, physicalState, mentalState, keyItems, recentEvents, and a non-negative integer updatedAtChapter.
-Keep appearance, personality, background, abilities, motivation, arc, and notes within 120 characters each, and each currentState text field within 80 characters.
+Keep personality within 800 characters — the protagonist entry carries 3–4 "Situation / Tendency / Shift" entries and each must not be squeezed; keep appearance, background, abilities, motivation, arc, and notes within 120 characters each, and each currentState text field within 80 characters.
 keyItems and recentEvents may each be a non-empty string or an array of non-empty strings. Use the string "none" when empty; never output an empty array.
 Do not output relationships, schemaVersion, a rendered character map, explanations, code fences, or reasoning.`,
     manifestTask: (context, minimum, maximum) => `[Identity-planning context]
@@ -130,6 +186,52 @@ ${input.validatedPrefix}
 
 [Compact-detail guidance]
 Keep every field specific, concise, and relevant to the story; currentState is required. Do not output relationships because the frozen manifest is their only source.
+
+[Protagonist disposition — four fields, tier tags, numbered (required for the entry whose role is protagonist; other roles keep the normal format)]
+Disposition is not an adjective list, and it is not a diary. Write only **how he moves**, and write it so a reader could recognise the same person in another chapter.
+
+★ Author-provided override first: if the extra author guidance already states "base / exception / anchor / price", or names one canned trait, **follow it exactly** and only break it into the entries below. If it does not, infer the four fields from the protagonist profile and add one clause at the end of the first entry saying what you based it on.
+
+★ Write 3–4 entries. **The number is the entry id, not the tier**; the tier goes in square brackets right after the number, and there are three:
+- **D<n> [Daily]**: with nobody pushing him, how he handles this kind of thing (who he is when nothing is at stake) — 1–2 entries;
+- **D<n> [Costed]**: doing it his usual way will cost him — does he still do it (where his line sits) — 1–2 entries;
+- **D<n> [Exception]**: the thing he truly values is put on the table (what he actually cares about) — **exactly one, and it is mandatory**.
+
+Each entry is exactly three lines, opening with these words verbatim:
+- Situation: <the kind of situation>
+- Tendency: <the first thing he does — must be an action>, <plus a bodily tell: hands shaking / ringing ears / white knuckles / changed breathing>
+- Shift: from <old condition> to <new condition>, because <the event that did it>; write "none yet" when it has not happened
+
+[A hard rule for the Situation line: write an archetype, not the setting]
+- **No proper noun from this book may appear**: no person, place, realm, currency, artifact, technique, institution or material.
+- **Test**: read the line to someone who has never seen this book. If they first have to ask "what is X", then X is setting — replace it with a generic phrase ("a thing he lacks", "a debt", "a slot", "a thing he cannot bear to spend").
+- It must still hold when swapped for three concrete versions from different chapters. Something true in only one scene is a record, not a character.
+
+[The [Exception] entry — five hard requirements] (the most expensive line in the book; every one must pass)
+1. **He rarely meets this situation**: if he runs into it every other week, he already has a practised answer — that is daily life, not an exception.
+2. **It must run opposite to [Daily]**: swap the two Tendency lines and the reader must feel something is wrong.
+   - Daily retreats → exception steps forward; daily guards his own ledger → exception carries someone else's debt; daily obeys the letter → exception tears it up.
+   - **"Daily, but harder" is not an exception**: the same direction with more force is the same man on another day.
+3. **The Shift of this entry must end exactly on this entry's own Tendency**: the left side is what [Daily] does, the right side is what [Exception] does.
+   If the two ends do not meet, the exception is not thought through, or the shift is invented.
+4. **Cleverness cannot save him**: if he can get through by calculating, checking a ledger or finding a loophole, that is an intelligence test, not a character test — rewrite it.
+5. **The stake is his anchor**: the one thing he truly values and has already paid a price for (a person, a ledger, a promise). Never write vague conditions such as "when necessary" or "when life is at risk" — state **who, holding what, putting it on the table how**. He does not have to win: both roads may end badly; write only what he does in the first second.
+
+[Daily] and [Costed] do not need to be sharp: with both of them life-or-death, readers tire, and nobody can tell who he is when nothing is happening.
+
+[Four hard requirements]
+1. Every entry must still hold when swapped for three different occasions with the same tendency. Something true on only one occasion is plot, not disposition.
+2. The tendency must be an action, not an adjective. "Steps back half a pace and changes the subject" works; "cautious" or "scheming" does not.
+3. **A shift moves a condition, not a degree**: "from moving only when he himself is cornered, to moving when someone else is cornered" is a shift; "from often to seldom, from fast to slow" is only a degree. At least one entry must still read "none yet" — that is where this volume is headed; do not write every entry as already completed.
+4. You must be able to say in one sentence what it cost him to become this way. If you cannot, it is a label, not a person.
+
+[Two vetoes]
+- **Exclusive**: paste this entry onto another character and it should no longer be true. If it still fits, you wrote "people in general", not him.
+- **Fallible**: this move sometimes harms him. A move that only ever pays off is a cheat, not a character.
+
+Spend one clause on why the shift happened; do not retell the backstory in background.
+Never reduce it to a tag list (brave / stoic / ruthless) and never assign numbers ("courage +1").
+Any weakness already stated in the protagonist profile must be unfolded as the tendency of one [Daily] or [Costed] entry, never paraphrased as another adjective.
 
 Output {"entries":[...]} only. Echo slotId on every entry; name and role must exactly match the frozen manifest. Do not copy, rewrite, or add relationships.`,
   },
@@ -196,7 +298,7 @@ Make the result concrete, causally useful, and consistent with the supplied fact
 - Return exactly one valid JSON object, with no analysis, plan, explanation, Markdown, code fence, or reasoning.
 - All long-form fields must be strings, not arrays or nested objects.
 - Required string fields: genre, targetAudience, subGenre, coreOutline, worldSetting, goldenFinger, protagonistProfile, globalGuidance, writingStyle.
-- plotStructure must be one of: three_act, heros_journey, save_the_cat, kishotenketsu, multi_thread, freeform.
+- plotStructure must be one of: ${STORY_BEAT_KEYS.join(', ')}.
 - narrativePOV must be one of: third_limited, first_person, third_omniscient, multi_pov.`,
   },
   premise: {
@@ -254,7 +356,18 @@ State the immediate visible threat and the deeper hidden truth or long-term myst
 
 [Design requirements]
 1. Treat every explicit author fact in the story premise and protagonist profile as authoritative. Preserve each one; never weaken, reverse, or replace it with a genre convention.
-2. Keep the protagonist consistent with the supplied profile. Define their visible goal, deeper desire, distinctive appearance, characteristic use of the central advantage, vulnerability, and expected arc.
+2. Keep the protagonist consistent with the supplied profile, and make **the protagonist's disposition — what they tend to do under a recurring kind of pressure — the primary deliverable of this step (3–5 entries)**. Write each entry as exactly three lines:
+   - Situation: <a recurring kind of pressure; name the situation, not a mood>
+   - Tendency: <what they usually do in it; must be a concrete action>
+   - Shift: from <old move> to <new move>, because <the event that did it>; write "none yet" when it has not happened
+   Four hard requirements:
+   - The situation must recur: it appears at least twice more in this volume. Something that happens once is plot, not disposition.
+   - The tendency must be an action, not an adjective. "Steps back half a pace and changes the subject" is usable; "cautious" or "scheming" is not.
+   - At least one entry must already record a shift (their growth has genuinely happened once), and at least one must still read "none yet" (that is where this volume is headed).
+   - You must be able to say in one sentence what it cost them to become this way. If you cannot, it is a label, not a person.
+   Never reduce disposition to a tag list (brave / stoic / ruthless), and never assign numbers — no "courage +1".
+   Any weakness already stated in the protagonist profile must be unfolded as the low rung of one of these tendencies, never paraphrased as an adjective.
+   Then also define: visible goal and deeper desire (what they want, distinct from how they act), distinctive appearance, characteristic use of the central advantage, and this volume's transformation target — which tendency moves to which, and what that shift costs.
 3. Compute the cast size internally first, then design: core cast size = total chapters ÷ 100 (minimum 3, maximum 12). For {{number_of_chapters}} chapters, work out the count (e.g. 800 ÷ 100 = 8) and then make the output's entries array contain exactly that many items. The count is computed, not estimated — never return only four or five characters for a very long work.
    Do NOT put the arithmetic in the output: this step must return pure JSON, and any arithmetic, explanation, preface, or heading invalidates the entire response (see the output contract below). The only way this step may express the count is the length of the entries array.
 4. Cast scope is strict — this is the step's most common failure:
@@ -397,7 +510,22 @@ Build five connected dimensions. The first three each need a concrete source of 
 - Do NOT write chapter counts, word counts or length percentages, and do not put "chapters 1-6" in a title. Conversion is the system's job.
 - Both volume names and unit names must be a **concrete image** ("one 'I'll be right there' and every door number on the street tilts"), not an abstraction ("the crisis deepens").
 
-[Five lines per volume]
+[Beats: each layer picks its own skeleton]
+A "beat" is the skeleton order of a stretch of story — it says nothing about what happens, only **in what order**. The same events walked through different beats read as different books; the same beat used end to end makes readers tired.
+The whole-book layer already picked one, but **volumes and units do not have to follow it**: every volume and every unit picks its own from the table below.
+
+Before choosing, work out the span (in your head — **never write it in the output**): chapters per volume = {{number_of_chapters}} / number of volumes; chapters per unit = chapters per volume / units per volume. Then pick only from beats whose native span covers it.
+
+${STORY_BEAT_RULES_EN}
+
+Anti-pattern: 7 volumes x 4 units = 28 units all on the same beat. The first few still feel well paced; by the tenth the reader has learned the trick — this is where long serials lose readers in the middle. Readers do not remember what happened early on; they remember how the rhythm felt.
+One beat per card. "Three-act + kishotenketsu" is void: layering two structures gives you a spreadsheet, not a story.
+Every volume and every unit below only has to write **which beat it uses plus where each slot lands**. **Never restate what a slot is for** — the skeleton lives in this table and only in this table.
+
+[Available beats — copy the name from this column, never invent one]
+${STORY_BEAT_CATALOG_EN}
+
+[Six lines per volume]
 1. Volume task: what this volume must accomplish structurally — not a plot summary. It is the one change in the reader's understanding of the rules, the opponents or the protagonist that must have happened by the end of it.
 2. Enter state / leave state: what the world and he have each become.
 3. Pressure turnover: the opponent **or** rule this volume replaces. No turnover means the previous volume is being repeated.
@@ -405,8 +533,14 @@ Build five connected dimensions. The first three each need a concrete source of 
    - The loss must land on **one concrete thing**: a door, a person, a record, a street, an identity. Never "options", "room to manoeuvre", "quiet", "trust", "leverage" — those are feelings, not losses.
    - For every item, ask: **who will now come looking for him because of it?** If you cannot name a person, it is not settled.
 5. Time density: how long the volume compresses the reader into, and why (magnitude + reason, never a number of days).
+6. Beat: which beat from the table this volume uses — **the name plus the landing only; never restate the skeleton**. Two lines, fixed format:
+   Beat: <name from the table>
+   Landing: <slot>->unit<n> | <slot>->unit<n> | ...
+   - The skeleton (what each slot is for) is already fully written in the table above; repeating it here writes the same thing twice, and this line is exactly what caused the step to be truncated.
+   - The landing must preserve order. When there are more slots than units, one slot may span two units (write "units 3, 4"); when there are more units than slots, one unit may carry two slots.
+   - No chapter counts, no percentages.
 
-[Four lines per unit]
+[Five lines per unit]
 1. Unit task: what this stretch must accomplish — his situation, his means or his relationships must move exactly one notch.
 2. Enter state / leave state.
 3. Transition: from the previous unit's leave state, by what route do we arrive at this unit's enter state? The route must be nameable.
@@ -417,6 +551,12 @@ Build five connected dimensions. The first three each need a concrete source of 
    - **Two adjacent units must not use the same confrontation type**: door-block / negotiation / evidence / trap / showdown / admission. Two negotiations in a row is filler.
    - End this line with the fixed tag (the system validates it; a malformed tag counts as missing):
      (hand: <one of the six>; tier: <from>-><to>)
+5. Beat: which beat from the table this unit uses — again **the name plus the landing only**, two lines:
+   Beat: <name from the table>
+   Landing: <slot>->scene<n> | <slot>->scene<n> | ...
+   - "Scene" means the nth stretch inside this unit, not a chapter number (chapters are converted by the system).
+   - **It must differ from the previous unit and from anything already used in this volume**; adjacent volumes must differ too.
+   - This line is a **work order for the next layer down (chapter outlines)**: the outline arranges its scenes in the order you set here. If the landing cannot be ordered, the beat was not chosen at all.
 
 [Finally, one book-level rhythm table (cross-cutting, not extra fields on an arc)]
 - Progression node: which volume gives him what new means (Vol N: from A to B).
@@ -442,6 +582,8 @@ Build five connected dimensions. The first three each need a concrete source of 
 - Pressure turnover: <...>
 - Settlement: lost <the specific thing>, because <registered / became known / favour spent / place closed / identity changed>; from now on <who comes looking>
 - Time density: <magnitude>, because <reason>
+- Beat: <name from the table>
+- Landing: <slot>->unit<n> | <slot>->unit<n> | ...
 
 ### Unit 1: <concrete image>
 - Unit task: <...>
@@ -449,6 +591,8 @@ Build five connected dimensions. The first three each need a concrete source of 
 - Leave state: <...>
 - Transition: <...>
 - Pressure method: <who wants what, how they force it> -> by the end it becomes <new method>, because his previous <trick> no longer works (hand: <...>; tier: <...>-><...>)
+- Beat: <name from the table>
+- Landing: <slot>->scene<n> | <slot>->scene<n> | ...
 
 ### Unit 2: <...>
 - ...
@@ -469,9 +613,12 @@ Build five connected dimensions. The first three each need a concrete source of 
 3. Every volume turns over its pressure; a volume where the same cast grinds on must be rewritten.
 4. Every settlement lands on a concrete thing and names who comes looking; "options / room / quiet" must be rewritten.
 5. Every unit names why the previous trick stopped working; a mere change of opponent must be rewritten.
-6. Adjacent units differ in (hand:); no volume parks two consecutive units in the same (tier:).
-7. Every volume pays one specific old debt and plants one specific new debt; flag volumes that only plant.
-8. The rhythm table has all six columns, and pressure rotation never has three parties at full pressure in one volume.
+6. Every volume and every unit names a beat copied from the table; adjacent units differ, nothing repeats inside a volume, adjacent volumes differ. If no other beat fits, the stretch should be merged into the previous one.
+7. The beat's span covers its stretch (kishotenketsu on a 10-chapter unit, or three-two-one on a 40-chapter volume, is wrong). Change the beat or cut the stretch shorter.
+8. Adjacent units differ in (hand:); no volume parks two consecutive units in the same (tier:).
+9. Every volume pays one specific old debt and plants one specific new debt; flag volumes that only plant.
+10. The rhythm table has all six columns, and pressure rotation never has three parties at full pressure in one volume.
+11. Every volume and every unit carries exactly two lines for the beat — "Beat: <name>" and "Landing: ..." — with no restatement of what each slot is for. Restated ones must be deleted and rewritten.
 
 [Reference works — if any, borrow structure density and gear-change rhythm; never borrow plot]
 {{reference_works}}
@@ -534,10 +681,12 @@ Every chapter has three parts in this exact order: (1) chapter heading, (2) the 
 - The chapter's outline text follows that line; do not repeat the ID in the prose.
 
 (2b) "Choice:" line — mandatory in every chapter, whether or not the arc-position block is present:
-- Place it immediately after the "Covers:" line (or immediately after the chapter heading when there is no arc-position block), on its own line, as "Choice: <hide | stall | trade | own> — <what he actively chose in this chapter>".
-- Exactly one of four: hide = avoid contact and let no one close in; stall = buy time and push it later; trade = give one thing to get another; own = take the debt onto himself.
-- It answers "what did he decide", not "what happened to him". "He decided to face reality" or "he decided to investigate" is not one of the four.
-- This line does not fix plot; it fixes whose hands the initiative is in. The chapter blueprint inherits it (its purpose must open with the same choice), so never declare one choice here and dramatize another in the prose.
+- Place it immediately after the "Covers:" line (or immediately after the chapter heading when there is no arc-position block), on its own line, as "Choice: <source of force> — <what he did in this chapter> | ruled out: <the other thing> because <D-number>: <that tendency>".
+- Four sources of force: **Self** = he does it with his own hands; **Others** = he brings one specific person in to act, carry word, or vouch; **Rules** = he invokes an institution, a title, or a compact to press the other side; **Trade** = he gives something the other side wants for something he wants. Two **exception values**: **Break** = he takes none of the offered options and opens a road of his own; **Hold** = he does not move at all (waits, stalls, acts as if none of this is happening).
+- because **must start with the number** (D<n>, matching the entries on his card). **The number is the entry id, not the tier**: the tier is the bracketed tag after it, and citing the entry tagged [Exception] means this chapter touched his **anchor**.
+- If nothing matches, write D0 and say why this chapter has no disposition scene — allowed, but never omit the field.
+- It answers "what did he decide", not "what happened to him". "He decided to face reality" or "he decided to investigate" is not one of the sources.
+- This line does not fix plot; it fixes whose hands the initiative is in. The chapter blueprint inherits it (its purpose must open with the same source), so never declare one here and dramatize another in the prose.
 
 (3) "Closes:" line — mandatory for every chapter, no exceptions:
 - Put it on its own line as "Closes: <one sentence>"; never fold it into the prose paragraph, and never write it mid-sentence as "in closing, ...".
@@ -621,7 +770,7 @@ When the plot outline inside [Story architecture] already names a chapter (forma
 The sole authority for suspenseHook is the same outline. When the outline for that chapter ends with a "Closes:" line, suspenseHook must land on the unresolved item that line already names. You may phrase it more concretely and more like a question, but never substitute a different suspense, and never drop the item the Closes line already identified. Only when the outline gives no "Closes:" line for that chapter may you derive the hook from the keyEvents/suspenseHook split above.
 
 [Choice authority]
-When the outline for that chapter carries a "Choice:" line, purpose must open with that same choice — "He chooses <hide | stall | trade | own> — <the concrete move>" — and only then state what he wants to settle. keyEvents expand how that choice is carried out and how it fails; never swap in a different way of responding.
+When the outline for that chapter carries a "Choice:" line, purpose must open with the exact token that follows "Choice:" in that line — copy it verbatim, never substitute a near-synonym from any list (the list itself may change; the outline text is authoritative) — and only then state what he wants to settle. keyEvents expand how that source of force is mobilized and how it fails; never swap in a different source, and never turn the road he ruled out into the main line.
 Return JSON only, with no Markdown, preface, analysis, plan, code fence, or reasoning.
 
 [Author pacing and style guidance — highest priority when present]
@@ -651,7 +800,7 @@ The following are already-finalized prior chapters (brief excerpts, to prevent d
 4. Give every chapter a material event change; do not add filler.
 5. The plot outline inside [Story architecture] is the only authority for chapter titles: when it already names a chapter (formatted as "## Chapter N: Title"), reuse that title verbatim — punctuation and wording included — and never rewrite, shorten, restyle, or make it catchier. Invent a title only when the outline gives none. If the chapter content diverges slightly from the outline title, change the content, never the title.
 6. The sole authority for suspenseHook is the same outline. When the outline for that chapter ends with a "Closes:" line, suspenseHook must land on the unresolved item that line already names. You may phrase it more concretely and more like a question, but never substitute a different suspense, and never drop the item the Closes line already identified. Only when the outline gives no "Closes:" line for that chapter may you derive the hook freely.
-7. When the outline for that chapter carries a "Choice:" line, purpose must open with that same choice — "He chooses <hide | stall | trade | own> — <the concrete move>" — before stating what he wants to settle; keyEvents expand how that choice is carried out, never a different response.
+7. When the outline for that chapter carries a "Choice:" line, purpose must open with the exact token that follows "Choice:" in that line — verbatim, never a near-synonym from any list — before stating what he wants to settle; keyEvents expand how that source of force is mobilized, never a different one.
 8. Return exactly one JSON object with a blueprints array and no analysis, plan, explanation, Markdown, or code fence.
 
 [Author pacing and style guidance]
@@ -904,6 +1053,8 @@ Add no preface, courtesy language, or unrelated explanation.`,
 3. role must be protagonist, antagonist, supporting, or minor.
 4. relationships must be an array. target must exactly match another character name in this response; relation must briefly state the relationship, conflict, or emotional tension. Use [] when no relationship is established.
 5. currentState represents the initial state at story opening, and updatedAtChapter must be 0.
+6. personality must preserve the character map's per-entry "Situation / Tendency / Shift" three-line structure verbatim — never compress it into trait adjectives or merge it into one paragraph. For characters whose entry carries no such structure (usually supporting cast), extract it as written and never invent tendencies for them.
+7. arc states this volume's transformation target: which tendency moves to which, and what that shift costs.
 
 [JSON object contract]
 Return exactly one object with this shape:
