@@ -21,6 +21,16 @@
  *
  *   node scripts/audit-prompt-overrides.mjs            # 自动定位全局数据根
  *   node scripts/audit-prompt-overrides.mjs --root <dir>  # 指定 prompts 目录
+ *   node scripts/audit-prompt-overrides.mjs --project <项目目录>   # 一并扫项目级（可重复）
+ *
+ * ## ★ 两级都要查（2026-10-28 血的教训）
+ *
+ * 优先级是 `project > global > builtin`，**项目级比全局级更高**。只扫全局会得出
+ * 「没有覆盖版、改动立即生效」的**假阴性**：作者改完模板、跑了一整轮生成，产出的
+ * 仍是旧口径，而命令行显示一切正常。当天就这么白跑了一轮角色生成。
+ *
+ * 项目在磁盘上任意位置、没有注册表可枚举，所以项目级只能由 `--project` 显式给。
+ * 没给的时候脚本会在结尾提醒「项目级未检查」，不要把那份输出当成完整结论。
  *
  * 退出码恒为 0（这是体检不是闸门）；需要闸门的场合请用 `--strict`。
  *
@@ -40,10 +50,13 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.dirname(here)
 
 const argv = process.argv.slice(2)
-const argRoot = (() => {
-  const index = argv.indexOf('--root')
-  return index >= 0 ? argv[index + 1] : undefined
-})()
+const argOf = flag => {
+  const index = argv.indexOf(flag)
+  return index >= 0 && argv[index + 1] ? argv[index + 1] : undefined
+}
+const argRoot = argOf('--root')
+// 项目级可重复给：`--project A --project B`。优先级 project > global，所以先扫项目。
+const projectDirs = argv.flatMap((value, index) => (value === '--project' && argv[index + 1] ? [path.resolve(argv[index + 1])] : []))
 const strict = argv.includes('--strict')
 
 /**
@@ -154,9 +167,14 @@ function describeDelta(override, builtin) {
 }
 
 async function main() {
-  const dirs = resolvePromptsDirs()
-  if (dirs.length === 0) {
-    console.error('未找到全局数据根。用 --root 指定 prompts 目录。')
+  const scopes = []
+  for (const projectDir of projectDirs) {
+    scopes.push({ label: `项目级（${path.basename(projectDir)}）`, dir: path.join(projectDir, '.ai-novel', 'prompts') })
+  }
+  for (const dir of resolvePromptsDirs()) scopes.push({ label: '全局级', dir })
+
+  if (scopes.length === 0) {
+    console.error('未找到全局数据根。用 --root 指定 prompts 目录，或用 --project 指定项目目录。')
     process.exit(strict ? 1 : 0)
   }
   const { builtin: builtinModule, revision: revisionModule } = await loadBuiltinModule()
@@ -168,9 +186,13 @@ async function main() {
   let unknownCount = 0
   let freshCount = 0
 
-  for (const dir of dirs) {
-    console.log(`\n全局数据：${dir}`)
-    const overrides = readOverrides(dir)
+  for (const scope of scopes) {
+    if (!fs.existsSync(scope.dir)) {
+      console.log(`\n${scope.label}：无覆盖目录（${scope.dir}），该作用域不遮蔽任何内置改动`)
+      continue
+    }
+    console.log(`\n${scope.label}：${scope.dir}`)
+    const overrides = readOverrides(scope.dir)
     const jsonCount = overrides.filter(entry => !entry.error).length
     console.log(`覆盖版 ${jsonCount} 份 / 内置模板 ${builtins.length} 份\n`)
 
@@ -213,9 +235,13 @@ async function main() {
   console.log(`\n汇总：遮蔽中 ${staleCount} / 与内置一致 ${freshCount} / 内置无对应 ${unknownCount}`)
   if (staleCount > 0) {
     console.log('处理方式（三选一，代码不会自动改作者资产）：')
-    console.log('  1. 设置里点「恢复默认」——覆盖版删除，回落内置')
+    console.log('  1. 设置里点「恢复默认」——覆盖版删除，回落内置（⚠️ 会同时删掉该项目级与全局级的同名覆盖）')
     console.log('  2. 设置里「采纳新版内置」——把内置正文同步进覆盖，保留作者改过的 taskGuidance')
     console.log('  3. 确认是有意定制 ⇒ 忽略本提示，但要知道内置改进不会生效')
+  }
+  if (projectDirs.length === 0) {
+    console.log('\n⚠️ 项目级未检查：优先级是 project > global > builtin，项目级会盖住全局级与内置。')
+    console.log('   验证前请补上：node scripts/audit-prompt-overrides.mjs --project <项目目录>')
   }
   process.exit(strict && staleCount > 0 ? 1 : 0)
 }
