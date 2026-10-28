@@ -100,26 +100,28 @@ describe('core model prompt language contract', () => {
   // 2026-10-28 勘误：性格倾向的真正载体是这里，不是 character_dynamics 的 content
   // （架构链只取 systemRole 与 taskGuidance，content 在角色步没有任何出路）。
   // 这组断言把「生效点」钉住：谁把条款挪回模板 content，测试就会红。
+  // 2026-10-29 勘误：性格倾向的真正载体是这里，不是 character_dynamics 的 content
+  // （架构链只取 systemRole 与 taskGuidance，content 在角色步没有任何出路）。
+  // 这组断言把「生效点」钉住：谁把条款挪回模板 content，测试就会红。
+  //
+  // 2026-10-29 夜间：旧的三档（〔日常〕/〔代价〕/〔破例〕）实测会出 D1 引力、D3 滥用、大量「无」，
+  // 已整段换成四层。旧的五道闸断言随之删除 —— 条款已不存在，留着必红。
   it('states the protagonist disposition clause at the only site the character step reads', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')
     const enUS = characterArchitecturePrompts('en-US')
     const markerInput = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
 
-    // 三行式的三个行首必须中英都在，且都在 detailTask（真正的 user 段）
-    for (const marker of ['局面：', '倾向：', '位移：']) expect(zhCN.detailTask(markerInput)).toContain(marker)
-    for (const marker of ['Situation:', 'Tendency:', 'Shift:']) expect(enUS.detailTask(markerInput)).toContain(marker)
+    // 四层的层名必须中英都在，且都在 detailTask（真正的 user 段）
+    for (const marker of ['第一层【他在乎什么】', '第二层【什么算一件事】', '第三层【他对各类事的做法】', '第四层【例外】']) {
+      expect(zhCN.detailTask(markerInput)).toContain(marker)
+    }
+    for (const marker of ['Layer 1 [what he cares about]', 'Layer 2 [what counts as an event]', 'Layer 3 [how he treats each kind of event]', 'Layer 4 [the exception]']) {
+      expect(enUS.detailTask(markerInput)).toContain(marker)
+    }
 
-    // 硬要求缺一不可：可替换 / 必须是动作 / 位移是条件不是程度 / 留白 / 说得出代价
-    expect(zhCN.detailTask(markerInput)).toContain('每条都要能换成三个不同场合而倾向不变')
-    expect(zhCN.detailTask(markerInput)).toContain('倾向必须是动作，不能是形容词')
-    expect(zhCN.detailTask(markerInput)).toContain('位移移动的是条件，不是程度')
-    expect(zhCN.detailTask(markerInput)).toContain('至少 1 条写「尚无」')
-    expect(zhCN.detailTask(markerInput)).toContain('吃过什么亏')
-
-    // 反标签、反数值、弱点必须落进日常/代价档（不是"低档"这种含糊说法）
+    // 反标签、反数值
     expect(zhCN.detailTask(markerInput)).toContain('禁止写成标签清单')
     expect(zhCN.detailTask(markerInput)).toContain('禁止出现数值')
-    expect(zhCN.detailTask(markerInput)).toContain('必须落进某条〔日常〕或〔代价〕的倾向里展开')
 
     // 只对主角生效，避免给配角也套格式导致全員同质
     expect(zhCN.detailTask(markerInput)).toContain('role 为 protagonist 的那一条必写')
@@ -129,61 +131,64 @@ describe('core model prompt language contract', () => {
     expect(enUS.detailTask(markerInput)).not.toMatch(/[\u3400-\u9fff]/u)
   })
 
-  // 2026-10-29 作者实机读数（第二版仍不合格）：三处同时错 ——
-  // ① 局面里全是本书专名（残简／灵配袋／因果纹／内门残卷），换个世界就听不懂；
-  // ② 〔破例〕写成了「日常 + 更用力」（被逼认账就顶回去，对一个本来就顶回去的人不叫破例）；
-  // ③ 〔破例〕的倾向与它自己的位移对不上（倾向「这字我不认」，位移却写「肯为别人的账出手」）。
-  // 另外模型写第四条时只能编出"D4 代价档" —— 因为旧条款把编号当成了档位。
-  // 下面每一道闸都对应其中一处，缺一个就会退回同一批产物。
-  it('pins the gates that keep the exception tier from collapsing into daily life', () => {
+  // 四层的骨架测试：层名要在，旧三档的词一个都不许剩。
+  // 旧词留着 = 模型同时看见两套口径，会退回按处境分类（实测「无」7/20）。
+  it('writes the character in four layers', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')
     const enUS = characterArchitecturePrompts('en-US')
     const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
 
-    // 闸一：编号只是条目号，档位是方括号标签；〔破例〕恰好一条
-    expect(zhCN.detailTask(input)).toContain('编号是条目号，不是档位')
-    expect(zhCN.detailTask(input)).toContain('D<n>〔日常〕')
-    expect(zhCN.detailTask(input)).toContain('D<n>〔代价〕')
-    expect(zhCN.detailTask(input)).toContain('D<n>〔破例〕')
-    expect(zhCN.detailTask(input)).toContain('恰好 1 条，必须有')
-    expect(enUS.detailTask(input)).toContain('The number is the entry id, not the tier')
-    expect(enUS.detailTask(input)).toContain('exactly one, and it is mandatory')
+    for (const marker of ['第一层', '第二层', '第三层', '第四层']) {
+      expect(zhCN.detailTask(input)).toContain(marker)
+    }
+    for (const marker of ['Layer 1', 'Layer 2', 'Layer 3', 'Layer 4']) {
+      expect(enUS.detailTask(input)).toContain(marker)
+    }
 
-    // 闸二：只禁本书专名，判定是「换个世界还听不听得懂」
-    expect(zhCN.detailTask(input)).toContain('不许出现这本书里的任何专名')
-    expect(zhCN.detailTask(input)).toContain('他若要先问「XX 是什么」才听得懂')
-    expect(enUS.detailTask(input)).toContain('No proper noun from this book may appear')
-    expect(enUS.detailTask(input)).toContain('what is X')
+    // 旧三档彻底消失
+    for (const gone of ['〔日常〕', '〔代价〕', '〔破例〕']) {
+      expect(zhCN.detailTask(input)).not.toContain(gone)
+    }
+    for (const gone of ['[Daily]', '[Costed]', '[Exception]']) {
+      expect(enUS.detailTask(input)).not.toContain(gone)
+    }
+  })
 
-    // 闸三：破例必须与日常反方向；「日常 + 更用力」不算破例
-    expect(zhCN.detailTask(input)).toContain('必须与〔日常〕反方向')
-    expect(zhCN.detailTask(input)).toContain('「日常 + 更用力」不算破例')
-    expect(enUS.detailTask(input)).toContain('It must run opposite to [Daily]')
-    expect(enUS.detailTask(input)).toContain('is not an exception')
+  // V6：普世、仁善排在前面的角色是圣母不是人。模型最容易自作主张把这两项顶上去。
+  it('bans the saint at the top of the ranking', () => {
+    const zhCN = characterArchitecturePrompts('zh-CN')
+    const enUS = characterArchitecturePrompts('en-US')
+    const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
 
-    // 闸四：破例的局面他极少遇到（隔三差五就碰上的，早有一套熟练应对 = 日常）
-    expect(zhCN.detailTask(input)).toContain('他极少遇到这个局面')
-    expect(enUS.detailTask(input)).toContain('He rarely meets this situation')
+    expect(zhCN.detailTask(input)).toContain('普世、仁善这类价值不许排在前两位')
+    expect(zhCN.detailTask(input)).toContain('写不出代价的，那是圣母，不是人')
+    expect(enUS.detailTask(input)).toContain('Universalism and benevolence must not occupy the first two places')
+    expect(enUS.detailTask(input)).toContain('that is a saint, not a person')
+  })
 
-    // 闸五：破例的位移右端必须就是它自己的倾向（治"倾向说不认、位移说替人出手"）
-    expect(zhCN.detailTask(input)).toContain('右端，必须就是这一条自己的「倾向」')
-    expect(enUS.detailTask(input)).toContain("must end exactly on this entry's own Tendency")
+  // V2：每条做法必须写「不适用」。不写就会变成引力中心，把所有处境吸过去（实测 D1 引力）。
+  it('requires not-applicable on every practice', () => {
+    const zhCN = characterArchitecturePrompts('zh-CN')
+    const enUS = characterArchitecturePrompts('en-US')
+    const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
 
-    // 尖锐只属于破例，且不要求他赢
-    expect(zhCN.detailTask(input)).toContain('聪明救不了他')
-    expect(zhCN.detailTask(input)).toContain('不许写「必要时」')
-    expect(zhCN.detailTask(input)).toContain('不要求他赢')
-    expect(zhCN.detailTask(input)).toContain('两档都写成生死局')
-    // 身体反应是硬要求（底色没变的可观测证据）
-    expect(zhCN.detailTask(input)).toContain('一个身体反应')
-    // 两条否决：排他 / 可失败
-    expect(zhCN.detailTask(input)).toContain('排他')
-    expect(zhCN.detailTask(input)).toContain('可失败')
+    expect(zhCN.detailTask(input)).toContain('每条都必须有「不适用」')
+    expect(zhCN.detailTask(input)).toContain('没写的那条会变成万能答案')
+    expect(enUS.detailTask(input)).toContain('not applicable')
+    expect(enUS.detailTask(input)).toContain('Every pair must carry a "not applicable"')
+  })
 
-    expect(enUS.detailTask(input)).toContain('write an archetype, not the setting')
-    expect(enUS.detailTask(input)).toContain('Cleverness cannot save him')
-    expect(enUS.detailTask(input)).toContain('He does not have to win')
-    expect(enUS.detailTask(input)).toContain('a bodily tell')
+  // V1：例外不是第四条策略，是「该给的答案缺席的那一次」；必须挂到底线上且方向写死。
+  // 实测对照：例外随便破 → 第 17/18 章方向相反且错；挂第 1 条底线 → 两章都对且一致。
+  it('pins the exception to a bottom line', () => {
+    const zhCN = characterArchitecturePrompts('zh-CN')
+    const enUS = characterArchitecturePrompts('en-US')
+    const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
+
+    expect(zhCN.detailTask(input)).toContain('只有一种情况会出例外')
+    expect(zhCN.detailTask(input)).toContain('他为了那个人，放弃自己平时守的规矩')
+    expect(enUS.detailTask(input)).toContain('There is only one case that produces an exception')
+    expect(enUS.detailTask(input)).toContain('he abandons the rules he normally keeps')
   })
 
   // 拍子格曾经要求"一拍一句话"，7 卷 + 26 单元直接把卷纲撑爆（2026-10-28 实测被截断）。

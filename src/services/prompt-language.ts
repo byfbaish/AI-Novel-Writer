@@ -101,56 +101,45 @@ ${input.validatedPrefix}
 【详情精炼要求】
 保持每个字段具体、紧凑且与叙事有关；currentState 必填。禁止输出 relationships，关系由冻结身份清单唯一生成。
 
-【主角的性格：四格、档位标签、带编号（role 为 protagonist 的那一条必写，其余 role 不套此格式）】
-性格不是形容词清单，也不是日记。只写**他会怎么动**，而且要能让别人在另一章里一眼认出这是同一个人。
+【主角的性格：四层，不是形容词清单（role 为 protagonist 的那一条必写，其余 role 不套此格式）】
+性格不是形容词，也不是日记。只写他会怎么动，而且要能让别人在另一章里一眼认出这是同一个人。
 
-★ 先看作者的补充创作指导：若那里给了「底色／破例／锚点／代价」或某一条现成词条，**以它为准**，你只负责把它落成下面这几条；
-没有给，就从主角档案里推出这四格，并在第一条末尾用一句话写明依据。
+★ 先看作者的补充创作指导：若那里给了词条或底线清单，以它为准，你只负责把它落成下面这几层；
+没有给，就从主角档案里推出来。
 
-★ 写 3–4 条。**编号是条目号，不是档位**；档位用方括号标在编号后面，共三种：
-- **D<n>〔日常〕**：没人逼他时，他遇到这类事会怎么做（测「他平时是谁」）—— 1–2 条；
-- **D<n>〔代价〕**：照习惯做会亏，他还照做不照做（测「他的边界在哪」）—— 1–2 条；
-- **D<n>〔破例〕**：他真正在乎的东西被押上赌桌（测「他到底在乎什么」）—— **恰好 1 条，必须有**。
+第一层【他在乎什么】按轻重排出 4–5 项，写清先后，不写分数。
+- 至少一项是具体可夺的东西：一个人、一本账、一句承诺；不许全是「尊严」「信念」这类抽象词。
+- 至少一项是他不愿承认的：他自己不觉得那是缺点。
+- 任意相邻两项之间，要能构造出一个他必须选一个的场面。
+- 普世、仁善这类价值不许排在前两位。若确要排，必须写出他为此付过什么代价；写不出代价的，那是圣母，不是人。
 
-每条三行，行首原样写：
-- 局面：<这一类处境>
-- 倾向：<他第一秒做的事，必须是一个动作>，<一个身体反应：手抖／耳鸣／指节发白／呼吸变了>
-- 位移：<从 旧条件 → 新条件，因为 哪件事；还没发生过的写「尚无」>
+第二层【什么算一件事】只写两句：什么算，什么不算。
+- 能用的、能换钱的、能让他少费事的 → 算。
+- 跟他没干系的闲事 → 不算。
+- 每一类「不算」的事，都必须离上面那些底线项都远。
 
-【局面：写原型，不写设定】
-- **不许出现这本书里的任何专名**：人名、地名、境界、货币、法器、功法、机构、材料，一个都不许写。
-- **判定**：把这一行念给一个没看过这本书的人。他若要先问「XX 是什么」才听得懂，那 XX 就是设定 ——
-  换成通用词：「一样他缺的东西」「一笔账」「一份名额」「一样他舍不得用的东西」。
-- 换成三个不同章节的具体版本，这一条仍成立；只在一个场合成立的，是记录，不是性格。
+第三层【他对各类事的做法】写 3–4 条配对，每条两行：
+- 什么事 → 他一贯怎么做（写做法，不写这一次的具体动作）
+- 不适用：什么情况下这条让位
+每条都必须有「不适用」。没写的那条会变成万能答案，把所有处境都吸过去。
 
-【〔破例〕那一条的五条硬要求】（全书最贵的一条，逐条都要过）
-1. **他极少遇到这个局面**：他要是隔三差五就碰上，早有一套熟练应对 —— 那是日常，不是破例。
-2. **必须与〔日常〕反方向**：把两条的「倾向」对调，读者必须觉得不对劲。
-   - 日常先退 → 破例往前；日常守自己的账 → 破例替别人背账；日常按字面 → 破例撕字面。
-   - **「日常 + 更用力」不算破例**：同方向再加码，还是同一个人在同一天。
-3. **这一条的「位移」右端，必须就是这一条自己的「倾向」**：左端写〔日常〕怎么做，右端写〔破例〕怎么做。
-   两头接不上，说明破例没想清楚，或者位移是编的。
-4. **聪明救不了他**：能靠算计、翻册子、找漏洞过关的，是智力题不是性格题，重写。
-5. **赌注是他的锚点**：他真正珍视、且已经为它付过代价的那样东西（一个人、一本账、一句承诺）。
-   不许写「必要时」「危及生命时」这类笼统条件，要写清**谁、拿什么、怎么押上桌**。
-   不要求他赢：允许两条路都是坏结果，只写第一秒做了什么，不必写结局。
+第四层【例外】
+- 上面那些做法，全是为前三条底线服务的。只有一种情况会出例外：第 1 条跟别的底线打架时，他一定选第 1 条。
+- 那一次他会做出上面所有做法里都没有的事，方向是定的：他为了那个人，放弃自己平时守的规矩。
+- 除此之外不会有意外的举动。
 
-【〔日常〕〔代价〕不必尖锐】：两档都写成生死局，读者会疲劳，也看不出他平时是谁。
+【具体动作的粒度】每条做法最后都要能落到这个粒度：
+- 是动作，能拍出来；不是形容词。
+- 带一个身体反应：手抖、耳鸣、指节发白、呼吸变了。这是他还在怕但仍在做的证据。
+- 出现这本书里任何专名的，一律重写。
 
-【四条硬要求】
-1. 每条都要能换成三个不同场合而倾向不变。只在一个场合成立的是情节，不是性格。
-2. 倾向必须是动作，不能是形容词。「退半步、把话岔开」可用；「谨慎」「腹黑」不可用。
-3. **位移移动的是条件，不是程度**：「从 只有自己被逼才动 → 别人被逼也动」是位移；
-   「从 常做 → 少做、慢做」只是程度，不算。并且至少 1 条写「尚无」—— 那是本卷要去的地方，别把每条都写成已完成。
-4. 每一条都要能说出他吃过什么亏才变成这样。说不出来，那就是标签，不是人。
-
-【两条否决】
-- **排他**：把这一条套到另一个角色身上应当不成立。套得上，说明写的是「一般人」，不是他。
-- **可失败**：这个动作有时候会害了他。只赚不赔的是外挂，不是性格。
+【不一致的分寸】
+- 前三条底线上的行为必须始终一致。两处对不上，就是崩人设。
+- 面子、好玩这类轻的项上不必一致：这次去、下次不去，都合理。
+- 不要为了稳定把轻的项也写成铁律，那样角色是机械的。
 
 不要复述 background 里已经写过的那整段前史，原因一句话点到。
 禁止写成标签清单（勇敢／隐忍／腹黑），禁止出现数值（勇气 +1）。
-主角档案里已经写明的弱点，必须落进某条〔日常〕或〔代价〕的倾向里展开，不能换个形容词抄回来。
 
 只输出 {"entries":[...]}。每项必须额外回显 slotId，name/role 必须与冻结清单完全一致。不得复制、改写或补充关系。`,
   },
@@ -187,51 +176,44 @@ ${input.validatedPrefix}
 [Compact-detail guidance]
 Keep every field specific, concise, and relevant to the story; currentState is required. Do not output relationships because the frozen manifest is their only source.
 
-[Protagonist disposition — four fields, tier tags, numbered (required for the entry whose role is protagonist; other roles keep the normal format)]
+[Protagonist disposition — four layers (required for the entry whose role is protagonist; other roles keep the normal format)]
 Disposition is not an adjective list, and it is not a diary. Write only **how he moves**, and write it so a reader could recognise the same person in another chapter.
 
-★ Author-provided override first: if the extra author guidance already states "base / exception / anchor / price", or names one canned trait, **follow it exactly** and only break it into the entries below. If it does not, infer the four fields from the protagonist profile and add one clause at the end of the first entry saying what you based it on.
+★ Author-provided override first: if the extra author guidance already names a trait or a ranked list of bottom lines, **follow it exactly** and only break it into the layers below. If it does not, infer them from the protagonist profile.
 
-★ Write 3–4 entries. **The number is the entry id, not the tier**; the tier goes in square brackets right after the number, and there are three:
-- **D<n> [Daily]**: with nobody pushing him, how he handles this kind of thing (who he is when nothing is at stake) — 1–2 entries;
-- **D<n> [Costed]**: doing it his usual way will cost him — does he still do it (where his line sits) — 1–2 entries;
-- **D<n> [Exception]**: the thing he truly values is put on the table (what he actually cares about) — **exactly one, and it is mandatory**.
+Layer 1 [what he cares about] — rank 4–5 items from heaviest to lightest. No scores.
+- At least one item must be something concrete that can be taken away: a person, a ledger, a promise. Do not fill the whole list with abstractions such as "dignity" or "conviction".
+- At least one item is one he would not admit to: he himself does not think of it as a flaw.
+- Between any two adjacent items it must be possible to build a scene in which he has to choose one of them.
+- Universalism and benevolence must not occupy the first two places. If you must place them there, write what he has paid for them; if you cannot write that price, that is a saint, not a person.
 
-Each entry is exactly three lines, opening with these words verbatim:
-- Situation: <the kind of situation>
-- Tendency: <the first thing he does — must be an action>, <plus a bodily tell: hands shaking / ringing ears / white knuckles / changed breathing>
-- Shift: from <old condition> to <new condition>, because <the event that did it>; write "none yet" when it has not happened
+Layer 2 [what counts as an event] — two lines only: what counts, what does not.
+- Anything usable, convertible into money, or that saves him trouble counts.
+- Idle business that has nothing to do with him does not count.
+- Every class of things that does not count must sit far away from every bottom line in layer 1.
 
-[A hard rule for the Situation line: write an archetype, not the setting]
-- **No proper noun from this book may appear**: no person, place, realm, currency, artifact, technique, institution or material.
-- **Test**: read the line to someone who has never seen this book. If they first have to ask "what is X", then X is setting — replace it with a generic phrase ("a thing he lacks", "a debt", "a slot", "a thing he cannot bear to spend").
-- It must still hold when swapped for three concrete versions from different chapters. Something true in only one scene is a record, not a character.
+Layer 3 [how he treats each kind of event] — 3–4 pairs, two lines each:
+- what kind of event → how he always handles it (write the practice, not the action of this one occasion)
+- not applicable: the case in which this one gives way
+Every pair must carry a "not applicable". The pair without one becomes the universal answer and pulls every situation toward itself.
 
-[The [Exception] entry — five hard requirements] (the most expensive line in the book; every one must pass)
-1. **He rarely meets this situation**: if he runs into it every other week, he already has a practised answer — that is daily life, not an exception.
-2. **It must run opposite to [Daily]**: swap the two Tendency lines and the reader must feel something is wrong.
-   - Daily retreats → exception steps forward; daily guards his own ledger → exception carries someone else's debt; daily obeys the letter → exception tears it up.
-   - **"Daily, but harder" is not an exception**: the same direction with more force is the same man on another day.
-3. **The Shift of this entry must end exactly on this entry's own Tendency**: the left side is what [Daily] does, the right side is what [Exception] does.
-   If the two ends do not meet, the exception is not thought through, or the shift is invented.
-4. **Cleverness cannot save him**: if he can get through by calculating, checking a ledger or finding a loophole, that is an intelligence test, not a character test — rewrite it.
-5. **The stake is his anchor**: the one thing he truly values and has already paid a price for (a person, a ledger, a promise). Never write vague conditions such as "when necessary" or "when life is at risk" — state **who, holding what, putting it on the table how**. He does not have to win: both roads may end badly; write only what he does in the first second.
+Layer 4 [the exception]
+- Everything above exists to serve the first three bottom lines. There is only one case that produces an exception: when bottom line 1 collides with another, he always chooses bottom line 1.
+- On that occasion he does something that none of the practices above contains, and the direction is fixed: for that person, he abandons the rules he normally keeps.
+- Apart from that, no unexpected move.
 
-[Daily] and [Costed] do not need to be sharp: with both of them life-or-death, readers tire, and nobody can tell who he is when nothing is happening.
+[Granularity of the concrete action] every practice must come down to this:
+- It is an action, filmable; not an adjective.
+- It carries a bodily tell: shaking hands, ringing ears, white knuckles, changed breathing — the evidence that he is still afraid and still doing it.
+- Anything carrying a proper noun from this book must be rewritten.
 
-[Four hard requirements]
-1. Every entry must still hold when swapped for three different occasions with the same tendency. Something true on only one occasion is plot, not disposition.
-2. The tendency must be an action, not an adjective. "Steps back half a pace and changes the subject" works; "cautious" or "scheming" does not.
-3. **A shift moves a condition, not a degree**: "from moving only when he himself is cornered, to moving when someone else is cornered" is a shift; "from often to seldom, from fast to slow" is only a degree. At least one entry must still read "none yet" — that is where this volume is headed; do not write every entry as already completed.
-4. You must be able to say in one sentence what it cost him to become this way. If you cannot, it is a label, not a person.
+[How much inconsistency is allowed]
+- Behaviour on the first three bottom lines must be consistent throughout. Two places that do not match is a broken character.
+- On light items such as face-saving or amusement, consistency is not required: going this time and not next time are both reasonable.
+- Do not make the light items iron laws for the sake of stability; that produces a machine, not a person.
 
-[Two vetoes]
-- **Exclusive**: paste this entry onto another character and it should no longer be true. If it still fits, you wrote "people in general", not him.
-- **Fallible**: this move sometimes harms him. A move that only ever pays off is a cheat, not a character.
-
-Spend one clause on why the shift happened; do not retell the backstory in background.
+Spend one clause on why it is this way; do not retell the backstory in background.
 Never reduce it to a tag list (brave / stoic / ruthless) and never assign numbers ("courage +1").
-Any weakness already stated in the protagonist profile must be unfolded as the tendency of one [Daily] or [Costed] entry, never paraphrased as another adjective.
 
 Output {"entries":[...]} only. Echo slotId on every entry; name and role must exactly match the frozen manifest. Do not copy, rewrite, or add relationships.`,
   },
