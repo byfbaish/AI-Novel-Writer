@@ -65,8 +65,19 @@ function inspect(text) {
     return !PRESSURE.some(word => head.includes(word))
   }).length
 
-  const firstPerson = (text.match(/我/g) ?? []).length
+  // 人称：只看叙述里的「我」——**引号内的对话不算**（「我核，不签」是台词，不是视角串了）。
+  const narrativeOnly = text.replace(/「[^」]*」|『[^』]*』|"[^"]*"|“[^”]*”/g, '')
+  const firstPerson = (narrativeOnly.match(/我/g) ?? []).length
   const jsonish = /[{}]|```/.test(text)
+
+  // 锚点体检（2026-10-29 作者质疑后新增）：
+  // 括号里该写「一直在的东西」，不是「发生一次的事」。用动词表做启发式。
+  const brackets = [...text.matchAll(/[（(]([^）)]{1,80})[）)]/g)].map(m => m[1])
+  const bracketSaysAnchor = brackets.filter(item => item.includes('锚点')).length
+  const EVENT_VERBS = ['递', '塞', '顶', '划进', '逼', '送', '那天', '那次', '那回', '抬']
+  const bracketLooksEvent = brackets.filter(item => EVENT_VERBS.some(verb => item.includes(verb))).length
+  const hasAnchorLine = /^\s*锚点\s*[:：]/m.test(text)
+  const anchorCitesB1 = /锚点\s*[:：][^\n]*B\s*1/.test(text)
 
   const continuous = (list) => list.every((value, index) => value === index + 1)
 
@@ -83,12 +94,17 @@ function inspect(text) {
     dailyLike,
     firstPerson,
     jsonish,
+    bracketCount: brackets.length,
+    bracketSaysAnchor,
+    bracketLooksEvent,
+    hasAnchorLine,
+    anchorCitesB1,
   }
 }
 
 const mark = ok => (ok ? '✅' : '❌')
-console.log('组 前提 B项 D项 编号 不适用 例外 挂底线 日常档 我 结论')
-console.log('─'.repeat(78))
+console.log('组 前提 B项 D项 编号 不适用 例外 挂底线 日常 我 | 括号 含锚点字 疑似事件 锚点行 挂B1 | 结论')
+console.log('─'.repeat(104))
 for (const row of rows) {
   const r = inspect(row.text)
   const fails = [
@@ -102,7 +118,7 @@ for (const row of rows) {
   ].filter(Boolean)
   console.log(
     [
-      row.group,
+      String(row.group).padEnd(7),
       String(row.case).padEnd(4),
       String(r.bCount).padEnd(4),
       String(r.dCount).padEnd(4),
@@ -110,14 +126,24 @@ for (const row of rows) {
       mark(r.naOk).padEnd(6),
       mark(r.hasException).padEnd(4),
       mark(r.exceptionCitesBottom).padEnd(6),
-      String(r.dailyLike).padEnd(6),
-      String(r.firstPerson).padEnd(2),
+      String(r.dailyLike).padEnd(4),
+      String(r.firstPerson).padEnd(1),
+      '|',
+      String(r.bracketCount).padEnd(4),
+      (r.bracketSaysAnchor ? `❌${r.bracketSaysAnchor}` : '✅').padEnd(9),
+      (r.bracketLooksEvent ? `⚠️${r.bracketLooksEvent}` : '✅').padEnd(8),
+      (r.hasAnchorLine ? '✅' : '❌').padEnd(6),
+      (r.anchorCitesB1 ? '✅' : '—').padEnd(5),
+      '|',
       fails.length ? `❌ ${fails.join(' / ')}` : '✅ 结构合格',
     ].join(' '),
   )
 }
 
 console.log(`\n日常档：数字 = 不含高压词的做法条数（启发式）。0 表示四条全在「被逼 / 当众 / 生死」上。`)
+console.log(`锚点列：括号 = 出现了几处括号；含锚点字 = 括号里还写着"锚点"（应为 0）；`)
+console.log(`        疑似事件 = 括号里含"递/塞/顶/划进/逼/那天/那次"等事件词（启发式，需人工复核）；`)
+console.log(`        锚点行 = 有没有单独一行「锚点：」；挂B1 = 该行是否点名 B1。`)
 console.log(`\n=== 原文（人工判 V1 排序 / V4 相邻冲突 / X2 例外方向）===`)
 for (const row of rows) {
   console.log(`\n----- 组 ${row.group} / 前提 ${row.case}（${row.caseLabel}）-----`)
