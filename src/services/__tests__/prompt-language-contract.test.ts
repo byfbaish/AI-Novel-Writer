@@ -261,6 +261,42 @@ describe('core model prompt language contract', () => {
     expect(zhText).toContain('不要在括号里写「锚点」两个字')
   })
 
+  // 2026-10-29 夜真机：B2 写「老魁托付的那句话」、B3 写「那本只记日期不记名字的旧账」，
+  // 材料里两样都没有 —— 材料只写了「恩和仇分两本账记」（记账的习惯，不是真有一本账册）。
+  // 病根是旧条款自己列了四类举例：「一个人、一本账、一格位置、一句没兑现的话」，模型逐字照填。
+  // 这是「给判法、不给例子」的第二次实证（第一次是第四层与锚点行）。
+  it('names the referent by a test the material can answer, not by a list of examples', () => {
+    const zhCN = characterArchitecturePrompts('zh-CN')
+    const enUS = characterArchitecturePrompts('en-US')
+    const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
+    const zhText = zhCN.detailTask(input)
+    const enText = enUS.detailTask(input)
+
+    // ① 判据必须落在「材料原文里指得出来」，否则模型只能用题材惯例补
+    expect(zhText).toContain('必须能在**材料原文里指得出来**')
+    expect(enText).toContain('pointable to a sentence of the supplied material')
+
+    // ② 比喻不能被实体化（真机 B3 就是这么来的）
+    expect(zhText).toContain('比喻不能当物件')
+    expect(enText).toContain('A **metaphor in the material is not an object**')
+
+    // ③ 括号只放名词，次数说法属于第三层
+    expect(zhText).toContain('括号里只放名词')
+    expect(enText).toContain('Put a noun in the bracket only')
+
+    // ④ 凑不满条目数宁可少写，不许编（避免"必须 4 项"逼出编造）
+    expect(zhText).toContain('编一个来补位，比少一条更糟')
+    expect(enText).toContain('A filler item is worse than a missing one')
+
+    // ⑤ 锚点与括号不能是同一个东西（真机两者都指向"灵配袋空着的那一格"）
+    expect(zhText).toContain('两者不能是同一个东西')
+    expect(enText).toContain('They cannot be the same object')
+
+    // ⑥ 旧的举例清单必须彻底消失 —— 留着它等于留着污染源
+    for (const example of ['一句没兑现的话', '一格位置', '一本账、']) expect(zhText).not.toContain(example)
+    for (const example of ['a promise not yet kept', 'one slot on a shelf', 'a person, a ledger']) expect(enText).not.toContain(example)
+  })
+
   // V6：普世、仁善排在前面的角色是圣母不是人。模型最容易自作主张把这两项顶上去。
   it('bans the saint at the top of the ranking', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')

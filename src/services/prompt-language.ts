@@ -107,17 +107,23 @@ ${input.validatedPrefix}
 ★ 先看作者的补充创作指导：若那里给了词条或底线清单，以它为准，你只负责把它落成下面这几层；
 没有给，就从主角档案里推出来。
 
-第一层【他在乎什么】按轻重排出 4–5 项，写成 B1…Bn（**B1 最重**，编号就是轻重位次，不是条目号），不写分数。
-- 至少一项是具体可夺的东西：一个人、一本账、一句承诺；不许全是「尊严」「信念」这类抽象词。
+第一层【他在乎什么】按轻重排出 3–5 项，写成 B1…Bn（**B1 最重**，编号就是轻重位次，不是条目号），不写分数。
+- 至少一项要能被某个具体的人或某样具体的东西**夺走**；不许全是「尊严」「信念」这类抽象词。
 - 至少一项是他不愿承认的：他自己不觉得那是缺点。
 - 任意相邻两项之间，要能构造出一个他必须选一个的场面。
 - 普世、仁善这类价值不许排在前两位。若确要排，必须写出他为此付过什么代价；写不出代价的，那是圣母，不是人。
 ★ 每一项都写成**一条价值判断**，不是一件东西、也不是一个做法。每一项末尾用括号写出它的**具体所指**——能指出"是哪一个"就够，不要在括号里写「锚点」两个字。
   判法：读完这一项，要能说出"他宁可失去什么"，而不是"他手上有什么"，也不是"他会怎么做"。
   相邻两项必须能比轻重；比不出来的，说明其中一项写错了层（把东西或做法挤进了价值层）。
-  括号里写的是**一直在的东西**（一个人、一本账、一格位置、一句没兑现的话），不是发生一次的事（谁在哪天递来什么、哪张纸被谁顶到脸上）。
+  括号里写的是**一直在的东西**，不是发生一次的事。
+★ 括号里的东西必须能在**材料原文里指得出来**是哪一句写的；指不出来，那就是你替作者编的设定，不许写。
+  判法：它得是从开场到结尾都在他身边的那样具体东西。
+★ 材料里的**比喻不能当物件**：档案写"恩和仇分两本账记"，说的是他记账的习惯，不等于他真有一本账册；你照着造出一本账，那本书里根本没有。
+★ 括号里只放名词。不写「那几次硬撑」「某一回」这类次数的说法 —— 那是做法，属于第三层。
+★ 凑不满 3 项就写 2 项。编一个来补位，比少一条更糟；编出来的括号会让整条底线变成假的。
 ★ 全卡只有一个**锚点**，单独一行写在第一层之后，格式：锚点：<那是什么> —— <他为它放弃了什么>。它挂在你排第一的那条底线上，第四层那次例外就是拿它当人质。
   判法：说得出"他为此放弃了什么"，才是锚点；只说得清"这事跟他有关"，那是事件，不是锚点。
+★ 锚点与他交出去的东西是同一样：括号里写的是**他还带在身上的**，锚点写的是他为了守住它而**交出去的**。两者不能是同一个东西 —— 同一个东西既是他在乎的、又是他放弃的，那句话在任何一章里都用不上。
 ★ B 编号与第三层的 D 编号是两套：**B 是底线的轻重位次**（B1 最重），**D 是做法条目号**（D1 不代表最重）。写选择行时两者都可能用到。
 
 第二层【什么算一件事】只写两句：什么算，什么不算。
@@ -195,17 +201,23 @@ Disposition is not an adjective list, and it is not a diary. Write only **how he
 
 ★ Author-provided override first: if the extra author guidance already names a trait or a ranked list of bottom lines, **follow it exactly** and only break it into the layers below. If it does not, infer them from the protagonist profile.
 
-Layer 1 [what he cares about] — rank 4–5 items from heaviest to lightest, numbered B1…Bn (**B1 is the heaviest; the number is the rank, not an entry id**). No scores.
-- At least one item must be something concrete that can be taken away: a person, a ledger, a promise. Do not fill the whole list with abstractions such as "dignity" or "conviction".
+Layer 1 [what he cares about] — rank 3–5 items from heaviest to lightest, numbered B1…Bn (**B1 is the heaviest; the number is the rank, not an entry id**). No scores.
+- At least one item must be concrete enough for a specific person or a specific thing to take away from him. Do not fill the whole list with abstractions such as "dignity" or "conviction".
 - At least one item is one he would not admit to: he himself does not think of it as a flaw.
 - Between any two adjacent items it must be possible to build a scene in which he has to choose one of them.
 - Universalism and benevolence must not occupy the first two places. If you must place them there, write what he has paid for them; if you cannot write that price, that is a saint, not a person.
 ★ Write each item as **a value judgement** — not a thing, not a practice. End each item with a bracket naming its **concrete referent**: enough to point at "which one", and never the word "anchor" itself.
   Test: after reading the item you must be able to say "what he would rather lose", not "what he has on hand", and not "what he would do".
   Any two adjacent items must be comparable in weight; if they are not, one of them sits in the wrong layer (a thing or a practice has been pushed into the value layer).
-  A bracket names something that **persists** — a person, a ledger, one slot on a shelf, a promise not yet kept — never a one-off event (who handed him what on which day, whose paper was shoved in his face).
+  A bracket names something that **persists** — never a one-off event, never who handed him what on which day.
+★ What sits in the bracket must be **pointable to a sentence of the supplied material**; if you cannot point at it, you are inventing a setting the author never wrote. Do not write it.
+  Test: it must be **one concrete thing that is beside him from the opening to the end**.
+★ A **metaphor in the material is not an object**: a profile that says "he keeps two ledgers, one for favours and one for grudges" describes how he keeps score, not that he owns a ledger book. Invent the book and it is not in this book at all.
+★ Put a noun in the bracket only. Never "the several times he held out" or "one particular occasion" — that is a practice and belongs to layer 3.
+★ If you cannot fill 3 items from the material, write 2. A filler item is worse than a missing one: an invented bracket turns the whole bottom line false.
 ★ There is exactly one **anchor** in the whole card, on its own line right after layer 1, in this form: Anchor: <what it is> — <what he gave up for it>. It hangs on the bottom line you ranked first, and the layer-4 exception is the one time it is taken hostage.
   Test: if you can say "what he gave up for it", it is an anchor; if you can only say "this is related to him", it is an event, not an anchor.
+★ The anchor is the same thing he surrendered: a bracket names what he **still carries**, the anchor names what he **gave away** to keep it. They cannot be the same object — something that is both what he cares about and what he gave up can never be used in any chapter.
 ★ The B numbers and the D numbers of layer 3 are two separate series: **B is the rank of a bottom line** (B1 heaviest), **D is an entry id** (D1 is not the heaviest). The choice line may need both.
 
 Layer 2 [what counts as an event] — two lines only: what counts, what does not.
