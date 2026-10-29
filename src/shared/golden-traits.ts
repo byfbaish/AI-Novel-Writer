@@ -5,7 +5,7 @@
  *
  * 性格不能由模型生成（作者 2026-10-28 裁定）：一个没有突破因子的胆小鬼在那个世界活不过三章，
  * 而模型随机出来的性格有大概率是"活不下去"的那种。
- * 所以底色、锚点由作者覆盖，模型只负责"在四格之内演绎"。
+ * 所以底色、锚点由作者覆盖，模型只负责"在四层之内演绎"。
  *
  * ## 词条不是一个形容词，是一个矛盾结构
  *
@@ -14,25 +14,37 @@
  * 李长寿「稳到最后稳不住，牺牲自己」/ 石昊「打穿一切，但身后有人要活」/
  * 叶凡「先算代价，但兄弟的承诺」/ 萧炎「不服输，但为约定可以低头」。
  *
- * ## 三档压力（编号是条目号，档位用方括号标签）
+ * ## 四层（编号只是条目号，不是档位）
  *
- * - `〔日常〕`：没被逼时他是谁 —— 决定"这个人平时什么样"
- * - `〔代价〕`：照习惯做会亏时还做不做 —— 决定"他的边界在哪"
- * - `〔破例〕`：**锚点被押上赌桌** —— 决定"他真正在乎什么"，只有这一档要求尖锐，且**恰好一条**
+ * 2026-10-29 夜起，角色卡由「三档压力」改为**四层**
+ * （详见 `docs/design/prompt/character-behavior-four-layers.md`）：
  *
- * 尖锐度只属于〔破例〕。若要求每条都"刀架在脖子上"，角色会一天到晚被逼到极限，
- * 那不是人是连续剧；反之每条都不痛，就退回"聪明人的操作手册"。
+ * - 第一层【他在乎什么】：底线排序 4–5 项，相邻两项之间要能构造一个必须选一个的场面
+ * - 第二层【什么算一件事】：什么算、什么不算（不算的必须离所有底线项都远）
+ * - 第三层【他对各类事的做法】：3–4 条「什么类的事 → 一贯怎么做」+ 每条的**不适用**
+ * - 第四层【例外】：只有一种情况会出例外 —— 第 1 条底线跟别的底线打架时，他选第 1 条
  *
- * ⚠️ 2026-10-29 实测教训：把 `D1/D2/D3` 当成**固定档位编号**会出两个错 ——
- * ① 模型写第四条时只能编出"D4 代价档"，档位与编号打架；
- * ② "破例"被写成"日常 + 更用力"（被逼认账时顶回去，对一个本来就顶回去的人不叫破例）。
- * ⇒ 编号只做**引用寻址**，档位必须是独立标签，并强制"〔破例〕与〔日常〕反方向"。
+ * ### 为什么不再按处境分档（24 章对照实测）
+ *
+ * 旧三档〔日常〕/〔代价〕/〔破例〕按**处境**切分，两个结构性后果：
+ *
+ * 1. **必然大面积「无」**：20 章里 10 章不沾任何一条（站队、担名、担保、当众质疑…）。
+ *    处境几乎无限，按处境分永远追不上。
+ * 2. **D1 成了引力中心**：「问凭据」最通用，把站队、担名、垫东西三个不相干处境全吸走
+ *    ——编号标错、动作照抄。
+ *
+ * 改成按**做法**分条目后（第三层），「无」从 7 章降到 0 章，第 13 章那种"行为对、
+ * 却说不清属于哪条"的漏判也消失了。
+ *
+ * ⚠️ **编号仍然只是条目号**：`D<n>` 指第三层里的第几条做法，不是轻重次序。
+ * 旧病根（把编号当档位，模型写第四条时只能编出"D4 代价档"）不能复发。
  *
  * ## 谁消费
  *
  * - 作者：在角色图谱选一条（或改字），作为主角的覆盖。
- * - 模型：**不选词条**，只按 `D<n>〔日常／代价／破例〕` 的格式写三行式；写不出来才参考本库的措辞。
- * - 章节大纲：`选择：` 行必须写 `因为 D<n>`，让性格从"描述"变成"可寻址"。
+ * - 模型：**不选词条**，只按四层的格式写 personality；写不出来才参考本库的措辞。
+ * - 章节大纲：`定性：` 行先定类（`D<n>` 或「无」），`选择：` 行再写 `因为 D<n>`；
+ *   两处编号必须一致，否则报 `ARC_CHOICE_MISMATCH`。
  */
 
 import type { WritingLanguage } from './writing-language'
@@ -72,22 +84,22 @@ export interface GoldenTrait {
   readonly id: GoldenTraitId
   readonly name: string
   readonly nameEn: string
-  /** 〔日常〕：没被逼时怎么做 */
+  /** 日常素材 → 落进第三层：没被逼时他怎么做 */
   readonly daily: string
   readonly dailyEn: string
-  /** 〔代价〕：照习惯做会亏时还做不做 */
+  /** 代价素材 → 落进第三层：照习惯做会亏时还做不做 */
   readonly costed: string
   readonly costedEn: string
-  /** 〔破例〕：锚点被押上赌桌时的第一反应（必须尖锐，且必须与〔日常〕反方向） */
+  /** 例外素材 → 落进第四层：第 1 条底线被押上赌桌时的第一反应（必须与日常反方向） */
   readonly exception: string
   readonly exceptionEn: string
-  /** 锚点提示：这类角色的锚点通常是什么（必须是"他交出去的"，不是"他守住的"） */
+  /** 锚点提示：这类角色的锚点通常是什么（必须是"他交出去的"，不是"他守住的"）—— 落进第一层 */
   readonly anchorHint: string
   readonly anchorHintEn: string
-  /** 破例的代价：每破一次赔掉什么 */
+  /** 出现例外时的代价：每次赔掉什么 */
   readonly price: string
   readonly priceEn: string
-  /** 弧光方向：破例门槛往哪移（底色不变） */
+  /** 弧光方向：例外的门槛往哪移（底线不变） */
   readonly arcHint: string
   readonly arcHintEn: string
   /** 适用说明，给作者看 */
@@ -137,8 +149,8 @@ export const GOLDEN_TRAITS: readonly GoldenTrait[] = Object.freeze([
     priceEn: 'Every exception leaves one more debt',
     arcHint: '从"为自己争" → "为身后的人争"（底色不变：他依然只会正面打）',
     arcHintEn: 'From fighting for himself to fighting for whoever stands behind him — he still only knows how to hit things head-on',
-    fit: '爽感最直接，但"无脑"风险最高：〔代价〕那条必须写出他真的会算错',
-    fitEn: 'The most direct payoff, and the highest risk of reading as mindless: the [Costed] entry must show him genuinely misjudging',
+    fit: '爽感最直接，但"无脑"风险最高：代价那条必须写出他真的会算错',
+    fitEn: 'The most direct payoff, and the highest risk of reading as mindless: the costed entry must show him genuinely misjudging',
     values: ['成就', '权力', '仁善', '自主'],
   },
   {
@@ -205,13 +217,18 @@ export function goldenTraitOf(id: GoldenTraitId): GoldenTrait {
  */
 export function goldenTraitCatalogMarkdown(language: WritingLanguage): string {
   const en = language === 'en-US'
-  const lines: string[] = []
+  const lines: string[] = [
+    en
+      ? 'Each trait below is raw material: daily and costed feed layer 3 (practices), anchor feeds layer 1 (bottom lines), exception feeds layer 4. It is not a three-tier card.'
+      : '下面每条词条都是素材：日常与代价落进第三层（做法），锚点落进第一层（底线），例外落进第四层。它本身不是三档卡。',
+    '',
+  ]
   for (const trait of GOLDEN_TRAITS) {
     lines.push(`### ${en ? trait.nameEn : trait.name}`)
-    lines.push(`- ${en ? '[Daily]' : '〔日常〕'}：${en ? trait.dailyEn : trait.daily}`)
-    lines.push(`- ${en ? '[Costed]' : '〔代价〕'}：${en ? trait.costedEn : trait.costed}`)
-    lines.push(`- ${en ? '[Exception]' : '〔破例〕'}：${en ? trait.exceptionEn : trait.exception}`)
-    lines.push(`- ${en ? 'Anchor' : '锚点'}：${en ? trait.anchorHintEn : trait.anchorHint}`)
+    lines.push(`- ${en ? 'Daily → layer 3' : '日常 → 第三层'}：${en ? trait.dailyEn : trait.daily}`)
+    lines.push(`- ${en ? 'Costed → layer 3' : '代价 → 第三层'}：${en ? trait.costedEn : trait.costed}`)
+    lines.push(`- ${en ? 'Exception → layer 4' : '例外 → 第四层'}：${en ? trait.exceptionEn : trait.exception}`)
+    lines.push(`- ${en ? 'Anchor → layer 1' : '锚点 → 第一层'}：${en ? trait.anchorHintEn : trait.anchorHint}`)
     lines.push(`- ${en ? 'Price' : '代价'}：${en ? trait.priceEn : trait.price}`)
     lines.push(`- ${en ? 'Arc' : '弧光'}：${en ? trait.arcHintEn : trait.arcHint}`)
     lines.push('')

@@ -76,7 +76,7 @@ const CHARACTER_ARCHITECTURE_PROMPTS: Readonly<Record<WritingLanguage, Character
 ★ role 只能取 protagonist、antagonist、supporting、minor 这四个英文词之一，且必须与该 slotId 在【冻结身份与关系清单】里的 role 逐字相同；不要译成中文语义标签（写「主角」「反派」会使整批详情作废）。
 ★ 上述每一个字段都必须是**非空文本**：不得为空字符串、纯空白、null 或省略。「必填」的判定标准是**非空**，不是"键存在"。确实未知时填写「未知」「待补充」之类的占位文本，不得留空——空值会让整批详情作废。最常被留空的是 gender 与 age，这两项同样必须填写。
 currentState 必填，必须包含 location、powerLevel、physicalState、mentalState、keyItems、recentEvents、updatedAtChapter；updatedAtChapter 必须是非负整数。
-appearance、background、abilities、motivation、arc、notes 每项不超过 120 字符；**personality 例外：上限 800 字符**（主角要放 3–4 条 ×「局面／倾向／位移」三行，压到 120 字会把每一条都挤成一句空话）；currentState 的文本字段每项不超过 80 字符。
+appearance、background、abilities、motivation、arc、notes 每项不超过 120 字符；**personality 例外：上限 800 字符**（主角要放四层：底线排序 + 什么算一件事 + 3–4 条做法各带「不适用」+ 例外，压到 120 字会把每一层都挤成一句空话）；currentState 的文本字段每项不超过 80 字符。
 keyItems 可为非空字符串或非空字符串数组；recentEvents 可为非空字符串或非空字符串数组。数组每项必须是非空字符串，不得混入数字、对象或 null；没有内容时使用字符串“无”，不得输出空数组。
 禁止输出 relationships、schemaVersion、角色图谱 Markdown、解释、代码围栏或思考过程。`,
     manifestTask: (context, minimum, maximum) => `【身份规划上下文】
@@ -151,7 +151,7 @@ Output {"entries":[...]} only. Every entry must contain slotId, name, role, gend
 ★ role must be exactly one of protagonist, antagonist, supporting, or minor, and must match that slotId's role in [Frozen identities and relationships] verbatim. Never restate it as a translated or prose label; a mismatch invalidates the whole batch.
 ★ Every field above must be **non-empty text**: never an empty string, whitespace only, null, or omitted. "Required" means non-empty, not merely present as a key. When a fact is genuinely unknown, write a placeholder such as "unknown" instead of leaving it blank — a blank field invalidates the whole batch. gender and age are the fields most often left blank; both are still mandatory.
 currentState is required and must contain location, powerLevel, physicalState, mentalState, keyItems, recentEvents, and a non-negative integer updatedAtChapter.
-Keep personality within 800 characters — the protagonist entry carries 3–4 "Situation / Tendency / Shift" entries and each must not be squeezed; keep appearance, background, abilities, motivation, arc, and notes within 120 characters each, and each currentState text field within 80 characters.
+Keep personality within 800 characters — the protagonist entry carries four layers (ranked bottom lines, what counts as an event, 3–4 practices each with "not applicable", and the exception) and none of them may be squeezed; keep appearance, background, abilities, motivation, arc, and notes within 120 characters each, and each currentState text field within 80 characters.
 keyItems and recentEvents may each be a non-empty string or an array of non-empty strings. Use the string "none" when empty; never output an empty array.
 Do not output relationships, schemaVersion, a rendered character map, explanations, code fences, or reasoning.`,
     manifestTask: (context, minimum, maximum) => `[Identity-planning context]
@@ -192,7 +192,7 @@ Layer 2 [what counts as an event] — two lines only: what counts, what does not
 - Idle business that has nothing to do with him does not count.
 - Every class of things that does not count must sit far away from every bottom line in layer 1.
 
-Layer 3 [how he treats each kind of event] — 3–4 pairs, two lines each:
+Layer 3 [how he treats each kind of event] — 3–4 pairs. Start each pair with the number D<n> (**the number is the entry id, not a ranking**), then two lines:
 - what kind of event → how he always handles it (write the practice, not the action of this one occasion)
 - not applicable: the case in which this one gives way
 Every pair must carry a "not applicable". The pair without one becomes the universal answer and pulls every situation toward itself.
@@ -1040,7 +1040,7 @@ Add no preface, courtesy language, or unrelated explanation.`,
 3. role must be protagonist, antagonist, supporting, or minor.
 4. relationships must be an array. target must exactly match another character name in this response; relation must briefly state the relationship, conflict, or emotional tension. Use [] when no relationship is established.
 5. currentState represents the initial state at story opening, and updatedAtChapter must be 0.
-6. personality must preserve the character map's per-entry "Situation / Tendency / Shift" three-line structure verbatim — never compress it into trait adjectives or merge it into one paragraph. For characters whose entry carries no such structure (usually supporting cast), extract it as written and never invent tendencies for them.
+6. personality must preserve the character map's per-entry structure verbatim — keep every numbered practice (together with its "not applicable") as written, and never compress it into trait adjectives or merge it into one paragraph. For characters whose entry carries no such structure (usually supporting cast), extract it as written and never invent dispositions for them.
 7. arc states this volume's transformation target: which tendency moves to which, and what that shift costs.
 
 [JSON object contract]

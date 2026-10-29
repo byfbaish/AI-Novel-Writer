@@ -152,6 +152,21 @@ describe('core model prompt language contract', () => {
     for (const gone of ['[Daily]', '[Costed]', '[Exception]']) {
       expect(enUS.detailTask(input)).not.toContain(gone)
     }
+
+    // 2026-10-29 午间勘误：四层落地时 detailContract 里还留着一句旧三行式的说明，
+    // 于是「局面／倾向／位移」与四层**同时**出现在同一个 prompt 里 —— 模型会退回旧口径。
+    // 一个 prompt 只许有一种结构；这条断言就是防止再漏一次。
+    for (const gone of ['局面／倾向／位移', 'Situation / Tendency / Shift']) {
+      expect(zhCN.detailTask(input), gone).not.toContain(gone)
+      expect(zhCN.detailContract, gone).not.toContain(gone)
+      expect(enUS.detailTask(input), gone).not.toContain(gone)
+      expect(enUS.detailContract, gone).not.toContain(gone)
+    }
+
+    // 第三层必须要求编号：定性行与选择行都要引用 D<n>，编号不产出就无从引用。
+    // 中文本来就写了，英文漏过（只补中文 = 中英不对等）。
+    expect(zhCN.detailTask(input)).toContain('编号只是条目号，不是轻重次序')
+    expect(enUS.detailTask(input)).toContain('the number is the entry id, not a ranking')
   })
 
   // V6：普世、仁善排在前面的角色是圣母不是人。模型最容易自作主张把这两项顶上去。
