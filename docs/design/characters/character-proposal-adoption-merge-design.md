@@ -2,7 +2,10 @@
 
 > 状态：已实施（作者 2026-10-21 裁定：「初始面板的内容都已经被正文引用，不适合直接覆盖，最好采用合并路线」）  
 > 日期：2026-10-21  
-> 上级稿：无（与 [`p1-blueprint-roster-sync.md`](p1-blueprint-roster-sync.md) 相邻，但那条管的是蓝图↔roster 同步，不管提议采用）
+> 上级稿：无（与 [`p1-blueprint-roster-sync.md`](p1-blueprint-roster-sync.md) 相邻，但那条管的是蓝图↔roster 同步，不管提议采用）  
+> **适用边界（2026-10-29 补）**：本稿的合并策略只管**增量链**（导入 / 定稿 / 旧名册 / 归位表）。  
+> 架构生成是**整册替换**——同名默认采用、字段覆盖、名单外旧卡退休，见
+> [`character-roster-rebuild-design.md`](character-roster-rebuild-design.md)。两条链是分岔，不能互相顶替。
 
 
 

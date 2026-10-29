@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { CharacterProposalBatch, CharacterProposalItem } from '../../shared/character-proposal'
-import { isAdoptedCharacterDecision } from '../../shared/character-proposal'
+import { isAdoptedCharacterDecision, isArchitectureRebuildBatch } from '../../shared/character-proposal'
 import { CHARACTER_ROLES, getCharacterRoleLabels } from '../../shared/character-role'
 import type { CharacterProposalChoices, CharacterProposalRelationshipChoice } from '../../services/character-proposal-choices'
 import { useLocaleStore } from '../../stores/locale-store'
@@ -23,7 +23,8 @@ export function CharacterProposalSelectionPanel({ batch, identities, choices, on
   const text = useLocaleStore(state => state.text)
   if (choices.proposalBatchId !== batch.proposalBatchId || choices.revision !== batch.revision) return <p role="alert">{text('提议已改变，请重新载入选择。', 'The proposals changed. Reload the choices.')}</p>
   // 名字已命中名册（resolution 带候选 id）的候选收进折叠组：中后期这批会远多于新面孔，
-  // 平铺会把"老陈"这种真正要决定的新人淹没（作者实测反馈）。同名永不自动合并，折叠只是视觉收纳。
+  // 平铺会把"老陈"这种真正要决定的新人淹没（作者实测反馈）。折叠只是视觉收纳；
+  // 是否自动判定同人由批次语义决定（架构重建会默认采用，见 isArchitectureRebuildBatch）。
   const matched = (item: CharacterProposalItem) => item.resolution.status === 'resolved' || item.resolution.candidateIds.length > 0
   const freshItems = batch.items.filter(item => !matched(item))
   const matchedItems = batch.items.filter(matched)
@@ -38,9 +39,16 @@ export function CharacterProposalSelectionPanel({ batch, identities, choices, on
     || relation.targetSelectionKey !== undefined && !matchedKeys.has(relation.targetSelectionKey))
   const matchedRelations = relations.filter(relation => !freshRelations.includes(relation))
   const rowProps = { batch, identities, choices, onChange, disabled }
+  // 文案必须跟语义走：增量链「合并、不覆盖」，架构重建「整册替换、覆盖同名卡」。
+  // 两句话写反会让作者以为重建不会动旧卡（2026-10-29 实测：新生成的主角卡被默认丢弃，作者全无察觉）。
+  const rebuild = isArchitectureRebuildBatch(batch.source)
   return <section className="space-y-3" aria-label={text('批量选择角色采用方式', 'Choose character adoption in one batch')}>
-    <p className="text-xs text-[var(--color-text-secondary)]">{text('新面孔在上；与已有角色同名的候选和已有角色之间的关系折叠在下方（同名不会自动合并）。可选择对应角色、新建、登记为功能配角或暂不采用；最后一次确认统一保存。', 'New faces first; candidates sharing a name with an existing card and edges between existing cards are collapsed below (names are never merged automatically). Choose a character, create one, register an anchored supporting role, or keep unresolved, then confirm the batch once.')}</p>
-    <p className="text-xs text-[var(--color-text-secondary)]">{text('采用到已有角色时不会覆盖已有内容：背景/性格/外貌等叙述字段与候选合并（重复内容自动去重），姓名/性别/年龄/定位以现有卡为准。', 'Adopting onto an existing card never overwrites it: narrative fields (background, personality, appearance…) are merged with the candidate and duplicates are dropped; name, gender, age and role keep the existing card values.')}</p>
+    <p className="text-xs text-[var(--color-text-secondary)]">{rebuild
+      ? text('新面孔在上；与已有角色同名的候选折叠在下方。本次是整册重建：同名候选默认采用到那张卡，名单里没有的旧角色在确认后退休。', 'New faces first; same-name candidates are collapsed below. This batch rebuilds the whole roster: same-name candidates are adopted onto the existing card by default, and old characters missing from this list are retired once confirmed.')
+      : text('新面孔在上；与已有角色同名的候选和已有角色之间的关系折叠在下方（同名不会自动合并）。可选择对应角色、新建、登记为功能配角或暂不采用；最后一次确认统一保存。', 'New faces first; candidates sharing a name with an existing card and edges between existing cards are collapsed below (names are never merged automatically). Choose a character, create one, register an anchored supporting role, or keep unresolved, then confirm the batch once.')}</p>
+    <p className="text-xs text-[var(--color-text-secondary)]">{rebuild
+      ? text('整册重建会覆盖同名卡的资料：背景/性格/外貌等直接换成本次候选值（候选为空的字段保留现有值）。', 'A full rebuild overwrites same-name cards: background, personality, appearance and the like take this batch\'s values; fields the candidate leaves empty keep their current value.')
+      : text('采用到已有角色时不会覆盖已有内容：背景/性格/外貌等叙述字段与候选合并（重复内容自动去重），姓名/性别/年龄/定位以现有卡为准。', 'Adopting onto an existing card never overwrites it: narrative fields (background, personality, appearance…) are merged with the candidate and duplicates are dropped; name, gender, age and role keep the existing card values.')}</p>
     <div className="max-h-80 space-y-1 overflow-y-auto pr-1">
       {freshItems.map(item => <CandidateItem key={item.selectionKey} item={item} {...rowProps} />)}
       {freshRelations.map((relation, index) => <RelationshipBinding key={`${relation.sourceSelectionKey}:${relation.targetSelectionKey ?? relation.targetName}:${index}`}

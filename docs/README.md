@@ -268,13 +268,14 @@ docs/
 | [`c1-review-architecture-declaration-design.md`](design/review/c1-review-architecture-declaration-design.md) | ✅ 已实施 | 审稿链「远期设定使用规则」声明（路子 B） |
 | [`consistency-check-ordinal-claim-guard-design.md`](design/review/consistency-check-ordinal-claim-guard-design.md) | ✅ 已实施 | 序数/全称断言独立复核 |
 
-### 4.4 角色 · [`design/characters/`](design/characters/)（3 篇）
+### 4.4 角色 · [`design/characters/`](design/characters/)（4 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
 | [`p1-blueprint-roster-sync.md`](design/characters/p1-blueprint-roster-sync.md) | ✅ 已实施 | 蓝图角色 ↔ 角色卡 roster 同步 |
 | [`p2-character-card-ai-generation.md`](design/characters/p2-character-card-ai-generation.md) | ✅ 已实施 | 角色卡管理界面的 AI 生成增强 |
 | [`character-proposal-adoption-merge-design.md`](design/characters/character-proposal-adoption-merge-design.md) | ✅ 已实施 | 采用到已有角色时改为字段合并（不覆盖已引用设定）+ 候选→已有卡的关系可直接采用 |
+| [`character-roster-rebuild-design.md`](design/characters/character-roster-rebuild-design.md) | ✅ 已实施 | 架构重建＝整册替换：同名默认采用、字段覆盖、名单外旧卡退休、同对关系边收敛 |
 
 ### 4.5 功能与设置 · [`design/features/`](design/features/)（6 篇）
 

@@ -1,15 +1,22 @@
 import type { CharacterProposalBatch, CharacterProposalDecision } from '../../shared/character-proposal'
-import { isAdoptedCharacterDecision } from '../../shared/character-proposal'
+import { isAdoptedCharacterDecision, isArchitectureRebuildBatch } from '../../shared/character-proposal'
 import { getCharacterRoleLabels } from '../../shared/character-role'
 
 type Text = (zh: string, en: string) => string
 /** Suggestions become effects only after the explicit approval step and main validation. */
 export function defaultCharacterProposalSelections(batch: CharacterProposalBatch): CharacterProposalDecision[] {
-  return batch.items.map(item => item.resolution.status === 'resolved'
-    ? { selectionKey: item.selectionKey, action: 'map' as const, characterId: item.resolution.characterId }
-    : item.resolution.status === 'unresolved' && item.resolution.candidateIds.length === 0
-      ? { selectionKey: item.selectionKey, action: 'create' as const }
-      : { selectionKey: item.selectionKey, action: 'keep-unresolved' as const })
+  // 架构重建是「整册替换」而不是「增量补卡」：唯一同名在重建语境下就是同一个人，默认采用到那张卡，
+  // 否则作者点确认后新生成的主角卡会被静默丢弃（2026-10-29 实测，见 isArchitectureRebuildBatch）。
+  const rebuild = isArchitectureRebuildBatch(batch.source)
+  return batch.items.map(item => {
+    const resolution = item.resolution
+    if (resolution.status === 'resolved') return { selectionKey: item.selectionKey, action: 'map' as const, characterId: resolution.characterId }
+    if (resolution.status === 'unresolved' && resolution.candidateIds.length === 0)
+      return { selectionKey: item.selectionKey, action: 'create' as const }
+    if (rebuild && resolution.candidateIds.length === 1)
+      return { selectionKey: item.selectionKey, action: 'map' as const, characterId: resolution.candidateIds[0] }
+    return { selectionKey: item.selectionKey, action: 'keep-unresolved' as const }
+  })
 }
 /** Names are display labels. Only declared selection-key endpoints can become proposed edges. */
 export function defaultCharacterProposalRelationships(batch: CharacterProposalBatch) {
@@ -29,6 +36,7 @@ export function formatCharacterProposalPreview(batch: CharacterProposalBatch, te
     motivation: text('动机', 'Motivation'), arc: text('弧光', 'Arc'), notes: text('其他事实', 'Notes'),
   }
   const decisions = defaultCharacterProposalSelections(batch)
+  const rebuild = isArchitectureRebuildBatch(batch.source)
   return [batch.status === 'pending-approval' ? text('## 待确认角色提议', '## Character proposals awaiting confirmation')
     : text('## 已保存角色提议', '## Saved character proposals'),
     batch.status === 'pending-approval'
@@ -36,6 +44,10 @@ export function formatCharacterProposalPreview(batch: CharacterProposalBatch, te
         'Candidates are saved but are not formal characters. Confirmation adopts only clear items below; unresolved candidates remain available.')
       : batch.status === 'approved' ? text('采用决策已保存，未采用候选继续保留。', 'Adoption decisions are saved; unadopted candidates remain available.')
         : text('本次采用已取消，候选继续保留。', 'Adoption was cancelled; candidates remain available.'),
+    // 架构重建＝整册替换。作者必须知道「确认」会同时覆盖同名旧卡、退休不在名单里的旧角色，
+    // 否则他只是想更新这批卡，却不知道别处被清掉了（2026-10-29 实测：旧批一直不退休、三批同人并存）。
+    ...(rebuild ? [text('本次是整册重建：同名角色按同一人处理（覆盖旧卡资料），未出现在本名单里的旧角色会被退休。',
+      'This is a full roster rebuild: same-name candidates replace the existing cards, and old characters absent from this list are retired.')] : []),
     ...(batch.source.kind === 'cast-ledger' ? [text('这些名字来自归位表：被正文或蓝图提到但还没有卡，已为它们补齐资料；确认后建卡。',
       'These names come from the cast ledger: mentioned in prose or blueprints but not yet carded. Their details have been filled in; confirmation creates their cards.')] : []),
     ...batch.items.map((item, index) => [

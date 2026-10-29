@@ -1254,7 +1254,10 @@ export function commitCharacterIdentities(
         // （与 changes 路径同一纪律：采用生成文本绝不改写作者没碰过的字段）。
         const provenance = { ...prior, fields: { ...(prior.fields as Record<string, unknown> | undefined),
           ...Object.fromEntries(keys.map(key => [key, attributedSource])) } }
-        db.prepare(`UPDATE characters SET retired=0,identity_revision=?,static_provenance=?${keys.length ? `,${keys.map(key => `${key}=?`).join(',')}` : ''} WHERE character_id=?`)
+        // `updated_at` 必须显式写：这条路径改写正文却没动时间戳，会让「刚采纳的卡」在库和 UI 上都
+        // 显示成几天前的旧卡（2026-10-29 实机取证：陈砚 13:44 被复活并改写，时间戳仍停在 10-25，
+        // 直接把一次「确实落库了」的排查带成了「没落库」）。
+        db.prepare(`UPDATE characters SET retired=0,updated_at=datetime('now'),identity_revision=?,static_provenance=?${keys.length ? `,${keys.map(key => `${key}=?`).join(',')}` : ''} WHERE character_id=?`)
           .run(revision, JSON.stringify(provenance), ...Object.values(creation.fields), reviveId)
         // 重开别名窗口：退休时被写上了 valid_through，这里追加一条当前生效的别名。
         db.prepare('INSERT INTO character_aliases VALUES(?,?,?,?,NULL)').run(reviveId, creation.fields.name, request.approval.operationId, revision)
@@ -1274,14 +1277,15 @@ export function commitCharacterIdentities(
         // Field provenance is merged so adopting generated text never relabels untouched author fields.
         const prior = JSON.parse(row.static_provenance as string) as Record<string, unknown>
         const provenance = { ...prior, fields: { ...(prior.fields as Record<string, unknown> | undefined), ...Object.fromEntries(keys.map(key => [key, attributedSource])) } }
-        db.prepare(`UPDATE characters SET ${keys.map(key => `${key}=?`).join(',')},static_provenance=?,identity_revision=? WHERE character_id=?`).run(...Object.values(change.fields), JSON.stringify(provenance), revision, change.characterId)
+        // 同 revive 分支：改写就动时间戳，否则「刚采纳」与「几天前」在库里无法区分。
+        db.prepare(`UPDATE characters SET ${keys.map(key => `${key}=?`).join(',')},static_provenance=?,updated_at=datetime('now'),identity_revision=? WHERE character_id=?`).run(...Object.values(change.fields), JSON.stringify(provenance), revision, change.characterId)
       }
       if (change.fields.name !== undefined && change.fields.name !== row.name) {
         db.prepare('UPDATE character_aliases SET valid_through=? WHERE character_id=? AND valid_through IS NULL').run(current, change.characterId)
         db.prepare('INSERT INTO character_aliases VALUES(?,?,?,?,NULL)').run(change.characterId, change.fields.name, request.approval.operationId, revision)
       }
     }
-    for (const id of request.retireIds) { active(id); db.prepare('UPDATE characters SET retired=1,identity_revision=? WHERE character_id=?').run(revision, id); db.prepare('UPDATE character_aliases SET valid_through=? WHERE character_id=? AND valid_through IS NULL').run(current, id) }
+    for (const id of request.retireIds) { active(id); db.prepare(`UPDATE characters SET retired=1,updated_at=datetime('now'),identity_revision=? WHERE character_id=?`).run(revision, id); db.prepare('UPDATE character_aliases SET valid_through=? WHERE character_id=? AND valid_through IS NULL').run(current, id) }
     const receipt: CharacterIdentityCommitReceipt = { approval: structuredClone(request.approval), operationId: request.approval.operationId, revision, created, revived, idempotent: false }
     db.prepare('INSERT INTO character_identity_approvals VALUES(?,?,?)').run(request.approval.operationId, digest, JSON.stringify(receipt))
     const endpoint = (id: string | undefined, selectionKey: string | undefined) => {

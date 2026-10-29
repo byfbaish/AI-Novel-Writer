@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
 import { isDeepStrictEqual } from 'node:util'
 import type { ApproveCharacterProposalRequest, CancelCharacterProposalRequest, CharacterCastDecisionView, CharacterIdentitySnapshot, CharacterProposalBatch, CharacterProposalDecision, CharacterProposalHistoryEntry, CharacterProposalItem, CharacterProposalSource, CharacterStaticFields, PendingFinalizedCharacterProposalSummary, RegisterCharacterCastRequest, RevokeCharacterCastRequest } from '../../src/shared/character-proposal'
-import { isAdoptedCharacterDecision } from '../../src/shared/character-proposal'
+import { isAdoptedCharacterDecision, isArchitectureRebuildBatch } from '../../src/shared/character-proposal'
 import { resolveScopedCharacterIdentity, type CharacterStaticProvenance } from '../../src/shared/character-identity'
 import { CHARACTER_ROLES } from '../../src/shared/character-role'
 import { CharacterCastDecisionRepository, hasCharacterCastDecisionSchema } from '../repositories/character-cast-decision-repository'
@@ -198,6 +198,62 @@ export function mergeAdoptedCharacterFields(
     merged[key] = `${current.trimEnd()}\n\n${value}`
   }
   return merged
+}
+
+/**
+ * 架构重建时的字段策略：**覆盖模型写的，保留作者写的**。
+ *
+ * 与 `mergeAdoptedCharacterFields` 的分岔理由：那条裁定（2026-10-21）保护的是「初始角色面板里的
+ * 内容已经被正文引用」——适用于增量补卡（导入、定稿、归位表）。架构重建的语义相反：
+ * 作者重跑一次架构，要的是**这一册新名单**，旧性格留着不改才是缺陷。
+ *
+ * 但「重建」不等于「无条件覆盖」：字段 provenance 是 `author` 的（作者在面板上手改过）必须留着，
+ * 否则作者每改一次卡，重跑一次架构就被冲掉一次。这也是原合并稿「采用生成文本绝不改写作者没碰过的
+ * 字段」那条纪律在重建链上的等价形式。
+ *
+ * 空值仍然不写：候选缺某个字段不等于「作者要清空它」。
+ */
+export function replaceAdoptedCharacterFields(
+  existing: Readonly<Record<string, string>>,
+  candidate: Readonly<Record<string, string>>,
+  authorOwned: ReadonlySet<string> = new Set<string>(),
+): Record<string, string> {
+  const replaced: Record<string, string> = {}
+  for (const [key, rawCandidate] of Object.entries(candidate)) {
+    const value = typeof rawCandidate === 'string' ? rawCandidate.trim() : ''
+    if (!value) continue
+    const current = typeof existing[key] === 'string' ? existing[key] : ''
+    if (current.trim() === value) continue
+    if (current.trim() && authorOwned.has(key)) continue
+    replaced[key] = value
+  }
+  return replaced
+}
+
+/** 从 `static_provenance.fields` 里读出「作者亲手写过」的字段名（宽松读：历史数据可能没有 fields）。 */
+export function authorOwnedFields(provenance: unknown): Set<string> {
+  const fields = (provenance as { fields?: Record<string, { kind?: unknown } | undefined> } | null)?.fields
+  if (!fields || typeof fields !== 'object') return new Set()
+  return new Set(Object.entries(fields)
+    .filter(([, origin]) => (origin as { kind?: unknown } | undefined)?.kind === 'author')
+    .map(([key]) => key))
+}
+
+/**
+ * 这张卡是不是「架构/规划材料自动采纳」造出来的产物 —— 只有这类卡参与整册替换时的退休。
+ *
+ * 排除两类：
+ * - 作者手建（`kind: 'author'`）与历史迁移（`legacy`）：不是生成产物，重跑架构不该清掉；
+ * - 正文侧（定稿链 `finalized-character-adoption:`、归位表 `cast-` 前缀）：它们是**剧情里出现过的人**，
+ *   重新生成架构不代表这些人不该存在。
+ */
+function isRosterRebuildRetirable(provenance: unknown): boolean {
+  if (!provenance || typeof provenance !== 'object') return false
+  const raw = provenance as { kind?: unknown; approvalId?: unknown }
+  if (raw.kind === 'author' || raw.kind === 'legacy') return false
+  const approvalId = typeof raw.approvalId === 'string' ? raw.approvalId : ''
+  if (approvalId.startsWith('finalized-character-adoption:') || approvalId.startsWith('cast-')) return false
+  return raw.kind === 'generated' || raw.kind === 'derived'
 }
 
 export class CharacterProposalService {
@@ -664,6 +720,8 @@ export class CharacterProposalService {
         throw new Error('CHARACTER_PROPOSAL_EDIT_INVALID')
       if (batch.source.kind === 'legacy-roster-generation' && !request.selections.some(item => item.action === 'create' || item.action === 'map'))
         throw new Error('CHARACTER_APPROVAL_SELECTION_REQUIRED')
+      // 架构重建＝整册替换（判据见 `isArchitectureRebuildBatch`）：同名按同一人覆盖，名单外旧卡退休。
+      const rebuild = isArchitectureRebuildBatch(batch.source)
       const identityRequest: CharacterIdentityCommitRequest = { approval: { operationId: request.operationId, expectedRevision: request.expectedRevision,
         // cast-ledger 的 provenance 恒为 generated（模型补全的静态资料 + 冻结产物），
         // 与 legacy 名单/架构推导同档：都能满足 commitCharacterIdentities 的 allowedSources。
@@ -680,16 +738,32 @@ export class CharacterProposalService {
         if (selection.action === 'map' && batch.source.kind !== 'finalized-generation') {
           const existing = existingCharacters.find(character => character.characterId === selection.characterId && !character.retired)
           if (!existing) throw new Error('CHARACTER_ID_UNKNOWN')
-          // 合并而非覆盖：初始角色/已定稿正文引用过的字段不能被候选直接冲掉。
-          const adopted = mergeAdoptedCharacterFields(
-            existing.fields as unknown as Record<string, string>,
-            item.fields as unknown as Record<string, string>,
-          )
+          // 增量链合并（初始角色/已定稿正文引用过的字段不能被候选冲掉）；架构重建整册覆盖。
+          const adopted = rebuild
+            ? replaceAdoptedCharacterFields(
+              existing.fields as unknown as Record<string, string>,
+              item.fields as unknown as Record<string, string>,
+              authorOwnedFields(existing.provenance),
+            )
+            : mergeAdoptedCharacterFields(
+              existing.fields as unknown as Record<string, string>,
+              item.fields as unknown as Record<string, string>,
+            )
           if (Object.keys(adopted).length) identityRequest.changes.push({ characterId: selection.characterId, fields: adopted })
         }
         if (selection.action === 'map' && batch.source.kind === 'finalized-generation'
           && !this.identitySnapshot().characters.some(character => character.characterId === selection.characterId && !character.retired))
           throw new Error('CHARACTER_ID_UNKNOWN')
+      }
+      // 整册替换的另一半：本名单没点到、但由上几轮架构/规划材料自动采纳造出来的活跃卡 → 退休。
+      // 不做这一步，每次重新生成都是**叠加**而不是**替换**（实测：11 张活跃卡里三批同人并存）。
+      if (rebuild) {
+        const adoptedIds = new Set(request.selections.flatMap(selection =>
+          selection.action === 'map' ? [selection.characterId] : []))
+        identityRequest.retireIds = existingCharacters
+          .filter(character => !character.retired && !adoptedIds.has(character.characterId)
+            && isRosterRebuildRetirable(character.provenance))
+          .map(character => character.characterId)
       }
       // 两端各二选一、以及「来源候选必须声明过这条边」的判定全部收在
       // `resolveProposalRelationships`（纯函数、有单测）。这里只负责把当次的选择与
@@ -708,6 +782,24 @@ export class CharacterProposalService {
       })
       const frozenRequest = JSON.stringify(identityRequest)
       const receipt = commitCharacterIdentities(this.db, identityRequest, candidate => JSON.stringify(candidate) === frozenRequest)
+      // 图谱收敛：同一对角色只保留一条关系边。
+      // 实测（2026-10-29）：陈砚→赵铎 有 10 条措辞各异的边，因为每次采纳都往同一对之间插一条新的。
+      // 只收敛**本批声明过的对**，本批没提到的边不动 —— 重建语境下这些对的关系由本批重写。
+      if (rebuild) {
+        const resolveEndpoint = (id: string | undefined, key: string | undefined) =>
+          id ?? receipt.created.find(entry => entry.selectionKey === key)?.characterId
+        const pairs = new Set<string>()
+        for (const relationship of identityRequest.relationships) {
+          const from = resolveEndpoint(relationship.sourceCharacterId, relationship.sourceSelectionKey)
+          const to = resolveEndpoint(relationship.targetCharacterId, relationship.targetSelectionKey)
+          if (from && to) pairs.add(JSON.stringify([from, to]))
+        }
+        const dedupe = this.db.prepare(`DELETE FROM character_relationships
+          WHERE source_character_id=? AND target_character_id=?
+            AND relationship_id <> (SELECT relationship_id FROM character_relationships
+              WHERE source_character_id=? AND target_character_id=? ORDER BY rowid DESC LIMIT 1)`)
+        for (const pair of pairs) { const [from, to] = JSON.parse(pair) as [string, string]; dedupe.run(from, to, from, to) }
+      }
       let finalRevision = receipt.revision
       const authorChanges = (edits ?? []).flatMap(edit => {
         const item = byKey.get(edit.selectionKey)!

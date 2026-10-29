@@ -73,6 +73,25 @@ export type CharacterProposalDecision =
 export function isAdoptedCharacterDecision(action: CharacterProposalDecision['action']): boolean {
   return action === 'create' || action === 'map'
 }
+
+/**
+ * 架构重建：这批候选描述的是「新的一册名单」，不是对现有名册的增量补卡。
+ *
+ * 判据（2026-10-29 实机取证，作者裁定「按整批替换语义」）：
+ * 作者「清空后重新生成」时，主角与反派在库里有同名活跃卡，而身份解析只能按名字命中 ——
+ * 提案项的 `sourceId` 是 `<artifactId>:<selectionKey>`，别名表的 `source_key` 是
+ * `<operationId>`（`character-adoption:<runId>`），两套体系**永不同源**，带 sourceKey 的解析
+ * 必然落空，退化成只按名字找；一旦命中唯一候选，`resolveScopedCharacterIdentity` 因为没有
+ * sourceKey 而返回 `unresolved + candidateIds:[那个]`，默认选择器就把整项判成
+ * `keep-unresolved` ⇒ **新生成的主角卡被静默丢弃，库里留着上一批的旧卡**
+ * （实测：19:02 那次生成的主角卡从未落库，只有 5 个新名字建了卡）。
+ *
+ * 架构生成的心智模型是**重建名单**：唯一同名在重建语境下就是同一个人，旧批应当被替换，
+ * 而不是逐项问「这是不是老熟人」。导入/定稿/归位表这三条链仍然是增量语义，不受影响。
+ */
+export function isArchitectureRebuildBatch(source: CharacterProposalSource): boolean {
+  return source.kind === 'generation' && source.inputKind === 'architecture'
+}
 export interface ApproveCharacterProposalRequest {
   proposalBatchId: string
   expectedRevision: number

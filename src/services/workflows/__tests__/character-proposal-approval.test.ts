@@ -90,6 +90,22 @@ describe('explicit character proposal adoption', () => {
     const request = toApproveCharacterProposalRequest({ ...choices, relationships: [{ relation: '凭空' }] }, 'op')
     expect(request.relationships).toEqual([])
   })
+  it('adopts a sole same-name candidate on an architecture rebuild instead of dropping the new card', () => {
+    // 架构重建是整册替换：唯一同名在重建语境下就是同一人。
+    // 不这样做时实测后果是——新生成的主角卡（含锚点行与四层性格）被静默丢弃，库里留着上一批旧卡。
+    const rebuild: CharacterProposalBatch = { ...batch(), source: { kind: 'generation', inputKind: 'architecture',
+      handle: { runId: 'run', epoch: 'epoch', rootActionId: 'root' } as never, artifacts: [] } }
+    expect(defaultCharacterProposalSelections(rebuild)).toEqual([
+      { selectionKey: 'new', action: 'create' }, { selectionKey: 'known', action: 'map', characterId: 'identity' },
+      // 两个候选仍然不猜：作者得自己说是不是同一个人。
+      { selectionKey: 'ambiguous', action: 'keep-unresolved' },
+      { selectionKey: 'name-match', action: 'map', characterId: 'a' },
+    ])
+    expect(formatCharacterProposalPreview(rebuild, zh => zh)).toContain('整册重建')
+    // 增量链（导入/定稿/归位表）保持原判据，不被这条规则带跑。
+    expect(defaultCharacterProposalSelections(batch()).find(item => item.selectionKey === 'name-match'))
+      .toEqual({ selectionKey: 'name-match', action: 'keep-unresolved' })
+  })
   it('defaults every proposed edge to not-adopted, never auto-binding a suggested target', () => {
     // A suggestion is a suggestion: the default set may contain the edge only because both
     // endpoints are adopted candidates, and nothing about it is silently pointed at a real id.
