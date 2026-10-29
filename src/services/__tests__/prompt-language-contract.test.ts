@@ -207,6 +207,13 @@ describe('core model prompt language contract', () => {
     expect(zhText).toContain('没有外部压力时')
     expect(enText).toContain('when nothing is pressing him')
 
+    // ②b 「不适用」只写条件，不写让位后的动作 —— 写了动作却没挂底线，
+    // 那个动作就变成"没有依据的第六条做法"（实机产物：「不适用：三日期限压到眼前，明知走样也得补完」）
+    expect(zhText).toContain('「不适用」只写**条件**，不写让位之后他改做什么')
+    expect(zhText).toContain('让位之后由第一层兜底')
+    expect(enText).toContain('states the **condition** only — never what he does instead')
+    expect(enText).toContain('layer 1 takes over')
+
     // ③ 例外必须与挂的底线同向
     expect(zhText).toContain('必须与它挂的那条底线**同向**')
     expect(enText).toContain('same direction')

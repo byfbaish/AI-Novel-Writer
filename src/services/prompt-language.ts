@@ -129,6 +129,8 @@ ${input.validatedPrefix}
 - 什么事 → 他一贯怎么做（写做法，不写这一次的具体动作）
 - 不适用：什么情况下这条让位
 每条都必须有「不适用」。没写的那条会变成万能答案，把所有处境都吸过去。
+★ 「不适用」只写**条件**，不写让位之后他改做什么。让位之后由第一层兜底——那一章的选择行写「底线<n>」，不是在这里另写一个动作。
+  写了动作却没说它挂哪条底线，那个动作就成了没有依据的第六条做法（也等于把"让位"变成了另一条日常）。
 ★ 四条里至少要有一条是**没有外部压力时**也会发生的事；其余三条可以都在被逼、当众、生死里。四条全在高压下，读者看不出他平时是谁，第四层的破例也就没有对照。
 
 第四层【例外】
@@ -215,6 +217,8 @@ Layer 3 [how he treats each kind of event] — 3–4 pairs. Start each pair with
 - what kind of event → how he always handles it (write the practice, not the action of this one occasion)
 - not applicable: the case in which this one gives way
 Every pair must carry a "not applicable". The pair without one becomes the universal answer and pulls every situation toward itself.
+★ "Not applicable" states the **condition** only — never what he does instead. Once this practice gives way, layer 1 takes over: the choice line for that chapter cites "bottom <n>", it does not carry an action written here.
+  An action written here without a bottom line to hang on becomes a sixth practice with no basis (and turns "giving way" into just another habit).
 ★ At least one of the pairs must be something that also happens **when nothing is pressing him**; the other three may all sit under duress. If all four live inside "forced / public / life-and-death", the reader never sees who he is when nothing is happening, and the layer-4 exception has nothing to contrast against.
 
 Layer 4 [the exception]
