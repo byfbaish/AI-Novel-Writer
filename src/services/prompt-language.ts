@@ -107,11 +107,12 @@ ${input.validatedPrefix}
 ★ 先看作者的补充创作指导：若那里给了词条或底线清单，以它为准，你只负责把它落成下面这几层；
 没有给，就从主角档案里推出来。
 
-第一层【他在乎什么】按轻重排出 4–5 项，写清先后，不写分数。
+第一层【他在乎什么】按轻重排出 4–5 项，写成 B1…Bn（**B1 最重**，编号就是轻重位次，不是条目号），不写分数。
 - 至少一项是具体可夺的东西：一个人、一本账、一句承诺；不许全是「尊严」「信念」这类抽象词。
 - 至少一项是他不愿承认的：他自己不觉得那是缺点。
 - 任意相邻两项之间，要能构造出一个他必须选一个的场面。
 - 普世、仁善这类价值不许排在前两位。若确要排，必须写出他为此付过什么代价；写不出代价的，那是圣母，不是人。
+★ B 编号与第三层的 D 编号是两套：**B 是底线的轻重位次**（B1 最重），**D 是做法条目号**（D1 不代表最重）。写选择行时两者都可能用到。
 
 第二层【什么算一件事】只写两句：什么算，什么不算。
 - 能用的、能换钱的、能让他少费事的 → 算。
@@ -181,11 +182,12 @@ Disposition is not an adjective list, and it is not a diary. Write only **how he
 
 ★ Author-provided override first: if the extra author guidance already names a trait or a ranked list of bottom lines, **follow it exactly** and only break it into the layers below. If it does not, infer them from the protagonist profile.
 
-Layer 1 [what he cares about] — rank 4–5 items from heaviest to lightest. No scores.
+Layer 1 [what he cares about] — rank 4–5 items from heaviest to lightest, numbered B1…Bn (**B1 is the heaviest; the number is the rank, not an entry id**). No scores.
 - At least one item must be something concrete that can be taken away: a person, a ledger, a promise. Do not fill the whole list with abstractions such as "dignity" or "conviction".
 - At least one item is one he would not admit to: he himself does not think of it as a flaw.
 - Between any two adjacent items it must be possible to build a scene in which he has to choose one of them.
 - Universalism and benevolence must not occupy the first two places. If you must place them there, write what he has paid for them; if you cannot write that price, that is a saint, not a person.
+★ The B numbers and the D numbers of layer 3 are two separate series: **B is the rank of a bottom line** (B1 heaviest), **D is an entry id** (D1 is not the heaviest). The choice line may need both.
 
 Layer 2 [what counts as an event] — two lines only: what counts, what does not.
 - Anything usable, convertible into money, or that saves him trouble counts.
@@ -663,15 +665,16 @@ Every chapter has three parts in this exact order: (1) chapter heading, (2) the 
 - The chapter's outline text follows that line; do not repeat the ID in the prose.
 
 (2a) "Qualify:" line — mandatory in every chapter, whether or not the arc-position block is present:
-- Place it immediately after the "Covers:" line (or immediately after the chapter heading when there is no arc-position block), on its own line, as "Qualify: <D-number> — <which entry this chapter runs into, one clause naming the kind of situation>". Write "Qualify: none — <why>" when this chapter truly touches no entry.
+- Place it immediately after the "Covers:" line (or immediately after the chapter heading when there is no arc-position block), on its own line, as "Qualify: <D-number> — <which entry this chapter runs into, one clause naming the kind of situation>". When no practice applies, write "Qualify: none — <which bottom line it touches, and why none of the practices applies>".
 - It answers only "what kind of thing is this" and **must not say what he did**.
-- The D-number here **must be the same number the "Choice:" line below cites**. If the two disagree, the chapter is not thought through — rewrite it.
+- **No standing practice does not mean no character**: when the chapter touches a bottom line but none of the layer-3 practices applies, write "Qualify: none — …" and let the Choice line fall back to "bottom <n>"; only a chapter that truly has no scene of his (someone else's POV throughout, a time skip) writes "Qualify: none — <why he is absent>".
+- The basis here **must match the basis the "Choice:" line below cites**. If the two disagree, the chapter is not thought through — rewrite it.
 
 (2b) "Choice:" line — mandatory in every chapter, whether or not the arc-position block is present:
-- Place it immediately after the "Qualify:" line, on its own line, as "Choice: <source of force> — <what he did in this chapter> | ruled out: <the other thing> because <D-number>: <that tendency>".
+- Place it immediately after the "Qualify:" line, on its own line, as "Choice: <source of force> — <what he did in this chapter> | ruled out: <the other thing> because <basis>", where the basis is exactly one of: <D-number>: <that practice> / bottom <n>: <that bottom line> / D0: <why this chapter truly has no scene of his>.
 - Four sources of force: **Self** = he does it with his own hands; **Others** = he brings one specific person in to act, carry word, or vouch; **Rules** = he invokes an institution, a title, or a compact to press the other side; **Trade** = he gives something the other side wants for something he wants. Two **exception values**: **Break** = he takes none of the offered options and opens a road of his own; **Hold** = he does not move at all (waits, stalls, acts as if none of this is happening).
-- because **must start with the number** (D<n>, matching the practices in layer 3 of his card). **The number is the entry id, not a ranking**; touching the **exception** written in layer 4 means this chapter reached what he actually cares about.
-- If nothing matches, write D0 and say why this chapter has no disposition scene — allowed, but never omit the field.
+- because **must start with the basis**: a D-number is an entry id, **not a ranking** (the practices in layer 3 of his card); when no practice applies but the chapter does touch him, fall back to his first-layer bottom line and write "bottom <n>" — that is the fallback, not an exception; touching the **exception** written in layer 4 means this chapter reached what he actually cares about.
+- **Never use D0 in place of the fallback**: D0 is reserved for a chapter that truly has no scene of his (someone else's POV, a time skip), and it needs a stated reason.
 - It answers "what did he decide", not "what happened to him". "He decided to face reality" or "he decided to investigate" is not one of the sources.
 - This line does not fix plot; it fixes whose hands the initiative is in. The chapter blueprint inherits it (its purpose must open with the same source), so never declare one here and dramatize another in the prose.
 

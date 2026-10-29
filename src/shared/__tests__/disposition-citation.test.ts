@@ -67,6 +67,69 @@ describe('性格引用体检', () => {
     expect(findings.map(f => f.code)).toEqual(['ARC_CHOICE_MISMATCH'])
   })
 
+  // 2026-10-29 作者裁定：定性无 = "没有现成做法"，不等于"没有性格"。
+  // 做法是他平日的习惯，底线是他这个人 —— 所以兜底到第一层底线，是 try / catch 里的 catch。
+  it('定性写「无」、选择行退到底线 —— 这是兜底路径，不报', () => {
+    const synopsis = chapterQ(
+      1,
+      '定性：无 — 碰到了底线2，但三条做法都不适用',
+      '选择：守 —— 他把话岔开｜否掉了 应下，因为 底线2：他欠着的人还没还完',
+    )
+    expect(auditDispositionCitations({ synopsis, dispositionIds: IDS, bottomLineCount: 4 })).toEqual([])
+  })
+
+  it('定性写「无」、选择行写 D0（他不在场）—— 也不报', () => {
+    const synopsis = chapterQ(1, '定性：无 — 纯他人视角，他全程不在场', '选择：守 —— 他等到天亮｜否掉了 出手，因为 D0：这一章没有他的戏')
+    expect(auditDispositionCitations({ synopsis, dispositionIds: IDS })).toEqual([])
+  })
+
+  it('定性写了做法、选择行却退到底线 —— 有做法就该用做法，报 MISMATCH', () => {
+    const synopsis = chapterQ(1, '定性：D2 — 要他放弃攒了很久的东西', '选择：守 —— 他不吭声｜否掉了 动手，因为 底线3：他舍不得那样东西')
+    const findings = auditDispositionCitations({ synopsis, dispositionIds: IDS, bottomLineCount: 4 })
+    expect(findings.map(f => f.code)).toEqual(['ARC_CHOICE_MISMATCH'])
+    expect(findings[0].zh).toContain('底线3')
+  })
+
+  it('没有定性行的旧格式，只写底线兜底 —— 不算缺依据', () => {
+    const synopsis = chapter(1, '选择：守 —— 他把话岔开｜否掉了 应下，因为 底线2：他欠着的人还没还完')
+    expect(auditDispositionCitations({ synopsis, dispositionIds: IDS })).toEqual([])
+  })
+
+  it('底线的位次超出角色卡的底线条数就报 ARC_CHOICE_UNKNOWN_BOTTOM', () => {
+    const synopsis = chapter(1, '选择：守 —— 他把话岔开｜否掉了 应下，因为 底线7：他欠着的人还没还完')
+    const findings = auditDispositionCitations({ synopsis, dispositionIds: IDS, bottomLineCount: 4 })
+    expect(findings.map(f => f.code)).toEqual(['ARC_CHOICE_UNKNOWN_BOTTOM'])
+    expect(findings[0].zh).toContain('底线7')
+  })
+
+  it('不给底线条数时不校验位次 —— 章纲里读不到条的数，硬要求会误报', () => {
+    const synopsis = chapter(1, '选择：守 —— 他把话岔开｜否掉了 应下，因为 底线7：他欠着的人还没还完')
+    expect(auditDispositionCitations({ synopsis, dispositionIds: IDS })).toEqual([])
+  })
+
+  it('连续三章都走底线兜底，不算「一条倾向推所有局面」', () => {
+    const make = (n: number) =>
+      chapterQ(n, '定性：无 — 碰到了底线2', `选择：守 —— 他把话岔开｜否掉了 应下，因为 底线2：他欠着的人还没还完`)
+    const synopsis = [make(1), make(2), make(3)].join('\n')
+    expect(auditDispositionCitations({ synopsis, dispositionIds: IDS, bottomLineCount: 4 })).toEqual([])
+  })
+
+  it('英文 bottom 写法同样识别为兜底', () => {
+    const synopsis = [
+      '## Chapter 1: Door',
+      '',
+      'Qualify: none — touches bottom 2, but no practice applies',
+      '',
+      'Choice: Hold — he deflects | ruled out: accepting, because bottom 2: he still owes someone',
+      '',
+      'Prose.',
+      '',
+      'Hook: the door is still open.',
+      '',
+    ].join('\n')
+    expect(auditDispositionCitations({ synopsis, dispositionIds: IDS, bottomLineCount: 4 })).toEqual([])
+  })
+
   it('英文 Qualify: 与 Choice: 不一致同样报', () => {
     const synopsis = [
       '## Chapter 1: The Door', '',

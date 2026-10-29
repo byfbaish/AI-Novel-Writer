@@ -542,8 +542,11 @@ describe('built-in model-neutral prompt contract', () => {
       .map((template) => [template.systemRole, template.content, template.systemSuffix].filter(Boolean).join('\n'))
       .join('\n')
 
+    // 禁的是**安全 / 合规政策**这类内容，不是「底线」这个词本身。
+    // 2026-10-29：角色行为四层把「底线排序」（第一层）定为核心机制，裸禁 `底线`
+    // 会连它一起误伤 —— 故改为按**政策语境**精确匹配：原正则全保留，另加道德/政治/价值观底线。
     expect(allPromptText).not.toMatch(/安全提示|拒绝提示|合规提示|底线提示|写作安全|安全边界|合规边界|政策要求/)
-    expect(allPromptText).not.toContain('底线')
+    expect(allPromptText).not.toMatch(/道德底线|政治底线|价值观底线|意识形态/)
   })
 
   it('prunes empty optional guidance labels from rendered prompts', () => {

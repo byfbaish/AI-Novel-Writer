@@ -9,17 +9,26 @@
  *
  * **编号只是条目号，不是档位**（2026-10-29 起：角色卡改为四层，旧的三档
  * 〔日常〕/〔代价〕/〔破例〕已取消，编号指向第三层「他对各类事的做法」里的一条）：
- * - `D1`…`D4` = 第三层里的第几条做法
- * - `D0` 是**显式声明**"这一章没有他的性格戏"，合法，不算缺引用
+ * - `D1`…`D4` = 第三层里的第几条做法（条目号，不代表轻重）
+ * - `底线<n>`（英文 `bottom <n>`）= **兜底路径**：第三层一条做法都对不上，但这一章确实
+ *   碰到了第一层的第 n 条底线（B1 最重）。**没有现成做法不等于没有性格** —— 做法是他平日
+ *   的习惯，底线是他这个人，所以这里要兜底，而不是宣布"没有他的戏"。这是 try / catch 里的 catch。
+ * - `D0` = **显式声明**"这一章确实没有他的性格戏"（纯他人视角、时间跳跃、他全程不在场）。
+ *   ⚠️ 它不能拿来替代兜底：做法对不上要先退到 `底线<n>`，只有他真不在场才写 `D0`。
  *
- * ## 四条判据（只报信号，不判质量）
+ * ## 五条判据（只报信号，不判质量）
  *
  * | 码 | 含义 | 治什么 |
  * |---|---|---|
- * | `ARC_CHOICE_NO_D` | 这一章的选择行没有出现任何 `D<n>` | 模型绕过性格自由发挥 |
+ * | `ARC_CHOICE_NO_D` | 选择行没写任何依据（`D<n>` / `底线<n>` / `D0` 都没有） | 模型绕过性格自由发挥 |
  * | `ARC_CHOICE_UNKNOWN_D` | 引用了角色卡上不存在的编号 | 引用是编的 |
- * | `ARC_CHOICE_SAME_D` | 连续 N 章引用同一条 | 一条倾向推所有局面 ⇒ 角色扁平 |
- * | `ARC_CHOICE_MISMATCH` | 定性行与选择行写的不是同一条 | 一边定类一边落动作，两处没想在一起 |
+ * | `ARC_CHOICE_UNKNOWN_BOTTOM` | 引用了不存在的底线位次（仅当传入 `bottomLineCount` 时校验） | 兜底也是编的 |
+ * | `ARC_CHOICE_SAME_D` | 连续 N 章引用同一条做法 | 一条倾向推所有局面 ⇒ 角色扁平 |
+ * | `ARC_CHOICE_MISMATCH` | 定性行与选择行的依据对不上 | 一边定类一边落动作，两处没想在一起 |
+ *
+ * MISMATCH 的两条规则（兜底让"对不上"有了合法形态）：
+ * - 定性 `D<n>` ⇒ 依据必须是同一个 `D<n>`；
+ * - 定性「无」⇒ 依据可以是 `底线<n>`（兜底）或 `D0`（他不在场），**不能**是 `D<n>`。
  *
  * 这是**必要条件**，不是充分条件：全都不报不等于写得好，但报出来的一定有问题。
  *
@@ -33,6 +42,7 @@
 export type DispositionCitationCode =
   | 'ARC_CHOICE_NO_D'
   | 'ARC_CHOICE_UNKNOWN_D'
+  | 'ARC_CHOICE_UNKNOWN_BOTTOM'
   | 'ARC_CHOICE_SAME_D'
   | 'ARC_CHOICE_MISMATCH'
 
@@ -49,6 +59,11 @@ export interface DispositionCitationInput {
   readonly synopsis: string
   /** 角色卡上实际存在的编号，如 ['D1','D2','D3'] */
   readonly dispositionIds: readonly string[]
+  /**
+   * 角色卡第一层有几条底线（B1…Bn）。给了才校验 `底线<n>` 的序号是否存在；
+   * 不给只校验格式 —— 底线条数在章纲里读不到，硬要求会误报。
+   */
+  readonly bottomLineCount?: number
   /** 连续多少章引用同一条就报，默认 3 */
   readonly repeatThreshold?: number
 }
@@ -67,6 +82,11 @@ const QUALIFY_LINE = /^(?:[-*+]\s*)?(?:定性|[Qq]ualify)\s*[:：]\s*(.*)$/
  * 改用"后面不能紧跟拉丁字母"来把 none 与 nonexistent 区分开。
  */
 const QUALIFY_NONE = /^\s*(?:无|none)(?![A-Za-z])/i
+/**
+ * 底线兜底：中文 `底线2` / 英文 `bottom 2`、`bottom line 2`。
+ * 这是 try / catch 里的 catch —— 第三层做法对不上时退到第一层底线，不是"没有性格"。
+ */
+const BOTTOM_CITATION = /(?:底线|bottom\s*(?:line\s*)?)\s*(\d{1,2})/i
 
 interface ChapterBlock {
   heading: string
@@ -90,15 +110,37 @@ function splitChapters(synopsis: string): ChapterBlock[] {
   return blocks
 }
 
-function citationOf(body: string): string | undefined {
+/** 从选择行的内容里取 D 编号；`D0` = 显式声明本章没有他的戏，合法，返回大写形态以便比较。 */
+function citationOfLine(rest: string): string | undefined {
+  const found = CITATION.exec(rest)
+  return found ? `D${Number(found[1])}` : undefined
+}
+
+/** 选择行的依据 —— 三种合法形态里只会命中一种。 */
+interface ChoiceBasis {
+  /** `D<n>`（含 `D0`）；没写 D 编号时 undefined */
+  readonly disposition?: string
+  /** 底线位次 n（兜底路径）；没写底线时 undefined */
+  readonly bottomLine?: number
+}
+
+/**
+ * 取这一章选择行的依据。
+ *
+ * `D<n>` 与 `底线<n>` 同时出现时**以 D 优先**：兜底是"没有现成做法"时才走的路，
+ * 写了编号就说明有做法可套，那一行里的"底线"只是叙述，不算兜底。
+ */
+function basisOf(body: string): ChoiceBasis {
   for (const line of body.split(/\r?\n/u)) {
     const match = CHOICE_LINE.exec(line.trim())
     if (!match) continue
-    const found = CITATION.exec(match[1] ?? '')
-    // D0 = 显式声明「本章没有性格戏」，合法；返回大写形态以便比较
-    return found ? `D${Number(found[1])}` : undefined
+    const rest = match[1] ?? ''
+    const disposition = citationOfLine(rest)
+    if (disposition) return { disposition }
+    const bottom = BOTTOM_CITATION.exec(rest)
+    return bottom ? { bottomLine: Number(bottom[1]) } : {}
   }
-  return undefined
+  return {}
 }
 
 /**
@@ -124,7 +166,7 @@ function qualifyOf(body: string): string | undefined {
  * 没有章节标题时退化成"整份当一个块"，仍能查出"完全没有编号"这类问题。
  */
 export function auditDispositionCitations(input: DispositionCitationInput): DispositionCitationFinding[] {
-  const { synopsis, dispositionIds, repeatThreshold = 3 } = input
+  const { synopsis, dispositionIds, bottomLineCount, repeatThreshold = 3 } = input
   const known = new Set(dispositionIds.map(id => id.toUpperCase()))
   const blocks = splitChapters(synopsis)
   if (blocks.length === 0 && synopsis.trim()) blocks.push({ heading: '（整份大纲）', body: synopsis })
@@ -134,36 +176,57 @@ export function auditDispositionCitations(input: DispositionCitationInput): Disp
   let runLength = 0
 
   for (const block of blocks) {
-    const citation = citationOf(block.body)
-    if (!citation) {
+    const { disposition, bottomLine } = basisOf(block.body)
+    const hasBasis = disposition !== undefined || bottomLine !== undefined
+
+    if (!hasBasis) {
       findings.push({
         code: 'ARC_CHOICE_NO_D',
         chapter: block.heading,
-        zh: `${block.heading}：选择行没有写 D 编号 —— 模型绕过了角色卡。补上 \`因为 D<n>\`；这一章确实没有性格戏时写 \`D0\` 并说明理由。`,
-        en: `${block.heading}: the choice line carries no D-number — the model routed around the character card. Add \`because D<n>\`; write \`D0\` with a reason when the chapter truly has no disposition scene.`,
+        zh: `${block.heading}：选择行没有写依据。做法对得上就写 \`因为 D<n>\`；一条都对不上但碰到了底线时写 \`因为 底线<n>\`（兜底）；这一章确实没有他的戏才写 \`D0\` 并说明理由。`,
+        en: `${block.heading}: the choice line carries no basis. Write \`because D<n>\` when a practice applies; when none applies but a bottom line does, write \`because bottom <n>\` (fallback); write \`D0\` with a reason only when the chapter truly has no scene of his.`,
       })
-    } else if (citation !== 'D0' && !known.has(citation)) {
+    } else if (disposition && disposition !== 'D0' && !known.has(disposition)) {
       findings.push({
         code: 'ARC_CHOICE_UNKNOWN_D',
         chapter: block.heading,
-        zh: `${block.heading}：引用了 ${citation}，但角色卡上只有 ${[...known].join(' / ')} —— 这个编号是编的。`,
-        en: `${block.heading}: cites ${citation}, but the character card only carries ${[...known].join(' / ')} — the number is invented.`,
+        zh: `${block.heading}：引用了 ${disposition}，但角色卡上只有 ${[...known].join(' / ')} —— 这个编号是编的。`,
+        en: `${block.heading}: cites ${disposition}, but the character card only carries ${[...known].join(' / ')} — the number is invented.`,
       })
     }
-
-    // 定性行与选择行必须是同一条：定性先定类，选择再落动作，两处不一致 = 这一章没想清楚
-    const qualify = qualifyOf(block.body)
-    if (qualify && citation && qualify !== citation) {
+    if (bottomLine !== undefined && bottomLineCount !== undefined && bottomLine > bottomLineCount) {
       findings.push({
-        code: 'ARC_CHOICE_MISMATCH',
+        code: 'ARC_CHOICE_UNKNOWN_BOTTOM',
         chapter: block.heading,
-        zh: `${block.heading}：定性行写 ${qualify}，选择行却引用 ${citation} —— 两处不是同一条。定性只回答「这是哪一类事」，两处必须是同一个编号，否则重写这一章。`,
-        en: `${block.heading}: the qualify line says ${qualify} but the choice line cites ${citation} — not the same entry. The qualify line only names the kind of situation; both must carry the same number, otherwise rewrite the chapter.`,
+        zh: `${block.heading}：写的是底线${bottomLine}，但角色卡第一层只有 ${bottomLineCount} 条底线 —— 兜底的对象是编的。`,
+        en: `${block.heading}: writes bottom ${bottomLine}, but layer 1 of the card carries only ${bottomLineCount} bottom lines — the fallback target is invented.`,
       })
     }
 
-    // 连续同一条：D0（无戏）不参与，避免把"连续几章没性格戏"算成扁平
-    const comparable = citation && citation !== 'D0' ? citation : undefined
+    // 定性行与选择行的依据必须对得上。兜底让"对不上"有了合法形态：
+    // 定性写「无」时，依据可以是 底线<n>（兜底）或 D0（他不在场），但不能是 D<n>。
+    const qualify = qualifyOf(block.body)
+    if (qualify && hasBasis) {
+      const agree = qualify === 'D0'
+        ? disposition === 'D0' || bottomLine !== undefined
+        : disposition === qualify
+      if (!agree) {
+        const basisZh = disposition ?? `底线${bottomLine}`
+        const basisEn = disposition ?? `bottom ${bottomLine}`
+        const qualifyZh = qualify === 'D0' ? '无' : qualify
+        const qualifyEn = qualify === 'D0' ? 'none' : qualify
+        findings.push({
+          code: 'ARC_CHOICE_MISMATCH',
+          chapter: block.heading,
+          zh: `${block.heading}：定性行写 ${qualifyZh}，选择行的依据却是 ${basisZh} —— 两处对不上。定性写「无」时依据只能是 \`底线<n>\`（兜底）或 \`D0\`（他不在场）；定性写了 \`D<n>\` 就必须与它同一条。`,
+          en: `${block.heading}: the qualify line says ${qualifyEn} but the choice line falls back on ${basisEn} — they do not agree. With "none" the basis may only be \`bottom <n>\` (fallback) or \`D0\` (he is absent); with a \`D<n>\` the two must match.`,
+        })
+      }
+    }
+
+    // 连续同一条：D0（他不在场）与底线兜底都不参与 ——
+    // 前者是"没戏"，后者是"做法覆盖不足"，都不等于"一条倾向推所有局面"。
+    const comparable = disposition && disposition !== 'D0' ? disposition : undefined
     if (comparable && comparable === previousCitation) {
       runLength += 1
       if (runLength === repeatThreshold) {

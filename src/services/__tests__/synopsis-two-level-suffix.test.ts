@@ -67,15 +67,19 @@ describe('synopsis 两级结构版输出合同', () => {
     expect(zh).toContain('用当前「倾向」逐条筛')
     expect(zh).toContain('一个强项抵消不了一条倾向')
     expect(zh).toContain('取第一个剩下的，不是最好的那个')
-    // 2026-10-29：选择行必须写编号 —— 「因为他的哪一条」永远能过关，「因为 D2」可以被查。
+    // 2026-10-29：选择行必须写依据 —— 「因为他的哪一条」永远能过关，「因为 D2」可以被查。
+    // 同日作者裁定补了兜底路径：做法一条都对不上时退到底线，不许直接跳到 D0。
     expect(zh).toContain('① 他做的正是 D<n> 那条的当前「倾向」')
-    expect(zh).toContain('③ 谁都对不上 ⇒ 写 D0')
-    expect(zh).toContain('④ 编号写了，但这一章的局面和那条的「局面」根本不是一类')
+    expect(zh).toContain('③ 做法都对不上、但他碰到了底线 ⇒ 写「底线<n>」')
+    expect(zh).toContain('④ 这一章确实没有他的戏 ⇒ 写 D0')
+    expect(zh).toContain('⑤ 编号写了，但这一章的局面和那条的「局面」根本不是一类')
     expect(zh).toContain('必须把这个编号记下来')
     expect(en).toContain('Read his **standing tendencies** first')
     expect(en).toContain('Take the first survivor, not the best one')
     expect(en).toContain('A borrowed citation is no citation at all')
     expect(en).toContain('must carry D<n>')
+    expect(en).toContain('③ no practice matches but a bottom line does ⇒ write "bottom <n>"')
+    expect(en).toContain('④ the chapter truly has no scene of his ⇒ write D0')
     // 旧口径必须彻底消失，否则会与角色卡的倾向字段打成两份权威。
     expect(zh).not.toContain('做不出什么')
     expect(en).not.toContain('what he cannot bring himself to do')
@@ -158,5 +162,24 @@ describe('PromptBuilder 的 systemSuffix 渲染期替换', () => {
       .withGlobalGuidance('全局')
       .build()
     expect(built).toContain('ID 只能逐字取自')
+  })
+
+  // 2026-10-29 作者裁定：定性写「无」不等于「没有性格」。
+  // 做法是他平日的习惯，底线是他这个人 —— 做法一条都对不上时要兜底到第一层底线，
+  // 这是 try / catch 里的 catch，不是"这一章没他的戏"。这条守的是兜底措辞不许被改回去。
+  it('定性写「无」时退到底线兜底，D0 只留给他不在场', () => {
+    const zh = getSynopsisTwoLevelSuffix('zh-CN')
+    const en = getSynopsisTwoLevelSuffix('en-US')
+    expect(zh).toContain('没有现成做法，不等于没有性格')
+    expect(zh).toContain('兜底路径')
+    expect(zh).toContain('因为 底线<n>')
+    expect(zh).toContain('确实没有他的戏')
+    expect(en).toContain('No standing practice does not mean no character')
+    expect(en).toContain('fallback path')
+    expect(en).toContain('bottom <n>')
+    expect(en).toContain('truly has no scene of his')
+    // 底线的编号来自角色卡第一层，与第三层的 D 编号是两套，不许混
+    expect(zh).toContain('底线<n>')
+    expect(en).toContain('bottom <n>')
   })
 })
