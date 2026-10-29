@@ -1,13 +1,17 @@
 # 处境类型库 · 草案
 
-> 状态：**草案**（2026-10-29）· **只出方案，未落代码**（期 3 的硬要求：不许改 schema、不许写迁移）
+> 状态：**✅ 已落地**（2026-10-29）—— 落成 `src/shared/character-event-types.ts`，**常量表，零迁移**
+> 落地范围：13 类（每类带定义 + **反例**）· `eventTypeCatalogMarkdown(language)` 作者取材指引 · 8 例测试
+> **未落地**：白名单校验（`ARC_QUALIFY_UNKNOWN_TYPE`）—— 定性行仍引用角色卡的 `D<n>`，不是类型 id，见 §2.4
 > 依据：[`character-behavior-four-layers.md`](./character-behavior-four-layers.md)（四层判据，不许在执行中改）
-> 接缝：期 2 给情节大纲加了「定性：」行，要求模型先说「这是哪一类事」——**本库就是那个"哪一类"的候选清单**。
+> 接缝：期 2 给情节大纲加了「定性：」行，要求模型先说「这是哪一类事」——**本库是那个"哪一类"的候选清单**
 > 实验素材：[`golden-trait-experiment-manual.md`](./golden-trait-experiment-manual.md) 的 20 章处境序列 + `scripts/experiments/out/` 的 24 章序列
 
 ---
 
 ## 1 一句话
+
+> 文件名保留 `-draft` 是历史原因（先出草案再落地），**内容与代码均已落地**。
 
 给「他对各类事的做法」（第三层）里的"各类"一个**有限、可枚举、带反例**的清单，
 让「定性：」行有东西可归，也让第二层「什么不算一件事」有对照面。
@@ -58,12 +62,17 @@
 
 ### 2.3 存放：不进 DB 的话放哪？
 
-**建议不进 DB**，放 `src/shared/character-event-types.ts` 的冻结常量数组。
+**已按此落地**：`src/shared/character-event-types.ts` 的冻结常量数组（`CHARACTER_EVENT_TYPES`），
+导出 `EVENT_TYPE_IDS` / `isEventTypeId` / `eventTypeOf` / `eventTypeLabel` / `eventTypeCatalogMarkdown`。
 
 理由（按重要性）：
 1. 类型是**枚举常量**，不是用户数据 —— 与 `story-beats.ts` 的骨架表同族，那份也是常量，先例一致；
 2. 进 DB 就要写迁移，且旧项目要回填，**不可逆**；无人值守期做这个 = 事故（期 3 明文禁止）；
-3. 常量表可以被 `auditDispositionCitations` 直接 import 做校验，不用查库。
+3. 常量表可以被将来的白名单校验直接 import，不用查库。
+
+⚠️ **不注入写作 prompt**。作者 2026-10-29 02:53：「不要试图枚举」。
+13 类塞进 `detailTask`，模型会倾向把 13 类全写一遍（那就是枚举），或只在这 13 类里硬套（比「无」更糟）。
+已加守卫断言：`does not inject the event-type catalog into the character prompt`。
 
 若将来真要作者自定义类型：那时按 ADR 流程单独开一期，且必须先回答"旧项目怎么迁移"。
 
@@ -95,6 +104,6 @@
 | 接缝 | 说明 |
 |---|---|
 | 四层设计稿 | 本库服务于第二层（什么算一件事）与第三层（各类事的做法），**不改**四层的任何判据 |
-| 情节大纲「定性：」行 | 期 2 已落地；本库是它的候选清单，**当前未接线**（定性行仍引用 D<n>） |
-| `disposition-citation.ts` | 已有机检四码；类型白名单校验不在本期 |
+| 情节大纲「定性：」行 | 期 2 已落地；**本库与它暂无代码接缝** —— 定性行仍引用 `D<n>`（角色做法条目号），不是类型 id |
+| `disposition-citation.ts` | 已有机检五码；类型白名单校验**未做**（要新增 `ARC_QUALIFY_UNKNOWN_TYPE`，需另一期） |
 | `golden-traits.ts` | 期 4 已加底线排序（第一层）；本库是第三层的取材指引，两者互补 |

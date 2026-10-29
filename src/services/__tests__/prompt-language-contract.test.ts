@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { CHARACTER_EVENT_TYPES } from '../../shared/character-event-types'
 import { BUILTIN_PROMPTS, composePromptSystemRole, getBuiltinPromptTemplate, renderPrompt } from '../prompt-templates'
 import {
   characterArchitecturePrompts,
@@ -167,6 +168,22 @@ describe('core model prompt language contract', () => {
     // 中文本来就写了，英文漏过（只补中文 = 中英不对等）。
     expect(zhCN.detailTask(input)).toContain('编号只是条目号，不是轻重次序')
     expect(enUS.detailTask(input)).toContain('the number is the entry id, not a ranking')
+  })
+
+  // 2026-10-29 作者 02:53：「不要试图枚举」。处境类型库（13 类）只给作者取材用，
+  // 不许注入写作 prompt —— 塞进去模型会倾向把 13 类全写一遍（那就是枚举），
+  // 或只在这 13 类里硬套（比「无」更糟）。这条守的是这个边界。
+  it('does not inject the event-type catalog into the character prompt', () => {
+    const zhCN = characterArchitecturePrompts('zh-CN')
+    const enUS = characterArchitecturePrompts('en-US')
+    const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
+    const zhText = [zhCN.detailSystem, zhCN.detailContract, zhCN.detailTask(input)].join('\n')
+    const enText = [enUS.detailSystem, enUS.detailContract, enUS.detailTask(input)].join('\n')
+
+    for (const type of CHARACTER_EVENT_TYPES) {
+      expect(zhText, type.id).not.toContain(type.name)
+      expect(enText, type.id).not.toContain(type.nameEn)
+    }
   })
 
   // V6：普世、仁善排在前面的角色是圣母不是人。模型最容易自作主张把这两项顶上去。
