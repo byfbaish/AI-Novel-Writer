@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { auditDispositionCitations } from '../disposition-citation'
+import {
+  auditDispositionCitations,
+  bottomLineCountOfCard,
+  dispositionIdsOfCard,
+} from '../disposition-citation'
 
 const IDS = ['D1', 'D2', 'D3'] as const
 
@@ -180,5 +184,71 @@ describe('性格引用体检', () => {
 
   it('空大纲不报（还没生成时不该制造噪音）', () => {
     expect(auditDispositionCitations({ synopsis: '', dispositionIds: IDS })).toEqual([])
+  })
+
+  // ===== 2026-10-29 接线用：分批生成时的区间过滤 + 从角色卡取数 =====
+  describe('chapterRange（分批生成只报本批）', () => {
+    const synopsis = [
+      chapter(1, '选择：规则 —— A｜否掉了 B，因为 D9：编的'),
+      chapter(5, '选择：规则 —— A｜否掉了 B，因为 D8：也编的'),
+    ].join('\n')
+
+    it('区间外的章不报，区间内的报', () => {
+      const findings = auditDispositionCitations({
+        synopsis,
+        dispositionIds: IDS,
+        chapterRange: { from: 4, to: 8 },
+      })
+      expect(findings.map(f => f.code)).toEqual(['ARC_CHOICE_UNKNOWN_D'])
+      expect(findings[0].chapter).toContain('第5章')
+    })
+
+    it('不给区间时两章都报（旧行为不变）', () => {
+      const findings = auditDispositionCitations({ synopsis, dispositionIds: IDS })
+      expect(findings).toHaveLength(2)
+    })
+
+    it('连续同一条的计数不受区间影响 —— 它要跨批累积才有意义', () => {
+      const three = [
+        chapter(1, '选择：规则 —— A｜否掉了 B，因为 D2：他先算账'),
+        chapter(2, '选择：规则 —— A｜否掉了 B，因为 D2：他先算账'),
+        chapter(3, '选择：规则 —— A｜否掉了 B，因为 D2：他先算账'),
+      ].join('\n')
+      // 只看第 3 章：前两章在区间外，但计数仍累积到 3 ⇒ 仍报
+      const findings = auditDispositionCitations({
+        synopsis: three,
+        dispositionIds: IDS,
+        chapterRange: { from: 3, to: 3 },
+      })
+      expect(findings.map(f => f.code)).toEqual(['ARC_CHOICE_SAME_D'])
+      expect(findings[0].chapter).toContain('第3章')
+    })
+  })
+
+  describe('从角色卡取数', () => {
+    it('取出第三层做法的编号，按数值排序', () => {
+      const card = '第三层【他对各类事的做法】\nD1 有人讨承诺 → 先要凭据\nD3 要他站队 → 不站\nD2 借东西 → 不动'
+      expect(dispositionIdsOfCard(card)).toEqual(['D1', 'D2', 'D3'])
+    })
+
+    it('不把 D0 算进白名单 —— 它是申报值，不是卡上的做法', () => {
+      expect(dispositionIdsOfCard('选择行可能写 D0，但那不是做法')).toEqual([])
+    })
+
+    it('卡上没有编号时返回空数组（调用方据此跳过体检）', () => {
+      expect(dispositionIdsOfCard('他很谨慎，先要凭据')).toEqual([])
+      expect(dispositionIdsOfCard('')).toEqual([])
+      expect(dispositionIdsOfCard(null)).toEqual([])
+    })
+
+    it('数出第一层有几条底线（取最大编号）', () => {
+      const card = '第一层【他在乎什么】\nB1 那个人\nB2 自己的命\nB3 不欠人'
+      expect(bottomLineCountOfCard(card)).toBe(3)
+    })
+
+    it('没有 B 编号时返回 undefined —— 不校验兜底序号，避免整批误报', () => {
+      expect(bottomLineCountOfCard('他很谨慎')).toBeUndefined()
+      expect(bottomLineCountOfCard(null)).toBeUndefined()
+    })
   })
 })

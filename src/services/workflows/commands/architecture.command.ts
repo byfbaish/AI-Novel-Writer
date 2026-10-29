@@ -1,5 +1,6 @@
 import { parsePlanningTargetUnits, planningTargetInstruction, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../../shared/plot-outline-contract'
 import { STORY_BEAT_KEYS } from '../../../shared/story-beats'
+import { auditDispositionCitations, bottomLineCountOfCard, dispositionIdsOfCard } from '../../../shared/disposition-citation'
 import { toApproveCharacterProposalRequest, type CharacterProposalChoices } from '../../character-proposal-choices'
 import { decodeCharacterIdentityManifest, decodeCharacterDetails, validateCharacterDetail, type CharacterIdentitySlot, type CharacterDetailOutput } from '../../../shared/character-proposal-parser'
 import type { CharacterProposalBatch } from '../../../shared/character-proposal'
@@ -808,6 +809,55 @@ export function summarizeArcCoverFindings(
   return uiText(
     `⚠️ 卷 / 单元结构位对账：${problems.join('；')}。（大纲已保存；这是提示，不阻断。）`,
     `⚠️ Arc slot reconciliation: ${problems.join('; ')}. (The outline was saved; this is advisory only.)`,
+  )
+}
+
+/**
+ * 大纲写完后的**性格引用体检**：只报告，不阻断。
+ *
+ * 为什么「只报告」——与 P12-1 结构位对账同一个理由：判据刚接通（定性与兜底的语义
+ * 2026-10-29 才定下来），现网一条读数都没有。一上线就阻断会让「继续生成大纲」直接失败，
+ * 作者拿不到任何产出。先让它可见，等误报率测出来再决定要不要升级成阻断。
+ *
+ * 返回 null 表示无需提示，三种情形：
+ * - 角色卡上还没有 `D<n>` 编号（旧项目 / 没按四层写）⇒ 报下去整批都是"引用是编的"，纯噪声；
+ * - 本批区间内没有章条目；
+ * - 全部合规。
+ *
+ * ⚠️ **已知限制**：`charactersArch` 是整张角色图谱，多个角色的 `D<n>` 会被并成一个白名单。
+ * 所以它只能抓「`D9` 这种根本不存在的编号」，抓不到「引用了另一个角色的 `D3`」。
+ * 要根治得让第三层结构化（每条做法带类型 id 与角色 id）—— 那是另一期，不是接线能解决的。
+ */
+/** @internal 导出只为可单测；生产调用点只有 `execute` 内的那一处。 */
+export function summarizeDispositionFindings(
+  body: string,
+  charactersArch: string | null | undefined,
+  from: number,
+  to: number,
+  uiText: UiText,
+): string | null {
+  const dispositionIds = dispositionIdsOfCard(charactersArch)
+  if (dispositionIds.length === 0) return null
+  const bottomLineCount = bottomLineCountOfCard(charactersArch)
+  const findings = auditDispositionCitations({
+    synopsis: body,
+    dispositionIds,
+    ...(bottomLineCount === undefined ? {} : { bottomLineCount }),
+    chapterRange: { from, to },
+  })
+  if (findings.length === 0) return null
+
+  const shown = findings.slice(0, 3).map(item => uiText(item.zh, item.en).replace(/。$/u, ''))
+  const problems = [...shown]
+  if (findings.length > shown.length) {
+    problems.push(uiText(
+      `另有 ${findings.length - shown.length} 处性格引用问题`,
+      `${findings.length - shown.length} more disposition-citation issue(s)`,
+    ))
+  }
+  return uiText(
+    `⚠️ 性格引用体检：${problems.join('；')}。（大纲已保存；这是提示，不阻断。）`,
+    `⚠️ Disposition citation check: ${problems.join('; ')}. (The outline was saved; this is advisory only.)`,
   )
 }
 
@@ -3456,6 +3506,10 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         const arcCoverNote = summarizeArcCoverFindings(confirmedBody, core?.plotStructurePlan, totalChapters, from, to, text)
         if (arcCoverNote) callbacks.log(arcCoverNote)
       }
+      // 性格引用体检（只报告不阻断，与上面那条结构位对账同族）：
+      // 角色卡上还没有 D 编号时内部直接返回 null —— 旧项目不会被这片噪声刷屏。
+      const dispositionNote = summarizeDispositionFindings(confirmedBody, core?.charactersArch, from, to, text)
+      if (dispositionNote) callbacks.log(dispositionNote)
     } catch (error) {
       if (error instanceof NonRecoverablePlotOutlineError) {
         if (previousBatchPartial && stagedBatchPartial) {

@@ -2,7 +2,8 @@
 
 > 状态：**✅ 期 1–4 已落地**（2026-10-29 夜无人值守，作者事前批准）。落地面：
 > ① `prompt-language.ts` 的 `detailTask` 中英两段（四层）· ② 情节大纲加「定性：」前置行 + `ARC_CHOICE_MISMATCH`
-> ③ `golden-traits.ts` 补 `values`（Schwartz 十项）· ④ 处境类型库**只出草案** `character-event-types-draft.md`（未接线）
+> ③ `golden-traits.ts` 补 `values`（Schwartz 十项）· ④ 处境类型库落成常量表 `src/shared/character-event-types.ts`（13 类 + 反例，**不注入 prompt**）
+> ⑤ **`auditDispositionCitations` 已接通**（2026-10-29 12:55，挂在大纲落盘前，**只报告不阻断**）
 > 提交：`92f8c81e` `e5ec1971` `1094d8b7` `d141ffa7`；进度交接 `docs/handoffs/2026-10-30-four-layers-progress.md`
 > 取代：`prompt-language.ts` 中「主角的性格：四格、档位标签、带编号」那一套（旧为 D1 日常 / D2 代价 / D3 破例）
 > 前身：`protagonist-golden-traits.md`（词条库：底色 + 破例 + 锚点 + 代价）——**本稿不废它，是把它的语义改成可判定的形式**

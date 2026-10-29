@@ -37,7 +37,21 @@
  * 只读「定性：」行（英文 `Qualify:`）与「选择：」行（英文 `Choice:`），不猜语义、不做 NLP。
  * 与 `arc-position.ts` 的拍子体检同族：**只读标注，不推断内容**。
  * 没有定性行时不做一致性比较 —— 那是旧格式的大纲，不是错误。
+ *
+ * ## 消费方（2026-10-29 接通）
+ *
+ * 生产调用点只有一处：`architecture.command.ts` 的 `summarizeDispositionFindings`，
+ * 挂在大纲**落盘之前**，**只报告不阻断**（与 P12-1 结构位对账同族 —— 判据刚定型，
+ * 没有现网误报率，一上线就阻断会让"继续生成大纲"直接失败）。
+ *
+ * - 分批生成时传 `chapterRange`，只报本批新增的问题；`SAME_D` 的计数仍跨全文累积。
+ * - `dispositionIds` 与 `bottomLineCount` 用 `dispositionIdsOfCard` / `bottomLineCountOfCard`
+ *   从角色卡 `personality` 里取；取不到就跳过体检（旧项目不该被噪声刷屏）。
+ * - ⚠️ 已知限制：角色图谱里多个角色的 `D<n>` 会并成一个白名单，所以只能抓"根本不存在的编号"，
+ *   抓不到"引用了另一个角色的 D3"。要根治得让第三层结构化，那是另一期。
  */
+
+import { parseOutlineChapterHeading } from './chapter-heading'
 
 export type DispositionCitationCode =
   | 'ARC_CHOICE_NO_D'
@@ -64,6 +78,12 @@ export interface DispositionCitationInput {
    * 不给只校验格式 —— 底线条数在章纲里读不到，硬要求会误报。
    */
   readonly bottomLineCount?: number
+  /**
+   * 只报这个章号区间内的问题。分批生成时用：`synopsis` 可能是累积全文，
+   * 但作者只该看到**本批**新增的问题。
+   * 连续同一条（`SAME_D`）的计数**不受区间影响** —— 它要跨批累积才有意义。
+   */
+  readonly chapterRange?: Readonly<{ from: number; to: number }>
   /** 连续多少章引用同一条就报，默认 3 */
   readonly repeatThreshold?: number
 }
@@ -87,6 +107,16 @@ const QUALIFY_NONE = /^\s*(?:无|none)(?![A-Za-z])/i
  * 这是 try / catch 里的 catch —— 第三层做法对不上时退到第一层底线，不是"没有性格"。
  */
 const BOTTOM_CITATION = /(?:底线|bottom\s*(?:line\s*)?)\s*(\d{1,2})/i
+
+/**
+ * 从章标题取全书章号。**复用 `chapter-heading.ts` 的那一份解析** ——
+ * 项目红线：章标题只有一份解析，自己写一份第二套必然与它漂移。
+ * 解析不出来时返回 null（调用方视为不限制范围）。
+ */
+function chapterNumberOf(heading: string): number | null {
+  const parsed = parseOutlineChapterHeading(heading)
+  return parsed ? parsed.chapter : null
+}
 
 interface ChapterBlock {
   heading: string
@@ -166,7 +196,7 @@ function qualifyOf(body: string): string | undefined {
  * 没有章节标题时退化成"整份当一个块"，仍能查出"完全没有编号"这类问题。
  */
 export function auditDispositionCitations(input: DispositionCitationInput): DispositionCitationFinding[] {
-  const { synopsis, dispositionIds, bottomLineCount, repeatThreshold = 3 } = input
+  const { synopsis, dispositionIds, bottomLineCount, chapterRange, repeatThreshold = 3 } = input
   const known = new Set(dispositionIds.map(id => id.toUpperCase()))
   const blocks = splitChapters(synopsis)
   if (blocks.length === 0 && synopsis.trim()) blocks.push({ heading: '（整份大纲）', body: synopsis })
@@ -178,16 +208,24 @@ export function auditDispositionCitations(input: DispositionCitationInput): Disp
   for (const block of blocks) {
     const { disposition, bottomLine } = basisOf(block.body)
     const hasBasis = disposition !== undefined || bottomLine !== undefined
+    // 分批生成时 `synopsis` 可能是累积全文：只报本批区间内的问题，避免旧章反复刷屏。
+    // 计数（SAME_D）仍按全文推进 —— 它要跨批累积才有意义。
+    const chapterNo = chapterNumberOf(block.heading)
+    const inRange = !chapterRange || chapterNo === null
+      || (chapterNo >= chapterRange.from && chapterNo <= chapterRange.to)
+    const report = (finding: DispositionCitationFinding): void => {
+      if (inRange) findings.push(finding)
+    }
 
     if (!hasBasis) {
-      findings.push({
+      report({
         code: 'ARC_CHOICE_NO_D',
         chapter: block.heading,
         zh: `${block.heading}：选择行没有写依据。做法对得上就写 \`因为 D<n>\`；一条都对不上但碰到了底线时写 \`因为 底线<n>\`（兜底）；这一章确实没有他的戏才写 \`D0\` 并说明理由。`,
         en: `${block.heading}: the choice line carries no basis. Write \`because D<n>\` when a practice applies; when none applies but a bottom line does, write \`because bottom <n>\` (fallback); write \`D0\` with a reason only when the chapter truly has no scene of his.`,
       })
     } else if (disposition && disposition !== 'D0' && !known.has(disposition)) {
-      findings.push({
+      report({
         code: 'ARC_CHOICE_UNKNOWN_D',
         chapter: block.heading,
         zh: `${block.heading}：引用了 ${disposition}，但角色卡上只有 ${[...known].join(' / ')} —— 这个编号是编的。`,
@@ -195,7 +233,7 @@ export function auditDispositionCitations(input: DispositionCitationInput): Disp
       })
     }
     if (bottomLine !== undefined && bottomLineCount !== undefined && bottomLine > bottomLineCount) {
-      findings.push({
+      report({
         code: 'ARC_CHOICE_UNKNOWN_BOTTOM',
         chapter: block.heading,
         zh: `${block.heading}：写的是底线${bottomLine}，但角色卡第一层只有 ${bottomLineCount} 条底线 —— 兜底的对象是编的。`,
@@ -215,7 +253,7 @@ export function auditDispositionCitations(input: DispositionCitationInput): Disp
         const basisEn = disposition ?? `bottom ${bottomLine}`
         const qualifyZh = qualify === 'D0' ? '无' : qualify
         const qualifyEn = qualify === 'D0' ? 'none' : qualify
-        findings.push({
+        report({
           code: 'ARC_CHOICE_MISMATCH',
           chapter: block.heading,
           zh: `${block.heading}：定性行写 ${qualifyZh}，选择行的依据却是 ${basisZh} —— 两处对不上。定性写「无」时依据只能是 \`底线<n>\`（兜底）或 \`D0\`（他不在场）；定性写了 \`D<n>\` 就必须与它同一条。`,
@@ -230,7 +268,7 @@ export function auditDispositionCitations(input: DispositionCitationInput): Disp
     if (comparable && comparable === previousCitation) {
       runLength += 1
       if (runLength === repeatThreshold) {
-        findings.push({
+        report({
           code: 'ARC_CHOICE_SAME_D',
           chapter: block.heading,
           zh: `${block.heading}：连续 ${repeatThreshold} 章引用 ${comparable} —— 一条倾向推所有局面，角色会扁平。要么这几章的局面本来同类（该压成一场戏），要么换成那条真正对应的倾向。`,
@@ -244,4 +282,38 @@ export function auditDispositionCitations(input: DispositionCitationInput): Disp
   }
 
   return findings
+}
+
+/**
+ * 从角色卡的 `personality` 里取出第三层做法的编号 —— 卡上**真实存在**的那几条。
+ *
+ * 只认 `D1`…`D99`，**不认 `D0`** —— D0 是"这一章没有他的戏"的申报值，不是卡上的做法，
+ * 把它算进白名单会让"引用 D0"也通过 UNKNOWN_D 校验（那本该由 NO_D / MISMATCH 管）。
+ *
+ * 卡上一条编号都没有（旧项目、或没按四层写）时返回空数组：
+ * 调用方应据此**跳过体检**，否则整批都会报"引用是编的"，噪声会淹没真信号。
+ */
+export function dispositionIdsOfCard(personality: string | null | undefined): string[] {
+  if (!personality) return []
+  const found = new Set<number>()
+  for (const match of personality.matchAll(/\bD\s*(\d{1,2})\b/gi)) {
+    const value = Number(match[1])
+    if (value >= 1) found.add(value)
+  }
+  return [...found].sort((a, b) => a - b).map(value => `D${value}`)
+}
+
+/**
+ * 从角色卡的 `personality` 里数第一层有几条底线（`B1`…`Bn` 的最大 n）。
+ *
+ * 没有 B 编号时返回 undefined —— 表示"卡上没按 §3.3 给底线编号"，
+ * 此时不校验 `底线<n>` 的序号（硬查会整批误报）。
+ */
+export function bottomLineCountOfCard(personality: string | null | undefined): number | undefined {
+  if (!personality) return undefined
+  let max = 0
+  for (const match of personality.matchAll(/\bB\s*(\d{1,2})\b/gi)) {
+    max = Math.max(max, Number(match[1]))
+  }
+  return max > 0 ? max : undefined
 }
