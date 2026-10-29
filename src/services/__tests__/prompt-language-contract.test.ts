@@ -220,6 +220,40 @@ describe('core model prompt language contract', () => {
     expect(enText).toContain('never D<1> or D[1]')
   })
 
+  // 2026-10-29 作者实机质疑后的修正：**锚点是全书一个，不是每条底线一个。**
+  // 旧措辞「具体的东西放在该项末尾的括号里，只当锚点用」有两个病：
+  // ①「每一项」⇒ 一个锚被稀释成四个；② 术语错位 ⇒ 模型把它当"这条底线的剧情钩子"，
+  // 于是括号里写出「那张没按手印的生死契」「赵铎那张状纸」——道具/事件，不是锚。
+  // 修法：括号改名「具体所指」且要求"一直在的东西"；锚点单独一条 + 给格式 + 给判据。
+  it('keeps exactly one anchor, and keeps brackets for things that persist', () => {
+    const zhCN = characterArchitecturePrompts('zh-CN')
+    const enUS = characterArchitecturePrompts('en-US')
+    const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
+    const zhText = zhCN.detailTask(input)
+    const enText = enUS.detailTask(input)
+
+    // ① 全卡只有一个锚点，且落在排第一的底线上
+    expect(zhText).toContain('全卡只有一个**锚点**')
+    expect(zhText).toContain('挂在你排第一的那条底线上')
+    expect(enText).toContain('exactly one **anchor** in the whole card')
+    expect(enText).toContain('the bottom line you ranked first')
+
+    // ② 锚点必须单独一行 + 有格式（不写格式，实测模型整条不写）
+    expect(zhText).toContain('锚点：<那是什么> —— <他为它放弃了什么>')
+    expect(enText).toContain('Anchor: <what it is> — <what he gave up for it>')
+
+    // ③ 锚点的判据：说得出"放弃了什么"
+    expect(zhText).toContain('只说得清"这事跟他有关"，那是事件，不是锚点')
+    expect(enText).toContain('it is an event, not an anchor')
+
+    // ④ 括号写持久物，不写一次性事件
+    expect(zhText).toContain('不是发生一次的事')
+    expect(enText).toContain('never a one-off event')
+
+    // ⑤ 括号里不许再出现「锚点」二字（那是术语误用的复发口）
+    expect(zhText).toContain('不要在括号里写「锚点」两个字')
+  })
+
   // V6：普世、仁善排在前面的角色是圣母不是人。模型最容易自作主张把这两项顶上去。
   it('bans the saint at the top of the ranking', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')
