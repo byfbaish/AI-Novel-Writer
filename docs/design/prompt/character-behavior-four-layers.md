@@ -1,7 +1,10 @@
 # 角色行为四层：从「性格描述」到「可判定的人格」
 
-> 状态：**设计稿，待作者裁定后落代码**（2026-10-29）
-> 取代：`prompt-language.ts` 中「主角的性格：四格、档位标签、带编号」那一套（现为 D1 日常 / D2 代价 / D3 破例）
+> 状态：**✅ 期 1–4 已落地**（2026-10-29 夜无人值守，作者事前批准）。落地面：
+> ① `prompt-language.ts` 的 `detailTask` 中英两段（四层）· ② 情节大纲加「定性：」前置行 + `ARC_CHOICE_MISMATCH`
+> ③ `golden-traits.ts` 补 `values`（Schwartz 十项）· ④ 处境类型库**只出草案** `character-event-types-draft.md`（未接线）
+> 提交：`92f8c81e` `e5ec1971` `1094d8b7` `d141ffa7`；进度交接 `docs/handoffs/2026-10-30-four-layers-progress.md`
+> 取代：`prompt-language.ts` 中「主角的性格：四格、档位标签、带编号」那一套（旧为 D1 日常 / D2 代价 / D3 破例）
 > 前身：`protagonist-golden-traits.md`（词条库：底色 + 破例 + 锚点 + 代价）——**本稿不废它，是把它的语义改成可判定的形式**
 > 实验依据：`scripts/experiments/`（四组对照、多 seed、隔离/连续两种跑法，共 400+ 条样本）
 
