@@ -1,0 +1,265 @@
+#!/usr/bin/env node
+/**
+ * 角色卡生成实验 —— 测「prompt 能不能一次生成对的四层卡」。
+ *
+ * 与前面几轮的实验不同：之前测的是**给定卡 → 模型怎么选**（演绎）；
+ * 这一轮测的是**给定前提 → 模型怎么造卡**（生成）。被测对象是 `detailTask` 的条款。
+ *
+ * ## 为什么要测
+ *
+ * 作者拿到的实机产物有四处结构毛病：
+ * ① 第一层混进了做法（「条文能拆成算术题」「出手只一次」），导致排不出先后 ⇒ V1/V4 失效；
+ * ② 四条做法全在高压下，**没有日常档** ⇒ 破例没有对照；
+ * ③ 例外声明「选 B1」，动作却是替人担（B2 的行为）⇒ 方向反了，会被下一层直接继承；
+ * ④ 部分产物把编号写成 `D<1>`，`disposition-citation` 的正则解析不了。
+ *
+ * 三个毛病都能反推到 prompt 缺三句话，所以本实验只测一件事：
+ * **补上那三句之后，产物是否合格。**
+ *
+ * ## 两组
+ *
+ * - A 现版 `detailTask` 的四层段（原样复制，不增删）
+ * - B A + 四句（第一层只放价值 / 第三层必须有日常档 / 例外必须同向 / 编号写法）
+ *
+ * ⚠️ B 组把四句一起加，是**先看整体有没有效**，不是测哪一句起作用。
+ * 若 B 有效再拆变量；若 B 无效，说明问题不在条款，在模型或后处理。
+ *
+ * 用法：node scripts/experiments/personality-card-prompt-loop.mjs [--group A|B] [--case 1|2] [--model 名]
+ */
+import fs from 'node:fs'
+import path from 'node:path'
+
+const ARGS = process.argv.slice(2)
+const arg = (name, fallback) => (ARGS.includes(name) ? ARGS[ARGS.indexOf(name) + 1] : fallback)
+const MODEL = arg('--model', 'qwen3.5:9b-128k')
+const ONLY_GROUP = arg('--group', null)
+const ONLY_CASE = arg('--case', null) ? Number(arg('--case')) : null
+const DRY = ARGS.includes('--dry')
+const OUT_DIR = path.join(process.cwd(), 'scripts', 'experiments', 'out')
+const OUT_FILE = path.join(OUT_DIR, `personality-card-${MODEL.replace(/[^a-z0-9.]/gi, '')}.jsonl`)
+
+/** 两个倾向相反的前提 —— 若两组生成出来的人和性格都差不多，说明区分度不够。 */
+const CASES = [
+  {
+    id: 1,
+    label: '散修查账（自保·算）',
+    context: `【故事前提】一个资源匮乏的修行世界。底层修士靠替门派查账、辨伪契据换取修炼资源；账目即权力，写错一笔可能要命。
+【主角档案】主角自幼被家族撇清，靠替人核算账目活下来，对数字和条文极敏感，极度自保，不信口头承诺。`,
+  },
+  {
+    id: 2,
+    label: '边关守卒（护人·莽）',
+    context: `【故事前提】边关小城年年被围，守军靠轮换与屯田撑着；城破过一次，活下来的人至今记得。
+【主角档案】主角是守城队里最年轻的一个，力气大、反应快、识字不多，答应过带他入队的老兵要守住这道墙。`,
+  },
+]
+
+/** A 组：现版四层段（与 `prompt-language.ts` 的 detailTask 中文段一致，若漂移以代码为准）。 */
+const BASE = `第一层【他在乎什么】按轻重排出 4–5 项，写成 B1…Bn（**B1 最重**，编号就是轻重位次，不是条目号），不写分数。
+- 至少一项是具体可夺的东西：一个人、一本账、一句承诺；不许全是「尊严」「信念」这类抽象词。
+- 至少一项是他不愿承认的：他自己不觉得那是缺点。
+- 任意相邻两项之间，要能构造出一个他必须选一个的场面。
+- 普世、仁善这类价值不许排在前两位。若确要排，必须写出他为此付过什么代价；写不出代价的，那是圣母，不是人。
+
+第二层【什么算一件事】只写两句：什么算，什么不算。
+- 能用的、能换钱的、能让他少费事的 → 算。
+- 跟他没干系的闲事 → 不算。
+- 每一类「不算」的事，都必须离上面那些底线项都远。
+
+第三层【他对各类事的做法】写 3–4 条配对。每条开头写编号 D<n>，下面两行：
+- 什么事 → 他一贯怎么做（写做法，不写这一次的具体动作）
+- 不适用：什么情况下这条让位
+每条都必须有「不适用」。没写的那条会变成万能答案，把所有处境都吸过去。
+
+第四层【例外】
+- 上面那些做法，全是为前三条底线服务的。只有一种情况会出例外：第 1 条跟别的底线打架时，他一定选第 1 条。
+- 那一次他会做出上面所有做法里都没有的事，方向是定的：他为了那个人，放弃自己平时守的规矩。
+- 除此之外不会有意外的举动。
+
+【具体动作的粒度】每条做法最后都要能落到这个粒度：
+- 是动作，能拍出来；不是形容词。
+- 带一个身体反应：手抖、耳鸣、指节发白、呼吸变了。这是他还在怕但仍在做的证据。
+- 出现这本书里任何专名的，一律重写。`
+
+/** B 组：BASE + 四句（每句都直接对应一处实机毛病）。 */
+const PATCHED = BASE
+  .replace(
+    `- 普世、仁善这类价值不许排在前两位。若确要排，必须写出他为此付过什么代价；写不出代价的，那是圣母，不是人。`,
+    `- 普世、仁善这类价值不许排在前两位。若确要排，必须写出他为此付过什么代价；写不出代价的，那是圣母，不是人。
+★ 每一项都必须是**他在乎的东西**：一个人、一样东西、一种处境、一条价值。不能写做法、能力或习惯 —— 「先拆账」「出手只一次」「条文能拆成算术题」都属于第三层。第一层混进做法，这一层就排不出先后（不同类的东西没法比轻重），第四层的例外也就没有地基。`,
+  )
+  .replace(
+    `每条都必须有「不适用」。没写的那条会变成万能答案，把所有处境都吸过去。`,
+    `每条都必须有「不适用」。没写的那条会变成万能答案，把所有处境都吸过去。
+★ 至少一条必须是**日常档**：没人逼他、他照习惯就会这么做的那类事。四条全落在「被逼 / 当众 / 生死」上，读者看不出他平时是谁，第四层的破例也就没有对照。`,
+  )
+  .replace(
+    `- 除此之外不会有意外的举动。`,
+    `- 除此之外不会有意外的举动。
+★ 例外的动作必须与它挂的那条底线**同向**。写「他选 B1（不替人担）」，动作就不能是替人担；如果发现动作其实是替人担，那说明他真正选的是 B2 —— 把序号改过来，不要两处都占。`,
+  )
+  .replace(
+    `- 出现这本书里任何专名的，一律重写。`,
+    `- 出现这本书里任何专名的，一律重写。
+- 编号一律写成 D1、D2 这种形式，**不要写成 D<1>、D[1]** —— 下游按这个格式做校验，写成别的形式会被当成"没有写编号"。`,
+  )
+
+const GROUPS = { A: BASE, B: PATCHED }
+
+/**
+ * C 组 = B 组 + 两句。
+ *
+ * 第一轮实测（`personality-card-qwen3.59b128k.jsonl`）暴露了 B 组两个洞，都是我补丁的措辞问题：
+ *
+ * 1. **第一层仍写成物件清单**。B 组原文：「B1 那本未结清的旧账」「B5 哪怕只有一笔灵石」——
+ *    因为我那句写了「一个人、一样东西、一种处境、一条价值」，其中"一样东西"直接给了写物件的口子。
+ *    第一层要的是**价值排序**，物件只是那条价值的锚，得写成「价值（锚：物件）」。
+ * 2. **两组都没有例外段**。四层里前三层都给了明确的输出格式（B1…Bn / 什么算 / D1…），
+ *    第四层只给了语义说明，没有说"要写出来" ⇒ 9B 直接跳过。这是 prompt 的结构缺陷，不是模型的问题。
+ */
+const PATCHED2 = PATCHED
+  .replace(
+    `★ 每一项都必须是**他在乎的东西**：一个人、一样东西、一种处境、一条价值。不能写做法、能力或习惯 —— 「先拆账」「出手只一次」「条文能拆成算术题」都属于第三层。第一层混进做法，这一层就排不出先后（不同类的东西没法比轻重），第四层的例外也就没有地基。`,
+    `★ 每一项都写成**一条价值判断**，不是一件东西、也不是一个做法；具体的东西写在括号里当锚：
+  对 —— 「B1 不替任何人担东西（锚：那本还没结清的旧账）」
+  错 —— 「B1 那本还没结清的旧账」（这是物件清单，排不出先后；物件只是那条价值的锚）
+  错 —— 「B1 遇事先拆账」（这是做法，属于第三层）
+  相邻两项必须能比轻重；比不出来的，说明其中一项写错了层。`,
+  )
+  .replace(
+    `★ 例外的动作必须与它挂的那条底线**同向**。写「他选 B1（不替人担）」，动作就不能是替人担；如果发现动作其实是替人担，那说明他真正选的是 B2 —— 把序号改过来，不要两处都占。`,
+    `★ 例外的动作必须与它挂的那条底线**同向**。写「他选 B1（不替人担）」，动作就不能是替人担；如果发现动作其实是替人担，那说明他真正选的是 B2 —— 把序号改过来，不要两处都占。
+★ 第四层**必须单独写出来**，一行，格式：例外：<挂 B几> —— <那一次他做的、上面所有做法里都没有的事，带一个身体反应>
+  不写这一行，这张卡就等于没有第四层。`,
+  )
+
+GROUPS.C = PATCHED2
+
+/**
+ * D 组 = C 组**删掉全部举例**，只留判据。
+ *
+ * 为什么：第一轮里所有污染都来自示例 ——
+ * ① 第一层的正例「B1 不替任何人担东西（锚：那本还没结清的旧账）」被两个不同前提**逐字抄**成 B1；
+ * ② 第三层那句「没人逼他、他照习惯就会这么做的那类事」被直接抄成 D1 的标题。
+ *
+ * 所以 D 组的原则是：**只描述形状，不给样本**。判据说"写成什么样算对"，不说"这是对的"。
+ * 这一组用来验证：删掉例子之后，结构和日常档是否还成立、示例污染是否消失。
+ */
+const PATCHED3 = PATCHED2
+  .replace(
+    `★ 每一项都写成**一条价值判断**，不是一件东西、也不是一个做法；具体的东西写在括号里当锚：
+  对 —— 「B1 不替任何人担东西（锚：那本还没结清的旧账）」
+  错 —— 「B1 那本还没结清的旧账」（这是物件清单，排不出先后；物件只是那条价值的锚）
+  错 —— 「B1 遇事先拆账」（这是做法，属于第三层）
+  相邻两项必须能比轻重；比不出来的，说明其中一项写错了层。`,
+    `★ 每一项都写成**一条价值判断**，不是一件东西、也不是一个做法。具体的东西放在该项末尾的括号里，只当锚点用。
+  判法：读完这一项，要能说出"他宁可失去什么"，而不是"他手上有什么"，也不是"他会怎么做"。
+  相邻两项必须能比轻重；比不出来的，说明其中一项写错了层（把东西或做法挤进了价值层）。`,
+  )
+  .replace(
+    `★ 至少一条必须是**日常档**：没人逼他、他照习惯就会这么做的那类事。四条全落在「被逼 / 当众 / 生死」上，读者看不出他平时是谁，第四层的破例也就没有对照。`,
+    `★ 四条里至少要有一条是**没有外部压力时**也会发生的事；其余三条可以都在被逼、当众、生死里。四条全在高压下，读者看不出他平时是谁，第四层的破例也就没有对照。`,
+  )
+  .replace(
+    `★ 第四层**必须单独写出来**，一行，格式：例外：<挂 B几> —— <那一次他做的、上面所有做法里都没有的事，带一个身体反应>
+  不写这一行，这张卡就等于没有第四层。`,
+    `★ 第四层**必须单独写出来，自成一行**，并以「例外：」开头：先写明它挂的是第几条底线，再写那一次他做了什么——必须是上面所有做法里都没有的事，且带一个身体反应。
+  不写这一行，这张卡就等于没有第四层。`,
+  )
+
+GROUPS.D = PATCHED3
+
+async function chat(messages, seed) {
+  const t0 = Date.now()
+  const res = await fetch('http://localhost:11434/api/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model: MODEL,
+      messages,
+      stream: false,
+      think: false,
+      options: {
+        temperature: 0.2,
+        seed,
+        num_predict: 1600,
+        // 关键：模型自带 presence_penalty = 1.5，会强行惩罚重复用词。
+        // 之前几轮实验证明它是不稳定的主因，这里必须归零。
+        presence_penalty: 0,
+        num_ctx: 8192,
+      },
+    }),
+  })
+  const json = await res.json()
+  return { text: json.message?.content ?? '', ms: Date.now() - t0, evalCount: json.eval_count ?? 0 }
+}
+
+function buildMessages(spec, context) {
+  return [
+    {
+      role: 'system',
+      content: '你在为一部小说补全主角的角色卡。只输出 personality 字段的内容，不要 JSON、不要解释、不要标题。',
+    },
+    {
+      role: 'user',
+      content: `【故事上下文】\n${context}\n\n${spec}\n\n现在按上面的格式，写出这个主角的 personality。`,
+    },
+  ]
+}
+
+const picks = Object.entries(GROUPS)
+  .filter(([key]) => !ONLY_GROUP || key === ONLY_GROUP)
+  .flatMap(([key, spec]) =>
+    CASES.filter(item => !ONLY_CASE || item.id === ONLY_CASE).map(item => ({ group: key, case: item, spec })),
+  )
+
+/**
+ * `--emit`：把「前提 + 各组写作要求」导出成一份 md，供**子 Agent**（云端被试）读取。
+ *
+ * 为什么不让 Agent 直接吃脚本里的变量：本环境的后台 Agent 活不过 3 分钟、stdout 零回传，
+ * 必须让它**第 1 步就写文件**。把材料做成固定文件，Agent 的 prompt 只需说"读某文件、用组 D、前提 2"。
+ */
+if (ARGS.includes('--emit')) {
+  const outFile = path.join(process.cwd(), 'scripts', 'experiments', 'card-materials.md')
+  const lines = [
+    '# 角色卡生成实验材料（供被试读取）',
+    '',
+    '> 由 `personality-card-prompt-loop.mjs --emit` 生成，**不要手改** —— 改脚本再导一次。',
+    '> 用法：按指定「组」的写作要求 + 指定「前提」的故事上下文，写出主角的 personality。',
+    '',
+    '## 通用输出要求',
+    '',
+    '只输出 personality 字段的内容本身：不要 JSON、不要代码块、不要解释、不要复述要求。',
+    '',
+  ]
+  for (const item of CASES) {
+    lines.push(`## 前提 ${item.id}：${item.label}`, '', '【故事上下文】', '', item.context, '')
+  }
+  for (const [key, spec] of Object.entries(GROUPS)) {
+    lines.push(`## 组 ${key} 的写作要求`, '', spec, '')
+  }
+  fs.mkdirSync(OUT_DIR, { recursive: true })
+  fs.writeFileSync(outFile, lines.join('\n'), 'utf8')
+  console.log(`已导出 ${path.relative(process.cwd(), outFile)}（组 ${Object.keys(GROUPS).join(' / ')}，前提 ${CASES.length} 个）`)
+  process.exit(0)
+}
+
+if (DRY) {
+  for (const pick of picks) {
+    console.log(`\n===== 组 ${pick.group} / 前提 ${pick.case.id}（${pick.case.label}）=====`)
+    console.log(buildMessages(pick.spec, pick.case.context)[1].content.slice(0, 700), '…')
+  }
+  process.exit(0)
+}
+
+fs.mkdirSync(OUT_DIR, { recursive: true })
+const rows = []
+for (const pick of picks) {
+  const seed = 40 + pick.case.id
+  const { text, ms, evalCount } = await chat(buildMessages(pick.spec, pick.case.context), seed)
+  rows.push({ group: pick.group, case: pick.case.id, caseLabel: pick.case.label, seed, ms, evalCount, text })
+  console.log(`${pick.group} 组 / 前提 ${pick.case.id}：${ms}ms，${evalCount} tok，${text.length} 字`)
+}
+fs.appendFileSync(OUT_FILE, rows.map(row => JSON.stringify(row)).join('\n') + '\n', 'utf8')
+console.log(`\n已写入 ${path.relative(process.cwd(), OUT_FILE)}`)
+console.log('\n用 `node scripts/experiments/check-personality-card.mjs` 做结构判读。')

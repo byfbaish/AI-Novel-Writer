@@ -13,6 +13,11 @@
 | `iso-D.jsonl` | 旧卡（三条并列 D1/D2/D3）20 章，**隔离跑法** | 子 Agent，隔离 |
 | `new-D.jsonl` | 四层新卡 24 章（含第 21–24 章四个新测点） | 子 Agent，隔离 |
 | `v3-D-ch17/18/21/24.jsonl` | 例外改「挂第 1 条底线」后的四章复测 | 子 Agent，隔离 |
+| `personality-card-*.jsonl` | **2026-10-29 卡生成实验**（测 prompt 能不能一次生成对的四层卡）：A 现版 / B +4 句 / C +6 句带例句 / D +6 句零举例。`-qwen3.59b128k` 是本地，`-subagent` 是子 Agent | 见 `../personality-card-prompt-loop.mjs` |
+| `agent-card-{A,D}-c{1,2}.txt` | 上表子 Agent 那四份的**原始纯文本**（子 Agent 直接落盘，未转 JSON） | 子 Agent |
+
+> ⚠️ 卡生成实验和前面几轮**不是同一类实验**：前面测「给定卡 → 模型怎么选」（演绎），
+> 这一轮测「给定前提 → 模型怎么造卡」（生成）。判读脚本也不同（`../check-personality-card.mjs`）。
 
 ## 逐章原始文件
 
