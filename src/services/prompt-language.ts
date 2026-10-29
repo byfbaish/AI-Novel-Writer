@@ -112,6 +112,9 @@ ${input.validatedPrefix}
 - 至少一项是他不愿承认的：他自己不觉得那是缺点。
 - 任意相邻两项之间，要能构造出一个他必须选一个的场面。
 - 普世、仁善这类价值不许排在前两位。若确要排，必须写出他为此付过什么代价；写不出代价的，那是圣母，不是人。
+★ 每一项都写成**一条价值判断**，不是一件东西、也不是一个做法。具体的东西放在该项末尾的括号里，只当锚点用。
+  判法：读完这一项，要能说出"他宁可失去什么"，而不是"他手上有什么"，也不是"他会怎么做"。
+  相邻两项必须能比轻重；比不出来的，说明其中一项写错了层（把东西或做法挤进了价值层）。
 ★ B 编号与第三层的 D 编号是两套：**B 是底线的轻重位次**（B1 最重），**D 是做法条目号**（D1 不代表最重）。写选择行时两者都可能用到。
 
 第二层【什么算一件事】只写两句：什么算，什么不算。
@@ -123,16 +126,21 @@ ${input.validatedPrefix}
 - 什么事 → 他一贯怎么做（写做法，不写这一次的具体动作）
 - 不适用：什么情况下这条让位
 每条都必须有「不适用」。没写的那条会变成万能答案，把所有处境都吸过去。
+★ 四条里至少要有一条是**没有外部压力时**也会发生的事；其余三条可以都在被逼、当众、生死里。四条全在高压下，读者看不出他平时是谁，第四层的破例也就没有对照。
 
 第四层【例外】
 - 上面那些做法，全是为前三条底线服务的。只有一种情况会出例外：第 1 条跟别的底线打架时，他一定选第 1 条。
 - 那一次他会做出上面所有做法里都没有的事，方向是定的：他为了那个人，放弃自己平时守的规矩。
 - 除此之外不会有意外的举动。
+★ 例外的动作必须与它挂的那条底线**同向**。写「他选 B1（不替人担）」，动作就不能是替人担；如果发现动作其实是替人担，那说明他真正选的是 B2 —— 把序号改过来，不要两处都占。
+★ 第四层**必须单独写出来，自成一行**，并以「例外：」开头：先写明它挂的是第几条底线，再写那一次他做了什么——必须是上面所有做法里都没有的事，且带一个身体反应。
+  不写这一行，这张卡就等于没有第四层。
 
 【具体动作的粒度】每条做法最后都要能落到这个粒度：
 - 是动作，能拍出来；不是形容词。
 - 带一个身体反应：手抖、耳鸣、指节发白、呼吸变了。这是他还在怕但仍在做的证据。
 - 出现这本书里任何专名的，一律重写。
+- 编号一律写成 D1、D2 这种形式，**不要写成 D<1>、D[1]** —— 下游按这个格式做校验，写成别的形式会被当成"没有写编号"。
 
 【不一致的分寸】
 - 前三条底线上的行为必须始终一致。两处对不上，就是崩人设。
@@ -187,6 +195,9 @@ Layer 1 [what he cares about] — rank 4–5 items from heaviest to lightest, nu
 - At least one item is one he would not admit to: he himself does not think of it as a flaw.
 - Between any two adjacent items it must be possible to build a scene in which he has to choose one of them.
 - Universalism and benevolence must not occupy the first two places. If you must place them there, write what he has paid for them; if you cannot write that price, that is a saint, not a person.
+★ Write each item as **a value judgement** — not a thing, not a practice. A concrete object goes in brackets at the end of the item and serves only as an anchor.
+  Test: after reading the item you must be able to say "what he would rather lose", not "what he has on hand", and not "what he would do".
+  Any two adjacent items must be comparable in weight; if they are not, one of them sits in the wrong layer (a thing or a practice has been pushed into the value layer).
 ★ The B numbers and the D numbers of layer 3 are two separate series: **B is the rank of a bottom line** (B1 heaviest), **D is an entry id** (D1 is not the heaviest). The choice line may need both.
 
 Layer 2 [what counts as an event] — two lines only: what counts, what does not.
@@ -198,16 +209,21 @@ Layer 3 [how he treats each kind of event] — 3–4 pairs. Start each pair with
 - what kind of event → how he always handles it (write the practice, not the action of this one occasion)
 - not applicable: the case in which this one gives way
 Every pair must carry a "not applicable". The pair without one becomes the universal answer and pulls every situation toward itself.
+★ At least one of the pairs must be something that also happens **when nothing is pressing him**; the other three may all sit under duress. If all four live inside "forced / public / life-and-death", the reader never sees who he is when nothing is happening, and the layer-4 exception has nothing to contrast against.
 
 Layer 4 [the exception]
 - Everything above exists to serve the first three bottom lines. There is only one case that produces an exception: when bottom line 1 collides with another, he always chooses bottom line 1.
 - On that occasion he does something that none of the practices above contains, and the direction is fixed: for that person, he abandons the rules he normally keeps.
 - Apart from that, no unexpected move.
+★ The exception's action must run in the **same direction** as the bottom line it hangs on. If it reads "he chooses B1 (refuses to carry anyone's burden)", the action must not be carrying a burden; if the action turns out to be carrying one, then he is really choosing B2 — change the number, do not occupy both.
+★ Layer 4 **must be written out as its own line**, starting with "Exception:" — first name which bottom line it hangs on, then what he did that time: something none of the practices above contains, with one bodily tell.
+  Leave that line out and the card has no layer 4 at all.
 
 [Granularity of the concrete action] every practice must come down to this:
 - It is an action, filmable; not an adjective.
 - It carries a bodily tell: shaking hands, ringing ears, white knuckles, changed breathing — the evidence that he is still afraid and still doing it.
 - Anything carrying a proper noun from this book must be rewritten.
+- Always write numbers as D1, D2 — never D<1> or D[1]. Downstream validates this exact form; any other form is read as "no number written".
 
 [How much inconsistency is allowed]
 - Behaviour on the first three bottom lines must be consistent throughout. Two places that do not match is a broken character.

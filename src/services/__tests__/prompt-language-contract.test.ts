@@ -186,6 +186,40 @@ describe('core model prompt language contract', () => {
     }
   })
 
+  // 2026-10-29 卡生成实验（四组 × 两被试，见 `scripts/experiments/personality-card-prompt-loop.mjs`）：
+  // 这五句是唯一让「两种模型都生成出结构合格的四层卡」的条款，且**都不含例子**。
+  // ⚠️ 例子一律不进 prompt —— 实测模型会把例句逐字抄进产物（两个不同前提的 B1 抄成同一句）。
+  // 所以这里守的是**判法**，不是范文。
+  it('keeps the five card-shape clauses that make generation pass on both models', () => {
+    const zhCN = characterArchitecturePrompts('zh-CN')
+    const enUS = characterArchitecturePrompts('en-US')
+    const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
+    const zhText = zhCN.detailTask(input)
+    const enText = enUS.detailTask(input)
+
+    // ① 第一层：给判法不给例子（"宁可失去什么"是这句的关键）
+    expect(zhText).toContain('他宁可失去什么')
+    expect(zhText).toContain('不是一件东西、也不是一个做法')
+    expect(enText).toContain('what he would rather lose')
+    expect(enText).toContain('not a thing, not a practice')
+
+    // ② 第三层：必须有日常档
+    expect(zhText).toContain('没有外部压力时')
+    expect(enText).toContain('when nothing is pressing him')
+
+    // ③ 例外必须与挂的底线同向
+    expect(zhText).toContain('必须与它挂的那条底线**同向**')
+    expect(enText).toContain('same direction')
+
+    // ④ 第四层必须自成一行（缺这一条，实测模型直接跳过整个第四层）
+    expect(zhText).toContain('第四层**必须单独写出来，自成一行**')
+    expect(enText).toContain('must be written out as its own line')
+
+    // ⑤ 编号写法（写成 D<1> 会被下游当成"没写编号"）
+    expect(zhText).toContain('不要写成 D<1>、D[1]')
+    expect(enText).toContain('never D<1> or D[1]')
+  })
+
   // V6：普世、仁善排在前面的角色是圣母不是人。模型最容易自作主张把这两项顶上去。
   it('bans the saint at the top of the ranking', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')
