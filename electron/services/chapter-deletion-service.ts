@@ -76,7 +76,7 @@ export class ChapterDeletionService {
     projectRoot: string,
     request: DeleteFinalizedChapterRequest,
   ): Promise<ChapterDeletionResult> {
-    const replayed = await this.resumeExistingOperation(projectRoot, request, '章节删除请求与已冻结操作身份不匹配')
+    const replayed = await this.resumeExistingOperation(projectRoot, request, '章节删除请求与已冻结操作身份不匹配', false)
     if (replayed) return replayed
     const requiresLegacyKnowledgeAuthorization = this.requiresLegacyKnowledgeAuthorization(request)
     const frozen = ChapterDeletionRepository.begin({
@@ -101,7 +101,7 @@ export class ChapterDeletionService {
     projectRoot: string,
     request: DeleteFinalizedChapterRequest,
   ): Promise<ChapterDeletionResult> {
-    const replayed = await this.resumeExistingOperation(projectRoot, request, '退回草稿请求与已冻结操作身份不匹配')
+    const replayed = await this.resumeExistingOperation(projectRoot, request, '退回草稿请求与已冻结操作身份不匹配', true)
     if (replayed) return replayed
     /**
      * 旧定稿（无可验证的知识文档 ID）**不开退回通道**。
@@ -133,11 +133,18 @@ export class ChapterDeletionService {
    * 关键一条：`completed` 不等于「现在也是完成态」。库被恢复/回滚之后，收据还写着
    * 已完成，事实却回到了定稿态；此时若直接返回成功，界面会报「已退回/已删除」，
    * 而数据一动没动 —— 2026-10-23 实机就是这么骗了作者一次。所以先复核事实。
+   *
+   * 第二条（M23）：收据的**语义**必须与本次请求一致。`delete` 与 `revert` 共用这张表
+   * （按 `draft_id` 唯一），投影清理一样、只有 `begin` 里分岔，所以语义不一致时
+   * 绝不能复用 —— 那会出现「报已退回、实则一次没跑」，或「退回请求把中断的删除跑完」。
+   * 注意顺序：**先**作废陈旧收据（事实已回滚，那条收据本来就不描述现实），**再**比语义。
+   * 反过来会让恢复过数据的历史草稿永远退不回去。
    */
   private async resumeExistingOperation(
     projectRoot: string,
     request: DeleteFinalizedChapterRequest,
     mismatchError: string,
+    keepDraft: boolean,
   ): Promise<ChapterDeletionResult | null> {
     const existing = ChapterDeletionRepository.getByDraftId(request.draftId)
     if (!existing) return null
@@ -152,6 +159,16 @@ export class ChapterDeletionService {
     ) {
       ChapterDeletionRepository.discard(existing.operationId)
       return null
+    }
+    if (existing.keepDraft !== keepDraft) {
+      return {
+        success: false,
+        committed: false,
+        operation: existing,
+        error: existing.keepDraft
+          ? '该章已有一条「退回草稿」收据，不能当作「删除正文」继续；请先在草稿箱确认该章状态再重试'
+          : '该章已有一条「删除正文」收据，不能当作「退回草稿」继续；请先在草稿箱确认该章状态再重试',
+      }
     }
     if (existing.legacyKnowledgeAuthorization === 'required') {
       return legacyKnowledgeAuthorizationRequired(existing)

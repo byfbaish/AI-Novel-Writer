@@ -751,4 +751,72 @@ describe('chapter lifecycle deletion IPC', () => {
     expect(DraftRepository.getFull(draftId)).not.toBeNull()
     expect(fs.existsSync(path.join(projectRoot, targetFileName))).toBe(true)
   })
+
+  /**
+   * M23（2026-10-30）：收据的**语义**必须与本次请求一致。
+   *
+   * 此前 `chapter_deletion_operations` 只按 `draft_id` 唯一且不记语义，`begin` 命中旧收据
+   * 只比章号 ⇒ 先删后退会被删除收据接住，界面报「已退回」而 `revertChapterFacts` 一次没跑。
+   */
+  function registerRealCleanupService() {
+    registerChapterLifecycleController(new ChapterDeletionService({
+      cleaner: {
+        removeManuscript: removePublishedManuscript,
+        async removeKnowledgeDocument(root, documentId) {
+          if (!await removeDocument(documentId, root)) throw new Error('knowledge cleanup failed')
+        },
+      },
+    }))
+  }
+
+  it('先删后退：第二次必须显式报错，不得冒充「已退回」（M23）', async () => {
+    registerRealCleanupService()
+    const removed = await handlers.get('chapter:delete-finalized')!(
+      {}, { draftId, chapterNumber: 1 }, projectRoot, projectSession,
+    ) as { success: boolean }
+    expect(removed.success).toBe(true)
+    expect(DraftRepository.getFull(draftId)).toBeNull()
+
+    const reverted = await handlers.get('chapter:revert-finalized')!(
+      {}, { draftId, chapterNumber: 1 }, projectRoot, projectSession,
+    ) as { success: boolean; committed: boolean; error?: string }
+
+    // 关键：不能说「已退回」。以前这里返回 success:true 而数据一动没动。
+    expect(reverted.success).toBe(false)
+    expect(reverted.committed).toBe(false)
+    expect(reverted.error).toContain('「删除正文」收据')
+    // 正文没被复活（退回不是撤销删除的入口）
+    expect(DraftRepository.getFull(draftId)).toBeNull()
+  })
+
+  it('中断的「退回草稿」收据不得被删除请求复用（M23）', async () => {
+    // 1) 造一条中断的退回收据：影印件清理失败 ⇒ status 停在 failed，keep_draft = 1，草稿与正文都还在
+    registerChapterLifecycleController(new ChapterDeletionService({
+      cleaner: {
+        async removeManuscript() { throw new Error('simulated manuscript outage') },
+        async removeKnowledgeDocument() { /* 本轮只让实体稿失败 */ },
+      },
+    }))
+    const interrupted = await handlers.get('chapter:revert-finalized')!(
+      {}, { draftId, chapterNumber: 1 }, projectRoot, projectSession,
+    ) as { success: boolean; committed: boolean; operation: { keepDraft: boolean; status: string } }
+    expect(interrupted).toMatchObject({
+      success: false,
+      committed: true,
+      operation: { keepDraft: true, status: 'failed' },
+    })
+
+    // 2) 紧接着发删除请求：必须被语义拦下，**不能**替那次退回跑完清理、更不能删草稿
+    registerRealCleanupService()
+    const deleted = await handlers.get('chapter:delete-finalized')!(
+      {}, { draftId, chapterNumber: 1 }, projectRoot, projectSession,
+    ) as { success: boolean; committed: boolean; error?: string }
+
+    expect(deleted.success).toBe(false)
+    expect(deleted.committed).toBe(false)
+    // 报的必须是「语义不一致」，不是「只有定稿章才能删」—— 后者说明它根本没读到那条收据
+    expect(deleted.error).toContain('「退回草稿」收据')
+    expect(DraftRepository.getFull(draftId)!.content).toBe('目标章节独有关键字')
+    expect(DraftRepository.getMeta(draftId)!.status).toBe('revised')
+  })
 })

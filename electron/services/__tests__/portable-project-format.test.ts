@@ -81,8 +81,12 @@ describe('portable v7 field policy', () => {
     //   且 volume_handoffs 由 13 列重建为 **11 列**（区间外置）—— 61/584 → 63/603。
     // A2 / M20：+1 列（review_findings.review_class）—— 63/603 → 63/604，属预期变化。
     // P20-2 / M21：+1 表 10 列（secrets）—— 63/604 → 64/614，属预期变化。
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 64, fields: 614 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 64, fields: 614 })
+    // P20-3 / M22：+1 列（summary_snapshots.knowledge_candidates）—— 64/614 → 64/615。
+    //   ⚠️ 2026-10-30 补登：M22 落地时**漏了字段策略登记**，这一格当时就该变 615，
+    //   实际一直是 614 ⇒ 本用例自 M22 起就是红的（`src/` 基线不含 electron/，故没被发现）。
+    // P0-1 / M23：+1 列（chapter_deletion_operations.keep_draft）—— 64/615 → 64/616。
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 64, fields: 616 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 64, fields: 616 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -124,7 +128,9 @@ describe('portable v7 field policy', () => {
     // + P1-2 期 1b / M19：+2 表 21 列，volume_handoffs 少 2 列（13 → 11）—— 229 → 248。
     // + A2 / M20：+1 列（review_class）—— 248 → 249，同上。
     // + P20-2 / M21：+1 表 10 列（secrets）—— 249 → 259，同上。
-    expect(added).toHaveLength(259)
+    // + P20-3 / M22：+1 列（summary_snapshots.knowledge_candidates）—— 259 → 260。
+    // + P0-1 / M23：+1 列（chapter_deletion_operations.keep_draft）—— 260 → 261。
+    expect(added).toHaveLength(261)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -221,7 +227,8 @@ describe('portable v7 field policy', () => {
       // 同上：M17 的 1 表 13 列也计入（删掉索引的 DDL fork 仍必须被拒绝）。
       // P1-2 / M18：删掉索引的 DDL fork 仍必须被拒绝；计数同步到 61/584。
       // P20-2 / M21：再 +1 表 10 列 ⇒ 64/614。
-      expect({ tables: tables.length, fields }).toEqual({ tables: 64, fields: 614 })
+      // P20-3 / M22 + P0-1 / M23：再 +2 列（各自一列）⇒ 64/616。
+      expect({ tables: tables.length, fields }).toEqual({ tables: 64, fields: 616 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)

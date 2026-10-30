@@ -22,6 +22,15 @@ export interface ChapterDeletionOperation {
   knowledgeError: string
   legacyKnowledgeAuthorization: LegacyKnowledgeAuthorization
   legacyKnowledgeAuthorizedAt: string
+  /**
+   * 这条收据是「退回草稿」(`true`) 还是「删除正文」(`false`)。
+   *
+   * 必须落库：同一个 `draft_id` 只允许一条收据，而两条入口的投影清理一模一样、
+   * 只在 `begin` 里分岔（删草稿 / 保草稿）。没有这一列，`begin` 命中旧收据时只能比章号，
+   * 「先删后退」会被删除收据接住 → 界面报「已退回」而 `revertChapterFacts` 一次没跑。
+   * 存量行一律 `false`（历史语义不可考，见 M23 迁移注释）。
+   */
+  keepDraft: boolean
   status: ChapterDeletionStatus
   attemptCount: number
   createdAt: string

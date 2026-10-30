@@ -20,6 +20,8 @@ interface ChapterDeletionRow {
   knowledge_error: string
   legacy_knowledge_authorization: ChapterDeletionOperation['legacyKnowledgeAuthorization']
   legacy_knowledge_authorized_at: string
+  /** M23：0 = 删除正文，1 = 退回草稿。存量行恒为 0（历史语义不可考）。 */
+  keep_draft: number
   status: ChapterDeletionOperation['status']
   attempt_count: number
   created_at: string
@@ -211,6 +213,7 @@ function rowToOperation(row: ChapterDeletionRow): ChapterDeletionOperation {
     knowledgeError: row.knowledge_error,
     legacyKnowledgeAuthorization: row.legacy_knowledge_authorization,
     legacyKnowledgeAuthorizedAt: row.legacy_knowledge_authorized_at,
+    keepDraft: row.keep_draft === 1,
     status: row.status,
     attemptCount: row.attempt_count,
     createdAt: row.created_at,
@@ -263,6 +266,15 @@ export class ChapterDeletionRepository {
         if (existing.chapter_number !== input.chapterNumber) {
           throw new Error('章节删除请求与已冻结操作不匹配')
         }
+        // M23：语义也必须一致。此前只比章号，于是「先删后退」被删除收据接住 ——
+        // 界面报「已退回」，`revertChapterFacts` 却一次没跑（静默 no-op）；
+        // 更坏的是接住一条**中断的删除**收据，`resume` 会替它跑完投影清理。
+        // 这里显式拒绝而不是静默复用：宁可让作者看见报错，也不许两条语义互相顶替。
+        if (existing.keep_draft !== (input.keepDraft ? 1 : 0)) {
+          throw new Error(existing.keep_draft === 1
+            ? '该章已有一条「退回草稿」收据，不能当作「删除正文」继续；请先在草稿箱确认该章状态再重试'
+            : '该章已有一条「删除正文」收据，不能当作「退回草稿」继续；请先在草稿箱确认该章状态再重试')
+        }
         return existing.operation_id
       }
 
@@ -275,8 +287,8 @@ export class ChapterDeletionRepository {
         INSERT INTO chapter_deletion_operations (
           operation_id, draft_id, chapter_number, chapter_title, finalization_id,
           target_file_name, knowledge_document_id, post_process_run_ids,
-          manuscript_status, knowledge_status, legacy_knowledge_authorization, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          manuscript_status, knowledge_status, legacy_knowledge_authorization, keep_draft, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         input.operationId,
         target.id,
@@ -291,6 +303,7 @@ export class ChapterDeletionRepository {
           ? 'pending'
           : 'not_required',
         input.legacyKnowledgeAuthorizationRequired ? 'required' : 'not_required',
+        input.keepDraft ? 1 : 0,
         input.legacyKnowledgeAuthorizationRequired ? 'authorization_required' : 'pending',
       )
 
