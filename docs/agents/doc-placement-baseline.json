@@ -285,12 +285,6 @@
       "detail": "状态行取值不在受控词表 [待裁定 / 已裁定 / 已实施 / 已落地 / 已搁置 / 已结项]：E2 完成 · 提示词层已验证（非惰性 / 单调 / 宽带 "
     },
     {
-      "key": "C1b docs/design/architecture/upstream-invalidation-phase2-source-ref-and-read-gates.md",
-      "code": "C1b",
-      "file": "docs/design/architecture/upstream-invalidation-phase2-source-ref-and-read-gates.md",
-      "detail": "状态行取值不在受控词表 [待裁定 / 已裁定 / 已实施 / 已落地 / 已搁置 / 已结项]：设计稿 v2，只写文档未改代码（2026-10-30）"
-    },
-    {
       "key": "C1b docs/design/architecture/volume-quota-context-budget-design.md",
       "code": "C1b",
       "file": "docs/design/architecture/volume-quota-context-budget-design.md",

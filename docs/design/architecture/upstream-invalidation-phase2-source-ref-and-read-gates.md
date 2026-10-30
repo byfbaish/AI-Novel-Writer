@@ -1,6 +1,6 @@
 # 上游失效 · 期 2 实施设计：来源登记与读取侧拒绝
 
-> 状态：**设计稿 v2，只写文档未改代码**（2026-10-30）
+> 状态：已落地 · 2026-10-30 · 期 2 全部读取侧 + 三道闸（`fae95890` 写入侧 / `e704a697` 读取侧）；两处实施偏差见 §5.2 与 §5.3
 > v2 变更：三路子 Agent 交叉审阅后重写（语义反例 / 影响面 / 迁移事务），修掉 6 个缺口、改判 3 处原裁定、否掉 1 条审阅意见并附证据。修订清单见 §一。
 > 上级稿：[`upstream-version-and-derived-invalidation-design.md`](upstream-version-and-derived-invalidation-design.md)（§四 分版 · §五 来源 · §六 三档处置 · §九 落地顺序 · §八 强提醒）
 > 审阅记录：`out/review-phase2/{semantic,blast-radius,migration}.md`（不入库，属本轮工作产物）
