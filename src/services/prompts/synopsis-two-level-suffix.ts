@@ -29,8 +29,8 @@ import type { WritingLanguage } from '../../shared/writing-language'
 const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 每章按以下顺序输出，除这些行以外不要加任何说明行、标签行或注释：
 - 第一行：章标题「## 第N章：章名」；
-- 第二行：「定性：<D编号> — <这一章碰到的是哪一条，一句话说清是哪类处境>」；没有任何现成做法对得上时写「定性：无 — <碰到的是第几条底线，为什么那几条做法都不适用>」；
-- 第三行：「选择：<力源，或例外值 破／守> —— <他这一章做了什么>｜否掉了 <他本可以做的另一件事>，因为 <依据>」，依据只有三种：<D编号>：<那条做法>／底线<n>：<那条底线>（定性写「无」时的兜底）／D0：<为什么这一章确实没有他的戏>；
+- 第二行：「定性：<X编号 | 筹码：<名字> | 软肋：<名字> | 无> — <这一章碰到的是哪一条，一句话说清是哪类处境>」；
+- 第三行：「选择：<力源，或例外值 破／守> —— <他这一章做了什么>｜否掉了 <他本可以做的另一件事>，因为 <依据>」，依据只有四种：X<n>：<那条禁区>／顶撞X<n>：<他破了哪条、付了什么代价>／筹码：<名字>／软肋：<名字>；这一章确实没有他的戏，写「无：<为什么他不在场>」；
 - 其后：正文，连贯段落；
 - 最后一行：「收尾：<一句话>」。
 
@@ -40,9 +40,10 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 【定性：行的写法】
 先定类，再定选择 —— 这一步只回答「这是哪一类事」，**不回答他怎么做**：
 - 这一行**不许写他做了什么**，只写这一章碰到的是哪一类处境；
-- 定性的 D<n> **必须与下面「选择：」行引用的依据一致**；两处对不上就是没想清楚，重写这一章；
-- **没有现成做法，不等于没有性格**：这一章碰得到他的底线、但第三层那几条做法一条都不适用时，写「定性：无 — <碰到的是第几条底线，为什么那几条做法都不适用>」，选择行改走「底线<n>」。这是**兜底路径**，不是例外，不需要特殊理由；
-- 只有这一章确实没有他的戏（纯他人视角、时间跳跃、他全程不在场）才写「定性：无 — <为什么他不在场>」，此时选择行写 D0。
+- 定性的那个东西**必须与下面「选择：」行引用的依据一致**；两处对不上就是没想清楚，重写这一章；
+- 碰上他的**禁区**写 X<n>（编号见角色卡【禁区】段，全书恒定）；某样**筹码**被拿住写「筹码：<名字>」；他被自己的**软肋**绊住写「软肋：<名字>」；
+- 每一条依据都必须能在当前角色卡上或本章正文里指出对应物，不许写「他的弱点」「他的执念」这类没有名字的说法；**软肋可以写卡上还没登记的**（章末定稿会登记），但名字要写具体；
+- 只有这一章确实没有他的戏（纯他人视角、时间跳跃、他全程不在场）才写「定性：无 — <为什么他不在场>」，此时选择行写 无。
 
 【选择：行的写法】
 这一行不是你在挑，是他挑。写之前按下面的顺序走完四步，**只在内部走，过程一个字都不许写进输出**。
@@ -57,24 +58,24 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 - **守** = 他什么都不动：等、拖、装作没这回事。
 
 四步（顺序不能颠倒）：
-1. 先读他的**性格倾向**（角色卡第三层那几条做法，D<n>）：这一章的压力属于哪一条？那一条的做法是什么？
-   ★ **必须把这个编号记下来**：本行末尾的「因为」后面要写 D<n> —— 写下编号，这一章才算他做的决定；不写编号，等于他不在场。
-   ★ **一条都对不上时不要直接写 D0**：先看他这一章碰到了第一层的哪一条底线（B1…Bn），按那条底线现场推他怎么做，然后写「因为 底线<n>」。这是兜底 —— 一个人总有底线，做法只是他平日的习惯。
-   D0 只留给「这一章确实没有他的戏」（纯他人视角、时间跳跃），并写明理由。
-   ★ 压力若碰到他第四层写的那次**例外**，这一章的分量天然更重 —— 这种章不要连着写；反过来，一整卷都没出现过一次例外，说明这一卷从头到尾没碰到他真正在乎的东西。
+1. 先读他的**禁区**（角色卡【禁区】段的 X<n>）：这一章的压力顶到哪一条？那一条说的是他不肯做什么？
+   ★ **必须把这个编号记下来**：本行末尾的「因为」后面要写 X<n> —— 写下编号，这一章才算他做的决定；不写编号，等于他不在场。
+   ★ 这一章**让他破了那条禁区**时，写「因为 顶撞X<n>：<代价>」。破了就一定要付代价 —— 不写代价的破例，是作者开恩，不是人物长大。
+   ★ 一条禁区都对不上时，看他这一章是不是被某样**筹码**或**软肋**拿住了：是就写「因为 筹码：<名字>」或「因为 软肋：<名字>」。
+   他确实不在场，才写「无：<理由>」。
 2. 列三个他够得着的动作：不是最聪明的三个，是他这个处境下真能伸手的三个；
 3. 用当前「倾向」逐条筛：**他再聪明，也不能做一件不符合他当前倾向的事**；不准用"这次情况特殊"给他开绿灯 —— 一个强项抵消不了一条倾向。唯一的例外是这一章本来就是他登记过的位移点（见下方判定句②）；
 4. 取第一个剩下的，不是最好的那个。人做决定是找到能接受的第一个就停，不是把方案比一遍挑最优 —— 所以**他选的多半不是最优解，这很正常**。他用自己的方式把事情解决，才叫爽；他直接选了个聪明方案，那是你替他解决了。
 
 其余约束：
-- 不得因为"这样更爽、更好推进、更合理"而选一个他不会做的动作。角色卡里一条做法都读不到时，退到他的底线（写「底线<n>」）并写明依据；连底线都读不到才写 D0，不得默认让他选最有利的那个；
-- 「否掉了…因为…」是这一行的判定句，因为 后面**先写依据**。按五分支判，只有前三支放行：
-  ① 他做的正是 D<n> 那条的当前「倾向」⇒ 正常，不必解释；
-  ② 不是，但这一章是 D<n> 里**已登记的位移点** ⇒ 正常，且正文必须写出「他第一次这么做」的生涩与代价；
-  ③ 做法都对不上、但他碰到了底线 ⇒ 写「底线<n>」，动作要能直接对应那条底线；**这是兜底不是例外**，不许拿它当偷懒的出口，也不许连着几章都用它；
-  ④ 这一章确实没有他的戏 ⇒ 写 D0，并说明为什么（纯他人视角、时间跳跃）；
-  ⑤ 编号写了，但这一章的局面和那条的「局面」根本不是一类 ⇒ **走形，重写**。引用是凑的，等于没引用；
-- **写位移的那一章必须付代价**：登记了位移却不付代价，等于白送成长 —— 读者看到的是作者开恩，不是人物长大；
+- 不得因为"这样更爽、更好推进、更合理"而选一个他不会做的动作。角色卡里一条禁区都读不到时，退到他的筹码或软肋（写「筹码：<名字>」/「软肋：<名字>」）并写明依据；连这些都读不到才写「无」，不得默认让他选最有利的那个；
+- 「否掉了…因为…」是这一行的判定句，因为 后面**先写依据**。按四分支判，只有前三支放行：
+  ① 他做的正对得上 X<n> 那条禁区 ⇒ 正常，不必解释；
+  ② 他**破了** X<n> ⇒ 写「顶撞X<n>：<代价>」，正文必须写出他破戒时的身体反应与代价；**同一条禁区不能连着破三次** —— 破了两次还照破，说明那条线本来就不是禁区，该把它删掉或改成筹码；
+  ③ 对不上任何禁区，但被某样筹码或软肋拿住了 ⇒ 写「筹码：<名字>」/「软肋：<名字>」，动作要能直接对应那个名字；
+  ④ 这一章确实没有他的戏 ⇒ 写「无」，并说明为什么（纯他人视角、时间跳跃）；
+- 编号写了，但这一章的局面和那条禁区根本不是一类 ⇒ **走形，重写**。引用是凑的，等于没引用；
+- **破了禁区的那一章必须付代价**：破了不付代价，等于白送 —— 读者看到的是作者开恩，不是人物长大；
 - **「守」不得连续三章出现，单个单元内不超过三成章数** —— 超了说明这一段该压成一场戏，不是该多写几章；「守」本身是逃避型倾向的正常表达时不算偷懒；
 - **写「破」必须有前置**：时间、资源、知识三样里至少一样在前文埋过；没埋过就写「破」= 天降；
 - 这一行决定的不是情节，是**他在这一章里是谁**：同一件事，他动「他人」和动「规则」，写出来是两章完全不同的东西；
@@ -132,8 +133,8 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 const EN_TWO_LEVEL_SUFFIX = `[Fixed per-chapter format — mandatory]
 Output each chapter in exactly this order, with no extra labels, headings or commentary lines:
 - Line 1: chapter heading "## Chapter N: Title";
-- Line 2: "Qualify: <D-number> — <which entry this chapter runs into, one clause naming the kind of situation>"; when no practice applies, write "Qualify: none — <which bottom line it touches, and why none of the practices applies>";
-- Line 3: "Choice: <Self | Others | Rules | Trade | Break | Hold> — what he did in this chapter | ruled out: the other thing he could have done, because <basis>", where the basis is exactly one of: <D-number>: <that practice> / bottom <n>: <that bottom line> (the fallback when Qualify says none) / D0: <why this chapter truly has no disposition scene>;
+- Line 2: "Qualify: <X-number | chip: <name> | soft spot: <name> | none> — <which entry this chapter runs into, one clause naming the kind of situation>";
+- Line 3: "Choice: <Self | Others | Rules | Trade | Break | Hold> — what he did in this chapter | ruled out: the other thing he could have done, because <basis>", where the basis is exactly one of: X<n>: <that forbidden line> / break X<n>: <which line he broke and what it cost> / chip: <name> / soft spot: <name>; when this chapter truly has no scene of his, write "none: <why he is absent>";
 - Then: the prose, as connected paragraphs;
 - Last line: "Hook: <one sentence>".
 
@@ -143,9 +144,10 @@ Never output labels such as "declaration line before the prose", "format note" o
 [The Qualify line]
 Classify first, choose second — this line answers only "what kind of thing is this", **never what he does**:
 - It must **not say what he did**, only which kind of situation this chapter runs into;
-- The D<n> here **must be the same basis the Choice line below cites**; if the two disagree, the chapter is not thought through — rewrite it;
-- **No standing practice does not mean no character**: when the chapter touches one of his bottom lines but none of the layer-3 practices applies, write "Qualify: none — <which bottom line it touches, and why none of the practices applies>" and let the Choice line fall back to "bottom <n>". This is the **fallback path**, not an exception, and it needs no special justification;
-- Only when the chapter truly has no scene of his (someone else's POV throughout, a time skip, he is absent) write "Qualify: none — <why he is absent>"; the Choice line then carries D0.
+- The entry named here **must be the same basis the Choice line below cites**; if the two disagree, the chapter is not thought through — rewrite it;
+- When the chapter runs into one of his **forbidden lines**, write X<n> (numbers come from the [Forbidden] block of his card and stay fixed for the whole book); when a **chip** of his is taken hostage, write "chip: <name>"; when one of his **soft spots** trips him, write "soft spot: <name>";
+- Every basis must name something you can point at in the card or in this chapter's prose — never "his weakness" or "his obsession". A **soft spot may be named before it is registered** (finalization registers it afterwards), but the name must be concrete;
+- Only when the chapter truly has no scene of his (someone else's POV throughout, a time skip, he is absent) write "Qualify: none — <why he is absent>"; the Choice line then carries "none".
 
 [The Choice line]
 You are not choosing here — he is. Work through the four steps below, **inside your head only; not one word of the process may appear in the output**.
@@ -160,24 +162,24 @@ Two **exception values** (not a fifth and sixth source — they are "refuse the 
 - **Hold** = he does not move at all: waits, stalls, acts as if none of this were happening.
 
 The four steps, in this order:
-1. Read his **standing tendencies** first — the practices in layer 3 of his card (D<n>): which one does this chapter's pressure belong to, and what is that practice?
-   ★ **Note the number down**: the "because" clause at the end of this line must carry D<n>. With the number written, this chapter is his decision; without it, he is not in the scene.
-   ★ **When no practice matches, do not jump to D0**: first find which of his layer-1 bottom lines (B1…Bn) this chapter touches, infer what he would do from that bottom line, and write "because bottom <n>". That is the fallback — a person always has bottom lines; the practices are only his usual habits.
-   D0 is reserved for a chapter that truly has no scene of his (someone else's POV throughout, a time skip), and it needs a stated reason.
-   ★ If the pressure touches the **exception** written in layer 4, this chapter carries more weight than usual — do not run several such chapters back to back. Conversely, a whole volume in which the exception never once appears never touched what he actually cares about;
+1. Read his **forbidden lines** first — the X<n> entries in the [Forbidden] block of his card: which one does this chapter's pressure push against, and what does that line say he will not do?
+   ★ **Note the number down**: the "because" clause at the end of this line must carry X<n>. With the number written, this chapter is his decision; without it, he is not in the scene.
+   ★ When this chapter makes him **break** that line, write "break X<n>: <the cost>". A break must cost him something — a break with no cost is the author being kind, not a person growing.
+   ★ When no forbidden line matches, check whether a **chip** or a **soft spot** of his is being held: if so, write "chip: <name>" or "soft spot: <name>".
+   Only when he is genuinely absent write "none: <reason>";
 2. List three moves he can actually reach: not the three cleverest, the three he could genuinely put a hand on from where he stands;
 3. Filter them through the current Tendency: **being clever never licenses doing something his current tendency rules out**; never let "this time is special" wave him through — one strength does not buy back one tendency. The only exception is a chapter that is itself a registered Shift (see the test clause below);
 4. Take the first survivor, not the best one. People stop at the first acceptable option; they do not compare every plan and pick the optimum. So **his choice is usually not the optimal solution, and that is correct**. Solving it his own way is what reads as satisfying; handing him the clever solution means you solved it for him.
 
 Other constraints:
-- Never pick a move he would not make because it is "more exciting, easier to advance, more sensible". If his card carries no practice at all, fall back to his bottom line ("bottom <n>") and state the basis; only when even the bottom lines are unreadable write D0 — never default to the most advantageous move;
-- "ruled out … because …" is the test clause of this line, and because **starts with the basis**. Judge it in five branches, and only the first three pass:
-  ① what he does IS the current Tendency of D<n> ⇒ correct, no explanation needed;
-  ② it is not, but this chapter is a **registered Shift** inside D<n> ⇒ correct, and the prose must show the awkwardness and the cost of his doing it for the first time;
-  ③ no practice matches but a bottom line does ⇒ write "bottom <n>", and the action must map directly onto that bottom line; **this is a fallback, not an exception**, and it may not be used as an excuse for laziness or run several chapters in a row;
-  ④ the chapter truly has no scene of his ⇒ write D0 and say why (someone else's POV, a time skip);
-  ⑤ a number is written, but this chapter's situation is not the same kind as that entry's Situation ⇒ **out of character, rewrite**. A borrowed citation is no citation at all;
-- **A chapter that plays a Shift must make him pay for it**: a registered shift with no cost is growth handed out for free — the reader sees the author being kind, not a person growing;
+- Never pick a move he would not make because it is "more exciting, easier to advance, more sensible". If his card carries no forbidden line at all, fall back to a chip or a soft spot ("chip: <name>" / "soft spot: <name>") and state the basis; only when even those are unreadable write "none" — never default to the most advantageous move;
+- "ruled out … because …" is the test clause of this line, and because **starts with the basis**. Judge it in four branches, and only the first three pass:
+  ① what he does lines up with forbidden line X<n> ⇒ correct, no explanation needed;
+  ② he **breaks** X<n> ⇒ write "break X<n>: <the cost>", and the prose must show the bodily reaction and what it cost him; **the same line may not be broken three chapters running** — broken twice and broken again means it was never a forbidden line, so delete it or turn it into a chip;
+  ③ nothing matches a forbidden line, but a chip or a soft spot is being held ⇒ write "chip: <name>" / "soft spot: <name>", and the action must map directly onto that name;
+  ④ the chapter has no scene of his ⇒ write "none" and say why (someone else's POV, a time skip);
+- A number is written, but this chapter's situation is not the same kind as that forbidden line ⇒ **out of character, rewrite**. A borrowed citation is no citation at all;
+- **A chapter that breaks a forbidden line must make him pay for it**: a break with no cost is growth handed out for free — the reader sees the author being kind, not a person growing;
 - **"Hold" must not appear in three consecutive chapters, and not in more than a third of a unit's chapters** — over that, the stretch should be compressed into one scene, not stretched into more chapters. When Hold is simply the honest expression of an avoidant tendency, it is not laziness;
 - **"Break" requires setup**: at least one of time, resources, or knowledge must have been planted earlier; without it, "Break" is a rescue from nowhere;
 - This line does not fix the plot; it fixes **who he is in this chapter**. The chapter blueprint inherits it, so do not write one thing here and play another in the prose.

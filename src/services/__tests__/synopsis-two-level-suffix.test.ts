@@ -60,36 +60,38 @@ describe('synopsis 两级结构版输出合同', () => {
 
   it('选择由角色做：读编号 + 淘汰顺序 + 满意化 + 四分支判定', () => {
     // 三条决策科学依据（Tversky 1972 EBA / Simon 满意化 / 非补偿性），
-    // 落地方式是写死推理顺序并要求过程不外露；
-    // 依据从「禁区」改为角色卡上带编号的三个档位（D1 日常 / D2 代价 / D3 破例）。
+    // 落地方式是写死推理顺序并要求过程不外露。
+    // 2026-10-29 深夜：依据从「第三层做法 D<n>」改成「禁区 X<n> / 筹码 / 软肋」——
+    // 三格后做法层取消，禁区全书恒定所以可跨章引用，筹码与软肋按名字引用。
     expect(zh).toContain('只在内部走，过程一个字都不许写进输出')
-    expect(zh).toContain('先读他的**性格倾向**')
+    expect(zh).toContain('先读他的**禁区**')
     expect(zh).toContain('用当前「倾向」逐条筛')
     expect(zh).toContain('一个强项抵消不了一条倾向')
     expect(zh).toContain('取第一个剩下的，不是最好的那个')
-    // 2026-10-29：选择行必须写依据 —— 「因为他的哪一条」永远能过关，「因为 D2」可以被查。
-    // 同日作者裁定补了兜底路径：做法一条都对不上时退到底线，不许直接跳到 D0。
-    expect(zh).toContain('① 他做的正是 D<n> 那条的当前「倾向」')
-    expect(zh).toContain('③ 做法都对不上、但他碰到了底线 ⇒ 写「底线<n>」')
-    expect(zh).toContain('④ 这一章确实没有他的戏 ⇒ 写 D0')
-    expect(zh).toContain('⑤ 编号写了，但这一章的局面和那条的「局面」根本不是一类')
+    expect(zh).toContain('① 他做的正对得上 X<n> 那条禁区')
+    expect(zh).toContain('③ 对不上任何禁区，但被某样筹码或软肋拿住了')
+    expect(zh).toContain('④ 这一章确实没有他的戏 ⇒ 写「无」')
     expect(zh).toContain('必须把这个编号记下来')
-    expect(en).toContain('Read his **standing tendencies** first')
+    expect(en).toContain('Read his **forbidden lines** first')
     expect(en).toContain('Take the first survivor, not the best one')
     expect(en).toContain('A borrowed citation is no citation at all')
-    expect(en).toContain('must carry D<n>')
-    expect(en).toContain('③ no practice matches but a bottom line does ⇒ write "bottom <n>"')
-    expect(en).toContain('④ the chapter truly has no scene of his ⇒ write D0')
-    // 旧口径必须彻底消失，否则会与角色卡的倾向字段打成两份权威。
+    expect(en).toContain('must carry X<n>')
+    expect(en).toContain('③ nothing matches a forbidden line, but a chip or a soft spot is being held')
+    expect(en).toContain('④ the chapter has no scene of his ⇒ write "none"')
+    // 旧口径必须彻底消失，否则会与角色卡的三格打成两份权威。
     expect(zh).not.toContain('做不出什么')
+    expect(zh).not.toContain('D0')
     expect(en).not.toContain('what he cannot bring himself to do')
+    expect(en).not.toContain('D0')
   })
 
-  it('成长 = 已登记的位移，且必须付代价', () => {
-    expect(zh).toContain('② 不是，但这一章是 D<n> 里**已登记的位移点**')
-    expect(zh).toContain('**写位移的那一章必须付代价**')
-    expect(en).toContain('this chapter is a **registered Shift**')
+  it('破禁区必须付代价，且同一条不能被连着破三次', () => {
+    expect(zh).toContain('② 他**破了** X<n> ⇒ 写「顶撞X<n>：<代价>」')
+    expect(zh).toContain('**破了禁区的那一章必须付代价**')
+    expect(zh).toContain('同一条禁区不能连着破三次')
+    expect(en).toContain('② he **breaks** X<n> ⇒ write "break X<n>')
     expect(en).toContain('must make him pay for it')
+    expect(en).toContain('the same line may not be broken three chapters running')
   })
 
   it('两条频率约束：守防拖沓、破防降神', () => {
@@ -164,22 +166,21 @@ describe('PromptBuilder 的 systemSuffix 渲染期替换', () => {
     expect(built).toContain('ID 只能逐字取自')
   })
 
-  // 2026-10-29 作者裁定：定性写「无」不等于「没有性格」。
-  // 做法是他平日的习惯，底线是他这个人 —— 做法一条都对不上时要兜底到第一层底线，
-  // 这是 try / catch 里的 catch，不是"这一章没他的戏"。这条守的是兜底措辞不许被改回去。
-  it('定性写「无」时退到底线兜底，D0 只留给他不在场', () => {
+  // 2026-10-29 深夜：兜底路径（做法对不上 → 退底线）随做法层一起取消。
+  // 现在守的是「依据必须有名字」——「因为他的弱点」这种说法永远能过关，机器却无从校验。
+  it('每一条依据都必须有名字，软肋允许登记前先引用', () => {
     const zh = getSynopsisTwoLevelSuffix('zh-CN')
     const en = getSynopsisTwoLevelSuffix('en-US')
-    expect(zh).toContain('没有现成做法，不等于没有性格')
-    expect(zh).toContain('兜底路径')
-    expect(zh).toContain('因为 底线<n>')
+    expect(zh).toContain('必须能在当前角色卡上或本章正文里指出对应物')
+    expect(zh).toContain('不许写「他的弱点」「他的执念」这类没有名字的说法')
+    expect(zh).toContain('软肋可以写卡上还没登记的')
     expect(zh).toContain('确实没有他的戏')
-    expect(en).toContain('No standing practice does not mean no character')
-    expect(en).toContain('fallback path')
-    expect(en).toContain('bottom <n>')
+    expect(en).toContain('must name something you can point at')
+    expect(en).toContain('never "his weakness" or "his obsession"')
+    expect(en).toContain('soft spot may be named before it is registered')
     expect(en).toContain('truly has no scene of his')
-    // 底线的编号来自角色卡第一层，与第三层的 D 编号是两套，不许混
-    expect(zh).toContain('底线<n>')
-    expect(en).toContain('bottom <n>')
+    // 三种依据的名字必须都写进格式行，否则模型只会用其中一种
+    for (const basis of ['X<n>：<那条禁区>', '筹码：<名字>', '软肋：<名字>']) expect(zh).toContain(basis)
+    for (const basis of ['X<n>: <that forbidden line>', 'chip: <name>', 'soft spot: <name>']) expect(en).toContain(basis)
   })
 })

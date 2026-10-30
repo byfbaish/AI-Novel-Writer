@@ -1,6 +1,7 @@
 import { parsePlanningTargetUnits, planningTargetInstruction, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../../shared/plot-outline-contract'
 import { STORY_BEAT_KEYS } from '../../../shared/story-beats'
-import { auditDispositionCitations, bottomLineCountOfCard, dispositionIdsOfCard } from '../../../shared/disposition-citation'
+import { auditDispositionCitations } from '../../../shared/disposition-citation'
+import { protagonistCardFromRoster } from '../../../shared/character-card-format'
 import { toApproveCharacterProposalRequest, type CharacterProposalChoices } from '../../character-proposal-choices'
 import { decodeCharacterIdentityManifest, decodeCharacterDetails, validateCharacterDetail, type CharacterIdentitySlot, type CharacterDetailOutput } from '../../../shared/character-proposal-parser'
 import type { CharacterProposalBatch } from '../../../shared/character-proposal'
@@ -46,7 +47,7 @@ import { projectScopedConfigFields, projectScopedText } from '../../../shared/te
 import { declareTraceScopeChapterRange } from '../../prompts/trace-scope'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
 import { formatChapterPosition } from '../../../shared/chapter-position'
-import { outlineChapterHeading } from '../../../shared/chapter-heading'
+import { outlineChapterHeading, parseOutlineChapterHeading } from '../../../shared/chapter-heading'
 import {
   BaseWorkflowCommand,
   injectWritingSkillIntoSession,
@@ -82,6 +83,7 @@ import type { GenerationAttemptReceipt } from '../../generation/generation-harne
 import type { NovelConfig, ProjectSessionContext } from '../../../shared/ipc-channels'
 import type { ProjectCoreSynopsisExpected } from '../../../../electron/repositories/project-core-repository'
 import type { WritingLanguage } from '../../../shared/writing-language'
+import { DEFAULT_WRITING_LANGUAGE } from '../../../shared/writing-language'
 import { createStructuredBatchExecutor, type StructuredBatchContract } from '../structured-batch-executor'
 import { localizeNovelConfigFacts } from '../../../shared/novel-config-localization'
 import {
@@ -815,18 +817,23 @@ export function summarizeArcCoverFindings(
 /**
  * 大纲写完后的**性格引用体检**：只报告，不阻断。
  *
- * 为什么「只报告」——与 P12-1 结构位对账同一个理由：判据刚接通（定性与兜底的语义
- * 2026-10-29 才定下来），现网一条读数都没有。一上线就阻断会让「继续生成大纲」直接失败，
- * 作者拿不到任何产出。先让它可见，等误报率测出来再决定要不要升级成阻断。
+ * 为什么「只报告」——与 P12-1 结构位对账同一个理由：判据刚接通，现网一条读数都没有。
+ * 一上线就阻断会让「继续生成大纲」直接失败，作者拿不到任何产出。
+ * 先让它可见，等误报率测出来再决定要不要升级成阻断。
  *
- * 返回 null 表示无需提示，三种情形：
- * - 角色卡上还没有 `D<n>` 编号（旧项目 / 没按四层写）⇒ 报下去整批都是"引用是编的"，纯噪声；
- * - 本批区间内没有章条目；
- * - 全部合规。
+ * 返回 null 表示无需提示：本批区间内没有章条目，或全部合规。
  *
- * ⚠️ **已知限制**：`charactersArch` 是整张角色图谱，多个角色的 `D<n>` 会被并成一个白名单。
- * 所以它只能抓「`D9` 这种根本不存在的编号」，抓不到「引用了另一个角色的 `D3`」。
- * 要根治得让第三层结构化（每条做法带类型 id 与角色 id）—— 那是另一期，不是接线能解决的。
+ * ## 旧四层卡：报一条汇总，不逐条报
+ *
+ * 卡上没有【禁区】段（旧四层卡、或还没重跑角色详情）时，所有 `X<n>` 引用都无从校验。
+ * 逐条报 `ARC_CHOICE_UNKNOWN_X` 会在百章大纲上产出上百条"引用是编的"，折叠成一句之后
+ * 信息量反而更低，还把真信号埋掉。所以这里只算**有多少章引用了但没有校验口径**，
+ * 拼成一条可执行的提示：说清是什么问题、影响多少章、怎么修。
+ *
+ * ## 取主角那一块，不再用整份图谱
+ *
+ * 旧做法把整份 `charactersArch` 里的编号并成一个白名单 —— 那连"引用了另一个角色的 X3"
+ * 都抓不到。现在按角色定位取主角那一块再解析，多角色混编的问题随之消失。
  */
 /** @internal 导出只为可单测；生产调用点只有 `execute` 内的那一处。 */
 export function summarizeDispositionFindings(
@@ -835,14 +842,23 @@ export function summarizeDispositionFindings(
   from: number,
   to: number,
   uiText: UiText,
+  writingLanguage: WritingLanguage = DEFAULT_WRITING_LANGUAGE,
 ): string | null {
-  const dispositionIds = dispositionIdsOfCard(charactersArch)
-  if (dispositionIds.length === 0) return null
-  const bottomLineCount = bottomLineCountOfCard(charactersArch)
+  const card = protagonistCardFromRoster(charactersArch, writingLanguage)
+
+  if (!card || card.format !== 'v3') {
+    // 旧卡：只报汇总。没有任何 X/S/筹码引用的章节不必惊动 —— 那可能整批还没写到主角。
+    const citing = countUndeclaredChapterCitations(body, from, to)
+    if (citing === 0) return null
+    return uiText(
+      `⚠️ 性格引用体检：主角卡还是旧格式（四层），章纲引用的 X 编号与筹码无法校验 —— 请重跑一次角色详情，或在角色面板里把三格贴上。受影响的章：${citing} 章。（大纲已保存；这是提示，不阻断。）`,
+      `⚠️ Disposition citation check: the protagonist card is still in the old four-layer format, so the X numbers and chips cited by the outline cannot be checked — re-run the character details, or paste the three slots in the character panel. Chapters affected: ${citing}. (The outline was saved; this is advisory only.)`,
+    )
+  }
+
   const findings = auditDispositionCitations({
     synopsis: body,
-    dispositionIds,
-    ...(bottomLineCount === undefined ? {} : { bottomLineCount }),
+    card,
     chapterRange: { from, to },
   })
   if (findings.length === 0) return null
@@ -859,6 +875,43 @@ export function summarizeDispositionFindings(
     `⚠️ 性格引用体检：${problems.join('；')}。（大纲已保存；这是提示，不阻断。）`,
     `⚠️ Disposition citation check: ${problems.join('; ')}. (The outline was saved; this is advisory only.)`,
   )
+}
+
+/**
+ * 数一数本批里有几章**引用了 X/筹码但卡是旧格式**。
+ *
+ * 这是给旧卡汇总报告用的计数：不判断对错（无从判断），只说明影响面。
+ * 与 `auditDispositionCitations` 共用同一组正则，避免两处口径漂移。
+ */
+function countUndeclaredChapterCitations(body: string, from: number, to: number): number {
+  let count = 0
+  let inChapter = false
+  let chapterNumber: number | null = null
+  let chapterHasCitation = false
+  const flush = (): void => {
+    if (!inChapter) return
+    const inRange = chapterNumber === null || (chapterNumber >= from && chapterNumber <= to)
+    if (inRange && chapterHasCitation) count += 1
+  }
+  for (const rawLine of body.split(/\r?\n/u)) {
+    const line = rawLine.trim()
+    const heading = /^#{2,4}\s*(第\s*[0-9一二三四五六七八九十百零]+\s*章[^\n]*|[Cc]hapter\s+\d+[^\n]*)$/u.exec(line)
+    if (heading) {
+      flush()
+      inChapter = true
+      chapterHasCitation = false
+      const parsed = parseOutlineChapterHeading(heading[1])
+      chapterNumber = parsed ? parsed.chapter : null
+      continue
+    }
+    if (!inChapter) continue
+    if (/^(?:[-*+]\s*)?(?:定性|[Qq]ualify|选择|[Cc]hoice)\s*[:：]/u.test(line)
+      && /(?<![A-Za-z])X[\t ]*\d|筹码|软肋|[Cc]hip|[Ss]oft[\t ]*spot/u.test(line)) {
+      chapterHasCitation = true
+    }
+  }
+  flush()
+  return count
 }
 
 function assertPlotOutlineTitleCoverage(
