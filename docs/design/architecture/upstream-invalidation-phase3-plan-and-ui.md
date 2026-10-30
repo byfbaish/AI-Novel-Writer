@@ -1,6 +1,7 @@
 # 上游失效 · 期 3 实施设计与作业图
 
 > 状态：待裁定 · 2026-10-31 · 期 3a 已切片、可无人值守施工；期 3b / 期 4 只登记不排期
+> **S6 的裁定已定（2026-10-31）**：定稿章只记 `outline` 一域（主稿 §十·2 ①）；并把 `BOOK_SOURCE_KEYS` 三域全记收窄成按类型分（S6a）。**S1–S5 不受影响，照原样施工。**
 > 上级稿：[`upstream-version-and-derived-invalidation-design.md`](upstream-version-and-derived-invalidation-design.md) §八（强提醒）· §九 步 4/5
 > 接口草案：[`upstream-invalidation-phase2-source-ref-and-read-gates.md`](upstream-invalidation-phase2-source-ref-and-read-gates.md) §十三
 > 作业手册（给无人值守的执行方）：[`docs/handoffs/2026-10-31-phase3-unattended-handoff.md`](../../handoffs/2026-10-31-phase3-unattended-handoff.md)
@@ -96,12 +97,13 @@ flowchart TD
   S4["S4 端到端<br/>取消后 rev 一位未动"]
   S5["S5 收口<br/>状态行 + 台账 + 本稿 §六"]
   S1 --> S2 --> S3 --> S4 --> S5
-  S6["S6 期 3b（不排期）<br/>M26：drafts 记 outline_rev"]
-  S7["S7 期 4（不排期）<br/>处置面板"]
-  S4 -.-> S6 -.-> S7
+  S6a["S6a 收窄 source_ref<br/>BOOK_SOURCE_KEYS → 按类型分"]
+  S6["S6 期 3b<br/>M26：drafts 记 outline_rev<br/>+ 大纲记 world/arc rev"]
+  S7["S7 期 4（不排期）<br/>处置面板：清点 + 跳转"]
+  S4 -.-> S6a -.-> S6 -.-> S7
 ```
 
-**一句话读法**：S1–S5 是一条直线，每片都有独立验收命令，**任一片没绿就不许开下一片**；虚线两片本期只登记、不施工。
+**一句话读法**：S1–S5 是一条直线，每片都有独立验收命令，**任一片没绿就不许开下一片**；虚线三片本期只登记、不施工。
 
 | 片 | 内容 | 验收命令（必须逐字跑） | 预计改动量 |
 |---|---|---|---|
@@ -110,6 +112,9 @@ flowchart TD
 | **S3** | 三档密度的确认框 | `pnpm test src/components/editor/__tests__/` | 改 1 个组件 + 1 个新测试 |
 | **S4** | 端到端：plan → 取消 → rev 不变 | `pnpm test electron/controllers/__tests__/` | 加 1 个集成测试 |
 | **S5** | 收口 | `node scripts/check-fast.mjs` | 只改文档 |
+| ~~S6a~~ | **不排期**：把 `BOOK_SOURCE_KEYS`（三域全记）收窄成按派生类型分（主稿 §十·2 ①）。改动＝`derived-source-ref.ts:44` 一处 + 三个写入点传各自的键集。**测试代价很小**（`upstream-source-ref-writes.test.ts` 里 `worldbuilding:book` 零出现，断言走的是解析后的 ref） | `pnpm test electron/repositories/__tests__/upstream-source-ref-writes.test.ts` | 约 30 行 |
+| ~~S6~~ | **不排期**：M26 给 `drafts` 加 `outline_rev`；`project_core` 记 world/arc rev（补中间环）；plan 加「已定稿章节」组 | 未定 | 中 |
+| ~~S7~~ | **不排期**：处置面板（清点 + 跳转，不亲自重算） | 未定 | 中 |
 
 ---
 
@@ -196,6 +201,11 @@ export function computeInvalidationPlan(input: {
 - 组标题：`章节蓝图（N）` / `卷末交接单（N）` / `剧情树（N）`
 - `unseen.count > 0` 时**单独一行**：`另有 N 项无法判断（旧数据没有来源记录），本次不做处置`
 - `unaffected` 非空时单独一行：`第 X–Y 章及其派生不受影响`
+- **影响范围一行**（主稿 §十·2 ④，必写）：
+  - 世界观变更 ⇒ `世界观变更影响全书设定`
+  - 卷回滚 ⇒ 逐层列出「该卷 → 下游单元 → 各章大纲与蓝图 → 正文」
+  - 局部修改 ⇒ `影响范围难以精确判定，推荐下游全部重新生成` + **不替作者决定**
+  - 能定位到章 ⇒ 直接给章号区间
 
 **验收**：三档各一条组件测试，钉住「`strong` 档未勾选时主按钮 disabled」与「`unseen` 那行必须出现」。
 
@@ -223,11 +233,12 @@ export function computeInvalidationPlan(input: {
 
 ## 五、本稿不做
 
-- **不给「已定稿章节」组硬造判据**（无原料）。要做得先加 M26：定稿时把当时的 `outline` rev 快照进 `drafts`，见 S6。
+- **不给「已定稿章节」组硬造判据**（无原料）。**前置已定（2026-10-31）**：S6a 收窄 `source_ref` → S6 加 M26 记 `outline_rev` + 补大纲的 world/arc rev。只是不排期。
 - **不做伏笔计划组**。主稿 §八 已裁定它不进版本表（作者输入即上游）。
 - **不做处置面板**（S7，主稿 §九 步 5「最后做」）。
-- **不做回滚原语**（主稿 §8.5）。
+- **不做回滚原语**（主稿 §8.5）。卷回滚属 P0-1 残留，其"波及范围"口径已写进主稿 §十·2 ④，实现时照此。
 - **不在 plan 阶段 bump rev**（§8.1，红线）。
+- **不把大纲层做成硬拦**（主稿 §十·2 ③）。本项目定位是「规划层浅参与」，控制力度归作者；这条**不改变**期 2 已落地的 A 类硬拒（正文链遇 stale 蓝图拒绝写作）—— 越靠近正文越硬是既定口径。
 
 ## 六、落地记录
 
