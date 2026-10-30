@@ -302,6 +302,12 @@ docs/
 | [`live-verification-checklist.md`](design/product/live-verification-checklist.md) | 待执行 | **一次新项目跑批要验什么**：按世界观→架构→第一章→修稿四阶段排好，标零成本/人工判读；P17-3 明确不在本轮 |
 | [`config-registry-write-paths-assessment.md`](design/product/config-registry-write-paths-assessment.md) | 待裁定 | 配置与登记格**五条写入路径只有两条带确认面**；手填的真负担是「护锚」不是建账；「抽卡变追加」与「输入框看不清」是同一个缺口（缺显式替换动作），diff 面板正好补它 |
 
+### 4.7 Harness 与文档治理 · [`design/harness/`](design/harness/)（1 篇）
+
+| 文档 | 状态 | 一句话 |
+|---|---|---|
+| [`harness-and-docs-reorganization-plan.md`](design/harness/harness-and-docs-reorganization-plan.md) | 待裁定 | 用五子系统（指令/工具/环境/状态/反馈）给本仓库打分：**环境与工具已经很强，状态与反馈是两条短腿**，并附一处可 `git show` 复盘的漂移实例；三档方案（A 止血 / B 状态归一 / C 历史清理），本次只出了 A 档的一半 |
+
 ---
 
 ## 5. 台账与冻结区
