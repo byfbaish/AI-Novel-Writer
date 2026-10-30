@@ -6,6 +6,9 @@ import { renderIcon } from '../panels/sidebar/sidebar-icons'
 
 import { registerEditorExitSaveHandler, useEditorStore, type PlanningRecoverySaveSnapshot } from '../../stores/editor-store'
 import ArchitectureConfirmDialog from '../dialogs/ArchitectureConfirmDialog'
+import InvalidationPlanGatePanel from '../dialogs/InvalidationPlanGatePanel'
+import { HYPOTHETICAL_NEXT_REV, type InvalidationPlan } from '../../shared/invalidation-plan'
+import type { UpstreamDomain } from '../../shared/upstream-revisions'
 import { Button } from '../ui/Button'
 import { ipc } from '../../services/ipc-client'
 import { requireIpcSuccess } from '../../services/ipc-result'
@@ -226,6 +229,9 @@ function ArchFileViewerSession({
   const [saveOutcome, setSaveOutcome] = useState<SaveOutcome>('idle')
   const [loading, setLoading] = useState(false)
   const [showDialog, setShowDialog] = useState(false)
+  // 失效清单闸门（期 3a）：挂着说明还没执行，真正的动作存在 ref 里等确认。
+  const [invalidationPlan, setInvalidationPlan] = useState<InvalidationPlan | null>(null)
+  const pendingInvalidationAction = useRef<(() => Promise<void>) | null>(null)
   const [checkingArch, setCheckingArch] = useState(false)
   const [fullArchStatus, setFullArchStatus] = useState<Record<string, boolean>>({})
   /**
@@ -800,7 +806,40 @@ function ArchFileViewerSession({
     }
   }
 
-  const continuePlanning = async () => {
+  /**
+   * P2-3 期 3a：重建 / 续写之前的失效清单闸门。
+   *
+   * ## 为什么「拿不到清单」要 fail-open
+   *
+   * 闸门存在的理由是把代价摆出来，**不是用来挡人的**。库没开、版本表不存在、
+   * 请求抛了 —— 任何一种都不该让作者写不了字。所以失败一律放行。
+   *
+   * ## `silent` 为什么不弹
+   *
+   * 无事可报还弹窗，第三次就会变成盲点确定（主稿 §8.3）。
+   */
+  const guardWithInvalidationPlan = async (domain: UpstreamDomain, action: () => Promise<void>) => {
+    const session = recoverySession.current
+    if (!session || !isProjectSessionCurrent(session)) { await action(); return }
+    let result: { success: boolean; plan?: InvalidationPlan } | undefined
+    try {
+      result = await ipc.invokeWithProjectSession(
+        session,
+        'db:invalidation-plan',
+        { domain, rev: HYPOTHETICAL_NEXT_REV },
+        session.projectPath,
+      )
+    } catch {
+      await action()
+      return
+    }
+    const plan = result?.success ? result.plan : undefined
+    if (!plan || plan.tier === 'silent') { await action(); return }
+    pendingInvalidationAction.current = action
+    setInvalidationPlan(plan)
+  }
+
+  const runContinuePlanning = async () => {
     if (continuing || saving) return
     setContinuing(true)
     try {
@@ -816,6 +855,10 @@ function ArchFileViewerSession({
       await refreshRecovery()
     } catch (error) { setRecoveryError(appErrorMessage(useLocaleStore.getState().locale, error)) }
     finally { setContinuing(false) }
+  }
+
+  const continuePlanning = async () => {
+    await guardWithInvalidationPlan('outline', runContinuePlanning)
   }
   const generated = initialContent.length > 50 && !initialContent.includes('待生成')
 
@@ -1000,6 +1043,23 @@ function ArchFileViewerSession({
           : text('本次所选章节已保存。', 'The selected chapters are saved.')}</p>
         {recovery.plotOutlineRecovery?.writeState.kind === 'blocked' && <p>{text('生成尚在进行、来源已变化或本稿已保存时，不能覆盖正式内容。草稿仍可编辑和复制。', 'Active generation, changed sources or an already saved draft prevent replacing saved content. You can still edit and copy this draft.')}</p>}
         <button type="button" className="btn-secondary" disabled={continuing || saving || !projectMatches || !recovery.planningContinuation?.remainingRange || !['ready', 'continued'].includes(recovery.planningContinuation.state)} onClick={() => { void continuePlanning() }}>{text('继续生成缺少的章节', 'Generate remaining chapters')}</button>
+        {/* 期 3a：确认前把 blast radius 摆出来。取消了就什么都不做（plan 阶段没写过库）。 */}
+        {invalidationPlan && (
+          <InvalidationPlanGatePanel
+            plan={invalidationPlan}
+            domain="outline"
+            onProceed={() => {
+              const action = pendingInvalidationAction.current
+              pendingInvalidationAction.current = null
+              setInvalidationPlan(null)
+              if (action) void action()
+            }}
+            onDismiss={() => {
+              pendingInvalidationAction.current = null
+              setInvalidationPlan(null)
+            }}
+          />
+        )}
         <details><summary>{text('原始候选', 'Original candidate')}</summary><pre className="whitespace-pre-wrap max-h-40 overflow-auto">{recoveryTab?.originalContent}</pre></details>
         {recoveryError && <p role="alert">{recoveryError}</p>}
       </div>}

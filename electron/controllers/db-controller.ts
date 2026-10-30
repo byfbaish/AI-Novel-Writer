@@ -19,7 +19,7 @@ import {
 } from '../repositories/project-core-repository'
 import { ProjectClearRepository, ProjectClearOptions } from '../repositories/project-clear-repository'
 import { computeInvalidationPlan } from '../../src/shared/invalidation-plan'
-import type { UpstreamDomain } from '../../src/shared/upstream-revisions'
+import { BOOK_SCOPE, upstreamRefKey, type UpstreamDomain } from '../../src/shared/upstream-revisions'
 import {
   BlueprintRepository,
   BlueprintData,
@@ -1055,11 +1055,20 @@ export function registerDatabaseController() {
       if (!db || !UpstreamRevisionRepository.hasTable(db)) return { success: false, missing: true }
       // 只读一次：一次上下文、两份 Map（设计稿 §5.6：禁止在逐行循环里查）。
       const context = readDerivedReadContext(db)
+      // ⚠️ 施工期补的口径（施工图未钉，已登记在 §六，待作者裁定）：
+      // `rev <= 0` ⇒ 「假想这个域再改一版」（当前 rev + 1）。
+      // 为什么需要它：UI 手边没有当前版本号（没有读版本表的 IPC），而它要问的正是
+      // 「再改一版会怎样」。借 0 这个「不是合法版本号」的值表达，是为了不动施工图
+      // 钉死的 `rev: number` 签名 —— 增字段或增 channel 都要先改设计。
+      const requestedKey = upstreamRefKey(request.domain, request.scope ?? BOOK_SCOPE)
+      const hypotheticalRev = request.rev > 0
+        ? request.rev
+        : (context.revisions.get(requestedKey) ?? 0) + 1
       const blueprintRefs = BlueprintRepository.readSourceRefs(db)
       const handoffRefs = readVolumeHandoffSourceRefs(db)
       const handoffs = hasVolumeHandoffSchema(db) ? listVolumeHandoffs(db) : []
       const plan = computeInvalidationPlan({
-        overrides: [request],
+        overrides: [{ domain: request.domain, scope: request.scope, rev: hypotheticalRev }],
         revisions: context.revisions,
         changes: context.changes,
         blueprints: [...blueprintRefs.entries()].map(([chapterNumber, sourceRef]) => ({ chapterNumber, sourceRef })),

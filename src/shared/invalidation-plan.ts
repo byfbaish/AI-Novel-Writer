@@ -38,6 +38,15 @@ import {
 export type InvalidationGroupKind = 'blueprint' | 'handoff' | 'plot-tree'
 
 /**
+ * 「假想这个域再改一版」的请求值。
+ *
+ * UI 手边没有当前版本号（没有读版本表的 IPC），而它要问的正是「再改一版会怎样」。
+ * 借 `0` 这个不是合法版本号的值来表达，是为了不动施工图钉死的 `rev: number` 签名 ——
+ * 增字段或增 channel 都得先改设计。**这是施工期补的口径，待作者裁定**（登记在 §六）。
+ */
+export const HYPOTHETICAL_NEXT_REV = 0
+
+/**
  * 提醒强度。**只由后端给**（主稿 §8.3），UI 不许自己重算：
  * 强度背后是「后果能不能撤销」这种业务判断，放到渲染层等于把它做成样式选择。
  */
