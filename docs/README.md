@@ -262,6 +262,8 @@ docs/
 
 | [`upstream-version-and-derived-invalidation-design.md`](design/architecture/upstream-version-and-derived-invalidation-design.md) | 🟡 期 1 已落地（2026-10-30） | **上游重建与下游失效**：五套先例（物化视图维护 Gupta&Mumick · Bazel **change pruning** · Salsa **red-green/backdating** · dbt **state:modified+** · K8s **level-triggered**）收敛到同一条 —— **写时不传播、读时验证**；事件只当提示不当真相。三个答案：① 上游按影响域分版 `upstream_revisions(domain,scope,rev,digest)`，大纲按**单元批次**而非整版（同 Doris 分区对齐）② 派生只记 `source_ref`「我基于哪一版」，**不记下游、不做反向索引**（反向索引必然漏，这就是今天 16 处静默消费的来源）③ 处置三档（可自愈重算 / 标失效+**读取侧拒绝** / 归档），执行者都在读方。三条不照搬：**LLM 产出不可复现 ⇒ early cutoff 只对确定性派生有效**；反向索引必然漏；只标脏没人看 = 没标。**期 1 = M24 建表 + 判定纯函数 + 两个写入点，零消费者改动**；期 2 接读取侧。上游回滚须**先算 plan 再执行**（§八） |
 
+| [`upstream-invalidation-phase2-source-ref-and-read-gates.md`](design/architecture/upstream-invalidation-phase2-source-ref-and-read-gates.md) | 📝 设计稿（2026-10-30，未改代码） | **上游失效期 2 的实施设计**：核代码后先补**四个前置缺口** —— ①`refCoversChapter` 零调用，判定侧没有按章收窄入口（不补就退化成「改一章整批判脏」）②`bump` 取并集永不清空，整本重生成会被历史章集吃掉（**漏判**）③累积并集会把**刚手改完的行**判成 stale 并拒绝使用（拦新不拦旧）⇒ 章集格式改 `{"rev":[章]}`，判定取 `(have,need]` ④`snapshot()` 不吃 `database`，会「内容写 A 库、版本读 B 库」。落地：M25 给 `volume_handoffs`/`blueprints` 加 `source_ref`（D 类），剧情树在 JSON 内加 `sourceRef` 与既有 hash 并存；**判定放主进程 IPC 边界**（渲染侧只决定反应），正文链遇 stale **抛错不静默**（读失败仍 fail-open，两者靠 `warning`/`validity` 两字段区分）。两处修正上级稿：`outline` 期 2 维持 `book`（拿不到 unitId）、`narrative_thread_plans` 不进版本表（作者输入本身就是上游） |
+
 ### 4.3 审稿链 · [`design/review/`](design/review/)（4 篇）
 
 | 文档 | 状态 | 一句话 |

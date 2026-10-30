@@ -338,6 +338,8 @@ flowchart LR
 
 **期 1 没做的（转入期 2）**：`outline:<unitId>` 单元级作用域（需接 E3 逐单元生成落盘点）、角色卡域（`characters.personality` 编辑/提案采纳）、以及全部读取侧判定 —— 按设计，期 1 只让版本存在，一个消费者都不改。
 
+**期 2 的实施设计另起一稿**：[`upstream-invalidation-phase2-source-ref-and-read-gates.md`](upstream-invalidation-phase2-source-ref-and-read-gates.md)。核代码后发现四个前置缺口（`refCoversChapter` 零调用、`bump` 并集吃掉整本重生成、累积并集会把刚手改的行判脏、`snapshot()` 不吃 `database`），并修正本稿两处：`outline` 期 2 维持 `book` 作用域（拿不到 unitId）、`narrative_thread_plans` 不进版本表（它是作者输入，本身就是上游）。
+
 ### 9.2 plan 必须如实报"看不见的部分"
 
 第 4 步刚上线时，只有第 2、3 步填过 `source_ref` 的那几张表可判，其余派生是 `legacy`。这时 plan 的清单**不能把 `legacy` 当成"不受影响"**（那是最坏的低估）。
