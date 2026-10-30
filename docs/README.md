@@ -198,7 +198,7 @@ docs/
 | [`character-disposition-questionnaire.md`](design/prompt/character-disposition-questionnaire.md) | 📝 提案，待裁定（2026-10-28，**其"题库用途"已被下一行修正为翻译而非测量**） | **性格从哪来**：现行条款「局面必须本卷出现两次」把**因果链倒置**（未来剧情 → 性格），而性格底色来自**过去**、只决定未来的**倾向**；作者判断成立。业内四类方法（**SJT 情境判断测验**＝作者描述的那件事，但只有 behavioural-tendency 版测人格、knowledge 版测理想人格；Kohlberg 两难故事法「不问选什么问为什么」；D&D 九宫格只借两根轴不借标签；角色问卷是题型参考但最易 cookie-cutter）· 三个坑（产标签 / 题目与世界观不搭 / 把人拆成零件）· 提案：8–12 道前史两难题（四组轴对应下游力源）· 判据 J1 不含本作专有名词 / J2 至少 1 条对他不利 / J3 至少 1 对互相打架 / J4 至少导出两种力源 · 分两步（先改文本判据，后加阶段的题库） |
 | [`character-dynamics-effective-site.md`](design/prompt/character-dynamics-effective-site.md) | ✅ 已落地（2026-10-28，方案甲；当晚二次收紧） | **角色性格倾向的实际生效点**：架构链「角色」步只读模板 `systemRole` + `taskGuidance`，**`content` 无出路**（`architecture.command.ts` 的 `creativeSystem` / `creativeGuidance` 两条赋值）；真正条款在 `prompt-language.ts` 的 `CHARACTER_ARCHITECTURE_PROMPTS`（中英各一套）· **120 字符是话术不是硬墙**（v2 解析不校验，模型照写所以被压缩）· 两轮白跑时间线 · **已落方案甲**：detailTask 加【主角的性格倾向】三行式 + 四条硬要求、`personality` 上限 120→400、测试锚定生效点 · **二次收紧**：「局面」必须写成**条件句**且含**当场要做的选择**（首轮实测写成"同门当众递状纸"这类具体事件；`personality` 会原样进 `characters_arch` 被大纲/正文读到 ⇒ 等于开第二个事实源） |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（48 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（49 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -259,6 +259,8 @@ docs/
 | [`e3-unit-batch-chain-design.md`](design/architecture/e3-unit-batch-chain-design.md) | 🟡 T12 已实施 · 待实机复验 | **连续单元（链式新 run）**：一次确认连写 N 个，**只到本卷末**；判定顺序 卷界 > 配额；每批必须重读检查点 / 重探 / 重放 author inputs / 等上一批退出活跃列表；重启不续链 |
 | [`chapter-position-format-design.md`](design/architecture/chapter-position-format-design.md) | 🟡 P0/P1/P2 已落地 · P3 待做 | **章节位置表达统一**：`## 第3卷第2单元第3章（全书第45章）：章名`——把「属哪卷哪单元」从**事后折算**变成**生成时写进标题**，给 `outline-tree` 补第四种 source（`heading`），终结「单元写超 ⇒ 后续章号与单元整体错位」；三个各写各的章标题正则已抽成共享解析器（P0 零行为变化），存量永久双格式兼容。**P2 三个坑见 §5**：`naming==='volume'` 只是措辞不是层数、格式段只在 suffix 出现一次、逐章模式刻意不改 |
 | [`story-beat-library.md`](design/architecture/story-beat-library.md) | ✅ 已实施（2026-10-28，拍子格当晚改形见 §6.1） | **故事节拍库与分层换拍**：旧口径「严格按结构组织大纲 + 百分比切章」在 150 章书上等于**82 章共用一句职责**（中段无分段依据 ⇒ 只能同构循环填，读感＝拖沓＋一个套路）。新口径：`shared/story-beats.ts` 为唯一事实源（十套拍子 × 原生跨度），**全书层只定两端**、卷／单元各选一套、**同一层只准一套**（防叠层：*layering gives a spreadsheet, not a book*）、相邻不同拍／卷内不重样／跨度匹配四条机检（`ARC_SAME_BEAT` / `ARC_BEAT_REPEAT` / `ARC_BEAT_OVERSPAN` / `ARC_BEAT_UNKNOWN`）。只查下限，不承诺质量。**§6.1：首版「一拍一句话」把卷纲撑爆（7 卷 + 26 单元、节拍表 15 拍 ⇒ 整份被截断），已改成「名字 + 落位」两行；骨架只在库里，拍子到单元层为止，章纲层是场景清单不是拍子** |
+
+| [`upstream-version-and-derived-invalidation-design.md`](design/architecture/upstream-version-and-derived-invalidation-design.md) | 🟡 期 1 已落地（2026-10-30） | **上游重建与下游失效**：五套先例（物化视图维护 Gupta&Mumick · Bazel **change pruning** · Salsa **red-green/backdating** · dbt **state:modified+** · K8s **level-triggered**）收敛到同一条 —— **写时不传播、读时验证**；事件只当提示不当真相。三个答案：① 上游按影响域分版 `upstream_revisions(domain,scope,rev,digest)`，大纲按**单元批次**而非整版（同 Doris 分区对齐）② 派生只记 `source_ref`「我基于哪一版」，**不记下游、不做反向索引**（反向索引必然漏，这就是今天 16 处静默消费的来源）③ 处置三档（可自愈重算 / 标失效+**读取侧拒绝** / 归档），执行者都在读方。三条不照搬：**LLM 产出不可复现 ⇒ early cutoff 只对确定性派生有效**；反向索引必然漏；只标脏没人看 = 没标。**期 1 = M24 建表 + 判定纯函数 + 两个写入点，零消费者改动**；期 2 接读取侧。上游回滚须**先算 plan 再执行**（§八） |
 
 ### 4.3 审稿链 · [`design/review/`](design/review/)（4 篇）
 

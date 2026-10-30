@@ -31,7 +31,17 @@ function createMockDb() {
   const run = vi.fn()
   const all = vi.fn(() => [{ name: 'fact_hash' }])
   const get = vi.fn(() => ({ present: true }))
-  const prepare = vi.fn((sql: string) => ({ sql, run, all, get: sql.includes('character_identity_meta') ? () => undefined : get }))
+  // 这个 mock 库**没有** `upstream_revisions`（M24 才建的表）。所以只对「问这张表在不在」
+  // 的查询返回「不在」—— 否则会假装表已存在，`update()` 就会多 bump 三个域，
+  // 而真实的老库在这条路径上应该是「安静跳过」。见 upstream-revision-repository.ts `bump`。
+  // **只匹配 upstream_revisions**：其他 `sqlite_master` 查询（蓝图表存在性等）语义不同，
+  // 一并改掉会误伤无关用例。
+  const absent = () => undefined
+  const isUpstreamTableProbe = (sql: string) => sql.includes('sqlite_master') && sql.includes('upstream_revisions')
+  const prepare = vi.fn((sql: string) => ({
+    sql, run, all,
+    get: sql.includes('character_identity_meta') || isUpstreamTableProbe(sql) ? absent : get,
+  }))
   const transaction = vi.fn((fn: () => void) => () => fn())
   const exec = vi.fn()
   return { prepare, transaction, run, exec }

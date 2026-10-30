@@ -6,6 +6,8 @@
  */
 import { getProjectDb } from '../database'
 import { CREATIVE_STRATEGIES, type CreativeStrategy } from '../../src/shared/reasoning-types'
+import { expandChapterRange, type UpstreamDomain } from '../../src/shared/upstream-revisions'
+import { UpstreamRevisionRepository } from './upstream-revision-repository'
 import {
     DEFAULT_WRITING_LANGUAGE,
     resolveWritingLanguage,
@@ -216,9 +218,34 @@ export class ProjectCoreRepository {
         setClauses.push("updated_at = datetime('now')")
         values.push('main')
 
-        db.prepare(`
+        // P2-2：内容写入与上游版本 +1 必须原子（M24，2026-10-30）。
+        //
+        // 分三条独立语句跑的话，「内容改了、版本没加」是会发生的 —— 那一刻下游派生
+        // 仍被判 valid，而它基于的东西已经变了，正是这套机制要消灭的静默消费。
+        // 反过来（版本加了、内容没改）只是多算一次脏，代价可接受，所以方向取得保守。
+        //
+        // 按**实际传入的字段**分派域，不按「调了一次接口」：一次 update 可能同时改
+        // 世界观与弧光（设置面板批量保存），只 bump 一个域就会漏另一个。
+        //
+        // 只记「会改变下游生成前提」的四个字段，不记全部 —— `worldSetting`（作者配的
+        // 世界设定）、`coreOutline`、`goldenFinger` 是**给模型的配料**，它们的最终消费
+        // 者是架构生成，而架构生成落盘时又会写 `worldbuilding` / `synopsis`，在那条
+        // 路径上自然 bump。把配料也算进来只会制造「改了一个不影响的字段，全库标脏」。
+        db.transaction(() => {
+            db.prepare(`
       UPDATE project_core SET ${setClauses.join(', ')} WHERE id = ?
     `).run(...values)
+
+            const touched: UpstreamDomain[] = []
+            // `premise` 与 `worldbuilding` 同属「这个世界是什么」：前提一变，世界观与
+            // 卷纲的依据就变了，下游不该还认为自己有效。
+            if ('worldbuilding' in data || 'premise' in data) touched.push('worldbuilding')
+            if ('plotStructurePlan' in data) touched.push('arc')
+            // `synopsis` 的主路径是 `commitSynopsis`（带 CAS 与作者手改记录），但设置面板
+            // 也可能直接写它。漏了这条，「作者在设置里改了大纲」就完全不留痕。
+            if ('synopsis' in data) touched.push('outline')
+            for (const domain of touched) UpstreamRevisionRepository.bump({ domain }, db)
+        })()
     }
 
     static commitSynopsis(request: ProjectCoreSynopsisCommitRequest, db = getProjectDb()): boolean {
@@ -255,7 +282,22 @@ export class ProjectCoreRepository {
             expected.narrativePov,
             expected.globalGuidance,
         )
-        return result.changes === 1
+        if (result.changes !== 1) return false
+        // P2-2：大纲落盘 = 上游 +1（M24）。CAS 成功才 bump —— 版本必须描述
+        // **真的发生了**的那次写入，不是"尝试过的那次"。失败分支不 bump。
+        //
+        // scope 记 `book`：这一条写的是整本 `synopsis` 文本，粒度就是全书。
+        // 单元级（`outline:<unitId>`）由 E3 逐单元生成落盘时另记，期 2 接。
+        //
+        // `changed_chapters` 取作者这次提交覆盖的章区间展开：**期 1 只落数据不消费**，
+        // 判定侧收窄要等派生侧开始记 `source_ref`（期 2）之后才有意义。
+        UpstreamRevisionRepository.bump({
+            domain: 'outline',
+            changedChapters: request.authorRecovery
+                ? expandChapterRange(request.authorRecovery.committedRange)
+                : [],
+        }, db)
+        return true
     }
 
     /** 清空由架构/导入/AI 分析生成的创作字段，保留项目名、章节规模与基础偏好 */
