@@ -99,11 +99,14 @@ flowchart TD
   S1 --> S2 --> S3 --> S4 --> S5
   S6a["S6a 收窄 source_ref<br/>BOOK_SOURCE_KEYS → 按类型分"]
   S6["S6 期 3b<br/>M26：drafts 记 outline_rev<br/>+ 大纲记 world/arc rev"]
+  S6c["S6c 溯源流水<br/>upstream_revision_log<br/>时间 + 原因"]
   S7["S7 期 4（不排期）<br/>处置面板：清点 + 跳转"]
-  S4 -.-> S6a -.-> S6 -.-> S7
+  S4b["S4b 硬拒带溯源链<br/>describeDrift 升级<br/>零迁移"]
+  S4 --> S4b
+  S4 -.-> S6a -.-> S6 -.-> S6c -.-> S7
 ```
 
-**一句话读法**：S1–S5 是一条直线，每片都有独立验收命令，**任一片没绿就不许开下一片**；虚线三片本期只登记、不施工。
+**一句话读法**：S1–S5 是一条直线，每片都有独立验收命令，**任一片没绿就不许开下一片**；`S4b` 是挂在主线上的补丁（零迁移，可随时插入）；虚线四片本期只登记、不施工。
 
 | 片 | 内容 | 验收命令（必须逐字跑） | 预计改动量 |
 |---|---|---|---|
@@ -112,8 +115,10 @@ flowchart TD
 | **S3** | 三档密度的确认框 | `pnpm test src/components/editor/__tests__/` | 改 1 个组件 + 1 个新测试 |
 | **S4** | 端到端：plan → 取消 → rev 不变 | `pnpm test electron/controllers/__tests__/` | 加 1 个集成测试 |
 | **S5** | 收口 | `node scripts/check-fast.mjs` | 只改文档 |
+| ~~S4b~~ | **零迁移，可随时插入**：`describeDrift` 升级成带证据链（主稿 §十·3 第 2 层）。输出格式钉死：`情节大纲 第3版→第5版（第4版改过第12–14章；第5版改过第31章）`；取不到的版本写「该版改动章未知」，**不猜不留空**。只改 `src/shared/upstream-revisions.ts` 一个函数 + 其调用点文案；**不动签名**（`behind` 形状不变） | `pnpm test src/shared/__tests__/upstream-revisions.test.ts` | 约 40 行 + 8 例 |
 | ~~S6a~~ | **不排期**：把 `BOOK_SOURCE_KEYS`（三域全记）收窄成按派生类型分（主稿 §十·2 ①）。改动＝`derived-source-ref.ts:44` 一处 + 三个写入点传各自的键集。**测试代价很小**（`upstream-source-ref-writes.test.ts` 里 `worldbuilding:book` 零出现，断言走的是解析后的 ref） | `pnpm test electron/repositories/__tests__/upstream-source-ref-writes.test.ts` | 约 30 行 |
 | ~~S6~~ | **不排期**：M26 给 `drafts` 加 `outline_rev`；`project_core` 记 world/arc rev（补中间环）；plan 加「已定稿章节」组 | 未定 | 中 |
+| ~~S6c~~ | **不排期**：`upstream_revision_log`（append-only）记每版的时间 + 原因 + 章集。**它是"回滚要有据可查"的硬需求**：卷回滚一旦实现，回滚产生的 bump 与作者手改的 bump 在库里长得一模一样，事后无法区分（与 ADR-0026 同一条纪律）。`reason` 取值待作者确认：`author-edit` / `regenerate` / `rollback` / `import-restore` / `clear`，**未知记 `unknown` 不许省略** | 未定 | 中 |
 | ~~S7~~ | **不排期**：处置面板（清点 + 跳转，不亲自重算） | 未定 | 中 |
 
 ---
@@ -239,6 +244,7 @@ export function computeInvalidationPlan(input: {
 - **不做回滚原语**（主稿 §8.5）。卷回滚属 P0-1 残留，其"波及范围"口径已写进主稿 §十·2 ④，实现时照此。
 - **不在 plan 阶段 bump rev**（§8.1，红线）。
 - **不把大纲层做成硬拦**（主稿 §十·2 ③）。本项目定位是「规划层浅参与」，控制力度归作者；这条**不改变**期 2 已落地的 A 类硬拒（正文链遇 stale 蓝图拒绝写作）—— 越靠近正文越硬是既定口径。
+- **硬拒文案的溯源链不并进 S1–S5**（主稿 §十·3）。现文案只给域名（「情节大纲已经改过了」），第 1+2 层（版本区间 + 每版章集）做成 S4b，可独立先做；第 3 层（时间 + 原因）要 S6c 的流水表。**别合成一片**，否则文案升级会被一条迁移堵住。
 
 ## 六、落地记录
 
