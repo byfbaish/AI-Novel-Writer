@@ -64,14 +64,22 @@ function deletionSurfaceConfig(
       ),
     },
     manuscript: {
+      /**
+       * ⚠️ 这段必须写明「草稿与正文一起删」。
+       *
+       * 2026-10-30 实机：作者点「删除正文」，以为删的是定稿身份，结果草稿箱该章直接空掉
+       * （每章通常只有一条草稿 v1，它就是定稿）。原文案只写「会删除定稿事实，并清理实体稿、
+       * 知识库和后处理投影」——**唯独没写最要命的那一句**。ADR-0021 把安全通道放在草稿箱
+       * （「退回草稿」），但作者是从正文进来的，看不到那条通道，所以这里必须同时给出指路。
+       */
       confirmation: text(
-        `确认删除正文「${displayName}」？\n此操作会删除定稿事实，并清理实体稿、知识库和后处理投影；蓝图会保留。清理失败时可在正文章节下重试。`,
-        `Delete manuscript “${displayName}”?\nThis removes the finalized fact and cleans its manuscript file, knowledge document, and post-processing projections. The blueprint is preserved, and failed cleanup can be retried below Manuscript chapters.`,
+        `确认删除正文「${displayName}」？\n这一章的草稿与正文会一起从草稿箱删除，无法从这里恢复；同时清理实体稿、知识库文档和后处理投影。蓝图会保留，清理失败可在正文章节下重试。\n\n如果你只是想改这一章的正文，请先取消，改在草稿箱这一章上用「退回草稿」——那样正文会保留。`,
+        `Delete manuscript “${displayName}”?\nThis chapter's draft and text are deleted from the draft box along with it and cannot be recovered here; its manuscript file, knowledge document, and post-processing projections are cleaned up too. The blueprint is preserved, and failed cleanup can be retried below Manuscript chapters.\n\nIf you only want to revise this chapter, cancel and use “Move back to draft” on it in the draft box instead — that keeps the text.`,
       ),
-      confirmationTitle: text('删除正文', 'Delete manuscript'),
+      confirmationTitle: text('删除正文（草稿一并删除）', 'Delete manuscript (draft included)'),
       success: text(
-        `已删除正文「${displayName}」及其派生投影`,
-        `Deleted manuscript “${displayName}” and its derived projections.`,
+        `已删除正文「${displayName}」及其草稿与派生投影`,
+        `Deleted manuscript “${displayName}” with its draft and derived projections`,
       ),
       partialFailure: error => text(
         `正文已删除，但派生投影仍待清理：${error}。请使用“重试清理”。`,
