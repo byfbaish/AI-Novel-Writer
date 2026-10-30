@@ -14,6 +14,7 @@ import { normalizeChapterWordsTarget } from './chapter-creation-parameters'
 import { localize } from '../../i18n/core'
 import type { Locale } from '../../i18n/types'
 import { useLocaleStore } from '../../stores/locale-store'
+import { describeDrift, type DerivedValidity } from '../../shared/upstream-revisions'
 
 // ==========================================
 // 1. 结构与类型导出 (保留对外的向后兼容)
@@ -563,11 +564,24 @@ function createFinalizedPostProcessWorkflow(options: FinalizedPostProcessRunOpti
           // 从数据库蓝图读取正式标题
           let chapterTitle = text(`第${chapterNumber}章`, `Chapter ${chapterNumber}`)
           let chapterEntities: string[] = []
+          let rerunBlueprint: { title?: string; characters?: string[]; validity?: DerivedValidity } | null = null
           try {
-            const bp = await ipc.invokeWithProjectSession(projectSession, 'db:blueprint-get', chapterNumber, projectPath)
-            if (bp?.title) chapterTitle = bp.title
-            if (Array.isArray(bp?.characters)) chapterEntities = bp.characters
+            rerunBlueprint = await ipc.invokeWithProjectSession(
+              projectSession, 'db:blueprint-get', chapterNumber, projectPath,
+            ) as { title?: string; characters?: string[]; validity?: DerivedValidity } | null
           } catch { /* 蓝图读取失败时使用默认标题 */ }
+          // 章节卡过期就拒绝（P2-2 期 2）：标题与在场阵容都从这张卡取，卡旧了
+          // 就意味着这次重跑会拿一份和当前大纲不一致的事实去覆盖后处理结果。
+          // 注意判定必须在 `try` 之外 —— 放里面会被上面那个 catch 吞成「用默认标题」。
+          if (rerunBlueprint?.validity?.state === 'stale') {
+            const drift = describeDrift(rerunBlueprint.validity.behind)
+            throw new Error(text(
+              `第${chapterNumber}章的章节卡基于的${drift}已经改过了，请先核对这张卡再重跑后处理`,
+              `The card for Chapter ${chapterNumber} is stale: ${drift} changed since it was written.`,
+            ))
+          }
+          if (rerunBlueprint?.title) chapterTitle = rerunBlueprint.title
+          if (Array.isArray(rerunBlueprint?.characters)) chapterEntities = rerunBlueprint.characters
 
           // 重跑也冻结一次模型租约，全部 LLM 后处理共享一个预算。
           const { RunFinalizePostProcessCommand } = await import('./commands/finalize-chapter.command')

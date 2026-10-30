@@ -75,6 +75,7 @@ import {
 import type { KnowledgeStateDefinition } from '../../../shared/knowledge-state'
 import { abilityStageState, type PowerAbilityDefinition } from '../../../shared/power-ability'
 import type { VolumeHandoffDefinition } from '../../../shared/volume-handoff'
+import { describeDrift, type DerivedValidity } from '../../../shared/upstream-revisions'
 import { extractWorldBuildingRules } from '../../../shared/worldbuilding-rules'
 import {
   assembleChapterMaterials,
@@ -2659,18 +2660,40 @@ ${params.candidate.text}`,
     } catch { return [] }
   }
 
-  /** P1-2：上一卷交接单。本章不属于任何已登记区间之后时返回 null（第 1 章必然如此）。 */
+  /**
+   * P1-2：上一卷交接单。本章不属于任何已登记区间之后时返回 null（第 1 章必然如此）。
+   *
+   * **过期就拒绝**（P2-2 期 2）：交接单会进每一次正文请求，它是 §5.3 五处必拦点里
+   * 最靠前的一处。这里只把「读失败」与「读到了但过期」分开 —— 前者 fail-open
+   * （读不到不该拦住写作，项目既有纪律），后者是**成功判定了它过期**，必须拒绝。
+   */
   private async readVolumeHandoff(
     projectPath: string,
     projectSession: ProjectSessionContext,
   ): Promise<VolumeHandoffDefinition | null> {
+    let result: {
+      success?: boolean
+      entry?: VolumeHandoffDefinition | null
+      validity?: DerivedValidity
+    } | null = null
     try {
-      const result = await ipc.invokeWithProjectSession(
+      result = await ipc.invokeWithProjectSession(
         projectSession, 'db:volume-handoffs-before',
         this.chapterInfo.chapterNumber, projectPath,
-      ) as { success?: boolean; entry?: VolumeHandoffDefinition | null }
-      return result?.success ? result.entry ?? null : null
+      ) as { success?: boolean; entry?: VolumeHandoffDefinition | null; validity?: DerivedValidity }
     } catch { return null }
+    if (!result?.success) return null
+    const entry = result.entry ?? null
+    if (!entry) return null
+    // 不能写成 `result?.success ? result.entry ?? null : null` —— 那正是 v1 的写法，
+    // 它把 `success:false` 与「这卷没有前置」压成同一个 null。
+    if (result.validity?.state === 'stale') {
+      throw new Error(
+        `上一卷交接单基于的${describeDrift(result.validity.behind)}已经改过了，`
+        + '请先按当前内容核对并保存这份交接单，再生成正文',
+      )
+    }
+    return entry
   }
 
   private async readActiveNarrativeThreads(

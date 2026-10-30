@@ -1,5 +1,6 @@
 import type { NarrativeThreadEventType, NarrativeThreadStatus } from './narrative-thread'
 import { keyEventsText, type BlueprintKeyEvent } from './blueprint-key-events'
+import type { DerivedValidity } from './upstream-revisions'
 import { WRITING_LANGUAGES, type WritingLanguage } from './writing-language'
 
 export type PlotTreeTrackRole = 'main' | 'subplot'
@@ -82,6 +83,22 @@ export interface PlotTreeSourceBundle {
   snapshot: PlotTreeSnapshot | null
   /** A corrupt or structurally unsafe stored snapshot was isolated without deleting it. */
   storedSnapshotInvalid?: true
+}
+
+/**
+ * `db:plot-tree-read` 的返回。判定结果挂在**外层**，不进 `snapshot`。
+ *
+ * 为什么不能塞进快照：`targetBaselineHash` 是 `textHash(plot_tree_snapshot)`，
+ * `graph-generation.ts` 又逐字节比旧串 —— JSON 里多一个字段，正在跑的生成会当场
+ * 判「素材在生成期间已更新」（设计稿 R9）。
+ */
+export interface PlotTreeReadBundle extends PlotTreeSourceBundle {
+  /**
+   * 只看 `plot_tree_source_ref` 的 rev，**不看 `sourceRevision` 那个 hash**。
+   * 作者新增一条伏笔、或定稿后 `notes` 被提取，hash 都会变而 rev 不变；
+   * 拿 hash 当徽标会让剧情树长期挂着"已过期"（设计稿 §七 / R10）。
+   */
+  validity?: DerivedValidity
 }
 
 export function isPlotTreeSourceRevision(value: unknown): value is string {

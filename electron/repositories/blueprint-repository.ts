@@ -13,11 +13,12 @@ import { findCharacterProposalEvidence } from '../services/character-proposal-se
 import { proveCharacterProposal } from '../services/generation-character-proposal-proof'
 import { GenerationRunRepository } from './generation-run-repository'
 import { UpstreamRevisionRepository } from './upstream-revision-repository'
-import { currentSourceRefValue } from './derived-source-ref'
+import { currentSourceRefValue, hasColumn, parseSourceRefValue } from './derived-source-ref'
 import { blueprintCharacterSyncFactError } from '../../src/shared/blueprint-character-sync-evidence'
 import { normalizeKeyEvents, type BlueprintKeyEvent } from '../../src/shared/blueprint-key-events'
 import { normalizeBlueprintSpaceRefs, type BlueprintSpaceRefRaw } from '../../src/shared/space-time-consistency'
 import type { BlueprintNewCharacterCandidate } from '../../src/shared/blueprint-semantic-contract'
+import type { DerivedSourceRef, DerivedValidity } from '../../src/shared/upstream-revisions'
 
 /** 蓝图行类型（DB 蛇形命名） */
 export interface BlueprintRow {
@@ -73,6 +74,18 @@ export interface BlueprintData {
     userGuidance: string
     notes: string
     notesUpdatedAt: string
+    /**
+     * 读取侧挂的判定结果（P2-2 期 2）。**它不是数据**：
+     * `normalizeBlueprintForWrite` 会在落库前把它剥掉，所以它进不了
+     * `commitPayloadHash`、进不了 `samePersistedBlueprint` 的逐字段比对、
+     * 也进不了冻结的 `character_sync_input`。
+     *
+     * 为什么允许它挂在这个接口上而不是包一层 `{ blueprint, validity }`：
+     * 读蓝图有 20 多处调用点，其中绝大多数只关心蓝图本身；包一层会让 20 处
+     * 都做一次无意义的解包，且 `['return'][number]`（被共享层的图谱生成引用）
+     * 会直接断掉。字段式挂载让「信息能到消费点」这个目标达成，破坏面只剩类型。
+     */
+    validity?: DerivedValidity
 }
 
 export type BlueprintRangeCommitMode = 'full' | 'replace-range'
@@ -507,7 +520,10 @@ function normalizeBlueprintForWrite(blueprint: BlueprintData): BlueprintData {
     // `ChapterBlueprint = BlueprintData` 的别名 + `persistedBlueprint` 的展开会让语义项
     // 带 `spaceRefs` 抵达这里（例如 `commitBlueprintAuthorEdit` 的 author 路径），因此在这个
     // **唯一写入归一化点**上同时接受两个名字 —— 否则就得在每个调用点各写一次换名。
-    const { structuredRefs: stored, spaceRefs: alias, ...rest } =
+    // `validity` 是读取侧挂的判定结果，**必须剥掉**：它若跟着数据对象走，
+    // 同一个操作在不同时刻重放会算出不同的 `commitPayloadHash`（幂等重放会被判
+    // 「操作 ID 已被用于不同的蓝图提交」），也会污染冻结的 `character_sync_input`。
+    const { structuredRefs: stored, spaceRefs: alias, validity: _readOnly, ...rest } =
         blueprint as BlueprintData & { spaceRefs?: unknown }
     const fromStored = normalizeBlueprintSpaceRefs(stored)
     const structuredRefs = fromStored.length ? fromStored : normalizeBlueprintSpaceRefs(alias)
@@ -545,6 +561,32 @@ export function probeBlueprintWriteColumns(
 }
 
 export class BlueprintRepository {
+    /**
+     * 一次读出全部蓝图的来源快照（`章号 → 快照`），给读取侧逐行判定用。
+     *
+     * 一条 SQL 取完，不在逐行循环里查：`get-all` 可能返回上千行，每行再查一次
+     * 就是上千次往返（设计稿 §5.6）。列不在（未升到 v26 / 只建基线表的夹具）
+     * ⇒ 空 Map ⇒ 调用方查不到就判 `legacy`，与「这一行确实没记过来源」同解。
+     */
+    static readSourceRefs(db = requireProjectDb()): Map<number, DerivedSourceRef | null> {
+        const map = new Map<number, DerivedSourceRef | null>()
+        if (!hasColumn(db, 'blueprints', 'source_ref')) return map
+        const rows = db.prepare(
+            'SELECT chapter_number, source_ref FROM blueprints',
+        ).all() as Array<{ chapter_number: number; source_ref: string }>
+        for (const row of rows) map.set(row.chapter_number, parseSourceRefValue(row.source_ref))
+        return map
+    }
+
+    /** 单章来源快照。行不存在 / 列不存在 / 解析失败一律 `null`（⇒ `legacy`）。 */
+    static readSourceRef(chapterNumber: number, db = requireProjectDb()): DerivedSourceRef | null {
+        if (!hasColumn(db, 'blueprints', 'source_ref')) return null
+        const raw = db.prepare(
+            'SELECT source_ref FROM blueprints WHERE chapter_number = ?',
+        ).pluck().get(chapterNumber)
+        return parseSourceRefValue(raw)
+    }
+
     /** 获取所有蓝图（按章节号排序） */
     static getAll(db = requireProjectDb()): BlueprintData[] {
 

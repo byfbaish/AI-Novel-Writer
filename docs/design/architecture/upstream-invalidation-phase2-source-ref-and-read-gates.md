@@ -362,6 +362,25 @@ ALTER TABLE project_core    ADD COLUMN plot_tree_source_ref TEXT NOT NULL DEFAUL
 | 既有 | `src/services src/shared` 基线 3795 / 7 failed / 3 套件；全量跑测带 `env -u CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR -u CODEBUDDY_TOOL_CALL_ID` |
 | 文档 | `node scripts/check-doc-links.mjs` 0 断 |
 
+### 十二·1 落地记录（2026-10-30）
+
+| 项 | 落在哪 |
+|---|---|
+| 迁移 M25（4 例） | `electron/migrations/__tests__/m25-installed-lane.test.ts` |
+| 写入侧（10 例） | `electron/repositories/__tests__/upstream-source-ref-writes.test.ts` —— 含「10 章只涨 1 版」「探针在循环外」「改角色名 = 改上游」「清除后重建的章集不含旧章号」 |
+| 并发 CAS（2 例） | 同上「bump 的 CAS」：代理 db 在 `prepare` 时先跑一次竞争写入 ⇒ 判定条件与真实撞车一致（`changes === 0`），撞一次重试成功、连撞两次返回 `null` 且不抛 |
+| 判定（17 例） | `electron/services/__tests__/derived-validity.test.ts` —— 含「交接单区间只在 `basis==='actual'` 时才敢收窄」 |
+| 读取三态（9 例） | `electron/controllers/__tests__/db-controller-derived-validity.test.ts` —— **真库集成**，只 mock 进程边界。钉的是「库没开 / 没有前置 / 抛了 / 过期」四态不许折回同一个 `null` |
+| 剧情树 R10（2 例） | 同写入侧文件（重新生成后徽标回到 valid，JSON 变了不算过期）+ 控制器文件（判定挂外层，快照串一字节不动） |
+| 闸门 / 提示 / 三条 B 类 | `src/shared/__tests__/volume-handoff-gate.test.ts`（11）· `src/services/__tests__/outline-prefix-context.test.ts`（4）· `electron/services/__tests__/review-revision-context.test.ts`（21） |
+
+**两条被 A/B 排除的"假回归"（勿当成本期问题）**：
+
+- `electron/services/__tests__/project-peek-readonly.test.ts` 9 例 —— 既有红（`docs/handoffs/2026-10-25-next-steps-handoff.md:135` 已登记 8 例，第 9 例随 schema 版本涨到 26 也翻红；夹具只迁到 v7）。
+- `project-restore-service` / `project-archive-service` 的 `ENOTEMPTY` —— `afterEach` 里 `fs.rmSync` 撞上未释放的 sqlite 句柄，**断言本身全过**（单跑 29/29）。
+
+**剧情树读取契约已改**：`db:plot-tree-read` 返回 `PlotTreeReadBundle`（`PlotTreeSourceBundle` + 外层 `validity`）。**不进 `snapshot`** —— 理由同 R9。全库只有 `NarrativeThreadEditor.tsx` 一个消费者，改造成本为零。
+
 ---
 
 ## 十三、期 3 接口草案（只钉接口）

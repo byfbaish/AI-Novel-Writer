@@ -45,6 +45,7 @@ import type { KnowledgeCandidateView } from './knowledge-candidate'
 import type { PowerAbilityDefinition, PowerAbilityInput } from './power-ability'
 import type { SecretDefinition, SecretInput } from './secret'
 import type { VolumeHandoffDefinition, VolumeHandoffInput } from './volume-handoff'
+import type { DerivedValidity } from './upstream-revisions'
 import type { VolumeDefinition } from './volume-structure'
 import type {
   FinalizedContinuityProjection,
@@ -62,7 +63,7 @@ import type {
   NarrativeThreadPlanRecord,
   NarrativeThreadView,
 } from './narrative-thread'
-import type { PlotTreeSnapshot, PlotTreeSourceBundle } from './plot-tree'
+import type { PlotTreeReadBundle, PlotTreeSnapshot } from './plot-tree'
 import type {
   UpdateActionResponse,
   UpdateCheckResponse,
@@ -1177,7 +1178,7 @@ export interface DatabaseChannels {
   }
   'db:plot-tree-read': {
     args: [expectedProjectPath: string]
-    return: PlotTreeSourceBundle
+    return: PlotTreeReadBundle
   }
   'db:plot-tree-save': {
     args: [snapshot: PlotTreeSnapshot, expectedSourceRevision: string, expectedProjectPath: string]
@@ -1319,7 +1320,21 @@ export interface DatabaseChannels {
   // `-before` 只返回**一条**（有效末章在本章之前的那份），正文链每次请求都调它。
   // 区间不再由作者填：它由 `db:volumes-*` 的卷结构派生（见 7h）。
   'db:volume-handoffs-list': { args: [expectedProjectPath: string]; return: { success: boolean; entries?: VolumeHandoffDefinition[]; error?: string } }
-  'db:volume-handoffs-before': { args: [beforeChapter: number, expectedProjectPath: string]; return: { success: boolean; entry?: VolumeHandoffDefinition | null; error?: string } }
+  'db:volume-handoffs-before': {
+    args: [beforeChapter: number, expectedProjectPath: string]
+    /**
+     * `missing` 与 `validity` 把三件事分开（P2-2 期 2）：读失败（`success:false`）/
+     * 没有上一卷（`missing:true`）/ 读到了但它基于的上游已经变了（`validity.state==='stale'`）。
+     * 混成 `entry: null` 的话，正文链只能当「不用注入」—— 已知过期的交接单照样进每一次请求。
+     */
+    return: {
+      success: boolean
+      entry?: VolumeHandoffDefinition | null
+      missing?: boolean
+      validity?: DerivedValidity
+      error?: string
+    }
+  }
   'db:volume-handoffs-upsert': { args: [input: VolumeHandoffInput, expectedProjectPath: string]; return: { success: boolean; entry?: VolumeHandoffDefinition; error?: string } }
   'db:volume-handoffs-delete': { args: [handoffId: string, expectedProjectPath: string]; return: { success: boolean; error?: string } }
 

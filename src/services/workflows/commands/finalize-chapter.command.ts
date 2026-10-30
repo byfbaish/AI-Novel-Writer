@@ -58,6 +58,7 @@ import { writingLanguageText } from '../../../shared/writing-language'
 import { localize } from '../../../i18n/core'
 import type { Locale } from '../../../i18n/types'
 import type { FinalizedCharacterGenerationReceipt } from '../../../shared/finalized-character-generation'
+import { describeDrift } from '../../../shared/upstream-revisions'
 import {
   parseResourceMovementExtraction,
   type LedgerExtractionDrops,
@@ -466,6 +467,19 @@ export function buildFinalizePostProcessSteps(
         requireIpcSuccess(listed, text('读取卷末交接单', 'Read volume handoffs'))
         const existing = (listed.entries ?? []).find(entry => entry.volumeId === range.volumeId) ?? null
         if (isAuthorOwnedHandoff(existing)) {
+          // 已有作者版分两种情况：内容仍然对（不覆盖，正确）与**它已经旧了**
+          // （不覆盖就等于让跨卷记忆停在旧事实上，而且不给任何提示）。
+          //
+          // 后者必须说出来（P2-2 期 2，§5.3 A 类）。这一步 `critical: false`，
+          // 抛错只会在步骤清单里留一条写明原因的记录，不阻断定稿。
+          if (existing?.validity?.state === 'stale') {
+            const drift = describeDrift(existing.validity.behind)
+            throw new Error(workflowUiText(
+              context,
+              `已有作者版卷末交接单，但它基于的${drift}已经改过了；请先在「卷末交接」页核对更新，本次没有生成新的交接单`,
+              `An author-owned volume handoff exists but is stale (${drift} changed since it was written). Review it on the handoffs page; no new handoff was generated.`,
+            ))
+          }
           callbacks.log(workflowUiText(
             context,
             '  已有作者版卷末交接单，本次不覆盖',

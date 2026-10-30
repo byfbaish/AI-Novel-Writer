@@ -21,6 +21,7 @@ import type { ProjectSessionContext } from '../shared/ipc-channels'
 import type { VolumeHandoffDefinition } from '../shared/volume-handoff'
 import { volumeEffectiveRanges, type VolumeDefinition } from '../shared/volume-structure'
 import { ipc } from './ipc-client'
+import { describeDrift } from '../shared/upstream-revisions'
 
 export interface OutlinePrefixContext {
   /** 上一卷的交接单（已按卷号精确匹配）；`null` = 这一卷没有。 */
@@ -59,7 +60,14 @@ export async function readOutlinePrefixContext(input: {
     const previousIndex = input.volumeIndex - 1
     const previous = volumeEffectiveRanges(volumes).find(range => range.volumeIndex === previousIndex) ?? null
     // 精确匹配；找不到就是「这一卷没有单」，绝不回退到更早的卷。
-    const previousHandoff = handoffs.find(entry => entry.volumeIndex === previousIndex) ?? null
+    const matchedHandoff = handoffs.find(entry => entry.volumeIndex === previousIndex) ?? null
+    // 过期 ⇒ **不注入**并给警告（P2-2 期 2，B 类：提示不阻断）。
+    // 注入一份基于旧大纲的跨卷事实比不注入更糟 —— 模型会把它当成当前事实往下写，
+    // 而作者看到的是"工具说第 N 卷发生了什么"，无从分辨那是旧版本。
+    const handoffDrift = matchedHandoff?.validity?.state === 'stale'
+      ? describeDrift(matchedHandoff.validity.behind)
+      : null
+    const previousHandoff = handoffDrift ? null : matchedHandoff
     const sequence = authority && typeof authority === 'object' && typeof authority.status === 'string'
       ? authority as AuthoritativeChapterSequence
       : null
@@ -70,7 +78,15 @@ export async function readOutlinePrefixContext(input: {
     const previousVolumeFinalized = !sequence || previousVolumeLastChapter === null
       ? null
       : sequence.status !== 'invalid' && proseFinalizedThrough >= previousVolumeLastChapter
-    return { previousHandoff, previousVolumeFinalized, proseFinalizedThrough, previousVolumeLastChapter }
+    return {
+      previousHandoff,
+      previousVolumeFinalized,
+      proseFinalizedThrough,
+      previousVolumeLastChapter,
+      ...(handoffDrift
+        ? { warning: `上一卷交接单基于的${handoffDrift}已经改过了，本次未注入` }
+        : {}),
+    }
   } catch (error) {
     return { ...EMPTY, warning: error instanceof Error ? error.message : String(error) }
   }

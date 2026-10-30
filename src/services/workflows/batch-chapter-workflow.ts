@@ -19,6 +19,7 @@ import { finalizationContentRevision, type FinalizationSnapshot } from '../final
 import { FINALIZATION_SHARED_WRITE_RESOURCE_KINDS } from '../../shared/workflow-resource-claims'
 import { requireWorkflowProjectSession } from './workflow-project-session'
 import { normalizeChapterWordsTarget } from './chapter-creation-parameters'
+import { describeDrift, type DerivedValidity } from '../../shared/upstream-revisions'
 
 /** 单次批量创作的安全上限，避免无边界调用模型；主进程准入（assertGenerationBatchIntent）同样执行。 */
 export { MAX_BATCH_CHAPTERS, MIN_BATCH_CHAPTERS }
@@ -228,6 +229,17 @@ async function runOneBatchChapter(
       uiLocale,
       `未找到第${chapterNumber}章蓝图，批量创作已停止`,
       `No blueprint was found for Chapter ${chapterNumber}. Batch writing stopped.`,
+    ))
+  }
+  // 章节卡过期就拒绝（P2-2 期 2）。批量通道是正文生成的旁路 —— 主干道（
+  // `chapter-workflow`）拦了而这里不拦，等于没拦。
+  const blueprintStaleness = (blueprint as { validity?: DerivedValidity }).validity
+  if (blueprintStaleness?.state === 'stale') {
+    const drift = describeDrift(blueprintStaleness.behind)
+    throw new Error(localeText(
+      uiLocale,
+      `第${chapterNumber}章的章节卡基于的${drift}已经改过了，请先核对这张卡再批量创作`,
+      `The card for Chapter ${chapterNumber} is stale: ${drift} changed since it was written. Review the card before batch writing.`,
     ))
   }
   if (existingDraft && (!saved || existingDraft.id !== saved.draftId)) {

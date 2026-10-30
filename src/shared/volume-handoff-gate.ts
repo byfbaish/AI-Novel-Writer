@@ -12,10 +12,12 @@
  *
  * 频次是这一设计成立的前提：一卷二十章以上，**一次强提示换一整个卷的跨卷一致性**。
  *
- * ## 三个状态
+ * ## 四个状态
  *
  * - `missing`：上一卷压根没有交接单；
  * - `unreviewed-draft`：只有 `source='generated'` 的初稿，作者没改过、也没确认过；
+ * - `stale`：**有一份，但它基于的上游已经改过**（P2-2 期 2）。作者之前点头点的是
+ *   *当时那份内容*；上游变了以后，那次点头不再代表「我确认的是当前事实」；
  * - `clear`：作者版，或作者已显式确认过（记在 `consistency_exemptions` 里）。
  *
  * ## 为什么确认要持久化
@@ -27,7 +29,7 @@
 import type { VolumeHandoffDefinition } from './volume-handoff'
 import { volumeRangeEndingAt, type VolumeDefinition, type VolumeRange } from './volume-structure'
 
-export type VolumeHandoffGateState = 'clear' | 'missing' | 'unreviewed-draft'
+export type VolumeHandoffGateState = 'clear' | 'missing' | 'unreviewed-draft' | 'stale'
 
 export interface VolumeHandoffGate {
   state: VolumeHandoffGateState
@@ -61,6 +63,11 @@ export function volumeHandoffGateOf(input: {
   const range = volumeRangeEndingAt(input.volumes, chapterNumber - 1)
   if (!range) return null
   const handoff = input.handoffs.find(entry => entry.volumeId === range.volumeId) ?? null
+  // 过期**优先于**「已确认」：确认是对某一版内容的确认，上游改了以后那次确认
+  // 描述的现实已经不在了（与 ADR-0026「收据描述的现实可能已经不在」同一类）。
+  // 判定必须在 `acknowledged` 之前 —— 放后面就会「确认一次永久放行」，
+  // 后面无论上游怎么改，这道闸都不再开口。
+  if (handoff?.validity?.state === 'stale') return { state: 'stale', range, handoff }
   // 作者已点头 ⇒ 不再问（哪怕手上只有初稿：那是他自己选的「就用这份」）。
   if (input.acknowledged.includes(volumeHandoffAckKey(range.volumeId))) {
     return { state: 'clear', range, handoff }

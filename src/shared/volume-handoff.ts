@@ -39,6 +39,7 @@
 import type { WritingLanguage } from './writing-language'
 import { VOLUME_HANDOFF_CHARS } from './outline-prefix-budget'
 import type { VolumeBoundaryBasis } from './volume-structure'
+import type { DerivedValidity } from './upstream-revisions'
 
 /**
  * 一卷的交接单。
@@ -67,6 +68,11 @@ export interface VolumeHandoffDefinition {
   source: string
   createdAt: string
   updatedAt: string
+  /**
+   * 读取侧挂的判定结果（P2-2 期 2）。**它不是数据**，不落库、不进任何哈希：
+   * 只是让面板能标「这份交接单基于的上游已经变了」，并让正文链能拒绝消费它。
+   */
+  validity?: DerivedValidity
 }
 
 /** 别名：语义同 `VOLUME_HANDOFF_CHARS`，不重复字面量（架构侧的大纲预算也读那一个）。 */

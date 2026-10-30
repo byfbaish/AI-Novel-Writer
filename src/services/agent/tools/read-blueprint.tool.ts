@@ -5,6 +5,7 @@ import { buildAgentTool } from '../tool-registry'
 import { keyEventsText } from '../../../shared/blueprint-key-events'
 import { ipc } from '../../ipc-client'
 import { agentToolText, assertAgentProjectCurrent, requireAgentProject } from './project-context'
+import { describeDrift, type DerivedValidity } from '../../../shared/upstream-revisions'
 
 
 export const readBlueprintTool = buildAgentTool({
@@ -36,10 +37,18 @@ export const readBlueprintTool = buildAgentTool({
       if (!bp) {
         return { success: false, content: '', error: text(`第 ${chapterNum} 章蓝图不存在或读取失败`, `The blueprint for Chapter ${chapterNum} does not exist or could not be read`) }
       }
+      // 过期要说出来（P2-2 期 2）。只在 handler 挂字段、工具不读字段，等于没拦：
+      // agent 会拿一份和当前大纲不一致的卡去规划后续章节。
+      const staleNotice = bp.validity?.state === 'stale'
+        ? text(
+            `\n\n⚠️ 这张章节卡基于的${describeDrift(bp.validity.behind)}已经改过了，内容可能与当前大纲不一致；引用它之前先请作者核对。`,
+            `\n\n⚠️ This card is stale: ${describeDrift(bp.validity.behind)} changed after it was written. Confirm with the author before relying on it.`,
+          )
+        : ''
       return { success: true, content: text(
         `📋 第 ${chapterNum} 章蓝图\n\n标题: ${bp.title}\n作用: ${bp.role}\n目的: ${bp.purpose}\n关键事件: ${keyEventsText(bp.keyEvents)}\n角色: ${bp.characters.join(', ')}\n悬念: ${bp.suspenseHook}\n备注: ${bp.notes}\n用户指引: ${bp.userGuidance}`,
         `📋 Chapter ${chapterNum} blueprint\n\nTitle: ${bp.title}\nRole: ${bp.role}\nPurpose: ${bp.purpose}\nKey events: ${keyEventsText(bp.keyEvents)}\nCharacters: ${bp.characters.join(', ')}\nSuspense hook: ${bp.suspenseHook}\nNotes: ${bp.notes}\nUser guidance: ${bp.userGuidance}`,
-      ) }
+      ) + staleNotice }
     }
 
     // 列出所有蓝图文件
@@ -50,10 +59,14 @@ export const readBlueprintTool = buildAgentTool({
         return { success: true, content: text('⚠️ 蓝图为空。建议先通过工作流生成章节蓝图。', '⚠️ There are no blueprints yet. Generate chapter blueprints with the workflow first.') }
       }
 
-      const list = bps.map((b: unknown) => text(
-        `  - 第 ${(b as { chapterNumber?: number }).chapterNumber} 章: ${(b as { title?: string }).title || '无标题'}`,
-        `  - Chapter ${(b as { chapterNumber?: number }).chapterNumber}: ${(b as { title?: string }).title || 'Untitled'}`,
-      )).join('\n')
+      const list = bps.map((b: unknown) => {
+        const entry = b as { chapterNumber?: number; title?: string; validity?: DerivedValidity }
+        const mark = entry.validity?.state === 'stale' ? text('（已过期）', ' (stale)') : ''
+        return text(
+          `  - 第 ${entry.chapterNumber} 章: ${entry.title || '无标题'}${mark}`,
+          `  - Chapter ${entry.chapterNumber}: ${entry.title || 'Untitled'}${mark}`,
+        )
+      }).join('\n')
       return { success: true, content: text(`📋 蓝图列表（${bps.length} 个）\n${list}\n\n使用 chapter_number 参数可以读取具体章节蓝图的内容。`, `📋 Blueprint list (${bps.length})\n${list}\n\nUse chapter_number to read a specific chapter blueprint.`) }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)

@@ -257,6 +257,53 @@ describe('派生来源的写入侧（P2-2 期 2）', () => {
     } finally { db.close() }
   })
 
+  it('剧情树重新生成后徽标回到 valid —— JSON 变了不算过期，来源跟着走', () => {
+    const db = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      BlueprintRepository.upsertMany([blueprintFor(1)])
+      const first = PlotTreeRepository.read(db)
+      const snapshot = (summary: string) => ({
+        version: 1,
+        generatedAt: '2030-01-02T03:04:05.000Z',
+        writingLanguage: 'zh-CN',
+        sourceRevision: first.sourceRevision,
+        tracks: [{
+          id: 'main', title: '主线', role: 'main', startChapter: 1, endChapter: 1, summary: '主线梗概',
+          events: [{
+            status: 'planned' as const, chapterNumber: 1, summary,
+            sources: [{ type: 'blueprint' as const, chapterNumber: 1 }],
+          }],
+        }],
+      })
+
+      PlotTreeRepository.save(snapshot('开局') as never, first.sourceRevision, db)
+      const validityOfTree = () => derivedStatusForChapters(
+        PlotTreeRepository.readSourceRef(db),
+        UpstreamRevisionRepository.snapshot(db),
+        UpstreamRevisionRepository.changeLog(db),
+        null,
+      )
+      expect(validityOfTree()).toEqual({ state: 'valid' })
+
+      // 上游又改了一版（作者改了章节卡 / 加了伏笔）。
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [1] }, db)
+      expect(validityOfTree()).toMatchObject({ state: 'stale', behind: [{ key: 'outline:book', have: 1, need: 2 }] })
+
+      // 重新生成剧情树：JSON 内容真的变了（新伏笔进了 events），但**徽标必须回到
+      // valid** —— 保存写的是"此刻的上游版本"，而不是"和上次一样的 hash"。
+      // 反过来说：如果哪天有人把判定改成比 hash，这一步会永远停在 stale，
+      // 作者每次重新生成后都看到"已过期"，那就没人再信这个徽标了（设计稿 R10）。
+      const second = PlotTreeRepository.read(db)
+      PlotTreeRepository.save(snapshot('开局 + 新伏笔') as never, second.sourceRevision, db)
+      expect(validityOfTree()).toEqual({ state: 'valid' })
+
+      const raw = db.prepare("SELECT plot_tree_snapshot FROM project_core WHERE id = 'main'").pluck().get() as string
+      expect(raw).toContain('开局 + 新伏笔')
+      expect(raw).not.toContain('sourceRef')
+    } finally { db.close() }
+  })
+
   it('清除创作字段后版本账与剧情树来源一起归零，重建的章集不含清除前章号', () => {
     const db = migratedDb()
     try {
@@ -277,6 +324,77 @@ describe('派生来源的写入侧（P2-2 期 2）', () => {
       expect(row?.rev).toBe(1)
       expect(row?.changedChapters.byRev.get(1)).toEqual([99])
       expect(row?.changedChapters.legacyChapters).toEqual([])
+    } finally { db.close() }
+  })
+})
+
+/**
+ * `bump` 的 CAS（§十二「并发」）。
+ *
+ * ## 为什么这条必须写，而不是"同进程撞不上就不测"
+ *
+ * better-sqlite3 是同步的、单主进程天然串行 —— 这句话在**应用内**成立，但版本账
+ * 会被三类外部写入碰：工坊脚本、迁移任务、第三方直接开库。`fenceProjectSession`
+ * 是**身份栅栏不是文件锁**，挡不住它们。撞车时的行为只有两种可能，都必须钉死：
+ *
+ * 1. **悄悄覆盖**：`UPDATE ... SET rev = rev + 1` 不带 `AND rev = ?` ⇒ 两边的
+ *    改动被合并成一版，`changed_chapters` 少记一半章 ⇒ 那些章永久不判脏。
+ * 2. **抛错**：`changes === 0` 时直接抛 ⇒ 版本是**旁路账本**，它失败会连带
+ *    业务写入失败。宁可放弃记版本（派生退回 `legacy`）也不能拦人保存。
+ *
+ * 实现用「代理 db + 在 `prepare` 时先跑一次竞争写入」来制造撞车 —— 真实并发
+ * 无法在单进程同步驱动里复现，但 CAS 的判定条件（`changes === 0`）与真实撞车
+ * 完全一致，所以这是**桩注入判定条件**，不是模拟线程。
+ */
+describe('bump 的 CAS（跨进程并发）', () => {
+  /** 让下一次 `UPDATE upstream_revisions` 之前，先有"另一个进程"把它推进一版。 */
+  function racingDb(real: InstanceType<typeof Database>, collisions: number) {
+    let pending = collisions
+    return new Proxy(real, {
+      get(target, property, receiver) {
+        if (property !== 'prepare') return Reflect.get(target, property, receiver)
+        return (sql: string) => {
+          if (pending > 0 && sql.includes('UPDATE upstream_revisions')) {
+            pending -= 1
+            // 竞争者的写入：只动 rev（真实场景里它还会写自己的 changed_chapters，
+            // 但这里只要让 CAS 的 `AND rev = ?` 落空就够了）。
+            target.prepare("UPDATE upstream_revisions SET rev = rev + 1 WHERE domain = 'outline'").run()
+          }
+          return target.prepare(sql)
+        }
+      },
+    }) as InstanceType<typeof Database>
+  }
+
+  it('撞一次车 ⇒ 重试一次并成功，返回的是重读后的新版本号', () => {
+    const db = migratedDb()
+    try {
+      expect(UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [1] }, db)).toBe(1)
+      const racing = racingDb(db, 1)
+      // 竞争者把 rev 1 → 2，本次理应写成 3。
+      expect(UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [2] }, racing)).toBe(3)
+      expect(outlineRev(db)).toBe(3)
+    } finally { db.close() }
+  })
+
+  it('连撞两次 ⇒ 返回 null 且不抛，版本账保持竞争者写下的样子', () => {
+    const db = migratedDb()
+    try {
+      expect(UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [1] }, db)).toBe(1)
+      const racing = racingDb(db, 2)
+      let result: number | null = 0
+      // 旁路账本失败不许变成业务失败：这里要的是 null，不是 reject。
+      expect(() => {
+        result = UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [2] }, racing)
+      }).not.toThrow()
+      expect(result).toBeNull()
+      // 竞争者两次推进：1 → 2 → 3。
+      expect(outlineRev(db)).toBe(3)
+      // 本次的章集**一条都没记**（没写 rev3 的键）。这是被接受的代价：派生会
+      // 判 stale，不会静默 valid —— 宁可多判脏，不可漏判。反过来说，如果这里
+      // 出现了 `byRev.get(3) === [2]`，说明 CAS 没生效、我们把别人的版本当自己写的。
+      expect(UpstreamRevisionRepository.read('outline', 'book', db)?.changedChapters.byRev.has(3)).toBe(false)
+      expect(UpstreamRevisionRepository.read('outline', 'book', db)?.changedChapters.byRev.get(1)).toEqual([1])
     } finally { db.close() }
   })
 })

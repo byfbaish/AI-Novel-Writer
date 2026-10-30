@@ -134,10 +134,15 @@ export default function VolumeHandoffGatePanel({
                 `${volumeLabel}（${rangeLabel}）还没有卷末交接单。这一卷的正文已经退出上下文，缺了它，下一卷只能靠大纲接着写。`,
                 `${volumeLabel} (${rangeLabel}) has no volume handoff. Its prose is already out of context; without a handoff the next volume can only follow the outline.`,
               )
-              : text(
-                `${volumeLabel}（${rangeLabel}）只有一份模型初稿，还没经你确认。请先看一眼再开写。`,
-                `${volumeLabel} (${rangeLabel}) only has a model draft that you have not reviewed yet. Look at it before writing.`,
-              )}
+              : gate.state === 'stale'
+                ? text(
+                  `${volumeLabel}（${rangeLabel}）的卷末交接单是更早写的，之后上游已经改过了。它记下的可能已不是当前事实，请先核对再开写。`,
+                  `The handoff of ${volumeLabel} (${rangeLabel}) is out of date: the upstream it was based on has changed. Review it before writing.`,
+                )
+                : text(
+                  `${volumeLabel}（${rangeLabel}）只有一份模型初稿，还没经你确认。请先看一眼再开写。`,
+                  `${volumeLabel} (${rangeLabel}) only has a model draft that you have not reviewed yet. Look at it before writing.`,
+                )}
           </p>
         </div>
       </div>

@@ -117,8 +117,16 @@ import {
   findPreviousHandoff,
   hasVolumeHandoffSchema,
   listVolumeHandoffs,
+  readVolumeHandoffSourceRef,
+  readVolumeHandoffSourceRefs,
   upsertVolumeHandoff,
 } from '../repositories/volume-handoff-repository'
+import {
+  blueprintValidity,
+  plotTreeValidity,
+  readDerivedReadContext,
+  volumeHandoffValidity,
+} from '../services/derived-validity'
 import type { VolumeHandoffInput } from '../../src/shared/volume-handoff'
 import {
   hasVolumeStructureSchema,
@@ -599,14 +607,28 @@ export function registerDatabaseController() {
   // ============================================================
   // 2. blueprints — 章节蓝图
   // ============================================================
+  // 读取侧判定（P2-2 期 2）：**上下文只建一次**，然后逐行纯内存比较。
+  // 不要在 `.map()` 里调 `snapshot()` / `readRev()` —— 每个都再探一次
+  // `sqlite_master`，上千章就是上千次系统目录查询（设计稿 §5.6）。
   ipcMain.handle('db:blueprint-get-all', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
-    return BlueprintRepository.getAll()
+    const db = getProjectDb()
+    const context = readDerivedReadContext(db)
+    const sourceRefs = db ? BlueprintRepository.readSourceRefs(db) : new Map()
+    return BlueprintRepository.getAll().map(entry => ({
+      ...entry,
+      validity: blueprintValidity(context, sourceRefs.get(entry.chapterNumber), entry.chapterNumber),
+    }))
   })
 
   ipcMain.handle('db:blueprint-get', async (_event, chapterNumber: number, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
-    return BlueprintRepository.getByChapter(chapterNumber)
+    const entry = BlueprintRepository.getByChapter(chapterNumber)
+    if (!entry) return null
+    const db = getProjectDb()
+    const context = readDerivedReadContext(db)
+    const sourceRef = db ? BlueprintRepository.readSourceRef(chapterNumber, db) : null
+    return { ...entry, validity: blueprintValidity(context, sourceRef, chapterNumber) }
   })
 
   ipcMain.handle('db:blueprint-upsert', async (_event, data: BlueprintData, expectedProjectPath: string) => {
@@ -986,7 +1008,18 @@ export function registerDatabaseController() {
 
   ipcMain.handle('db:plot-tree-read', async (_event, expectedProjectPath: string) => {
     assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
-    return PlotTreeRepository.read()
+    const bundle = PlotTreeRepository.read()
+    const db = getProjectDb()
+    // 徽标只看 `plot_tree_source_ref`（rev），**不看 `sourceRevision` 那个 hash**
+    // —— 作者新增一条伏笔、或定稿后 `notes` 被提取，hash 都会变而 rev 不变，
+    // 拿 hash 当徽标会让剧情树长期挂着"已过期"（设计稿 §七 / R10）。
+    //
+    // 加在返回值的**外层**、不进 `snapshot`：`targetBaselineHash` 是
+    // `textHash(plot_tree_snapshot)`，往 JSON 里加字段会让正在跑的生成判来源变更（R9）。
+    return {
+      ...bundle,
+      validity: plotTreeValidity(readDerivedReadContext(db), db ? PlotTreeRepository.readSourceRef(db) : null),
+    }
   })
 
   ipcMain.handle('db:plot-tree-save', async (
@@ -1695,12 +1728,25 @@ export function registerDatabaseController() {
       const db = getProjectDb()
       // M18 之前 / 库未打开：降级成空列表，不报错（与资源、物品、制度、知情、能力同一纪律）。
       if (!db || !hasVolumeHandoffSchema(db)) return { success: true, entries: [] }
-      return { success: true, entries: listVolumeHandoffs(db) }
+      const context = readDerivedReadContext(db)
+      const sourceRefs = readVolumeHandoffSourceRefs(db)
+      return {
+        success: true,
+        entries: listVolumeHandoffs(db).map(entry => ({
+          ...entry,
+          validity: volumeHandoffValidity(context, sourceRefs.get(entry.handoffId), entry),
+        })),
+      }
     } catch (err) {
       return { success: false, error: String(err) }
     }
   })
 
+  // 返回值加了 `missing` 与 `validity`（P2-2 期 2）。必须分得开三件事：
+  //   读失败（`success:false`）/ 没有上一卷（`missing:true`）/ 读到了但它旧了（`stale`）。
+  // 原来「表缺 / 库没开 / 这卷没有前置」全折成 `entry:null`，正文链拿到 null 只能当
+  // 「不用注入」—— 于是**已知过期的交接单照样进每一次正文请求**，而这是设计稿
+  // §5.3 里最靠前的一处必拦点。
   ipcMain.handle('db:volume-handoffs-before', async (
     _event,
     beforeChapter: number,
@@ -1709,10 +1755,20 @@ export function registerDatabaseController() {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       const db = getProjectDb()
-      if (!db || !hasVolumeHandoffSchema(db)) return { success: true, entry: null }
-      return { success: true, entry: findPreviousHandoff(db, beforeChapter) }
+      if (!db || !hasVolumeHandoffSchema(db)) {
+        return { success: true, entry: null, missing: true }
+      }
+      const entry = findPreviousHandoff(db, beforeChapter)
+      if (!entry) return { success: true, entry: null, missing: true }
+      const context = readDerivedReadContext(db)
+      return {
+        success: true,
+        entry,
+        missing: false,
+        validity: volumeHandoffValidity(context, readVolumeHandoffSourceRef(db, entry.handoffId), entry),
+      }
     } catch (err) {
-      return { success: false, error: String(err) }
+      return { success: false, error: String(err), missing: false }
     }
   })
 

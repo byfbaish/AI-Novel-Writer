@@ -13,11 +13,12 @@ import {
   type NarrativeThreadView,
 } from '../../shared/narrative-thread'
 import type {
+  PlotTreeReadBundle,
   PlotTreeSnapshot,
-  PlotTreeSourceBundle,
   PlotTreeSourceReference,
 } from '../../shared/plot-tree'
 import { hasUsablePlotTreeEventSource } from '../../shared/plot-tree'
+import { describeDrift } from '../../shared/upstream-revisions'
 import { resolveWritingLanguage } from '../../shared/writing-language'
 import { ipc } from '../../services/ipc-client'
 import {
@@ -227,7 +228,7 @@ export default function NarrativeThreadEditor({
   const [aiBusy, setAiBusy] = useState(false)
   const [aiError, setAiError] = useState('')
   const [view, setView] = useState<'plot-tree' | 'plans'>(initialView)
-  const [plotSources, setPlotSources] = useState<PlotTreeSourceBundle | null>(null)
+  const [plotSources, setPlotSources] = useState<PlotTreeReadBundle | null>(null)
   const [plotModelId, setPlotModelId] = useState<string | null>(null)
   const [plotBusy, setPlotBusy] = useState(false)
   const [plotError, setPlotError] = useState('')
@@ -846,6 +847,23 @@ export default function NarrativeThreadEditor({
         </section>
 
         {view === 'plot-tree' ? (
+          <>
+          {/* 剧情树徽标只看 rev（设计稿 §七 / R10）：作者新增伏笔、定稿后 notes 被
+              提取都会改 hash 而不改 rev，拿 hash 出徽标会长期误报"已过期"。
+              这里只提示、不拦生成 —— 拦生成仍是 `sourceRevision` 那条更严的检查。 */}
+          {plotSources?.validity?.state === 'stale' && (
+            <p
+              role="status"
+              data-testid="plot-tree-stale"
+              className="rounded border px-2 py-1 text-xs"
+              style={{ borderColor: 'var(--color-warning, #b45309)', color: 'var(--color-warning, #b45309)' }}
+            >
+              {text(
+                `这棵剧情树生成之后，${describeDrift(plotSources.validity.behind)}已经改过了。重新生成可以对齐。`,
+                `This plot tree was generated before ${describeDrift(plotSources.validity.behind)} changed. Regenerate to catch up.`,
+              )}
+            </p>
+          )}
           <PlotTreeView
             key={plotSources?.snapshot?.generatedAt ?? 'empty'}
             snapshot={plotSources?.snapshot ?? null}
@@ -862,6 +880,7 @@ export default function NarrativeThreadEditor({
             onClear={() => void clearPlotTree()}
             onOpenSource={openPlotSource}
           />
+          </>
         ) : <>
         <div className="flex items-start justify-between gap-3">
           <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>

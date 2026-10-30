@@ -12,6 +12,8 @@ import { getProjectDb } from '../../database'
 import { ReviewRepository } from '../../repositories/review-repository'
 import { textHash } from '../../repositories/generation-run-repository'
 import { captureReviewRevisionContext, reviewRevisionRequest } from '../review-revision-context'
+import { BlueprintRepository } from '../../repositories/blueprint-repository'
+import { UpstreamRevisionRepository } from '../../repositories/upstream-revision-repository'
 vi.mock('../../database', () => ({ getProjectDb: vi.fn() }))
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
 const connections: import('better-sqlite3').Database[] = []
@@ -171,4 +173,26 @@ it('accepts a reviewed current draft and same-hash archived predecessor, but ref
  expect(f.capture).toThrow('GENERATION_REVIEW_HISTORY_CHANGED')
  f.db.exec("UPDATE contents SET body='前驱正文' WHERE id=2; INSERT INTO drafts(chapter_number,version,status,content_id) VALUES(2,2,'reviewed',1)")
  expect(f.capture).toThrow('GENERATION_REVIEW_SOURCE_CHANGED')
+})
+
+/**
+ * P2-2 期 2：喂给审稿的那批章节卡必须是当前版本的。
+ *
+ * 审稿结论建立在「接下来要发生什么」上，而那个判断来自蓝图。卡旧了，
+ * 结论就是拿旧标准评新稿。按章收窄让这里几乎不误伤：只改第 33 章时，
+ * 第 2 章的卡判 valid（它写于 33 被改之前的那一版之后），只有命中章会挡住。
+ */
+it('章节卡基于的上游改过 ⇒ 拒绝评审；未改过 ⇒ 放行', () => {
+  const f = fixture()
+  const card = (chapterNumber: number) => ({
+    chapterNumber, title: `第${chapterNumber}章`, role: '推进', purpose: '推进',
+    keyEvents: [], characters: ['林岚'], suspenseHook: '', userGuidance: '', notes: '', notesUpdatedAt: '',
+  })
+  BlueprintRepository.upsertMany([card(2), card(3)])
+  // 刚写完 ⇒ 来源指向最新版本，不拦。
+  expect(() => f.capture()).not.toThrow()
+
+  // 再推进一版（模拟作者之后又改了第 2 章的卡），此时库里那张卡就是旧的了。
+  UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [2] }, f.db)
+  expect(() => f.capture()).toThrow(/第2章的章节卡基于的上游已经改过了/)
 })

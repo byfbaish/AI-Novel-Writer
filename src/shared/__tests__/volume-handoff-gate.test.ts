@@ -85,3 +85,41 @@ describe('volumeHandoffGateOf — 开写闸门', () => {
     expect(volumeHandoffAckKey('volume:3')).toBe('volume-handoff:volume:3')
   })
 })
+
+/**
+ * P2-2 期 2：上游改过之后，那份「作者版 / 已确认」的交接单不再是当前事实。
+ *
+ * 这里守的是一条链：`db:volume-handoffs-before` 挂 `validity` → 闸门判 `stale`
+ * → 对话框按 `state !== 'clear'` 拦下。任何一环把 `stale` 折回 `clear`，
+ * 作者都会拿一份描述旧世界的跨卷记忆去写新一卷。
+ */
+describe('volumeHandoffGateOf — 过期交接单', () => {
+  const stale = { state: 'stale' as const, behind: [{ key: 'outline:book', have: 1, need: 2 }] }
+
+  it('作者版但已过期 ⇒ stale（不是 clear）', () => {
+    expect(volumeHandoffGateOf({
+      volumes,
+      handoffs: [handoff({ source: 'author', validity: stale })],
+      acknowledged: [],
+      chapterNumber: 21,
+    })?.state).toBe('stale')
+  })
+
+  it('过期优先于「已确认」：确认的是当时那份内容，上游改过就不算了', () => {
+    expect(volumeHandoffGateOf({
+      volumes,
+      handoffs: [handoff({ source: 'author', validity: stale })],
+      acknowledged: [volumeHandoffAckKey('volume:1')],
+      chapterNumber: 21,
+    })?.state).toBe('stale')
+  })
+
+  it('legacy 不算过期：存量行没有来源记录，照旧按作者版 / 初稿判', () => {
+    expect(volumeHandoffGateOf({
+      volumes,
+      handoffs: [handoff({ source: 'author', validity: { state: 'legacy' } })],
+      acknowledged: [],
+      chapterNumber: 21,
+    })?.state).toBe('clear')
+  })
+})

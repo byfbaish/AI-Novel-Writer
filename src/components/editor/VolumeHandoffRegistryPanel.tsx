@@ -11,6 +11,7 @@ import { volumeEffectiveRanges, type VolumeDefinition, type VolumeRange } from '
 import type { ConsistencyExemption } from '../../shared/consistency-preflight'
 import { volumeHandoffAckKey } from '../../shared/volume-handoff-gate'
 import { outlineProgressAckKey } from '../../shared/outline-progress-gate'
+import { describeDrift } from '../../shared/upstream-revisions'
 import { ipc } from '../../services/ipc-client'
 import {
   describeVolumeHandoffFailure,
@@ -77,6 +78,13 @@ interface DraftRow {
   openThread: string
   /** `author` = 作者版（自动生成永不覆盖）；`generated` = 模型初稿；`''` = 新行。 */
   source: string
+  /**
+   * 这份交接单基于的上游是否已经改过（P2-2 期 2）。`''` = 不需要提示。
+   *
+   * 只存**现成文案**、不存 `DerivedValidity`：面板唯一的消费方式是「显示一句
+   * 人话」，把判定类型摊到组件里只会让以后加状态时又多一个必改点。
+   */
+  staleHint: string
   /** 本行是否被作者改过：保存时决定它升格为作者版还是保持初稿。 */
   edited: boolean
   /** 该行正在生成初稿（按钮转圈、整表禁用写入）。 */
@@ -99,6 +107,7 @@ function emptyRow(): DraftRow {
     openThread: '',
     // 作者亲手新建的行本来就是作者版。
     source: '',
+    staleHint: '',
     edited: true,
     generating: false,
     expanded: true,
@@ -120,6 +129,9 @@ function rowFromDefinition(handoff: VolumeHandoffDefinition): DraftRow {
     debts: handoff.debts.join('\n'),
     openThread: handoff.openThread,
     source: handoff.source,
+    staleHint: handoff.validity?.state === 'stale'
+      ? `基于的${describeDrift(handoff.validity.behind)}已改过`
+      : '',
     edited: false,
     generating: false,
     expanded: false,
@@ -657,6 +669,19 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                               }}
                             >{text('初稿', 'Draft')}</span>
                           ) : '—'}
+                          {row.staleHint ? (
+                            <div
+                              data-testid="volume-handoff-stale"
+                              title={`这份交接单${row.staleHint}，内容可能已经和当前上游对不上。`}
+                              style={{
+                                marginTop: 2,
+                                border: '1px solid var(--color-warning, #b45309)',
+                                color: 'var(--color-warning, #b45309)',
+                                borderRadius: 3, padding: '0 4px', fontSize: 10,
+                                whiteSpace: 'nowrap',
+                              }}
+                            >{text('已过期', 'Outdated')}</div>
+                          ) : null}
                         </td>
                         <td className="px-1 py-0.5 align-top" data-field="range-cell">{rangeLabel(range, text)}</td>
                         <td className="px-1 py-0.5 align-top" data-field="worldState-cell">{truncate(row.worldState, 20) || '—'}</td>

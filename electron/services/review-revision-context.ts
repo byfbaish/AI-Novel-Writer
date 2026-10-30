@@ -15,6 +15,7 @@ import { ConsistencyExemptionRepository } from '../repositories/consistency-exem
 import { ReviewRepository } from '../repositories/review-repository'
 import { ReviewCycleRepository } from '../repositories/review-cycle-repository'
 import { textHash } from '../repositories/generation-run-repository'
+import { blueprintValidity, readDerivedReadContext } from './derived-validity'
 
 export const REVIEW_REVISION_OPERATIONS = ['review-chapter', 'refine-draft', 'refine-from-review'] as const
 const fail = (): never => { throw new Error('GENERATION_REVIEW_CONTEXT_INVALID') }
@@ -89,7 +90,23 @@ export function captureReviewRevisionContext(db: Database.Database, request: Pre
       confirmation = { reviewSourceId: stored.id, content: serializeHumanConfirmedReviewSnapshot(snapshot), snapshot,
         originalReviewContentHash: textHash(original.content) }
     }
-    const blueprints = BlueprintRepository.getAll(db).filter(row => row.chapterNumber >= source.chapterNumber && row.chapterNumber <= source.chapterNumber + 5)
+    const blueprintRows = BlueprintRepository.getAll(db)
+      .filter(row => row.chapterNumber >= source.chapterNumber && row.chapterNumber <= source.chapterNumber + 5)
+    // 喂给审稿的这批蓝图里只要有基于旧大纲的，审稿结论就建立在过期事实上
+    // （P2-2 期 2，§5.3 A 类）。按章收窄让这里几乎不误伤：作者只改了第 33 章时，
+    // 第 31 章的卡判 `valid`（它写于 31 被改之前的那一版之后），只有 33 会挡住。
+    const blueprintContext = readDerivedReadContext(db)
+    const blueprintSourceRefs = BlueprintRepository.readSourceRefs(db)
+    const staleBlueprint = blueprintRows.find(row => blueprintValidity(
+      blueprintContext, blueprintSourceRefs.get(row.chapterNumber), row.chapterNumber,
+    ).state === 'stale')
+    if (staleBlueprint) {
+      throw new Error(
+        `第${staleBlueprint.chapterNumber}章的章节卡基于的上游已经改过了，`
+        + '请先核对这批章节卡，再重新发起评审',
+      )
+    }
+    const blueprints = blueprintRows
       .map(({ chapterNumber, title, role, purpose, keyEvents, characters, suspenseHook, userGuidance, notes }) =>
         ({ chapterNumber, title, role, purpose, keyEvents, characters, suspenseHook, userGuidance, notes }))
     const currentBlueprint = blueprints.find(row => row.chapterNumber === source.chapterNumber)
