@@ -16,7 +16,7 @@ import {
 import { readReviewContinuityCanon } from './review-continuity-canon'
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import { ReviewRevisionCommand, type ReviewRevisionCommandSource } from './review-revision-command'
-import { parseReviewGenerationResult } from '../../../shared/review-generation-report'
+import { CURRENT_REVIEW_REPORT_VERSION, parseReviewGenerationResult } from '../../../shared/review-generation-report'
 import { buildChapterGoalReviewPrompt } from '../../../shared/chapter-goal-review'
 import { resolvePromptTemplate } from '../../prompt-templates'
 import { ReviewPromptBuilder } from '../../prompts/prompt-builder'
@@ -41,7 +41,7 @@ export { reviewHistoryMaterials } from './review-revision-materials'
 export function canCommitRecoveredReview(recovery: ReviewRevisionRecovery | undefined): boolean {
   if (!recovery?.latestArtifact || recovery.latestArtifactFinishReason !== 'stop') return false
   if (recovery.context.recheck) return true
-  try { parseReviewGenerationResult(redactVisibleCompletionText(recovery.latestArtifact.text)); return true } catch { return false }
+  try { parseReviewGenerationResult(redactVisibleCompletionText(recovery.latestArtifact.text), CURRENT_REVIEW_REPORT_VERSION); return true } catch { return false }
 }
 
 /**
@@ -174,7 +174,7 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
     let needsRebuild = attempts.includes('review-chapter-rebuild')
     if (this.recovery?.latestArtifact && this.recovery.latestArtifactFinishReason === 'stop') {
       raw = this.stripThinkingTags(this.recovery.latestArtifact.text)
-      try { parseReviewGenerationResult(raw) } catch (error) { parseFailure = error; raw = undefined; needsRebuild = true }
+      try { parseReviewGenerationResult(raw, CURRENT_REVIEW_REPORT_VERSION) } catch (error) { parseFailure = error; raw = undefined; needsRebuild = true }
     }
     const generate = async (purpose: 'review-chapter' | 'review-chapter-rebuild', prompt: string) => {
       const used = attempts.filter(item => item === purpose).length
@@ -190,7 +190,7 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
     }
     if (raw === undefined && !needsRebuild) {
       raw = await generate('review-chapter', reviewPrompt)
-      try { parseReviewGenerationResult(raw) } catch (error) { parseFailure = error; raw = undefined; needsRebuild = true }
+      try { parseReviewGenerationResult(raw, CURRENT_REVIEW_REPORT_VERSION) } catch (error) { parseFailure = error; raw = undefined; needsRebuild = true }
     }
     if (raw === undefined && needsRebuild) {
       const detail = parseFailure instanceof SyntaxError
@@ -202,11 +202,11 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
         '上一轮审稿输出未通过合同校验，已被丢弃，不得引用或续接。请重新完成原始审稿任务。',
         'The previous review output failed contract validation and was discarded. Do not quote or continue it; complete the original review task again.')
       const contract = promptLanguageText(language,
-        '【硬性要求】只重新输出一个完整审稿 JSON，根字段为 summary、items、goalReviews：summary 不超过 120 字符；items 为 1–10 条，每条按 category、quote、description、severity(error|warning|pass) 顺序输出，先举证说明判断依据，最后确定 severity；description 不超过 200 字符，quote 仅 pass 可省略，error/warning 必须提供且不超过 160 字符。description 必须说明当前正文的具体客观缺陷才可标为 error/warning；若结论为合理、符合要求或未发现问题，该项应为 pass 或省略。全文未发现具体问题时，保留一条 pass；确有客观问题仍须按严重程度报告 error/warning。goalReviews 按上方最初冻结清单逐项返回 id、status、description、evidence，不受 items 条数限制；只用原始待审正文核对。不得输出这些约定以外的字段、Markdown、解释或思考过程。',
-        '[Hard requirement] Output one complete review JSON with root fields summary, items and goalReviews: summary within 120 characters; items 1–10 entries in category, quote, description, severity order (error|warning|pass), with evidence and explanation before severity; description within 200 characters; quote is optional only for pass and required (≤160 characters) for error/warning. Use error/warning only when description identifies a specific objective defect in the current draft. If the conclusion is reasonable, meets requirements, or no issue found, use pass or omit the item. If the whole draft has no specific issue, keep one pass item. Still report genuine objective problems as error/warning according to their severity. goalReviews must cover the original frozen checklist above with id, status, description and evidence, without the general items count limit; use only the original draft for evidence. No fields outside these contracts, Markdown, explanation, or reasoning.')
+        '【硬性要求】只重新输出一个完整审稿 JSON，根字段为 summary、items、goalReviews、stateDelta：summary 不超过 120 字符；items 为 1–10 条，每条按 category、quote、description、severity(error|warning|pass) 顺序输出，先举证说明判断依据，最后确定 severity；description 不超过 200 字符，quote 仅 pass 可省略，error/warning 必须提供且不超过 160 字符。description 必须说明当前正文的具体客观缺陷才可标为 error/warning；若结论为合理、符合要求或未发现问题，该项应为 pass 或省略。全文未发现具体问题时，保留一条 pass；确有客观问题仍须按严重程度报告 error/warning。goalReviews 按上方最初冻结清单逐项返回 id、status、description、evidence，不受 items 条数限制；只用原始待审正文核对。stateDelta 只记正文已经把变化写出来的角色状态（characterName、field、observed、quote 四键），本章没有变化就输出空数组 []，不得省略这个键，也不得把档案里的旧值抄进 observed。不得输出这些约定以外的字段、Markdown、解释或思考过程。',
+        '[Hard requirement] Output one complete review JSON with root fields summary, items, goalReviews and stateDelta: summary within 120 characters; items 1–10 entries in category, quote, description, severity order (error|warning|pass), with evidence and explanation before severity; description within 200 characters; quote is optional only for pass and required (≤160 characters) for error/warning. Use error/warning only when description identifies a specific objective defect in the current draft. If the conclusion is reasonable, meets requirements, or no issue found, use pass or omit the item. If the whole draft has no specific issue, keep one pass item. Still report genuine objective problems as error/warning according to their severity. goalReviews must cover the original frozen checklist above with id, status, description and evidence, without the general items count limit; use only the original draft for evidence. stateDelta records only character state the draft already writes out (exactly characterName, field, observed and quote); emit an empty array [] when nothing changed this chapter, never omit the key, and never copy an archived old value into observed. No fields outside these contracts, Markdown, explanation, or reasoning.')
       raw = await generate('review-chapter-rebuild', [instruction,
         promptLanguageText(language, '【原始审稿任务】', '[Original review task]'), reviewPrompt, contract].join('\n\n'))
-      try { parseReviewGenerationResult(raw) } catch (error) {
+      try { parseReviewGenerationResult(raw, CURRENT_REVIEW_REPORT_VERSION) } catch (error) {
         const detail = error instanceof SyntaxError
           ? text('替代输出仍不是完整 JSON', 'the replacement output is still not complete JSON')
           : text('替代输出仍不符合审稿报告合同', 'the replacement output still does not match the review-report contract')
@@ -270,7 +270,7 @@ export class ReviewChapterCommand extends ReviewRevisionCommand {
     const artifact = recovery.latestArtifact
     const handle = params.context.mainGenerationRunHandle
     if (!artifact || !handle || recovery.latestArtifactFinishReason !== 'stop') throw new Error('GENERATION_REVIEW_ARTIFACT_REQUIRED')
-    if (!prepared.context.recheck) parseReviewGenerationResult(this.stripThinkingTags(artifact.text))
+    if (!prepared.context.recheck) parseReviewGenerationResult(this.stripThinkingTags(artifact.text), CURRENT_REVIEW_REPORT_VERSION)
     return ipc.invokeWithProjectSession(requireWorkflowProjectSession(params.context), 'review-revision:commit-review', {
       contextId: prepared.contextId, handle,
       artifact: { artifactId: artifact.artifactId, revision: artifact.revision, textHash: artifact.textHash },

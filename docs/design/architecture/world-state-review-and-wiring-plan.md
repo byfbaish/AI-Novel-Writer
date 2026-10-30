@@ -936,6 +936,42 @@ M07（`plot_structure_plan`）/ M08（`structured_refs`）/ M09（`rhythm_profil
 
 > 这条不是 W3 的一部分，是复核动线的可用性修复；记在这里是因为它由第二单元带来的「待裁决」场景暴露出来。
 
+### 16.10 v4 回归：`stateDelta` 被两处守卫判成非法（2026-10-30 实机故障）
+
+> 一句话读法：**提示词要求「始终输出 stateDelta」，而 v4 的两条解析路径都拒收它 —— 审稿必然两次均无效。** 病根是加版本时只改了白名单，没改按版本分支的两处守卫。
+
+**现场**：作者连跑两次审稿均失败。第一次是 `finishReason=length` 两次（首轮可见输出 0 字符、续写 2702 字符仍截断），第二次去掉一个维度后输出完整，却报「两次均无效」。
+
+**查证**（`debug/prompt-trace` 两份追踪 + 解析器对照）：
+
+| 报告版本 | 同一份真机输出 | 谁在用 |
+|---|---|---|
+| v2 | ❌ `invalid review contract` | **渲染侧闸门**（`parseReviewGenerationResult` 默认值） |
+| v3 | ✅ | 已不是当前版本 |
+| v4 | ❌ `invalid review contract` | **主进程落盘**（`CURRENT_REVIEW_REPORT_VERSION`） |
+
+三处口径互相矛盾：
+
+1. `REVIEW_TOP_LEVEL_KEYS[4]` **含** `stateDelta`（v4 提交 `9be5a686` / `ac38f02c` 加的）
+2. `isReviewShape` 的守卫仍写 `version !== 3` ⇒ v4 一旦见到该键就判非法
+3. 有界组装同样只对 `reportVersion === 3` 透传
+
+再加两处**版本号各写一份**：闸门用函数默认值 `2`，落盘用主进程常量 `4`。于是「同一份字节被两套合同判」，而且两套都拒。
+
+**修法**（同一次提交）：
+
+- 版本常量移入 `src/shared/review-generation-report.ts`，导出 `CURRENT_REVIEW_REPORT_VERSION`；闸门与落盘都读它，不再各写一个数字
+- `versionCarriesStateDelta(version)` 以**白名单为唯一权威**，两处守卫都改调它 —— 以后加版本不会再漏
+- 重建（`review-chapter-rebuild`）的硬性合同补上 `stateDelta`：原文只列 `summary / items / goalReviews` 且写着「不得输出这些约定以外的字段」，与基础提示词的「始终输出」**在同一份 prompt 里直接对打**，模型只能违背其中一条
+
+**回归**：`review-generation-report.test.ts` 新增两条 —— v4 接受 `stateDelta`；`CURRENT_REVIEW_REPORT_VERSION` 必须 ≥3 且能通过 `stateDelta` 载荷。用两份真机失败产物的原始字节验证，修复后在 v4 下均通过且 `stateDelta` 保留。
+
+**顺带记录：第一次的 `finishReason=length` 是另一回事，未在本节修**
+
+- 首轮可见输出 0 字符 ⇒ 输出预算被思考吃光；续写只给了 1 次（`maxContinuations: 1 - used`，且 `replace-structured-output` 是整段替换式重试），第二次仍在 `goalReviews` 中段被切断
+- 截断点落在 `goalReviews`，而预算估算（`S07_TASK_BUDGET_POLICY.structuredItems`）只按 **items 条数**计费，`goalReviews` 与 `stateDelta` 的体积不在估算内 —— 这是「估算口径漏项」，不是格式问题
+- 该口径要不要调（提高 review 的 per-item 值 / 把 goalReviews 计入 / 放宽续写次数）属预算策略，**未擅自改动**，留待裁定
+
 ---
 
 ## 17. W5：世界状态的只读可视化（2026-10-22 登记 · **已升为 W4a 的出口**）

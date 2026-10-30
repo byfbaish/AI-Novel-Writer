@@ -123,6 +123,27 @@ const REVIEW_TOP_LEVEL_KEYS: Record<ReviewReportVersion, readonly string[]> = {
   4: ['summary', 'items', 'goalReviews', 'stateDelta'],
 }
 
+/**
+ * 当前产出的报告版本。**渲染侧（审稿命令的校验闸门）与主进程（落盘）必须读同一个值。**
+ *
+ * 为什么提到 shared：闸门在 `review-chapter.command.ts`（渲染层），落盘在
+ * `review-revision-generation.ts`（主进程）。两处各写一个版本号，就会变成
+ * 「同一份字节被两套合同判」—— 10-30 的实机故障正是这样：闸门用默认 v2、落盘用 v4。
+ */
+export const CURRENT_REVIEW_REPORT_VERSION = 4 as const satisfies ReviewReportVersion
+
+/**
+ * 该版本是否承载 `stateDelta`。
+ *
+ * **唯一权威是上面那张白名单**，不要在别处再写 `version === 3`：
+ * v4（A2 的 mechanical/semantic 轴）落地时白名单加了 `stateDelta`，但守卫还停在
+ * `version !== 3`，于是 v4 既声明接受该键、又把它判成非法 —— 提示词要求「始终输出」，
+ * 而两条解析路径都拒收，审稿必然两次均无效（2026-10-30 实机）。
+ */
+function versionCarriesStateDelta(version: ReviewReportVersion): boolean {
+  return REVIEW_TOP_LEVEL_KEYS[version].includes('stateDelta')
+}
+
 /** 轴是 v4 才有的形状：v3 报告体要能被原字节重算，多一个键就等于换一种形状。 */
 export function reviewReportCarriesClass(version: ReviewReportVersion): boolean {
   return version >= 4
@@ -139,7 +160,8 @@ function isReviewShape(value: unknown, version: ReviewReportVersion): value is R
     || review.items.length > 10) return false
   // `stateDelta` 缺失 = 本次未产出；`stateDelta: []` = 判过了、无差异。
   // 两者在 JSON 层天然可分，不需要额外的 status 字段（见判据 CZ）。
-  if (review.stateDelta !== undefined && (version !== 3 || !isStateDelta(review.stateDelta))) return false
+  if (review.stateDelta !== undefined
+    && (!versionCarriesStateDelta(version) || !isStateDelta(review.stateDelta))) return false
   return review.items.every((item) => {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return false
     const record = item as Record<string, unknown>
@@ -197,8 +219,8 @@ export function parseReviewGenerationResult(content: string, reportVersion: Revi
         : { quote: reportText(item.quote, REVIEW_QUOTE_MAX_CHARACTERS, reportVersion) }),
       ...(item.review === undefined ? {} : { review: item.review }),
     })),
-    // 只在 v3 透传。v1/v2 走到这里时 `stateDelta` 必然 undefined（形状门已拒收）。
-    ...(reportVersion !== 3 || parsed.stateDelta === undefined ? {} : {
+    // 只在白名单承载它的版本透传。v1/v2 走到这里时 `stateDelta` 必然 undefined（形状门已拒收）。
+    ...(!versionCarriesStateDelta(reportVersion) || parsed.stateDelta === undefined ? {} : {
       stateDelta: (parsed.stateDelta as ReviewStateDeltaItem[]).map(item => ({
         characterName: item.characterName.trim(),
         field: item.field,

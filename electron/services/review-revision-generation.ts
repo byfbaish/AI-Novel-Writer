@@ -5,7 +5,7 @@ import type { MainGenerationRunHandle, MainGenerationSnapshot } from '../../src/
 import type { BeginGenerationRequest } from '../../src/shared/generation-owner-contract'
 import type { PrepareReviewRevisionRequest, PreparedReviewRevisionContext, ReviewGenerationCommitRequest,
   RevisionGenerationCommitRequest, ReviewRevisionCommitReceipt, ReviewRevisionContext, ReviewRevisionRecovery } from '../../src/shared/review-revision-generation'
-import { buildReviewGenerationReport, isSavedReviewReportVersion, type ReviewReportVersion } from '../../src/shared/review-generation-report'
+import { buildReviewGenerationReport, CURRENT_REVIEW_REPORT_VERSION, isSavedReviewReportVersion, type ReviewReportVersion } from '../../src/shared/review-generation-report'
 import { buildReviewCycleRecheckReport, isNoopRevision } from '../../src/shared/review-cycle'
 import { countDraftUnits } from '../../src/shared/draft-units'
 import { assertMateriallyCompleteRevision } from '../../src/services/workflows/commands/refinement-completeness'
@@ -34,8 +34,10 @@ const handleOf = (run: DurableGenerationRun): MainGenerationRunHandle => ({ proj
  *
  * v4（A2）加的是 item 级可选的 `review`（mechanical / semantic）。同一套降级逻辑成立：
  * 模板尚未要求这个键，报告里就没有它，解析照旧通过，轴落库为 NULL；等模板跟上再产出。
+ *
+ * 版本常量已移到 `src/shared/review-generation-report.ts`：渲染侧的校验闸门与这里的落盘
+ * 必须读同一个值，各写一个就会出现「同一份字节被两套合同判」（2026-10-30 实机故障）。
  */
-const CURRENT_REVIEW_REPORT_VERSION = 4 as const
 const contextHash = (context: ReviewRevisionContext) => textHash(JSON.stringify(context))
 
 /** Admission contexts are disposable; recovery and formal-effect truth live in the existing run ledger. */

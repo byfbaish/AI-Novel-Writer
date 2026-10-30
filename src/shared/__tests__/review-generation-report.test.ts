@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { freezeChapterGoals, parseChapterGoalReview } from '../chapter-goal-review'
 import type { ConsistencyFinding } from '../consistency-preflight'
-import { buildReviewGenerationReport, parseReviewGenerationResult } from '../review-generation-report'
+import { buildReviewGenerationReport, CURRENT_REVIEW_REPORT_VERSION, parseReviewGenerationResult } from '../review-generation-report'
 
 const passingItem = { category: '剧情连贯性', severity: 'pass', description: '未发现矛盾。' }
 const passing = { summary: '原始总结。', items: [passingItem] }
@@ -261,12 +261,24 @@ describe('review report v3 · stateDelta', () => {
   const delta = { characterName: '顾长风', field: 'location' as const, observed: '南坡', quote: '两人约定周三再搬设备。' }
   const v3 = (overrides: Record<string, unknown> = {}) => JSON.stringify({ ...passing, stateDelta: [delta], ...overrides })
 
-  it('accepts stateDelta only under report version 3', () => {
+  it('accepts stateDelta under every version whose whitelist carries it (v3+)', () => {
     expect(parseReviewGenerationResult(v3(), 3)).toMatchObject({ stateDelta: [delta] })
+    // 2026-10-30 实机故障的回归：v4 的白名单加了 stateDelta（A2），但形状守卫还停在
+    // `version !== 3`，于是 v4 既声明接受该键、又把它判成非法 —— 提示词要求「始终输出」，
+    // 两条解析路径（渲染侧闸门默认 v2、主进程落盘 v4）都拒收，审稿必然两次均无效。
+    expect(parseReviewGenerationResult(v3(), 4)).toMatchObject({ stateDelta: [delta] })
     // v2 的白名单不含 stateDelta：同一份文本在 v2 下必须被拒。否则「版本号决定形状」
     // 就退化成「读侧碰运气」，而 saved() 与便携投影都会用版本号重算正文再比哈希。
     expect(() => parseReviewGenerationResult(v3(), 2)).toThrow('invalid review contract')
     expect(() => parseReviewGenerationResult(v3(), 1)).toThrow('invalid review contract')
+  })
+
+  it('keeps the produced version and the gate on one contract', () => {
+    // 这一条守的是「闸门与落盘读同一个版本」：两边各写一个数字，就会出现同一份字节
+    // 被两套合同判 —— 闸门用 v2 拒收、落盘用 v4 也拒收，或者反过来一方放行一方失败。
+    expect(CURRENT_REVIEW_REPORT_VERSION).toBeGreaterThanOrEqual(3)
+    expect(parseReviewGenerationResult(v3(), CURRENT_REVIEW_REPORT_VERSION))
+      .toMatchObject({ stateDelta: [delta] })
   })
 
   it('distinguishes "not produced" from "checked, nothing changed"', () => {
