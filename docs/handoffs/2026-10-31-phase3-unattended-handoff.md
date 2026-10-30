@@ -118,4 +118,44 @@ feat(invalidation): 期 3a · S<n> <一句话>
 
 （格式：日期 + 一句话 + 是否需要作者裁定）
 
+### 2026-10-31 04:50 · 五片已按图施工完毕，两条口径需作者裁定
+
+执行方：无人值守主 agent。起止 04:03–04:50，分支 `exp/resource-ledger`，
+**五片各一次提交**（照 §三 的作业循环，一片绿了才开下一片）：`c2a3d5c3` / `f4012419` / `217dae23` / `32cb8c70` / 收口一次。
+全程 `node scripts/check-fast.mjs` 绿。
+
+**验收数字（逐片跑的，不是估的）**：S1 20 passed · S2 6 passed（+ 相邻既有 21 passed）·
+S3 browser 7 passed · S4 3 passed。
+
+**⚠️ 需要作者裁定两条：**
+
+1. **`request.rev <= 0` 这个约定要不要留。** UI 手边没有当前版本号（全仓没有任何 IPC
+   读 `upstream_revisions`），而它要问的正是「再改一版会怎样」。施工图把 request 钉成
+   `{domain, scope?, rev: number}`，所以借 `0`（不是合法版本号）这一格表达，
+   没加字段也没加通道。**替代方案**：新增一个读版本号的 IPC，UI 拿真值来问。
+   推翻成本低 —— handler 那条 `> 0` 分支不用动。
+2. **「重建大纲」的主入口要不要接闸门。** 施工图只指定了一个挂点（`continuePlanning`），
+   本期照做。但真正"重建"多半走 `ArchitectureConfirmDialog` → `ArchFileViewer.handleConfirm`，
+   **那里还没接**。那一层已有同构的 `progressGate` 机制可照抄，但「在哪一层拉 plan」
+   需要你定 —— 我判断不在本次自主范围内，所以只登记没动手。
+
+**另外两件事，不急但别忘：**
+
+- **既有红的归因**：`src/components/editor/__tests__/` 有 **3 条既有红**
+  （`CodeMirrorEditor-generation` 1 条、`ReviewReport.confirmation` 2 条）。
+  我用 `git stash` 做了前后对照，改动前后都是 3 failed / 347 passed，**与本期无关**，
+  所以没顺手修。下一班如果看到这 3 条红，先别算到本次头上。
+- **剧情树恒为候选**：一本书如果从来没生成过剧情树，plan 也会多报一条「无法判断」。
+  这是 `plotTreeSourceRef: DerivedSourceRef | null` 这个签名导致的 —— `null` 同时表示
+  「没这棵树」和「这棵树没记来源」。要不要在 UI 上把 `unseen.kinds` 摊开显示，你定。
+
+**施工期最大的坑（下次直接躲）**：
+
+- **交接单的 `chapters` 必须是 `volumeHandoffChapters()` 的产出形态（已展开的完整章列表）。**
+  我第一版测试写成 `[1, 20]`（意为首末章），测出来的是「只覆盖第 1 章和第 20 章」，
+  两条用例当场红 —— 这是 fixture 的错，不是实现的错。写完就跑，别攒着。
+- **React 受控 checkbox 在测试里只能 `ack.click()`**，先手设 `checked = true` 再 click
+  会把它又切回去（`OutlineProgressGatePanel` 那条用例的 textarea 写法是 native setter + input 事件，
+  两回事）。
+
 - 2026-10-31：期 3b 需要的 M26（`drafts` 记定稿时的 `outline` rev）尚未裁定，**本期不要碰**。给「已定稿章节」组硬造判据 = 伪造判据。

@@ -1,6 +1,7 @@
 # 上游失效 · 期 3 实施设计与作业图
 
-> 状态：待裁定 · 2026-10-31 · 期 3a 已切片、可无人值守施工；期 3b / 期 4 只登记不排期
+> 状态：已实施 · 2026-10-31 · 期 3a 五片施工完成（S1–S5）；期 3b / 期 4 只登记不排期
+> **施工期补的两个口径待作者裁定**：① request `rev <= 0` =「假想再改一版」（借 0 表达，不新增签名/通道）；② 影响范围的四种情形本期只判得出三种。见 §六。
 > **S6 的裁定已定（2026-10-31）**：定稿章只记 `outline` 一域（主稿 §十·2 ①）；并把 `BOOK_SOURCE_KEYS` 三域全记收窄成按类型分（S6a）。**S1–S5 不受影响，照原样施工。**
 > 上级稿：[`upstream-version-and-derived-invalidation-design.md`](upstream-version-and-derived-invalidation-design.md) §八（强提醒）· §九 步 4/5
 > 接口草案：[`upstream-invalidation-phase2-source-ref-and-read-gates.md`](upstream-invalidation-phase2-source-ref-and-read-gates.md) §十三
@@ -248,4 +249,44 @@ export function computeInvalidationPlan(input: {
 
 ## 六、落地记录
 
-（施工完再填；没填 = 没做。）
+**2026-10-31 无人值守施工完毕**（分支 `exp/resource-ledger`，五片各一次提交）。
+
+| 片 | 提交 | 落点 | 验收 |
+|---|---|---|---|
+| S1 | `c2a3d5c3` | `src/shared/invalidation-plan.ts`（新）+ 单测 | 20 passed |
+| S2 | `f4012419` | `db-controller.ts` 的 `db:invalidation-plan` · `ipc-channels.ts` · 仓储层加 `hasTable` | 6 passed + 相邻 21 passed |
+| S3 | `217dae23` | `src/components/dialogs/InvalidationPlanGatePanel.tsx`（新）+ `ArchFileViewer.tsx` 接线 | browser 7 passed；editor 目录对照 3 failed/347 passed（**既有红，与本期无关**，已用 `git stash` 两次对照确认） |
+| S4 | `32cb8c70` | `db-controller-invalidation-plan-cancel.test.ts`（新） | 3 passed |
+| S5 | 本次 | 本文档状态行 + §六 + 台账 P2-3 + 交接手册 | `node scripts/check-fast.mjs` 全绿 |
+
+**S1–S5 全程 `check:fast` 绿**（pre-commit 已自动跑）。
+
+### 施工期补的口径（**待作者裁定**，都不是设计意图，是当时的最小解）
+
+1. **`request.rev <= 0` =「假想这个域再改一版」**（handler 里折算成 current+1）。
+   *缘起*：UI 手边没有当前版本号 —— 没有任何 IPC 读 `upstream_revisions`，而 UI 要问的
+   恰恰是「再改一版会怎样」。施工图把 `request` 钉成 `{domain, scope?, rev: number}`，
+   所以只能在取值上借 `0`（不是合法版本号）这一格表达，**不新增字段、不新增通道**。
+   *推翻成本*：低。将来加了读版本的通道，UI 换成真值即可，handler 那条 `> 0` 分支不用动。
+2. **影响范围四种情形本期只判得出三种**（`buildInvalidationScopeNote`）。
+   世界观 / 弧光 ⇒ 影响全书；能收敛到章 ⇒ 给章号；其余 ⇒ 「难以精确判定，推荐全部重新生成」。
+   *缺的那一档*：「卷回滚 ⇒ 逐层列出」要知道**这次的动作是回滚**，而 plan 请求里只有域名、
+   没有 `reason`。等 S6c 的溯源流水落地，把 reason 接进来这一档才能判准。
+
+### 三个已知边界（下一班接手先看这里）
+
+- **剧情树恒为候选**：`plotTreeSourceRef` 为 `null` 时按 `legacy` 计入 `unseen`。
+  于是**「这本书压根没有剧情树」和「剧情树没记过来源」目前共用同一个返回值**，会多出一条
+  「无法判断」。方向是**多报**（主稿 §十·1 偏保守），可接受；但 UI 把 `unseen.kinds`
+  显示出来之前，作者只看到一个来历不明的数字。
+- **只有 `continuePlanning` 这条入口接了闸门**（施工图指定的挂点）。「重建大纲」的主入口是
+  `ArchitectureConfirmDialog`（它的 `onConfirm` = `ArchFileViewer.handleConfirm`），**尚未接线**。
+  要不要接、以及接在哪一层（dialog 内部 vs handleConfirm 外层），需要作者裁定 ——
+  那一层已经有 `progressGate` 的同构机制，照抄即可，但拉 plan 的时机得先定。
+- **`unaffected` 的算法是本期自定的**（施工图没钉）：只报**受影响区间内部**的最长空隙，
+  两端不报 —— 因为 `computeInvalidationPlan` 的入参里没有「全书最后一章」，说不清两端有多少章。
+
+### 复購買已獲的一句话
+
+S4 用**全表原始行串逐字节比**（不顺手用仓储层的 `list()`），是因为 `updated_at` 走 SQLite 的
+`datetime('now')`，在同一秒内透过解析结果看不出差别。拦住"plan 偷偷写了库"这件事，全靠这一层。
