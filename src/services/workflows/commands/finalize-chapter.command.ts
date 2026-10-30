@@ -2,6 +2,7 @@ import { runFinalizationGeneration } from '../../finalization-generation'
 import { useLLMStore } from '../../../stores/llm-store'
 import type { FinalizationGenerationEffect } from '../../../shared/finalization-generation'
 import { buildFinalizedContinuityFacts } from '../../../shared/finalized-continuity-facts'
+import { finalizedCharacterCardDeltaContract } from '../../../shared/finalized-card-delta-contract'
 export { buildFinalizedContinuityFacts } from '../../../shared/finalized-continuity-facts'
 import {
   BaseWorkflowCommand,
@@ -176,8 +177,12 @@ function describeDroppedMovements(dropped: LedgerExtractionDrops, english: boole
  * 绝不因为卷结构读不到而让定稿失败。导出是为了可测 —— 命令体里只剩一行调用，
  * 而「判不出卷末章就静默永不生成」正是这一步最容易翻的车。
  *
- * 只在**卷结构建了但过期**时回调 `onStale`：那种情况作者以为机制在跑、实际判不出卷末章。
- * 完全没建卷结构的项目（新项目常态）不吵他 —— 打开「卷末交接」页会自动建。
+ * 只在**卷结构建了但过期**时回调 `onStale`：那种情况作者以为机制在跑、实际用的是
+ * 旧大纲的卷界。完全没建卷结构的项目（新项目常态）不吵他 —— 打开「卷末交接」页会自动建。
+ *
+ * ⚠️ **过期时仍然照旧判**（`finalize-volume-handoff-step.test.ts` 守着这个行为），
+ * 所以日志不能写成「未判断」——那会让作者以为这一章被跳过了，而实际上可能正按旧卷界
+ * 判成了卷末章。文案必须说清「判了，但用的是旧卷界」。
  */
 export async function resolveVolumeHandoffRange(input: {
   projectPath: string
@@ -593,7 +598,12 @@ export function buildFinalizePostProcessSteps(
       const contract = writingLanguage === 'en-US'
         ? '[Final output contract: this overrides the [JSON output contract] above] Do not copy that example: its newCharacters list and full-field layout do not apply. A person with an existing character card must use that card\'s exact characterId, and every update must include evidence. Every update must include recentEvents (this character\'s latest state at the end of the chapter, within 50 words). The recentEvents of each update states the latest state of this character at the end of the chapter: when later prose corrects, withdraws, or postpones an earlier plan, follow the last correction and prioritize that correction and its current conditions over a more prominent earlier event; do not write the superseded plan or describe a still-pending plan as executed. Without a correction, retain this character\'s relevant event or still-pending plan. Do not apply another character\'s change of plan to this character; evidence quotes the one sentence that directly supports that latest state. List other fields only when the value differs from the existing card and matches the field (location is only the place the chapter prose explicitly states the character is currently in, never an event or progress; when the prose only states a plan, a decision, or an intention to go somewhere, the character is still where they were and must not be written as en route or arrived; when the prose states no clear change of place, do not list location). Return one JSON object: {"updates":[{"characterId":"exact ID from the frozen list","currentState":{"recentEvents":"this chapter\'s event","location":"new place"},"evidence":{"text":"exact source quote"}}]}. Copy a quote that occurs exactly once in the unmodified chapter; its offsets will be calculated. If you supply start/end, they must be exact JS UTF-16 offsets. evidence.text must be one contiguous, verbatim span of the frozen chapter that occurs exactly once; never join sentences across paragraphs or blank lines, and do not alter punctuation or whitespace. If unsure of the position, omit start/end and let the program calculate them. Only supplied dynamic fields are proposed. Do not infer identity from a name. Unknown or ambiguous people use name without characterId and remain proposals. Do not return static character facts or author provenance.'
         : '【最终输出合同，覆盖上文【输出格式（JSON）】】不得照抄上文示例：其中的 newCharacters 与全字段写法不适用；现有角色卡中的人物必须使用其精确 characterId，每个 update 都必须含 evidence；每个 update 必须填写 recentEvents（本章结束时该角色的最新状态，50字以内）；每个 update 的 recentEvents 写本章结束时该角色的最新状态：正文后文更正、撤回或推迟了前文安排时，以最后的更正为准，优先保留该更正及当前条件，不得被更显著的旧事件挤掉；不写已被更正的旧安排，也不把仍待执行的计划写成已执行。没有更正时，保留该角色有关事件或仍待执行的安排；不得将其他角色的安排变化套到该角色；evidence 引用直接支持该最新状态的一句。其余字段只在值与现有角色卡不同且名实相符时列出（location 只写正文明确写出的人物当前所在地点，不写事件或进度；正文只写了计划、决定或打算前往某处时，人物仍在原处，不得写成“前往途中”“已到达”；正文没有明确写出地点变化时不要列出 location）。只返回一个 JSON 对象：{"updates":[{"characterId":"冻结名单中的精确ID","currentState":{"recentEvents":"本章事件","location":"新地点"},"evidence":{"text":"原文精确引用"}}]}。引用必须在未改写正文中仅出现一次，位置由程序精确计算；若提供 start/end，必须是准确的 JS UTF-16 位置。evidence.text 必须是冻结正文中单一连续、逐字、只出现一次的片段；不得跨段落或空行拼接多句，不得删改标点或空白；不确定位置时省略 start/end，由程序计算。只提议明确返回的动态字段；不可凭名字推断身份。未知或歧义人物只返回 name、不填 characterId，保留为待确认提议。不得输出静态角色事实或作者来源。'
-      const builder = { build: () => base.build() + '\n\n' + contract, getSystemRole: () => base.getSystemRole() }
+      // 卡片增量合同与主链引同一份常量（`finalized-card-delta-contract.ts`）。
+      // 这两份合同历史上已经漂过一次，靠复制粘贴维护必然再漂 —— 这里只拼常量，不重写正文。
+      const builder = {
+        build: () => base.build() + '\n\n' + contract + '\n\n' + finalizedCharacterCardDeltaContract(writingLanguage),
+        getSystemRole: () => base.getSystemRole(),
+      }
       const receipt = await generation.characterStates(builder, callbacks, context, prepared)
       if (receipt.proposalBatchId) context.data.characterProposalBatchId = receipt.proposalBatchId
       callbacks.log(text(
@@ -725,8 +735,8 @@ export class RunFinalizePostProcessCommand extends BaseWorkflowCommand<PostProce
       chapterNumber: this.params.chapterNumber,
       onStale: () => callbacks.log(workflowUiText(
         context,
-        '  卷结构已过期，本次未判断卷末章（到「卷末交接」页重建后可重试）',
-        '  The volume structure is stale, so the volume boundary could not be checked (rebuild it on the handoff page).',
+        '  卷结构已过期：卷界来自旧大纲，本次仍按它判断卷末章（到「卷末交接」页重建后才准）',
+        '  The volume structure is stale: boundaries come from an older outline, and this run still judges by them (rebuild it on the handoff page).',
       )),
     })
   }
