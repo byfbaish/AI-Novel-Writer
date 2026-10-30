@@ -45,7 +45,7 @@ import type { KnowledgeCandidateView } from './knowledge-candidate'
 import type { PowerAbilityDefinition, PowerAbilityInput } from './power-ability'
 import type { SecretDefinition, SecretInput } from './secret'
 import type { VolumeHandoffDefinition, VolumeHandoffInput } from './volume-handoff'
-import type { DerivedValidity } from './upstream-revisions'
+import type { DerivedValidity, UpstreamDomain } from './upstream-revisions'
 import type { VolumeDefinition } from './volume-structure'
 import type {
   FinalizedContinuityProjection,
@@ -947,6 +947,7 @@ import type {
   ImportGlobalFactsRequest,
 } from './import-global-facts'
 import type { WorldStateView } from './world-state-view'
+import type { InvalidationPlan } from './invalidation-plan'
 
 // ===== 数据库操作 =====
 export interface DatabaseChannels {
@@ -1179,6 +1180,20 @@ export interface DatabaseChannels {
   'db:plot-tree-read': {
     args: [expectedProjectPath: string]
     return: PlotTreeReadBundle
+  }
+  /**
+   * 期 3a：重建前的失效清单（主稿 §九 步 4）。**纯读** —— plan 阶段 bump 了 rev，
+   * 作者点「取消」就不再是取消。
+   *
+   * `missing` 与 `success:false` 分得开：库没开 / 版本表不存在时用 `missing`，
+   * 让 UI 显示「拿不到清单」而不是「影响 0 项」。
+   */
+  'db:invalidation-plan': {
+    args: [
+      request: { domain: UpstreamDomain; scope?: string; rev: number },
+      expectedProjectPath: string,
+    ]
+    return: { success: boolean; plan?: InvalidationPlan; missing?: boolean; error?: string }
   }
   'db:plot-tree-save': {
     args: [snapshot: PlotTreeSnapshot, expectedSourceRevision: string, expectedProjectPath: string]

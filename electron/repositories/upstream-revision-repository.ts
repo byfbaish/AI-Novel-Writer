@@ -110,6 +110,20 @@ function toRow(raw: RawRow): UpstreamRevisionRow {
 
 export class UpstreamRevisionRepository {
   /**
+   * 版本表是否存在。**算失效清单之前必须问一次**（期 3a）。
+   *
+   * 为什么不能拿 `list()` 的结果代替：表不存在时 `list()` 也返回 `[]`，
+   * 而空快照会让每条 `source_ref` 的 `need = 0` ⇒ 每一行都判 stale ⇒
+   * plan 报出一份「全军覆没」的清单。那是 blast radius 虚假膨胀，
+   * 比「看不出来」更坑作者。所以「没有版本表」与「有表但没行」必须分开。
+   */
+  static hasTable(database?: ProjectDatabase | null): boolean {
+    const db = database ?? getProjectDb()
+    if (!db) return false
+    return hasRevisionTable(db)
+  }
+
+  /**
    * 上游改了一版：`rev + 1`，返回新版本号。
    *
    * 表里没有这一行时直接建到 `rev = 1`（不是 0 再 +1）——「第一次改动就是第 1 版」

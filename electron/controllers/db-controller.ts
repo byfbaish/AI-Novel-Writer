@@ -18,6 +18,8 @@ import {
   type ProjectCoreSynopsisCommitRequest,
 } from '../repositories/project-core-repository'
 import { ProjectClearRepository, ProjectClearOptions } from '../repositories/project-clear-repository'
+import { computeInvalidationPlan } from '../../src/shared/invalidation-plan'
+import type { UpstreamDomain } from '../../src/shared/upstream-revisions'
 import {
   BlueprintRepository,
   BlueprintData,
@@ -65,6 +67,7 @@ import { SummaryRepository } from '../repositories/summary-repository'
 import { ConsistencyExemptionRepository } from '../repositories/consistency-exemption-repository'
 import { NarrativeThreadRepository } from '../repositories/narrative-thread-repository'
 import { PlotTreeRepository } from '../repositories/plot-tree-repository'
+import { UpstreamRevisionRepository } from '../repositories/upstream-revision-repository'
 import { RecoveryCandidateRepository } from '../repositories/recovery-candidate-repository'
 import type { RecoveryCandidateRecordInput } from '../../src/shared/recovery-candidate'
 import {
@@ -125,6 +128,7 @@ import {
   blueprintValidity,
   plotTreeValidity,
   readDerivedReadContext,
+  volumeHandoffChapters,
   volumeHandoffValidity,
 } from '../services/derived-validity'
 import type { VolumeHandoffInput } from '../../src/shared/volume-handoff'
@@ -1019,6 +1023,57 @@ export function registerDatabaseController() {
     return {
       ...bundle,
       validity: plotTreeValidity(readDerivedReadContext(db), db ? PlotTreeRepository.readSourceRef(db) : null),
+    }
+  })
+
+  /**
+   * 交接单在清单里的标签：一句话让作者认得出是哪一卷（施工图 §四 S3 的文案口径）。
+   * 标签在调用方拼 —— 纯函数那一层只搬运数据，不生产文案。
+   */
+  function handoffLabel(entry: { volumeIndex: number | null; volumeId: string; lastChapter: number | null }): string {
+    const volume = entry.volumeIndex !== null ? `第 ${entry.volumeIndex} 卷` : entry.volumeId
+    return entry.lastChapter !== null ? `${volume}第 ${entry.lastChapter} 章交接单` : `${volume}交接单`
+  }
+
+  /**
+   * P2-3 期 3a：重建前的失效清单（主稿 §九 步 4）。
+   *
+   * **整个 handler 一个字节都不写**（plan 阶段 bump rev 是红线，§8.1）：作者在弹窗上
+   * 点「取消」，那就必须是真的没发生过任何事。真要 bump，是作者点了继续之后的事，
+   * 不在这个 handler 里。
+   */
+  ipcMain.handle('db:invalidation-plan', async (
+    _event,
+    request: { domain: UpstreamDomain; scope?: string; rev: number },
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      // 「拿不到清单」必须和「影响 0 项」分开：返回一份空 plan，UI 会显示「不影响任何东西」，
+      // 而作者会据此判断「这一刀没有代价」。所以拿不到就报 `missing`，不是给空清单。
+      if (!db || !UpstreamRevisionRepository.hasTable(db)) return { success: false, missing: true }
+      // 只读一次：一次上下文、两份 Map（设计稿 §5.6：禁止在逐行循环里查）。
+      const context = readDerivedReadContext(db)
+      const blueprintRefs = BlueprintRepository.readSourceRefs(db)
+      const handoffRefs = readVolumeHandoffSourceRefs(db)
+      const handoffs = hasVolumeHandoffSchema(db) ? listVolumeHandoffs(db) : []
+      const plan = computeInvalidationPlan({
+        overrides: [request],
+        revisions: context.revisions,
+        changes: context.changes,
+        blueprints: [...blueprintRefs.entries()].map(([chapterNumber, sourceRef]) => ({ chapterNumber, sourceRef })),
+        handoffs: handoffs.map((entry) => ({
+          label: handoffLabel(entry),
+          // 要不要展开成章集合由 `volumeHandoffChapters` 决定（边界非 actual ⇒ [] = 覆盖全部章）。
+          chapters: volumeHandoffChapters(entry),
+          sourceRef: handoffRefs.get(entry.handoffId) ?? null,
+        })),
+        plotTreeSourceRef: PlotTreeRepository.readSourceRef(db),
+      })
+      return { success: true, plan }
+    } catch (err) {
+      return { success: false, error: String(err) }
     }
   })
 
