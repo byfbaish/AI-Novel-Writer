@@ -18,6 +18,7 @@ import { readPortableCurrentAuthority } from './portable-current-authority'
 import { createLegacyCopyTransferAuthority, mapPortableTransferAuthority, serializePortableTransferAuthority } from './portable-transfer-authority'
 import { backupProjectSqlite, probeProjectSqlite, verifyProjectSqlite } from './sqlite-project-migration'
 import { exportVectorStoreForMigration, importVectorStoreForMigration, verifyVectorStoreForMigration } from './vector-migration-snapshot'
+import { isLanceStoragePath } from './lance-storage-path'
 
 const VECTOR_ASSETS = ['lancedb', 'embedding-spaces.json', 'vectors.json', 'vectors.json.migrated', 'vectors.json.migration-journal.json'] as const
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
@@ -59,7 +60,7 @@ function treeHash(root: string): string {
       digest.update(JSON.stringify(path.relative(root, file).split(path.sep).join('/')))
       if (info.isSymbolicLink()) fail('LEGACY_IMPORT_UNSAFE_PATH')
       if (info.isDirectory()) { digest.update('directory'); walk(file) }
-      else if (info.isFile() && info.nlink === 1) {
+      else if (info.isFile() && (info.nlink === 1 || isLanceStoragePath(file))) {
         digest.update('file')
         const fd = fs.openSync(file, 'r')
         try {
@@ -79,7 +80,7 @@ function copyTree(source: string, target: string): void {
   if (info.isDirectory()) {
     fs.mkdirSync(target)
     for (const name of fs.readdirSync(source)) copyTree(path.join(source, name), path.join(target, name))
-  } else if (info.isFile() && info.nlink === 1) fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL)
+  } else if (info.isFile() && (info.nlink === 1 || isLanceStoragePath(source))) fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL)
   else fail('LEGACY_IMPORT_UNSAFE_PATH')
 }
 function sameTree(source: string, target: string): void {

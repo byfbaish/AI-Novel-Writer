@@ -5,7 +5,7 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { afterEach, describe, expect, it } from 'vitest'
 import { initializeLegacyBaselineSchema } from '../../migrations/baseline-schema'
-import { getDesktopMigrationRegistry } from '../../migrations/desktop-registry'
+import { CURRENT_DESKTOP_SCHEMA_VERSION, getDesktopMigrationRegistry } from '../../migrations/desktop-registry'
 import { migrateSchema } from '../../migrations/runner'
 import { SqliteSchemaAdapter } from '../../migrations/sqlite-schema-adapter'
 import { ProjectPeekService } from '../project-peek'
@@ -32,6 +32,13 @@ function manifest(projectId: string) {
   }
 }
 
+/**
+ * 默认迁到**当前**版本：peek 的准入判据是 `verifySchema(..., CURRENT_DESKTOP_SCHEMA_VERSION)`，
+ * 夹具写死旧版本号 ⇒ 每次加迁移都会让整个文件静默全红（曾是 8 例，M25 后 9 例）。
+ * 需要"旧库"的用例显式传 `schemaVersion`。
+ */
+const CURRENT = CURRENT_DESKTOP_SCHEMA_VERSION
+
 function fixture(options: { schemaVersion?: number; journalMode?: 'delete' | 'wal' } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ai-novel-project-peek-'))
   roots.push(root)
@@ -45,8 +52,9 @@ function fixture(options: { schemaVersion?: number; journalMode?: 'delete' | 'wa
   handles.push(database)
   database.pragma('foreign_keys = ON')
   initializeLegacyBaselineSchema(database)
-  migrateSchema(new SqliteSchemaAdapter(database), getDesktopMigrationRegistry(), options.schemaVersion ?? 7)
-  if ((options.schemaVersion ?? 7) === 7) seedCore(database)
+  const schemaVersion = options.schemaVersion ?? CURRENT
+  migrateSchema(new SqliteSchemaAdapter(database), getDesktopMigrationRegistry(), schemaVersion)
+  if (schemaVersion === CURRENT) seedCore(database)
   if (options.journalMode === 'wal') database.pragma('journal_mode = WAL')
   return { root, storage, scratch, projectId, databasePath, database }
 }
@@ -176,7 +184,8 @@ describe('ProjectPeekService source-zero-write overview', { timeout: 20_000 }, (
 
     const old = fixture({ schemaVersion: 5 })
     const future = fixture()
-    future.database.pragma('user_version = 8')
+    // 「未来版本」必须现算：写死 8 在 CURRENT 涨上来之后会变成「更旧的版本」，用例名与语义就对不上了。
+    future.database.pragma(`user_version = ${CURRENT + 1}`)
     const fork = fixture()
     fork.database.exec('CREATE TABLE unrecognized_fork (id INTEGER PRIMARY KEY)')
     for (const candidate of [old, future, fork]) {

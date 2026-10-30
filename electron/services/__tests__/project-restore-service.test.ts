@@ -45,6 +45,7 @@ import { generationOutputContract } from '../../../src/shared/generation-owner-c
 import { getBuiltinPromptTemplate } from '../../../src/services/builtin-prompt-templates'
 import { readBuiltinWritingSkill } from '../../../src/shared/builtin-writing-skills'
 import type { ModelProfile } from '../../../src/shared/ipc-channels'
+import { discardTree } from '../../../test/helpers/temp-dir'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
@@ -199,9 +200,12 @@ async function archiveWithExtra(f: Fixture, archivePath: string): Promise<string
   return target
 }
 
+// 这些 root 里有 WAL 库 + 向量表。直接 `fs.rmSync` 在「把删除劫持成移入回收站」的宿主里会
+// 整文件 ETIMEDOUT（`safe-delete … genie-trash ETIMEDOUT`）—— 失败栈落在 afterEach，看着像业务回归。
+// `discardTree` 先 rename 进系统 temp 再删：同盘 rename 是 O(1)，而系统 temp 在 shim 的 bypass 名单里。
 afterEach(() => {
   closeProjectDatabase()
-  for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
+  for (const root of roots.splice(0)) discardTree(root)
 })
 
 describe('portable project restore service', { timeout: 20_000 }, () => {

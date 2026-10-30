@@ -63,7 +63,24 @@ function sourceIdentity(file: string): Record<string, string> {
   return Object.fromEntries(sqliteSuffixes.filter(suffix => fs.existsSync(file + suffix)).map(suffix =>
     [suffix, createHash('sha256').update(fs.readFileSync(file + suffix)).digest('hex')]))
 }
-/** SQLite readonly handles may still write original -shm reader marks. Copy the
+/**
+ * 删掉本次读取用的 SQLite 快照目录。**删不掉不算错。**
+ *
+ * 为什么不让它抛：
+ * 1. 这个目录是带 `.vibe-owner.json`（ttl 24h）的 scratch，残留不污染任何判定，
+ *    也不会让"这次读到的数据"变得不可信；
+ * 2. 反过来，把清理失败抛出去会**盖掉真正的结果**。2026-10-30 实测：某些宿主把
+ *    `fs.rmSync` 劫持成"spawn 进程移入回收站"的 shim，删除超时后 `close()` 抛错，
+ *    于是「库验证通过」这件事被一个删除失败顶掉了（`vector-store-dimension` 红一例，
+ *    栈落在 `sqlite-project-migration.ts:90 → verifyProjectSqlite:197`）。
+ *
+ * `maxRetries` 是给 Windows 的：sqlite 句柄比 `close()` 晚一拍释放，紧跟删除会撞 EPERM。
+ */
+function discardScratch(root: string): void {
+  try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }) } catch { /* 见上 */ }
+}
+/**
+ * SQLite readonly handles may still write original -shm reader marks. Copy the
  * physical DB/WAL/SHM set using filesystem reads, then connect only this copy.
  * The coordinator owns source writer exclusion; double hashes detect drift.
  */
@@ -87,8 +104,8 @@ function physicalSnapshot(source: string) {
     for (const suffix of Object.keys(identity)) fs.copyFileSync(source + suffix, file + suffix, fs.constants.COPYFILE_EXCL)
     if (JSON.stringify(sourceIdentity(file)) !== JSON.stringify(identity)) throw new Error('PROJECT_MIGRATION_SOURCE_CHANGED')
     unchanged()
-    return { file, unchanged, close: () => fs.rmSync(root, { recursive: true, force: true }) }
-  } catch (error) { fs.rmSync(root, { recursive: true, force: true }); throw error }
+    return { file, unchanged, close: () => discardScratch(root) }
+  } catch (error) { discardScratch(root); throw error }
 }
 type DomainColumns = { name: string; columns: string[] }[]
 const quoteIdentifier = (value: string) => '"' + value.replaceAll('"', '""') + '"'

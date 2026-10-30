@@ -28,6 +28,13 @@ import { openCanonicalProjectFixture as initProjectDatabase } from '../../../tes
 import { DraftRepository } from '../draft-repository'
 import { FinalizationRepository } from '../finalization-repository'
 
+/**
+ * 白名单码而非中文：中文 message 在 IPC 网关会被压成 `GENERATION_REQUEST_FAILED:Error`，
+ * 作者只能看到「Error」两个字（`draft-repository.create` 里有同一条注释，2026-10-24 实测）。
+ * 翻译归上层，仓储层只负责给可判定的码。
+ */
+const SOURCE_STALE = 'GENERATION_DRAFT_SOURCE_STALE'
+
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex')
 }
@@ -128,7 +135,7 @@ describe('draft source dependencies', () => {
       content: '不应保存的下游草稿。',
       wordCount: 10,
       sourceDependencies: [{ draftId: sourceId, contentHash: sha256(sourceContent) }],
-    })).toThrow(/来源依赖已变化/u)
+    })).toThrow(SOURCE_STALE)
     expect(DraftRepository.listByChapter(2)).toEqual([])
   })
 
@@ -166,7 +173,7 @@ describe('draft source dependencies', () => {
       content: '不应继承过期前史的第四章。',
       wordCount: 13,
       sourceDependencies: [{ draftId: thirdId, contentHash: sha256(thirdContent) }],
-    })).toThrow(/来源依赖已变化/u)
+    })).toThrow(SOURCE_STALE)
     expect(DraftRepository.listByChapter(4)).toEqual([])
   })
 
@@ -196,7 +203,7 @@ describe('draft source dependencies', () => {
       content: '不应继承环形前史的第三章。',
       wordCount: 13,
       sourceDependencies: [{ draftId: secondId, contentHash: sha256(secondContent) }],
-    })).toThrow(/来源依赖已变化/u)
+    })).toThrow(SOURCE_STALE)
   })
 
   it('historical fixture normalization (not production admission) treats legacy drafts as source-unknown without claiming stale evidence', () => {
@@ -241,7 +248,7 @@ describe('draft source dependencies', () => {
       content: '不应落盘的第二章。',
       wordCount: 9,
       sourceDependencies: [dependency],
-    })).toThrow(/不再是当前定稿/u)
+    })).toThrow(SOURCE_STALE)
     expect(DraftRepository.listByChapter(2)).toEqual([])
   })
 

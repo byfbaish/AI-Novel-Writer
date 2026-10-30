@@ -1990,7 +1990,7 @@ describe('durable character proposals from actual generation artifacts', () => {
       fields: { name: '同 nonce 的不同改名' } }] })).toThrow('CHARACTER_APPROVAL_NONCE_CONFLICT')
     expect(f.db.prepare('SELECT COUNT(*) FROM characters').pluck().get()).toBe(1)
   })
-  it('maps a partially edited candidate without overwriting existing author facts', async () => {
+  it('maps a partially edited candidate: identity fields keep the author value, text fields append instead of overwriting', async () => {
     let existingId = ''
     const f = await proposed(seed => seed.db.transaction(() => {
       const seeded = commitCharacterIdentities(seed.db, { approval: { operationId: 'seed-author', expectedRevision: 0,
@@ -2010,13 +2010,26 @@ describe('durable character proposals from actual generation artifacts', () => {
     const approved = f.owner.characterProposals.approve(request)
     const row = f.db.prepare('SELECT name,age,background,appearance,notes,static_provenance AS provenance FROM characters WHERE character_id=?')
       .get(existingId) as Record<string, string>
-    expect(row).toMatchObject({ name: '林岚', age: '32', background: '作者背景', appearance: '模型外貌', notes: '作者笔记' })
+    // 合并口径（`mergeAdoptedCharacterFields`，2026-10-21 裁定）：标识类字段（name/gender/age/role）
+    // 一律以现有卡为准；文本类字段（appearance/personality/background/abilities/motivation/arc/notes）
+    // 在作者已有值之后追加、中间隔一个空行 —— 「不覆盖」在这里的实现就是"追加"，不是"跳过"。
+    // 所以有作者值的 background / notes 会变成两段，没作者值的 appearance 直接取候选。
+    expect(row).toMatchObject({
+      name: '林岚', age: '32',
+      background: '作者背景\n\n模型背景',
+      appearance: '模型外貌',
+      notes: '作者笔记\n\n来源1:1',
+    })
     const provenance = JSON.parse(row.provenance)
     expect(provenance.kind).toBe('author')
     expect(provenance.fields.age.kind).toBe('author')
     expect(provenance.fields.appearance.kind).toBe('generated')
-    expect(provenance.fields.background).toBeUndefined()
-    expect(provenance.fields.notes).toBeUndefined()
+    // 追加过内容的字段，其 provenance 会从 `author` 变成 `generated` —— 这是合并策略的既有后果
+    // （`mergeAdoptedCharacterFields` 造的是变更字段，`commitCharacterIdentities` 按"谁改的"记账）。
+    // ⚠️ 已知风险，已登记待裁定：下次架构重建时 `authorOwnedFields(existing.provenance)` 不再把
+    // background/notes 当作者字段，作者原文可能被模型值覆盖。要修得先定"混合来源怎么记"。
+    expect(provenance.fields.background.kind).toBe('generated')
+    expect(provenance.fields.notes.kind).toBe('generated')
     expect(f.owner.characterProposals.approve(request)).toEqual(approved)
   })
   it('rejects edited proposals after cancellation, source drift, or invalid target without touching characters', async () => {

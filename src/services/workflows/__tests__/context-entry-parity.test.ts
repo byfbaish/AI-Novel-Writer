@@ -161,7 +161,10 @@ describe('S10B write-path characterization (the composed prompt must not change)
     expect(bundle.text.indexOf('【知情（谁知道什么）】')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
     expect(bundle.prewrite).toEqual({ handoffCount: 0, factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 2, abilityCount: 0, ruleCount: 0 })
     // 本条哈希是**新增**，不是改旧值：上面四条锚点一字未动。
-    expect(sha(bundle.text)).toBe('7183dafbdafe42603ebcc64883098979d297fe9b326576c295941bad04d3192e')
+    // 2026-10-30 换锚点：`ad6256d3`（2026-10-26）有意把知情节首改成「每条事实的知情名单都完整」
+    // （裁剪单位从行改成事实，见 knowledge-state.ts 的 ZH_LEAD 注释），当次只更新了审稿链的锚点，
+    // 漏了这一条与下面「六节固定顺序」那条。锚点本身是有意变、不是漂移 ⇒ 换值，不改断言。
+    expect(sha(bundle.text)).toBe('80ba3d2c5d8065939e284192cb4fb9bec4f2361d5b19e15af61a530e0ee9769f')
   })
 
   /**
@@ -246,7 +249,8 @@ describe('S10B write-path characterization (the composed prompt must not change)
       factCount: 1, itemCount: 1, cadenceCount: 1, knowledgeCount: 1, abilityCount: 1, ruleCount: 1,
     })
     // 本条同样是**新增**：上面六条锚点（含 {abilities}）一字未改。
-    expect(sha(bundle.text)).toBe('4e63616457e22a09ad13877ab084342255c8689d3993b7927f56adb7ba5feffc')
+    // 同上：`ad6256d3` 的知情节首文案变更连带这一条（它包含全部六节）。
+    expect(sha(bundle.text)).toBe('3b9ee35b8e18932684adccbdd3848090904431393c11297fafd9b3fc5fb387f0')
   })
 
   /**

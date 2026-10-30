@@ -89,7 +89,12 @@ describe('release dependency contract', () => {
   })
 
   it('runs the full test suite before the outer monitor starts', () => {
-    expect(pkg.scripts?.test).toBe('vitest run')
+    // 这一条的**意图**是「`pnpm test` 直接跑全量，不是某个子集脚本的别名」，而不是钉某个字面量。
+    // 原来写死 `'vitest run'`；2026-10 起统一改走 `scripts/run-tests-electron.mjs`
+    // —— 全工程只留一份 ABI：better-sqlite3 必须按 Electron 41（ABI 145）编译，
+    // 裸 `vitest run` 走的是 Node 22（ABI 127），原生模块直接加载不了（理由见该脚本顶部注释）。
+    // 那条改动没同步这里，于是每次全量跑测都会红一例。
+    expect(pkg.scripts?.test).toBe('node scripts/run-tests-electron.mjs')
     expect(pkg.scripts?.['test:release-monitor-selftest']).toBeUndefined()
     expect(pkg.scripts?.['test:release-workload']).toBeUndefined()
 

@@ -39,7 +39,14 @@ function physicalManifest(root: string): string {
     if (info.isDirectory()) {
       files.push([relative + '/', 'directory'])
       for (const name of fs.readdirSync(absolute).sort()) walk(path.join(relative, name))
-    } else if (info.isFile() && info.nlink === 1) files.push([relative, digest(fs.readFileSync(absolute))])
+    } else if (info.isFile()) {
+      // 不查 `nlink`：LanceDB 的 `_versions/<n>.manifest` 用硬链接做版本共享，`nlink > 1` 是库的正常形态
+      // （2026-10-30 实测：`chunks.lance/_versions/1.manifest` 恒为 2）。这里整棵树都是向量资产，
+      // 硬链接不会把内容带出这棵树；能带出去的是符号链接，上一行已经单独拒绝。
+      // 与 `legacy-project-copy-import.treeHash` 的口径差异在于作用域：那边扫描整个旧项目，
+      // 硬链接在 lancedb 之外仍是可疑信号，所以只在 `.vela/lancedb/**` 开口子。
+      files.push([relative, digest(fs.readFileSync(absolute))])
+    }
     else fail('VECTOR_MIGRATION_NONREGULAR_UNSUPPORTED')
   }
   for (const name of vectorObjects) if (fs.existsSync(path.join(root, name))) walk(name)

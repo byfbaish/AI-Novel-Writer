@@ -5,6 +5,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { assertProjectMigrationPathsSupported, type ProjectStoragePreflightOptions } from './project-storage-preflight'
 import { CANONICAL_PROJECT_DATABASE, parseCanonicalProjectManifest } from '../../src/shared/project-format'
+import { isLanceStoragePath } from './lance-storage-path'
 
 export interface ProjectSqliteEvidence {
   schemaVersion: number; fingerprint: string
@@ -133,7 +134,11 @@ function copyAsset(source: string, target: string): void {
     safeDirectory(target); fs.mkdirSync(target, { recursive: false })
     for (const name of fs.readdirSync(source)) copyAsset(path.join(source, name), path.join(target, name))
   } else {
-    regular(source); safeDirectory(path.dirname(target))
+    // `nlink === 1` 只对**非 lancedb** 的资产要求：LanceDB 的 `_versions/<n>.manifest` 靠硬链接做
+    // 版本共享（实测恒为 2），本函数要复制整棵资产树、必然扫到它。判定与理由见 `lance-storage-path.ts`。
+    // 这条守卫本身不能整体删掉 —— 下方「blocks required hardlinks」用例专门守着「在其他位置必须拒绝硬链接」。
+    if (!info.isFile() || (info.nlink !== 1 && !isLanceStoragePath(source))) fail('PROJECT_MIGRATION_UNSAFE_FILE')
+    safeDirectory(path.dirname(target))
     const fd = fs.openSync(target, 'wx', 0o600)
     try { fs.writeFileSync(fd, fs.readFileSync(source)); fs.fsyncSync(fd) } finally { fs.closeSync(fd) }
   }

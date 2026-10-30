@@ -76,6 +76,24 @@ export default defineConfig(({ command }) => {
   test: {
     // Test copy must not follow the operating-system locale of a CI runner.
     setupFiles: ['test/setup-locale.ts'],
+    // 整轮只跑一次（不是每个文件一次）：给 discardTree 留在系统 temp 里的目录收尸。
+    // 为什么要单独一个钩子：用例的 afterEach 删不掉是因为 sqlite 句柄还没释放，
+    // 而这里所有 worker 都已退出，句柄全没了。细节见 test/helpers/temp-dir.ts 顶部注释。
+    // 开跑前扫一次上一轮 discardTree 的残留（**不挂 teardown**，理由见文件内注释）。
+    globalSetup: ['test/global-setup.ts'],
+    // 本项目大量用例要建**真** SQLite（跑完 26 版迁移）再深拷贝目录，默认的 5s/10s 上限
+    // 在并行跑全量时会稳定撞 `Test timed out in 5000ms` / `Hook timed out in 10000ms`，
+    // 而这些用例单跑全过 —— 那是机器负载，不是缺陷信号。
+    // 2026-10-30 清理既有红时实测：并行时单文件测试总耗时能被放大到 11 倍（wall 156s / cpu 1692s），
+    // 所以这里放宽默认值，个别确实更慢的用例再在文件里覆盖。
+    testTimeout: 20_000,
+    hookTimeout: 30_000,
+    // 这台机器 20 逻辑核，vitest 默认会起 ~19 个 worker；而这里绝大多数用例是**真磁盘**作业
+    // （跑完 26 版迁移建库、再深拷贝目录），并行度一高就是磁盘饱和 —— 实测单文件耗时可放大到 11 倍
+    // （wall 166s / tests 1746s），然后每次全量都在**不同**文件上冒 1–2 例超时。
+    // 限到四分之一（20 核 ⇒ 5 个 worker）：全量从 ~2.7 分钟变 ~5 分钟，换来稳定的 0 失败。
+    // 这是"用时间买确定性"—— 反复调查假回归比多跑几分钟贵得多。
+    maxWorkers: '25%',
     // 本地历史 worktree 和 pnpm 缓存可能包含旧版本测试；它们不是当前项目源码。
     exclude: [
       ...configDefaults.exclude,

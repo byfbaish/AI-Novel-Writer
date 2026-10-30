@@ -28,6 +28,7 @@ import {
   type PortableProvidedFile,
 } from '../project-archive-service'
 import { createProjectArchiveRoundtripFixture } from '../../../test/desktop/project-archive.fixture'
+import { discardTree } from '../../../test/helpers/temp-dir'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
@@ -313,9 +314,12 @@ async function extract(f: Fixture) {
   return extractPortableProjectArchive({ archivePath: f.target, stagingParentPath: f.extractParent })
 }
 
+// 这些 root 里有 WAL 库 + 向量表。直接 `fs.rmSync` 在「把删除劫持成移入回收站」的宿主里会
+// 整文件 ETIMEDOUT（`safe-delete … genie-trash ETIMEDOUT`）—— 失败栈落在 afterEach，看着像业务回归。
+// `discardTree` 先 rename 进系统 temp 再删：同盘 rename 是 O(1)，而系统 temp 在 shim 的 bypass 名单里。
 afterEach(() => {
   closeProjectDatabase()
-  for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
+  for (const root of roots.splice(0)) discardTree(root)
 })
 
 describe('portable project export service', { timeout: 20_000 }, () => {
@@ -619,7 +623,11 @@ describe('portable project export service', { timeout: 20_000 }, () => {
       // P1-2 期 1b / M19：+2 表 21 列（volumes / volume_units），volume_handoffs 重建为 11 列
       //   （区间外置，13 → 11）—— 19/61/584 → 20/63/603。
       // A2 / M20：+1 列（review_findings.review_class）—— 20/63/603 → 21/63/604。
-      sourceEvidence: { schemaVersion: 21, tableCount: 63, fieldCount: 604 },
+      // M21–M25（2026-10-30 补记）：secrets / 知情候选 / 删除收据 / 上游版本账 / 派生来源三列，
+      // 五版合计 +2 表 21 列 —— 21/63/604 → 26/65/625。
+      // 版本号用常量而不是字面量：这条断言在 M20 之后每一版都得手改一次，而它想表达的只是
+      // 「导出的 sourceEvidence 反映的是**当前**库」——写死 21 会让「迁移做对了」表现成「测试红了」。
+      sourceEvidence: { schemaVersion: CURRENT_DESKTOP_SCHEMA_VERSION, tableCount: 65, fieldCount: 625 },
     })
     expect(contextCalls).toEqual(['lease-current', 'lease-current', 'lease-current'])
     expect(fs.readFileSync(f.databasePath)).toEqual(before)
@@ -681,8 +689,8 @@ describe('portable project export service', { timeout: 20_000 }, () => {
     const receipt = await exportPortableProject(input(f))
     // 与上一条同源：M10 的两列与 M11 的两张表同样计入 donor 夹具（比上一条多 1 个字段）；
     // M15 加 1 表 13 列，M16 加 1 表 11 列，M17 加 1 表 13 列。
-    // donor 夹具在上一条基础上多一列，所以字段数比 584 多 1。
-    expect(receipt.sourceEvidence).toMatchObject({ schemaVersion: 21, tableCount: 63, fieldCount: 605 })
+    // donor 夹具在上一条基础上多一列，所以字段数比 625 多 1。
+    expect(receipt.sourceEvidence).toMatchObject({ schemaVersion: CURRENT_DESKTOP_SCHEMA_VERSION, tableCount: 65, fieldCount: 626 })
     const targetProjectRoot = path.join(f.base, 'restored-donor')
     await restorePortableProject({ archivePath: f.target, targetProjectRoot })
 

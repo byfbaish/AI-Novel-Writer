@@ -210,12 +210,13 @@ describe('label tables', () => {
   })
 
   it('labels every space-audit issue kind in both languages', () => {
-    const kinds = Object.keys(SPACE_AUDIT_KIND_LABELS)
-    // 11 种：新增 `staging-unverified`（自评一次性/低频却无窗口 ⇒ 汇总一条待核对）。
-    expect(kinds).toHaveLength(11)
-    for (const kind of kinds) {
-      expect(SPACE_AUDIT_KIND_LABELS[kind as keyof typeof SPACE_AUDIT_KIND_LABELS].zh.length).toBeGreaterThan(0)
-      expect(SPACE_AUDIT_KIND_LABELS[kind as keyof typeof SPACE_AUDIT_KIND_LABELS].en.length).toBeGreaterThan(0)
+    // 不再硬编码条数：`SPACE_AUDIT_ISSUE_LABELS` 的声明类型是 `Record<SpaceAuditIssueKind, …>`，
+    // 「类型里的每个 kind 都有标签」由 tsc 在编译期保证 —— 运行时再数一遍只会在加/删一种 kind 时
+    // 变成一条需要人工维护的魔数（2026-10-30 清理时它是 11，实际表里 10 项，注释里那个
+    // `staging-unverified` 从来没有实现过）。这里只补运行时那一半：每条标签两种语言都得有字。
+    for (const kind of Object.keys(SPACE_AUDIT_KIND_LABELS) as Array<keyof typeof SPACE_AUDIT_KIND_LABELS>) {
+      expect(SPACE_AUDIT_KIND_LABELS[kind].zh.length).toBeGreaterThan(0)
+      expect(SPACE_AUDIT_KIND_LABELS[kind].en.length).toBeGreaterThan(0)
     }
   })
 

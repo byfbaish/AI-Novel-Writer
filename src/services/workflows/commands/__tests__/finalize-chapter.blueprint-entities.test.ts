@@ -148,6 +148,11 @@ describe('FinalizeChapterCommand blueprint character fallback', () => {
         case 'db:post-process-mark-step-ok':
           completedSteps.add(String(args[1]))
           return { success: true }
+        // P20-3 新增的 `knowledge_candidates` 槽位是 `critical: false`：它失败时管线会走
+        // `db:post-process-mark-step-failed` 记账（不阻断定稿），所以这个 channel 必须被接住。
+        // 本夹具没有知识库事实，该槽位必然判失败 —— 这正是要允许的路径。
+        case 'db:post-process-mark-step-failed':
+          return { success: true }
         case 'kb:import-text':
           return { success: true, docId: 'knowledge-3', chunkCount: 1 }
         case 'db:finalization-link-knowledge-document':
@@ -233,7 +238,12 @@ describe('FinalizeChapterCommand blueprint character fallback', () => {
       PROJECT_PATH,
       PROJECT_SESSION,
     )
-    expect(invoke.mock.calls.filter(([channel]) => channel === 'finalization-generation:read').map(([, request]) => request)).toEqual([
+    // `knowledge_candidates`（P20-3 步骤 2c）也走同一个 channel，本夹具没有知识事实 ⇒ 它会失败重试。
+    // 本用例只钉「直接定稿没给角色时，回退用本章蓝图里的角色」，所以先滤掉那个槽位再比对。
+    expect(invoke.mock.calls
+      .filter(([channel]) => channel === 'finalization-generation:read')
+      .map(([, request]) => request as { slot: { stepKey: string } })
+      .filter(request => request.slot.stepKey !== 'knowledge_candidates')).toEqual([
       { slot: { source: { draftId: 33, finalizationId: 'finalization-3', chapterNumber: 3, contentHash: CONTENT_HASH }, stepKey: 'chapter_notes' } },
       { slot: { source: { draftId: 33, finalizationId: 'finalization-3', chapterNumber: 3, contentHash: CONTENT_HASH }, stepKey: 'character_cards' } },
     ])

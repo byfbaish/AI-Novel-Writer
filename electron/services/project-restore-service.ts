@@ -46,8 +46,11 @@ export type ProjectRestoreServiceErrorCode =
   | 'PORTABLE_RESTORE_UNSAFE_TARGET'
 
 export class ProjectRestoreServiceError extends Error {
-  constructor(readonly code: ProjectRestoreServiceErrorCode) {
-    super(code)
+  constructor(readonly code: ProjectRestoreServiceErrorCode, detail?: string) {
+    // 带 detail 时 message 变长，但**开头仍是 code** —— 既有的
+    // `toThrow('PORTABLE_RESTORE_UNSAFE_TARGET')` 是子串匹配，不受影响；
+    // 按 `error.code` 判定的消费方也不受影响。
+    super(detail ? `${code}:${detail}` : code)
     this.name = 'ProjectRestoreServiceError'
   }
 }
@@ -105,7 +108,19 @@ interface ReadInstallJournal {
   identity: fs.BigIntStats
 }
 
-function fail(code: ProjectRestoreServiceErrorCode): never { throw new ProjectRestoreServiceError(code) }
+/**
+ * `detail` 只进 message，不进 `code` —— `code` 是白名单码（IPC 网关按它翻译/映射，
+ * 见 `project-archive-controller.ts:40-52`），message 是给人看的。
+ *
+ * 为什么要有 detail：`installedReceipt` 有六个 `return null` 分支，全都落到
+ * `PORTABLE_RESTORE_UNSAFE_TARGET` 同一句话上。2026-10-30 全量跑测时冒过一例
+ * （`generation-controller` 的 author-recovery 用例，单跑 42/42 复现不了），
+ * 光看错误码连"是哪一支判空"都不知道，只能把整个流程重读一遍。
+ * 分支名写进 message 后，下次同样的红 5 秒就能定位。
+ */
+function fail(code: ProjectRestoreServiceErrorCode, detail?: string): never {
+  throw new ProjectRestoreServiceError(code, detail)
+}
 
 function normalized(value: string): string {
   const result = path.resolve(value).replace(/^\\\\\?\\/u, '')
@@ -513,18 +528,36 @@ function restoreReceipt(
   }
 }
 
+/**
+ * 六个判空分支原先全折成同一个 `null`，落到 `PORTABLE_RESTORE_UNSAFE_TARGET` 同一句话上。
+ * 现在每支带一个 `reason`，只用于 **错误 message**，不参与任何判定 —— 判定逻辑一字未动。
+ */
+type InstalledReceiptOutcome =
+  | { ok: true; receipt: RestorePortableProjectReceipt }
+  | { ok: false; reason: string }
+
+/** 只把"看着像代码"的原文带出来（`PORTABLE_*` / `SQLITE_*` 之类），路径一律丢弃。 */
+const CODE_LIKE = /^[A-Za-z][A-Za-z0-9_]{3,79}$/u
+function codeHint(error: unknown): string {
+  const message = error instanceof Error ? error.message : ''
+  return CODE_LIKE.test(message) ? `:${message}` : ''
+}
+
 async function installedReceipt(
   targetRoot: string,
   authority: PortableTransferAuthority,
   entries: readonly { path: string; byteSize: number; sha256: string; disposition: string }[],
-): Promise<RestorePortableProjectReceipt | null> {
-  if (!fs.existsSync(targetRoot)) return null
+): Promise<InstalledReceiptOutcome> {
+  if (!fs.existsSync(targetRoot)) return { ok: false, reason: 'target-missing' }
   physicalDirectory(targetRoot)
   const rootNames = fs.readdirSync(targetRoot)
-  if (rootNames.some(name => name !== CANONICAL_PROJECT_DIRECTORY && name !== INSTALL_MARKER_NAME)) return null
+  if (rootNames.some(name => name !== CANONICAL_PROJECT_DIRECTORY && name !== INSTALL_MARKER_NAME)) {
+    // 多出来的名字本身不打印：可能是作者自建文件，也可能带隐私路径。
+    return { ok: false, reason: `target-has-extra-entries(${rootNames.length})` }
+  }
   const storage = path.join(targetRoot, CANONICAL_PROJECT_DIRECTORY)
   const projectManifestPath = path.join(storage, PROJECT_MANIFEST_NAME)
-  if (!fs.existsSync(projectManifestPath)) return null
+  if (!fs.existsSync(projectManifestPath)) return { ok: false, reason: 'manifest-missing' }
   physicalDirectory(storage)
   let targetProjectId: string
   let installedAuthority: PortableTransferAuthority
@@ -533,22 +566,24 @@ async function installedReceipt(
     installedAuthority = parsePortableTransferAuthority(JSON.parse(readPhysicalFile(
       path.join(storage, path.posix.basename(PORTABLE_TRANSFER_AUTHORITY_PATH)),
     ).bytes.toString('utf8')))
-  } catch { return null }
-  if (installedAuthority.originProjectId !== authority.originProjectId
-    || installedAuthority.snapshotGeneration !== authority.snapshotGeneration
-    || installedAuthority.receiptId !== authority.receiptId
-    || installedAuthority.portableDatabaseSha256 !== authority.portableDatabaseSha256
-    || installedAuthority.targetProjectId !== targetProjectId || !UUID.test(targetProjectId)
-    || targetProjectId === authority.originProjectId) return null
+  } catch (error) { return { ok: false, reason: `manifest-unreadable${codeHint(error)}` } }
+  if (installedAuthority.originProjectId !== authority.originProjectId) return { ok: false, reason: 'authority-origin-mismatch' }
+  if (installedAuthority.snapshotGeneration !== authority.snapshotGeneration) return { ok: false, reason: 'authority-generation-mismatch' }
+  if (installedAuthority.receiptId !== authority.receiptId) return { ok: false, reason: 'authority-receipt-mismatch' }
+  if (installedAuthority.portableDatabaseSha256 !== authority.portableDatabaseSha256) return { ok: false, reason: 'authority-db-digest-mismatch' }
+  if (!UUID.test(targetProjectId)) return { ok: false, reason: 'target-project-id-not-uuid' }
+  if (installedAuthority.targetProjectId !== targetProjectId) return { ok: false, reason: 'authority-target-mismatch' }
+  if (targetProjectId === authority.originProjectId) return { ok: false, reason: 'target-equals-origin' }
   for (const entry of entries) {
     if (entry.path === PORTABLE_TRANSFER_AUTHORITY_PATH) continue
     const file = path.join(storage, ...entry.path.split('/'))
-    if (!fs.existsSync(file) || await hashPhysicalFile(file) !== entry.sha256) return null
+    if (!fs.existsSync(file)) return { ok: false, reason: `installed-file-missing:${entry.path}` }
+    if (await hashPhysicalFile(file) !== entry.sha256) return { ok: false, reason: `installed-file-digest-mismatch:${entry.path}` }
   }
   const databasePath = path.join(storage, CANONICAL_PROJECT_DATABASE)
   try {
     const freeze = readPortableRuntimeFreeze(targetRoot)
-    if (!freeze.active) return null
+    if (!freeze.active) return { ok: false, reason: 'runtime-freeze-inactive' }
     verifyProjectSqlite({ databasePath })
     const database = new BetterSqlite(databasePath, { readonly: true, fileMustExist: true })
     try {
@@ -558,14 +593,14 @@ async function installedReceipt(
     } finally { database.close() }
     const knowledgeEntry = entries.find(entry => entry.path === PORTABLE_KNOWLEDGE_SOURCE_PATH)
     if (knowledgeEntry) {
-      if (knowledgeEntry.disposition !== 'knowledge-source') return null
+      if (knowledgeEntry.disposition !== 'knowledge-source') return { ok: false, reason: 'knowledge-disposition-mismatch' }
       const snapshot = parsePortableKnowledgeSnapshot(json(readPhysicalFile(
         path.join(storage, PORTABLE_KNOWLEDGE_SOURCE_PATH), knowledgeEntry.byteSize,
       ).bytes))
-      if (!await verifyPortableKnowledgeSnapshot(storage, snapshot)) return null
+      if (!await verifyPortableKnowledgeSnapshot(storage, snapshot)) return { ok: false, reason: 'knowledge-snapshot-mismatch' }
     }
-  } catch { return null }
-  return restoreReceipt(targetRoot, authority, targetProjectId)
+  } catch (error) { return { ok: false, reason: `installed-database-invalid${codeHint(error)}` } }
+  return { ok: true, receipt: restoreReceipt(targetRoot, authority, targetProjectId) }
 }
 
 function relativeKey(value: string): string {
@@ -806,17 +841,19 @@ export async function restorePortableProject(input: RestorePortableProjectInput)
         cleanupInstallTemporaries(journal, targetRoot)
       }
       const installed = await installedReceipt(targetRoot, authority, extracted.manifest.entries)
-      if (installed) {
+      if (installed.ok) {
         if (journal) {
-          if (journal.document.targetProjectId !== installed.targetProjectId) fail('PORTABLE_RESTORE_UNSAFE_TARGET')
+          if (journal.document.targetProjectId !== installed.receipt.targetProjectId) {
+            fail('PORTABLE_RESTORE_UNSAFE_TARGET', 'journal-target-mismatch')
+          }
           activeInstallJournals.add(normalized(journal.path))
           heldJournalPath = journal.path
           releaseInstallJournal(journal, targetRoot, true)
           heldJournalPath = undefined
         } else if (fs.existsSync(path.join(targetRoot, INSTALL_MARKER_NAME))) {
-          fail('PORTABLE_RESTORE_UNSAFE_TARGET')
+          fail('PORTABLE_RESTORE_UNSAFE_TARGET', 'marker-without-journal')
         }
-        return installed
+        return installed.receipt
       }
       if (!journal) fail('PORTABLE_RESTORE_TARGET_EXISTS')
       reservationOwned(journal, targetRoot)
@@ -894,11 +931,16 @@ export async function restorePortableProject(input: RestorePortableProjectInput)
     cancelled(input.signal)
     await installStagedProject(attempt, storage, targetRoot, journal)
     const installed = await installedReceipt(targetRoot, authority, extracted.manifest.entries)
-    if (!installed || installed.targetProjectId !== targetProjectId) fail('PORTABLE_RESTORE_UNSAFE_TARGET')
+    // 这里就是 2026-10-30 那例「单跑不复现、全量跑偶发」的落点：
+    // `reason` 会把六个判空分支中的一个直接写进 message。
+    if (!installed.ok) fail('PORTABLE_RESTORE_UNSAFE_TARGET', `post-install:${installed.reason}`)
+    if (installed.receipt.targetProjectId !== targetProjectId) {
+      fail('PORTABLE_RESTORE_UNSAFE_TARGET', 'post-install:target-project-id-changed')
+    }
     input.__testHooks?.afterInstallCommitted?.(targetRoot)
     releaseInstallJournal(journal, targetRoot, true)
     heldJournalPath = undefined
-    return installed
+    return installed.receipt
   } finally {
     if (heldJournalPath) activeInstallJournals.delete(normalized(heldJournalPath))
     cleanupAttempt(attempt)

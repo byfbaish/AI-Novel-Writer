@@ -200,6 +200,21 @@ changedChaptersMode = 'newRevOnly'（默认）：changed_chapters[newRev] = 本�
 
 必须同步改的调用点（因为形状变了）：`DraftEditor.tsx:108`、`VersionHistory.tsx:43`、`NarrativeThreadEditor.tsx:355`、`DirectoryConfigDialog.tsx:70`、`ConfigImpactPreview.tsx:163`、`architecture-service.ts:128`、`workflow-guards.ts:193/275`、`list-chapters.tool.ts:24`、`read-blueprint.tool.ts:34/47`、`read-project-state.tool.ts:83`、`version-service.ts:34`、`DraftBoxGroup.tsx:129`、`ManuscriptGroup.tsx:65`、`DomainProposalDiff.tsx:82`、`propose-chapter-blueprint.tool.ts:109`。
 
+> **⚠️ 实施偏差（2026-10-30，落地时改判）**：上表「包一层 `{ entries }` / `{ entry, missing }`」**没有做**，实际做法是**保持原形状、往每条 entry 上挂 `validity` 字段**：
+>
+> | 通道 | 实际返回 |
+> |---|---|
+> | `db:blueprint-get-all`（`db-controller.ts:613`） | `Array<BlueprintData & { validity }>`（仍是裸数组） |
+> | `db:blueprint-get`（`:624`） | `(BlueprintData & { validity }) \| null`（**没有 `missing`**） |
+> | `db:volume-handoffs-list`（`:1725`） | `{ success, entries: 每条挂 validity }` —— 与 v2 一致 |
+> | `db:volume-handoffs-before`（`:1719` 附近） | `{ success, entry, missing, validity }` —— 与 v2 一致 |
+>
+> **为什么改判**：包一层会让上表 15 个调用点全部要改，其中 12 个是「只取章号/标题/统计」的 C 类，改成 `res.entries.map(...)` 纯属噪声；而 `missing` 对 blueprint 是多余的 —— `BlueprintRepository.getByChapter` 走的是仓储层已建好的表，表缺失由 `getProjectDb()` 返回 `null` 那一步就分开了，不存在「表没有 vs 这一章没有」的二义。**交接单那条保住了 `missing`，因为表本身可能没建（M18 之前），那是真的二义。**
+>
+> ⇒ 结论：**「形状必须变」这条 v1→v2 的判断只对交接单成立**；蓝图两个通道用「加字段」既达成目的（消费者能判 stale）又不制造 12 处无意义改动。`read-blueprint.tool.ts` 那一处也照样能拦（`:42/:63` 读的就是 `validity`，与包不包一层无关）。
+
+> **一处口径要写清**：A 类里 `read-blueprint.tool.ts` 落地成**「必看提醒」而非硬拒**（`bp.validity?.state === 'stale'` ⇒ 在返回正文前插一段 ⚠️ + `describeDrift(behind)`）。理由是 agent 工具若直接抛错，模型连"哪张卡过期了、上游改了什么"都拿不到，只能空转重试；而把提醒拼进它读到的正文里，模型**想忽略也忽略不掉**。其余五处（`generate-draft` / `chapter-workflow` / `batch-chapter-workflow` / `review-revision-context` / `finalize-chapter`）都是硬拒。
+
 ### 5.3 消费点全表（分三级）
 
 **A · 必须拦（stale ⇒ 拒绝并指路）**
@@ -214,7 +229,13 @@ changedChaptersMode = 'newRevOnly'（默认）：changed_chapters[newRev] = 本�
 
 **B · 提示不阻断**
 
-`outline-prefix-context.ts:53`（stale ⇒ 不注入 + warning）、`volume-handoff-gate.ts:36`（stale ⇒ 判"需处置"，不是"已复查"）、`workflow-guards.ts:193/275`（开写前置已有位置）、`NarrativeThreadEditor.tsx:355`（伏笔回收点依赖蓝图区间）、`VolumeHandoffRegistryPanel.tsx:238`、`ChapterCardEditor` / `DraftEditor`（编辑它就是在更新它）。
+`outline-prefix-context.ts:53`（stale ⇒ 不注入 + warning）、`volume-handoff-gate.ts:36`（stale ⇒ 判"需处置"，不是"已复查"）、~~`workflow-guards.ts:193/275`（开写前置已有位置）~~（**已裁定不做，见下**）、`NarrativeThreadEditor.tsx:355`（伏笔回收点依赖蓝图区间）、`VolumeHandoffRegistryPanel.tsx:238`、`ChapterCardEditor` / `DraftEditor`（编辑它就是在更新它）。
+
+> **⚠️ `workflow-guards.ts:193/275` 撤回（2026-10-30 裁定，本表的写法过宽）**：
+> 这两处**只读 `blueprints.length`**，不读任何一张卡的内容 —— `:194` 是「`length === 0` ⇒ 还没生成过蓝图，拦开写」，`:278` 是「`length > 0` ⇒ 已有蓝图，不许重生成角色卡」。**它们问的是"有没有"，不是"新不新"**。
+> 在这里挂 stale 会产生一个错语义：手里有一张过期卡时，「能不能开始写」的答案依然是**能**（作者可能就是要先在旧卡上写、再回头修上游）；反过来 `length > 0` 那条要是被 stale 影响，会出现「卡都过期了所以允许重生成角色卡」——那是把闸门开反了方向。
+> 而且这两处一旦要求 stale 提示，就得把上千条 `validity` 在 guard 里再判一遍，而它们连一条都不展示。
+> ⇒ **本表删掉这两项**。真正该有提示的是**展示卡内容**的地方（`NarrativeThreadEditor` 回收点、面板徽标、`ChapterCardEditor`），那些都已落地。
 
 **C · 不动**
 

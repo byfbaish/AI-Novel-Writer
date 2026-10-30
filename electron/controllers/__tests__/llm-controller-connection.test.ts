@@ -571,7 +571,8 @@ describe('llm project statistics', () => {
 
     expect(mocks.logCall).toHaveBeenCalledWith(expect.objectContaining({
       success: false,
-      errorMessage: 'finish:content_filter',
+      // 记为「finish 码 + provider 原话」，所以是前缀匹配而不是全等。
+      errorMessage: expect.stringMatching(/^finish:content_filter(?=\s|$)/u),
     }))
   })
 
@@ -611,7 +612,7 @@ describe('llm project statistics', () => {
     })
     expect(mocks.logCall).toHaveBeenCalledWith(expect.objectContaining({
       success: false,
-      errorMessage: 'finish:unknown',
+      errorMessage: expect.stringMatching(/^finish:unknown(?=\s|$)/u),
     }))
   })
 

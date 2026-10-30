@@ -10,8 +10,13 @@ import { createCanonicalProjectManifest } from '../../../src/shared/project-form
 import fs from 'node:fs'
 import path from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+// 本文件的用例要做**完整物理 cutover**：建真 WAL 库 + Lance 表、整树拷贝、再逐字节比对源不变。
+// 单跑最重的一条 3.7s，但并行跑全量时同一份磁盘要同时服务多个 worker，实测会被拖到 20s 以上。
+// 这是 IO 等待，不是死循环 ⇒ 单独放宽到 120s（全局 20s 对别的文件仍然有效）。
+vi.setConfig({ testTimeout: 120_000 })
 import { authorizeSyntheticProjectMigration, isAdmittedProjectMigration, migrateProjectFormat, type ProjectMigrationDependencies, type ProjectSqliteEvidence } from '../project-format-migration'
+import { discardTree } from '../../../test/helpers/temp-dir'
 
 const roots: string[] = []
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -64,7 +69,10 @@ function fixture() {
   return { fixtureRoot, legacy, projectRoot, projectId, dependencies, permit: authorizeSyntheticProjectMigration(fixtureRoot),
     exclusiveWriterCheck: () => true, preflightOptions: { maxNativePathCharacters: 4096 } }
 }
-afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }) })
+// 这些 root 里有 WAL 库 + Lance 表，直接 `fs.rmSync` 在把删除劫持成「移入回收站」的宿主里会
+// 整文件 ETIMEDOUT（`safe-delete … genie-trash ETIMEDOUT`，栈落在 afterEach，看着像业务回归）。
+// `discardTree` 先 rename 进系统 temp 再删 —— 那里是 shim 的 bypass 名单，走原生删除。
+afterEach(() => { for (const root of roots.splice(0)) discardTree(root) })
 describe('fixture-only project physical cutover', () => {
   it('requires a real process-local synthetic permit and writer exclusion', async () => {
     const options = fixture()

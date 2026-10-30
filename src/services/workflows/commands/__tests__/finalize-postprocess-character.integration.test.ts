@@ -541,7 +541,12 @@ describe('RunFinalizePostProcessCommand character-state persistence', () => {
       'Do not substitute a more prominent earlier event for the current plan or describe a plan as executed',
     )
     expect(status.steps).toMatchObject({ chapter_notes: { ok: true }, character_cards: { ok: true, attemptCount: 1 } })
-    expect(selections).toMatchObject([{ slot: { stepKey: 'chapter_notes', source: { draftId: 7 } } }, { slot: { stepKey: 'character_cards', source: { draftId: 7 } } }])
+    // `knowledge_candidates` 是 P20-3 在 chapter_notes 与 character_cards 之间新插的第三个槽位
+    // （finalize-chapter.command.ts 步骤 2c，critical:false）。本用例只关心「完整定稿原文被送进两个原有槽位」，
+    // 所以把它滤掉再比对顺序与来源 —— 否则每次动这个槽位的重试次数都会连带红这里。
+    expect((selections as Array<{ slot: { stepKey: string; source: { draftId: number } } }>)
+      .filter(entry => entry.slot.stepKey !== 'knowledge_candidates'))
+      .toMatchObject([{ slot: { stepKey: 'chapter_notes', source: { draftId: 7 } } }, { slot: { stepKey: 'character_cards', source: { draftId: 7 } } }])
     expect(commitRequests).toEqual([expect.objectContaining({ handle: expect.objectContaining({ projectId: 'test', epoch: 'lease-test' }), artifact: expect.objectContaining({ textHash: expect.stringMatching(/^[a-f0-9]{64}$/) }) })])
     expect(CharacterRepository.getById(characterId)).toMatchObject({
       appearance: 'author-written silver coat',
@@ -764,7 +769,9 @@ describe('RunFinalizePostProcessCommand character-state persistence', () => {
     expect(status.steps.character_cards).toMatchObject({ ok: true })
     expect(commitRequests).toHaveLength(2)
     expect(commitRequests[1]).toEqual(commitRequests[0])
-    expect(useLLMStore.getState().generateStream).toHaveBeenCalledTimes(2)
+    // 三次 = 三个槽位各一次（chapter_notes / knowledge_candidates / character_cards）。
+    // 本用例要证的是「修持久化时复用冻结产物、不再触发生成」，所以判据是 "次数等于槽位数"，多一次就说明重试又生成了。
+    expect(useLLMStore.getState().generateStream).toHaveBeenCalledTimes(3)
     expect(CharacterRepository.getById(characterId)?.currentState?.location).toBe('harbor')
   })
 
@@ -775,7 +782,8 @@ describe('RunFinalizePostProcessCommand character-state persistence', () => {
     expect(status.steps.character_cards).toMatchObject({ ok: false, error: expect.stringContaining('FIELD_CONFLICT') })
     expect(commitRequests).toHaveLength(3)
     expect(commitRequests.every(request => JSON.stringify(request) === JSON.stringify(commitRequests[0]))).toBe(true)
-    expect(useLLMStore.getState().generateStream).toHaveBeenCalledTimes(2)
+    // 同上一例：3 = 三个槽位各一次；字段冲突不该让重试去换一份新生成。
+    expect(useLLMStore.getState().generateStream).toHaveBeenCalledTimes(3)
     expect(CharacterRepository.getById(characterId)?.currentState?.location).toBe('作者后来设置')
   })
 
@@ -792,7 +800,7 @@ describe('RunFinalizePostProcessCommand character-state persistence', () => {
     expect(status.steps.character_cards).toMatchObject({ ok: true })
     expect(stateCalls).toBe(2)
     expect(commitRequests).toHaveLength(1)
-    expect(selections).toHaveLength(2)
+    expect(selections).toHaveLength(3) // 三个槽位各选一次（含 knowledge_candidates）
     expect(CharacterRepository.getById(characterId)?.currentState?.location).toBe('harbor')
   })
 

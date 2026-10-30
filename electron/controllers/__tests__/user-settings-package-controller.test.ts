@@ -62,7 +62,9 @@ describe('user settings package controller', () => {
   afterEach(() => {
     delete process.env.AI_NOVEL_VELA_HOME
     delete process.env.AI_NOVEL_APP_DATA_HOME
-    fs.rmSync(fixtureRoot, { recursive: true, force: true })
+    // Windows 句柄释放晚一拍，紧跟 `rmSync` 会撞 ENOTEMPTY/EPERM（teardown 噪声，不是断言失败）。
+    // 重试窗口给到 3s：这里导出的是 zip + 逐个资源文件，杀软/索引器偶尔会多握一会儿。
+    fs.rmSync(fixtureRoot, { recursive: true, force: true, maxRetries: 30, retryDelay: 100 })
   })
 
   function seedAssets(): void {
