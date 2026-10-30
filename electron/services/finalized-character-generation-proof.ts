@@ -4,7 +4,7 @@ import type { MainGenerationRunHandle } from '../../src/services/generation/gene
 import type { FinalizedCharacterArtifact } from '../../src/shared/finalized-character-generation'
 import type { FinalizationGenerationContext } from '../../src/shared/finalization-generation'
 import type { CharacterProposalSource } from '../../src/shared/character-proposal'
-import { parseFinalizedCharacterStateResponse, type FinalizedCharacterContext } from '../../src/shared/finalized-continuity'
+import { parseFinalizedCharacterCardDeltas, parseFinalizedCharacterStateResponse, type FinalizedCharacterContext } from '../../src/shared/finalized-continuity'
 import type { GenerationAuthorInput } from '../../src/shared/generation-owner-contract'
 import type { SafeGenerationModelReceipt } from './generation-source-binding'
 import { GenerationRunRepository, textHash } from '../repositories/generation-run-repository'
@@ -56,10 +56,14 @@ export function proveFinalizedCharacterGeneration(db: Database.Database, runs: G
     || !['settled', 'unknown'].includes(receipt.attempt.status) || receipt.result?.finishReason !== 'stop')
     throw new Error('CHARACTER_PROPOSAL_ARTIFACT_INVALID')
   const response = parseFinalizedCharacterStateResponse(artifact.text, context)
+  // 卡片增量与状态六槽**分开解析**：`parseFinalizedCharacterStateResponse` 只读 `updates`，
+  // 顶层其它键在那里就被丢掉了；而落库前的二次解析还会再切断一次。
+  // 这里不抛错（它是可选增强），坏条目进 `dropped`，由上层显式上报。
+  const cardDeltas = parseFinalizedCharacterCardDeltas(artifact.text, context)
   const model = run.binding.sourceManifest.modelReceipt as SafeGenerationModelReceipt
   if (!model || !/^[a-f0-9]{64}$/u.test(model.modelRevision)) throw new Error('CHARACTER_PROPOSAL_PROVENANCE_REQUIRED')
   const sourceHandle = dedicated ? { ...currentHandle, epoch: context.epoch } : currentHandle
-  return { context, response, model, run, artifact, currentHandle, sourceHandle, stableFinalizationSource: dedicated }
+  return { context, response, cardDeltas, model, run, artifact, currentHandle, sourceHandle, stableFinalizationSource: dedicated }
 }
 
 /** Stable evidence identity is not live write authority; callers must separately check currentHandle. */

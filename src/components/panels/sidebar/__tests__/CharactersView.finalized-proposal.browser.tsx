@@ -26,6 +26,8 @@ let invoke: ReturnType<typeof vi.fn>
 let loadCharacters: ReturnType<typeof vi.fn<ReturnType<typeof useCharacterStore.getState>['load']>>
 let pending = true
 let statePending = true
+const cardDelta = { characterId: 'character-author', kind: 'soft-spot' as const, name: '母亲的病', text: '她一流血他就让步',
+  deltaKey: 'fcd:soft', evidence: { start: 0, end: 2, text: '作者' } }
 const stateCandidate: PendingFinalizedCharacterStateCandidate = {
   candidateKey: 'fcs-state:pending-location', characterId: identity.characterId!, characterName: identity.name,
   displayName: identity.name, selectionKey: `state:${identity.characterId}:location`, field: 'location', value: '北塔',
@@ -50,6 +52,10 @@ beforeEach(async () => {
     if (channel === 'finalized-character:read-state-candidate') return stateCandidate
     if (channel === 'finalized-character:decide-state-candidate') { statePending = false; return { candidateKey: stateCandidate.candidateKey,
       operationId: 'decision', payloadHash: 'd'.repeat(64), decision: 'accept', source: stateCandidate.source, idempotent: false } }
+    // 卡片增量的两个通道：默认空板。面板的确认逻辑由
+    // `electron/repositories/__tests__/finalized-character-state.test.ts` 的六条集成用例覆盖。
+    if (channel === 'finalized-character:list-card-deltas') return { pending: [], hits: [] }
+    if (channel === 'finalized-character:decide-card-delta') return { delta: cardDelta, idempotent: false }
     return null
   })
   Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: vi.fn(() => () => {}), once: vi.fn(), send: vi.fn() } })
@@ -151,4 +157,5 @@ describe('CharactersView finalized proposal recovery', () => {
       proposalBatchId: batch.proposalBatchId, expectedRevision: batch.revision,
     }, expect.objectContaining({ leaseId: project.sessionLease }))
   })
+
 })

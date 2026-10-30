@@ -42,7 +42,7 @@ import {
   type KnowledgeCandidate,
   type KnowledgeCandidateView,
 } from '../../src/shared/knowledge-candidate'
-import type { FinalizedContinuityFactCategory } from '../../src/shared/finalized-continuity'
+import type { FinalizedCharacterCardDelta, FinalizedContinuityFactCategory } from '../../src/shared/finalized-continuity'
 
 const FACT_CATEGORIES = new Set(['character-state', 'timeline', 'open-thread', 'plot'])
 
@@ -214,7 +214,52 @@ function parseCharacterStateCandidates(value: string): FinalizedCharacterStateCa
 }
 
 type StoredCharacterStateDecision = Omit<FinalizedCharacterStateDecisionReceipt, 'idempotent'>
-interface CharacterStateCandidateStore { version: 2; pending: FinalizedCharacterStateCandidate[]; receipts: StoredCharacterStateDecision[] }
+/**
+ * 角色卡增量在同一个 TEXT 列里的那一块。
+ *
+ * 为什么不新开表：`summary_snapshots.character_state_candidates` 这一列已经存在、
+ * 已经进了便携归档策略、也不参与任何 fact_hash。加一个键 = 零迁移、零策略登记、
+ * 零哈希变化 —— 这正是"不动 DB 加列"那条裁决要的效果。
+ */
+interface CharacterCardDeltaStore {
+  pending: FinalizedCharacterCardDelta[]
+  accepted: FinalizedCharacterCardDelta[]
+  declined: FinalizedCharacterCardDelta[]
+  receipts: StoredCharacterCardDeltaDecision[]
+}
+type StoredCharacterCardDeltaDecision = { deltaKey: string; operationId: string; payloadHash: string; decision: 'accept' | 'decline' }
+interface CharacterStateCandidateStore {
+  version: 2
+  pending: FinalizedCharacterStateCandidate[]
+  receipts: StoredCharacterStateDecision[]
+  /** ⚠️ 必须原样透传：本 store 有**三处**整体回写（保存 / 决策 / 再次保存），
+   * 解析时漏掉这个键，作者 decline 一条状态候选就会把整批卡片增量静默清空。 */
+  cardDeltas?: CharacterCardDeltaStore
+}
+
+function parseCharacterCardDeltaStore(value: unknown): CharacterCardDeltaStore | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const input = value as Record<string, unknown>
+  if (!Array.isArray(input.pending) || !Array.isArray(input.accepted) || !Array.isArray(input.declined)
+    || !Array.isArray(input.receipts)) return undefined
+  const receipts = input.receipts.flatMap(entry => {
+    if (!entry || typeof entry !== 'object') return []
+    const receipt = entry as Record<string, unknown>
+    return typeof receipt.deltaKey === 'string' && receipt.deltaKey
+      && typeof receipt.operationId === 'string' && receipt.operationId
+      && typeof receipt.payloadHash === 'string' && /^[a-f0-9]{64}$/u.test(receipt.payloadHash)
+      && (receipt.decision === 'accept' || receipt.decision === 'decline')
+      ? [{ deltaKey: receipt.deltaKey, operationId: receipt.operationId, payloadHash: receipt.payloadHash,
+          decision: receipt.decision as StoredCharacterCardDeltaDecision['decision'] }]
+      : []
+  })
+  return {
+    pending: input.pending as FinalizedCharacterCardDelta[],
+    accepted: input.accepted as FinalizedCharacterCardDelta[],
+    declined: input.declined as FinalizedCharacterCardDelta[],
+    receipts,
+  }
+}
 
 function parseCharacterStateCandidateStore(value: string): CharacterStateCandidateStore {
   try {
@@ -236,7 +281,8 @@ function parseCharacterStateCandidateStore(value: string): CharacterStateCandida
             decision: receipt.decision as StoredCharacterStateDecision['decision'], source: structuredClone(receipt.source) }]
         : []
     })
-    return { version: 2, pending, receipts }
+    const cardDeltas = parseCharacterCardDeltaStore((parsed as Record<string, unknown>).cardDeltas)
+    return { version: 2, pending, receipts, ...(cardDeltas ? { cardDeltas } : {}) }
   } catch {
     return { version: 2, pending: [], receipts: [] }
   }
@@ -302,8 +348,18 @@ function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex')
 }
 
-function sameSource(left: FinalizedSourceIdentity, right: FinalizedSourceIdentity): boolean {
-  return left.draftId === right.draftId
+/**
+ * 卡片增量的幂等键。与 `characterStateCandidateKey` 同构：
+ * 同一份定稿重跑 → 同 key → receipts 命中即跳过，不会让软肋被登记两次。
+ */
+function characterCardDeltaKey(source: FinalizedSourceIdentity, delta: FinalizedCharacterCardDelta): string {
+  const discriminator = delta.kind === 'hit'
+    ? `${delta.forbidden ?? ''}\u0000${delta.cost ?? ''}`
+    : `${delta.kind}\u0000${delta.change ?? ''}\u0000${delta.name ?? ''}\u0000${delta.replaces ?? ''}`
+  return `fcd:${sha256(JSON.stringify([source.draftId, source.finalizationId, source.contentHash, delta.characterId, discriminator]))}`
+}
+
+function sameSource(left: FinalizedSourceIdentity, right: FinalizedSourceIdentity): boolean {  return left.draftId === right.draftId
     && left.finalizationId === right.finalizationId
     && left.chapterNumber === right.chapterNumber
     && left.contentHash === right.contentHash
@@ -663,7 +719,7 @@ export class SummaryRepository {
 
   /** originProjectId must come from readPortableCurrentAuthority for this project; it only lets origin-epoch derived fields advance. */
   static commitFinalizedCharacterStates(context: FinalizedCharacterContext, response: FinalizedCharacterStateResponse, database = getProjectDb(),
-    originProjectId?: string): FinalizedCharacterStateCommitReceipt {
+    originProjectId?: string, cardDeltas?: readonly FinalizedCharacterCardDelta[]): FinalizedCharacterStateCommitReceipt {
     if (!database) throw new Error('项目数据库未打开')
     const db = database
     return db.transaction(() => {
@@ -726,6 +782,13 @@ export class SummaryRepository {
       }
       if (receipt.candidates.length) SummaryRepository.saveFinalizedCharacterStateCandidates({ draftId: context.source.draftId, chapterNumber: context.source.chapterNumber,
         projectionGeneration: context.projectionGeneration, source: context.source, candidates: receipt.candidates }, db)
+      // 卡片增量与状态六槽在同一个事务里落库，但走**独立的存储键**（`cardDeltas`）——
+      // 它不写角色卡：软肋/筹码要作者确认后才写，hit 只是账本。写卡失败不该回滚状态，
+      // 状态失败也不该丢账本，所以两者只共享事务边界，不共享成败。
+      if (cardDeltas && cardDeltas.length) {
+        SummaryRepository.saveFinalizedCharacterCardDeltas({ draftId: context.source.draftId, source: context.source,
+          projectionGeneration: context.projectionGeneration, deltas: cardDeltas }, db)
+      }
       if (receipt.applied) refreshCharacterStateProjection(db)
       return receipt
     }).immediate()
@@ -937,6 +1000,126 @@ export class SummaryRepository {
         )
       }
     })()
+  }
+
+  /**
+   * 保存本章的角色卡增量。
+   *
+   * ## 为什么按 draft 覆盖而不是合并
+   *
+   * 一个 draft 对应一个已定稿版本。同 slot 重跑会被 `finalizationSlotKey` 拦住并复用同一 run，
+   * 所以正常情况下不会有两批；真要重定稿时覆盖是唯一说得通的行为 —— 合并会让每重跑一次就多堆一批，
+   * 顶撞记录还会重复计数。
+   *
+   * ## 为什么 hit 直接 accepted
+   *
+   * 顶撞记录是**账本**，不是待办：它不改变卡面，作者不需要为它做决定。
+   * 软肋登记与筹码变更才进 pending —— 它们会改写卡。
+   *
+   * ## 绝不 INSERT 占位
+   *
+   * 没有快照行 = 前置步骤（本章要点）没跑。造一行空投影出来，会让连续性投影多一份没有事实的来源。
+   */
+  static saveFinalizedCharacterCardDeltas(input: {
+    draftId: number
+    source: FinalizedSourceIdentity
+    projectionGeneration: number
+    deltas: readonly FinalizedCharacterCardDelta[]
+  }, db = getProjectDb()): { pending: number; accepted: number } {
+    if (!db) throw new Error('项目数据库未打开')
+    const row = db.prepare(`
+      SELECT character_state_candidates AS candidates,
+             source_finalization_id AS finalizationId,
+             source_content_hash AS contentHash,
+             projection_generation AS projectionGeneration
+      FROM summary_snapshots WHERE draft_id = ?
+    `).get(input.draftId) as {
+      candidates: string; finalizationId: string; contentHash: string; projectionGeneration: number
+    } | undefined
+    if (!row
+      || row.finalizationId !== input.source.finalizationId
+      || row.contentHash !== input.source.contentHash
+      || row.projectionGeneration !== input.projectionGeneration) {
+      throw new Error('FINALIZED_CARD_DELTA_SNAPSHOT_MISSING')
+    }
+
+    const store = parseCharacterStateCandidateStore(row.candidates)
+    // receipts 跨版本保留：它是操作幂等日志，不属于某一批增量。
+    const next: CharacterCardDeltaStore = { pending: [], accepted: [], declined: [], receipts: store.cardDeltas?.receipts ?? [] }
+    for (const delta of input.deltas) {
+      const deltaKey = characterCardDeltaKey(input.source, delta)
+      if (next.receipts.some(receipt => receipt.deltaKey === deltaKey)) continue
+      const stored = { ...delta, deltaKey }
+      if (delta.kind === 'hit') next.accepted.push(stored)
+      else next.pending.push(stored)
+    }
+    store.cardDeltas = next
+    db.prepare(`UPDATE summary_snapshots SET character_state_candidates = ?, created_at = datetime('now') WHERE draft_id = ?`)
+      .run(JSON.stringify(store), input.draftId)
+    return { pending: next.pending.length, accepted: next.accepted.length }
+  }
+
+  /** 列出所有待确认的卡片增量（跨 draft）。 */
+  static listPendingFinalizedCharacterCardDeltas(db = getProjectDb()): Array<{ draftId: number; delta: FinalizedCharacterCardDelta }> {
+    if (!db) return []
+    const rows = db.prepare(`SELECT draft_id AS draftId, character_state_candidates AS candidates FROM summary_snapshots WHERE character_state_candidates <> '[]'`).all() as Array<{ draftId: number; candidates: string }>
+    return rows.flatMap(row => (parseCharacterStateCandidateStore(row.candidates).cardDeltas?.pending ?? [])
+      .map(delta => ({ draftId: row.draftId, delta })))
+  }
+
+  /**
+   * 列出顶撞账本（`accepted` 里的 hit）。
+   *
+   * 它是**只读读数**，不进确认队列 —— 顶撞不改变卡面，作者不需要为它做决定。
+   * 它的用途是回答「这条禁区还硬不硬」：一条被顶了 5 次、破过 1 次的线，
+   * 和一条从没被碰过的线，不是同一件事。
+   */
+  static listFinalizedCharacterCardHits(db = getProjectDb()): Array<{ draftId: number; delta: FinalizedCharacterCardDelta }> {
+    if (!db) return []
+    const rows = db.prepare(`SELECT draft_id AS draftId, character_state_candidates AS candidates FROM summary_snapshots WHERE character_state_candidates <> '[]'`).all() as Array<{ draftId: number; candidates: string }>
+    return rows.flatMap(row => (parseCharacterStateCandidateStore(row.candidates).cardDeltas?.accepted ?? [])
+      .filter(delta => delta.kind === 'hit')
+      .map(delta => ({ draftId: row.draftId, delta })))
+  }
+
+  /**
+   * 标记一条卡片增量的处理结果。**只做状态流转，不写角色卡** ——
+   * 写卡要走 `commitCharacterIdentities` + 投影刷新（那是 service 的职责，
+   * 在这里直写 `characters.personality` 会让名册判 inconsistent，整个角色面板锁死）。
+   *
+   * 幂等：同一 `operationId` 且 `payloadHash` 相同直接回放；不同则冲突。
+   */
+  static decideFinalizedCharacterCardDelta(input: {
+    draftId: number
+    deltaKey: string
+    operationId: string
+    decision: 'accept' | 'decline'
+  }, db = getProjectDb()): { delta: FinalizedCharacterCardDelta; idempotent: boolean } {
+    if (!db) throw new Error('项目数据库未打开')
+    const payloadHash = sha256(JSON.stringify([input.draftId, input.deltaKey, input.operationId, input.decision]))
+    const row = db.prepare(`SELECT character_state_candidates AS candidates FROM summary_snapshots WHERE draft_id = ?`).get(input.draftId) as { candidates: string } | undefined
+    if (!row) throw new Error('FINALIZED_CARD_DELTA_SNAPSHOT_MISSING')
+    const store = parseCharacterStateCandidateStore(row.candidates)
+    const deltas = store.cardDeltas
+    if (!deltas) throw new Error('FINALIZED_CARD_DELTA_NOT_FOUND')
+
+    const replay = deltas.receipts.find(receipt => receipt.deltaKey === input.deltaKey && receipt.operationId === input.operationId)
+    if (replay) {
+      if (replay.payloadHash !== payloadHash) throw new Error('FINALIZED_CARD_DELTA_OPERATION_CONFLICT')
+      const existing = [...deltas.accepted, ...deltas.declined].find(delta => delta.deltaKey === input.deltaKey)
+      if (!existing) throw new Error('FINALIZED_CARD_DELTA_NOT_FOUND')
+      return { delta: existing, idempotent: true }
+    }
+
+    const index = deltas.pending.findIndex(delta => delta.deltaKey === input.deltaKey)
+    if (index < 0) throw new Error('FINALIZED_CARD_DELTA_NOT_FOUND')
+    const [delta] = deltas.pending.splice(index, 1)
+    if (input.decision === 'accept') deltas.accepted.push(delta)
+    else deltas.declined.push(delta)
+    deltas.receipts.push({ deltaKey: input.deltaKey, operationId: input.operationId, payloadHash, decision: input.decision })
+    db.prepare(`UPDATE summary_snapshots SET character_state_candidates = ?, created_at = datetime('now') WHERE draft_id = ?`)
+      .run(JSON.stringify(store), input.draftId)
+    return { delta, idempotent: false }
   }
 
   static saveFinalizedCharacterStateCandidates(input: SaveFinalizedCharacterStateCandidatesRequest, db = getProjectDb()): void {

@@ -105,18 +105,19 @@ describe('core model prompt language contract', () => {
   // （架构链只取 systemRole 与 taskGuidance，content 在角色步没有任何出路）。
   // 这组断言把「生效点」钉住：谁把条款挪回模板 content，测试就会红。
   //
-  // 2026-10-29 夜间：旧的三档（〔日常〕/〔代价〕/〔破例〕）实测会出 D1 引力、D3 滥用、大量「无」，
-  // 已整段换成四层。旧的五道闸断言随之删除 —— 条款已不存在，留着必红。
-  it('states the protagonist disposition clause at the only site the character step reads', () => {
+  // 2026-10-29 深夜：四层（底线排序 / 什么算一件事 / 做法 / 例外）整段换成三格
+  // （禁区 / 筹码 / 处境）。**旧层名留在 prompt 里必红** —— 一个 prompt 只许有一种结构，
+  // 两套并存时模型会退回旧口径，这正是白天那轮括号对不上的结构性原因。
+  it('states the protagonist three-slot clause at the only site the character step reads', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')
     const enUS = characterArchitecturePrompts('en-US')
     const markerInput = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
 
-    // 四层的层名必须中英都在，且都在 detailTask（真正的 user 段）
-    for (const marker of ['第一层【他在乎什么】', '第二层【什么算一件事】', '第三层【他对各类事的做法】', '第四层【例外】']) {
+    // 三段名必须中英都在，且都在 detailTask（真正的 user 段）
+    for (const marker of ['一【禁区】', '二【筹码】', '三【处境】']) {
       expect(zhCN.detailTask(markerInput)).toContain(marker)
     }
-    for (const marker of ['Layer 1 [what he cares about]', 'Layer 2 [what counts as an event]', 'Layer 3 [how he treats each kind of event]', 'Layer 4 [the exception]']) {
+    for (const marker of ['1 [Forbidden]', '2 [Chips]', '3 [Situation]']) {
       expect(enUS.detailTask(markerInput)).toContain(marker)
     }
 
@@ -124,7 +125,7 @@ describe('core model prompt language contract', () => {
     expect(zhCN.detailTask(markerInput)).toContain('禁止写成标签清单')
     expect(zhCN.detailTask(markerInput)).toContain('禁止出现数值')
 
-    // 只对主角生效，避免给配角也套格式导致全員同质
+    // 只对主角生效，避免给配角也套格式导致全员同质
     expect(zhCN.detailTask(markerInput)).toContain('role 为 protagonist 的那一条必写')
     expect(enUS.detailTask(markerInput)).toContain('required for the entry whose role is protagonist')
 
@@ -132,42 +133,42 @@ describe('core model prompt language contract', () => {
     expect(enUS.detailTask(markerInput)).not.toMatch(/[\u3400-\u9fff]/u)
   })
 
-  // 四层的骨架测试：层名要在，旧三档的词一个都不许剩。
-  // 旧词留着 = 模型同时看见两套口径，会退回按处境分类（实测「无」7/20）。
-  it('writes the character in four layers', () => {
+  // 三格的骨架测试：段名要在，**四层的词一个都不许剩**。
+  // 旧词留着 = 模型同时看见两套口径，会退回「按处境分类」那套（实测「无」7/20）。
+  it('writes the character in three slots and leaves no four-layer residue', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')
     const enUS = characterArchitecturePrompts('en-US')
     const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
+    const zhText = [zhCN.detailContract, zhCN.detailTask(input)].join('\n')
+    const enText = [enUS.detailContract, enUS.detailTask(input)].join('\n')
 
-    for (const marker of ['第一层', '第二层', '第三层', '第四层']) {
-      expect(zhCN.detailTask(input)).toContain(marker)
+    // 四层的层名、锚点、例外，全部退场。
+    // 注意别用裸「例外：」判 —— detailContract 里合法的「personality 例外：上限 800 字符」含这三个字，
+    // 那说的是"字段长度例外"，不是第四层。层标记带方括号才是精确判据。
+    for (const gone of ['第一层', '第二层', '第三层', '第四层', '锚点', '【例外】']) {
+      expect(zhText, gone).not.toContain(gone)
     }
-    for (const marker of ['Layer 1', 'Layer 2', 'Layer 3', 'Layer 4']) {
-      expect(enUS.detailTask(input)).toContain(marker)
+    for (const gone of ['Layer 1', 'Layer 2', 'Layer 3', 'Layer 4', 'anchor', '[the exception]']) {
+      expect(enText, gone).not.toContain(gone)
     }
 
-    // 旧三档彻底消失
+    // 旧三档（按处境切分）也不许回来
     for (const gone of ['〔日常〕', '〔代价〕', '〔破例〕']) {
-      expect(zhCN.detailTask(input)).not.toContain(gone)
+      expect(zhText, gone).not.toContain(gone)
     }
     for (const gone of ['[Daily]', '[Costed]', '[Exception]']) {
-      expect(enUS.detailTask(input)).not.toContain(gone)
+      expect(enText, gone).not.toContain(gone)
     }
 
-    // 2026-10-29 午间勘误：四层落地时 detailContract 里还留着一句旧三行式的说明，
-    // 于是「局面／倾向／位移」与四层**同时**出现在同一个 prompt 里 —— 模型会退回旧口径。
-    // 一个 prompt 只许有一种结构；这条断言就是防止再漏一次。
+    // 更早那套「局面／倾向／位移」三行式 —— 同一个 prompt 里只许有一种结构。
     for (const gone of ['局面／倾向／位移', 'Situation / Tendency / Shift']) {
-      expect(zhCN.detailTask(input), gone).not.toContain(gone)
-      expect(zhCN.detailContract, gone).not.toContain(gone)
-      expect(enUS.detailTask(input), gone).not.toContain(gone)
-      expect(enUS.detailContract, gone).not.toContain(gone)
+      expect(zhText, gone).not.toContain(gone)
+      expect(enText, gone).not.toContain(gone)
     }
 
-    // 第三层必须要求编号：定性行与选择行都要引用 D<n>，编号不产出就无从引用。
-    // 中文本来就写了，英文漏过（只补中文 = 中英不对等）。
-    expect(zhCN.detailTask(input)).toContain('编号只是条目号，不是轻重次序')
-    expect(enUS.detailTask(input)).toContain('the number is the entry id, not a ranking')
+    // 三格必须要求编号：定性行与选择行都要引用 X<n>，编号不产出就无从引用。
+    expect(zhText).toContain('编号只是条目号，不代表轻重')
+    expect(enText).toContain('the number is an entry id, not a ranking')
   })
 
   // 2026-10-29 作者 02:53：「不要试图枚举」。处境类型库（13 类）只给作者取材用，
@@ -186,152 +187,121 @@ describe('core model prompt language contract', () => {
     }
   })
 
-  // 2026-10-29 卡生成实验（四组 × 两被试，见 `scripts/experiments/personality-card-prompt-loop.mjs`）：
-  // 这五句是唯一让「两种模型都生成出结构合格的四层卡」的条款，且**都不含例子**。
-  // ⚠️ 例子一律不进 prompt —— 实测模型会把例句逐字抄进产物（两个不同前提的 B1 抄成同一句）。
-  // 所以这里守的是**判法**，不是范文。
-  it('keeps the five card-shape clauses that make generation pass on both models', () => {
+  // 2026-10-29 深夜三格版生成实验（`scripts/experiments/personality-card-v3-loop.mjs`：
+  // 两模型 × 三前提 × 3 次 = 18/18 全部解析成 v3）。下面这几句是让产物**可解析**的条款。
+  // ⚠️ 一条例子都不许加 —— 实测模型会把例句逐字抄进产物（两个不同前提写出同一句 B1）。
+  // 这里守的是**判法**，不是范文。
+  it('keeps the clauses that make the three-slot card parseable on both models', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')
     const enUS = characterArchitecturePrompts('en-US')
     const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
     const zhText = zhCN.detailTask(input)
     const enText = enUS.detailTask(input)
 
-    // ① 第一层：给判法不给例子（"宁可失去什么"是这句的关键）
-    expect(zhText).toContain('他宁可失去什么')
-    expect(zhText).toContain('不是一件东西、也不是一个做法')
-    expect(enText).toContain('what he would rather lose')
-    expect(enText).toContain('not a thing, not a practice')
+    // ① 禁区给判法：宁可输/死，也不用这种办法
+    expect(zhText).toContain('他宁可输、宁可死，也不用这种办法')
+    expect(enText).toContain('he would rather lose — or die — than use this method')
 
-    // ② 第三层：必须有日常档
-    expect(zhText).toContain('没有外部压力时')
-    expect(enText).toContain('when nothing is pressing him')
+    // ② 筹码给判法：谁拿走，他就得让步
+    expect(zhText).toContain('谁拿走了这个，他就得让步')
+    expect(enText).toContain('whoever takes this away, he has to give ground')
 
-    // ②b 「不适用」只写条件，不写让位后的动作 —— 写了动作却没挂底线，
-    // 那个动作就变成"没有依据的第六条做法"（实机产物：「不适用：三日期限压到眼前，明知走样也得补完」）
-    expect(zhText).toContain('「不适用」只写**条件**，不写让位之后他改做什么')
-    expect(zhText).toContain('让位之后由第一层兜底')
-    expect(enText).toContain('states the **condition** only — never what he does instead')
-    expect(enText).toContain('layer 1 takes over')
+    // ③ 筹码必须是"能被拿走的东西"——模型实测会把力气、速度当筹码
+    expect(zhText).toContain('别人能拿走、拿走他就得让步')
+    expect(enText).toContain('someone else can take away, and losing them forces him to yield')
 
-    // ③ 例外必须与挂的底线同向
-    expect(zhText).toContain('必须与它挂的那条底线**同向**')
-    expect(enText).toContain('same direction')
+    // ④ 缺输出格式 ⇒ 整段跳过；给了格式 ⇒ 被填满。所以三段标记必须显式规定形状
+    expect(zhText).toContain('各占一行，不许合并')
+    expect(enText).toContain('each occupy their own line')
 
-    // ④ 第四层必须自成一行（缺这一条，实测模型直接跳过整个第四层）
-    expect(zhText).toContain('第四层**必须单独写出来，自成一行**')
-    expect(enText).toContain('must be written out as its own line')
-
-    // ⑤ 编号写法（写成 D<1> 会被下游当成"没写编号"）
-    expect(zhText).toContain('不要写成 D<1>、D[1]')
-    expect(enText).toContain('never D<1> or D[1]')
+    // ⑤ 编号写法（写成 X<1> 会被下游当成"没写编号"）
+    expect(zhText).toContain('以 X1、X2… 开头')
+    expect(enText).toContain('starting with X1, X2')
   })
 
-  // 2026-10-29 作者实机质疑后的修正：**锚点是全书一个，不是每条底线一个。**
-  // 旧措辞「具体的东西放在该项末尾的括号里，只当锚点用」有两个病：
-  // ①「每一项」⇒ 一个锚被稀释成四个；② 术语错位 ⇒ 模型把它当"这条底线的剧情钩子"，
-  // 于是括号里写出「那张没按手印的生死契」「赵铎那张状纸」——道具/事件，不是锚。
-  // 修法：括号改名「具体所指」且要求"一直在的东西"；锚点单独一条 + 给格式 + 给判据。
-  it('keeps exactly one anchor, and keeps brackets for things that persist', () => {
+  // 禁区必须能拍出来、且带身体痕迹。只有台词没有身体，那是标语不是人 ——
+  // 这条替代旧的「具体动作的粒度」（原先是给第三层做法用的，三格后做法层取消）。
+  it('keeps forbidden lines filmable and bodily', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')
     const enUS = characterArchitecturePrompts('en-US')
     const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
-    const zhText = zhCN.detailTask(input)
-    const enText = enUS.detailTask(input)
 
-    // ① 全卡只有一个锚点，且落在排第一的底线上
-    expect(zhText).toContain('全卡只有一个**锚点**')
-    expect(zhText).toContain('挂在你排第一的那条底线上')
-    expect(enText).toContain('exactly one **anchor** in the whole card')
-    expect(enText).toContain('the bottom line you ranked first')
-
-    // ② 锚点必须单独一行 + 有格式（不写格式，实测模型整条不写）
-    expect(zhText).toContain('锚点：<那是什么> —— <他为它放弃了什么>')
-    expect(enText).toContain('Anchor: <what it is> — <what he gave up for it>')
-
-    // ③ 锚点的判据：说得出"放弃了什么"
-    expect(zhText).toContain('只说得清"这事跟他有关"，那是事件，不是锚点')
-    expect(enText).toContain('it is an event, not an anchor')
-
-    // ④ 括号写持久物，不写一次性事件
-    expect(zhText).toContain('不是发生一次的事')
-    expect(enText).toContain('never a one-off event')
-
-    // ⑤ 括号里不许再出现「锚点」二字（那是术语误用的复发口）
-    expect(zhText).toContain('不要在括号里写「锚点」两个字')
+    expect(zhCN.detailTask(input)).toContain('能拍出来')
+    expect(zhCN.detailTask(input)).toContain('拒绝的时候要有身体的痕迹')
+    expect(zhCN.detailTask(input)).toContain('只有台词没有身体，那是标语')
+    expect(enUS.detailTask(input)).toContain('filmable action')
+    expect(enUS.detailTask(input)).toContain('Refusal must leave a mark on the body')
+    expect(enUS.detailTask(input)).toContain('Dialogue alone is a slogan')
   })
 
-  // 2026-10-29 夜真机：B2 写「老魁托付的那句话」、B3 写「那本只记日期不记名字的旧账」，
-  // 材料里两样都没有 —— 材料只写了「恩和仇分两本账记」（记账的习惯，不是真有一本账册）。
+  // 2026-10-29 夜真机：B3 写「那本只记日期不记名字的旧账」，材料里没有 ——
+  // 材料只写了「恩和仇分两本账记」（记账的习惯，不是真有一本账册）。
   // 病根是旧条款自己列了四类举例：「一个人、一本账、一格位置、一句没兑现的话」，模型逐字照填。
-  // 这是「给判法、不给例子」的第二次实证（第一次是第四层与锚点行）。
-  it('names the referent by a test the material can answer, not by a list of examples', () => {
+  // 这是「给判法、不给例子」的第二次实证。三格版**一处举例都没留**，这条守住它。
+  it('names the chip by a test the material can answer, not by a list of examples', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')
     const enUS = characterArchitecturePrompts('en-US')
     const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
     const zhText = zhCN.detailTask(input)
     const enText = enUS.detailTask(input)
 
-    // ① 判据必须落在「材料原文里指得出来」，否则模型只能用题材惯例补
-    expect(zhText).toContain('必须能在**材料原文里指得出来**')
-    expect(enText).toContain('pointable to a sentence of the supplied material')
+    // ① 判据必须落在「材料原文里指得出」，否则模型只能用题材惯例补
+    expect(zhText).toContain('必须能在材料原文里指出')
+    expect(enText).toContain('pointable to a concrete thing')
 
     // ② 比喻不能被实体化（真机 B3 就是这么来的）
     expect(zhText).toContain('比喻不能当物件')
-    expect(enText).toContain('A **metaphor in the material is not an object**')
+    expect(enText).toContain('**metaphor in the material is not an object**')
 
-    // ③ 括号只放名词，次数说法属于第三层
-    expect(zhText).toContain('括号里只放名词')
-    expect(enText).toContain('Put a noun in the bracket only')
+    // ③ 凑不满宁可少写，不许编（避免"必须写满"逼出编造）
+    expect(zhText).toContain('编一条来补位，比少一条更糟')
+    expect(enText).toContain('a filler item is worse than a missing one')
 
-    // ④ 凑不满条目数宁可少写，不许编（避免"必须 4 项"逼出编造）
-    expect(zhText).toContain('编一个来补位，比少一条更糟')
-    expect(enText).toContain('A filler item is worse than a missing one')
-
-    // ⑤ 锚点与括号不能是同一个东西（真机两者都指向"灵配袋空着的那一格"）
-    expect(zhText).toContain('两者不能是同一个东西')
-    expect(enText).toContain('They cannot be the same object')
-
-    // ⑥ 旧的举例清单必须彻底消失 —— 留着它等于留着污染源
+    // ④ 旧的举例清单必须彻底消失 —— 留着它等于留着污染源
     for (const example of ['一句没兑现的话', '一格位置', '一本账、']) expect(zhText).not.toContain(example)
     for (const example of ['a promise not yet kept', 'one slot on a shelf', 'a person, a ledger']) expect(enText).not.toContain(example)
   })
 
-  // V6：普世、仁善排在前面的角色是圣母不是人。模型最容易自作主张把这两项顶上去。
-  it('bans the saint at the top of the ranking', () => {
+  // 禁区不是道德戒律：恶人同样有，而且往往更硬 —— 那是他唯一的自我认同。
+  // 这条替代旧的 V6「仁善/普世不许排前两位」：排序概念随第一层一起取消了，
+  // 但「别写成好人」这条约束必须留着，否则模型会给主角补道德弧光。
+  // ⚠️ 措辞里不许出现「道德底线」—— `prompt-local-qwen-contract` 按政策语境禁了它。
+  it('keeps forbidden lines free of moral ranking', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')
     const enUS = characterArchitecturePrompts('en-US')
     const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
 
-    expect(zhCN.detailTask(input)).toContain('普世、仁善这类价值不许排在前两位')
-    expect(zhCN.detailTask(input)).toContain('写不出代价的，那是圣母，不是人')
-    expect(enUS.detailTask(input)).toContain('Universalism and benevolence must not occupy the first two places')
-    expect(enUS.detailTask(input)).toContain('that is a saint, not a person')
+    expect(zhCN.detailTask(input)).toContain('禁区不是道德戒律')
+    expect(zhCN.detailTask(input)).toContain('恶人同样有，而且往往更硬')
+    expect(enUS.detailTask(input)).toContain('not a moral creed')
+    expect(enUS.detailTask(input)).toContain("villains have them too")
   })
 
-  // V2：每条做法必须写「不适用」。不写就会变成引力中心，把所有处境吸过去（实测 D1 引力）。
-  it('requires not-applicable on every practice', () => {
+  // 筹码允许为空。写成"必须有"，模型就会为了过检查编一条 —— 同 B 括号硬编。
+  it('keeps chips optional so the model never invents one', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')
     const enUS = characterArchitecturePrompts('en-US')
     const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
 
-    expect(zhCN.detailTask(input)).toContain('每条都必须有「不适用」')
-    expect(zhCN.detailTask(input)).toContain('没写的那条会变成万能答案')
-    expect(enUS.detailTask(input)).toContain('not applicable')
-    expect(enUS.detailTask(input)).toContain('Every pair must carry a "not applicable"')
+    expect(zhCN.detailTask(input)).toContain('一条都没有是正常状态')
+    expect(zhCN.detailTask(input)).toContain('不许为了凑数编')
+    expect(enUS.detailTask(input)).toContain('Having none is a normal state')
+    expect(enUS.detailTask(input)).toContain('Never invent one to fill the slot')
   })
 
-  // V1：例外不是第四条策略，是「该给的答案缺席的那一次」；必须挂到底线上且方向写死。
-  // 实测对照：例外随便破 → 第 17/18 章方向相反且错；挂第 1 条底线 → 两章都对且一致。
-  it('pins the exception to a bottom line', () => {
+  // 方案 D 的两半：禁区编号全书恒定（可跨章引用），筹码不编号（会增减替换，编号必失效）。
+  // 缺任何一半，§13 那个位次问题就回来了。
+  it('freezes X numbers and leaves chips unnumbered', () => {
     const zhCN = characterArchitecturePrompts('zh-CN')
     const enUS = characterArchitecturePrompts('en-US')
     const input = { context: 'ctx', manifest: 'mf', slotIds: 'a', validatedPrefix: 'p' }
 
-    expect(zhCN.detailTask(input)).toContain('只有一种情况会出例外')
-    expect(zhCN.detailTask(input)).toContain('他为了那个人，放弃自己平时守的规矩')
-    expect(enUS.detailTask(input)).toContain('There is only one case that produces an exception')
-    expect(enUS.detailTask(input)).toContain('he abandons the rules he normally keeps')
+    expect(zhCN.detailTask(input)).toContain('可空、可换、不编号')
+    expect(zhCN.detailTask(input)).toContain('一旦定下就当作全书恒定')
+    expect(zhCN.detailTask(input)).toContain('筹码不编号')
+    expect(enUS.detailTask(input)).toContain('never numbered')
+    expect(enUS.detailTask(input)).toContain('fixed for the whole book')
+    expect(enUS.detailTask(input)).toContain('Chips are not numbered')
   })
 
   // 拍子格曾经要求"一拍一句话"，7 卷 + 26 单元直接把卷纲撑爆（2026-10-28 实测被截断）。

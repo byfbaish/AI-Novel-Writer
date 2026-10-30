@@ -415,4 +415,21 @@ describe('角色提议的原始身份记录', () => {
     result[0].notes = '仅修改返回对象'
     expect(input[0].notes).toBe('甲来源原文')
   })
+
+  it('keeps personality array entries on separate lines so the card markers stay parseable', () => {
+    // 性格是按行锚定的标记文本：段标记挤到同一行，解析器会判成 legacy 且不报错。
+    const [card] = normalizeCharacterCardsForPersistence([{
+      姓名: '陈砚',
+      定位: '主角',
+      性格: ['【禁区】', 'X1 不替人作保', '【筹码】', '母亲：镖行洗衣'],
+    }])
+    expect(card.personality.split('\n')).toEqual(['【禁区】', 'X1 不替人作保', '【筹码】', '母亲：镖行洗衣'])
+    expect(card.personality).not.toContain('；')
+
+    // 其它叙述字段仍按句子连接，换行是噪音。
+    const [narrative] = normalizeCharacterCardsForPersistence([{
+      姓名: '陈砚', 定位: '主角', 背景: ['边镇灰渠', '盐引改道后废了'],
+    }])
+    expect(narrative.background).toBe('边镇灰渠；盐引改道后废了')
+  })
 })

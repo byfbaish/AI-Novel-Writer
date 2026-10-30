@@ -8,6 +8,8 @@ import { migrateSchema } from '../../migrations/runner'
 import { getProjectDb } from '../../database'
 import { FinalizationRepository } from '../finalization-repository'
 import { SummaryRepository, invalidateContinuityProjectionFrom } from '../summary-repository'
+import { acceptCharacterCardDelta } from '../../services/character-card-delta-service'
+import { CharacterRosterRepository, refreshCharacterIdentityProjection } from '../character-roster-repository'
 import { parseFinalizedCharacterStateResponse, type FinalizedCharacterContext } from '../../../src/shared/finalized-continuity'
 
 vi.mock('../../database', () => ({ getProjectDb: vi.fn() }))
@@ -547,5 +549,137 @@ describe('review state crossings (W3 unit 2)', () => {
       expectedFieldValueHash: candidate.expectedFieldValueHash, operationId: 'decide-review-conflict', decision: 'accept' }, f.db)
     expect(f.row().cs_key_items).toBe('半块木牌')
     expect(JSON.parse(f.row().cs_provenance as string).keyItems).toMatchObject({ kind: 'author' })
+  })
+})
+
+/**
+ * 角色卡增量（`cardDeltas`）的落库与写卡。
+ *
+ * 三条验收对应三个已知失败面：
+ * ① 解析器只白名单 `version/pending/receipts`，不透传 `cardDeltas` 的话，
+ *    作者 decline 一条**状态**候选就会把整批卡片增量静默清空；
+ * ② 直接 `UPDATE characters SET personality=?` 会让名册判 inconsistent，角色面板整体锁死；
+ * ③ 旧四层卡上不能插半套新结构 —— 既解析不出来，也会覆盖作者原文。
+ */
+describe('角色卡增量：落库、确认、写卡', () => {
+  const CARD = [
+    '【禁区】',
+    'X1 不替人作保 —— 宁可不接这趟活，也不在保状上按手印',
+    '【筹码】',
+    '母亲：镖行洗衣，咳血',
+    '【处境】',
+    'given 站在灰渠废码头',
+  ].join('\n')
+
+  /** 把主角卡设成三格并刷新投影，让 roster 变 ready。投影刷新必须在事务里（否则抛 CHARACTER_ID_TRANSACTION_REQUIRED）。 */
+  const seedCard = (f: ReturnType<typeof fixture>, personality = CARD) => {
+    // 先跑「本章要点」建出 summary_snapshots 行 —— 卡片增量附着在那一行上，
+    // 缺行时保存会抛 FINALIZED_CARD_DELTA_SNAPSHOT_MISSING（这是有意的：绝不 INSERT 占位）。
+    f.saveNotes()
+    f.db.transaction(() => {
+      f.db.prepare('UPDATE characters SET personality=? WHERE character_id=?').run(personality, f.ids[0])
+      refreshCharacterIdentityProjection(f.db)
+    }).immediate()
+  }
+
+  const deltas = (characterId: string) => [
+    { characterId, kind: 'soft-spot' as const, name: '母亲的病', text: '她一流血，他什么手印都肯按',
+      evidence: { start: 2, end: 9, text: prose.slice(2, 9) } },
+    { characterId, kind: 'chip' as const, change: 'add' as const, name: '灰渠的旧路引', text: '他能走盐道的凭据',
+      evidence: { start: 2, end: 9, text: prose.slice(2, 9) } },
+    { characterId, kind: 'hit' as const, forbidden: 'X1', cost: '按了手印，在镖行门口站了半炷香', broken: true,
+      evidence: { start: 2, end: 9, text: prose.slice(2, 9) } },
+  ]
+
+  it('软肋与筹码进待确认，顶撞直接记账', () => {
+    const f = fixture(), ctx = f.context()
+    seedCard(f)
+    SummaryRepository.commitFinalizedCharacterStates(ctx, f.response(ctx, { recentEvents: '按了手印' }), f.db, undefined, deltas(f.ids[0]))
+
+    const pending = SummaryRepository.listPendingFinalizedCharacterCardDeltas(f.db)
+    expect(pending.map(item => item.delta.kind).sort()).toEqual(['chip', 'soft-spot'])
+    expect(pending.every(item => item.delta.deltaKey?.startsWith('fcd:'))).toBe(true)
+
+    const store = JSON.parse((f.db.prepare('SELECT character_state_candidates AS c FROM summary_snapshots WHERE draft_id=1').get() as { c: string }).c)
+    expect(store.cardDeltas.accepted).toHaveLength(1)
+    expect(store.cardDeltas.accepted[0]).toMatchObject({ kind: 'hit', forbidden: 'X1', broken: true })
+  })
+
+  it('store 是整体回写的，解析必须把 cardDeltas 原样带出来', () => {
+    const f = fixture()
+    seedCard(f)
+    // 这一列有三处「读出来 → 改 → 整体写回」。解析时漏掉 `cardDeltas` 这个键，
+    // 任何一次状态候选保存都会把它覆盖成空 —— 而且不报错，是最难发现的丢失。
+    const store = {
+      version: 2, pending: [], receipts: [],
+      cardDeltas: {
+        pending: [{ characterId: f.ids[0], kind: 'soft-spot', name: '母亲的病', text: '她一流血他就让步',
+          deltaKey: 'fcd:synthetic', evidence: { start: 2, end: 9, text: prose.slice(2, 9) } }],
+        accepted: [], declined: [], receipts: [],
+      },
+    }
+    f.db.prepare('UPDATE summary_snapshots SET character_state_candidates=? WHERE draft_id=1').run(JSON.stringify(store))
+
+    const pending = SummaryRepository.listPendingFinalizedCharacterCardDeltas(f.db)
+    expect(pending).toHaveLength(1)
+    expect(pending[0].delta).toMatchObject({ kind: 'soft-spot', name: '母亲的病', deltaKey: 'fcd:synthetic' })
+  })
+
+  it('确认软肋后写进卡面，且名册仍然 ready', () => {
+    const f = fixture(), ctx = f.context()
+    seedCard(f)
+    SummaryRepository.commitFinalizedCharacterStates(ctx, f.response(ctx, { recentEvents: '按了手印' }), f.db, undefined, deltas(f.ids[0]))
+    const softSpot = SummaryRepository.listPendingFinalizedCharacterCardDeltas(f.db).find(item => item.delta.kind === 'soft-spot')!
+
+    const decided = SummaryRepository.decideFinalizedCharacterCardDelta({
+      draftId: softSpot.draftId, deltaKey: softSpot.delta.deltaKey!, operationId: 'accept-soft', decision: 'accept' }, f.db)
+    expect(decided.idempotent).toBe(false)
+
+    const written = acceptCharacterCardDelta(f.db, { characterId: f.ids[0], delta: decided.delta,
+      projectId: scope.projectId, epoch: scope.epoch, operationId: 'accept-soft' })
+    expect(written.unchanged).toBe(false)
+    expect(written.personality).toContain('【软肋】')
+    expect(written.personality).toContain('S1 母亲的病')
+
+    const roster = CharacterRosterRepository.read(f.db)
+    expect(['ready', 'empty']).toContain(roster.status)
+    expect(roster.entries.find(entry => entry.characterId === f.ids[0])?.personality).toContain('【软肋】')
+  })
+
+  it('重复确认同一条是幂等的', () => {
+    const f = fixture(), ctx = f.context()
+    seedCard(f)
+    SummaryRepository.commitFinalizedCharacterStates(ctx, f.response(ctx, { recentEvents: '按了手印' }), f.db, undefined, deltas(f.ids[0]))
+    const softSpot = SummaryRepository.listPendingFinalizedCharacterCardDeltas(f.db).find(item => item.delta.kind === 'soft-spot')!
+    const first = SummaryRepository.decideFinalizedCharacterCardDelta({
+      draftId: softSpot.draftId, deltaKey: softSpot.delta.deltaKey!, operationId: 'accept-once', decision: 'accept' }, f.db)
+    acceptCharacterCardDelta(f.db, { characterId: f.ids[0], delta: first.delta,
+      projectId: scope.projectId, epoch: scope.epoch, operationId: 'accept-once' })
+
+    const replay = SummaryRepository.decideFinalizedCharacterCardDelta({
+      draftId: softSpot.draftId, deltaKey: softSpot.delta.deltaKey!, operationId: 'accept-once', decision: 'accept' }, f.db)
+    expect(replay.idempotent).toBe(true)
+    const again = acceptCharacterCardDelta(f.db, { characterId: f.ids[0], delta: replay.delta,
+      projectId: scope.projectId, epoch: scope.epoch, operationId: 'accept-once' })
+    expect(again.unchanged).toBe(true)
+  })
+
+  it('旧四层卡拒绝写入，原文一字不动', () => {
+    const f = fixture()
+    const legacy = '第一层【他在乎什么】\nB1 重情（母亲）'
+    seedCard(f, legacy)
+    const before = (f.db.prepare('SELECT personality FROM characters WHERE character_id=?').pluck().get(f.ids[0])) as string
+    expect(() => acceptCharacterCardDelta(f.db, { characterId: f.ids[0],
+      delta: { characterId: f.ids[0], kind: 'soft-spot', name: '母亲的病', text: 'x', evidence: { start: 2, end: 9, text: prose.slice(2, 9) } },
+      projectId: scope.projectId, epoch: scope.epoch, operationId: 'legacy' })).toThrow('CARD_FORMAT_LEGACY')
+    expect(f.db.prepare('SELECT personality FROM characters WHERE character_id=?').pluck().get(f.ids[0])).toBe(before)
+  })
+
+  it('顶撞记录不许走写卡通道', () => {
+    const f = fixture()
+    seedCard(f)
+    expect(() => acceptCharacterCardDelta(f.db, { characterId: f.ids[0],
+      delta: { characterId: f.ids[0], kind: 'hit', forbidden: 'X1', cost: 'x', broken: true, evidence: { start: 2, end: 9, text: prose.slice(2, 9) } },
+      projectId: scope.projectId, epoch: scope.epoch, operationId: 'hit' })).toThrow('CARD_DELTA_HIT_IS_LEDGER_ONLY')
   })
 })

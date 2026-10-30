@@ -5,6 +5,8 @@ import type { MainGenerationRunHandle } from '../../src/services/generation/gene
 import type { BeginGenerationRequest } from '../../src/shared/generation-owner-contract'
 import type { FinalizedCharacterContext } from '../../src/shared/finalized-continuity'
 import type { FinalizedCharacterStateDecisionRequest } from '../../src/shared/finalized-continuity'
+import type { FinalizedCharacterCardDeltaDecisionRequest } from '../../src/shared/finalized-continuity'
+import { acceptCharacterCardDelta } from './character-card-delta-service'
 import type { FinalizedCharacterGenerationCommit, FinalizedCharacterGenerationReceipt } from '../../src/shared/finalized-character-generation'
 import { SummaryRepository } from '../repositories/summary-repository'
 import { GenerationRunRepository, textHash } from '../repositories/generation-run-repository'
@@ -43,6 +45,46 @@ export class FinalizedCharacterGeneration {
     return SummaryRepository.decideFinalizedCharacterStateCandidate(request, this.db)
   }
 
+  /**
+   * 角色卡增量的面板读数：待确认的（软肋 / 筹码）+ 只读的顶撞账本。
+   * 顶撞不进确认队列 —— 它不改变卡面，只是「这条线还硬不硬」的读数。
+   */
+  listCardDeltas() {
+    this.assertCurrent()
+    return {
+      pending: SummaryRepository.listPendingFinalizedCharacterCardDeltas(this.db),
+      hits: SummaryRepository.listFinalizedCharacterCardHits(this.db),
+    }
+  }
+
+  /**
+   * 确认或拒绝一条卡片增量。
+   *
+   * **顺序是先写卡、后标记**：
+   * - 写卡失败 ⇒ 不标记，pending 还在，作者可以重试；
+   * - 写卡成功但标记失败 ⇒ 卡已改、pending 还在；重试时 `applyCardDelta` 是 no-op，
+   *   随后标记成功。反过来（先标记后写卡）一旦写卡失败，就变成「已确认但卡没变」，
+   *   作者看不出该重试。
+   */
+  decideCardDelta(request: FinalizedCharacterCardDeltaDecisionRequest) {
+    this.assertCurrent()
+    let personality: string | undefined
+    if (request.decision === 'accept') {
+      const pending = SummaryRepository.listPendingFinalizedCharacterCardDeltas(this.db)
+        .find(item => item.draftId === request.draftId && item.delta.deltaKey === request.deltaKey)
+      // 找不到就交给 decide 处理：它要么走 receipt 回放（幂等），要么抛 NOT_FOUND。
+      if (pending) {
+        const written = acceptCharacterCardDelta(this.db, {
+          characterId: pending.delta.characterId, delta: pending.delta,
+          projectId: this.scope.projectId, epoch: this.scope.epoch, operationId: request.operationId,
+        })
+        if (!written.unchanged) personality = written.personality
+      }
+    }
+    const decided = SummaryRepository.decideFinalizedCharacterCardDelta(request, this.db)
+    return { ...decided, ...(personality === undefined ? {} : { personality }) }
+  }
+
   /** A renderer cannot manufacture the identity/field snapshot placed in a generation manifest. */
   admit(selection: BeginGenerationRequest): string | undefined {
     this.assertCurrent()
@@ -77,7 +119,7 @@ export class FinalizedCharacterGeneration {
       const proof = proveFinalizedCharacterGeneration(this.db, this.runs, this.scope.projectId, request.handle, request.artifact)
       if (!isDeepStrictEqual(proof.context, context)) throw new Error('GENERATION_CHARACTER_CONTEXT_MISMATCH')
       // transferOrigin 同步读取已验证的转移凭据，与本事务同属一次同步执行；凭据被篡改只会读出 null/抛错，趋向冲突而非放行。
-      const receipt = SummaryRepository.commitFinalizedCharacterStates(context, proof.response, this.db, this.transferOrigin())
+      const receipt = SummaryRepository.commitFinalizedCharacterStates(context, proof.response, this.db, this.transferOrigin(), proof.cardDeltas.deltas)
       // Nameless occurrences remain visible in the durable artifact; never invent a name for adoption.
       // 判据 CX：作者已登记为锚点人物（无卡）的名字不再产生待确认批次 —— 那些项没有卡可写，
       // 永远无法应用。若本章的「有出现、无卡」全是已登记的名字，整批不 stage：留下一个零项的

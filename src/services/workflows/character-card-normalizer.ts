@@ -48,6 +48,30 @@ function stringifyValue(value: unknown): string {
   return ''
 }
 
+/**
+ * personality 专用：**逐行**连接，不用 `；`。
+ *
+ * 性格现在是一套按行锚定的标记文本（`【禁区】` / `X1 …` / `【筹码】` …，见
+ * `src/shared/character-card-format.ts`）。`stringifyValue` 把数组用 `；` 拍平之后，
+ * 所有段标记会挤在同一行，解析器判成 `legacy`，整条闭环对该项目静默失效——
+ * 不报错，只是永远解析不出三格。
+ *
+ * 其余字段保持 `；` 连接不变：它们的消费者是按句子读的叙述文本，换行反而是噪音。
+ */
+function stringifyPersonality(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.map((item) => stringifyValue(item)).filter(Boolean).join('\n').trim()
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([, entryValue]) => stringifyValue(entryValue))
+      .filter(Boolean)
+      .join('\n')
+      .trim()
+  }
+  return stringifyValue(value)
+}
+
 function parseStructuredJson(text: string): unknown | null {
   try {
     return JSON.parse(text)
@@ -193,7 +217,7 @@ export function normalizeCharacterCardsForPersistence(rawCards: RawCard[]): Char
     gender: stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.gender)),
     age: stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.age)),
     appearance: stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.appearance)),
-    personality: stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.personality)),
+    personality: stringifyPersonality(readField(card, CHARACTER_FIELD_ALIASES.personality)),
     background: stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.background)),
     abilities: stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.abilities)),
     motivation: stringifyValue(readField(card, CHARACTER_FIELD_ALIASES.motivation)),

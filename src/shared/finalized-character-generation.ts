@@ -1,7 +1,9 @@
 import type { MainGenerationRunHandle } from '../services/generation/generation-runtime'
 import type { FinalizedCharacterContext, FinalizedCharacterStateCommitReceipt, FinalizedCharacterStateDecisionReceipt,
   FinalizedCharacterStateDecisionRequest, FinalizedCharacterStateOccurrence, PendingFinalizedCharacterStateCandidate,
-  PendingFinalizedCharacterStateCandidateSummary } from './finalized-continuity'
+  PendingFinalizedCharacterStateCandidateSummary,
+  FinalizedCharacterCardDeltaDecisionReceipt, FinalizedCharacterCardDeltaDecisionRequest,
+  FinalizedCharacterCardDeltaBoard } from './finalized-continuity'
 
 export interface FinalizedCharacterArtifact {
   artifactId: string
@@ -23,4 +25,6 @@ export interface FinalizedCharacterGenerationChannels {
   'finalized-character:list-state-candidates': { args: []; return: PendingFinalizedCharacterStateCandidateSummary[] }
   'finalized-character:read-state-candidate': { args: [{ draftId: number; candidateKey: string }]; return: PendingFinalizedCharacterStateCandidate }
   'finalized-character:decide-state-candidate': { args: [FinalizedCharacterStateDecisionRequest]; return: FinalizedCharacterStateDecisionReceipt }
+  'finalized-character:list-card-deltas': { args: []; return: FinalizedCharacterCardDeltaBoard }
+  'finalized-character:decide-card-delta': { args: [FinalizedCharacterCardDeltaDecisionRequest]; return: FinalizedCharacterCardDeltaDecisionReceipt }
 }

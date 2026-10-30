@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util'
 import type { FinalizationGenerationContext, FinalizationGenerationSlot } from '../../src/shared/finalization-generation'
 import { finalizationStepSpec, isFinalizationStepKey } from '../../src/shared/finalization-generation'
 import { finalizedCharacterPromptCards, type FinalizedCharacterContext, type FinalizedContinuityFact } from '../../src/shared/finalized-continuity'
+import { finalizedCharacterCardDeltaContract } from '../../src/shared/finalized-card-delta-contract'
 import { formatKnowledgeCandidateFacts } from '../../src/shared/knowledge-candidate'
 import { composePromptSystemRole, type PromptTemplate } from '../../src/services/builtin-prompt-templates'
 import { renderPrompt } from '../../src/shared/render-prompt'
@@ -97,7 +98,12 @@ export function finalizationGenerationTask(context: FinalizationGenerationContex
       + '4. characterId 只能从【角色名单】原样复制，不得新造，也不得按名字推断。'
       + '5. 拿不准就不写。宁可少提，不许猜。'
       + '只返回一个 JSON 对象：{"knowledge":[{"factIndex":1,"characterId":"名单中的精确ID"}]}；没有就返回 {"knowledge":[]}。不要解释，不要输出 markdown 代码块。'
-  const contract = characters ? characterContract : knowledge ? knowledgeContract : ''
+  // 角色卡步骤要连带下发「卡片增量」合同：软肋登记、筹码变更、顶撞记账。
+  // 它与状态六槽是**并列的两个顶层键**（`cardDeltas` 不能塞进 `updates`，否则落库前的
+  // 二次解析会把它整段切断）。合同本体是共享常量，与兼容链引同一份，避免两份漂移。
+  const contract = characters
+    ? `${characterContract}\n\n${finalizedCharacterCardDeltaContract(context.writingLanguage)}`
+    : knowledge ? knowledgeContract : ''
   const roster = context.identity.characters.map(character => ({ characterId: character.characterId, name: character.displayNameSnapshot }))
   const cards = characters ? finalizedCharacterPromptCards(context.identity, originProjectId)
     : context.identity.characters.map(character => ({ characterId: character.characterId, name: character.displayNameSnapshot, aliases: character.aliases,

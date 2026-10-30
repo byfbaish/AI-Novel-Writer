@@ -76,7 +76,7 @@ const CHARACTER_ARCHITECTURE_PROMPTS: Readonly<Record<WritingLanguage, Character
 ★ role 只能取 protagonist、antagonist、supporting、minor 这四个英文词之一，且必须与该 slotId 在【冻结身份与关系清单】里的 role 逐字相同；不要译成中文语义标签（写「主角」「反派」会使整批详情作废）。
 ★ 上述每一个字段都必须是**非空文本**：不得为空字符串、纯空白、null 或省略。「必填」的判定标准是**非空**，不是"键存在"。确实未知时填写「未知」「待补充」之类的占位文本，不得留空——空值会让整批详情作废。最常被留空的是 gender 与 age，这两项同样必须填写。
 currentState 必填，必须包含 location、powerLevel、physicalState、mentalState、keyItems、recentEvents、updatedAtChapter；updatedAtChapter 必须是非负整数。
-appearance、background、abilities、motivation、arc、notes 每项不超过 120 字符；**personality 例外：上限 800 字符**（主角要放四层：底线排序 + 什么算一件事 + 3–4 条做法各带「不适用」+ 例外，压到 120 字会把每一层都挤成一句空话）；currentState 的文本字段每项不超过 80 字符。
+appearance、background、abilities、motivation、arc、notes 每项不超过 120 字符；**personality 例外：上限 800 字符**（主角要放三格：禁区 1–3 条 + 筹码 0–5 条 + 开局处境，压到 120 字会把每一格都挤成一句空话）；currentState 的文本字段每项不超过 80 字符。
 keyItems 可为非空字符串或非空字符串数组；recentEvents 可为非空字符串或非空字符串数组。数组每项必须是非空字符串，不得混入数字、对象或 null；没有内容时使用字符串“无”，不得输出空数组。
 禁止输出 relationships、schemaVersion、角色图谱 Markdown、解释、代码围栏或思考过程。`,
     manifestTask: (context, minimum, maximum) => `【身份规划上下文】
@@ -101,62 +101,41 @@ ${input.validatedPrefix}
 【详情精炼要求】
 保持每个字段具体、紧凑且与叙事有关；currentState 必填。禁止输出 relationships，关系由冻结身份清单唯一生成。
 
-【主角的性格：四层，不是形容词清单（role 为 protagonist 的那一条必写，其余 role 不套此格式）】
+【主角的三格，不是形容词清单（role 为 protagonist 的那一条必写，其余 role 不套此格式）】
 性格不是形容词，也不是日记。只写他会怎么动，而且要能让别人在另一章里一眼认出这是同一个人。
 
-★ 先看作者的补充创作指导：若那里给了词条或底线清单，以它为准，你只负责把它落成下面这几层；
-没有给，就从主角档案里推出来。
+★ 先看作者的补充创作指导：若那里给了词条或清单，以它为准，你只负责把它落成下面三段；没有给，就从主角档案里推出来。
 
-第一层【他在乎什么】按轻重排出 3–5 项，写成 B1…Bn（**B1 最重**，编号就是轻重位次，不是条目号），不写分数。
-- 至少一项要能被某个具体的人或某样具体的东西**夺走**；不许全是「尊严」「信念」这类抽象词。
-- 至少一项是他不愿承认的：他自己不觉得那是缺点。
-- 任意相邻两项之间，要能构造出一个他必须选一个的场面。
-- 普世、仁善这类价值不许排在前两位。若确要排，必须写出他为此付过什么代价；写不出代价的，那是圣母，不是人。
-★ 每一项都写成**一条价值判断**，不是一件东西、也不是一个做法。每一项末尾用括号写出它的**具体所指**——能指出"是哪一个"就够，不要在括号里写「锚点」两个字。
-  判法：读完这一项，要能说出"他宁可失去什么"，而不是"他手上有什么"，也不是"他会怎么做"。
-  相邻两项必须能比轻重；比不出来的，说明其中一项写错了层（把东西或做法挤进了价值层）。
-  括号里写的是**一直在的东西**，不是发生一次的事。
-★ 括号里的东西必须能在**材料原文里指得出来**是哪一句写的；指不出来，那就是你替作者编的设定，不许写。
-  判法：它得是从开场到结尾都在他身边的那样具体东西。
-★ 材料里的**比喻不能当物件**：档案写"恩和仇分两本账记"，说的是他记账的习惯，不等于他真有一本账册；你照着造出一本账，那本书里根本没有。
-★ 括号里只放名词。不写「那几次硬撑」「某一回」这类次数的说法 —— 那是做法，属于第三层。
-★ 凑不满 3 项就写 2 项。编一个来补位，比少一条更糟；编出来的括号会让整条底线变成假的。
-★ 全卡只有一个**锚点**，单独一行写在第一层之后，格式：锚点：<那是什么> —— <他为它放弃了什么>。它挂在你排第一的那条底线上，第四层那次例外就是拿它当人质。
-  判法：说得出"他为此放弃了什么"，才是锚点；只说得清"这事跟他有关"，那是事件，不是锚点。
-★ 锚点与他交出去的东西是同一样：括号里写的是**他还带在身上的**，锚点写的是他为了守住它而**交出去的**。两者不能是同一个东西 —— 同一个东西既是他在乎的、又是他放弃的，那句话在任何一章里都用不上。
-★ B 编号与第三层的 D 编号是两套：**B 是底线的轻重位次**（B1 最重），**D 是做法条目号**（D1 不代表最重）。写选择行时两者都可能用到。
+一【禁区】1–3 条，**不可空**。每条单独一行，以 X1、X2… 开头（**编号只是条目号，不代表轻重**）。
+★ 判法：说得出「他宁可输、宁可死，也不用这种办法」。
+★ 写的是他**不肯做什么**，不是他常做什么，也不是他擅长什么。
+★ 禁区不是道德戒律：恶人同样有，而且往往更硬 —— 那是他唯一的自我认同。
+★ 相邻两条之间，要能构造出一个他必须选一个的场面。
+★ 每条要落到动作的粒度，能拍出来：「不出卖」读者看不见；「宁可自己的名字被划掉，也不在文书上添别人的名字」看得见。
+★ 拒绝的时候要有身体的痕迹：手抖、耳鸣、咬住后槽牙。只有台词没有身体，那是标语。
+★ 三条是上限。凑不满就写两条；编一条来补位，比少一条更糟。
 
-第二层【什么算一件事】只写两句：什么算，什么不算。
-- 能用的、能换钱的、能让他少费事的 → 算。
-- 跟他没干系的闲事 → 不算。
-- 每一类「不算」的事，都必须离上面那些底线项都远。
+二【筹码】0–5 条，**可空、可换、不编号**。每条单独一行：先写那样东西叫什么，再接一句话说清它为什么能拿住他。
+★ 判法：说得出「谁拿走了这个，他就得让步」。
+★ 必须能在材料原文里指出是哪一样具体东西、哪一个人；指不出来的，那是你替作者编的设定，不许写。
+★ 材料里的**比喻不能当物件**：档案写「恩和仇分两本账记」，讲的是他记账的习惯，不等于他真有一本账册。
+★ 这里写的不是他拥有的东西，是**别人能拿走、拿走他就得让步**的那些。力气、速度、性格、身体部位这些拿不走，不算。
+★ 一条都没有是正常状态 —— 光脚的人不怕被拿走东西。不许为了凑数编。
 
-第三层【他对各类事的做法】写 3–4 条配对。每条开头写编号 D<n>（**编号只是条目号，不是轻重次序**），下面两行：
-- 什么事 → 他一贯怎么做（写做法，不写这一次的具体动作）
-- 不适用：什么情况下这条让位
-每条都必须有「不适用」。没写的那条会变成万能答案，把所有处境都吸过去。
-★ 「不适用」只写**条件**，不写让位之后他改做什么。让位之后由第一层兜底——那一章的选择行写「底线<n>」，不是在这里另写一个动作。
-  写了动作却没说它挂哪条底线，那个动作就成了没有依据的第六条做法（也等于把"让位"变成了另一条日常）。
-★ 四条里至少要有一条是**没有外部压力时**也会发生的事；其余三条可以都在被逼、当众、生死里。四条全在高压下，读者看不出他平时是谁，第四层的破例也就没有对照。
+三【处境】材料已经**给定**的开场截面：他站在哪、手上有什么、被什么卡住。每行以 given 开头。
+★ 只描述第 1 章之前，不写他后来怎么变。
+★ 只写材料里有的，不许补。
 
-第四层【例外】
-- 上面那些做法，全是为前三条底线服务的。只有一种情况会出例外：第 1 条跟别的底线打架时，他一定选第 1 条。
-- 那一次他会做出上面所有做法里都没有的事，方向是定的：他为了那个人，放弃自己平时守的规矩。
-- 除此之外不会有意外的举动。
-★ 例外的动作必须与它挂的那条底线**同向**。写「他选 B1（不替人担）」，动作就不能是替人担；如果发现动作其实是替人担，那说明他真正选的是 B2 —— 把序号改过来，不要两处都占。
-★ 第四层**必须单独写出来，自成一行**，并以「例外：」开头：先写明它挂的是第几条底线，再写那一次他做了什么——必须是上面所有做法里都没有的事，且带一个身体反应。
-  不写这一行，这张卡就等于没有第四层。
-
-【具体动作的粒度】每条做法最后都要能落到这个粒度：
-- 是动作，能拍出来；不是形容词。
-- 带一个身体反应：手抖、耳鸣、指节发白、呼吸变了。这是他还在怕但仍在做的证据。
-- 出现这本书里任何专名的，一律重写。
-- 编号一律写成 D1、D2 这种形式，**不要写成 D<1>、D[1]** —— 下游按这个格式做校验，写成别的形式会被当成"没有写编号"。
+【为什么这样分】
+X 编号会被后面每一章的章纲引用，所以一旦定下就当作全书恒定，不再改。
+筹码不编号 —— 它们会增减、替换、失去，那是情节的事，不要在这里写死。
 
 【不一致的分寸】
-- 前三条底线上的行为必须始终一致。两处对不上，就是崩人设。
-- 面子、好玩这类轻的项上不必一致：这次去、下次不去，都合理。
-- 不要为了稳定把轻的项也写成铁律，那样角色是机械的。
+- 禁区上的行为必须始终一致。两处对不上，就是崩人设。
+- 筹码不必一致：这一章还拿着、下一章丢了，都合理。
+- 不要为了稳定把筹码也写成铁律，那样角色是机械的。
+
+【输出形状】只写这三段。段标记（【禁区】【筹码】【处境】）各占一行，不许合并、不许改写、不许加标题。
 
 不要复述 background 里已经写过的那整段前史，原因一句话点到。
 禁止写成标签清单（勇敢／隐忍／腹黑），禁止出现数值（勇气 +1）。
@@ -171,7 +150,7 @@ Output {"entries":[...]} only. Every entry must contain slotId, name, role, gend
 ★ role must be exactly one of protagonist, antagonist, supporting, or minor, and must match that slotId's role in [Frozen identities and relationships] verbatim. Never restate it as a translated or prose label; a mismatch invalidates the whole batch.
 ★ Every field above must be **non-empty text**: never an empty string, whitespace only, null, or omitted. "Required" means non-empty, not merely present as a key. When a fact is genuinely unknown, write a placeholder such as "unknown" instead of leaving it blank — a blank field invalidates the whole batch. gender and age are the fields most often left blank; both are still mandatory.
 currentState is required and must contain location, powerLevel, physicalState, mentalState, keyItems, recentEvents, and a non-negative integer updatedAtChapter.
-Keep personality within 800 characters — the protagonist entry carries four layers (ranked bottom lines, what counts as an event, 3–4 practices each with "not applicable", and the exception) and none of them may be squeezed; keep appearance, background, abilities, motivation, arc, and notes within 120 characters each, and each currentState text field within 80 characters.
+Keep personality within 800 characters — the protagonist entry carries three slots (forbidden lines, chips, and the given opening situation) and none of them may be squeezed; keep appearance, background, abilities, motivation, arc, and notes within 120 characters each, and each currentState text field within 80 characters.
 keyItems and recentEvents may each be a non-empty string or an array of non-empty strings. Use the string "none" when empty; never output an empty array.
 Do not output relationships, schemaVersion, a rendered character map, explanations, code fences, or reasoning.`,
     manifestTask: (context, minimum, maximum) => `[Identity-planning context]
@@ -196,61 +175,41 @@ ${input.validatedPrefix}
 [Compact-detail guidance]
 Keep every field specific, concise, and relevant to the story; currentState is required. Do not output relationships because the frozen manifest is their only source.
 
-[Protagonist disposition — four layers (required for the entry whose role is protagonist; other roles keep the normal format)]
+[Protagonist's three slots (required for the entry whose role is protagonist; other roles keep the normal format)]
 Disposition is not an adjective list, and it is not a diary. Write only **how he moves**, and write it so a reader could recognise the same person in another chapter.
 
-★ Author-provided override first: if the extra author guidance already names a trait or a ranked list of bottom lines, **follow it exactly** and only break it into the layers below. If it does not, infer them from the protagonist profile.
+★ Author-provided override first: if the extra author guidance already names traits or a list, **follow it exactly** and only turn it into the three slots below. If it does not, infer them from the protagonist profile.
 
-Layer 1 [what he cares about] — rank 3–5 items from heaviest to lightest, numbered B1…Bn (**B1 is the heaviest; the number is the rank, not an entry id**). No scores.
-- At least one item must be concrete enough for a specific person or a specific thing to take away from him. Do not fill the whole list with abstractions such as "dignity" or "conviction".
-- At least one item is one he would not admit to: he himself does not think of it as a flaw.
-- Between any two adjacent items it must be possible to build a scene in which he has to choose one of them.
-- Universalism and benevolence must not occupy the first two places. If you must place them there, write what he has paid for them; if you cannot write that price, that is a saint, not a person.
-★ Write each item as **a value judgement** — not a thing, not a practice. End each item with a bracket naming its **concrete referent**: enough to point at "which one", and never the word "anchor" itself.
-  Test: after reading the item you must be able to say "what he would rather lose", not "what he has on hand", and not "what he would do".
-  Any two adjacent items must be comparable in weight; if they are not, one of them sits in the wrong layer (a thing or a practice has been pushed into the value layer).
-  A bracket names something that **persists** — never a one-off event, never who handed him what on which day.
-★ What sits in the bracket must be **pointable to a sentence of the supplied material**; if you cannot point at it, you are inventing a setting the author never wrote. Do not write it.
-  Test: it must be **one concrete thing that is beside him from the opening to the end**.
-★ A **metaphor in the material is not an object**: a profile that says "he keeps two ledgers, one for favours and one for grudges" describes how he keeps score, not that he owns a ledger book. Invent the book and it is not in this book at all.
-★ Put a noun in the bracket only. Never "the several times he held out" or "one particular occasion" — that is a practice and belongs to layer 3.
-★ If you cannot fill 3 items from the material, write 2. A filler item is worse than a missing one: an invented bracket turns the whole bottom line false.
-★ There is exactly one **anchor** in the whole card, on its own line right after layer 1, in this form: Anchor: <what it is> — <what he gave up for it>. It hangs on the bottom line you ranked first, and the layer-4 exception is the one time it is taken hostage.
-  Test: if you can say "what he gave up for it", it is an anchor; if you can only say "this is related to him", it is an event, not an anchor.
-★ The anchor is the same thing he surrendered: a bracket names what he **still carries**, the anchor names what he **gave away** to keep it. They cannot be the same object — something that is both what he cares about and what he gave up can never be used in any chapter.
-★ The B numbers and the D numbers of layer 3 are two separate series: **B is the rank of a bottom line** (B1 heaviest), **D is an entry id** (D1 is not the heaviest). The choice line may need both.
+1 [Forbidden] 1–3 items, **never empty**. One per line, each starting with X1, X2… (**the number is an entry id, not a ranking**).
+★ Test: you can say "he would rather lose — or die — than use this method".
+★ Write what he **refuses to do**, not what he usually does and not what he is good at.
+★ A forbidden line is not a moral creed: villains have them too, and theirs are usually harder — it is the only self they claim.
+★ Between any two of them it must be possible to build a scene in which he has to choose one.
+★ Each must come down to a filmable action. "He does not sell anyone out" is invisible; "he would rather have his own name struck out than add another man's name to the document" is visible.
+★ Refusal must leave a mark on the body: shaking hands, ringing ears, teeth clamped. Dialogue alone is a slogan.
+★ Three is the ceiling. If the material only supports two, write two; a filler item is worse than a missing one.
 
-Layer 2 [what counts as an event] — two lines only: what counts, what does not.
-- Anything usable, convertible into money, or that saves him trouble counts.
-- Idle business that has nothing to do with him does not count.
-- Every class of things that does not count must sit far away from every bottom line in layer 1.
+2 [Chips] 0–5 items, **may be empty, may change, never numbered**. One per line: name the thing first, then one clause on why it can hold him.
+★ Test: you can say "whoever takes this away, he has to give ground".
+★ It must be pointable to a concrete thing or a concrete person in the supplied material; if you cannot point at it, you are inventing a setting the author never wrote.
+★ A **metaphor in the material is not an object**: a profile that says "he keeps two ledgers, one for favours and one for grudges" describes how he keeps score, not that he owns a ledger book.
+★ These are not the things he owns; they are the things **someone else can take away, and losing them forces him to yield**. Strength, speed, temperament and body parts cannot be taken, so they do not count.
+★ Having none is a normal state — a man with nothing to lose cannot be robbed. Never invent one to fill the slot.
 
-Layer 3 [how he treats each kind of event] — 3–4 pairs. Start each pair with the number D<n> (**the number is the entry id, not a ranking**), then two lines:
-- what kind of event → how he always handles it (write the practice, not the action of this one occasion)
-- not applicable: the case in which this one gives way
-Every pair must carry a "not applicable". The pair without one becomes the universal answer and pulls every situation toward itself.
-★ "Not applicable" states the **condition** only — never what he does instead. Once this practice gives way, layer 1 takes over: the choice line for that chapter cites "bottom <n>", it does not carry an action written here.
-  An action written here without a bottom line to hang on becomes a sixth practice with no basis (and turns "giving way" into just another habit).
-★ At least one of the pairs must be something that also happens **when nothing is pressing him**; the other three may all sit under duress. If all four live inside "forced / public / life-and-death", the reader never sees who he is when nothing is happening, and the layer-4 exception has nothing to contrast against.
+3 [Situation] the **given** opening cross-section: where he stands, what he holds, what pins him down. Prefix every line with "given".
+★ Describe only the state before chapter 1; do not write how he later changes.
+★ Only what the material already contains. Do not add.
 
-Layer 4 [the exception]
-- Everything above exists to serve the first three bottom lines. There is only one case that produces an exception: when bottom line 1 collides with another, he always chooses bottom line 1.
-- On that occasion he does something that none of the practices above contains, and the direction is fixed: for that person, he abandons the rules he normally keeps.
-- Apart from that, no unexpected move.
-★ The exception's action must run in the **same direction** as the bottom line it hangs on. If it reads "he chooses B1 (refuses to carry anyone's burden)", the action must not be carrying a burden; if the action turns out to be carrying one, then he is really choosing B2 — change the number, do not occupy both.
-★ Layer 4 **must be written out as its own line**, starting with "Exception:" — first name which bottom line it hangs on, then what he did that time: something none of the practices above contains, with one bodily tell.
-  Leave that line out and the card has no layer 4 at all.
-
-[Granularity of the concrete action] every practice must come down to this:
-- It is an action, filmable; not an adjective.
-- It carries a bodily tell: shaking hands, ringing ears, white knuckles, changed breathing — the evidence that he is still afraid and still doing it.
-- Anything carrying a proper noun from this book must be rewritten.
-- Always write numbers as D1, D2 — never D<1> or D[1]. Downstream validates this exact form; any other form is read as "no number written".
+[Why the split]
+X numbers get cited by every later chapter outline, so once written they are treated as fixed for the whole book.
+Chips are not numbered — they are added, replaced and lost as the plot requires; do not freeze that here.
 
 [How much inconsistency is allowed]
-- Behaviour on the first three bottom lines must be consistent throughout. Two places that do not match is a broken character.
-- On light items such as face-saving or amusement, consistency is not required: going this time and not next time are both reasonable.
-- Do not make the light items iron laws for the sake of stability; that produces a machine, not a person.
+- Behaviour on the forbidden lines must be consistent throughout. Two places that do not match is a broken character.
+- Chips need not be consistent: held in one chapter and lost in the next are both fine.
+- Do not turn chips into iron laws for the sake of stability; that produces a machine, not a person.
+
+[Output shape] Write these three blocks only. The block markers ([Forbidden] [Chips] [Situation]) each occupy their own line; never merge them, rename them, or add headings.
 
 Spend one clause on why it is this way; do not retell the backstory in background.
 Never reduce it to a tag list (brave / stoic / ruthless) and never assign numbers ("courage +1").

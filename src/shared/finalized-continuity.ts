@@ -180,6 +180,33 @@ export interface FinalizedCharacterStateCommitReceipt {
 
 const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value)
 /** Main re-parses the settled artifact with its own frozen context before domain commit. */
+/**
+ * 校验并定位一条引文，返回带精确偏移的 evidence。
+ *
+ * 状态六槽与卡片增量**共用这一份** —— 两处如果各写一套，「引文必须唯一」的语义
+ * 迟早会分叉，而分叉之后错的那一边不会报错，只会让 probe 悄悄变松。
+ *
+ * 错误码按失败原因分开，是为了让 repair 轮能指名缺什么，而不是只给一个空出口。
+ */
+export function resolveCharacterEvidence(evidence: unknown, content: string): FinalizedCharacterEvidence {
+  if (!record(evidence)) throw new Error('FINALIZED_CHARACTER_EVIDENCE_MISSING')
+  let start = evidence.start
+  let end = evidence.end
+  if (!Object.hasOwn(evidence, 'start') && !Object.hasOwn(evidence, 'end')
+    && typeof evidence.text === 'string' && evidence.text.length > 0) {
+    const located = content.indexOf(evidence.text)
+    if (located < 0 || content.indexOf(evidence.text, located + 1) !== -1) throw new Error('FINALIZED_CHARACTER_EVIDENCE_NOT_UNIQUE')
+    start = located
+    end = located + evidence.text.length
+  }
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || (start as number) < 0
+    || (end as number) <= (start as number) || (end as number) > content.length
+    || typeof evidence.text !== 'string' || content.slice(start as number, end as number) !== evidence.text) {
+    throw new Error('FINALIZED_CHARACTER_EVIDENCE_INVALID')
+  }
+  return { start: start as number, end: end as number, text: evidence.text }
+}
+
 export function parseFinalizedCharacterStateResponse(content: string, context: FinalizedCharacterContext): FinalizedCharacterStateResponse {
   const text = content.trim().replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/, '')
   const parsed: unknown = JSON.parse(text)
@@ -189,19 +216,7 @@ export function parseFinalizedCharacterStateResponse(content: string, context: F
   for (const [index, input] of parsed.updates.entries()) {
     if (!record(input) || !record(input.currentState)) throw new Error('FINALIZED_CHARACTER_UPDATE_INVALID')
     // A distinct code lets the repair turn name the missing field instead of offering only the empty exit.
-    if (!record(input.evidence)) throw new Error('FINALIZED_CHARACTER_EVIDENCE_MISSING')
-    const evidence = input.evidence
-    let start = evidence.start, end = evidence.end
-    if (!Object.hasOwn(evidence, 'start') && !Object.hasOwn(evidence, 'end') && typeof evidence.text === 'string' && evidence.text.length > 0) {
-      const located = context.content.indexOf(evidence.text)
-      if (located < 0 || context.content.indexOf(evidence.text, located + 1) !== -1) throw new Error('FINALIZED_CHARACTER_EVIDENCE_NOT_UNIQUE')
-      start = located; end = located + evidence.text.length
-    }
-    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || (start as number) < 0
-      || (end as number) <= (start as number) || (end as number) > context.content.length
-      || typeof evidence.text !== 'string' || context.content.slice(start as number, end as number) !== evidence.text) {
-      throw new Error('FINALIZED_CHARACTER_EVIDENCE_INVALID')
-    }
+    const exactEvidence = resolveCharacterEvidence(input.evidence, context.content)
     const currentState: FinalizedCharacterStateValues = {}
     for (const field of CHARACTER_STATE_TEXT_FIELDS) {
       if (!Object.hasOwn(input.currentState, field)) continue
@@ -214,7 +229,6 @@ export function parseFinalizedCharacterStateResponse(content: string, context: F
     const characterId = typeof input.characterId === 'string' ? input.characterId : ''
     const originalText = typeof input.name === 'string' ? input.name : ''
     const character = context.identityStatus === 'bound' ? context.characters.find(item => item.characterId === characterId) : undefined
-    const exactEvidence = { start: start as number, end: end as number, text: evidence.text }
     // Even an explicit model ID cannot disambiguate two source characters with
     // the same frozen display label. Preserve the occurrence for author approval.
     const sharedLabel = character && context.characters.filter(item => item.displayNameSnapshot === character.displayNameSnapshot).length > 1
@@ -231,6 +245,160 @@ export function parseFinalizedCharacterStateResponse(content: string, context: F
     seen.add(characterId)
     result.updates.push({ characterId, currentState, evidence: exactEvidence })
   }
+  return result
+}
+
+/* ------------------------------------------------------------------ */
+/* 角色卡增量（cardDeltas）                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * 章末产出的**一条**卡片增量。三种 kind 互不重叠：
+ * - `soft-spot` 软肋登记：他因为什么破了戒，而且那样东西以后还能被拿捏
+ * - `chip` 筹码变更：add / replace / lose
+ * - `hit` 顶撞记账：顶到或破了哪条禁区、代价多少（**不改卡面**）
+ */
+export interface FinalizedCharacterCardDelta {
+  characterId: string
+  kind: 'soft-spot' | 'chip' | 'hit'
+  name?: string
+  text?: string
+  change?: 'add' | 'replace' | 'lose'
+  replaces?: string
+  /** `X1`…`X3`，规范化成大写。 */
+  forbidden?: string
+  cost?: string
+  broken?: boolean
+  evidence: FinalizedCharacterEvidence
+  /** 落库时生成：同一份定稿重跑得到同一个 key，用于幂等回放。 */
+  deltaKey?: string
+}
+
+export type CardDeltaDropReason =
+  | 'unknown-character'
+  | 'invalid-shape'
+  | 'evidence-invalid'
+  | 'cost-too-long'
+  | 'soft-spot-cap'
+
+/** 作者对一条卡片增量的决定。 */
+export interface FinalizedCharacterCardDeltaDecisionRequest {
+  draftId: number
+  deltaKey: string
+  operationId: string
+  decision: 'accept' | 'decline'
+}
+
+export interface FinalizedCharacterCardDeltaDecisionReceipt {
+  delta: FinalizedCharacterCardDelta
+  /** 同一 operationId 重放时为 true（幂等）。 */
+  idempotent: boolean
+  /** accept 且写卡成功时的新卡面；decline 或（重复确认导致的）无变化时为 undefined。 */
+  personality?: string
+}
+
+export interface PendingFinalizedCharacterCardDelta {
+  draftId: number
+  delta: FinalizedCharacterCardDelta
+}
+
+/** 面板一次取全：待确认的增量 + 只读的顶撞账本。 */
+export interface FinalizedCharacterCardDeltaBoard {
+  pending: PendingFinalizedCharacterCardDelta[]
+  hits: PendingFinalizedCharacterCardDelta[]
+}
+
+export interface FinalizedCardDeltaParseResult {
+  deltas: FinalizedCharacterCardDelta[]
+  /** 显式丢弃的条目 —— 静默截断会让「模型提了」与「卡上有」变成两份真相。 */
+  dropped: Array<{ index: number; reason: CardDeltaDropReason }>
+}
+
+/** `X1` / `x 1` / `X 01` → `X1`；其它形态返回 undefined。 */
+export function normalizeForbiddenId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const match = /^[\t ]*[Xx][\t ]*(\d{1,2})[\t ]*$/u.exec(value)
+  return match ? `X${Number(match[1])}` : undefined
+}
+
+/**
+ * 解析 `cardDeltas`。**永不抛错**：它是可选增强，不该因为一条格式不对就让整章定稿失败。
+ *
+ * 与 `parseFinalizedCharacterStateResponse` 的三点区别，都是有意的：
+ * 1. 不抛错，坏条目进 `dropped`（状态六槽错会触发 repair，卡片增量错只该被丢掉）；
+ * 2. 只认冻结名单里的 `characterId`（列表里没有的人不算）；
+ * 3. 不做语义判断（「这个筹码能不能被拿走」是 prompt 的事），只做结构与长度校验。
+ *
+ * ⚠️ `forbidden` 之外不校验编号存在性 —— 那需要读角色卡，属于落库层的职责。
+ */
+export function parseFinalizedCharacterCardDeltas(
+  content: string,
+  context: FinalizedCharacterContext,
+  limits: { softSpots?: number; costLength?: number } = {},
+): FinalizedCardDeltaParseResult {
+  const result: FinalizedCardDeltaParseResult = { deltas: [], dropped: [] }
+  const softSpotLimit = limits.softSpots ?? 5
+  const costLimit = limits.costLength ?? 60
+
+  let parsed: unknown
+  try {
+    const text = content.trim().replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/, '')
+    parsed = JSON.parse(text)
+  } catch {
+    return result
+  }
+  if (!record(parsed) || !Array.isArray(parsed.cardDeltas)) return result
+
+  const known = new Set(context.characters.map(character => character.characterId))
+  const softSpotCount = new Map<string, number>()
+
+  for (const [index, input] of parsed.cardDeltas.slice(0, 200).entries()) {
+    const drop = (reason: CardDeltaDropReason): void => { result.dropped.push({ index, reason }) }
+    if (!record(input)) { drop('invalid-shape'); continue }
+    const characterId = typeof input.characterId === 'string' ? input.characterId : ''
+    if (!known.has(characterId)) { drop('unknown-character'); continue }
+    const kind = input.kind
+    if (kind !== 'soft-spot' && kind !== 'chip' && kind !== 'hit') { drop('invalid-shape'); continue }
+
+    let evidence: FinalizedCharacterEvidence
+    try {
+      evidence = resolveCharacterEvidence(input.evidence, context.content)
+    } catch {
+      drop('evidence-invalid')
+      continue
+    }
+
+    if (kind === 'hit') {
+      const forbidden = normalizeForbiddenId(input.forbidden)
+      const cost = typeof input.cost === 'string' ? input.cost.trim() : ''
+      if (!forbidden) { drop('invalid-shape'); continue }
+      if (cost.length > costLimit) { drop('cost-too-long'); continue }
+      result.deltas.push({ characterId, kind, forbidden, cost, broken: input.broken === true, evidence })
+      continue
+    }
+
+    const name = typeof input.name === 'string' ? input.name.trim() : ''
+    const text = typeof input.text === 'string' ? input.text.trim() : ''
+    if (!name) { drop('invalid-shape'); continue }
+
+    if (kind === 'soft-spot') {
+      const used = softSpotCount.get(characterId) ?? 0
+      if (used >= softSpotLimit) { drop('soft-spot-cap'); continue }
+      softSpotCount.set(characterId, used + 1)
+      result.deltas.push({ characterId, kind, name, text, evidence })
+      continue
+    }
+
+    const change: 'add' | 'replace' | 'lose' =
+      input.change === 'replace' || input.change === 'lose' ? input.change : 'add'
+    const replaces = typeof input.replaces === 'string' ? input.replaces.trim() : ''
+    if (change === 'replace' && !replaces) { drop('invalid-shape'); continue }
+    result.deltas.push({
+      characterId, kind, name, text, change, evidence,
+      ...(change === 'replace' ? { replaces } : {}),
+    })
+  }
+
   return result
 }
 

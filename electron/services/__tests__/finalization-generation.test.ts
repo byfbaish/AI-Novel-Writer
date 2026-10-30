@@ -543,10 +543,18 @@ it('characters最终合同要求每个update含recentEvents，且与渲染端副
  expect(en).toContain('Return one JSON object: {"updates":[{"characterId":"exact ID from the frozen list","currentState":{"recentEvents":"this chapter\'s event","location":"new place"},"evidence":{"text":"exact source quote"}}]}')
  expect(en).not.toContain('list only the fields that actually changed')
  const renderer=fs.readFileSync(path.resolve('src/services/workflows/commands/finalize-chapter.command.ts'),'utf8')
- for(const [message,prefix] of [[zh,'【最终输出合同'],[en,'[Final output contract']] as const){
-  const contract=message.slice(message.indexOf(prefix))
+ // 2026-10-29：合同后面又接了「角色卡增量」合同，而兼容链是两段独立字面量拼接，
+ // 所以这里只比到状态合同结束（卡片增量合同另有一条断言，见下）。
+ for(const [message,prefix,deltaPrefix] of [[zh,'【最终输出合同','【本章的角色卡增量'],[en,'[Final output contract','[Character-card deltas for this chapter']] as const){
+  const start=message.indexOf(prefix)
+  const deltaAt=message.indexOf(deltaPrefix)
+  const contract=message.slice(start,deltaAt>start?deltaAt:undefined).trimEnd()
   expect(renderer).toContain(`'${contract.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}'`)
  }
+ // 两条链的「角色卡增量」合同必须同源：都从共享常量拼进来，不许各写一份正文。
+ expect(zh).toContain('【本章的角色卡增量')
+ expect(en).toContain('[Character-card deltas for this chapter')
+ expect(renderer).toContain('finalizedCharacterCardDeltaContract(writingLanguage)')
 })
 
 it.each(['cancelled', 'notes-changed'] as const)('starts an explicit fresh finalization attempt after %s, preserving history and sealed replay', async reason => {
