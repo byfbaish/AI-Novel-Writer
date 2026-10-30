@@ -46,10 +46,11 @@ docs/
 | 查**已定的、不可逆的决定** | [`adr/`](adr/) |
 | 查**为什么没采纳某方案** | `design/<主题>/…-assessment.md`，或 `research/` |
 | **评估外部 agent-skill 流水线包**（oh-story v0.9.0 吸收评估） | [`research/2026-10-25-oh-story-absorption/`](research/2026-10-25-oh-story-absorption/) —— 结论：**它强在文本质检、弱在连续性**，与我方互补；**A2/A3/A4/A5 全部已实施**（§9 与 §9b）、A1 降级、C1–C8 刻意不为 |
+| **看同题材竞品**（墨枢 Moshu 对照评审） | [`research/2026-10-30-moshu-competitor/`](research/2026-10-30-moshu-competitor/) —— 结论：**它是参照系不是威胁**；两边把长篇失败归因到不同地方（它=记不住→claim+七类规则，我方=撑不住→弧光+角色可判定），**只取 3 个机制**（世界状态审计员 / 章内局部去重 / 证据锚点契约写法），9 成服务端基建刻意不为；含三条警告（文档密度≠交付密度、它有一份可抄的诚实文档制度、别把我方先进当默认正确） |
 | **重校「AI 味」阈值要怎么找语料** | [`research/2026-10-25-threshold-calibration-corpus/`](research/2026-10-25-threshold-calibration-corpus/) —— 起点 3 条合法来源（全限非商业）· **番茄零** · 书面许可边界与「内主外辅」校准路径 |
 | 查 **Program v3 原始合同 / 审计证据** | `plans/novel-quality-*/`、[`research/novel-quality-modernization/`](research/novel-quality-modernization/) 🔒 冻结 |
 | **问「这套工作流能写哪些题材」**（市场边界估算） | [`research/2026-10-28-platform-genre-coverage-bounds.md`](research/2026-10-28-platform-genre-coverage-bounds.md) —— 番茄主分类 + 起点 14 类 · **九槽判定** · A/B/C/D 四档（A 原生约 30%、D 骨架冲突约 35%）· 结论：**结构层通用、素材层不通用**，扩展应沿素材层做 |
-| 接手别人的会话 | [`handoffs/`](handoffs/) —— **最近一份**：[`handoffs/2026-10-26-p20-3-knowledge-candidates-handoff.md`](handoffs/2026-10-26-p20-3-knowledge-candidates-handoff.md)（P20-3 已交付：步骤表收敛、M22、提议条、43 例守门测试、基线失败集）；上一份：[`handoffs/2026-10-26-extraction-schedule-handoff.md`](handoffs/2026-10-26-extraction-schedule-handoff.md)（实机验证入口、两项空间检查修复、P20 三期排期与裁定点） |
+| 接手别人的会话 | [`handoffs/`](handoffs/) —— **最近一份**：[`handoffs/2026-10-30-three-slot-card-deltas.md`](handoffs/2026-10-30-three-slot-card-deltas.md)（三格角色卡 + cardDeltas 闭环）；上一份：[`handoffs/2026-10-26-p20-3-knowledge-candidates-handoff.md`](handoffs/2026-10-26-p20-3-knowledge-candidates-handoff.md)（P20-3 已交付：步骤表收敛、M22、提议条、43 例守门测试、基线失败集） |
 | 发布 / 交付 / 审查流程 | [`DEVELOPMENT.md`](DEVELOPMENT.md) · [`agents/delivery.md`](agents/delivery.md) |
 | **把活派给 Copilot CLI**（无头、另一进程、可校验副作用） | [`agents/copilot-channel.md`](agents/copilot-channel.md) —— 落点/PATH · 参数速查 · 权限模型 · 工具别名 · 已验证与未验证清单 |
 | **放文档 / 归档文档 / 判断该不该新建一份** | [`agents/documentation-charter.md`](agents/documentation-charter.md) —— 四层模型 + 单一事实源 + 完成定义 + 反例库 |
