@@ -86,8 +86,10 @@ describe('portable v7 field policy', () => {
     //   实际一直是 614 ⇒ 本用例自 M22 起就是红的（`src/` 基线不含 electron/，故没被发现）。
     // P0-1 / M23：+1 列（chapter_deletion_operations.keep_draft）—— 64/615 → 64/616。
     // P2-2 / M24：+1 表 6 列（upstream_revisions）—— 64/616 → 65/622。
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 65, fields: 622 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 65, fields: 622 })
+    // P2-2 期 2 / M25：+3 列（两张派生表的 source_ref + project_core.plot_tree_source_ref）
+    //   —— 65/622 → 65/625。
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 65, fields: 625 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 65, fields: 625 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -131,7 +133,9 @@ describe('portable v7 field policy', () => {
     // + P20-2 / M21：+1 表 10 列（secrets）—— 249 → 259，同上。
     // + P20-3 / M22：+1 列（summary_snapshots.knowledge_candidates）—— 259 → 260。
     // + P0-1 / M23：+1 列（chapter_deletion_operations.keep_draft）—— 260 → 261。
-    expect(added).toHaveLength(267)
+    // + P2-2 / M24：+1 表 6 列（upstream_revisions）—— 261 → 267。
+    // + P2-2 期 2 / M25：+3 列（派生的来源列）—— 267 → 270。
+    expect(added).toHaveLength(270)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -173,6 +177,26 @@ describe('portable v7 field policy', () => {
       'secrets.reveal_chapter', 'secrets.secret_id', 'secrets.source', 'secrets.title',
       'secrets.unaware_names', 'secrets.updated_at',
     ])
+    // P2-2 期 2 / M25：三处来源列按**字段**登记。
+    //
+    // `volume_handoffs.source_ref` 的 origin 仍是 `m18-delta`：表级来源先命中表级清单，
+    // 这是既有约定（M20 / M22 的字段级登记同理），m25 只是记录它是哪一版加的。
+    // 真正会静默失效的是「登记漏了」⇒ 该字段退回 `signed-s01`（带 signedDisposition），
+    // 所以下面两处都断言：精确列表 + 三列都不是 signed。
+    expect(listPortableFieldPolicyKeys().filter(key => getPortableFieldPolicy(
+      ...key.split('.') as [string, string]).origin === 'm25-delta')).toEqual([
+      'blueprints.source_ref',
+      'project_core.plot_tree_source_ref',
+    ])
+    for (const [table, field] of [
+      ['blueprints', 'source_ref'],
+      ['volume_handoffs', 'source_ref'],
+      ['project_core', 'plot_tree_source_ref'],
+    ] as const) {
+      expect(getPortableFieldPolicy(table, field)).toMatchObject({
+        disposition: 'preserve-domain', signedDisposition: null,
+      })
+    }
   })
 
   it('机器权限、执行历史、未知nested与M05头像采用不同的fail-closed处置', () => {
@@ -230,7 +254,8 @@ describe('portable v7 field policy', () => {
       // P20-2 / M21：再 +1 表 10 列 ⇒ 64/614。
       // P20-3 / M22 + P0-1 / M23：再 +2 列（各自一列）⇒ 64/616。
       // P2-2 / M24：再 +1 表 6 列 ⇒ 65/622。
-      expect({ tables: tables.length, fields }).toEqual({ tables: 65, fields: 622 })
+      // P2-2 期 2 / M25：再 +3 列 ⇒ 65/625。
+      expect({ tables: tables.length, fields }).toEqual({ tables: 65, fields: 625 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)

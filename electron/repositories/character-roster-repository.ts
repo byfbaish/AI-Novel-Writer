@@ -27,6 +27,7 @@ import { ensureCharacterRosterSchema } from './character-roster-schema'
 import { CHARACTER_ROLE_LABELS, normalizeCharacterRole } from '../../src/shared/character-role'
 import { DEFAULT_WRITING_LANGUAGE, type WritingLanguage } from '../../src/shared/writing-language'
 import { ProjectCoreRepository } from './project-core-repository'
+import { rewriteBlueprintCharacters } from './blueprint-character-rewrite'
 
 interface CharacterRosterMetaRow {
   schema_version: number
@@ -718,33 +719,16 @@ function updateBlueprintReferencesForManualEdit(
   renameByOriginal: ReadonlyMap<string, string>,
   finalNames: ReadonlySet<string>,
 ): void {
-  const blueprints = db.prepare('SELECT chapter_number, characters FROM blueprints').all() as Array<{
-    chapter_number: number
-    characters: string
-  }>
-  const updateBlueprint = db.prepare(`
-    UPDATE blueprints
-    SET characters = ?, updated_at = datetime('now')
-    WHERE chapter_number = ?
-  `)
-  for (const blueprint of blueprints) {
-    let rawNames: unknown
-    try {
-      rawNames = JSON.parse(blueprint.characters)
-    } catch {
-      throw new Error(`第 ${blueprint.chapter_number} 章蓝图角色列表损坏`)
-    }
-    if (!Array.isArray(rawNames) || !rawNames.every(name => typeof name === 'string')) {
-      throw new Error(`第 ${blueprint.chapter_number} 章蓝图角色列表格式错误`)
-    }
-    const nextNames = rawNames
+  // 改名 / 删除角色 ⇒ 蓝图的 `characters` 列变了，而这一列进正文 prompt。
+  // 骨架（校验 + bump + 刷 `source_ref`）由 `rewriteBlueprintCharacters` 唯一实现，
+  // 这里只描述「名字怎么变」：改名的改名，不在新名单里的去掉，重复的合成一个。
+  rewriteBlueprintCharacters(db, (names) => {
+    const next = names
       .map(name => renameByOriginal.get(name) ?? name)
       .filter(name => finalNames.has(name))
       .filter((name, index, values) => values.indexOf(name) === index)
-    if (JSON.stringify(nextNames) !== JSON.stringify(rawNames)) {
-      updateBlueprint.run(JSON.stringify(nextNames), blueprint.chapter_number)
-    }
-  }
+    return next
+  })
 }
 
 function fullFactHash(entries: CharacterRosterEntry[]): string {

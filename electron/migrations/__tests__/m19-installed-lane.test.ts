@@ -141,7 +141,10 @@ describe('installed M19 lane', () => {
     const db = fixture()
     try {
       migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
-      expect(columns(db, 'volume_handoffs').map(column => column.name)).toEqual([
+      // M19 重建出的 11 列；M25 之后会**追加** `source_ref`（派生来源），
+      // 所以这里只钉 M19 的这 11 列，并显式排除后来者 —— 出现任何第三个新列都要红。
+      const handoffColumns = columns(db, 'volume_handoffs').map(column => column.name)
+      expect(handoffColumns.filter(name => name !== 'source_ref')).toEqual([
         'handoff_id', 'volume_id', 'world_state', 'hero_state', 'events_json', 'items_json',
         'debts_json', 'open_thread', 'source', 'created_at', 'updated_at',
       ])

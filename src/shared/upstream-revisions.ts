@@ -222,33 +222,6 @@ export function expandChapterRange(range: Readonly<{ from: number; to: number }>
   return chapters
 }
 
-/**
- * 合并批内改动章集合（`changed_chapters`）。
- *
- * 设计动机见设计稿 §4.1：上游**重新生成**只有批级入口，但**手改**能停在单章
- * （章节卡 `saveChapterBlueprint`、agent 的 `db:blueprint-upsert`）。所以批的
- * rev 仍是身份，章集合是这批的内容描述。
- *
- * **累积而不是覆盖**：同一批连改两次第 31 章和第 33 章，下游第 31 章那条派生
- * 落后于 rev=2，而 `changed_chapters` 若只留 `[33]`，它就会被判 `valid` ——
- * 漏判。所以并集。
- *
- * 上限保护：集合只用于「我这章在不在被改过的范围内」，保留全部章号即可；
- * 单卷最多几百章，JSON 数组不会失控。
- */
-export function mergeChangedChapters(
-  existing: readonly number[] | null | undefined,
-  incoming: readonly number[],
-): number[] {
-  const merged = new Set<number>()
-  for (const value of existing ?? []) {
-    if (Number.isSafeInteger(value) && value > 0) merged.add(value)
-  }
-  for (const value of incoming) {
-    if (Number.isSafeInteger(value) && value > 0) merged.add(value)
-  }
-  return [...merged].sort((left, right) => left - right)
-}
 
 /**
  * 某个派生依赖的第 N 章是否在被改过的范围内。
@@ -267,4 +240,197 @@ export function refCoversChapter(
   if (parsed.domain !== 'outline') return true
   if (!changedChapters || changedChapters.length === 0) return true
   return changedChapters.includes(chapterNumber)
+}
+
+// ============================================================================
+// 期 2：按章收窄的判定（P2-2，2026-10-30）
+// ============================================================================
+//
+// 上面那半（`derivedStatus`）只回答「rev 一样吗」。期 2 之后 `changed_chapters`
+// 要参与判定，于是判定从「一个值比另一个值」变成「一段区间里改过哪些章」。
+// 新增的四条不变量都在下面这段里，每条对应一个会**静默出错**的形态，改之前先读。
+
+/**
+ * 章集的存储形态：`rev → 改动的章号`。
+ *
+ * 为什么不是「累积并集」：连续改第 31、33 章后，累积并集是 `[31,33]`；此时判
+ * **第 31 章那行**（它写于 rev2）→ `have=2, need=3`，若拿累积并集算交集，
+ * 31 ∈ `[31,33]` ⇒ 判 stale ⇒ **拒绝作者刚改完的那张卡**。方向反了。
+ * 按 rev 存才能只取 `(have, need]` 这一段，31 不在 rev3 的改动里，判 valid。
+ *
+ * **上限**：`changed_chapters` 只保留最近若干版，更早的**合并成「全部章」**
+ * （保守方向）。见 `MAX_CHANGED_CHAPTER_REVS`。
+ */
+export type ChangedChapterLog = ReadonlyMap<number /* rev */, readonly number[]>
+
+/** 解析结果。两代格式都在里面，判定侧只认一种语义。 */
+export interface ParsedChangedChapters {
+  /**
+   * 旧格式（裸数组 `[31,33]`）里记着的章号。
+   *
+   * **非空 ⇒ 无法按 rev 收窄**：旧格式没记「哪一版改的」，只能当作「这些章在
+   * 任何一版都可能改过」。判定侧按「覆盖全部章」处理（宁可多判脏，不漏判）。
+   */
+  legacyChapters: readonly number[]
+  /** 新格式：rev → 章号。 */
+  byRev: ChangedChapterLog
+}
+
+/** `changed_chapters` 保留的 rev 条目上限；超出时把最旧的条目合并成「全部章」。 */
+export const MAX_CHANGED_CHAPTER_REVS = 20
+
+function toChapterList(value: unknown): number[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item): item is number => typeof item === 'number' && Number.isSafeInteger(item) && item > 0)
+    .sort((left, right) => left - right)
+}
+
+/**
+ * 解析 `changed_chapters`（两代格式）。
+ *
+ * - 裸数组（期 1 写入的）⇒ `legacyChapters`；
+ * - 对象 `{"2":[31],"3":[33]}` ⇒ `byRev`；
+ * - 坏数据 ⇒ 两个都空 ⇒ 判定侧按「覆盖全部章」处理（空集 = 全改，见下）。
+ */
+export function parseChangedChapters(raw: unknown): ParsedChangedChapters {
+  if (typeof raw !== 'string' || !raw.trim()) return { legacyChapters: [], byRev: new Map() }
+  let parsed: unknown
+  try { parsed = JSON.parse(raw) } catch { return { legacyChapters: [], byRev: new Map() } }
+  if (Array.isArray(parsed)) return { legacyChapters: toChapterList(parsed), byRev: new Map() }
+  if (!parsed || typeof parsed !== 'object') return { legacyChapters: [], byRev: new Map() }
+  const byRev = new Map<number, readonly number[]>()
+  let legacyChapters: readonly number[] = []
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    // `legacy` 键是「旧格式章集」在新格式里的落点：写入侧换代时不能丢，
+    // 丢了就等于把「不知道哪一版改的」冒充成「没改过」。
+    if (key === 'legacy') { legacyChapters = toChapterList(value); continue }
+    const rev = Number(key)
+    if (!Number.isSafeInteger(rev) || rev < 1) continue
+    byRev.set(rev, toChapterList(value))
+  }
+  return { legacyChapters, byRev }
+}
+
+/** 把章集写成新格式（`bump` 用）。旧格式章集落到 `legacy` 键上，不丢。 */
+export function serializeChangedChapters(parsed: ParsedChangedChapters): string {
+  const record: Record<string, number[]> = {}
+  if (parsed.legacyChapters.length > 0) {
+    record.legacy = [...parsed.legacyChapters].sort((left, right) => left - right)
+  }
+  for (const [rev, chapters] of [...parsed.byRev.entries()].sort((left, right) => left[0] - right[0])) {
+    record[String(rev)] = [...chapters]
+  }
+  return JSON.stringify(record)
+}
+
+/**
+ * 写入一条「第 `rev` 版改了这些章」。
+ *
+ * 超过 `MAX_CHANGED_CHAPTER_REVS` 时把**最旧的两条合并**（并集挂到较新的那条上），
+ * 而不是把旧章塞进 `legacy`：后者会让项目在多次手改后永久「全部章都算改过」，
+ * 把收窄这件事废掉。合并只让那一条覆盖的 rev 跨度变宽，方向仍是多判脏，且
+ * 对「快照晚于被合并那些改动」的行没有影响（它们本来就不该被那些改动判脏）。
+ */
+export function withChangedChapters(
+  parsed: ParsedChangedChapters,
+  rev: number,
+  chapters: readonly number[],
+): ParsedChangedChapters {
+  const byRev = new Map(parsed.byRev)
+  const normalized = toChapterList(chapters)
+  if (normalized.length > 0) {
+    const merged = new Set([...(byRev.get(rev) ?? []), ...normalized])
+    byRev.set(rev, [...merged].sort((left, right) => left - right))
+  } else if (!byRev.has(rev)) {
+    byRev.set(rev, [])
+  }
+  while (byRev.size > MAX_CHANGED_CHAPTER_REVS) {
+    const oldest = [...byRev.keys()].sort((left, right) => left - right)[0]
+    const next = [...byRev.keys()].sort((left, right) => left - right)[1]
+    const merged = new Set([...(byRev.get(next) ?? []), ...(byRev.get(oldest) ?? [])])
+    byRev.delete(oldest)
+    byRev.set(next, [...merged].sort((left, right) => left - right))
+  }
+  return { legacyChapters: parsed.legacyChapters, byRev }
+}
+
+/**
+ * 覆盖 `(have, need]` 这一段实际改到的章。
+ *
+ * 返回 `null` = **无法收窄**（旧格式、条目已溢出、或该 rev 段没有任何记录），
+ * 调用方必须按「覆盖全部章」处理。
+ *
+ * 方向：坏数据、缺记录、看不懂，一律偏保守（多判脏）。反过来的代价是
+ * 「整本重生成后所有派生看似有效」—— 那是本设计里最危险的漏判。
+ */
+export function changedChaptersBetween(
+  parsed: ParsedChangedChapters | null | undefined,
+  have: number,
+  need: number,
+): readonly number[] | null {
+  if (!parsed) return null
+  // 旧格式没记 rev ⇒ 只能当作全改。
+  if (parsed.legacyChapters.length > 0) return null
+  const chapters = new Set<number>()
+  let sawEntry = false
+  for (let rev = have + 1; rev <= need; rev += 1) {
+    const entry = parsed.byRev.get(rev)
+    if (!entry) continue
+    sawEntry = true
+    for (const chapter of entry) chapters.add(chapter)
+  }
+  if (!sawEntry) return null
+  return chapters.size === 0 ? null : [...chapters].sort((left, right) => left - right)
+}
+
+/** 派生覆盖的章集合。`null` 与 `[]` 都表示「说不清 ⇒ 按全部章」（与 `refCoversChapter` 同向）。 */
+function coversEveryChapter(chapters: readonly number[] | null | undefined): boolean {
+  return !chapters || chapters.length === 0
+}
+
+/**
+ * 期 2 的判定入口：在 `derivedStatus` 之上加「按章收窄」。
+ *
+ * 四条不变量（改之前先读，每条都对应一个会静默出错的形态）：
+ *
+ * 1. **空章集 = 覆盖全部章。** `refCoversChapter:268` 早就是这个约定。若把空集
+ *    当成「什么都没改」，`replace`（整本重生成）之后所有派生都会判 valid ——
+ *    全设计最危险的漏判。
+ * 2. **`have > need` 一律算脏，不看章集。** 区间 `(have, need]` 在 `have > need`
+ *    时为空，不能据空集判有效。备份恢复到更早版本、导入更早的便携包都会出现，
+ *    而 `derivedStatus` 早已把「`!==` 而不是 `<`」写死为纪律（`:132-142`）。
+ * 3. **缺键 = 覆盖全部章。** `changes` 里没这条记录、或 `current` 里没这个键
+ *    （`need = 0`）⇒ 按全改算，与 `derivedStatus` 的 `need = 0 ⇒ stale` 同向。
+ * 4. **非 `outline` 域恒覆盖全部章。** 世界观 / 弧光是全书一份，改了就是全改。
+ *
+ * `chapters`：该派生覆盖的章号。蓝图 = `[N]`；交接单 = 整卷区间；剧情树 = `null`（全书）。
+ */
+export function derivedStatusForChapters(
+  sourceRef: DerivedSourceRef | null | undefined,
+  current: UpstreamRevisionSnapshot,
+  changes: ReadonlyMap<UpstreamRefKey, ParsedChangedChapters> | null | undefined,
+  chapters: readonly number[] | null,
+): DerivedValidity {
+  if (!sourceRef || typeof sourceRef !== 'object') return { state: 'legacy' }
+  const keys = Object.keys(sourceRef)
+  if (keys.length === 0) return { state: 'legacy' }
+  const behind: DerivedDrift[] = []
+  for (const key of keys) {
+    const have = sourceRef[key]
+    if (!Number.isSafeInteger(have)) continue
+    const need = current.get(key) ?? 0
+    if (have === need) continue
+    // 不变量 2：倒退（备份恢复 / 导入更早的包）不看章集，一律脏。
+    if (have > need) { behind.push({ key, have, need }); continue }
+    // 不变量 4：非 outline 域恒覆盖全部章。
+    const domain = parseUpstreamRefKey(key)?.domain ?? key
+    if (domain !== 'outline') { behind.push({ key, have, need }); continue }
+    // 不变量 1 / 3：拿不到可收窄的章集 ⇒ 按全改算。
+    const changed = changedChaptersBetween(changes?.get(key), have, need)
+    if (!changed || coversEveryChapter(chapters)) { behind.push({ key, have, need }); continue }
+    const touched = chapters!.some(chapter => changed.includes(chapter))
+    if (touched) behind.push({ key, have, need })
+  }
+  return behind.length === 0 ? { state: 'valid' } : { state: 'stale', behind }
 }

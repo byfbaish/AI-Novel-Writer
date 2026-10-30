@@ -26,7 +26,8 @@ const Database = require('better-sqlite3') as typeof import('better-sqlite3')
  * - 配料字段（`writingStyle` / `worldSetting` / `goldenFinger`）**不 bump** —— 它们的
  *   消费者是架构生成，而生成落盘会另走 `worldbuilding` / `synopsis` 的写入点；
  * - `commitSynopsis` **CAS 失败不 bump** —— 版本必须描述真的发生了的写入；
- * - `changed_chapters` 取并集而不是覆盖。
+ * - `changed_chapters` 记「**哪一版**改了哪些章」，不取并集（并集会让刚手改的那行被判脏）；
+ * - 表不存在时 `bump` 返回 `null` 而不是 `0`（`0` 是合法的「第 0 版」）。
  */
 let db: InstanceType<typeof Database>
 
@@ -63,7 +64,7 @@ function synopsisExpected(overrides: Partial<ProjectCoreSynopsisExpected> = {}):
 describe('ProjectCoreRepository.update 的版本分派', () => {
   it('改世界观 ⇒ worldbuilding:book 到第 1 版，其余域不出现', () => {
     ProjectCoreRepository.update({ worldbuilding: '新的世界观' })
-    expect(revisions()).toEqual([{ domain: 'worldbuilding', scope: 'book', rev: 1, changed: '[]' }])
+    expect(revisions()).toEqual([{ domain: 'worldbuilding', scope: 'book', rev: 1, changed: '{"1":[]}' }])
   })
 
   it('再改一次 ⇒ 同一行 +1，不新增行', () => {
@@ -80,7 +81,7 @@ describe('ProjectCoreRepository.update 的版本分派', () => {
 
   it('premise 归 worldbuilding 域：故事前提变了，世界观依据也变', () => {
     ProjectCoreRepository.update({ premise: '新的前提' })
-    expect(revisions()).toEqual([{ domain: 'worldbuilding', scope: 'book', rev: 1, changed: '[]' }])
+    expect(revisions()).toEqual([{ domain: 'worldbuilding', scope: 'book', rev: 1, changed: '{"1":[]}' }])
   })
 
   it('改配料字段（文风/世界设定/金手指）一律不 bump', () => {
@@ -111,7 +112,7 @@ describe('commitSynopsis 的版本分派', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].domain).toBe('outline')
     expect(rows[0].rev).toBe(1)
-    expect(JSON.parse(rows[0].changed)).toEqual([3, 4, 5])
+    expect(JSON.parse(rows[0].changed)).toEqual({ 1: [3, 4, 5] })
   })
 
   it('CAS 失败（expected 对不上）⇒ 不 bump —— 版本只描述真的发生了的写入', () => {
@@ -123,20 +124,36 @@ describe('commitSynopsis 的版本分派', () => {
     expect(revisions()).toEqual([])
   })
 
-  it('没有作者手改记录时 changed_chapters 为空数组（= 全部覆盖，宁可多判脏）', () => {
+  it('没有作者手改记录时该 rev 的章集为空（= 全部覆盖，宁可多判脏）', () => {
     ProjectCoreRepository.commitSynopsis({ synopsis: '新大纲', expected: synopsisExpected({ synopsis: '' }) })
-    expect(revisions()).toEqual([{ domain: 'outline', scope: 'book', rev: 1, changed: '[]' }])
+    expect(revisions()).toEqual([{ domain: 'outline', scope: 'book', rev: 1, changed: '{"1":[]}' }])
   })
 })
 
 describe('UpstreamRevisionRepository', () => {
-  it('bump 的 changed_chapters 取并集：同一批连改两段，两段都留', () => {
-    UpstreamRevisionRepository.bump({ domain: 'outline', scope: 'u07', changedChapters: [31, 33] })
-    UpstreamRevisionRepository.bump({ domain: 'outline', scope: 'u07', changedChapters: [33, 35] })
+  it('bump 把章集挂在**新 rev 那个键**上，不与旧键取并集', () => {
+    // 取并集会让「改 31 → 改 33」之后，写于 rev2 的第 31 章那行被判脏 ——
+    // 也就是拒绝作者刚改完的卡（方向反了）。按 rev 存才能只取 (have, need]。
+    UpstreamRevisionRepository.bump({ domain: 'outline', scope: 'u07', changedChapters: [31] })
+    UpstreamRevisionRepository.bump({ domain: 'outline', scope: 'u07', changedChapters: [33] })
     const row = UpstreamRevisionRepository.read('outline', 'u07')
     expect(row?.rev).toBe(2)
-    // 覆盖成 [33,35] 的话，依赖第 31 章的那条派生会在 rev 已变的情况下被判 valid
-    expect(row?.changedChapters).toEqual([31, 33, 35])
+    expect([...row!.changedChapters.byRev.entries()]).toEqual([[1, [31]], [2, [33]]])
+  })
+
+  it('mode=replace 把历史章集清掉（整本重生成 = 全部章都改过）', () => {
+    UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [31] })
+    UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [], mode: 'replace' })
+    const row = UpstreamRevisionRepository.read('outline')
+    expect(row?.rev).toBe(2)
+    expect([...row!.changedChapters.byRev.entries()]).toEqual([])
+    expect(row!.changedChapters.legacyChapters).toEqual([])
+  })
+
+  it('表不存在时 bump 返回 null（不是 0）—— 0 是「第 0 版」，两者不能混', () => {
+    db.exec('DROP TABLE upstream_revisions')
+    expect(UpstreamRevisionRepository.bump({ domain: 'arc' })).toBeNull()
+    expect(UpstreamRevisionRepository.ensure('arc')).toBeNull()
   })
 
   it('ensure 建 rev=0 占位，且幂等', () => {

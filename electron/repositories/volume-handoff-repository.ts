@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import type { VolumeHandoffDefinition, VolumeHandoffInput } from '../../src/shared/volume-handoff'
+import type { DerivedSourceRef } from '../../src/shared/upstream-revisions'
 import { volumeEffectiveRanges, type VolumeRange } from '../../src/shared/volume-structure'
 import { listVolumes } from './volume-structure-repository'
+import { currentSourceRefValue, hasColumn, parseSourceRefValue } from './derived-source-ref'
 
 /**
  * P1-2 期 1b · 卷末交接单仓储（M19 之后：区间外置到 `volumes`）。
@@ -142,6 +144,37 @@ export function findPreviousHandoff(
 }
 
 /**
+ * 一次读出全部交接单的来源快照（`handoffId → 快照`），给读取侧逐行判定用。
+ *
+ * **一条 SQL 取完**，不在逐行循环里 `readRev()`：后者每个都要再探一次
+ * `sqlite_master`，行数一多就是成百次系统目录查询（设计稿 §5.6）。
+ *
+ * 列不在（未升到 v26 / 只建基线表的夹具）⇒ 空 Map。调用方查不到就判 `legacy`，
+ * 与「这一行确实没记过来源」同解 —— 两者本来就该走同一条提示路径。
+ */
+export function readVolumeHandoffSourceRefs(
+  db: BetterSqlite3.Database,
+): Map<string, DerivedSourceRef | null> {
+  const map = new Map<string, DerivedSourceRef | null>()
+  if (!hasVolumeHandoffSchema(db)) return map
+  if (!hasColumn(db, HANDOFFS_TABLE, 'source_ref')) return map
+  const rows = db.prepare(
+    `SELECT handoff_id AS handoffId, source_ref AS sourceRef FROM ${HANDOFFS_TABLE}`,
+  ).all() as Array<{ handoffId: string; sourceRef: string }>
+  for (const row of rows) map.set(row.handoffId, parseSourceRefValue(row.sourceRef))
+  return map
+}
+
+/** 单条交接单的来源快照。行不存在同样 `null`（调用方按 `legacy` 处理）。 */
+export function readVolumeHandoffSourceRef(
+  db: BetterSqlite3.Database,
+  handoffId: string,
+): DerivedSourceRef | null {
+  if (!handoffId.trim()) return null
+  return readVolumeHandoffSourceRefs(db).get(handoffId) ?? null
+}
+
+/**
  * 新建或改写一份交接单；返回落库后的真实行（含派生区间与时间戳）。
  *
  * 校验只看「其他行」：否则「只改一句话」的保存会被自己占着的卷判成冲突。
@@ -173,21 +206,35 @@ export function upsertVolumeHandoff(
   const source = optionalText(input?.source) || 'author'
   const timestamp = nowIso()
 
-  db.prepare(`INSERT INTO volume_handoffs
+  // 来源列（M25）。列不在（未升到 v26 的库 / 只建基线表的夹具）⇒ 不写，
+  // 派生留空判 `legacy` —— 旁路账本不该让保存交接单失败。
+  //
+  // 取「此刻」的版本快照：本期交接单只有作者填写（`source: 'author'`），
+  // 保存动作即作者确认内容，所以快照时刻 = 保存时刻。
+  const writeSourceRef = hasColumn(db, HANDOFFS_TABLE, 'source_ref')
+  const sourceRefValue = writeSourceRef ? currentSourceRefValue(db) : ''
+  // 原来这段是裸 SQL、没有事务。包一层是因为「读版本快照 + 写行」要落在同一个
+  // 一致性点上：跨进程（工坊脚本）并发 bump 时，快照读在事务外会读到写之前的值，
+  // 行却带着写之后的语义。
+  const tx = db.transaction(() => {
+    db.prepare(`INSERT INTO volume_handoffs
     (handoff_id,volume_id,world_state,hero_state,events_json,items_json,debts_json,
-     open_thread,source,created_at,updated_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?)
+     open_thread,source,created_at,updated_at${writeSourceRef ? ',source_ref' : ''})
+    VALUES(?,?,?,?,?,?,?,?,?,?,?${writeSourceRef ? ',?' : ''})
     ON CONFLICT(handoff_id) DO UPDATE SET
       volume_id=excluded.volume_id, world_state=excluded.world_state,
       hero_state=excluded.hero_state, events_json=excluded.events_json,
       items_json=excluded.items_json, debts_json=excluded.debts_json,
       open_thread=excluded.open_thread, source=excluded.source,
-      updated_at=excluded.updated_at`).run(
-    handoffId, volumeId,
-    worldState || null, heroState || null,
-    JSON.stringify(events), JSON.stringify(items), JSON.stringify(debts),
-    openThread || null, source, timestamp, timestamp,
-  )
+      updated_at=excluded.updated_at${writeSourceRef ? ', source_ref=excluded.source_ref' : ''}`).run(
+      handoffId, volumeId,
+      worldState || null, heroState || null,
+      JSON.stringify(events), JSON.stringify(items), JSON.stringify(debts),
+      openThread || null, source, timestamp, timestamp,
+      ...(writeSourceRef ? [sourceRefValue] : []),
+    )
+  })
+  tx()
 
   const saved = listVolumeHandoffs(db).find(entry => entry.handoffId === handoffId)
   if (!saved) throw new Error('VOLUME_HANDOFF_NOT_PERSISTED')

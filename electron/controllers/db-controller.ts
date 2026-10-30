@@ -612,7 +612,10 @@ export function registerDatabaseController() {
   ipcMain.handle('db:blueprint-upsert', async (_event, data: BlueprintData, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
-      BlueprintRepository.upsert(data)
+      // 单章卡保存也是「改上游」（章节卡进正文 prompt）：仓储内部把「bump 大纲版本
+      // + 写行」包在同一事务里。这里不自己取库 —— 这一层的守卫是项目上下文，
+      // 库是否就绪由仓储的 `requireProjectDb()` 判，两处各判一次就会有两个错误码。
+      BlueprintRepository.upsert(data, undefined, { bumpOutline: true })
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }

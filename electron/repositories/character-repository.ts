@@ -4,6 +4,7 @@
  * currentState 子结构已拍平为 cs_* 前缀列，杜绝 JSON 大字段。
  */
 import { getProjectDb } from '../database'
+import { rewriteBlueprintCharacters } from './blueprint-character-rewrite'
 import type Database from 'better-sqlite3'
 export function hasCharacterIdentitySchema(db: Database.Database): boolean {
     return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='character_identity_meta'").get())
@@ -290,32 +291,12 @@ export class CharacterRepository {
                 const renameByOriginal = new Map(
                     normalizedRenames.map(rename => [rename.originalName, rename.newName]),
                 )
-                const blueprints = db.prepare(
-                    'SELECT chapter_number, characters FROM blueprints'
-                ).all() as Array<{ chapter_number: number; characters: string }>
-                const updateBlueprint = db.prepare(`
-                    UPDATE blueprints
-                    SET characters = ?, updated_at = datetime('now')
-                    WHERE chapter_number = ?
-                `)
-                for (const blueprint of blueprints) {
-                    let characterNames: unknown
-                    try {
-                        characterNames = JSON.parse(blueprint.characters)
-                    } catch {
-                        throw new Error(`第 ${blueprint.chapter_number} 章蓝图角色列表损坏`)
-                    }
-                    if (
-                        !Array.isArray(characterNames)
-                        || !characterNames.every(name => typeof name === 'string')
-                    ) {
-                        throw new Error(`第 ${blueprint.chapter_number} 章蓝图角色列表格式错误`)
-                    }
-                    const renamed = characterNames.map(name => renameByOriginal.get(name) ?? name)
-                    if (renamed.some((name, index) => name !== characterNames[index])) {
-                        updateBlueprint.run(JSON.stringify(renamed), blueprint.chapter_number)
-                    }
-                }
+                // 角色合并 / 改名会改蓝图 `characters` 列（进正文 prompt），所以它与
+                // 手改章节卡同属「改上游」：版本要 bump、来源要刷新。骨架只有一份，
+                // 见 `blueprint-character-rewrite.ts`。
+                rewriteBlueprintCharacters(db, names => names.map(
+                    name => renameByOriginal.get(name) ?? name,
+                ))
             }
 
             for (const char of normalizedCharacters) {

@@ -10,6 +10,8 @@ import {
   type PlotTreeSourceBundle,
 } from '../../src/shared/plot-tree'
 import { resolveWritingLanguage } from '../../src/shared/writing-language'
+import type { DerivedSourceRef } from '../../src/shared/upstream-revisions'
+import { currentSourceRefValue, hasColumn, parseSourceRefValue } from './derived-source-ref'
 
 function requireDb(): NonNullable<ReturnType<typeof getProjectDb>> {
   const db = getProjectDb()
@@ -131,7 +133,16 @@ export class PlotTreeRepository {
       throw new Error('剧情资料在生成期间已更新')
     }
     const validated = assertPlotTreeSnapshot(snapshot, sources)
-    const result = db.prepare(`
+    // 来源列（M25）**必须写列，不能写进 `plot_tree_snapshot` 这个 JSON**：
+    // `graph-generation-source.ts:34/44` 把快照串整体 sha256 当 `targetBaselineHash`，
+    // `graph-generation.ts:114` 又逐字节比旧串 —— JSON 一变，正在跑的生成会被判
+    // 「素材在生成期间已更新」并当场失败（设计稿 R9）。
+    const writeSourceRef = hasColumn(db, 'project_core', 'plot_tree_source_ref')
+    const result = writeSourceRef
+      ? db.prepare(`
+      UPDATE project_core SET plot_tree_snapshot = ?, plot_tree_source_ref = ? WHERE id = 'main'
+    `).run(JSON.stringify(validated), currentSourceRefValue(db))
+      : db.prepare(`
       UPDATE project_core SET plot_tree_snapshot = ? WHERE id = 'main'
     `).run(JSON.stringify(validated))
     if (result.changes !== 1) throw new Error('剧情树快照保存失败')
@@ -139,9 +150,30 @@ export class PlotTreeRepository {
   }
 
   static clear(db = requireDb()): void {
-    const result = db.prepare(`
+    // 快照没了，来源也该归零：留着 `plot_tree_source_ref` 会让「清除后重新生成」
+    // 的徽标继续引用一份已不存在的派生（设计稿 §十一 同一条纪律）。
+    const withSourceRef = hasColumn(db, 'project_core', 'plot_tree_source_ref')
+    const result = withSourceRef
+      ? db.prepare(`
+      UPDATE project_core SET plot_tree_snapshot = '', plot_tree_source_ref = '' WHERE id = 'main'
+    `).run()
+      : db.prepare(`
       UPDATE project_core SET plot_tree_snapshot = '' WHERE id = 'main'
     `).run()
     if (result.changes !== 1) throw new Error('剧情树快照清除失败')
+  }
+
+  /**
+   * 剧情树快照的来源快照（M25 新列）。没有快照、列不存在、解析失败一律 `null`。
+   *
+   * 与 `sourceRevision`（内容 sha256）**各管一段，不取严**（设计稿裁定 5）：
+   * hash 管「这次的素材与生成时是否同一批」，rev 管「我基于的上游是哪一版」。
+   */
+  static readSourceRef(db = requireDb()): DerivedSourceRef | null {
+    if (!hasColumn(db, 'project_core', 'plot_tree_source_ref')) return null
+    const raw = db.prepare(
+      "SELECT plot_tree_source_ref FROM project_core WHERE id = 'main'",
+    ).pluck().get() as string | undefined
+    return parseSourceRefValue(raw)
   }
 }

@@ -5,9 +5,13 @@ import {
   buildSourceRef,
   derivedStatus,
   describeDrift,
+  changedChaptersBetween,
+  derivedStatusForChapters,
   expandChapterRange,
-  mergeChangedChapters,
+  parseChangedChapters,
   parseUpstreamRefKey,
+  serializeChangedChapters,
+  withChangedChapters,
   refCoversChapter,
   upstreamRefKey,
 } from '../upstream-revisions'
@@ -19,7 +23,8 @@ import {
  * - 不知道来源 ⇒ `legacy`，不是 `valid`（不能把「没记过」当成「没问题」）；
  * - `have > need` 也判脏（库被回滚/上游被重置时会出现）；
  * - 来源里的键在当前表里消失 ⇒ 判脏（派生基于的东西已经不在了）；
- * - `changed_chapters` 取并集（覆盖会漏判同一批更早改过的章）；
+ * - `changed_chapters` 记「哪一版改了哪些章」，判定只取 `(have, need]`；
+ * - 空章集 = 覆盖全部（不是「什么都没改」），倒退（`have > need`）一律算脏；
  * - 非 `outline` 域不受章集合收窄（世界观改了就是全书都变）。
  */
 function snapshotOf(entries: Record<string, number>): ReadonlyMap<string, number> {
@@ -109,15 +114,97 @@ describe('describeDrift', () => {
   })
 })
 
-describe('mergeChangedChapters', () => {
-  it('取并集、去重、升序 —— 覆盖会让同一批更早改过的章漏判', () => {
-    expect(mergeChangedChapters([31, 33], [33, 35])).toEqual([31, 33, 35])
-    expect(mergeChangedChapters(null, [35, 31])).toEqual([31, 35])
-    expect(mergeChangedChapters([], [])).toEqual([])
+describe('changed_chapters 的两代格式', () => {
+  it('旧格式（裸数组）解析成 legacyChapters —— 没记 rev，只能保守处理', () => {
+    const parsed = parseChangedChapters('[31,33]')
+    expect(parsed.legacyChapters).toEqual([31, 33])
+    expect(parsed.byRev.size).toBe(0)
   })
 
-  it('丢掉非法章号（0、负数、非整数），不让坏数据污染集合', () => {
-    expect(mergeChangedChapters([0, -3, 12], [7, 1.5 as number])).toEqual([12, 7].sort((a, b) => a - b))
+  it('新格式解析成 rev → 章集，`legacy` 键原样保留（换代不能把旧章集丢掉）', () => {
+    const parsed = parseChangedChapters('{"legacy":[1,2],"3":[31],"4":[33,35]}')
+    expect(parsed.legacyChapters).toEqual([1, 2])
+    expect([...parsed.byRev.entries()]).toEqual([[3, [31]], [4, [33, 35]]])
+  })
+
+  it('坏数据一律解析成空（判定侧因此按「覆盖全部」处理，方向多判脏）', () => {
+    for (const raw of ['', 'null', '不是 JSON', '{"a":[1]}', '{"0":[1]}']) {
+      const parsed = parseChangedChapters(raw)
+      expect(parsed.legacyChapters).toEqual([])
+      expect(parsed.byRev.size).toBe(0)
+    }
+  })
+
+  it('写入把章集挂在新 rev 键上；超过上限时把最旧两条合并（不是塞进 legacy）', () => {
+    let parsed = parseChangedChapters('')
+    for (let rev = 1; rev <= 22; rev += 1) parsed = withChangedChapters(parsed, rev, [rev])
+    expect(parsed.byRev.size).toBe(20)
+    // 合并后 1..3 的章集落在 rev3 这条上，方向是多判脏而不是永久「全部章」
+    expect(parsed.byRev.get(3)).toEqual([1, 2, 3])
+    expect(parsed.legacyChapters).toEqual([])
+    expect(parseChangedChapters(serializeChangedChapters(parsed)).byRev.size).toBe(20)
+  })
+})
+
+describe('changedChaptersBetween', () => {
+  it('只取 (have, need] 这一段 —— 这正是「改 31 再改 33 后，31 那行不该脏」的根', () => {
+    const parsed = parseChangedChapters('{"2":[31],"3":[33]}')
+    expect(changedChaptersBetween(parsed, 2, 3)).toEqual([33])
+    expect(changedChaptersBetween(parsed, 1, 2)).toEqual([31])
+  })
+
+  it('旧格式 / 缺记录 / 空条目一律返回 null（= 无法收窄，按全部章算）', () => {
+    expect(changedChaptersBetween(parseChangedChapters('[31]'), 1, 2)).toBeNull()
+    expect(changedChaptersBetween(parseChangedChapters('{"1":[]}'), 1, 2)).toBeNull()
+    expect(changedChaptersBetween(parseChangedChapters('{"5":[31]}'), 1, 2)).toBeNull()
+    expect(changedChaptersBetween(null, 1, 2)).toBeNull()
+  })
+})
+
+describe('derivedStatusForChapters', () => {
+  const changes = (raw: Record<string, string>) => new Map(
+    Object.entries(raw).map(([key, value]) => [key, parseChangedChapters(value)]),
+  )
+
+  it('改 31 再改 33：写于 rev2 的第 31 章那行必须 valid（不能拦作者刚改完的卡）', () => {
+    const log = changes({ 'outline:book': '{"2":[31],"3":[33]}' })
+    const current = snapshotOf({ 'outline:book': 3 })
+    expect(derivedStatusForChapters({ 'outline:book': 2 }, current, log, [31])).toEqual({ state: 'valid' })
+    // 依赖被改章的那几行才脏
+    expect(derivedStatusForChapters({ 'outline:book': 2 }, current, log, [33]).state).toBe('stale')
+    expect(derivedStatusForChapters({ 'outline:book': 1 }, current, log, [31]).state).toBe('stale')
+  })
+
+  it('空章集 = 覆盖全部：整本重生成（replace 后无记录）必须让所有派生变脏', () => {
+    const log = changes({ 'outline:book': '{}' })
+    const current = snapshotOf({ 'outline:book': 4 })
+    expect(derivedStatusForChapters({ 'outline:book': 1 }, current, log, [7]).state).toBe('stale')
+    // 章集本身说不清（null / []）同样按全书算
+    expect(derivedStatusForChapters({ 'outline:book': 1 }, current, log, null).state).toBe('stale')
+    expect(derivedStatusForChapters({ 'outline:book': 1 }, current, log, []).state).toBe('stale')
+  })
+
+  it('have > need 一律脏，不看章集（备份恢复 / 导入更早的包）', () => {
+    const log = changes({ 'outline:book': '{"2":[99]}' })
+    const result = derivedStatusForChapters({ 'outline:book': 5 }, snapshotOf({ 'outline:book': 2 }), log, [7])
+    expect(result.state).toBe('stale')
+    expect(result.state === 'stale' && result.behind[0]).toEqual({ key: 'outline:book', have: 5, need: 2 })
+  })
+
+  it('changes 缺键 / current 缺键都按全部章算（与 derivedStatus 的 need=0 ⇒ stale 同向）', () => {
+    expect(derivedStatusForChapters({ 'outline:u07': 1 }, snapshotOf({ 'outline:u07': 2 }), changes({}), [7]).state).toBe('stale')
+    expect(derivedStatusForChapters({ 'outline:u07': 2 }, snapshotOf({}), changes({}), [7]).state).toBe('stale')
+  })
+
+  it('非 outline 域恒覆盖全部章：世界观改了，与章号无关', () => {
+    const log = changes({ 'worldbuilding:book': '{"2":[99]}' })
+    expect(derivedStatusForChapters({ 'worldbuilding:book': 1 }, snapshotOf({ 'worldbuilding:book': 2 }), log, [7]).state)
+      .toBe('stale')
+  })
+
+  it('没有来源仍然判 legacy（不是 valid）', () => {
+    expect(derivedStatusForChapters(null, snapshotOf({}), changes({}), [1])).toEqual({ state: 'legacy' })
+    expect(derivedStatusForChapters({}, snapshotOf({}), changes({}), [1])).toEqual({ state: 'legacy' })
   })
 })
 

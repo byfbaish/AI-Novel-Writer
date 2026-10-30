@@ -10,6 +10,7 @@ import { commitAuthorCharacterRoster } from '../services/character-roster-author
 import { adoptLegacyCards, readLegacyRosterSource } from '../services/legacy-roster-source'
 import { hasCharacterIdentitySchema } from './character-repository'
 import { CharacterRosterRepository, clearLegacyCharacterArchitecture } from './character-roster-repository'
+import { hasColumn } from './derived-source-ref'
 import { CHARACTER_ROSTER_SCHEMA_VERSION } from '../../src/shared/character-roster'
 
 /**
@@ -172,6 +173,19 @@ export class ProjectClearRepository {
                             updated_at = datetime('now')
                         WHERE id = 'main'
                     `).run()
+                    // P2-2 期 2（设计稿 §十一 R11）：**版本账随被描述的世界一起归零**。
+                    //
+                    // 不清有三条后果，最重的一条是「导入更早备份后永久脏」：
+                    // `upstream_revisions` 是 D 类、整行覆盖 ⇒ rev 会回退 ⇒ 按不变量 2
+                    // 全部判 `stale` ⇒ 该包里所有派生永久脏，除非整本再生成一次。
+                    // 另外 `changed_chapters` 会留着清除前的章号（那些章已不存在），
+                    // 按章收窄于是永远认为"这些章变过"，噪声永久累积。
+                    if (hasTable(db, 'upstream_revisions')) db.prepare('DELETE FROM upstream_revisions').run()
+                    // 剧情树快照刚被置空 ⇒ 它的来源也跟着清，否则徽标继续指向一份
+                    // 已经不存在的派生。（列可能存在之前建的库上，先探再写。）
+                    if (hasColumn(db, 'project_core', 'plot_tree_source_ref')) {
+                        db.prepare("UPDATE project_core SET plot_tree_source_ref = '' WHERE id = 'main'").run()
+                    }
                     // P1-2 期 1b：`plot_structure_plan` 已置空，卷/单元结构成了悬空引用。
                     // 顺序必须是 handoffs → units → volumes（外键依赖）。
                     if (hasTable(db, 'volume_handoffs')) db.prepare('DELETE FROM volume_handoffs').run()

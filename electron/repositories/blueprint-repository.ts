@@ -12,6 +12,8 @@ import { hasCharacterIdentitySchema } from './character-repository'
 import { findCharacterProposalEvidence } from '../services/character-proposal-service'
 import { proveCharacterProposal } from '../services/generation-character-proposal-proof'
 import { GenerationRunRepository } from './generation-run-repository'
+import { UpstreamRevisionRepository } from './upstream-revision-repository'
+import { currentSourceRefValue } from './derived-source-ref'
 import { blueprintCharacterSyncFactError } from '../../src/shared/blueprint-character-sync-evidence'
 import { normalizeKeyEvents, type BlueprintKeyEvent } from '../../src/shared/blueprint-key-events'
 import { normalizeBlueprintSpaceRefs, type BlueprintSpaceRefRaw } from '../../src/shared/space-time-consistency'
@@ -519,13 +521,27 @@ function normalizeBlueprintForWrite(blueprint: BlueprintData): BlueprintData {
 }
 
 /**
- * `structured_refs` 是 M08 新增列。**未升级到 v9 的库（以及只建基线表的测试夹具）没有它**，
- * 此时不能写这一列 —— 否则整个蓝图提交会因 `no such column` 而失败。
- * 用一次 `PRAGMA` 探测，缺列即退回"不写伴随字段"（fail-open，与读路径同一策略）。
+ * `structured_refs` 是 M08 新增列、`source_ref` 是 M25 新增列。**未升级的库**
+ * （以及只建基线表的测试夹具）没有它们，此时不能写 —— 否则整个蓝图提交会因
+ * `no such column` 失败。
+ *
+ * 两列来自**同一次** `PRAGMA table_info(blueprints)`，所以合并成一个探针：
+ * 分开探就是白跑一遍系统目录查询。批量入口（`upsertMany` / `commitRange`）
+ * 把结果在循环外算好传下来，一段 10 章的保存因此只探 1 次。
  */
-function hasStructuredRefsColumn(db: NonNullable<ReturnType<typeof getProjectDb>>): boolean {
-    return (db.prepare('PRAGMA table_info(blueprints)').all() as Array<{ name: string }>)
-        .some(column => column.name === 'structured_refs')
+export interface BlueprintWriteColumns {
+    structuredRefs: boolean
+    sourceRef: boolean
+}
+
+export function probeBlueprintWriteColumns(
+    db: NonNullable<ReturnType<typeof getProjectDb>>,
+): BlueprintWriteColumns {
+    const names = new Set(
+        (db.prepare('PRAGMA table_info(blueprints)').all() as Array<{ name: string }>)
+            .map(column => column.name),
+    )
+    return { structuredRefs: names.has('structured_refs'), sourceRef: names.has('source_ref') }
 }
 
 export class BlueprintRepository {
@@ -561,15 +577,63 @@ export class BlueprintRepository {
         return row.cnt
     }
 
-    /** 插入或更新蓝图 */
-    static upsert(data: BlueprintData, db = requireProjectDb()): void {
+    /**
+     * 插入或更新蓝图。
+     *
+     * `options.sourceRev` 是**本次改动**把大纲推到的那一版（`bump` 的返回值）。
+     * 不给（或给 `null`）⇒ **不碰 `source_ref` 列**，库里已有值原样保留 ——
+     * 导入、迁移、以及"只补一个字段"的写入都不该抹掉既有来源。
+     *
+     * 为什么来源不放进 `BlueprintData`：数据对象有三个字节基准
+     * （`commitPayloadHash` 对 `blueprints` 做 sha256、`samePersistedBlueprint`
+     * 逐字段回读比对、`character_sync_input` 冻结整批），塞进去会同时改掉三个。
+     * 详见设计稿 §四.3。
+     */
+    static upsert(
+        data: BlueprintData,
+        db = requireProjectDb(),
+        options?: {
+            sourceRev?: number | null
+            columns?: BlueprintWriteColumns
+            bumpOutline?: boolean
+        },
+    ): void {
+
+        if (options?.bumpOutline) {
+            // 「单章卡保存 = 改上游」的唯一入口（`db:blueprint-upsert`）。
+            //
+            // 事务边界放在这里而不是 handler：handler 那一层的守卫是**项目上下文**
+            // （`assertRequiredExpectedProjectPath`），库是否就绪由 `requireProjectDb()`
+            // 判。两处各判一次会出现两个错误码表达同一件事，而仓储是唯一知道
+            // 「版本 +1 必须与内容写入原子」的地方（见 `upstream-revision-repository`
+            // 文件头「为什么 bump 不自己开事务」）。
+            db.transaction(() => {
+                const outlineRev = UpstreamRevisionRepository.bump(
+                    { domain: 'outline', changedChapters: [data.chapterNumber] },
+                    db,
+                )
+                BlueprintRepository.upsert(data, db, {
+                    sourceRev: outlineRev,
+                    columns: probeBlueprintWriteColumns(db),
+                })
+            }).immediate()
+            return
+        }
 
         const blueprint = normalizeBlueprintForWrite(data)
         // 列集在一处生成，避免"INSERT 有这列、UPDATE SET 漏了它"的静默不同步。
-        const withStructuredRefs = hasStructuredRefsColumn(db)
+        const writeColumns = options?.columns ?? probeBlueprintWriteColumns(db)
+        const withStructuredRefs = writeColumns.structuredRefs
+        // `bump` 返回 `null` = 这张库还没有版本表（未升到 v26）⇒ 不写来源列，
+        // 派生留空判 `legacy`。写成 0 会把"库未升级"伪装成"最新"（G6）。
+        const sourceRev = options?.sourceRev
+        const writeSourceRef = typeof sourceRev === 'number'
+            && Number.isSafeInteger(sourceRev)
+            && writeColumns.sourceRef
         const columns = ['chapter_number', 'title', 'role', 'purpose', 'key_events',
             ...(withStructuredRefs ? ['structured_refs'] : []), 'characters',
-            'suspense_hook', 'user_guidance', 'notes', 'notes_updated_at']
+            'suspense_hook', 'user_guidance', 'notes', 'notes_updated_at',
+            ...(writeSourceRef ? ['source_ref'] : [])]
         const values = [
             blueprint.chapterNumber,
             blueprint.title,
@@ -582,6 +646,7 @@ export class BlueprintRepository {
             blueprint.userGuidance,
             blueprint.notes,
             blueprint.notesUpdatedAt,
+            ...(writeSourceRef ? [currentSourceRefValue(db, sourceRev)] : []),
         ]
         db.prepare(`
       INSERT INTO blueprints (${columns.join(', ')})
@@ -593,13 +658,28 @@ export class BlueprintRepository {
     `).run(...values)
     }
 
-    /** 批量插入/更新蓝图（事务） */
+    /**
+     * 批量插入/更新蓝图（事务）。
+     *
+     * **版本只 bump 一次**（整段章号作为章集），循环内每行只写来源不 bump ——
+     * 否则一次「保存全部」会推进 N 版，`changed_chapters` 立刻长到溢出。
+     */
     static upsertMany(items: BlueprintData[]): void {
         const db = requireProjectDb()
 
         const tx = db.transaction(() => {
+            const chapters = items
+                .map(item => item.chapterNumber)
+                .filter(chapter => Number.isSafeInteger(chapter) && chapter > 0)
+            const outlineRev = UpstreamRevisionRepository.bump(
+                { domain: 'outline', changedChapters: chapters },
+                db,
+            )
+            const columns = probeBlueprintWriteColumns(db)
             for (const item of items) {
-                BlueprintRepository.upsert(item)
+                // **每一行**都要写这次的新 rev，不是只有第一行：只写第一行会让
+                // 其余行判 `(旧,新]` ∩ 本行 ≠ ∅ ⇒ 刚保存的卡立刻被拒绝。
+                BlueprintRepository.upsert(item, db, { sourceRev: outlineRev, columns })
             }
         })
         tx()
@@ -700,8 +780,25 @@ export class BlueprintRepository {
                     'DELETE FROM blueprints WHERE chapter_number < ? OR chapter_number > ?',
                 ).run(normalizedRequest.startChapter, normalizedRequest.endChapter)
             }
+            // 「手改蓝图 = 改上游」：两条语义（模型整批 / 作者恢复）共用这根管道，
+            // 都在这里一次 bump。幂等重放分支在上面就返回了、不写行也不 bump ——
+            // 重放没有产生新内容，版本不该动。
+            //
+            // `full` 必须用 `replace`（整列清空 = 全部章都算改过），**不能用本批章号
+            // 收窄**：上面那条 DELETE 会把区间外的旧蓝图删掉，而那些章若还留着派生
+            // （正文草稿、剧情树），它们依赖的蓝图已经不存在了，却会因为
+            // `(have, need]` ∩ 自己的章号 = ∅ 被判 valid —— 静默消费已删数据。
+            const outlineRev = UpstreamRevisionRepository.bump(
+                {
+                    domain: 'outline',
+                    changedChapters: normalizedRequest.blueprints.map(item => item.chapterNumber),
+                    ...(normalizedRequest.mode === 'full' ? { mode: 'replace' as const } : {}),
+                },
+                db,
+            )
+            const columns = probeBlueprintWriteColumns(db)
             for (const blueprint of normalizedRequest.blueprints) {
-                BlueprintRepository.upsert(blueprint, db)
+                BlueprintRepository.upsert(blueprint, db, { sourceRev: outlineRev, columns })
             }
 
             const persisted = readExactRange(db, normalizedRequest)

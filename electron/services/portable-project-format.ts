@@ -15,7 +15,7 @@ export interface PortableFieldPolicy {
   disposition: PortableFieldDisposition
   validator: string
   consumer: string
-  origin: 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm08-delta' | 'm11-delta' | 'm12-delta' | 'm13-delta' | 'm14-delta' | 'm15-delta' | 'm16-delta' | 'm17-delta' | 'm18-delta' | 'm19-delta' | 'm20-delta' | 'm21-delta' | 'm22-delta' | 'm23-delta' | 'm24-delta' | 'registered-donor'
+  origin: 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm08-delta' | 'm11-delta' | 'm12-delta' | 'm13-delta' | 'm14-delta' | 'm15-delta' | 'm16-delta' | 'm17-delta' | 'm18-delta' | 'm19-delta' | 'm20-delta' | 'm21-delta' | 'm22-delta' | 'm23-delta' | 'm24-delta' | 'm25-delta' | 'registered-donor'
   signedDisposition: string | null
 }
 
@@ -55,6 +55,14 @@ const m23Fields = new Set<string>(fieldPolicyDocument.m23Fields)
  * 也是 `D`，照它走。
  */
 const m24Tables = new Set<string>(fieldPolicyDocument.m24Tables)
+/**
+ * P2-2 期 2：M25 给两张既有派生表加 `source_ref`、给 `project_core` 加
+ * `plot_tree_source_ref`，只能按字段登记（整表来源分别是 m18 / signed-s01）。
+ *
+ * 必须是 `D`：`source_ref` 里的 rev 与 `upstream_revisions` 同源，跨机导入
+ * 若丢弃，派生会全部退回 `legacy`（项目一进来就"什么都不知道"）。
+ */
+const m25Fields = new Set<string>(fieldPolicyDocument.m25Fields)
 const deltaCharacterFields = new Set<string>(fieldPolicyDocument.deltaCharacterFields)
 const optionalFields = new Set<string>(fieldPolicyDocument.optionalFields)
 const signedOverrides = fieldPolicyDocument.signedOverrides as Record<string, string>
@@ -74,7 +82,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
       const rule = rules[code]
       const key = `${table}.${field}`
       const delta = optionalFields.has(key) || deltaTables.has(table) || m06Tables.has(table) || m08Tables.has(table)
-        || m11Tables.has(table) || m12Tables.has(table) || m13Tables.has(table) || m14Tables.has(table) || m15Tables.has(table) || m16Tables.has(table) || m17Tables.has(table) || m18Tables.has(table) || m19Tables.has(table) || m20Fields.has(key) || m21Tables.has(table) || m22Fields.has(key) || m23Fields.has(key) || m24Tables.has(table) || table === 'characters' && deltaCharacterFields.has(field)
+        || m11Tables.has(table) || m12Tables.has(table) || m13Tables.has(table) || m14Tables.has(table) || m15Tables.has(table) || m16Tables.has(table) || m17Tables.has(table) || m18Tables.has(table) || m19Tables.has(table) || m20Fields.has(key) || m21Tables.has(table) || m22Fields.has(key) || m23Fields.has(key) || m24Tables.has(table) || m25Fields.has(key) || table === 'characters' && deltaCharacterFields.has(field)
       const signedDisposition = delta ? null : signedOverrides[key] ?? signedDefaults[code]
       if (!field || !rule || rule.length !== 3 || !PORTABLE_FIELD_DISPOSITIONS.has(rule[0])
         || typeof rule[1] !== 'string' || !rule[1] || typeof rule[2] !== 'string' || !rule[2]
@@ -98,11 +106,20 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
                             : m22Fields.has(key) ? 'm22-delta'
                             : m23Fields.has(key) ? 'm23-delta'
                             : m24Tables.has(table) ? 'm24-delta'
+                            : m25Fields.has(key) ? 'm25-delta'
                             : delta ? 'm01-m05-delta' : 'signed-s01', signedDisposition }))
     }
   }
   if (Object.keys(signedOverrides).some(key => result.get(key)?.origin !== 'signed-s01')) {
     formatError('PORTABLE_POLICY_INVALID')
+  }
+  // 反向漏登记：`mXXFields` 里声明了、`tables` 里却没这一列。
+  //
+  // 这是 M22 那次事故的镜像方向（那次是库里有列、策略里没登记），两种都会让
+  // 「新加一列」这件事静默少一半：前者导出时报 PORTABLE_SCHEMA_UNSUPPORTED，
+  // 后者更糟 —— 声明形同虚设，字段的来源标签永远落不到。
+  for (const key of [...m20Fields, ...m22Fields, ...m23Fields, ...m25Fields, ...optionalFields]) {
+    if (!result.has(key)) formatError('PORTABLE_POLICY_INVALID')
   }
   return result
 }
