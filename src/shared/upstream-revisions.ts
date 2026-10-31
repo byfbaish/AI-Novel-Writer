@@ -113,6 +113,24 @@ export interface DerivedDrift {
   have: number
   /** 当前 rev */
   need: number
+  /**
+   * 区间 `(have, need]` 里**每一版**改过的章（S4b，2026-10-31）。
+   *
+   * 为什么放在 drift 里而不是让 `describeDrift` 再收一个 `changes` 参数：
+   * A 类硬拒发生在**渲染层 / 工作流**，它们手里只有 `validity`（IPC 传回来的），
+   * 拿不到 `changes`。要让拒绝理由带章号，判定时就得把证据一起带出来。
+   *
+   * `undefined` = 取不到（旧格式 `legacyChapters` / `have > need` 的回退场景）。
+   * **不要用空数组冒充「这一版没改」** —— 空数组在别处表示「说不出 ⇒ 按全改算」，
+   * 两种语义混用会让人把「不知道」读成「没改」。
+   */
+  changed?: readonly DriftChange[]
+}
+
+/** 某一版改了哪些章。`chapters === null` = 这一版在日志里取不到（如被 20 版上限挤掉）。 */
+export interface DriftChange {
+  rev: number
+  chapters: readonly number[] | null
 }
 
 export type DerivedValidity =
@@ -170,11 +188,25 @@ export function blocksConsumption(result: DerivedValidity): boolean {
 }
 
 /**
- * 把落后的域翻译成一句人话。
+ * 把落后的域翻译成一句人话 —— **带证据**（S4b，2026-10-31）。
  *
- * 只报「上游变了」没有信息量 —— 作者要知道的是**哪一域变了**，才能判断要不要
- * 整体重来。顺序按 `worldbuilding` → `arc` → `outline` 固定，保证同一份数据
- * 每次渲染出的文案一致（避免界面抖动）。
+ * 只报「上游变了」没有信息量。作者 2026-10-31 的原话是：「回滚和变动要有据可查，
+ * 哪怕是级联推算也要能找到是哪一级出现了改动，可以帮助作者想起来自己改了什么。」
+ * 所以输出从「情节大纲」升级成：
+ *
+ * ```
+ * 情节大纲 第3版→第5版（第4版改过第12–14章；第5版改过第31章）
+ * ```
+ *
+ * 三条口径：
+ * - **章集连续 ≥3 压成区间**（`第12–14章`），否则逐章列（`第31、33章`）；
+ * - **取不到那一版就写「改动章未知」**，不猜、也不省略这半句 —— 省略会让作者以为
+ *   「那版没改东西」；
+ * - **版本倒退（`have > need`）标注「版本回退」**：这是备份恢复 / 导入更早便携包
+ *   的形状，与「作者又改了一版」是两回事，文案必须能分开。
+ *
+ * 顺序按 `worldbuilding` → `arc` → `outline` 固定，保证同一份数据每次渲染一致
+ * （避免界面抖动）；域之间用「；」，域内逐版也用「；」。
  */
 export function describeDrift(behind: readonly DerivedDrift[]): string {
   const order: readonly string[] = ['worldbuilding', 'arc', 'outline']
@@ -196,9 +228,44 @@ export function describeDrift(behind: readonly DerivedDrift[]): string {
     const domain = parsed?.domain ?? drift.key
     const name = label[domain] ?? domain
     const scope = parsed && parsed.scope !== BOOK_SCOPE ? `（${parsed.scope}）` : ''
-    return `${name}${scope}`
+    return `${name}${scope} 第${drift.have}版→第${drift.need}版${driftDetail(drift)}`
   })
-  return parts.join('、')
+  return parts.join('；')
+}
+
+/** `describeDrift` 的括号部分。取不到证据时返回空串（就只报版本区间）。 */
+function driftDetail(drift: DerivedDrift): string {
+  if (drift.have > drift.need) return '（版本回退）'
+  const changed = drift.changed
+  if (!changed || changed.length === 0) return ''
+  const parts = changed.map((entry) => {
+    const chapters = entry.chapters
+    if (!chapters || chapters.length === 0) return `第${entry.rev}版改动章未知`
+    return `第${entry.rev}版改过${formatChapterList(chapters)}`
+  })
+  return `（${parts.join('；')}）`
+}
+
+/** `[12,13,14,31]` → `第12–14、31章`；单章 → `第12章`。 */
+function formatChapterList(chapters: readonly number[]): string {
+  const sorted = [...new Set(chapters)].filter((chapter) => Number.isSafeInteger(chapter)).sort((left, right) => left - right)
+  if (sorted.length === 0) return '（无章号）'
+  const runs: string[] = []
+  let start = sorted[0]
+  let previous = sorted[0]
+  const flush = () => {
+    if (previous - start >= 2) runs.push(`${start}–${previous}`)
+    else if (previous === start) runs.push(`${start}`)
+    else runs.push(`${start}、${previous}`)
+  }
+  for (const chapter of sorted.slice(1)) {
+    if (chapter === previous + 1) { previous = chapter; continue }
+    flush()
+    start = chapter
+    previous = chapter
+  }
+  flush()
+  return `第${runs.join('、')}章`
 }
 
 /**
@@ -390,6 +457,30 @@ function coversEveryChapter(chapters: readonly number[] | null | undefined): boo
 }
 
 /**
+ * 取区间 `(have, need]` 的逐版改动，供拒绝理由展示（S4b）。
+ *
+ * 三种情况都返回 `undefined`，但**原因不同**，注释里写明免得被当成 bug 改掉：
+ * - 没有这份日志（旧库 / 非 outline 域从未记录）⇒ 真的没有；
+ * - 旧格式 `legacyChapters`（裸数组）：章号知道，但**不知道是哪一版改的**，
+ *   硬摊到某一版就是编造，所以不给；
+ * - `have >= need`：区间为空（倒退场景），逐版无从谈起。
+ */
+function driftChangesInRange(
+  log: ParsedChangedChapters | null | undefined,
+  have: number,
+  need: number,
+): readonly DriftChange[] | undefined {
+  if (!log) return undefined
+  if (log.legacyChapters.length > 0) return undefined
+  if (!(need > have)) return undefined
+  const changes: DriftChange[] = []
+  for (let rev = have + 1; rev <= need; rev += 1) {
+    changes.push({ rev, chapters: log.byRev.get(rev) ?? null })
+  }
+  return changes.length > 0 ? changes : undefined
+}
+
+/**
  * 期 2 的判定入口：在 `derivedStatus` 之上加「按章收窄」。
  *
  * 四条不变量（改之前先读，每条都对应一个会静默出错的形态）：
@@ -421,16 +512,18 @@ export function derivedStatusForChapters(
     if (!Number.isSafeInteger(have)) continue
     const need = current.get(key) ?? 0
     if (have === need) continue
+    // S4b：证据跟着 drift 一起走 —— 拒绝发生在渲染层/工作流，那里拿不到 `changes`。
+    const log = changes?.get(key)
     // 不变量 2：倒退（备份恢复 / 导入更早的包）不看章集，一律脏。
-    if (have > need) { behind.push({ key, have, need }); continue }
+    if (have > need) { behind.push({ key, have, need, changed: driftChangesInRange(log, have, need) }); continue }
     // 不变量 4：非 outline 域恒覆盖全部章。
     const domain = parseUpstreamRefKey(key)?.domain ?? key
-    if (domain !== 'outline') { behind.push({ key, have, need }); continue }
+    if (domain !== 'outline') { behind.push({ key, have, need, changed: driftChangesInRange(log, have, need) }); continue }
     // 不变量 1 / 3：拿不到可收窄的章集 ⇒ 按全改算。
-    const changed = changedChaptersBetween(changes?.get(key), have, need)
-    if (!changed || coversEveryChapter(chapters)) { behind.push({ key, have, need }); continue }
+    const changed = changedChaptersBetween(log, have, need)
+    if (!changed || coversEveryChapter(chapters)) { behind.push({ key, have, need, changed: driftChangesInRange(log, have, need) }); continue }
     const touched = chapters!.some(chapter => changed.includes(chapter))
-    if (touched) behind.push({ key, have, need })
+    if (touched) behind.push({ key, have, need, changed: driftChangesInRange(log, have, need) })
   }
   return behind.length === 0 ? { state: 'valid' } : { state: 'stale', behind }
 }

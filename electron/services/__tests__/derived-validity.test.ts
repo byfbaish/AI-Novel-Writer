@@ -92,8 +92,10 @@ describe('blueprintValidity — 只看自己这一章', () => {
   it('改的是本章 ⇒ stale', () => {
     const result = blueprintValidity(outlineOnly([[2, [33]]]), { 'outline:book': 1 }, 33)
     expect(result.state).toBe('stale')
+    // S4b 起 drift 还会带逐版证据（`changed`），所以这里断言整条 —— 而不只是三个字段，
+    // 免得「证据没带出来」这件事被判成通过。
     expect(result.state === 'stale' ? result.behind[0] : null)
-      .toEqual({ key: 'outline:book', have: 1, need: 2 })
+      .toEqual({ key: 'outline:book', have: 1, need: 2, changed: [{ rev: 2, chapters: [33] }] })
   })
 
   it('章号不合法 ⇒ not-applicable（不是 stale，别拿它去拦人）', () => {

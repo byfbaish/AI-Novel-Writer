@@ -110,7 +110,32 @@ describe('describeDrift', () => {
       { key: 'arc:book', have: 1, need: 2 },
       { key: 'worldbuilding:book', have: 1, need: 2 },
     ])
-    expect(text).toBe('世界观、弧光、情节大纲（u07）')
+    // S4b：每段都带「第几版→第几版」；没有 changed 证据时不给括号（不编造）。
+    expect(text).toBe('世界观 第1版→第2版；弧光 第1版→第2版；情节大纲（u07） 第1版→第2版')
+  })
+
+  it('S4b 逐版证据：连续 ≥3 章压成区间，否则逐章列', () => {
+    expect(describeDrift([{
+      key: 'outline:book', have: 3, need: 5,
+      changed: [{ rev: 4, chapters: [12, 13, 14] }, { rev: 5, chapters: [31] }],
+    }])).toBe('情节大纲 第3版→第5版（第4版改过第12–14章；第5版改过第31章）')
+    expect(describeDrift([{
+      key: 'outline:book', have: 1, need: 2,
+      changed: [{ rev: 2, chapters: [31, 33] }],
+    }])).toBe('情节大纲 第1版→第2版（第2版改过第31、33章）')
+  })
+
+  it('S4b 取不到那一版 ⇒ 写「改动章未知」，不猜也不省略这半句', () => {
+    // 省略会让作者以为「那版没改东西」，而真相是「被 20 版上限挤掉了」。
+    expect(describeDrift([{
+      key: 'outline:book', have: 1, need: 3,
+      changed: [{ rev: 2, chapters: [12] }, { rev: 3, chapters: null }],
+    }])).toBe('情节大纲 第1版→第3版（第2版改过第12章；第3版改动章未知）')
+  })
+
+  it('S4b 版本倒退标注「版本回退」—— 与「作者又改了一版」必须能分开', () => {
+    expect(describeDrift([{ key: 'outline:book', have: 5, need: 2 }]))
+      .toBe('情节大纲 第5版→第2版（版本回退）')
   })
 })
 
@@ -165,6 +190,30 @@ describe('derivedStatusForChapters', () => {
   const changes = (raw: Record<string, string>) => new Map(
     Object.entries(raw).map(([key, value]) => [key, parseChangedChapters(value)]),
   )
+
+  it('S4b 判定时把逐版证据一起带出来 —— 拒绝发生在渲染层，那里拿不到 changes', () => {
+    const log = changes({ 'outline:book': '{"4":[12,13,14],"5":[31]}' })
+    const current = snapshotOf({ 'outline:book': 5 })
+    const verdict = derivedStatusForChapters({ 'outline:book': 3 }, current, log, [12])
+    expect(verdict.state).toBe('stale')
+    if (verdict.state !== 'stale') throw new Error('unreachable')
+    expect(verdict.behind[0].changed).toEqual([
+      { rev: 4, chapters: [12, 13, 14] },
+      { rev: 5, chapters: [31] },
+    ])
+    // 再往下走一遍真实链路：硬拒文案必须能说出「哪一版改过哪些章」。
+    expect(describeDrift(verdict.behind))
+      .toBe('情节大纲 第3版→第5版（第4版改过第12–14章；第5版改过第31章）')
+  })
+
+  it('S4b 旧格式（裸数组）不编造版本归属 —— changed 不给，文案退回只报版本区间', () => {
+    const log = changes({ 'outline:book': '[31,33]' })
+    const current = snapshotOf({ 'outline:book': 2 })
+    const verdict = derivedStatusForChapters({ 'outline:book': 1 }, current, log, [31])
+    if (verdict.state !== 'stale') throw new Error('unreachable')
+    expect(verdict.behind[0].changed).toBeUndefined()
+    expect(describeDrift(verdict.behind)).toBe('情节大纲 第1版→第2版')
+  })
 
   it('改 31 再改 33：写于 rev2 的第 31 章那行必须 valid（不能拦作者刚改完的卡）', () => {
     const log = changes({ 'outline:book': '{"2":[31],"3":[33]}' })

@@ -324,7 +324,7 @@ describe('computeInvalidationPlan · 按章收窄与 unaffected', () => {
 })
 
 describe('computeInvalidationPlan · behind 只给数据不给文案', () => {
-  it('⑬ behind 里只有 key / have / need 三元组，文案留给 UI 的 describeDrift', () => {
+  it('⑬ behind 里是结构化数据（key / have / need / changed），文案留给 UI 的 describeDrift', () => {
     const result = plan({
       overrides: [{ domain: 'outline', rev: 6 }],
       revisions: snapshotOf({ [OUTLINE]: 3, [WORLD]: 2 }),
@@ -333,8 +333,13 @@ describe('computeInvalidationPlan · behind 只给数据不给文案', () => {
     })
     const item = result.groups[0].items[0]
     // 本次 override 只动 outline ⇒ 世界观不进 behind。
-    expect(item.behind).toEqual([{ key: OUTLINE, have: 3, need: 6 }])
-    expect(describeDrift(item.behind)).toBe('情节大纲')
+    // S4b 之后 `changed` 也是**结构化数据**（版本号 + 章号），不是文案；
+    // 这里用 toMatchObject 而不是 toEqual，是因为「有没有章集证据」取决于输入里
+    // 有没有 changes 日志 —— 本用例没给，所以 changed 为 undefined。
+    expect(item.behind).toMatchObject([{ key: OUTLINE, have: 3, need: 6 }])
+    expect(item.behind[0].changed).toBeUndefined()
+    // 文案由 UI 层渲染，且现在必须带版本区间（S4b）。
+    expect(describeDrift(item.behind)).toBe('情节大纲 第3版→第6版')
     expect(item.label).toBe('第 12 章')
   })
 })
