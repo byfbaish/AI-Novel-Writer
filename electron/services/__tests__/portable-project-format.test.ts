@@ -90,8 +90,9 @@ describe('portable v7 field policy', () => {
     //   —— 65/622 → 65/625。
     // P2-3 期 3b / M26：+1 列（project_core.synopsis_source_ref，大纲自身也记世界/弧光版本）
     //   —— 65/625 → 65/626。
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 65, fields: 626 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 65, fields: 626 })
+    // P2-3 / S6c / M27：+1 表 8 列（upstream_revision_log，上游版本流水）—— 65/626 → 66/634。
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 66, fields: 634 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 66, fields: 634 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -138,7 +139,8 @@ describe('portable v7 field policy', () => {
     // + P2-2 / M24：+1 表 6 列（upstream_revisions）—— 261 → 267。
     // + P2-2 期 2 / M25：+3 列（派生的来源列）—— 267 → 270。
     // + P2-3 期 3b / M26：+1 列（project_core.synopsis_source_ref）—— 270 → 271。
-    expect(added).toHaveLength(271)
+    // + P2-3 / S6c / M27：+1 表 8 列（upstream_revision_log）—— 271 → 279。
+    expect(added).toHaveLength(279)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -259,7 +261,8 @@ describe('portable v7 field policy', () => {
       // P2-2 / M24：再 +1 表 6 列 ⇒ 65/622。
       // P2-2 期 2 / M25：再 +3 列 ⇒ 65/625。
       // P2-3 期 3b / M26：再 +1 列（synopsis_source_ref）⇒ 65/626。
-      expect({ tables: tables.length, fields }).toEqual({ tables: 65, fields: 626 })
+      // P2-3 / S6c / M27：再 +1 表 8 列（upstream_revision_log）⇒ 66/634。
+      expect({ tables: tables.length, fields }).toEqual({ tables: 66, fields: 634 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)

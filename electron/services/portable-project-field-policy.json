@@ -32,6 +32,7 @@
   "m24Tables": ["upstream_revisions"],
   "m25Fields": ["volume_handoffs.source_ref", "blueprints.source_ref", "project_core.plot_tree_source_ref"],
   "m26Fields": ["project_core.synopsis_source_ref"],
+  "m27Tables": ["upstream_revision_log"],
   "m22Fields": ["summary_snapshots.knowledge_candidates"],
   "m23Fields": ["chapter_deletion_operations.keep_draft"],
   "optionalFields": ["characters.avatar", "project_core.rhythm_profile", "summary_snapshots.story_day_offset", "summary_snapshots.story_day_label"],
@@ -153,6 +154,7 @@
     "volume_handoffs": {"handoff_id":"D","volume_id":"D","world_state":"D","hero_state":"D","events_json":"D","items_json":"D","debts_json":"D","open_thread":"D","source":"D","source_ref":"D","created_at":"D","updated_at":"D"},
     "volumes": {"volume_id":"D","volume_index":"D","name":"D","planned_first":"D","planned_last":"D","planned_source":"D","actual_last":"D","actual_source":"D","outline_hash":"D","source":"D","created_at":"D","updated_at":"D"},
     "volume_units": {"unit_id":"D","volume_id":"D","unit_index":"D","name":"D","planned_first":"D","planned_last":"D","planned_source":"D","created_at":"D","updated_at":"D"},
-    "upstream_revisions": {"domain":"D","scope":"D","rev":"D","digest":"D","changed_chapters":"D","updated_at":"D"}
+    "upstream_revisions": {"domain":"D","scope":"D","rev":"D","digest":"D","changed_chapters":"D","updated_at":"D"},
+    "upstream_revision_log": {"id":"D","domain":"D","scope":"D","rev":"D","at":"D","reason":"D","changed_chapters":"D","covers_all":"D"}
   }
 }

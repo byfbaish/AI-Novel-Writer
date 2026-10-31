@@ -1,6 +1,6 @@
 # 上游失效 · 期 3 实施设计与作业图
 
-> 状态：已实施 · 2026-10-31 · 期 3a（S1–S5）+ S4b（硬拒带溯源链）+ 主入口接线（方案 B）+ 期 3b（S6a 收窄 + 中间环）；S6 / S6c / S7 未排期
+> 状态：已实施 · 2026-10-31 · 期 3a（S1–S5）+ S4b（硬拒带溯源链）+ 主入口接线（方案 B）+ 期 3b（S6a 收窄 + 中间环）+ S6c 期 1（溯源流水）；S6 / S6c 期 2 / S7 未排期
 > **施工期补的两个口径待作者裁定**：① request `rev <= 0` =「假想再改一版」（借 0 表达，不新增签名/通道）；② 影响范围的四种情形本期只判得出三种。见 §六。
 > **S6 的裁定已定（2026-10-31）**：定稿章只记 `outline` 一域（主稿 §十·2 ①）；并把 `BOOK_SOURCE_KEYS` 三域全记收窄成按类型分（S6a）。**S1–S5 不受影响，照原样施工。**
 > 上级稿：[`upstream-version-and-derived-invalidation-design.md`](upstream-version-and-derived-invalidation-design.md) §八（强提醒）· §九 步 4/5
@@ -117,9 +117,9 @@ flowchart TD
 | **S4** | 端到端：plan → 取消 → rev 不变 | `pnpm test electron/controllers/__tests__/` | 加 1 个集成测试 |
 | **S5** | 收口 | `node scripts/check-fast.mjs` | 只改文档 |
 | ~~S4b~~ | **零迁移，可随时插入**：`describeDrift` 升级成带证据链（主稿 §十·3 第 2 层）。输出格式钉死：`情节大纲 第3版→第5版（第4版改过第12–14章；第5版改过第31章）`；取不到的版本写「该版改动章未知」，**不猜不留空**。只改 `src/shared/upstream-revisions.ts` 一个函数 + 其调用点文案；**不动签名**（`behind` 形状不变） | `pnpm test src/shared/__tests__/upstream-revisions.test.ts` | 约 40 行 + 8 例 |
-| ~~S6a~~ | **不排期**：把 `BOOK_SOURCE_KEYS`（三域全记）收窄成按派生类型分（主稿 §十·2 ①）。改动＝`derived-source-ref.ts:44` 一处 + 三个写入点传各自的键集。**测试代价很小**（`upstream-source-ref-writes.test.ts` 里 `worldbuilding:book` 零出现，断言走的是解析后的 ref） | `pnpm test electron/repositories/__tests__/upstream-source-ref-writes.test.ts` | 约 30 行 |
-| ~~S6~~ | **不排期**：M26 给 `drafts` 加 `outline_rev`；`project_core` 记 world/arc rev（补中间环）；plan 加「已定稿章节」组 | 未定 | 中 |
-| ~~S6c~~ | **不排期**：`upstream_revision_log`（append-only）记每版的时间 + 原因 + 章集。**它是"回滚要有据可查"的硬需求**：卷回滚一旦实现，回滚产生的 bump 与作者手改的 bump 在库里长得一模一样，事后无法区分（与 ADR-0026 同一条纪律）。`reason` 取值待作者确认：`author-edit` / `regenerate` / `rollback` / `import-restore` / `clear`，**未知记 `unknown` 不许省略** | 未定 | 中 |
+| ~~S6a~~ | **已落地（期 3b，2026-10-31）**：把 `BOOK_SOURCE_KEYS`（三域全记）收窄成按派生类型分（主稿 §十·2 ①）。落地形态＝`SOURCE_KEYS_BY_KIND` + `currentSourceRefValue(db, kind, outlineRev?)`，四个写入点各自表态（蓝图两处 + 交接单 `chapter-plan`；剧情树 `architecture`） | `pnpm test electron/repositories/__tests__/upstream-source-ref-writes.test.ts` | 已落地 |
+| ~~S6~~ | **不排期**：**M28** 给 `drafts` 加 `outline_rev`；plan 加「已定稿章节」组（`project_core` 记 world/arc rev 那一半已由 M26 落地） | 未定 | 中 |
+| ~~S6c~~ | **期 1 已落地（2026-10-31，M27，schema 27 → 28）**：`upstream_revision_log`（只追加）记每版的时间 + 原因 + 章集 + `covers_all`。**它是"回滚要有据可查"的硬需求**：卷回滚一旦实现，回滚产生的 bump 与作者手改的 bump 在库里长得一模一样，事后无法区分（与 ADR-0026 同一条纪律）。`reason` 取值表已由作者拍板（2026-10-31「按建议来，未知就记作 unknown」）：`author-edit` / `regenerate` / `rollback` / `import-restore` / `clear` / `unknown`。**仍缺（期 2）**：把时间/原因渲染进硬拒文案；把章集从 `upstream_revisions` 彻底挪进流水（解除 20 版上限） | `pnpm test electron/migrations electron/repositories` | 期 1 已落地 |
 | ~~S7~~ | **不排期**：处置面板（清点 + 跳转，不亲自重算） | 未定 | 中 |
 
 ---
@@ -386,6 +386,39 @@ export function computeInvalidationPlan(input: {
 `workflow-launch-dialogs.browser` 34 例。便携格式与归档的字段计数同步 625 → 626
 （donor 夹具 626 → 627），`portable-project-format` 29 例 + `project-archive-service` 34 例全绿。
 
+### S6c 期 1 落地记录：溯源流水 `upstream_revision_log`（M27，2026-10-31）
+
+**作者裁定（2026-10-31）**：`reason` 按建议取值表走，**未知记 `unknown`**。
+
+**为什么必须两张表**（不是把流水塞进 `upstream_revisions`）：
+
+- `upstream_revisions` 是**当前态**（一域一行，`UPDATE` 覆盖 `updated_at`）——判定只读它；
+- `upstream_revision_log` 是**流水**（只追加，一版一行）——取证只读它。
+
+判定读流水会让「多一行少一行」影响「旧没旧」；取证读当前态会被覆盖掉历史时间（这正是建流水的原因）。
+
+| 决策 | 取值 | 理由 |
+|---|---|---|
+| `reason` 缺省 | `unknown`（**不是空串**） | 空串会被读成「没有这一栏」，于是每个读取方各写一层兜底；显式 `unknown` 让"还没接线"变成 `WHERE reason='unknown'` 可数的待办 |
+| 写入侧要不要强制传 | **不强制** | 「机制」先上线（每版都有时间），「接线」逐点补。强制传 ⇒ 任何一处漏接就让 bump 抛错，而旁路账本不该有弄失败业务写入的权力 |
+| `covers_all` | 独立列 | `replace`（整本重生成/整段替换）说的是「**全部**章都变了」；用空数组兼职会被读成「一章没改」，两个相反意思不能共用一个值 |
+| 章集格式 | **普通数组**（`[12,13]`） | 流水一行只描述一版，不需要 `upstream_revisions.changed_chapters` 那套按 rev 分组的两代格式 |
+| `UNIQUE(domain, scope, rev)` | **不加** | 导入更早的便携包让 rev 回退后再涨会撞号；加了唯一约束就是让**业务写入事务**失败。允许重复，读侧按 `id DESC` 取最近一条 |
+| append-only 触发器 | **不做** | 清除创作字段必须能整表删（版本账随被描述的世界一起归零）。只追加是仓储层纪律，不是 DB 约束 |
+| 表缺失（v27 老库） | 跳过写流水、**版本照常 bump** | 反了就是「没记流水」被误报成「没记版本」⇒ 调用方把 `source_ref` 留空 ⇒ 整库退回 `legacy` |
+| `ensure()` 的 rev 0 | **不写流水** | `0` 是「从没改过」，不是一个版本；记进去会让「历史第一版」变成一条「改了但没改什么」的记录 |
+
+**落点**：`electron/migrations/m27-upstream-revision-log.ts`（新）· `upstream-revision-repository.ts`（`bump` 顺带追加 + `history`/`latestLog`/`hasLog`）·
+`src/shared/upstream-revisions.ts`（`UPSTREAM_REVISION_REASONS` / `normalizeRevisionReason` / `parseRevisionLogChapters`）·
+`project-clear-repository.ts`（清除时一起删）· 便携策略 `m27Tables`（整表 `D`，`at` 也保留原值 —— 它是事件时间，改写成导入时刻等于伪造证据）。
+
+**测试**：`m27-installed-lane`（4 例：表与索引在 / 不动既有版本账 / `reason` 默认真落库 / verify 失败整步回滚）·
+`upstream-source-ref-writes` 的「溯源流水」5 例（逐版一行 / 显式原因与 `covers_all` / 老库不阻断 / 清除归零 / rev 撞号）。
+便携与归档的计数同步 65/626 → **66/634**（donor 66/635）。
+
+**期 2 仍缺**（未排期）：① 硬拒文案把「什么时候、因为什么」渲染出来（现在只有域 + 版本区间 + 每版章集）；
+② 把章集**从** `upstream_revisions` 彻底挪进流水，解除 `MAX_CHANGED_CHAPTER_REVS = 20` 这个「为省空间设的补丁」。
+
 ### 两个已知边界（下一班接手先看这里）
 
 - **剧情树恒为候选**：`plotTreeSourceRef` 为 `null` 时按 `legacy` 计入 `unseen`。
@@ -417,7 +450,7 @@ export function computeInvalidationPlan(input: {
 2 例链路（`derivedStatusForChapters` → `describeDrift`）；`invalidation-plan.test.ts` 的 ⑬ 号断言同步
 （`behind` 里多了 `changed`，但仍是**结构化数据**不是文案）。
 
-**仍然缺的第 3 层**（每版**时间**与**触发原因**）要 S6c 的 `upstream_revision_log`，本期没做。
+**第 3 层**（每版**时间**与**触发原因**）：表与写入已由 S6c 期 1（M27）落地，**文案渲染仍待期 2**。
 
 ### 为什么 S4 比的是原始行串
 

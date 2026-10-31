@@ -181,6 +181,9 @@ export class ProjectClearRepository {
                     // 另外 `changed_chapters` 会留着清除前的章号（那些章已不存在），
                     // 按章收窄于是永远认为"这些章变过"，噪声永久累积。
                     if (hasTable(db, 'upstream_revisions')) db.prepare('DELETE FROM upstream_revisions').run()
+                    // S6c / M27：**流水一起归零**。留着上一世的版本史，作者下次清除后
+                    // 看「为什么旧」会读到已经不存在的那几版（时间、原因都对不上当前库）。
+                    if (hasTable(db, 'upstream_revision_log')) db.prepare('DELETE FROM upstream_revision_log').run()
                     // 剧情树快照刚被置空 ⇒ 它的来源也跟着清，否则徽标继续指向一份
                     // 已经不存在的派生。（列可能存在之前建的库上，先探再写。）
                     if (hasColumn(db, 'project_core', 'plot_tree_source_ref')) {

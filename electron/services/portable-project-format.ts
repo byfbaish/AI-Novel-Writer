@@ -15,7 +15,7 @@ export interface PortableFieldPolicy {
   disposition: PortableFieldDisposition
   validator: string
   consumer: string
-  origin: 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm08-delta' | 'm11-delta' | 'm12-delta' | 'm13-delta' | 'm14-delta' | 'm15-delta' | 'm16-delta' | 'm17-delta' | 'm18-delta' | 'm19-delta' | 'm20-delta' | 'm21-delta' | 'm22-delta' | 'm23-delta' | 'm24-delta' | 'm25-delta' | 'm26-delta' | 'registered-donor'
+  origin: 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm08-delta' | 'm11-delta' | 'm12-delta' | 'm13-delta' | 'm14-delta' | 'm15-delta' | 'm16-delta' | 'm17-delta' | 'm18-delta' | 'm19-delta' | 'm20-delta' | 'm21-delta' | 'm22-delta' | 'm23-delta' | 'm24-delta' | 'm25-delta' | 'm26-delta' | 'm27-delta' | 'registered-donor'
   signedDisposition: string | null
 }
 
@@ -71,6 +71,15 @@ const m25Fields = new Set<string>(fieldPolicyDocument.m25Fields)
  * `legacy` —— 「世界观改了」这条提醒一进新机器就永远不响。
  */
 const m26Fields = new Set<string>(fieldPolicyDocument.m26Fields)
+/**
+ * P2-3 / S6c：溯源流水整表新增（M27），与 m24 同构。
+ *
+ * **必须是 `D`**：流水的价值在于「这一版是什么时候、因为什么涨的」，
+ * 跨机导入若清掉，作者换台机器就再也答不出「为什么它说我的大纲旧了」。
+ * 时间戳（`at`）也保留原值 —— 它是**事件发生的时间**，不是「导入时间」；
+ * 改写成导入时刻等于伪造证据。
+ */
+const m27Tables = new Set<string>(fieldPolicyDocument.m27Tables)
 const deltaCharacterFields = new Set<string>(fieldPolicyDocument.deltaCharacterFields)
 const optionalFields = new Set<string>(fieldPolicyDocument.optionalFields)
 const signedOverrides = fieldPolicyDocument.signedOverrides as Record<string, string>
@@ -90,7 +99,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
       const rule = rules[code]
       const key = `${table}.${field}`
       const delta = optionalFields.has(key) || deltaTables.has(table) || m06Tables.has(table) || m08Tables.has(table)
-        || m11Tables.has(table) || m12Tables.has(table) || m13Tables.has(table) || m14Tables.has(table) || m15Tables.has(table) || m16Tables.has(table) || m17Tables.has(table) || m18Tables.has(table) || m19Tables.has(table) || m20Fields.has(key) || m21Tables.has(table) || m22Fields.has(key) || m23Fields.has(key) || m24Tables.has(table) || m25Fields.has(key) || m26Fields.has(key) || table === 'characters' && deltaCharacterFields.has(field)
+        || m11Tables.has(table) || m12Tables.has(table) || m13Tables.has(table) || m14Tables.has(table) || m15Tables.has(table) || m16Tables.has(table) || m17Tables.has(table) || m18Tables.has(table) || m19Tables.has(table) || m20Fields.has(key) || m21Tables.has(table) || m22Fields.has(key) || m23Fields.has(key) || m24Tables.has(table) || m25Fields.has(key) || m26Fields.has(key) || m27Tables.has(table) || table === 'characters' && deltaCharacterFields.has(field)
       const signedDisposition = delta ? null : signedOverrides[key] ?? signedDefaults[code]
       if (!field || !rule || rule.length !== 3 || !PORTABLE_FIELD_DISPOSITIONS.has(rule[0])
         || typeof rule[1] !== 'string' || !rule[1] || typeof rule[2] !== 'string' || !rule[2]
@@ -116,6 +125,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
                             : m24Tables.has(table) ? 'm24-delta'
                             : m25Fields.has(key) ? 'm25-delta'
                             : m26Fields.has(key) ? 'm26-delta'
+                            : m27Tables.has(table) ? 'm27-delta'
                             : delta ? 'm01-m05-delta' : 'signed-s01', signedDisposition }))
     }
   }

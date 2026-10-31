@@ -432,7 +432,7 @@ flowchart LR
 |---|---|---|
 | **1 哪一级** | 域 + scope（`outline` / `arc` / `worldbuilding`） | ✅ `behind.key` |
 | **2 改成什么** | 版本区间 `have → need`；区间内**每版改了哪些章** | ✅ 版本在 `behind`；章集在 `upstream_revisions.changed_chapters`（`rev → 章[]`，最近 ≤20 版） |
-| **3 什么时候 / 为什么** | 每版的时间戳；触发原因（作者手改 / 重新生成 / 回滚 / 导入覆盖） | ❌ **都没有**：`upstream_revisions` 是当前态表，历史 rev 的 `updated_at` 已被覆盖；原因从未记录 |
+| **3 什么时候 / 为什么** | 每版的时间戳；触发原因（作者手改 / 重新生成 / 回滚 / 导入覆盖） | ⚠️ **数据已落地、文案未接**：M27 的 `upstream_revision_log` 每版一行（时间 + 原因 + 章集 + `covers_all`），`bump` 同事务追加；硬拒文案还没读它（S6c 期 2） |
 
 #### 第 2 层的输出格式（钉死，别自由发挥）
 
@@ -444,15 +444,17 @@ flowchart LR
 - 取不到的版本（被 20 版上限挤掉，见 `MAX_CHANGED_CHAPTER_REVS`）⇒ 写「该版改动章未知」，**不要猜、不要留空**
 - 多个域同时落后：按 `世界 → 弧光 → 大纲` 排序，用「；」分隔（`describeDrift` 已有排序逻辑，别重写）
 
-#### 第 3 层要做一张 append-only 流水表（S6c，不排期）
+#### 第 3 层要做一张 append-only 流水表（S6c · 期 1 已落地 M27，2026-10-31）
 
-`upstream_revision_log(domain, scope, rev, at, reason, changed_chapters)`，`bump` 时**同事务**追加一行。它同时解决三件事：
+`upstream_revision_log(domain, scope, rev, at, reason, changed_chapters, covers_all)`，`bump` 时**同事务**追加一行。它同时解决三件事：
 
-1. 历史 rev 的**时间**（现在只有当前行的 `updated_at`）；
-2. 变动的**原因** —— 这是"回滚要有据可查"的硬需求：卷回滚（P0-1 残留）一旦实现，回滚产生的 `bump` 与作者手改的 `bump` 在库里**长得一模一样**，事后无法区分。这与 ADR-0026「撤销类收据必须记撤销的是哪个决定」是同一条纪律；
-3. 章集从 JSON 挪进流水行 —— 不再受 20 版上限约束（那是个为了省空间的补丁，有审计价值的数据不该设上限）。
+1. 历史 rev 的**时间**（现在只有当前行的 `updated_at`）； ✅ 期 1
+2. 变动的**原因** —— 这是"回滚要有据可查"的硬需求：卷回滚（P0-1 残留）一旦实现，回滚产生的 `bump` 与作者手改的 `bump` 在库里**长得一模一样**，事后无法区分。这与 ADR-0026「撤销类收据必须记撤销的是哪个决定」是同一条纪律； ✅ 期 1
+3. 章集从 JSON 挪进流水行 —— 不再受 20 版上限约束（那是个为了省空间的补丁，有审计价值的数据不该设上限）。 ⏳ **期 2**：期 1 已把章集**同时**写进流水，但读侧仍用 `upstream_revisions.changed_chapters`，20 版上限还在。
 
-**`reason` 的取值建议**（需作者确认）：`author-edit` / `regenerate` / `rollback` / `import-restore` / `clear`。**未知一律记 `unknown`，不许省略** —— 空白和"不知道"必须是两种东西。
+**`reason` 的取值表（作者已拍板 2026-10-31）**：`author-edit` / `regenerate` / `rollback` / `import-restore` / `clear` / `unknown`。**未知一律记 `unknown`，不许省略** —— 空白和"不知道"必须是两种东西。写入侧**不强制传**（缺省落 `unknown`）：强制传会让任何一处漏接把业务写入弄失败，而旁路账本不该有这个权力。
+
+落地形态与六条实现决策（`covers_all` 独立成列 / 不加唯一约束 / 不做触发器 / 老库跳过写流水 …）→ 期 3 施工图 §六「S6c 期 1 落地记录」。
 
 #### 一处必须说清的边界
 

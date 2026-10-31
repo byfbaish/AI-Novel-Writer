@@ -1,22 +1,35 @@
 import { getProjectDb } from '../database'
 import {
   BOOK_SCOPE,
+  normalizeRevisionReason,
   parseChangedChapters,
+  parseRevisionLogChapters,
   serializeChangedChapters,
   upstreamRefKey,
   withChangedChapters,
   type ParsedChangedChapters,
   type UpstreamDomain,
+  type UpstreamRevisionLogEntry,
+  type UpstreamRevisionReason,
   type UpstreamRevisionSnapshot,
 } from '../../src/shared/upstream-revisions'
 
 /**
- * `upstream_revisions` 的读写（P2-2 期 1 建表，期 2 加判定所需的两种写语义）。
+ * `upstream_revisions`（当前态）与 `upstream_revision_log`（流水，M27 / S6c）的读写
+ * （P2-2 期 1 建表，期 2 加判定所需的两种写语义，S6c 加流水）。
  *
  * ## 这一层的唯一职责：让「上游改了一版」这件事可写、可读
  *
  * 它**不判断谁该失效**（那是 `src/shared/upstream-revisions.ts` 的纯函数），
  * 也不清理任何派生（那是读取侧的事）。
+ *
+ * ## 两张表的分工不许含糊
+ *
+ * - 当前态表是**判定原料**：`bump` 写、读取侧比对；
+ * - 流水表是**取证原料**：`bump` 顺带追加一行（时间 + 原因），**判定侧不读它**。
+ *
+ * 判定读流水会让「多一行少一行」影响「旧没旧」；取证读当前态会被 `UPDATE`
+ * 覆盖掉历史时间（这正是建流水的原因）。
  *
  * ## 为什么 `bump` 不自己开事务
  *
@@ -60,6 +73,14 @@ export interface BumpUpstreamRevisionInput {
   digest?: string
   /** 缺省 `newRevOnly`。 */
   mode?: ChangedChaptersMode
+  /**
+   * 这一版为什么涨（S6c / M27）。**可以不传**，缺省落 `unknown`。
+   *
+   * 不强制传，是因为「接线」和「机制」必须能分开上线：先让每一版都记下**时间**，
+   * 再把各处能准确说出的原因逐点接上。反过来（先要求传原因），任何一处漏接
+   * 都会让这次 bump 直接抛错 —— 一本旁路账本不该有把业务写入弄失败的权力。
+   */
+  reason?: UpstreamRevisionReason
 }
 
 type RawRow = { domain: string; scope: string; rev: number; digest: string; changed_chapters: string; updated_at: string }
@@ -106,6 +127,59 @@ function toRow(raw: RawRow): UpstreamRevisionRow {
     changedChapters: parseChangedChapters(raw.changed_chapters),
     updatedAt: raw.updated_at,
   }
+}
+
+/**
+ * 流水表是否存在（M27 之前建的库没有）。
+ *
+ * 不存在 ⇒ **跳过写流水，不跳过写版本**：版本账是判定原料，流水只是取证原料，
+ * 前者缺了功能就错，后者缺了只是暂时没证据。反过来说，也**不许**因为流水表
+ * 缺失就让 `bump` 返回 `null` —— 那会把「没记流水」误报成「没记版本」。
+ */
+function hasLogTable(db: ProjectDatabase): boolean {
+  try {
+    return Boolean(db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='upstream_revision_log'",
+    ).get())
+  } catch { return false }
+}
+
+type RawLogRow = {
+  domain: string; scope: string; rev: number; at: string; reason: string
+  changed_chapters: string; covers_all: number
+}
+
+function toLogEntry(raw: RawLogRow): UpstreamRevisionLogEntry {
+  return {
+    domain: raw.domain,
+    scope: raw.scope,
+    rev: raw.rev,
+    at: raw.at,
+    reason: normalizeRevisionReason(raw.reason),
+    changedChapters: parseRevisionLogChapters(raw.changed_chapters),
+    coversAll: raw.covers_all === 1,
+  }
+}
+
+/**
+ * 追加一行流水。**与 `bump` 同一个事务**（调用方已开事务，本层不自开）。
+ *
+ * 三处细节都是刻意的：
+ * - `reason` 缺省落 `unknown`（`normalizeRevisionReason`），**不落空串**；
+ * - `covers_all` 独立成列：`replace` 语义是「全部章都变了」，空数组兼表达会被
+ *   读成「一章没改」，两个相反的意思不能共用一个值；
+ * - 章集存**普通数组**（不是 `upstream_revisions.changed_chapters` 的两代格式）。
+ */
+function appendLog(db: ProjectDatabase, input: BumpUpstreamRevisionInput, scope: string, rev: number): void {
+  if (!hasLogTable(db)) return
+  const coversAll = (input.mode ?? 'newRevOnly') === 'replace'
+  db.prepare(`
+    INSERT INTO upstream_revision_log (domain, scope, rev, reason, changed_chapters, covers_all)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(
+    input.domain, scope, rev, normalizeRevisionReason(input.reason),
+    JSON.stringify([...(input.changedChapters ?? [])]), coversAll ? 1 : 0,
+  )
 }
 
 export class UpstreamRevisionRepository {
@@ -186,10 +260,15 @@ export class UpstreamRevisionRepository {
       return updated.changes === 1 ? nextRev : null
     }
     const first = attempt()
-    if (first !== null) return first
+    if (first !== null) {
+      appendLog(db, input, scope, first)
+      return first
+    }
     // 重试上限 1 次：仍是 null 说明在这个库上并发写很频繁，继续重试只会把
     // 调用方的写入事务拖长（版本是旁路账本，不值这个代价）。
-    return attempt()
+    const retried = attempt()
+    if (retried !== null) appendLog(db, input, scope, retried)
+    return retried
   }
 
   /**
@@ -200,6 +279,9 @@ export class UpstreamRevisionRepository {
    * 派生就被记成 `legacy` —— 一个刚生成的新派生被判 `legacy` 是假信号。
    *
    * 表不存在返回 `null`（与 `bump` 同一语义：`0` 是合法版本号，不能兼任"没有"）。
+   *
+   * **不写流水**：`0` 表示「从没改过」，不是一个版本；把它记进流水会让
+   * 「历史第一版」变成一条「改了但没改什么」的记录。
    */
   static ensure(domain: UpstreamDomain, scope: string = BOOK_SCOPE, database?: ProjectDatabase | null): number | null {
     const db = requireDb(database)
@@ -231,6 +313,43 @@ export class UpstreamRevisionRepository {
   /** 单个键的当前 rev；没有该行返回 `null`（语义同上）。 */
   static readRev(domain: UpstreamDomain, scope: string = BOOK_SCOPE, database?: ProjectDatabase | null): number | null {
     return UpstreamRevisionRepository.read(domain, scope, database)?.rev ?? null
+  }
+
+  /**
+   * 某一域的全部流水（**按 `rev` 升序**，同 rev 多行按写入先后）。
+   *
+   * 同 rev 出现多行是**正常痕迹**，不是脏数据：导入更早的便携包会让 rev 回退，
+   * 之后再 bump 就会与流水里已有的 rev 撞号。所以这里不合并、不去重，
+   * 由读取方按 `id` 顺序理解「同一版被写过两次」。
+   *
+   * 表不存在（M27 之前的库）⇒ 返回空数组。**空数组不等于「没改过」**：
+   * 调用方要区分「没有流水」与「流水说没改」，须先问 `hasLog()`。
+   */
+  static history(domain: UpstreamDomain, scope: string = BOOK_SCOPE, database?: ProjectDatabase | null): UpstreamRevisionLogEntry[] {
+    const db = database ?? getProjectDb()
+    if (!db || !hasLogTable(db)) return []
+    const rows = db.prepare(`
+      SELECT domain, scope, rev, at, reason, changed_chapters, covers_all
+      FROM upstream_revision_log WHERE domain = ? AND scope = ? ORDER BY rev ASC, id ASC
+    `).all(domain, scope) as RawLogRow[]
+    return rows.map(toLogEntry)
+  }
+
+  /** 某一域最近一行流水（按 `id` 取，不按 `rev` —— 撞号时后写的才是最新的）。 */
+  static latestLog(domain: UpstreamDomain, scope: string = BOOK_SCOPE, database?: ProjectDatabase | null): UpstreamRevisionLogEntry | null {
+    const db = database ?? getProjectDb()
+    if (!db || !hasLogTable(db)) return null
+    const row = db.prepare(`
+      SELECT domain, scope, rev, at, reason, changed_chapters, covers_all
+      FROM upstream_revision_log WHERE domain = ? AND scope = ? ORDER BY id DESC LIMIT 1
+    `).get(domain, scope) as RawLogRow | undefined
+    return row ? toLogEntry(row) : null
+  }
+
+  /** 流水表是否存在。**「没有流水」与「流水说没改」必须分开**（同 `hasTable` 的理由）。 */
+  static hasLog(database?: ProjectDatabase | null): boolean {
+    const db = database ?? getProjectDb()
+    return db ? hasLogTable(db) : false
   }
 
   /** 全部行，按 domain/scope 排序 —— 给面板与 plan 阶段用。 */

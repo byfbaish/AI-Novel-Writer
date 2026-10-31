@@ -486,3 +486,112 @@ describe('大纲的上游来源（M26 中间环）', () => {
     } finally { db.close() }
   })
 })
+
+/**
+ * S6c / M27：溯源流水 `upstream_revision_log`。
+ *
+ * ## 守的是三件「事后才发现就晚了」的事
+ *
+ * 1. **每一版都要有行**。版本账只留当前态，`updated_at` 一涨就被覆盖 ——
+ *    漏一版就是一段永远取不回来的历史。作者问「它凭什么说我的大纲旧了」，答不上来。
+ * 2. **`unknown` 必须是显式值**。空串会被读成「没有这一栏」，于是所有读取方
+ *    各写一层兜底；显式 `unknown` 让"还没接线"变成一道可数的待办。
+ * 3. **`replace` 不能被读成「一章没改」**。整本重生成改的是全部章，
+ *    用空数组兼职表达会被反向理解 —— 所以 `covers_all` 独立成列。
+ */
+describe('溯源流水（S6c / M27）', () => {
+  function migratedDbAt(version: number) {
+    const db = new Database(':memory:')
+    db.pragma('foreign_keys=ON')
+    db.transaction(() => initializeLegacyBaselineSchema(db))()
+    migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), version)
+    db.prepare("INSERT OR IGNORE INTO project_core(id) VALUES('main')").run()
+    return db
+  }
+
+  it('每 bump 一版就追加一行：版本号、时间、缺省原因 unknown', () => {
+    const db = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      BlueprintRepository.upsertMany([blueprintFor(1)])
+      BlueprintRepository.upsertMany([blueprintFor(2)])
+
+      const history = UpstreamRevisionRepository.history('outline', 'book', db)
+      expect(history.map(entry => entry.rev)).toEqual([1, 2])
+      expect(history.map(entry => entry.reason)).toEqual(['unknown', 'unknown'])
+      // 时间必须真落下来（`datetime('now')`，UTC，与 updated_at 同一口径）。
+      for (const entry of history) expect(entry.at).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/u)
+      // 章集逐版独立：第 2 版不该把第 1 章的章号带进来。
+      expect(history.map(entry => entry.changedChapters)).toEqual([[1], [2]])
+      expect(history.every(entry => entry.coversAll === false)).toBe(true)
+    } finally { db.close() }
+  })
+
+  it('显式传原因就记下来；整段替换标 coversAll —— 「全部章」不许用空数组兼职', () => {
+    const db = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      UpstreamRevisionRepository.bump({ domain: 'worldbuilding', reason: 'author-edit' }, db)
+      UpstreamRevisionRepository.bump({ domain: 'arc', reason: 'regenerate', mode: 'replace' }, db)
+
+      expect(UpstreamRevisionRepository.latestLog('worldbuilding', 'book', db)?.reason).toBe('author-edit')
+      const arc = UpstreamRevisionRepository.latestLog('arc', 'book', db)!
+      expect(arc.reason).toBe('regenerate')
+      // replace ⇒ 改动了**全部**章；`changedChapters: []` 在这里是「说不出具体章」，不是「没改」。
+      expect(arc.coversAll).toBe(true)
+      expect(arc.changedChapters).toEqual([])
+    } finally { db.close() }
+  })
+
+  it('表不存在（v27 的老库）⇒ 版本照常推进，只是没有流水；不抛不拦', () => {
+    const db = migratedDbAt(27)
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      // 关键：**返回值仍必须是 1 版本号**。若这里因为流水表缺失而返回 null，
+      // 调用方会以为「没有版本账」而把 source_ref 留空 ⇒ 整库退回 legacy。
+      expect(UpstreamRevisionRepository.bump({ domain: 'worldbuilding' }, db)).toBe(1)
+      expect(UpstreamRevisionRepository.hasLog(db)).toBe(false)
+      expect(UpstreamRevisionRepository.history('worldbuilding', 'book', db)).toEqual([])
+      expect(UpstreamRevisionRepository.readRev('worldbuilding', 'book', db)).toBe(1)
+    } finally { db.close() }
+  })
+
+  it('清除创作字段 ⇒ 流水一起归零（不许留着上一世的版本史）', () => {
+    const db = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      vi.mocked(getCurrentProjectPath).mockReturnValue(null)
+      BlueprintRepository.upsertMany([blueprintFor(1)])
+      expect(UpstreamRevisionRepository.history('outline', 'book', db)).toHaveLength(1)
+
+      ProjectClearRepository.clearGeneratedData({ creativeFields: true, blueprints: true })
+
+      expect(UpstreamRevisionRepository.history('outline', 'book', db)).toEqual([])
+      expect(UpstreamRevisionRepository.latestLog('worldbuilding', 'book', db)).toBeNull()
+    } finally { db.close() }
+  })
+
+  it('rev 撞号（导入更早备份后回退再涨）⇒ 两行都留着，最近一条按 id 取', () => {
+    const db = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [1] }, db)
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [2] }, db)
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [3] }, db)
+      expect(UpstreamRevisionRepository.history('outline', 'book', db).map(entry => entry.rev)).toEqual([1, 2, 3])
+
+      // 模拟「导入更早的便携包」：当前态被整行覆盖回 rev1（流水是 D 类，一起被带回来，
+      // 但这里只回退当前态就够了 —— 重点是 rev 会再次涨到 2）。
+      db.prepare("UPDATE upstream_revisions SET rev = 1 WHERE domain = 'outline' AND scope = 'book'").run()
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [9], reason: 'import-restore' }, db)
+
+      // **不加唯一约束**是刻意的：加了这一步会让业务写入事务直接失败（见 M27 迁移注释）。
+      const revs = UpstreamRevisionRepository.history('outline', 'book', db).map(entry => entry.rev)
+      expect(revs).toEqual([1, 2, 2, 3])
+      const latest = UpstreamRevisionRepository.latestLog('outline', 'book', db)!
+      expect(latest.rev).toBe(2)
+      expect(latest.reason).toBe('import-restore')
+      expect(latest.changedChapters).toEqual([9])
+    } finally { db.close() }
+  })
+})

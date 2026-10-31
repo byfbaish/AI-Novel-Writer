@@ -51,6 +51,70 @@ export type UpstreamDomain = 'worldbuilding' | 'arc' | 'outline'
 export const BOOK_SCOPE = 'book'
 
 /**
+ * 这一版**为什么**涨的（`upstream_revision_log.reason`，S6c / M27）。
+ *
+ * 取值表是**封闭集合**，不是自由文本：它是硬拒文案第 3 层与将来「回滚审计」的判据，
+ * 写成自由文本就没法按原因筛。加新原因要同时改这里、迁移的默认值说明与设计稿。
+ *
+ * - `author-edit`：作者手改（编辑器保存、`db:blueprint-upsert` 这类单点写入）；
+ * - `regenerate`：模型重新生成（重建入口、批次重跑）；
+ * - `rollback`：回滚产生（P0-1 卷回滚落地后才有写入方）；
+ * - `import-restore`：导入/恢复覆盖（便携包、备份）；
+ * - `clear`：清除创作字段（版本账归零那一档）；
+ * - `unknown`：**不知道，但确实涨了**。不许用空字符串顶替 ——
+ *   空白会被读成「没有这个字段」，而「不知道」是一个需要被看见的待办
+ *   （`WHERE reason='unknown'` 就能数出还有多少处没接上）。
+ */
+export const UPSTREAM_REVISION_REASONS = [
+  'author-edit', 'regenerate', 'rollback', 'import-restore', 'clear', 'unknown',
+] as const
+export type UpstreamRevisionReason = typeof UPSTREAM_REVISION_REASONS[number]
+
+/**
+ * 把来路不明的 `reason` 收敛到取值表里。
+ *
+ * **默认落到 `unknown`，绝不落到空或 `undefined`**：写库的列是 `NOT NULL`，
+ * 调用方少传一个字段不该变成一次写入失败（旁路账本不许成为业务失败点），
+ * 但也绝不能因此写进一个含义模糊的空串。
+ */
+export function normalizeRevisionReason(raw: unknown): UpstreamRevisionReason {
+  return typeof raw === 'string' && (UPSTREAM_REVISION_REASONS as readonly string[]).includes(raw)
+    ? raw as UpstreamRevisionReason : 'unknown'
+}
+
+/**
+ * 流水表的一行。`at` 是**这一版被写下的时间**（`datetime('now')`，UTC，
+ * 与 `updated_at` 同一口径），不是当前态表里那个已被覆盖的时间。
+ */
+export interface UpstreamRevisionLogEntry {
+  domain: string
+  scope: string
+  rev: number
+  at: string
+  reason: UpstreamRevisionReason
+  /** 这一版改过的章（仅 `outline` 有意义）。`coversAll` 时这里可以是空数组。 */
+  changedChapters: readonly number[]
+  /** `true` = 这一版改动了**全部**章（整本重生成 / 整段替换），不是「一章没改」。 */
+  coversAll: boolean
+}
+
+/**
+ * 解析流水行里的章集。
+ *
+ * 这里存的是**普通数组**（`[12,13,14]`），不是 `upstream_revisions.changed_chapters`
+ * 那套两代格式：流水一行只描述一版，不需要「按 rev 分组」这层结构，
+ * 再套一遍只会让两处读法分叉。脏数据一律当「取不到」⇒ 空数组（不猜）。
+ */
+export function parseRevisionLogChapters(raw: unknown): readonly number[] {
+  if (typeof raw !== 'string' || !raw.trim()) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item): item is number => typeof item === 'number' && Number.isSafeInteger(item) && item > 0)
+  } catch { return [] }
+}
+
+/**
  * `source_ref` 的键。形如 `worldbuilding:book` / `arc:book` / `outline:u07`。
  *
  * 恒为 `domain:scope` 两段（`scope` 自身不含冒号），解析时 `split(':')` 第一段
