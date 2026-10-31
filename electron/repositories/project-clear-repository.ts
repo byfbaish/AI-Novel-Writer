@@ -186,6 +186,13 @@ export class ProjectClearRepository {
                     if (hasColumn(db, 'project_core', 'plot_tree_source_ref')) {
                         db.prepare("UPDATE project_core SET plot_tree_source_ref = '' WHERE id = 'main'").run()
                     }
+                    // P2-3 期 3b / M26：大纲自己的来源也归零。`synopsis` 刚被清空、
+                    // `upstream_revisions` 刚被整表删 ⇒ 若留着这串 JSON，作者重新生成大纲后
+                    // 取到的是「写于 rev5」而新版本账从 rev0 起算，按不变量 2 直接判 stale ——
+                    // 一份**刚生成**的大纲被判旧，与清除前那条坑同型。
+                    if (hasColumn(db, 'project_core', 'synopsis_source_ref')) {
+                        db.prepare("UPDATE project_core SET synopsis_source_ref = '' WHERE id = 'main'").run()
+                    }
                     // P1-2 期 1b：`plot_structure_plan` 已置空，卷/单元结构成了悬空引用。
                     // 顺序必须是 handoffs → units → volumes（外键依赖）。
                     if (hasTable(db, 'volume_handoffs')) db.prepare('DELETE FROM volume_handoffs').run()

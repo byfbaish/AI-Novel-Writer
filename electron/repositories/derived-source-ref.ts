@@ -46,6 +46,21 @@ export const BOOK_SOURCE_KEYS: readonly UpstreamRefKey[] = Object.freeze(
 )
 
 /**
+ * 「大纲」自己依赖的两个域（P2-3 期 3b · 中间环）。
+ *
+ * **不含 `outline`**：派生不记自己。记进去会让大纲刚写完就判自己 stale。
+ *
+ * 这一条就是作者 2026-10-31 裁定的「补齐中间环」：世界/弧光改了 → 大纲被判旧 →
+ * 提示作者重生成大纲 → 大纲 rev +1 → 蓝图/交接单才 stale。**级联逐层发生，
+ * 不跨层直传**。没有这条，「蓝图只记 outline」的收窄（S6a）会让世界观改动
+ * 在整个链路上变成静默。
+ */
+export const SYNOPSIS_SOURCE_KEYS: readonly UpstreamRefKey[] = Object.freeze([
+  upstreamRefKey('worldbuilding'),
+  upstreamRefKey('arc'),
+])
+
+/**
  * 列存在性探针。
  *
  * 存在的理由与 `blueprints.structured_refs`（M08）完全一样：只建基线表的测试
@@ -89,6 +104,42 @@ export function serializeSourceRefValue(ref: DerivedSourceRef | null | undefined
 }
 
 /**
+ * 「这一类派生到底依赖哪几个域」—— **S6a 的收窄口径，唯一出处**（2026-10-31）。
+ *
+ * ## 为什么不再三域全记
+ *
+ * 期 2 让三处写入点共用 `BOOK_SOURCE_KEYS`，于是「改世界观 ⇒ 每一张蓝图都 stale ⇒
+ * 正文链硬拒」变成了跨层直传。作者的裁定是**级联逐层发生**：世界观改了先只该提醒
+ * 「大纲旧了」；大纲真被重生成之后，蓝图才跟着旧。三域全记把这两级压成了一级，
+ * 表现就是「改一个设定，全部章节写不了」。
+ *
+ * 收窄之后，「世界改了」这件事仍然有人接：M26 的 `project_core.synopsis_source_ref`
+ * 让大纲自己记 world/arc（见 `SYNOPSIS_SOURCE_KEYS`）。**两者必须一起存在** ——
+ * 只收窄、不补中间环，世界观改动就在整条链路上彻底静默。
+ *
+ * ## 剧情树为什么保留三域
+ *
+ * 它不是大纲的下游：它由整份架构（世界 + 弧光 + 大纲）一次性生成，三个域都是它的
+ * **直接**上游。把它也收窄成单域，就等于「世界观大改，剧情树照旧被认为有效」。
+ *
+ * ## 存量行不受影响
+ *
+ * 判定只比对 `source_ref` 里**出现过**的键，所以老行仍按三域判（多报一次），
+ * 重生成之后自然按新口径。**不回填**：回填等于替作者断言「你这段没受世界影响」。
+ */
+export type DerivedSourceKind = 'chapter-plan' | 'architecture'
+
+/** 章级规划派生：章节蓝图、卷末交接单。只依赖情节大纲。 */
+const CHAPTER_PLAN_SOURCE_KEYS: readonly UpstreamRefKey[] = Object.freeze([
+  upstreamRefKey('outline'),
+])
+
+const SOURCE_KEYS_BY_KIND: Readonly<Record<DerivedSourceKind, readonly UpstreamRefKey[]>> = Object.freeze({
+  'chapter-plan': CHAPTER_PLAN_SOURCE_KEYS,
+  architecture: BOOK_SOURCE_KEYS,
+})
+
+/**
  * 写侧主入口：取「此刻」的版本快照，拍成列值。
  *
  * `outlineRev` 是本**次**改动把大纲推到的那一版（`bump` 的返回值）。
@@ -108,12 +159,37 @@ export function serializeSourceRefValue(ref: DerivedSourceRef | null | undefined
  */
 export function currentSourceRefValue(
   db: ProjectDatabase,
+  kind: DerivedSourceKind,
   outlineRev?: number | null,
 ): string {
   const snapshot = UpstreamRevisionRepository.snapshot(db)
-  const ref: Record<UpstreamRefKey, number> = { ...buildSourceRef(BOOK_SOURCE_KEYS, snapshot) }
+  const ref: Record<UpstreamRefKey, number> = { ...buildSourceRef(SOURCE_KEYS_BY_KIND[kind], snapshot) }
   if (typeof outlineRev === 'number' && Number.isSafeInteger(outlineRev)) {
     ref[upstreamRefKey('outline')] = outlineRev
+  }
+  return serializeSourceRefValue(ref)
+}
+
+/**
+ * 写侧：大纲自己的来源列值（M26）。**只记 worldbuilding + arc**。
+ *
+ * 与 `currentSourceRefValue` 分开而不是加参数，是因为两者问的不是同一个问题：
+ * 那个问「这一行派生基于哪一版上游」，这个问「这段大纲是在什么前提下写出来的」。
+ * 合成一个函数会让调用点必须传一个"要哪些域"的清单 —— 那就等于把口径挪到调用点，
+ * 而口径只该有一个出处。
+ */
+export function synopsisSourceRefValue(db: ProjectDatabase): string {
+  if (!hasColumn(db, 'project_core', 'synopsis_source_ref')) return ''
+  const snapshot = UpstreamRevisionRepository.snapshot(db)
+  const ref: Record<UpstreamRefKey, number> = {}
+  for (const key of SYNOPSIS_SOURCE_KEYS) {
+    // **缺键一律记 0，不许跳过**。这是本函数与 `buildSourceRef` 唯一的不同，
+    // 且是刻意的：判定侧只比对 `source_ref` 里**出现过**的键，跳过就等于把这个域
+    // 永久排除在判定之外 —— 于是「弧光第一次被改」这种最常见的情形完全无声。
+    // 0 的含义是「写这段大纲时，该域还没有任何版本记录」，第一次 bump 落在 1，
+    // 比对立刻成立（`need = 1 > have = 0`）。方向保守：宁可多提示一次。
+    const rev = snapshot.get(key)
+    ref[key] = typeof rev === 'number' && Number.isSafeInteger(rev) ? rev : 0
   }
   return serializeSourceRefValue(ref)
 }

@@ -7,12 +7,13 @@ import { CURRENT_DESKTOP_SCHEMA_VERSION, getDesktopMigrationRegistry } from '../
 import { migrateSchema } from '../../migrations/runner'
 import { SqliteSchemaAdapter } from '../../migrations/sqlite-schema-adapter'
 import { normalizeKeyEvents } from '../../../src/shared/blueprint-key-events'
-import { derivedStatusForChapters } from '../../../src/shared/upstream-revisions'
+import { derivedStatus, derivedStatusForChapters, describeDrift } from '../../../src/shared/upstream-revisions'
 import { BlueprintRepository, type BlueprintData } from '../blueprint-repository'
 import { rewriteBlueprintCharacters } from '../blueprint-character-rewrite'
 import { parseSourceRefValue } from '../derived-source-ref'
 import { PlotTreeRepository } from '../plot-tree-repository'
 import { ProjectClearRepository } from '../project-clear-repository'
+import { ProjectCoreRepository } from '../project-core-repository'
 import { UpstreamRevisionRepository } from '../upstream-revision-repository'
 import { readVolumeHandoffSourceRef, upsertVolumeHandoff } from '../volume-handoff-repository'
 
@@ -395,6 +396,93 @@ describe('bump 的 CAS（跨进程并发）', () => {
       // 出现了 `byRev.get(3) === [2]`，说明 CAS 没生效、我们把别人的版本当自己写的。
       expect(UpstreamRevisionRepository.read('outline', 'book', db)?.changedChapters.byRev.has(3)).toBe(false)
       expect(UpstreamRevisionRepository.read('outline', 'book', db)?.changedChapters.byRev.get(1)).toEqual([1])
+    } finally { db.close() }
+  })
+})
+
+/**
+ * 中间环的写侧（P2-3 期 3b · M26）：**大纲自己**也要记一条「基于哪一版世界观/弧光」。
+ *
+ * 这一条不写，`S6a` 把蓝图收窄成只记 `outline` 之后，「世界改了」在整条链路上
+ * 就彻底静默了 —— 作者明确要求补这一环。
+ *
+ * 三条容易写反的：
+ * 1. **必须在 bump 之后算**。同一次 `update` 既改世界观又改大纲时，先算会让
+ *    新大纲记成旧世界观的版本 ⇒ 刚写完就判自己旧了（或反过来，记成新版本却
+ *    实际基于旧文本）。
+ * 2. **空大纲不记来源**。清空之后没有「基于什么」可言；记一个新鲜的版本号会让
+ *    「重新生成大纲」永远不提示。
+ * 3. 记的是 world + arc，**不记 outline**（派生不记自己）。
+ */
+describe('大纲的上游来源（M26 中间环）', () => {
+  function synopsisRef(db: InstanceType<typeof Database>) {
+    return parseSourceRefValue(
+      db.prepare("SELECT synopsis_source_ref FROM project_core WHERE id = 'main'").pluck().get(),
+    )
+  }
+
+  it('落大纲时记下当时的世界观/弧光版本，且不含 outline', () => {
+    const db = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      UpstreamRevisionRepository.bump({ domain: 'worldbuilding' }, db)
+      UpstreamRevisionRepository.bump({ domain: 'arc' }, db)
+      UpstreamRevisionRepository.bump({ domain: 'arc' }, db)
+
+      ProjectCoreRepository.update({ synopsis: '第1章：大纲' })
+
+      expect(synopsisRef(db)).toEqual({ 'worldbuilding:book': 1, 'arc:book': 2 })
+    } finally { db.close() }
+  })
+
+  it('同一次 update 既改世界观又改大纲：记下的是**新**的世界观版本（不是旧的）', () => {
+    const db = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      UpstreamRevisionRepository.bump({ domain: 'worldbuilding' }, db) // 世界到 1
+      ProjectCoreRepository.update({ worldbuilding: '新的世界设定', synopsis: '第1章：按新世界写的大纲' })
+
+      // 世界在这一笔里被推到 2；大纲基于的就是第 2 版。
+      expect(UpstreamRevisionRepository.readRev('worldbuilding', 'book', db)).toBe(2)
+      expect(synopsisRef(db)).toEqual({ 'worldbuilding:book': 2, 'arc:book': 0 })
+    } finally { db.close() }
+  })
+
+  it('生成链落盘（commitSynopsis）：CAS 成功才写，且写的是当时的上游', () => {
+    const db = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      UpstreamRevisionRepository.bump({ domain: 'worldbuilding' }, db)
+      const core = ProjectCoreRepository.get(db)!
+      const expected = {
+        synopsis: core.synopsis, premise: core.premise, charactersArch: core.charactersArch,
+        worldbuilding: core.worldbuilding, plotStructurePlan: core.plotStructurePlan,
+        genre: core.genre, totalChapters: core.totalChapters, wordsPerChapter: core.wordsPerChapter,
+        writingLanguage: core.writingLanguage, plotStructure: core.plotStructure,
+        narrativePov: core.narrativePov, globalGuidance: core.globalGuidance,
+      }
+
+      expect(ProjectCoreRepository.commitSynopsis({ synopsis: '第1章：生成的大纲', expected }, db)).toBe(true)
+      expect(synopsisRef(db)).toEqual({ 'worldbuilding:book': 1, 'arc:book': 0 })
+
+      // 世界观再改一版 ⇒ 大纲这一段就旧了（判定侧据此提示「重建大纲」，不硬拦）。
+      UpstreamRevisionRepository.bump({ domain: 'worldbuilding' }, db)
+      const verdict = derivedStatus(synopsisRef(db), UpstreamRevisionRepository.snapshot(db))
+      expect(verdict.state).toBe('stale')
+      expect(describeDrift(verdict.state === 'stale' ? verdict.behind : [])).toBe('世界观 第1版→第2版')
+    } finally { db.close() }
+  })
+
+  it('空大纲清空来源：不留一个「我是最新」的假记录', () => {
+    const db = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      ProjectCoreRepository.update({ synopsis: '第1章：大纲' })
+      expect(synopsisRef(db)).not.toBeNull()
+
+      ProjectCoreRepository.update({ synopsis: '   ' })
+      // `null`（解析空串）= legacy = 「不知道」，不是「基于最新」。
+      expect(synopsisRef(db)).toBeNull()
     } finally { db.close() }
   })
 })

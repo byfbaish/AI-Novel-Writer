@@ -212,7 +212,7 @@ export function upsertVolumeHandoff(
   // 取「此刻」的版本快照：本期交接单只有作者填写（`source: 'author'`），
   // 保存动作即作者确认内容，所以快照时刻 = 保存时刻。
   const writeSourceRef = hasColumn(db, HANDOFFS_TABLE, 'source_ref')
-  const sourceRefValue = writeSourceRef ? currentSourceRefValue(db) : ''
+  const sourceRefValue = writeSourceRef ? currentSourceRefValue(db, 'chapter-plan') : ''
   // 原来这段是裸 SQL、没有事务。包一层是因为「读版本快照 + 写行」要落在同一个
   // 一致性点上：跨进程（工坊脚本）并发 bump 时，快照读在事务外会读到写之前的值，
   // 行却带着写之后的语义。

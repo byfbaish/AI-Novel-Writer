@@ -63,6 +63,7 @@ import { migrateSchema } from '../../migrations/runner'
 import { SqliteSchemaAdapter } from '../../migrations/sqlite-schema-adapter'
 import { BlueprintRepository, type BlueprintData } from '../../repositories/blueprint-repository'
 import { UpstreamRevisionRepository } from '../../repositories/upstream-revision-repository'
+import { ProjectCoreRepository } from '../../repositories/project-core-repository'
 import { upsertVolumeHandoff } from '../../repositories/volume-handoff-repository'
 import { normalizeKeyEvents } from '../../../src/shared/blueprint-key-events'
 import { registerDatabaseController } from '../db-controller'
@@ -252,6 +253,58 @@ describe('db:invalidation-plan —— 红线：plan 一个字节都不写', () =
 
       expect(result.success).toBe(true)
       expect(after).toEqual(before)
+    } finally { db.close() }
+  })
+})
+
+/**
+ * 中间环（P2-3 期 3b）：世界观/弧光改了 ⇒ 先报「情节大纲旧了」。
+ *
+ * 这一环由 M26 的 `project_core.synopsis_source_ref` 提供原料。两条边界要在这里钉：
+ * ① 有大纲、有来源 ⇒ 按来源判；② 有大纲、没来源 ⇒ 进 unseen（不准当「没事」）；
+ * ③ 压根没有大纲 ⇒ 不进候选（不准报「1 项判断不了」）。
+ */
+describe('db:invalidation-plan —— 中间环（大纲自己记 world/arc）', () => {
+  it('世界观再改一版 ⇒ 清单里出现「情节大纲」，而蓝图不在（那是它的下游）', async () => {
+    const db = openDb()
+    try {
+      // 先有世界/弧光，再落大纲 —— 现实里的顺序就是架构生成先写世界，再写大纲。
+      UpstreamRevisionRepository.bump({ domain: 'worldbuilding' }, db)
+      ProjectCoreRepository.update({ synopsis: '第1章：大纲' })
+      BlueprintRepository.upsertMany([card(1)])
+
+      const current = UpstreamRevisionRepository.snapshot(db).get('worldbuilding:book') ?? 0
+      mocks.getProjectDb.mockReturnValue(db)
+      const result = await call('db:invalidation-plan', {
+        domain: 'worldbuilding', rev: current + 1,
+      }) as PlanResult
+
+      expect(result.success).toBe(true)
+      expect(result.plan?.groups.map(group => group.kind)).toEqual(['outline'])
+      expect(result.plan?.groups[0].items[0].label).toBe('情节大纲')
+      // 提示但不硬拦：这一档只到 `once`。
+      expect(result.plan?.tier).toBe('once')
+    } finally { db.close() }
+  })
+
+  it('有大纲但没记过来源（存量项目）⇒ 进 unseen，不冒充「没事」', async () => {
+    const db = openDb()
+    try {
+      // 直接写文本、绕开 `update` 的来源登记，模拟 M26 之前留下的存量大纲。
+      db.prepare("UPDATE project_core SET synopsis = '第1章：老项目的大纲' WHERE id = 'main'").run()
+
+      const result = await planFor(db, 9)
+
+      expect(result.plan?.groups).toEqual([])
+      expect(result.plan?.unseen.kinds).toContain('outline')
+    } finally { db.close() }
+  })
+
+  it('压根没有大纲 ⇒ 不许出现 outline 那一项（连 unseen 都不行）', async () => {
+    const db = openDb()
+    try {
+      const result = await planFor(db, 9)
+      expect(result.plan?.unseen.kinds).not.toContain('outline')
     } finally { db.close() }
   })
 })

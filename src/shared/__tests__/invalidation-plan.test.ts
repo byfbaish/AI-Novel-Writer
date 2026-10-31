@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { computeInvalidationPlan, type InvalidationGroupKind } from '../invalidation-plan'
+import { computeInvalidationPlan,
+  mergeInvalidationPlans, type InvalidationGroupKind, type InvalidationPlan } from '../invalidation-plan'
 import {
   BOOK_SCOPE,
   describeDrift,
@@ -53,6 +54,7 @@ function changesOf(
 
 const OUTLINE = upstreamRefKey('outline', BOOK_SCOPE)
 const WORLD = upstreamRefKey('worldbuilding', BOOK_SCOPE)
+const ARC = upstreamRefKey('arc', BOOK_SCOPE)
 
 interface PlanInput {
   overrides?: ReadonlyArray<{ domain: UpstreamDomain; scope?: string; rev: number }>
@@ -61,6 +63,14 @@ interface PlanInput {
   blueprints?: ReadonlyArray<{ chapterNumber: number; sourceRef: Record<string, number> | null }>
   handoffs?: ReadonlyArray<{ label: string; chapters: readonly number[]; sourceRef: Record<string, number> | null }>
   plotTreeSourceRef: Record<string, number> | null
+  /**
+   * 大纲自己的来源（M26 中间环）。**这里给默认 `null` 与 `plotTreeSourceRef` 不同**：
+   * 剧情树恒为候选必须逐例显式，而大纲只在「世界观/弧光变了」那一族用例里才有意义；
+   * 每条都写一遍只会让那些用例被一串无关字段淹没。生产侧仍是必填（漏传是类型错误）。
+   */
+  synopsisSourceRef?: Record<string, number> | null
+  /** 默认 `false`：老用例测的是别的组，不该被一条「没有大纲」的候选搅动期望值。 */
+  hasSynopsis?: boolean
 }
 
 function plan(input: PlanInput) {
@@ -71,6 +81,8 @@ function plan(input: PlanInput) {
     blueprints: input.blueprints ?? [],
     handoffs: input.handoffs ?? [],
     plotTreeSourceRef: input.plotTreeSourceRef,
+    synopsisSourceRef: input.synopsisSourceRef ?? null,
+    hasSynopsis: input.hasSynopsis ?? false,
   })
 }
 
@@ -341,5 +353,167 @@ describe('computeInvalidationPlan · behind 只给数据不给文案', () => {
     // 文案由 UI 层渲染，且现在必须带版本区间（S4b）。
     expect(describeDrift(item.behind)).toBe('情节大纲 第3版→第6版')
     expect(item.label).toBe('第 12 章')
+  })
+})
+
+/**
+ * 中间环（P2-3 期 3b，M26）：大纲自己也要记「基于哪一版世界观/弧光」。
+ *
+ * 没有这一环，`S6a` 把蓝图收窄成只记 `outline` 之后，「世界改了」就在整条链路上
+ * 静默了 —— 作者明确要求「补齐中间环，不然链条缺一环」。这一组钉的就是那根环，
+ * 以及它的**方向**：级联逐层发生，不跨层直传。
+ */
+describe('computeInvalidationPlan · 中间环：大纲记 world/arc', () => {
+  const SYNOPSIS_REF = { [WORLD]: 1, [ARC]: 1 }
+
+  it('世界观再改一版 ⇒ 报「情节大纲旧了」，蓝图不动（蓝图是大纲的下游）', () => {
+    const result = plan({
+      overrides: [{ domain: 'worldbuilding', rev: 2 }],
+      revisions: snapshotOf({ [OUTLINE]: 3, [WORLD]: 1, [ARC]: 1 }),
+      // 蓝图只记 outline（S6a 之后的新写法）：世界观变动碰不到它们。
+      blueprints: [{ chapterNumber: 12, sourceRef: { [OUTLINE]: 3 } }],
+      // 剧情树**故意记三域**：它是拿整份架构直接生成的，三个域都是它的直接上游，
+      // 不是「跨层直传」。所以这里它照样命中 —— 这条不是 bug，是既定口径。
+      plotTreeSourceRef: { [OUTLINE]: 3, [WORLD]: 1, [ARC]: 1 },
+      synopsisSourceRef: SYNOPSIS_REF,
+      hasSynopsis: true,
+    })
+    expect(result.groups.map(group => group.kind)).toEqual(['outline', 'plot-tree'])
+    const outline = result.groups[0]
+    expect(outline.items[0].label).toBe('情节大纲')
+    expect(outline.items[0].chapters).toBeNull()
+    expect(result.tier).toBe('once')
+    // 蓝图一条都没有：世界观的改动在收窄之后不再直接打到蓝图。
+    expect(result.groups.some(group => group.kind === 'blueprint')).toBe(false)
+    // 大纲覆盖全书 ⇒ 说不出「哪些章没事」。
+    expect(result.unaffected).toBeNull()
+  })
+
+  it('作者重生成大纲之后：大纲回到 valid，蓝图才 stale —— 逐层级联', () => {
+    const result = plan({
+      overrides: [{ domain: 'outline', rev: 4 }],
+      revisions: snapshotOf({ [OUTLINE]: 3, [WORLD]: 2, [ARC]: 1 }),
+      changes: changesOf({ [OUTLINE]: { 4: [] } }),
+      blueprints: [
+        { chapterNumber: 12, sourceRef: { [OUTLINE]: 3 } },
+        { chapterNumber: 13, sourceRef: { [OUTLINE]: 4 } },
+      ],
+      plotTreeSourceRef: null,
+      // 大纲在「世界观第 2 版」时重生成过 ⇒ 它自己对 world/arc 是新的。
+      synopsisSourceRef: { [WORLD]: 2, [ARC]: 1 },
+      hasSynopsis: true,
+    })
+    expect(result.groups.map(group => group.kind)).toEqual(['blueprint'])
+    expect(result.groups[0].count).toBe(1)
+    expect(result.groups[0].items[0].label).toBe('第 12 章')
+  })
+
+  it('弧光再改一版同样只打到大纲（弧光是大纲的上游）', () => {
+    const result = plan({
+      overrides: [{ domain: 'arc', rev: 2 }],
+      revisions: snapshotOf({ [OUTLINE]: 3, [WORLD]: 1, [ARC]: 1 }),
+      plotTreeSourceRef: null,
+      synopsisSourceRef: SYNOPSIS_REF,
+      hasSynopsis: true,
+    })
+    expect(result.groups.map(group => group.kind)).toEqual(['outline'])
+    expect(describeDrift(result.groups[0].items[0].behind)).toBe('弧光 第1版→第2版')
+  })
+
+  it('有大纲但没记过来源（存量）⇒ 进 unseen，不进 groups', () => {
+    const result = plan({
+      revisions: snapshotOf({ [OUTLINE]: 3, [WORLD]: 1, [ARC]: 1 }),
+      plotTreeSourceRef: { [OUTLINE]: 3 },
+      synopsisSourceRef: null,
+      hasSynopsis: true,
+    })
+    expect(result.groups).toEqual([])
+    expect(result.unseen).toEqual({ count: 1, kinds: ['outline'] })
+    // 「不知道」也要让作者看见（主稿 §9.2）：弹一次、不阻断、不给空清单。
+    expect(result.tier).toBe('once')
+  })
+
+  it('压根没有大纲 ⇒ 不进候选，也不许报「1 项判断不了」', () => {
+    const result = plan({
+      revisions: snapshotOf({ [OUTLINE]: 3, [WORLD]: 1, [ARC]: 1 }),
+      plotTreeSourceRef: { [OUTLINE]: 3 },
+      synopsisSourceRef: null,
+      hasSynopsis: false,
+    })
+    expect(result.groups).toEqual([])
+    expect(result.unseen).toEqual({ count: 0, kinds: [] })
+    // 「无事可报」必须是 silent：新建项目第一次生成大纲时弹一张空清单，
+    // 第三次就成了盲点确定（主稿 §8.3）。
+    expect(result.tier).toBe('silent')
+  })
+})
+
+/**
+ * 多域合并（S6a 之后才需要）：勾了多个上游域时，一份清单只答得了一半。
+ *
+ * 三条口径见 `mergeInvalidationPlans` 的注释，这里逐条钉住 —— 尤其第 2 条
+ * （`unseen` 不许相加）：每个域的清单都扫同一批候选，相加会把同一行数成 N 项，
+ * 而「多了几条判断不了」正是最容易被随手写错、又最没人会去核的那类数字。
+ */
+describe('mergeInvalidationPlans', () => {
+  const WORLD_PLAN: InvalidationPlan = {
+    groups: [{
+      kind: 'outline',
+      count: 1,
+      items: [{ label: '情节大纲', chapters: null, behind: [{ key: WORLD, have: 1, need: 2 }] }],
+    }],
+    unseen: { count: 1, kinds: ['plot-tree'] },
+    tier: 'once',
+    unaffected: null,
+  }
+  const OUTLINE_PLAN: InvalidationPlan = {
+    groups: [{
+      kind: 'blueprint',
+      count: 1,
+      items: [{ label: '第 12 章', chapters: [12], behind: [{ key: OUTLINE, have: 3, need: 4 }] }],
+    }],
+    // 同一个剧情树在每一份清单里都是 legacy —— 它是同一行，不是两行。
+    unseen: { count: 1, kinds: ['plot-tree'] },
+    tier: 'once',
+    unaffected: { from: 4, to: 11 },
+  }
+
+  it('两份清单的组按 kind 并起来，`unseen` 取最大而不是相加', () => {
+    const merged = mergeInvalidationPlans([WORLD_PLAN, OUTLINE_PLAN])
+    expect(merged.groups.map(group => group.kind)).toEqual(['outline', 'blueprint'])
+    // 两份都报了同一条剧情树 legacy ⇒ 合并后仍是 1，不是 2。
+    expect(merged.unseen).toEqual({ count: 1, kinds: ['plot-tree'] })
+    // 一份说不清「哪段没事」⇒ 合并后也不许报（说错比不说更糟）。
+    expect(merged.unaffected).toBeNull()
+  })
+
+  it('同一行落后于两个域 ⇒ 一条（不是两条），证据取并集', () => {
+    const worldHit: InvalidationPlan = {
+      groups: [{ kind: 'blueprint', count: 1, items: [{ label: '第 12 章', chapters: [12], behind: [{ key: WORLD, have: 1, need: 2 }] }] }],
+      unseen: { count: 0, kinds: [] }, tier: 'once', unaffected: null,
+    }
+    const outlineHit: InvalidationPlan = {
+      groups: [{ kind: 'blueprint', count: 1, items: [{ label: '第 12 章', chapters: [12], behind: [{ key: OUTLINE, have: 3, need: 4 }] }] }],
+      unseen: { count: 0, kinds: [] }, tier: 'once', unaffected: null,
+    }
+    const merged = mergeInvalidationPlans([worldHit, outlineHit])
+    expect(merged.groups).toHaveLength(1)
+    expect(merged.groups[0].count).toBe(1)
+    expect(merged.groups[0].items[0].behind.map(drift => drift.key)).toEqual([WORLD, OUTLINE])
+  })
+
+  it('tier 取最高一档：任何一个域带来的后果都成立', () => {
+    const strong: InvalidationPlan = {
+      groups: [{ kind: 'handoff', count: 1, items: [{ label: '第1卷交接单', chapters: [1], behind: [] }] }],
+      unseen: { count: 0, kinds: [] }, tier: 'strong', unaffected: null,
+    }
+    expect(mergeInvalidationPlans([WORLD_PLAN, strong]).tier).toBe('strong')
+    expect(mergeInvalidationPlans([WORLD_PLAN, { ...WORLD_PLAN, tier: 'silent' }]).tier).toBe('once')
+  })
+
+  it('全 silent ⇒ 合并也是 silent（空清单不许被合并成一条提示）', () => {
+    const silent: InvalidationPlan = { groups: [], unseen: { count: 0, kinds: [] }, tier: 'silent', unaffected: null }
+    expect(mergeInvalidationPlans([silent, silent]).tier).toBe('silent')
+    expect(mergeInvalidationPlans([]).tier).toBe('silent')
   })
 })

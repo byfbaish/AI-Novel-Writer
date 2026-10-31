@@ -141,7 +141,7 @@ export class PlotTreeRepository {
     const result = writeSourceRef
       ? db.prepare(`
       UPDATE project_core SET plot_tree_snapshot = ?, plot_tree_source_ref = ? WHERE id = 'main'
-    `).run(JSON.stringify(validated), currentSourceRefValue(db))
+    `).run(JSON.stringify(validated), currentSourceRefValue(db, 'architecture'))
       : db.prepare(`
       UPDATE project_core SET plot_tree_snapshot = ? WHERE id = 'main'
     `).run(JSON.stringify(validated))

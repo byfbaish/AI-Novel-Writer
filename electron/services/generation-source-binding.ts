@@ -34,6 +34,30 @@ import { captureLegacyRosterGenerationContext, legacyRosterGenerationTask } from
 import { readPortableCurrentAuthority } from './portable-current-authority';
 import { currentCharacterProjection } from './current-character-projection';
 import { plotOutlinePolicy, plotOutlineExpected, plotOutlineConfirmedPrefix, type PlotOutlineSource } from '../../src/shared/plot-outline-contract';
+/**
+ * `project_core` 里**不是作者内容**的列 —— 一律不进来源指纹。
+ *
+ * 这张表被当作一条「作者设定」来源（`project-core:main`，`author-constraint`），
+ * 投影方式是**整行减黑名单**（`SELECT *` + 过滤）。于是每加一列都自动进了指纹：
+ * 加得对（内容列）是预期，加错（记账列）就是**隐形的来源变更**。
+ *
+ * - `created_at` / `updated_at`：时间戳，每次写都在变。
+ * - `character_states` / `plot_tree_snapshot`：整块派生快照，本身不是设定。
+ * - `plot_tree_source_ref`（M25）：剧情树来源。它只在**剧情树本身重生成**时变，
+ *   而剧情树是另一条独立来源 ⇒ 算进来是冗余的；但它至少不会无缘无故变。
+ * - **`synopsis_source_ref`（M26 / 期 3b）：必须排除。** 它记的是「写这版大纲时
+ *   世界/弧光是什么版本」，**世界或弧光 bump 一次它就变，而作者对 project_core
+ *   一个字都没改**。算进指纹的后果实测到了（2026-10-31）：规划恢复里的
+ *   `plotOutlineTargetCurrent` 拿当前行与建单时的 `origin.core` 深比，作者存过稿之后
+ *   这一列从 `''` 变成真 JSON ⇒ 判 `GENERATION_SOURCE_CHANGED`，
+ *   「作者存稿」这条恢复路径整条断掉（`main-generation-owner.test.ts` 三例红）。
+ *   世界/弧光真变了，有它们自己的来源去报，不缺这一列。
+ *
+ * ⇒ 下一版再加记账列时，**先问「它会不会在作者没改这张表时变」，会就加进来**。
+ */
+export const PROJECT_CORE_NON_CONTENT_COLUMNS = [
+    'created_at', 'updated_at', 'character_states', 'plot_tree_snapshot', 'synopsis_source_ref',
+] as const;
 export type SafeGenerationModelReceipt = Omit<ModelExecutionLeaseReceipt, 'leaseId' | 'createdAt' | 'expiresAt'>;
 export interface GenerationSourceBindingInput {
     plotOutlineSource?: PlotOutlineSource;
@@ -357,7 +381,7 @@ export function buildGenerationSourceBinding(deps: GenerationSourceBindingDepend
         const raw = deps.db.prepare("SELECT * FROM project_core WHERE id='main'").get() as Record<string, unknown> | undefined;
         if (!raw)
             fail('GENERATION_PROJECT_CORE_MISSING');
-        const core = without(raw, ['created_at', 'updated_at', 'character_states', 'plot_tree_snapshot']);
+        const core = without(raw, [...PROJECT_CORE_NON_CONTENT_COLUMNS]);
         const language: WritingLanguage = core.writing_language === 'en-US' ? 'en-US' : 'zh-CN';
         add('project-core:main', 0, stable(core), 'author-constraint', 'current project settings');
         if (input.legacyRosterKey) {

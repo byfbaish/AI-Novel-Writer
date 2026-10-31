@@ -88,8 +88,10 @@ describe('portable v7 field policy', () => {
     // P2-2 / M24：+1 表 6 列（upstream_revisions）—— 64/616 → 65/622。
     // P2-2 期 2 / M25：+3 列（两张派生表的 source_ref + project_core.plot_tree_source_ref）
     //   —— 65/622 → 65/625。
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 65, fields: 625 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 65, fields: 625 })
+    // P2-3 期 3b / M26：+1 列（project_core.synopsis_source_ref，大纲自身也记世界/弧光版本）
+    //   —— 65/625 → 65/626。
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 65, fields: 626 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 65, fields: 626 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -135,7 +137,8 @@ describe('portable v7 field policy', () => {
     // + P0-1 / M23：+1 列（chapter_deletion_operations.keep_draft）—— 260 → 261。
     // + P2-2 / M24：+1 表 6 列（upstream_revisions）—— 261 → 267。
     // + P2-2 期 2 / M25：+3 列（派生的来源列）—— 267 → 270。
-    expect(added).toHaveLength(270)
+    // + P2-3 期 3b / M26：+1 列（project_core.synopsis_source_ref）—— 270 → 271。
+    expect(added).toHaveLength(271)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -255,7 +258,8 @@ describe('portable v7 field policy', () => {
       // P20-3 / M22 + P0-1 / M23：再 +2 列（各自一列）⇒ 64/616。
       // P2-2 / M24：再 +1 表 6 列 ⇒ 65/622。
       // P2-2 期 2 / M25：再 +3 列 ⇒ 65/625。
-      expect({ tables: tables.length, fields }).toEqual({ tables: 65, fields: 625 })
+      // P2-3 期 3b / M26：再 +1 列（synopsis_source_ref）⇒ 65/626。
+      expect({ tables: tables.length, fields }).toEqual({ tables: 65, fields: 626 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)

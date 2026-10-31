@@ -688,7 +688,7 @@ export class BlueprintRepository {
             blueprint.userGuidance,
             blueprint.notes,
             blueprint.notesUpdatedAt,
-            ...(writeSourceRef ? [currentSourceRefValue(db, sourceRev)] : []),
+            ...(writeSourceRef ? [currentSourceRefValue(db, 'chapter-plan', sourceRev)] : []),
         ]
         db.prepare(`
       INSERT INTO blueprints (${columns.join(', ')})

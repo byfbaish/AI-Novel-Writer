@@ -6,8 +6,9 @@
  */
 import { getProjectDb } from '../database'
 import { CREATIVE_STRATEGIES, type CreativeStrategy } from '../../src/shared/reasoning-types'
-import { expandChapterRange, type UpstreamDomain } from '../../src/shared/upstream-revisions'
+import { expandChapterRange, type UpstreamDomain, type DerivedSourceRef } from '../../src/shared/upstream-revisions'
 import { UpstreamRevisionRepository } from './upstream-revision-repository'
+import { hasColumn, parseSourceRefValue, synopsisSourceRefValue } from './derived-source-ref'
 import {
     DEFAULT_WRITING_LANGUAGE,
     resolveWritingLanguage,
@@ -245,6 +246,24 @@ export class ProjectCoreRepository {
             // 也可能直接写它。漏了这条，「作者在设置里改了大纲」就完全不留痕。
             if ('synopsis' in data) touched.push('outline')
             for (const domain of touched) UpstreamRevisionRepository.bump({ domain }, db)
+
+            // P2-3 期 3b（M26）：大纲自己的上游来源。
+            //
+            // **必须在 bump 之后算**：这一笔要记的是「写完这段大纲时，世界观与弧光
+            // 各是第几版」。先算会让同一次调用里的 `worldbuilding` bump 漏进去
+            // —— 那正是「世界改了、大纲却记成新版本」的假有效。
+            //
+            // 空大纲不记来源：清空之后没有「基于什么」可言，记了新版本会让
+            // 「重新生成大纲」这件事永远不提示。空串 = `legacy`（不知道）。
+            if ('synopsis' in data) {
+                const nextSynopsis = (data as Record<string, unknown>).synopsis
+                const refValue = typeof nextSynopsis === 'string' && nextSynopsis.trim()
+                    ? synopsisSourceRefValue(db)
+                    : ''
+                if (hasColumn(db, 'project_core', 'synopsis_source_ref')) {
+                    db.prepare("UPDATE project_core SET synopsis_source_ref = ? WHERE id = 'main'").run(refValue)
+                }
+            }
         })()
     }
 
@@ -297,11 +316,30 @@ export class ProjectCoreRepository {
                 ? expandChapterRange(request.authorRecovery.committedRange)
                 : [],
         }, db)
+        // P2-3 期 3b（M26）：记下这段大纲基于哪一版世界观 / 弧光。
+        // 位置与 `update` 那条一致：bump 之后、同一事务内。
+        if (request.synopsis.trim() && hasColumn(db, 'project_core', 'synopsis_source_ref')) {
+            db.prepare("UPDATE project_core SET synopsis_source_ref = ? WHERE id = 'main'")
+                .run(synopsisSourceRefValue(db))
+        }
         return true
     }
 
-    /** 清空由架构/导入/AI 分析生成的创作字段，保留项目名、章节规模与基础偏好 */
-    static resetCreativeFields(): void {
+    /**
+     * 大纲自己的上游来源（M26 新列）。列不存在、空串、解析失败一律 `null`（⇒ `legacy`）。
+     *
+     * 与剧情树 `PlotTreeRepository.readSourceRef` 同一形状：这是**旁路账本**，
+     * 读不到就是「不知道」，绝不能抛 —— 它只用来决定要不要提示，不参与任何写入判定。
+     */
+    static readSynopsisSourceRef(db = getProjectDb()): DerivedSourceRef | null {
+        if (!db || !hasColumn(db, 'project_core', 'synopsis_source_ref')) return null
+        const raw = db.prepare(
+            "SELECT synopsis_source_ref FROM project_core WHERE id = 'main'",
+        ).pluck().get() as string | undefined
+        return parseSourceRefValue(raw)
+    }
+
+    /** 清空由架构/导入/AI 分析生成的创作字段，保留项目名、章节规模与基础偏好 */    static resetCreativeFields(): void {
         ProjectCoreRepository.update({
             writingStyle: '',
             referenceWorks: '',

@@ -58,7 +58,7 @@ export function rewriteBlueprintCharacters(
   )
   // 来源快照按「这次的新 rev」算**一次**：每行都算等于每行读一遍整张版本表。
   const useSourceRef = outlineRev !== null && hasColumn(db, 'blueprints', 'source_ref')
-  const sourceRefValue = useSourceRef ? currentSourceRefValue(db, outlineRev) : ''
+  const sourceRefValue = useSourceRef ? currentSourceRefValue(db, 'chapter-plan', outlineRev) : ''
   const update = useSourceRef
     ? db.prepare(`
         UPDATE blueprints

@@ -35,7 +35,7 @@ import {
  * 设计稿：[`docs/design/architecture/upstream-invalidation-phase3-plan-and-ui.md`](../../docs/design/architecture/upstream-invalidation-phase3-plan-and-ui.md)
  */
 
-export type InvalidationGroupKind = 'blueprint' | 'handoff' | 'plot-tree'
+export type InvalidationGroupKind = 'outline' | 'blueprint' | 'handoff' | 'plot-tree'
 
 /**
  * 「假想这个域再改一版」的请求值。
@@ -97,8 +97,11 @@ export interface InvalidationPlan {
 /**
  * 组的固定顺序。UI 顺序必须稳定，否则同一份数据两次渲染会跳行；
  * 下面 `tierFor` 之外的遍历都走这里，新增类型时改这一个对象即可。
+ *
+ * `outline` 排第一不是排版偏好：它就是**中间那一环**（P2-3 期 3b），比它下游的
+ * 蓝图/交接单更上游。做成硬拦之前，作者看到的顺序应当与级联发生的顺序一致。
  */
-const GROUP_ORDER: readonly InvalidationGroupKind[] = ['blueprint', 'handoff', 'plot-tree']
+const GROUP_ORDER: readonly InvalidationGroupKind[] = ['outline', 'blueprint', 'handoff', 'plot-tree']
 
 /**
  * 假想快照：在真实版本表上叠加 `overrides`。
@@ -190,10 +193,42 @@ export function computeInvalidationPlan(input: {
   blueprints: ReadonlyArray<{ chapterNumber: number; sourceRef: DerivedSourceRef | null }>
   handoffs: ReadonlyArray<{ label: string; chapters: readonly number[]; sourceRef: DerivedSourceRef | null }>
   plotTreeSourceRef: DerivedSourceRef | null
+  /**
+   * 大纲自己的来源（M26）。**必填**：漏传会让「世界改了 ⇒ 大纲旧了」这一环
+   * 静默消失，而那正是本期存在的理由。`null` = 有大纲但没记过来源 ⇒ `legacy` ⇒ 进 `unseen`。
+   */
+  synopsisSourceRef: DerivedSourceRef | null
+  /**
+   * 这本书到底有没有大纲文本。
+   *
+   * **「没有大纲」不是「不知道大纲」**：两者都表现为 `synopsisSourceRef === null`，
+   * 但前者不该报「有一项判断不了」——新建项目第一次生成大纲时，弹一张
+   * 「1 项无法判断」的清单等于在作者最该点确认的那一刻制造噪声，而
+   * §8.3 的教训正是「无事可报还弹窗，第三次就成了盲点确定」。
+   * 所以这里要一个显式的存在性信号，而不是靠 `null` 一词双义。
+   */
+  hasSynopsis: boolean
 }): InvalidationPlan {
   const hypothetical = overlayOverrides(input.revisions, input.overrides)
 
   const candidates: Candidate[] = []
+
+  // 大纲 = 中间那一环（P2-3 期 3b）。它依赖 worldbuilding + arc，不依赖自己。
+  //
+  // **没有大纲就不进候选**：没有的东西谈不上「旧了」，也不该被算进「判断不了」。
+  //
+  // `chapters: null` 是**语义正确**而不是偷懒：一段大纲覆盖全书，说得出「整本大纲旧了」
+  // 却说不出「哪几章」——`synopsis` 是一整块文本，没有章粒度。硬给一个空数组会走
+  // 「覆盖全部章」的分支，效果相同但意义不同；给一个具体区间则是在编造。
+  if (input.hasSynopsis) {
+    candidates.push({
+      kind: 'outline',
+      label: '情节大纲',
+      chapters: null,
+      sourceRef: input.synopsisSourceRef,
+    })
+  }
+
   for (const blueprint of input.blueprints) {
     candidates.push({
       kind: 'blueprint',
@@ -278,4 +313,81 @@ function tierFor(groups: readonly InvalidationGroup[], unseenCount: number): Inv
   if (groups.length === 0 && unseenCount === 0) return 'silent'
   const hasHandoff = groups.some((group) => group.kind === 'handoff' && group.count > 0)
   return hasHandoff ? 'strong' : 'once'
+}
+
+const TIER_RANK: Readonly<Record<InvalidationTier, number>> = { silent: 0, once: 1, strong: 2 }
+
+/**
+ * 多域合并（S6a 之后必须存在）。
+ *
+ * ## 为什么不能「只问最上游那一域」了
+ *
+ * 收窄之前三域全记，问哪个域报出来都是同一批行，所以期 3a 只问最上游那个。收窄之后
+ * 一张蓝图只记 `outline`：勾了「世界观 + 情节大纲」时，只问世界观会得到「大纲旧了」，
+ * 只问大纲会得到「蓝图旧了」——**少问一个就少一半**。
+ *
+ * ## 合并口径三条
+ *
+ * 1. **行按 `(kind, label)` 去重，`behind` 取并集**（同一个键保留先出现的证据）。
+ *    同一张蓝图可能同时落后于世界观与大纲，那是两条证据，都要摆出来。
+ * 2. **`unseen` 取每个 kind 的最大值后再求和**：每个域的清单都扫同一批候选，
+ *    同一行会在每份清单里各出现一次 —— 相加会把它数成 N 项（虚增），取最大才如实。
+ * 3. **`unaffected` 只要有一份说不清就不报**（任一是 `null`，或两份说法不一致）。
+ *    「哪一段没事」说错比不说更糟：作者会据此跳过那几章。
+ *
+ * `tier` 取最高的一档：任何一个域带来的后果都成立，取低等于替作者降级。
+ */
+export function mergeInvalidationPlans(plans: readonly InvalidationPlan[]): InvalidationPlan {
+  if (plans.length === 0) {
+    return { groups: [], unseen: { count: 0, kinds: [] }, tier: 'silent', unaffected: null }
+  }
+  if (plans.length === 1) return plans[0]
+
+  const byKind = new Map<InvalidationGroupKind, Map<string, InvalidationItem>>()
+  for (const plan of plans) {
+    for (const group of plan.groups) {
+      const items = byKind.get(group.kind) ?? new Map<string, InvalidationItem>()
+      for (const item of group.items) {
+        const existing = items.get(item.label)
+        if (!existing) { items.set(item.label, item); continue }
+        const seen = new Set(existing.behind.map((drift) => drift.key))
+        const merged = [...existing.behind, ...item.behind.filter((drift) => !seen.has(drift.key))]
+        items.set(item.label, { ...existing, behind: merged })
+      }
+      byKind.set(group.kind, items)
+    }
+  }
+
+  const groups: InvalidationGroup[] = []
+  for (const kind of GROUP_ORDER) {
+    const items = byKind.get(kind)
+    if (!items || items.size === 0) continue
+    const list = [...items.values()]
+    groups.push({ kind, count: list.length, items: list })
+  }
+
+  let unseenCount = 0
+  const unseenKinds = new Set<InvalidationGroupKind>()
+  for (const kind of GROUP_ORDER) {
+    let best = 0
+    for (const plan of plans) {
+      if (!plan.unseen.kinds.includes(kind)) continue
+      best = Math.max(best, plan.unseen.count)
+    }
+    if (best > 0) { unseenCount += best; unseenKinds.add(kind) }
+  }
+
+  const tiers = plans.map((plan) => plan.tier)
+  const tier = tiers.reduce((left, right) => (TIER_RANK[right] > TIER_RANK[left] ? right : left), 'silent' as InvalidationTier)
+
+  const gaps = plans.map((plan) => plan.unaffected)
+  const first = gaps[0]
+  const agreed = first !== null && gaps.every((gap) => gap !== null && gap.from === first.from && gap.to === first.to)
+
+  return {
+    groups,
+    unseen: { count: unseenCount, kinds: GROUP_ORDER.filter((kind) => unseenKinds.has(kind)) },
+    tier,
+    unaffected: agreed ? first : null,
+  }
 }

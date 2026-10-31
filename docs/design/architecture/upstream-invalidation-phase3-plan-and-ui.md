@@ -1,6 +1,6 @@
 # 上游失效 · 期 3 实施设计与作业图
 
-> 状态：已实施 · 2026-10-31 · 期 3a（S1–S5）+ S4b（硬拒带溯源链）+ 主入口接线（方案 B）；S6a / S6 / S6c / S7 未排期
+> 状态：已实施 · 2026-10-31 · 期 3a（S1–S5）+ S4b（硬拒带溯源链）+ 主入口接线（方案 B）+ 期 3b（S6a 收窄 + 中间环）；S6 / S6c / S7 未排期
 > **施工期补的两个口径待作者裁定**：① request `rev <= 0` =「假想再改一版」（借 0 表达，不新增签名/通道）；② 影响范围的四种情形本期只判得出三种。见 §六。
 > **S6 的裁定已定（2026-10-31）**：定稿章只记 `outline` 一域（主稿 §十·2 ①）；并把 `BOOK_SOURCE_KEYS` 三域全记收窄成按类型分（S6a）。**S1–S5 不受影响，照原样施工。**
 > 上级稿：[`upstream-version-and-derived-invalidation-design.md`](upstream-version-and-derived-invalidation-design.md) §八（强提醒）· §九 步 4/5
@@ -239,7 +239,9 @@ export function computeInvalidationPlan(input: {
 
 ## 五、本稿不做
 
-- **不给「已定稿章节」组硬造判据**（无原料）。**前置已定（2026-10-31）**：S6a 收窄 `source_ref` → S6 加 M26 记 `outline_rev` + 补大纲的 world/arc rev。只是不排期。
+- **不给「已定稿章节」组硬造判据**（无原料）。**前置已定（2026-10-31）**：S6a 收窄 `source_ref` 已落地（期 3b）；
+  S6 只差「定稿章组记 `outline_rev`」这一步，**迁移编号顺延为 M27**（M26 已被中期环的
+  `project_core.synopsis_source_ref` 用掉）。只是不排期。
 - **不做伏笔计划组**。主稿 §八 已裁定它不进版本表（作者输入即上游）。
 - **不做处置面板**（S7，主稿 §九 步 5「最后做」）。
 - **不做回滚原语**（主稿 §8.5）。卷回滚属 P0-1 残留，其"波及范围"口径已写进主稿 §十·2 ④，实现时照此。
@@ -312,6 +314,77 @@ export function computeInvalidationPlan(input: {
 **测试**：`src/components/dialogs/__tests__/workflow-launch-dialogs.browser.tsx` 新增 5 例 ——
 清单先出且确认键禁用 / `silent` 不打扰 / 拿不到清单放行 / 前提·角色不问清单 / 两个闸门的先后。
 （同文件 34 例全绿；`ArchFileViewer` 与恢复稿相关 65 例全绿。）
+
+### 期 3b 落地记录：S6a 收窄 + 中间环（2026-10-31）
+
+**为什么两件事必须同批**（这是本期的唯一关键判断，别拆开做）：
+
+- **只收窄不补环** ⇒ 世界观改动在整条链路上彻底静默：蓝图只记 `outline` 之后，
+  「世界改了 ⇒ 大纲旧了 ⇒ 蓝图旧了」中间那一环不存在，改设定连大纲都不会变旧。
+- **只补环不收窄** ⇒ 改一个设定全部章节写不了：蓝图仍三域全记，世界 bump 一次，
+  所有蓝图行立即 stale，正文层硬拒（A 类）全开。
+
+**S6a：`BOOK_SOURCE_KEYS` 按派生类型分**（`electron/repositories/derived-source-ref.ts`）
+
+| 派生类型 | 用在哪 | 记哪几域 |
+|---|---|---|
+| `chapter-plan` | 蓝图（两处写入点）、卷交接单 | 只记 `outline` |
+| `architecture` | 剧情树 | 三域（world / arc / outline，原 `BOOK_SOURCE_KEYS`） |
+
+- 入参从「三域全记」改成 `currentSourceRefValue(db, kind, outlineRev?)`；四个调用点各自表态。
+- **不能只留一张表**：剧情树的语义确实是「全书」，而蓝图/交接单的上游是情节大纲。
+  两张表各写一遍会出现第三份口径，所以做成 `SOURCE_KEYS_BY_KIND`。
+
+**中间环：`project_core.synopsis_source_ref`（M26，schema v26 → v27）**
+
+- 大纲**自身**也记 world / arc 版本（`SYNOPSIS_SOURCE_KEYS`），补上「世界改了 ⇒ 大纲旧了」这一环。
+- 写入位置严格跟 bump 一致：`ProjectCoreRepository.update()` 在 bump **之后**写；
+  `commitSynopsis()` 在 CAS 成功后**同事务**写。空大纲写 `''`。
+- `''` 与「没这一列」是两回事：`hasSynopsis`（有没有大纲）与 `synopsisSourceRef === null`
+  （知不知道它是哪版）**必须分开问** —— 「没有大纲」不进候选、不报 `unseen`；
+  「有大纲但不知道版本」才按 `legacy` 计入 `unseen`。
+- **清除创作字段时同事务置空**（`project-clear-repository.ts`，与删 `upstream_revisions`、
+  清 `plot_tree_source_ref` 处相邻）：`synopsis` 已清空、版本账已删，留着这串 JSON 会让
+  **清除后重新生成**的大纲被记成「写于 rev5」而新账本从 rev0 起算 ⇒ 一份刚生成的大纲判 stale。
+- `synopsisSourceRefValue()` 里**缺键一律显式记 `0`，不许跳过**：`buildSourceRef` 会跳过空值，
+  跳过等于把该域永久排除在判定之外（实测症状：弧光首次 bump 完全无声）。
+
+**分域各问取并集**（S6a 的必然结果）：`computeInvalidationPlan` 的入参加
+`synopsisSourceRef` + `hasSynopsis`（**必填**，逼调用方表态，不给默认值）；`outline` 组排在
+`GROUP_ORDER` 首位。`ArchitectureConfirmDialog` 的 `resolveInvalidationDomains()` 从「只问最上游一域」
+改成「每个域各问一次，`mergeInvalidationPlans` 取并集」。
+
+**`mergeInvalidationPlans` 三条算法口径**（写错了就是静默少报/多报）：
+
+1. `unseen` **按 kind 取各份的最大值后求和**，不许逐份相加 —— 同一批剧情树在三份单子里都算
+   「看不清」，逐份相加会把一个说不清的派生算成三个。
+2. `tier` 取最高档（`silent < notice < strong`）。
+3. `unaffected` **任一份说不清就不报** —— 说得出空隙的那份不能替说不出的那份作保。
+
+**M26 踩到的一个隐形坑（写下来给下一版加列的人）**
+
+`project_core` 被当成一条「作者设定」来源（`project-core:main`），投影方式是**整行减黑名单**
+（`SELECT *` + 过滤 `created_at/updated_at/character_states/plot_tree_snapshot`）。于是**每加一列都自动进了来源指纹**：
+
+- `generation-source-binding.ts` 用它算 `stable(core)` 摘要；
+- `main-generation-owner.ts` 的 `plotOutlineTargetCurrent` 拿当前行与建单时的 `origin.core` 深比。
+
+`synopsis_source_ref` 会在**世界/弧光 bump 时变，而作者对 `project_core` 一个字都没改** ⇒
+作者存稿之后这一列从 `''`（M26 迁移给旧行的默认值）变成真 JSON，深比失败 ⇒
+`main-generation-owner.test.ts` 三例红（`author-saved` 变 `source-changed`、
+报 `GENERATION_PLANNING_CONTINUATION_SOURCE_CHANGED` 而不是 `RANGE_CHANGED`）。
+**「作者存稿」这条恢复路径整条断了**，且只在存稿之后才显形。
+
+修法：两处共用一份 `PROJECT_CORE_NON_CONTENT_COLUMNS`（`generation-source-binding.ts` 导出），
+把 `synopsis_source_ref` 列进黑名单。**判据：会不会在作者没改这张表时变 —— 会就加进去。**
+（`plot_tree_source_ref` 仍留在指纹里：它只在剧情树本身重生成时变，那时确实该判来源变更。）
+
+**测试**：`invalidation-plan.test.ts`（中间环 5 例 + 合并 4 例，合计 39 例）·
+`m26-installed-lane.test.ts`（4 例：列在 / `notnull=1` / 默认 `''` / 幂等）·
+`upstream-source-ref-writes.test.ts`（16 例，含中间环 4 例写侧）·
+`db-controller-invalidation-plan.test.ts`（10 例）· `electron/repositories` 48 套件 605 例 ·
+`workflow-launch-dialogs.browser` 34 例。便携格式与归档的字段计数同步 625 → 626
+（donor 夹具 626 → 627），`portable-project-format` 29 例 + `project-archive-service` 34 例全绿。
 
 ### 两个已知边界（下一班接手先看这里）
 

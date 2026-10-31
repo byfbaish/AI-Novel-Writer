@@ -1079,6 +1079,11 @@ export function registerDatabaseController() {
           sourceRef: handoffRefs.get(entry.handoffId) ?? null,
         })),
         plotTreeSourceRef: PlotTreeRepository.readSourceRef(db),
+        // P2-3 期 3b：中间环。`synopsis` 有没有内容与「记没记来源」是两件事 ——
+        // 前者决定要不要把大纲当候选，后者决定它是否可信。合成一个 null 会让
+        // 新建项目第一次生成大纲时先吃到一张「1 项无法判断」。
+        synopsisSourceRef: ProjectCoreRepository.readSynopsisSourceRef(db),
+        hasSynopsis: Boolean(ProjectCoreRepository.get(db)?.synopsis?.trim()),
       })
       return { success: true, plan }
     } catch (err) {

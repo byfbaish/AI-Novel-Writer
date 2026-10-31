@@ -16,7 +16,7 @@ import { resolveWritingLanguage } from '../../shared/writing-language'
 import { formatChapterPosition, formatUnitRange } from '../../shared/chapter-position'
 import { assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS, DEFAULT_PLANNING_TARGET_UNITS, parsePlanningTargetUnits, PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../shared/plot-outline-contract'
 import { captureProjectSession } from '../project-session-gate'
-import type { InvalidationPlan } from '../../shared/invalidation-plan'
+import { mergeInvalidationPlans, type InvalidationPlan } from '../../shared/invalidation-plan'
 import type { UpstreamDomain } from '../../shared/upstream-revisions'
 import InvalidationPlanGatePanel from './InvalidationPlanGatePanel'
 import { readInvalidationPlan } from '../../services/invalidation-plan-gate'
@@ -58,10 +58,13 @@ const ARCH_FILES: Array<{
 const ARCH_STEP_COUNT = ARCH_FILES.length
 
 /**
- * 勾选的步骤 → 要问哪一域的上游版本（P2-3 期 3a，2026-10-31）。
+ * 勾选的步骤 → 要问哪几域的上游版本。
  *
  * 只有进版本表的三个域才问得出来：`premise` / `characters` 不在 `upstream_revisions`
- * 里，问也问不到东西，直接不进表（返回 `null` ⇒ 不弹闸门）。
+ * 里，问也问不到东西，直接不进表。
+ *
+ * **按 `worldbuilding → arc → outline` 的顺序返回**（`DOMAIN_UPSTREAM_ORDER`）：
+ * 顺序固定既让清单稳定，也让读者先看到最上游那一档。
  */
 const STEP_DOMAIN: Partial<Record<ArchStepKey, UpstreamDomain>> = {
   worldbuilding: 'worldbuilding',
@@ -69,26 +72,24 @@ const STEP_DOMAIN: Partial<Record<ArchStepKey, UpstreamDomain>> = {
   synopsis: 'outline',
 }
 
-/**
- * 一次勾了多个域时，**只问最上游的那一个**。
- *
- * 理由有两条，缺一条就不成立：
- * 1. 世界观的变更本来就覆盖下游（主稿 §十·2：世界观改动波及全书），报最上游等于报上界；
- * 2. 本期三处写入点共用 `BOOK_SOURCE_KEYS`（`derived-source-ref.ts:44`），一张蓝图同时记了
- *    三域，问哪个域报出来都是同一批 —— 分域各问一次只会得到三份内容相同的清单。
- *
- * **S6a 收窄 `BOOK_SOURCE_KEYS` 之后这条要改成「分域各问一次、清单取并集」**，
- * 否则会漏报「只记了 outline 的行」。只改代码不改这里，下一班会以为现在的行为是设计意图。
- */
 const DOMAIN_UPSTREAM_ORDER: readonly UpstreamDomain[] = ['worldbuilding', 'arc', 'outline']
 
-function resolveInvalidationDomain(steps: readonly ArchStepKey[]): UpstreamDomain | null {
+/**
+ * **分域各问一次**（S6a 之后必须这样）。
+ *
+ * 期 3a 只问最上游那一域，前提是三处写入点三域全记 —— 问哪个域都是同一批行。
+ * S6a 把蓝图/交接单收窄成只记 `outline` 之后，这个前提没了：勾了「世界观 + 大纲」时，
+ * 只问世界观会得到「大纲旧了」，只问大纲会得到「蓝图旧了」，少问一个就少一半。
+ *
+ * 合并口径在 `mergeInvalidationPlans`（纯函数 + 单测），本文件不重算任何强度或去重。
+ */
+function resolveInvalidationDomains(steps: readonly ArchStepKey[]): UpstreamDomain[] {
   const hit = new Set<UpstreamDomain>()
   for (const step of steps) {
     const domain = STEP_DOMAIN[step]
     if (domain) hit.add(domain)
   }
-  return DOMAIN_UPSTREAM_ORDER.find(domain => hit.has(domain)) ?? null
+  return DOMAIN_UPSTREAM_ORDER.filter(domain => hit.has(domain))
 }
 
 /**
@@ -495,15 +496,24 @@ export default function ArchitectureConfirmDialog({
         }
       }
 
-      // ---- 闸门 2：这次改动会让哪些派生作废（P2-3 期 3a）----
+      // ---- 闸门 2：这次改动会让哪些派生作废（P2-3 期 3a / 3b）----
       // 紧挨真正的发射：清单说的是「点下去要付多少」，离发射越远越容易被当成免责声明。
-      const invalidationDomain = resolveInvalidationDomain(selectedSteps)
-      if (invalidationDomain && !bypassInvalidationGate.current) {
-        const plan = await readInvalidationPlan(dialogSession, invalidationDomain)
-        // 无事可报还弹窗，第三次就会变成盲点确定（主稿 §8.3）⇒ `silent` 直接放行。
-        if (plan && plan.tier !== 'silent') {
-          setInvalidationGate({ plan, domain: invalidationDomain })
-          return
+      // 勾了几个上游域就问几次，再由 `mergeInvalidationPlans` 合成一张 —— 收窄之后
+      // 单问一域会少掉另一半（见 `resolveInvalidationDomains`）。
+      const invalidationDomains = resolveInvalidationDomains(selectedSteps)
+      if (invalidationDomains.length > 0 && !bypassInvalidationGate.current) {
+        const plans: InvalidationPlan[] = []
+        for (const domain of invalidationDomains) {
+          const plan = await readInvalidationPlan(dialogSession, domain)
+          if (plan) plans.push(plan)
+        }
+        // 一份都拿不到 ⇒ 放行（fail-open）；无事可报也放行（§8.3：空清单第三次就成盲点确定）。
+        if (plans.length > 0) {
+          const plan = mergeInvalidationPlans(plans)
+          if (plan.tier !== 'silent') {
+            setInvalidationGate({ plan, domain: invalidationDomains[0] })
+            return
+          }
         }
       }
 

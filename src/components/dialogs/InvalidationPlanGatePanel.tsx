@@ -25,6 +25,8 @@ import { Button } from '../ui/Button'
  * （它知道这次动的是哪个域）。组件只负责摆出来，这样它才能单独测。
  */
 const GROUP_LABEL: Record<InvalidationGroupKind, [string, string]> = {
+  // 期 3b 的中间环：世界观/弧光变了 ⇒ 先说大纲旧了，再由作者决定要不要重生成。
+  outline: ['情节大纲', 'Outline'],
   blueprint: ['章节蓝图', 'Chapter blueprints'],
   handoff: ['卷末交接单', 'Volume handoffs'],
   'plot-tree': ['剧情树', 'Plot tree'],
