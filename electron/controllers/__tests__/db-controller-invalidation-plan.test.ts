@@ -222,6 +222,21 @@ describe('db:invalidation-plan —— 清单内容', () => {
       expect(narrowed.plan?.groups[0].items.map(item => item.label)).toEqual(['第 2 章'])
     } finally { db.close() }
   })
+
+  it('rev 传 0 ⇒ 折算成「当前版 + 1」，`behind.need` 不许出现 0', async () => {
+    // UI 手边没有当前版本号，用 0 表达「假想再改一版」（见施工图 §六 施工期口径）。
+    // 这条钉的是：那个 0 只能在**请求侧**存在，绝不能漏进 `behind.need` ——
+    // 一旦漏进去，硬拒文案会写成「第2版→第0版」（S4b 把 need 渲染成"第几版"之后尤其刺眼）。
+    const db = openDb()
+    try {
+      BlueprintRepository.upsertMany([card(1)])
+      const current = UpstreamRevisionRepository.snapshot(db).get('outline:book') ?? 0
+      const zero = await planFor(db, 0)
+      const explicit = await planFor(db, current + 1)
+      expect(zero.plan?.groups[0].count).toBe(explicit.plan?.groups[0].count)
+      expect(zero.plan).toEqual(explicit.plan)
+    } finally { db.close() }
+  })
 })
 
 describe('db:invalidation-plan —— 红线：plan 一个字节都不写', () => {
