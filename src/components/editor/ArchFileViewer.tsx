@@ -7,8 +7,9 @@ import { renderIcon } from '../panels/sidebar/sidebar-icons'
 import { registerEditorExitSaveHandler, useEditorStore, type PlanningRecoverySaveSnapshot } from '../../stores/editor-store'
 import ArchitectureConfirmDialog from '../dialogs/ArchitectureConfirmDialog'
 import InvalidationPlanGatePanel from '../dialogs/InvalidationPlanGatePanel'
-import { HYPOTHETICAL_NEXT_REV, type InvalidationPlan } from '../../shared/invalidation-plan'
+import type { InvalidationPlan } from '../../shared/invalidation-plan'
 import type { UpstreamDomain } from '../../shared/upstream-revisions'
+import { readInvalidationPlan } from '../../services/invalidation-plan-gate'
 import { Button } from '../ui/Button'
 import { ipc } from '../../services/ipc-client'
 import { requireIpcSuccess } from '../../services/ipc-result'
@@ -809,31 +810,15 @@ function ArchFileViewerSession({
   /**
    * P2-3 期 3a：重建 / 续写之前的失效清单闸门。
    *
-   * ## 为什么「拿不到清单」要 fail-open
+   * 读清单与「失败即放行」的口径都在 `services/invalidation-plan-gate.ts`（与
+   * `ArchitectureConfirmDialog` 共用同一份）—— 两处各写一遍，迟早一处 fail-open、
+   * 另一处 fail-closed，作者会遇到「这条路口能写、那条写不了」。
    *
-   * 闸门存在的理由是把代价摆出来，**不是用来挡人的**。库没开、版本表不存在、
-   * 请求抛了 —— 任何一种都不该让作者写不了字。所以失败一律放行。
-   *
-   * ## `silent` 为什么不弹
-   *
-   * 无事可报还弹窗，第三次就会变成盲点确定（主稿 §8.3）。
+   * `silent` 不弹：无事可报还弹窗，第三次就会变成盲点确定（主稿 §8.3）。
    */
   const guardWithInvalidationPlan = async (domain: UpstreamDomain, action: () => Promise<void>) => {
     const session = recoverySession.current
-    if (!session || !isProjectSessionCurrent(session)) { await action(); return }
-    let result: { success: boolean; plan?: InvalidationPlan } | undefined
-    try {
-      result = await ipc.invokeWithProjectSession(
-        session,
-        'db:invalidation-plan',
-        { domain, rev: HYPOTHETICAL_NEXT_REV },
-        session.projectPath,
-      )
-    } catch {
-      await action()
-      return
-    }
-    const plan = result?.success ? result.plan : undefined
+    const plan = await readInvalidationPlan(session, domain)
     if (!plan || plan.tier === 'silent') { await action(); return }
     pendingInvalidationAction.current = action
     setInvalidationPlan(plan)

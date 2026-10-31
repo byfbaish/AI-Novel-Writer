@@ -674,3 +674,146 @@ it('rejects full-book generation above ten chapters and does not normalize an em
   expect(onConfirm).not.toHaveBeenCalled()
   await expect.element(page.getByRole('spinbutton', { name: '本次蓝图章数' })).toHaveValue(null)
 })
+
+/**
+ * 期 3a 的失效清单闸门接在**主入口**（`ArchitectureConfirmDialog`）上（2026-10-31 作者裁定方案 B）。
+ *
+ * 施工图原来只接了 `ArchFileViewer.continuePlanning`，那是「继续规划」这条副路径；
+ * 作者真正点的是这里的「确认生成」。这一组测试钉的是接线本身：
+ * ① 勾了进版本表的域 ⇒ 先出清单，不发射；② `silent` ⇒ 不打扰；
+ * ③ 拿不到清单 ⇒ 放行（fail-open）；④ 与「大纲领先正文」闸门的先后。
+ */
+describe('P2-3 期 3a：重建前的失效清单闸门', () => {
+  const DRIFT = [{ key: 'worldbuilding:book', have: 1, need: 2 }]
+  const ONCE_PLAN = {
+    groups: [{
+      kind: 'blueprint',
+      count: 2,
+      items: [
+        { label: '第 1 章', chapters: [1], behind: DRIFT },
+        { label: '第 2 章', chapters: [2], behind: DRIFT },
+      ],
+    }],
+    unseen: { count: 0, kinds: [] },
+    tier: 'once',
+    unaffected: null,
+  }
+
+  /** 记录 `db:invalidation-plan` 的入参，并让这条通道返回指定 plan（或抛错）。 */
+  function stubInvalidationPlan(plan: unknown, options: { throws?: boolean } = {}) {
+    const original = invoke.getMockImplementation()!
+    const requests: unknown[] = []
+    invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'db:invalidation-plan') {
+        requests.push(args[0])
+        if (options.throws) throw new Error('db closed')
+        return { success: true, plan }
+      }
+      return original(channel, ...args)
+    })
+    return requests
+  }
+
+  async function renderDialog(steps: Parameters<typeof ArchitectureConfirmDialog>[0]['initialSelectedSteps'], onConfirm: () => Promise<void>) {
+    await act(async () => root.render(
+      <ArchitectureConfirmDialog
+        isOpen
+        onClose={vi.fn()}
+        archStatus={{ premise: true, characters: true, worldbuilding: true, plotStructure: true, synopsis: true }}
+        initialSelectedSteps={steps}
+        onConfirm={onConfirm}
+      />,
+    ))
+  }
+
+  it('勾了世界观：先摆清单，点「继续」才发射', async () => {
+    const requests = stubInvalidationPlan(ONCE_PLAN)
+    const onConfirm = vi.fn().mockResolvedValue(undefined)
+    await renderDialog(['worldbuilding'], onConfirm)
+
+    await act(async () => page.getByRole('button', { name: /确认生成/ }).click())
+
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="invalidation-gate"]')).not.toBeNull())
+    // 只问最上游那一域（本期三处写入点共用 BOOK_SOURCE_KEYS，分域各问会得到三份同样的单子）
+    expect(requests[0]).toEqual({ domain: 'worldbuilding', rev: 0 })
+    expect(document.querySelector('[data-testid="invalidation-groups"]')?.textContent).toContain('章节蓝图（2）')
+    expect(onConfirm).not.toHaveBeenCalled()
+    await expect.element(page.getByRole('button', { name: /确认生成/ })).toBeDisabled()
+
+    await act(async () => page.getByRole('button', { name: '继续' }).click())
+    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledOnce())
+    expect(document.querySelector('[data-testid="invalidation-gate"]')).toBeNull()
+  })
+
+  it('silent：无事可报就不打扰', async () => {
+    stubInvalidationPlan({ groups: [], unseen: { count: 0, kinds: [] }, tier: 'silent', unaffected: null })
+    const onConfirm = vi.fn().mockResolvedValue(undefined)
+    await renderDialog(['plotStructure'], onConfirm)
+
+    await act(async () => page.getByRole('button', { name: /确认生成/ }).click())
+
+    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledOnce())
+    expect(document.querySelector('[data-testid="invalidation-gate"]')).toBeNull()
+  })
+
+  it('拿不到清单就放行：闸门不是用来挡人的', async () => {
+    stubInvalidationPlan(null, { throws: true })
+    const onConfirm = vi.fn().mockResolvedValue(undefined)
+    await renderDialog(['worldbuilding'], onConfirm)
+
+    await act(async () => page.getByRole('button', { name: /确认生成/ }).click())
+
+    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledOnce())
+    expect(document.querySelector('[data-testid="invalidation-gate"]')).toBeNull()
+  })
+
+  it('前提 / 角色不在版本表里：不问清单', async () => {
+    const requests = stubInvalidationPlan(ONCE_PLAN)
+    const onConfirm = vi.fn().mockResolvedValue(undefined)
+    await renderDialog(['premise'], onConfirm)
+
+    await act(async () => page.getByRole('button', { name: /确认生成/ }).click())
+
+    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledOnce())
+    expect(requests).toHaveLength(0)
+  })
+
+  it('两个闸门都挡时：先「大纲领先正文」，再「失效清单」', async () => {
+    // 第 1 卷 = 第 1–20 章，正文只定稿到第 12 章 ⇒ 从第 21 章规划属「大纲领先正文」
+    authoritativeNextChapter = 13
+    useProjectStore.setState({
+      currentProject: { ...project, novelConfig: { ...project.novelConfig, totalChapters: 100 } } as never,
+    })
+    volumes = [{
+      volumeId: 'volume:1', volumeIndex: 1, name: '第1卷',
+      plannedFirst: 1, plannedLast: 20, plannedSource: 'headings',
+      actualLast: null, actualSource: null,
+      outlineHash: 'hash:1', source: 'outline', createdAt: '', updatedAt: '',
+    }]
+    stubInvalidationPlan(ONCE_PLAN)
+    const onConfirm = vi.fn().mockResolvedValue(undefined)
+    await act(async () => root.render(
+      <ArchitectureConfirmDialog
+        isOpen
+        onClose={vi.fn()}
+        archStatus={{ premise: true, characters: true, worldbuilding: true, plotStructure: true, synopsis: true }}
+        initialSelectedSteps={['synopsis']}
+        initialSynopsisRange={{ from: 21, to: 40 }}
+        onConfirm={onConfirm}
+      />,
+    ))
+
+    await act(async () => page.getByRole('button', { name: /确认生成/ }).click())
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="outline-progress-gate"]')).not.toBeNull())
+    // 顺序：状态路口在先，代价在后（出口可能是「去补正文」，那时清单白弹一次）
+    expect(document.querySelector('[data-testid="invalidation-gate"]')).toBeNull()
+    expect(onConfirm).not.toHaveBeenCalled()
+
+    await act(async () => page.getByRole('button', { name: '我知道，仍按计划继续' }).click())
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="invalidation-gate"]')).not.toBeNull())
+    expect(onConfirm).not.toHaveBeenCalled()
+
+    await act(async () => page.getByRole('button', { name: '继续' }).click())
+    await vi.waitFor(() => expect(onConfirm).toHaveBeenCalledOnce())
+  })
+})

@@ -1,6 +1,6 @@
 # 上游失效 · 期 3 实施设计与作业图
 
-> 状态：已实施 · 2026-10-31 · 期 3a（S1–S5）+ S4b（硬拒带溯源链）；S6a / S6 / S6c / S7 未排期；「重建大纲」主入口尚未接线（§六 已知边界）
+> 状态：已实施 · 2026-10-31 · 期 3a（S1–S5）+ S4b（硬拒带溯源链）+ 主入口接线（方案 B）；S6a / S6 / S6c / S7 未排期
 > **施工期补的两个口径待作者裁定**：① request `rev <= 0` =「假想再改一版」（借 0 表达，不新增签名/通道）；② 影响范围的四种情形本期只判得出三种。见 §六。
 > **S6 的裁定已定（2026-10-31）**：定稿章只记 `outline` 一域（主稿 §十·2 ①）；并把 `BOOK_SOURCE_KEYS` 三域全记收窄成按类型分（S6a）。**S1–S5 不受影响，照原样施工。**
 > 上级稿：[`upstream-version-and-derived-invalidation-design.md`](upstream-version-and-derived-invalidation-design.md) §八（强提醒）· §九 步 4/5
@@ -276,15 +276,45 @@ export function computeInvalidationPlan(input: {
    *缺的那一档*：「卷回滚 ⇒ 逐层列出」要知道**这次的动作是回滚**，而 plan 请求里只有域名、
    没有 `reason`。等 S6c 的溯源流水落地，把 reason 接进来这一档才能判准。**待 S6c，不单独排期。**
 
-### 三个已知边界（下一班接手先看这里）
+### 主入口接线（方案 B，2026-10-31 作者裁定）
 
-- **「重建大纲」主入口尚未接线**（review 2026-10-31 补记）。施工图写的挂点是
-  `ArchFileViewer.tsx:812` 的 `createArchitectureWorkflow`，那是**继续规划**这一条；
-  而"重建大纲"的主入口是 `ArchitectureConfirmDialog`（`onConfirm = ArchFileViewer.handleConfirm`，`:688` / `:1338`）。
-  ⇒ 期 3 想解决的场景（点重建先看清单）**目前只覆盖了副路径**。补法有两条，需作者裁定：
-  ① 在 `handleConfirm` 外层套同一个 `guardWithInvalidationPlan`（改动最小，但拦截点在 dialog 之外，
-     弹窗会出现在 dialog 之上，层级要确认）；② 在 `ArchitectureConfirmDialog` 内部接（层级自然，
-     但那个组件已经有 `progressGate` 的同构机制，要理清两个闸门的先后）。
+**背景**（review 2026-10-31 发现）：施工图把闸门挂在 `ArchFileViewer.tsx` 的 `continuePlanning`，
+那是**「继续规划」**这条副路径；作者真正点的是 `ArchitectureConfirmDialog` 的「确认生成」
+（`onConfirm = ArchFileViewer.handleConfirm`，`:688` / `:1332`）。⇒ 期 3 想解决的场景（点重建先看清单）
+当时只覆盖了副路径。两条补法里作者选 **B：接在 `ArchitectureConfirmDialog` 内部**（层级自然，
+面板就在弹窗里，不必在 dialog 之上再叠一层）。
+
+三个必须写下来的口径：
+
+1. **问哪一域**：`STEP_DOMAIN` 把勾选的步骤映到域（`worldbuilding` / `plotStructure→arc` /
+   `synopsis→outline`）；`premise` / `characters` 不在 `upstream_revisions` 里，不问。
+   一次勾多个域时**只问最上游那一个**：世界观的波及面本来就是全书，而本期三处写入点共用
+   `BOOK_SOURCE_KEYS`（`derived-source-ref.ts:44`），分域各问只会得到三份同样的单子。
+   **S6a 收窄后这条必须改成分域各问、清单取并集**，否则会漏报「只记了 `outline` 的行」——
+   代码注释与本节要一起改，否则下一班会以为现在这样是设计意图。
+2. **两个闸门的先后 = 状态路口 → 代价**：`progressGate`（大纲领先正文）在先，`invalidationGate` 在后。
+   理由：闸门 1 的出口**可能根本不生成**（去补正文），先摆清单那张单子就白弹一次、下次进来还要再弹；
+   反过来不浪费 —— 选「仍按计划继续」之后紧接着看到的正是这次要付的代价。
+3. **豁免只对一次发射有效**：两个 `bypass*Gate` ref 在**两道闸门都通过之后、发射之前**才清。
+   发射万一失败，下一次点确认要把问卷重新走一遍 ——「确认一次永久放行」是把闸门变成装饰的老路
+   （主稿 §十·2）。勾选一变、弹窗重开也一并清（旧的清单属于旧的勾选组合）。
+
+**读侧只一份**：`src/services/invalidation-plan-gate.ts` 的 `readInvalidationPlan()`
+（**失败一律返回 `null` = 放行**）。原先内联在 `ArchFileViewer` 里的那份已改成调用它 ——
+两边各写一遍看不错，但**失败口径**一旦分叉，作者就会遇到「这条路口能写、那条写不了」。
+
+| 改动 | 落点 |
+|---|---|
+| `readInvalidationPlan()`（唯一读侧，失败即放行） | `src/services/invalidation-plan-gate.ts`（新） |
+| 闸门 2 + 面板 + 域解析 + 「只放行一次」 | `src/components/dialogs/ArchitectureConfirmDialog.tsx` |
+| 「继续规划」改用同一份读侧 | `src/components/editor/ArchFileViewer.tsx` |
+
+**测试**：`src/components/dialogs/__tests__/workflow-launch-dialogs.browser.tsx` 新增 5 例 ——
+清单先出且确认键禁用 / `silent` 不打扰 / 拿不到清单放行 / 前提·角色不问清单 / 两个闸门的先后。
+（同文件 34 例全绿；`ArchFileViewer` 与恢复稿相关 65 例全绿。）
+
+### 两个已知边界（下一班接手先看这里）
+
 - **剧情树恒为候选**：`plotTreeSourceRef` 为 `null` 时按 `legacy` 计入 `unseen`。
   于是**「这本书压根没有剧情树」和「剧情树没记过来源」目前共用同一个返回值**，会多出一条
   「无法判断」。方向是**多报**（主稿 §十·1 偏保守），可接受；但 UI 把 `unseen.kinds`

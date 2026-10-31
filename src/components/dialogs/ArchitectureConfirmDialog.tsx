@@ -16,6 +16,10 @@ import { resolveWritingLanguage } from '../../shared/writing-language'
 import { formatChapterPosition, formatUnitRange } from '../../shared/chapter-position'
 import { assertPlanningActionRange, DEFAULT_PLANNING_ACTION_CHAPTERS, DEFAULT_PLANNING_TARGET_UNITS, parsePlanningTargetUnits, PLANNING_ACTION_CHAPTER_LIMIT, PLANNING_TARGET_UNITS_LIMIT } from '../../shared/plot-outline-contract'
 import { captureProjectSession } from '../project-session-gate'
+import type { InvalidationPlan } from '../../shared/invalidation-plan'
+import type { UpstreamDomain } from '../../shared/upstream-revisions'
+import InvalidationPlanGatePanel from './InvalidationPlanGatePanel'
+import { readInvalidationPlan } from '../../services/invalidation-plan-gate'
 import {
   describeSynopsisUnitProbe,
   probeSynopsisUnitLaunchForProject,
@@ -52,6 +56,40 @@ const ARCH_FILES: Array<{
 ]
 
 const ARCH_STEP_COUNT = ARCH_FILES.length
+
+/**
+ * 勾选的步骤 → 要问哪一域的上游版本（P2-3 期 3a，2026-10-31）。
+ *
+ * 只有进版本表的三个域才问得出来：`premise` / `characters` 不在 `upstream_revisions`
+ * 里，问也问不到东西，直接不进表（返回 `null` ⇒ 不弹闸门）。
+ */
+const STEP_DOMAIN: Partial<Record<ArchStepKey, UpstreamDomain>> = {
+  worldbuilding: 'worldbuilding',
+  plotStructure: 'arc',
+  synopsis: 'outline',
+}
+
+/**
+ * 一次勾了多个域时，**只问最上游的那一个**。
+ *
+ * 理由有两条，缺一条就不成立：
+ * 1. 世界观的变更本来就覆盖下游（主稿 §十·2：世界观改动波及全书），报最上游等于报上界；
+ * 2. 本期三处写入点共用 `BOOK_SOURCE_KEYS`（`derived-source-ref.ts:44`），一张蓝图同时记了
+ *    三域，问哪个域报出来都是同一批 —— 分域各问一次只会得到三份内容相同的清单。
+ *
+ * **S6a 收窄 `BOOK_SOURCE_KEYS` 之后这条要改成「分域各问一次、清单取并集」**，
+ * 否则会漏报「只记了 outline 的行」。只改代码不改这里，下一班会以为现在的行为是设计意图。
+ */
+const DOMAIN_UPSTREAM_ORDER: readonly UpstreamDomain[] = ['worldbuilding', 'arc', 'outline']
+
+function resolveInvalidationDomain(steps: readonly ArchStepKey[]): UpstreamDomain | null {
+  const hit = new Set<UpstreamDomain>()
+  for (const step of steps) {
+    const domain = STEP_DOMAIN[step]
+    if (domain) hit.add(domain)
+  }
+  return DOMAIN_UPSTREAM_ORDER.find(domain => hit.has(domain)) ?? null
+}
 
 /**
  * 章号步进器。
@@ -146,6 +184,14 @@ export default function ArchitectureConfirmDialog({
    */
   const [progressGate, setProgressGate] = useState<OutlineProgressGate | null>(null)
   const bypassProgressGate = useRef(false)
+  /**
+   * 失效清单闸门（P2-3 期 3a）。非空 ⇒ 本次发射被拦下，等作者看完 blast radius 再决定。
+   * 与 `progressGate` 同构，但**排在它后面**：闸门 1 是「状态路口」（出口可能是去补正文，
+   * 根本不生成），闸门 2 才是「这一次要付的代价」——先摆代价，作者选了「去补正文」时
+   * 那张清单就白弹一次，而且下次进来还得再弹。
+   */
+  const [invalidationGate, setInvalidationGate] = useState<{ plan: InvalidationPlan; domain: UpstreamDomain } | null>(null)
+  const bypassInvalidationGate = useRef(false)
   const [guardError, setGuardError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -163,6 +209,9 @@ export default function ArchitectureConfirmDialog({
   const resetChecked = useCallback(() => {
     const defaults = createDefaultArchitectureSelection(archStatus, initialSelectedSteps)
     setSynopsisContinue(false)
+    // 上一次留下的失效清单属于上一次的勾选组合，重开必须清掉（否则会拿旧单子放行）。
+    setInvalidationGate(null)
+    bypassInvalidationGate.current = false
     // 连写个数每次都回到 1：它是「这一次要多跑几批」的选择，不该记成默认值。
     setUnitChainTotal('1')
     if (initialSynopsisRange) {
@@ -339,6 +388,10 @@ export default function ArchitectureConfirmDialog({
       setProgressGate(null)
       bypassProgressGate.current = false
     }
+    // 勾选一变，要问的上游域就可能变（甚至从「有」变成「没有」）—— 清单必须重新算，
+    // 不能拿旧域的那张单子放行。
+    setInvalidationGate(null)
+    bypassInvalidationGate.current = false
     setChecked(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
@@ -428,17 +481,38 @@ export default function ArchitectureConfirmDialog({
           setGuardError(text(`每章大纲目标须为 1–${PLANNING_TARGET_UNITS_LIMIT} 的整数。`, `The outline target must be an integer from 1 to ${PLANNING_TARGET_UNITS_LIMIT}.`))
           return
         }
-        // 闸门在落偏好之前：作者在闸门前取消时，不该已经写进 config。
-        if (!bypassProgressGate.current) {
-          // 区间可能为空（`resolveSynopsisRange` 允许），此时不知道本批从第几章起 —— 不猜，直接放行。
-          const chapterNumber = unitMode ? unitMode.from : resolution.range?.from
-          if (dialogSession && chapterNumber !== undefined) {
-            const { gate, warning } = await readOutlineProgressGate({ projectSession: dialogSession, chapterNumber })
-            if (warning) console.warn('[outline-progress-gate]', warning)
-            if (gate?.state === 'ahead') { setProgressGate(gate); return }
-          }
+      }
+
+      // ---- 闸门 1：大纲领先正文（P1-2 期 1）。只在大纲被勾选时才有意义 ----
+      // 闸门在落偏好之前：作者在闸门前取消时，不该已经写进 config。
+      if (checked.synopsis && !bypassProgressGate.current) {
+        // 区间可能为空（`resolveSynopsisRange` 允许），此时不知道本批从第几章起 —— 不猜，直接放行。
+        const chapterNumber = unitMode ? unitMode.from : resolution.range?.from
+        if (dialogSession && chapterNumber !== undefined) {
+          const { gate, warning } = await readOutlineProgressGate({ projectSession: dialogSession, chapterNumber })
+          if (warning) console.warn('[outline-progress-gate]', warning)
+          if (gate?.state === 'ahead') { setProgressGate(gate); return }
         }
-        bypassProgressGate.current = false
+      }
+
+      // ---- 闸门 2：这次改动会让哪些派生作废（P2-3 期 3a）----
+      // 紧挨真正的发射：清单说的是「点下去要付多少」，离发射越远越容易被当成免责声明。
+      const invalidationDomain = resolveInvalidationDomain(selectedSteps)
+      if (invalidationDomain && !bypassInvalidationGate.current) {
+        const plan = await readInvalidationPlan(dialogSession, invalidationDomain)
+        // 无事可报还弹窗，第三次就会变成盲点确定（主稿 §8.3）⇒ `silent` 直接放行。
+        if (plan && plan.tier !== 'silent') {
+          setInvalidationGate({ plan, domain: invalidationDomain })
+          return
+        }
+      }
+
+      // 两个闸门都过了 ⇒ 本次发射的豁免到此为止。发射万一失败，下一次要重新问一遍
+      // （「确认一次永久放行」是把闸门变成装饰的老路，主稿 §十·2）。
+      bypassProgressGate.current = false
+      bypassInvalidationGate.current = false
+
+      if (target !== undefined) {
         try {
           const saved = await ipc.invoke('config:set', { outlineTargetUnits: target })
           if (!saved.success) throw new Error(saved.error)
@@ -915,6 +989,22 @@ export default function ArchitectureConfirmDialog({
               onDismiss={() => setProgressGate(null)}
             />
           )}
+          {/* 期 3a：点下去之前把 blast radius 摆出来。取消了就什么都不做（plan 阶段没写过库）。 */}
+          {invalidationGate && (
+            <InvalidationPlanGatePanel
+              plan={invalidationGate.plan}
+              domain={invalidationGate.domain}
+              onProceed={() => {
+                bypassInvalidationGate.current = true
+                setInvalidationGate(null)
+                void handleConfirm()
+              }}
+              onDismiss={() => {
+                bypassInvalidationGate.current = false
+                setInvalidationGate(null)
+              }}
+            />
+          )}
           {/* 前置校验失败提示 */}
           {guardError && (
             <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg text-xs bg-yellow-500/10 border border-yellow-500/30 text-[var(--color-warning-text)]">
@@ -926,7 +1016,7 @@ export default function ArchitectureConfirmDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isConfirming}>{text('取消', 'Cancel')}</Button>
-          <Button variant="default" onClick={handleConfirm} disabled={noneSelected || isConfirming || progressGate !== null || (checked.synopsis && preferenceLoading)}>
+          <Button variant="default" onClick={handleConfirm} disabled={noneSelected || isConfirming || progressGate !== null || invalidationGate !== null || (checked.synopsis && preferenceLoading)}>
             <Wand2 size={13} />
             {isConfirming ? text('校验中...', 'Validating...') : text(`确认生成（${selectedSteps.length}/${ARCH_STEP_COUNT}）`, `Generate (${selectedSteps.length}/${ARCH_STEP_COUNT})`)}
           </Button>
