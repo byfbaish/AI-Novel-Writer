@@ -1,5 +1,6 @@
 import {
   BOOK_SCOPE,
+  buildSourceRef,
   derivedStatusForChapters,
   upstreamRefKey,
   type DerivedDrift,
@@ -7,6 +8,7 @@ import {
   type ParsedChangedChapters,
   type UpstreamDomain,
   type UpstreamRefKey,
+  type UpstreamRevisionReason,
   type UpstreamRevisionSnapshot,
 } from './upstream-revisions'
 
@@ -35,7 +37,7 @@ import {
  * 设计稿：[`docs/design/architecture/upstream-invalidation-phase3-plan-and-ui.md`](../../docs/design/architecture/upstream-invalidation-phase3-plan-and-ui.md)
  */
 
-export type InvalidationGroupKind = 'outline' | 'blueprint' | 'handoff' | 'plot-tree'
+export type InvalidationGroupKind = 'outline' | 'blueprint' | 'handoff' | 'plot-tree' | 'finalized'
 
 /**
  * 「假想这个域再改一版」的请求值。
@@ -92,6 +94,18 @@ export interface InvalidationPlan {
    * 说不清第 1 章之前和第 N 章之后有多少章。给两端的值只能猜。
    */
   unaffected: { from: number; to: number } | null
+  /**
+   * 这次改动是**因为什么**发生的（`author-edit` / `regenerate` / `rollback` / …）。
+   *
+   * 它是**请求的回显**，不是判定结果：`computeInvalidationPlan` 不算它，
+   * `tierFor` 也不看它。留在这里的唯一理由是「影响范围那句话」要说清
+   * 「回滚会逐层往下传」——而那句话的渲染方（`buildInvalidationScopeNote`）
+   * 手里只有 plan，另存一份 reason 迟早会与请求里的那份对不上。
+   *
+   * 缺省 `unknown`（调用方没说是哪种动作）。**不许用空串**：空白会被读成
+   * 「没有这个字段」，而 `unknown` 是一个可以筛出来补线的状态。
+   */
+  reason: UpstreamRevisionReason
 }
 
 /**
@@ -100,8 +114,12 @@ export interface InvalidationPlan {
  *
  * `outline` 排第一不是排版偏好：它就是**中间那一环**（P2-3 期 3b），比它下游的
  * 蓝图/交接单更上游。做成硬拦之前，作者看到的顺序应当与级联发生的顺序一致。
+ *
+ * `finalized`（S6 / M28）排最后同样是级联顺序：正文是这条链的末端消费者 ——
+ * 世界变了 → 大纲旧 → 蓝图旧 → 交接单旧 → **已定稿正文可能不符**。
+ * 把它排在前面会让作者以为「先要重写正文」，而正确动作是从最上游开始判。
  */
-const GROUP_ORDER: readonly InvalidationGroupKind[] = ['outline', 'blueprint', 'handoff', 'plot-tree']
+const GROUP_ORDER: readonly InvalidationGroupKind[] = ['outline', 'blueprint', 'handoff', 'plot-tree', 'finalized']
 
 /**
  * 假想快照：在真实版本表上叠加 `overrides`。
@@ -208,6 +226,23 @@ export function computeInvalidationPlan(input: {
    * 所以这里要一个显式的存在性信号，而不是靠 `null` 一词双义。
    */
   hasSynopsis: boolean
+  /**
+   * 已定稿章节与「它定稿时大纲是第几版」（S6 / M28）。
+   *
+   * `outlineRev < 1` ⇒ 没记过 ⇒ `legacy` ⇒ 进 `unseen`。**不要在这里替它编一个
+   * 版本号**（比如填当前大纲版本）：那会让「定稿于旧大纲」这一整类章节被判
+   * `valid`，方向正好相反。
+   *
+   * **只记大纲一域**，不是三域：正文的直接上游是大纲，世界/弧光的变化会先传到
+   * 大纲（M26 的中环）再往下走。记三域会让改一个设定就让所有已定稿章变红，
+   * 而那正是 S6a 收窄时要避免的事。
+   */
+  finalizedDrafts: ReadonlyArray<{ chapterNumber: number; outlineRev: number }>
+  /**
+   * 这次改动的来由。**只被回显进 `plan.reason`**，不参与任何判定 ——
+   * 判定看的是版本号，与「为什么涨」无关。缺省 `unknown`。
+   */
+  reason?: UpstreamRevisionReason
 }): InvalidationPlan {
   const hypothetical = overlayOverrides(input.revisions, input.overrides)
 
@@ -257,6 +292,24 @@ export function computeInvalidationPlan(input: {
     sourceRef: input.plotTreeSourceRef,
   })
 
+  // 已定稿章节（S6 / M28）。**只拿 `outline` 一域来判**，理由见入参注释。
+  //
+  // ⚠️ 别在这一段里顺手把「本章蓝图」也加进 sourceRef：蓝图是正文的**直接**上游，
+  // 但它自己没有版本账（蓝图跟着 outline 变），加进来只会让同一个事实记两遍。
+  for (const draft of input.finalizedDrafts) {
+    candidates.push({
+      kind: 'finalized',
+      label: `第 ${draft.chapterNumber} 章`,
+      chapters: [draft.chapterNumber],
+      // `buildSourceRef` 而不是手写对象：它会把「版本表里还没有这个键」的情况
+      // 变成「空 ref ⇒ legacy」，而手写 `{ 'outline:book': 0 }` 会变成
+      // 「依赖第 0 版 ⇒ 永远 stale」。两种错法方向相反，只有一处能写对。
+      sourceRef: draft.outlineRev >= 1
+        ? buildSourceRef([upstreamRefKey('outline')], new Map([[upstreamRefKey('outline'), draft.outlineRev]]))
+        : null,
+    })
+  }
+
   const staleByKind = new Map<InvalidationGroupKind, InvalidationItem[]>()
   const unseenKinds = new Set<InvalidationGroupKind>()
   let unseenCount = 0
@@ -295,6 +348,7 @@ export function computeInvalidationPlan(input: {
     unseen: { count: unseenCount, kinds: GROUP_ORDER.filter((kind) => unseenKinds.has(kind)) },
     tier: tierFor(groups, unseenCount),
     unaffected: sawWholeBookHit ? null : widestUnaffectedGap(hitChapters),
+    reason: input.reason ?? 'unknown',
   }
 }
 
@@ -302,17 +356,20 @@ export function computeInvalidationPlan(input: {
  * 强度判定。**这张表是唯一判据，不许加权、不许打分**（施工图 §2.1）。
  *
  * - 无事可报 ⇒ `silent`：弹一个空清单等于训练作者盲点确定（主稿 §8.3）；
- * - 含交接单 ⇒ `strong`：交接单会被**拒绝读取**，下一卷开不了工，后果不可逆。
+ * - 含交接单 ⇒ `strong`：交接单会被**拒绝读取**，下一卷开不了工，后果不可逆；
+ * - 含**已定稿章节** ⇒ `strong`（S6 起）：正文是作者真正要交出去的东西，
+ *   而且定稿行可能已经发布（`finalization_outbox.publication_status`）——
+ *   改上游会让「已经发出去的那一版」与库里的依据对不上，这一步不能顺手点过去。
  *
- * ⚠️ 本期没有「已定稿章节」组（`drafts` 没有 `source_ref`，主稿 §1.2 明判「不算」），
- * 所以 `strong` 目前只能由交接单触发。**将来补上定稿组时，这一行的条件要改成
- * 「含定稿章 或 含交接单」—— 这条注释必须跟着改，只改代码不改注释会让下一班
- * 以为现在的行为是设计意图。**
+ * 这两条都是「后果不可撤销」，不是「影响面大」。范围大小由 `groups` 的可数清单
+ * 表达，**强度只回答一件事：要不要逼作者先勾一句「我知道」。**
  */
 function tierFor(groups: readonly InvalidationGroup[], unseenCount: number): InvalidationTier {
   if (groups.length === 0 && unseenCount === 0) return 'silent'
-  const hasHandoff = groups.some((group) => group.kind === 'handoff' && group.count > 0)
-  return hasHandoff ? 'strong' : 'once'
+  const irreversible = groups.some(
+    (group) => group.count > 0 && (group.kind === 'handoff' || group.kind === 'finalized'),
+  )
+  return irreversible ? 'strong' : 'once'
 }
 
 const TIER_RANK: Readonly<Record<InvalidationTier, number>> = { silent: 0, once: 1, strong: 2 }
@@ -339,7 +396,7 @@ const TIER_RANK: Readonly<Record<InvalidationTier, number>> = { silent: 0, once:
  */
 export function mergeInvalidationPlans(plans: readonly InvalidationPlan[]): InvalidationPlan {
   if (plans.length === 0) {
-    return { groups: [], unseen: { count: 0, kinds: [] }, tier: 'silent', unaffected: null }
+    return { groups: [], unseen: { count: 0, kinds: [] }, tier: 'silent', unaffected: null, reason: 'unknown' }
   }
   if (plans.length === 1) return plans[0]
 
@@ -389,5 +446,9 @@ export function mergeInvalidationPlans(plans: readonly InvalidationPlan[]): Inva
     unseen: { count: unseenCount, kinds: GROUP_ORDER.filter((kind) => unseenKinds.has(kind)) },
     tier,
     unaffected: agreed ? first : null,
+    // 多份清单来自**同一次动作**对不同域各问一次，reason 理应一样。
+    // 万一对不上（调用方漏传），取第一条说了话的：空清单里的 `unknown`
+    // 不该盖掉另一份明确的 `rollback`。
+    reason: plans.find((plan) => plan.reason !== 'unknown')?.reason ?? 'unknown',
   }
 }

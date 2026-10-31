@@ -504,7 +504,10 @@ export default function ArchitectureConfirmDialog({
       if (invalidationDomains.length > 0 && !bypassInvalidationGate.current) {
         const plans: InvalidationPlan[] = []
         for (const domain of invalidationDomains) {
-          const plan = await readInvalidationPlan(dialogSession, domain)
+          // `regenerate`：这个入口的动作就是「重新生成大纲/蓝图/剧情树」。
+          // 写进 plan 之后，影响范围那句话才能区分「重生成」与「回滚」
+          // （回滚要按级联顺序逐层列出，重生成不必）。
+          const plan = await readInvalidationPlan(dialogSession, domain, 'regenerate')
           if (plan) plans.push(plan)
         }
         // 一份都拿不到 ⇒ 放行（fail-open）；无事可报也放行（§8.3：空清单第三次就成盲点确定）。

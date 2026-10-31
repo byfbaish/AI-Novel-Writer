@@ -1,8 +1,9 @@
 # 上游失效 · 期 3 实施设计与作业图
 
-> 状态：已实施 · 2026-10-31 · 期 3a（S1–S5）+ S4b（硬拒带溯源链）+ 主入口接线（方案 B）+ 期 3b（S6a 收窄 + 中间环）+ S6c 期 1（溯源流水）+ S6c 期 2（文案带时间/原因 + 章集迁流水）；S6 / S7 未排期
-> **施工期补的两个口径待作者裁定**：① request `rev <= 0` =「假想再改一版」（借 0 表达，不新增签名/通道）；② 影响范围的四种情形本期只判得出三种。见 §六。
+> 状态：已实施 · 2026-10-31 · 期 3a（S1–S5）+ S4b（硬拒带溯源链）+ 主入口接线（方案 B）+ 期 3b（S6a 收窄 + 中间环）+ S6c 期 1（溯源流水）+ S6c 期 2（文案带时间/原因 + 章集迁流水）+ S6（M28 定稿章组 + 回滚逐层列出）；S7 未排期
+> **施工期补的两个口径**：① request `rev <= 0` =「假想再改一版」（借 0 表达，不新增签名/通道）——**已由作者裁定保留**；② 影响范围的四种情形在 S6 之前只判得出三种。见 §六。
 > **S6 的裁定已定（2026-10-31）**：定稿章只记 `outline` 一域（主稿 §十·2 ①）；并把 `BOOK_SOURCE_KEYS` 三域全记收窄成按类型分（S6a）。**S1–S5 不受影响，照原样施工。**
+> **S6 的第二个裁定（2026-10-31）**：`db:invalidation-plan` 的请求加**可选** `reason?: UpstreamRevisionReason`（方案 A）——只有「回滚 ⇒ 逐层列出」那一档需要它，不传即旧行为。
 > 上级稿：[`upstream-version-and-derived-invalidation-design.md`](upstream-version-and-derived-invalidation-design.md) §八（强提醒）· §九 步 4/5
 > 接口草案：[`upstream-invalidation-phase2-source-ref-and-read-gates.md`](upstream-invalidation-phase2-source-ref-and-read-gates.md) §十三
 > 作业手册（给无人值守的执行方）：[`docs/handoffs/2026-10-31-phase3-unattended-handoff.md`](../../handoffs/2026-10-31-phase3-unattended-handoff.md)
@@ -30,7 +31,7 @@ project_core.plot_tree_source_ref
 | 章节蓝图 | ✅ `blueprints.source_ref` | 算得出 |
 | 卷末交接单 | ✅ `volume_handoffs.source_ref` | 算得出 |
 | 剧情树 | ✅ `project_core.plot_tree_source_ref` | 算得出（§8.2 原表没列它，但 §七 裁定它有 rev，一并报） |
-| **已定稿章节** | ❌ **没有**：`drafts`/manuscripts 没有 `source_ref` | **不能算**。只能记进 `unseen`，并在文案里说明「本期不判」 |
+| ~~已定稿章节~~ | ✅ **S6 已补**：M28 给 `drafts` 加 `outline_rev`（定稿那一刻的大纲版本，`-1` = 没记过） | 算得出（`finalized` 组，恒 `strong`） |
 | **伏笔计划** | ❌ 主稿 §八 明写 `narrative_thread_plans` **不进版本表**（它是作者输入，本身就是上游） | 同上，不做 |
 
 ⇒ **期 3a 只报三组 + `unseen`**。给两组没原料的硬造一个判据，就是伪造判据（判据 CL 的教训）。
@@ -118,7 +119,7 @@ flowchart TD
 | **S5** | 收口 | `node scripts/check-fast.mjs` | 只改文档 |
 | ~~S4b~~ | **零迁移，可随时插入**：`describeDrift` 升级成带证据链（主稿 §十·3 第 2 层）。输出格式钉死：`情节大纲 第3版→第5版（第4版改过第12–14章；第5版改过第31章）`；取不到的版本写「该版改动章未知」，**不猜不留空**。只改 `src/shared/upstream-revisions.ts` 一个函数 + 其调用点文案；**不动签名**（`behind` 形状不变） | `pnpm test src/shared/__tests__/upstream-revisions.test.ts` | 约 40 行 + 8 例 |
 | ~~S6a~~ | **已落地（期 3b，2026-10-31）**：把 `BOOK_SOURCE_KEYS`（三域全记）收窄成按派生类型分（主稿 §十·2 ①）。落地形态＝`SOURCE_KEYS_BY_KIND` + `currentSourceRefValue(db, kind, outlineRev?)`，四个写入点各自表态（蓝图两处 + 交接单 `chapter-plan`；剧情树 `architecture`） | `pnpm test electron/repositories/__tests__/upstream-source-ref-writes.test.ts` | 已落地 |
-| ~~S6~~ | **不排期**：**M28** 给 `drafts` 加 `outline_rev`；plan 加「已定稿章节」组（`project_core` 记 world/arc rev 那一半已由 M26 落地） | 未定 | 中 |
+| ~~S6~~ | **已落地（2026-10-31，M28，schema 28 → 29）**：`drafts.outline_rev`（定稿那一刻的大纲版本，`-1` = 显式「没记过」，**不回填**）+ plan 第五组 `finalized`（恒 `strong`）+ 请求可选 `reason` 让「回滚 ⇒ 逐层列出」那一档判得出来。详见本文「S6 落地记录」 | `pnpm test electron/migrations electron/repositories electron/controllers src/shared` | 已落地 |
 | ~~S6c~~ | **期 1 + 期 2 均已落地（2026-10-31，M27，schema 27 → 28）**：`upstream_revision_log`（只追加）记每版的时间 + 原因 + 章集 + `covers_all`。**它是"回滚要有据可查"的硬需求**：卷回滚一旦实现，回滚产生的 bump 与作者手改的 bump 在库里长得一模一样，事后无法区分（与 ADR-0026 同一条纪律）。`reason` 取值表已由作者拍板（2026-10-31「按建议来，未知就记作 unknown」）：`author-edit` / `regenerate` / `rollback` / `import-restore` / `clear` / `unknown`。**期 2 已补**：时间/原因渲染进硬拒文案（`describeDrift` 第 3 层）；章集从 `upstream_revisions` 彻底挪进流水，解除 `MAX_CHANGED_CHAPTER_REVS = 20`（该常量只剩「v27 老库」这一条兼容路径） | `pnpm test electron/repositories src/shared` | 已落地 |
 | ~~S7~~ | **不排期**：处置面板（清点 + 跳转，不亲自重算） | 未定 | 中 |
 
@@ -209,7 +210,8 @@ export function computeInvalidationPlan(input: {
 - `unaffected` 非空时单独一行：`第 X–Y 章及其派生不受影响`
 - **影响范围一行**（主稿 §十·2 ④，必写）：
   - 世界观变更 ⇒ `世界观变更影响全书设定`
-  - 卷回滚 ⇒ 逐层列出「该卷 → 下游单元 → 各章大纲与蓝图 → 正文」
+  - 卷回滚 ⇒ **前置**一句级联顺序「大纲 → 章节蓝图 → 卷末交接单 → 已定稿正文」，后半句照旧按下面三档走
+    （回滚 ≠ 全书：章号收得出来就要说，别退化成「难以精确判定」）
   - 局部修改 ⇒ `影响范围难以精确判定，推荐下游全部重新生成` + **不替作者决定**
   - 能定位到章 ⇒ 直接给章号区间
 
@@ -239,9 +241,8 @@ export function computeInvalidationPlan(input: {
 
 ## 五、本稿不做
 
-- **不给「已定稿章节」组硬造判据**（无原料）。**前置已定（2026-10-31）**：S6a 收窄 `source_ref` 已落地（期 3b）；
-  S6 只差「定稿章组记 `outline_rev`」这一步，**迁移编号顺延为 M27**（M26 已被中期环的
-  `project_core.synopsis_source_ref` 用掉）。只是不排期。
+- **~~不给「已定稿章节」组硬造判据~~（S6 已补）**：M28 给 `drafts` 加 `outline_rev`，`finalized` 组落地。落地记录见 §十三。
+  ~~原前置~~：S6a 收窄 `source_ref` 已落地（期 3b）；**迁移编号最终是 M28**（M26 被中期环用掉、M27 被 S6c 期 1 用掉）。
 - **不做伏笔计划组**。主稿 §八 已裁定它不进版本表（作者输入即上游）。
 - **不做处置面板**（S7，主稿 §九 步 5「最后做」）。
 - **不做回滚原语**（主稿 §8.5）。卷回滚属 P0-1 残留，其"波及范围"口径已写进主稿 §十·2 ④，实现时照此。
@@ -273,10 +274,14 @@ export function computeInvalidationPlan(input: {
    **保留**。理由：改成 `rev?: number` 要走一遍 IPC 签名 + 测试 + 施工图，收益只是去掉一个
    已写进类型注释的约定；而它唯一的风险（`behind.need` 会被写成 0）已在 handler 里被
    `current+1` 挡掉 —— 单测钉了「rev 传 0 时 behind.need 等于当前版 + 1」。
-2. **影响范围四种情形本期只判得出三种**（`buildInvalidationScopeNote`）。
+2. **影响范围四种情形在 S6 之前只判得出三种**（`buildInvalidationScopeNote`）。
    世界观 / 弧光 ⇒ 影响全书；能收敛到章 ⇒ 给章号；其余 ⇒ 「难以精确判定，推荐全部重新生成」。
    *缺的那一档*：「卷回滚 ⇒ 逐层列出」要知道**这次的动作是回滚**，而 plan 请求里只有域名、
-   没有 `reason`。等 S6c 的溯源流水落地，把 reason 接进来这一档才能判准。**待 S6c，不单独排期。**
+   没有 `reason`。
+   **S6 已解（2026-10-31 作者裁定方案 A）**：请求加**可选** `reason?: UpstreamRevisionReason`，
+   回显进 `plan.reason`；`rollback` 时前置级联顺序那句话，其余三档一个字不变。
+   不传 ⇒ `unknown` ⇒ 与旧行为完全一致（所以这不算「新增签名通道」：没有新的必填参数、
+   没有新 channel，`HYPOTHETICAL_NEXT_REV` 那条约定的理由同样成立）。
 
 ### 主入口接线（方案 B，2026-10-31 作者裁定）
 
@@ -509,3 +514,74 @@ v27 老库回旧路径且上限生效 / 作者侧写入点都带上了原因）�
 
 S4 用**全表原始行串逐字节比**（不顺手用仓储层的 `list()`），是因为 `updated_at` 走 SQLite 的
 `datetime('now')`，在同一秒内透过解析结果看不出差别。拦住"plan 偷偷写了库"这件事，全靠这一层。
+
+### S6 落地记录：定稿章组 + 回滚逐层列出（M28，schema 28 → 29，2026-10-31）
+
+**作者两处裁定**：① 定稿章只记 `outline` 一域（主稿 §十·2 ①）；② 请求加**可选**
+`reason?: UpstreamRevisionReason`（方案 A），不传即旧行为。
+
+#### ① M28：`drafts.outline_rev`
+
+这一列说的是「**这一章定稿那一刻**，大纲是第几版」，由 `FinalizationRepository.commit`
+在**同一个事务里**读 `UpstreamRevisionRepository.readRev('outline')` 写下。
+
+四条写死在迁移注释里的取舍：
+
+- **只记大纲，不记 `source_ref` 三域**。正文的直接上游是大纲；世界/弧光变了会先让大纲旧
+  （M26 的中环），再由大纲带动正文。记三域会让作者改一个设定就看到**所有已定稿章**一起变红，
+  而它们一个字都不用改 —— 这正是 S6a 收窄要避免的事，不能在正文层重犯。
+- **默认 `-1`，不是 `0` 也不是 `NULL`**。`0` 已被 `HYPOTHETICAL_NEXT_REV` 占去表示「假想再改一版」，
+  一处双义会让「还没记」读成「按下一版算」；`NULL` 则要撤掉 `NOT NULL`，将来每个读取方都得
+  自己兜一层 `?? -1`，漏兜的那一处会把 `NULL` 当版本号参与比较。`-1` 是显式的「没有记录」。
+- **不回填**。迁移时补一个「当前大纲版本」等于声称「这些章节是按当前大纲定稿的」——
+  事实是它们各自定稿于某个已经找不回来的版本。补值会让**真正该复查的章节判 `valid`**
+  （假阴性，方向错）；留 `-1` 只是如实说「不知道」。与 M27 那条「`at` 保留事件时间、
+  改写成导入时刻等于伪造证据」是同一条纪律。
+- **读了就在同一事务里写**。跨事务读会开一个窗口：正文已按旧大纲写完，读到的却是新版本号，
+  于是这一章**永远**判 `valid`。这是仅有的一次能记准的机会。
+
+#### ② plan 第五组 `finalized`
+
+- `GROUP_ORDER` 追加在最后：`outline → blueprint → handoff → plot-tree → finalized`。
+  正文是这条链的末端消费者，排前面会让作者以为「先要重写正文」，而正确动作永远是从最上游开始判。
+- `tierFor` 改成「含定稿章 **或** 含交接单 ⇒ `strong`」。判据不是「影响面大」而是
+  「后果不可撤销」：定稿行可能已经发布（`finalization_outbox.publication_status`），
+  改上游会让「发出去的那一版」与库里的依据对不上。
+- 定稿章**参与** `unaffected` 的章集计算。不参与会让作者照着一份旧空隙跳过该复查的章 ——
+  这比不报更糟。
+- `outlineRev < 1` ⇒ `sourceRef = null` ⇒ `legacy` ⇒ 进 `unseen`（`kinds` 含 `finalized`），
+  不进 `groups`。**不猜**：既不说「没事」，也不说「旧了」。
+- 用 `buildSourceRef` 构造 ref 而不是手写对象：版本表里还没有这个键时，前者给空 ref（`legacy`），
+  手写 `{ 'outline:book': 0 }` 会给「依赖第 0 版 ⇒ 永远 stale」。两种错法方向相反。
+
+#### ③ 请求可选 `reason` + 回滚那一档
+
+`db:invalidation-plan` 的请求加 `reason?: UpstreamRevisionReason`，`normalizeRevisionReason`
+收敛后回显进 `plan.reason`（`computeInvalidationPlan` 入参 `reason?`，缺省 `unknown`）。
+
+**它不参与任何判定** —— 分组、`tier`、`unseen`、`unaffected` 一个都不看它。单测专门钉了这条：
+同一次假想改版，`reason` 换成 `rollback` 之后所有判定字段必须逐字相同。
+
+`buildInvalidationScopeNote` 在 `reason === 'rollback'` 时**前置**一句级联顺序
+（`大纲 → 章节蓝图 → 卷末交接单 → 已定稿正文`），后半句照旧走原来三档。
+**回滚不等于「全书」**：章号收得出来就照旧附上，不要因为「这是回滚」就退化成
+「影响范围难以精确判定」——那会让一份精确的清单被一句模糊话盖掉。
+
+调用方现状：`ArchitectureConfirmDialog` 与 `ArchFileViewer` 都传 `'regenerate'`。
+`'rollback'` 要等卷回滚原语（P0-1 残留）真有写入方，通道先通着，免得那天再改一遍签名。
+
+#### ④ 顺手修掉一处**说了假话**的文案
+
+面板勾选那句原来写 `我明白这会波及 N 章已定稿内容`，而那个 N 其实取自**所有**受影响组。
+交接单触发 `strong`、一张已定稿章都没有时，「已定稿内容」是假的。S6 之后有了 `finalized` 组，
+改成按真实依据分三档：有定稿章 ⇒「N 章已定稿正文」；判不出范围 ⇒「全书派生内容」；
+其余 ⇒「N 章派生内容」。
+
+#### 测试
+
+`m28-installed-lane`（4：升版+既有行不动 / 默认 `-1` 且新插入也吃默认 / 幂等 / verify 回滚）
+· `invalidation-plan` 新增 10 例（定稿组 6 + `reason` 回显 3 + 合并 1）
+· `db-controller-invalidation-plan` 新增 5 例（含「假想下一版没有章集 ⇒ 按全改算」这条保守方向的）
+· `finalization-repository` 新增 4 例（记准 / 无版本账记 `-1` / 每章取最高版 / 老库缺列照样返回）
+· `InvalidationPlanGatePanel.browser` 新增 4 例（勾选文案分档 / 无定稿组不许说「已定稿」/
+  `rollback` 前置级联顺序 / 非 `rollback` 一个字不多）。

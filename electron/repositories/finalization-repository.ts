@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto'
 import { getCurrentProjectPath, getProjectDb } from '../database'
 import { readPortableRuntimeFreeze } from '../services/portable-runtime-freeze'
 import { countDraftUnits } from '../../src/shared/draft-units'
+import { BOOK_SCOPE } from '../../src/shared/upstream-revisions'
+import { M28_DRAFT_OUTLINE_REV_UNKNOWN } from '../migrations/m28-draft-outline-rev'
 import { freezeFinalizedCharacterSnapshot, invalidateContinuityProjectionFrom } from './summary-repository'
+import { hasColumn } from './derived-source-ref'
+import { UpstreamRevisionRepository } from './upstream-revision-repository'
 
 export type PublicationStatus = 'pending' | 'published'
 
@@ -106,6 +110,9 @@ function requireDatabase() {
   return db
 }
 
+/** 与 `derived-source-ref.ts` 里那份同名类型同源（`better-sqlite3` 的库句柄）。 */
+type ProjectDatabase = ReturnType<typeof requireDatabase>
+
 function hasSameFinalizationInput(
   existing: FinalizationRow,
   input: FinalizationCommitInput,
@@ -202,6 +209,40 @@ export class FinalizationRepository {
     return readAuthoritativeExportRows().map(({ snapshot }) => snapshot)
   }
 
+  /**
+   * 已定稿章节的「定稿时大纲版本」（M28 / S6）。
+   *
+   * 每章只取**最高版本**那一行 —— 与 `listAuthoritativeForExport` 同一口径：
+   * 一章可能有多条 `finalized` 行（旧版本在重新定稿时不会被回退），
+   * 把它们逐条报出来会让清单里出现「第 8 章」好几遍。
+   *
+   * 列不存在（v28 之前的库）时**照样返回章号、版本记 `-1`**：直接返回空数组会让
+   * 「已定稿章节」这一组凭空消失，而作者会据此以为「这一刀不影响正文」。
+   * 报「N 章判断不了」是保守方向，报「0 章受影响」是反向。
+   */
+  static readFinalizedOutlineRevs(
+    database?: ProjectDatabase | null,
+  ): Array<{ chapterNumber: number; outlineRev: number }> {
+    const db = database ?? getProjectDb()
+    if (!db) return []
+    const revColumn = hasColumn(db, 'drafts', 'outline_rev')
+      ? 'outline_rev' : `${M28_DRAFT_OUTLINE_REV_UNKNOWN} AS outline_rev`
+    const rows = db.prepare(`
+      SELECT chapter_number, ${revColumn}
+      FROM drafts
+      WHERE status = 'finalized'
+      ORDER BY chapter_number ASC, version DESC, id DESC
+    `).all() as Array<{ chapter_number: number; outline_rev: number }>
+    const seen = new Set<number>()
+    const result: Array<{ chapterNumber: number; outlineRev: number }> = []
+    for (const row of rows) {
+      if (seen.has(row.chapter_number)) continue
+      seen.add(row.chapter_number)
+      result.push({ chapterNumber: row.chapter_number, outlineRev: row.outline_rev })
+    }
+    return result
+  }
+
   static matchesAuthoritativeExportReceipt(receipt: FinalizedDraftExportAuthorityReceipt): boolean {
     if (!Array.isArray(receipt)) return false
     const seenChapters = new Set<number>()
@@ -273,11 +314,30 @@ export class FinalizationRepository {
 
       db.prepare('UPDATE contents SET body = ? WHERE id = ?')
         .run(input.content, draft.content_id)
-      db.prepare(`
-        UPDATE drafts
-        SET status = 'finalized', word_count = ?, updated_at = datetime('now')
-        WHERE id = ?
-      `).run(countDraftUnits(input.content), input.draftId)
+      // ── M28（S6）：定稿这一刻的大纲版本 ──────────────────────────────
+      //
+      // **必须在同一个事务里读**：跨事务读会让「大纲刚被改过」这件事有窗口 ——
+      // 正文已经按旧大纲写完，读到的却是新版本号，于是这一章永远判 `valid`，
+      // 而它其实是用过期依据写的。这是仅有的一次能记准的机会，过去就补不回来。
+      //
+      // 读不到（v28 之前的库 / 没生成过大纲）⇒ `-1`（显式的「没有记录」），
+      // **不是 0**：0 已被 `HYPOTHETICAL_NEXT_REV` 占用表示「假想下一版」。
+      const outlineRev = hasColumn(db, 'drafts', 'outline_rev')
+        ? UpstreamRevisionRepository.readRev('outline', BOOK_SCOPE, db) ?? M28_DRAFT_OUTLINE_REV_UNKNOWN
+        : null
+      if (outlineRev === null) {
+        db.prepare(`
+          UPDATE drafts
+          SET status = 'finalized', word_count = ?, updated_at = datetime('now')
+          WHERE id = ?
+        `).run(countDraftUnits(input.content), input.draftId)
+      } else {
+        db.prepare(`
+          UPDATE drafts
+          SET status = 'finalized', word_count = ?, outline_rev = ?, updated_at = datetime('now')
+          WHERE id = ?
+        `).run(countDraftUnits(input.content), outlineRev, input.draftId)
+      }
       db.prepare(`
         INSERT INTO finalization_outbox (
           finalization_id, draft_id, chapter_number, chapter_title,

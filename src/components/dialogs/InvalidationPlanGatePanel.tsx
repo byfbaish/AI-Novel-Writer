@@ -30,6 +30,8 @@ const GROUP_LABEL: Record<InvalidationGroupKind, [string, string]> = {
   blueprint: ['章节蓝图', 'Chapter blueprints'],
   handoff: ['卷末交接单', 'Volume handoffs'],
   'plot-tree': ['剧情树', 'Plot tree'],
+  // S6 / M28：正文是这条链的末端消费者，排在最后与级联顺序一致。
+  finalized: ['已定稿章节', 'Finalized chapters'],
 }
 
 /**
@@ -61,12 +63,35 @@ function countAffectedChapters(plan: InvalidationPlan): number | null {
 }
 
 /**
+ * **已定稿正文**受影响的章数（S6 / M28）。
+ *
+ * 单独算而不是复用 `countAffectedChapters`：勾选那一句说的是「我明白这会波及 N 章
+ * **已定稿**内容」，而在 S6 之前那个 N 其实是「所有受影响章」—— 交接单触发的
+ * strong、一张已定稿章都没有时，那句「已定稿内容」是**假的**。有了 `finalized`
+ * 组之后才有真实判据，这一句才算说得准。
+ */
+function countFinalizedChapters(plan: InvalidationPlan): number {
+  const chapters = new Set<number>()
+  for (const group of plan.groups) {
+    if (group.kind !== 'finalized') continue
+    for (const item of group.items) {
+      for (const chapter of item.chapters ?? []) chapters.add(chapter)
+    }
+  }
+  return chapters.size
+}
+
+/**
  * 影响范围一句话（主稿 §十·2 ④，必写）。
  *
- * 主稿列了四种情形，**本期只能判出其中三种**：「卷回滚要逐层列出」需要知道这次的
- * 动作是回滚，而 plan 请求里只有域名、没有原因。缺的那一档按「局部修改」处理
- * （推荐全部重新生成），偏保守且不替作者决定；等 S6c 的溯源流水落地，再把
- * `reason` 接进来，这一档就能判准。
+ * 主稿列了四种情形。前三档（世界观 / 弧光 / 说得出章号）一直能判；
+ * 第四档「卷回滚要逐层列出」在 S6 之前判不出来 —— 请求里只有域名、没有动作。
+ * 现在 `plan.reason` 带着这次改动的来由，`rollback` 时前置一句**级联顺序**：
+ * 回滚真正的危险不是「范围大」，而是作者容易从最下游（正文）开始返工，
+ * 而正确的起点永远是最上游。
+ *
+ * 回滚**不等于**「全书」：章号收得出来就照旧附上，不要因为「这是回滚」就退化成
+ * 「影响范围难以精确判定」—— 那会让一份精确的清单被一句模糊话盖掉。
  */
 export function buildInvalidationScopeNote(
   plan: InvalidationPlan,
@@ -74,11 +99,16 @@ export function buildInvalidationScopeNote(
   locale: 'zh-CN' | 'en-US',
 ): string {
   const en = locale === 'en-US'
+  const rollback = plan.reason === 'rollback'
+    ? (en
+      ? 'A rollback cascades downward: outline → chapter blueprints → volume handoffs → finalized prose; re-check each layer in that order. '
+      : '这是回滚，影响逐层往下传：大纲 → 章节蓝图 → 卷末交接单 → 已定稿正文，按这个顺序重新确认。')
+    : ''
   if (domain === 'worldbuilding') {
-    return en ? 'A worldbuilding change affects settings across the whole book.' : '世界观变更影响全书设定'
+    return `${rollback}${en ? 'A worldbuilding change affects settings across the whole book.' : '世界观变更影响全书设定'}`
   }
   if (domain === 'arc') {
-    return en ? 'An arc change affects arrangements across the whole book.' : '弧光变更影响全书安排'
+    return `${rollback}${en ? 'An arc change affects arrangements across the whole book.' : '弧光变更影响全书安排'}`
   }
   const chapters = new Set<number>()
   let wholeBook = false
@@ -90,13 +120,13 @@ export function buildInvalidationScopeNote(
   }
   if (!wholeBook && chapters.size > 0) {
     const sorted = [...chapters].sort((left, right) => left - right)
-    return en
+    return `${rollback}${en
       ? `Affected chapters: ${sorted.join(', ')}`
-      : `影响章节：${sorted.join('、')}`
+      : `影响章节：${sorted.join('、')}`}`
   }
-  return en
+  return `${rollback}${en
     ? 'The affected range cannot be determined precisely; regenerating all downstream items is recommended.'
-    : '影响范围难以精确判定，推荐下游全部重新生成'
+    : '影响范围难以精确判定，推荐下游全部重新生成'}`
 }
 
 export default function InvalidationPlanGatePanel({
@@ -116,6 +146,7 @@ export default function InvalidationPlanGatePanel({
   const [acknowledged, setAcknowledged] = useState(false)
 
   const affected = countAffectedChapters(plan)
+  const finalizedChapters = countFinalizedChapters(plan)
   const needsAck = plan.tier === 'strong'
   const scopeNote = buildInvalidationScopeNote(plan, domain, locale)
   // 施工图 S3：strong 档未勾选时主按钮 disabled。不能改成「点一下再弹二次确认」——
@@ -222,15 +253,20 @@ export default function InvalidationPlanGatePanel({
             data-testid="invalidation-ack"
           />
           <span>
-            {affected === null
+            {finalizedChapters > 0
               ? text(
-                '我明白这会波及全书派生的内容',
-                'I understand this affects derived content across the whole book',
+                `我明白这会波及 ${finalizedChapters} 章已定稿正文`,
+                `I understand this affects finalized prose of ${finalizedChapters} chapter(s)`,
               )
-              : text(
-                `我明白这会波及 ${affected} 章已定稿内容`,
-                `I understand this affects finalized content of ${affected} chapter(s)`,
-              )}
+              : affected === null
+                ? text(
+                  '我明白这会波及全书派生的内容',
+                  'I understand this affects derived content across the whole book',
+                )
+                : text(
+                  `我明白这会波及 ${affected} 章派生内容`,
+                  `I understand this affects derived content of ${affected} chapter(s)`,
+                )}
           </span>
         </label>
       )}

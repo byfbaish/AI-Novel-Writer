@@ -110,13 +110,50 @@ function physicalSnapshot(source: string) {
 type DomainColumns = { name: string; columns: string[] }[]
 const quoteIdentifier = (value: string) => '"' + value.replaceAll('"', '""') + '"'
 const M05_ASSET_TABLES = ['character_avatar_assets', 'character_avatar_unresolved'] as const
+
+/**
+ * 升级迁移新增的**版本记账列**：它们记录「这一行依据的上游是第几版」。
+ *
+ * ## 为什么必须排除
+ *
+ * `preIdentityDomain` 的语义是「**升级不许改动作者的正文与设定**」。而这类列有两个
+ * 共同特征，让它们天然不属于「作者内容」：
+ *
+ * 1. 它们是**迁移加上去的**，v1 的库里根本没有这一列 —— 不排除就等于「每加一列
+ *    都算作者内容变了」，于是每次加列都要来改一次测试期望，而那条测试想守的东西
+ *    （升级有没有吃掉正文）一次都没被真正测到；
+ * 2. 它们的值会**随上游版本变化，而作者一个字没改** —— 这正是
+ *    `PROJECT_CORE_NON_CONTENT_COLUMNS`（`generation-source-binding.ts`）的同一条判据。
+ *
+ * ## 判据（加新列时照这条判，别照「反正它也是派生」）
+ *
+ * **它记录的是「我基于第几版」，还是「我写了什么」？** 前者排除，后者留下。
+ * 所以 `blueprints.structured_refs`（从蓝图内容里抽出来的实体）**不排除** ——
+ * 它是内容派生，升级改坏它就是真问题，必须让这条测试红。
+ *
+ * 这张表漏登记的代价是**假红**（每次加列都要改期望），登记过头的代价是**假绿**
+ * （升级真改了记账列却看不见）。后者更糟，所以宁可一格一格列出来。
+ */
+const VERSION_BOOKKEEPING_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  blueprints: ['source_ref'],                  // M25
+  volume_handoffs: ['source_ref'],             // M25
+  project_core: ['plot_tree_source_ref', 'synopsis_source_ref'], // M20 / M26
+  drafts: ['outline_rev'],                     // M28
+}
+
+/** `preIdentity` 视图里要剔掉的列：v1 之后才出现的列都算「不是作者原文的一部分」。 */
+function isPostIdentityColumn(table: string, column: string): boolean {
+  if (table === 'characters') return (M02_ADDED_CHARACTER_COLUMNS as readonly string[]).includes(column)
+  return VERSION_BOOKKEEPING_COLUMNS[table]?.includes(column) ?? false
+}
+
 function domainColumns(db: BetterSqlite3.Database, preIdentity = false, preAsset = false): DomainColumns {
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as { name: string }[]
   const postLegacyTables = [...M02_AUXILIARY_TABLES, ...M03_REVIEW_CYCLE_TABLES, ...M05_ASSET_TABLES] as readonly string[]
   return tables.filter(({ name }) => (!preIdentity || !postLegacyTables.includes(name))
     && (!preAsset || !(M05_ASSET_TABLES as readonly string[]).includes(name))).map(({ name }) => ({ name,
     columns: (db.prepare(`PRAGMA table_info(${quoteIdentifier(name)})`).all() as { name: string }[]).map(column => column.name)
-      .filter(column => !preIdentity || name !== 'characters' || !(M02_ADDED_CHARACTER_COLUMNS as readonly string[]).includes(column)),
+      .filter(column => !preIdentity || !isPostIdentityColumn(name, column)),
   }))
 }
 function domain(db: BetterSqlite3.Database, selection = domainColumns(db)): ProjectSqliteEvidence['domain'] {

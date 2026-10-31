@@ -8,6 +8,7 @@ import {
   upstreamRefKey,
   type ParsedChangedChapters,
   type UpstreamDomain,
+  type UpstreamRevisionReason,
   type UpstreamRevisionSnapshot,
 } from '../upstream-revisions'
 
@@ -71,6 +72,12 @@ interface PlanInput {
   synopsisSourceRef?: Record<string, number> | null
   /** 默认 `false`：老用例测的是别的组，不该被一条「没有大纲」的候选搅动期望值。 */
   hasSynopsis?: boolean
+  /**
+   * 已定稿章节（S6 / M28）。默认空 —— 老用例的期望值里不该突然多一组「已定稿章节」。
+   * 生产侧仍是必填：漏传会让正文这一层从清单里凭空消失，而作者会据此以为「不影响正文」。
+   */
+  finalizedDrafts?: ReadonlyArray<{ chapterNumber: number; outlineRev: number }>
+  reason?: UpstreamRevisionReason
 }
 
 function plan(input: PlanInput) {
@@ -83,6 +90,8 @@ function plan(input: PlanInput) {
     plotTreeSourceRef: input.plotTreeSourceRef,
     synopsisSourceRef: input.synopsisSourceRef ?? null,
     hasSynopsis: input.hasSynopsis ?? false,
+    finalizedDrafts: input.finalizedDrafts ?? [],
+    ...(input.reason ? { reason: input.reason } : {}),
   })
 }
 
@@ -465,6 +474,7 @@ describe('mergeInvalidationPlans', () => {
     unseen: { count: 1, kinds: ['plot-tree'] },
     tier: 'once',
     unaffected: null,
+    reason: 'unknown',
   }
   const OUTLINE_PLAN: InvalidationPlan = {
     groups: [{
@@ -476,6 +486,7 @@ describe('mergeInvalidationPlans', () => {
     unseen: { count: 1, kinds: ['plot-tree'] },
     tier: 'once',
     unaffected: { from: 4, to: 11 },
+    reason: 'unknown',
   }
 
   it('两份清单的组按 kind 并起来，`unseen` 取最大而不是相加', () => {
@@ -490,11 +501,11 @@ describe('mergeInvalidationPlans', () => {
   it('同一行落后于两个域 ⇒ 一条（不是两条），证据取并集', () => {
     const worldHit: InvalidationPlan = {
       groups: [{ kind: 'blueprint', count: 1, items: [{ label: '第 12 章', chapters: [12], behind: [{ key: WORLD, have: 1, need: 2 }] }] }],
-      unseen: { count: 0, kinds: [] }, tier: 'once', unaffected: null,
+      unseen: { count: 0, kinds: [] }, tier: 'once', unaffected: null, reason: 'unknown',
     }
     const outlineHit: InvalidationPlan = {
       groups: [{ kind: 'blueprint', count: 1, items: [{ label: '第 12 章', chapters: [12], behind: [{ key: OUTLINE, have: 3, need: 4 }] }] }],
-      unseen: { count: 0, kinds: [] }, tier: 'once', unaffected: null,
+      unseen: { count: 0, kinds: [] }, tier: 'once', unaffected: null, reason: 'unknown',
     }
     const merged = mergeInvalidationPlans([worldHit, outlineHit])
     expect(merged.groups).toHaveLength(1)
@@ -505,15 +516,161 @@ describe('mergeInvalidationPlans', () => {
   it('tier 取最高一档：任何一个域带来的后果都成立', () => {
     const strong: InvalidationPlan = {
       groups: [{ kind: 'handoff', count: 1, items: [{ label: '第1卷交接单', chapters: [1], behind: [] }] }],
-      unseen: { count: 0, kinds: [] }, tier: 'strong', unaffected: null,
+      unseen: { count: 0, kinds: [] }, tier: 'strong', unaffected: null, reason: 'unknown',
     }
     expect(mergeInvalidationPlans([WORLD_PLAN, strong]).tier).toBe('strong')
     expect(mergeInvalidationPlans([WORLD_PLAN, { ...WORLD_PLAN, tier: 'silent' }]).tier).toBe('once')
   })
 
   it('全 silent ⇒ 合并也是 silent（空清单不许被合并成一条提示）', () => {
-    const silent: InvalidationPlan = { groups: [], unseen: { count: 0, kinds: [] }, tier: 'silent', unaffected: null }
+    const silent: InvalidationPlan = { groups: [], unseen: { count: 0, kinds: [] }, tier: 'silent', unaffected: null, reason: 'unknown' }
     expect(mergeInvalidationPlans([silent, silent]).tier).toBe('silent')
     expect(mergeInvalidationPlans([]).tier).toBe('silent')
+  })
+})
+
+/**
+ * 已定稿章节（S6 / M28）。
+ *
+ * ## 这一组存在的理由
+ *
+ * 前四组都在说「还有什么没算完」；这一组说的是「**已经交出去的东西**可能不成立了」。
+ * 所以它有两个别人没有的性质：
+ * - 强度恒为 `strong` —— 定稿行可能已经发布，改上游会让「发出去的那一版」与库里的
+ *   依据对不上，这一步不该顺手点过去；
+ * - 判据**只认大纲一域** —— 世界/弧光的变化要先落到大纲（M26 的中环）才往下传。
+ *   记三域的话，作者改一个设定就会看到所有已定稿章节一起变红，而它们一个字都不用改。
+ */
+describe('已定稿章节组（S6 / M28）', () => {
+  const outlineAt = (rev: number) => snapshotOf({ [OUTLINE]: rev })
+
+  it('大纲改过这一章 ⇒ 进 finalized 组，强度直接拉到 strong', () => {
+    const result = plan({
+      overrides: [{ domain: 'outline', rev: 4 }],
+      revisions: outlineAt(3),
+      changes: changesOf({ [OUTLINE]: { 4: [8] } }),
+      // 剧情树与大纲同版 ⇒ 它不 stale，别让它混进来干扰断言。
+      plotTreeSourceRef: { [OUTLINE]: 4 },
+      finalizedDrafts: [{ chapterNumber: 8, outlineRev: 3 }],
+    })
+    expect(labelsOf(result, 'finalized')).toEqual(['第 8 章'])
+    expect(result.tier).toBe('strong')
+    // 只有这一组时也不许降级：strong 的判据是「后果不可撤销」，不是「影响面大」。
+    expect(result.groups.map(group => group.kind)).toEqual(['finalized'])
+  })
+
+  it('改的是别的章 ⇒ 这一章定稿正文不报（按章收窄在正文层同样成立）', () => {
+    const result = plan({
+      overrides: [{ domain: 'outline', rev: 4 }],
+      revisions: outlineAt(3),
+      changes: changesOf({ [OUTLINE]: { 4: [12] } }),
+      plotTreeSourceRef: { [OUTLINE]: 4 },
+      finalizedDrafts: [{ chapterNumber: 8, outlineRev: 3 }],
+    })
+    expect(labelsOf(result, 'finalized')).toEqual([])
+    // 而且它不该跑到 unseen 里：判断得了、结论是「没事」。
+    expect(result.unseen.kinds).not.toContain('finalized')
+  })
+
+  it('没记过大纲版本 ⇒ 进 unseen，不进组（不猜成「没事」也不猜成「旧了」）', () => {
+    const result = plan({
+      overrides: [{ domain: 'outline', rev: 4 }],
+      revisions: outlineAt(3),
+      changes: changesOf({ [OUTLINE]: { 4: [8] } }),
+      plotTreeSourceRef: { [OUTLINE]: 4 },
+      finalizedDrafts: [{ chapterNumber: 8, outlineRev: -1 }],
+    })
+    expect(labelsOf(result, 'finalized')).toEqual([])
+    expect(result.unseen.kinds).toContain('finalized')
+    expect(result.unseen.count).toBe(1)
+  })
+
+  it('只改世界观 ⇒ 定稿正文不直接变红 —— 它要等大纲真的重生成（级联逐层，不跨层直传）', () => {
+    const result = plan({
+      // 假想世界观再改一版；大纲仍停在第 3 版（作者还没点「重建大纲」）。
+      overrides: [{ domain: 'worldbuilding', rev: 2 }],
+      revisions: snapshotOf({ [OUTLINE]: 3, [WORLD]: 1 }),
+      changes: changesOf({}),
+      plotTreeSourceRef: null,
+      synopsisSourceRef: { [WORLD]: 1, [ARC]: 1 },
+      hasSynopsis: true,
+      finalizedDrafts: [{ chapterNumber: 8, outlineRev: 3 }],
+    })
+    // 大纲被判旧了（中间环），但正文还停在「依据第 3 版」—— 而第 3 版确实还是当前版。
+    expect(labelsOf(result, 'outline')).toEqual(['情节大纲'])
+    expect(labelsOf(result, 'finalized')).toEqual([])
+  })
+
+  it('整本重生成大纲（coversAll）⇒ 所有定稿章一起报，不是「一章没改」', () => {
+    const result = plan({
+      overrides: [{ domain: 'outline', rev: 4 }],
+      revisions: outlineAt(3),
+      // replace 语义：流水里记 `coversAll`，合并后落成空章集（判定的既有约定）。
+      changes: changesOf({ [OUTLINE]: { 4: [] } }),
+      plotTreeSourceRef: { [OUTLINE]: 4 },
+      finalizedDrafts: [
+        { chapterNumber: 8, outlineRev: 3 },
+        { chapterNumber: 9, outlineRev: 3 },
+      ],
+    })
+    expect(labelsOf(result, 'finalized')).toEqual(['第 8 章', '第 9 章'])
+    expect(result.groups.find(group => group.kind === 'finalized')!.count).toBe(2)
+  })
+
+  it('正文层也参与「不受影响的章」的计算 —— 否则作者会照着旧空隙跳过该复查的章', () => {
+    const result = plan({
+      overrides: [{ domain: 'outline', rev: 4 }],
+      revisions: outlineAt(3),
+      changes: changesOf({ [OUTLINE]: { 4: [3, 12] } }),
+      blueprints: [
+        { chapterNumber: 3, sourceRef: { [OUTLINE]: 3 } },
+        { chapterNumber: 12, sourceRef: { [OUTLINE]: 3 } },
+      ],
+      plotTreeSourceRef: { [OUTLINE]: 4 },
+      // 第 14 章定稿正文也在同一版里被改到 —— 受影响区间从 3–12 变成 3–14，
+      // 原来的「第 13 章没事」不再成立。
+      finalizedDrafts: [{ chapterNumber: 14, outlineRev: 3 }],
+    })
+    expect(result.unaffected).toEqual({ from: 4, to: 11 })
+  })
+})
+
+/**
+ * `reason` 回显（S6，方案 A）：只影响文案，**不影响任何判定**。
+ *
+ * 这里钉住的正是那个边界：同一次假想改版，`reason` 换成 `rollback` 之后
+ * 分组、强度、`unseen`、`unaffected` 都必须一模一样 —— 一变就说明判定读了它，
+ * 而「回滚」与「重生成」在数据上本来就该得到同一张清单。
+ */
+describe('plan.reason 只是回显（S6）', () => {
+  const input = {
+    overrides: [{ domain: 'outline' as const, rev: 4 }],
+    revisions: snapshotOf({ [OUTLINE]: 3 }),
+    changes: changesOf({ [OUTLINE]: { 4: [8] } }),
+    plotTreeSourceRef: { [OUTLINE]: 5 },
+    finalizedDrafts: [{ chapterNumber: 8, outlineRev: 3 }],
+  }
+
+  it('不传 ⇒ unknown；传了就原样带回来', () => {
+    expect(plan(input).reason).toBe('unknown')
+    expect(plan({ ...input, reason: 'rollback' }).reason).toBe('rollback')
+  })
+
+  it('换 reason 不改任何一个判定字段', () => {
+    const base = plan(input)
+    const rolledBack = plan({ ...input, reason: 'rollback' })
+    expect(rolledBack.groups).toEqual(base.groups)
+    expect(rolledBack.tier).toBe(base.tier)
+    expect(rolledBack.unseen).toEqual(base.unseen)
+    expect(rolledBack.unaffected).toEqual(base.unaffected)
+  })
+
+  it('合并多份清单：空清单的 unknown 不许盖掉另一份明确的 rollback', () => {
+    const silent: InvalidationPlan = {
+      groups: [], unseen: { count: 0, kinds: [] }, tier: 'silent', unaffected: null, reason: 'unknown',
+    }
+    const rolledBack = plan({ ...input, reason: 'rollback' })
+    expect(mergeInvalidationPlans([silent, rolledBack]).reason).toBe('rollback')
+    expect(mergeInvalidationPlans([]).reason).toBe('unknown')
   })
 })

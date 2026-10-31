@@ -15,7 +15,7 @@ export interface PortableFieldPolicy {
   disposition: PortableFieldDisposition
   validator: string
   consumer: string
-  origin: 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm08-delta' | 'm11-delta' | 'm12-delta' | 'm13-delta' | 'm14-delta' | 'm15-delta' | 'm16-delta' | 'm17-delta' | 'm18-delta' | 'm19-delta' | 'm20-delta' | 'm21-delta' | 'm22-delta' | 'm23-delta' | 'm24-delta' | 'm25-delta' | 'm26-delta' | 'm27-delta' | 'registered-donor'
+  origin: 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm08-delta' | 'm11-delta' | 'm12-delta' | 'm13-delta' | 'm14-delta' | 'm15-delta' | 'm16-delta' | 'm17-delta' | 'm18-delta' | 'm19-delta' | 'm20-delta' | 'm21-delta' | 'm22-delta' | 'm23-delta' | 'm24-delta' | 'm25-delta' | 'm26-delta' | 'm27-delta' | 'm28-delta' | 'registered-donor'
   signedDisposition: string | null
 }
 
@@ -80,6 +80,14 @@ const m26Fields = new Set<string>(fieldPolicyDocument.m26Fields)
  * 改写成导入时刻等于伪造证据。
  */
 const m27Tables = new Set<string>(fieldPolicyDocument.m27Tables)
+/**
+ * M28（S6）`drafts.outline_rev`：定稿时的大纲版本。
+ *
+ * 必须**随包带走**而不是导入时补：这个值说的是「这一章定稿时依据的是哪一版大纲」，
+ * 是这本书的历史事实。导入时补一个「当前大纲版本」会让所有已定稿章节被判 `valid`，
+ * 也就是把「该复查的」变成「看起来没事」——比不导出更危险。
+ */
+const m28Fields = new Set<string>(fieldPolicyDocument.m28Fields)
 const deltaCharacterFields = new Set<string>(fieldPolicyDocument.deltaCharacterFields)
 const optionalFields = new Set<string>(fieldPolicyDocument.optionalFields)
 const signedOverrides = fieldPolicyDocument.signedOverrides as Record<string, string>
@@ -99,7 +107,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
       const rule = rules[code]
       const key = `${table}.${field}`
       const delta = optionalFields.has(key) || deltaTables.has(table) || m06Tables.has(table) || m08Tables.has(table)
-        || m11Tables.has(table) || m12Tables.has(table) || m13Tables.has(table) || m14Tables.has(table) || m15Tables.has(table) || m16Tables.has(table) || m17Tables.has(table) || m18Tables.has(table) || m19Tables.has(table) || m20Fields.has(key) || m21Tables.has(table) || m22Fields.has(key) || m23Fields.has(key) || m24Tables.has(table) || m25Fields.has(key) || m26Fields.has(key) || m27Tables.has(table) || table === 'characters' && deltaCharacterFields.has(field)
+        || m11Tables.has(table) || m12Tables.has(table) || m13Tables.has(table) || m14Tables.has(table) || m15Tables.has(table) || m16Tables.has(table) || m17Tables.has(table) || m18Tables.has(table) || m19Tables.has(table) || m20Fields.has(key) || m21Tables.has(table) || m22Fields.has(key) || m23Fields.has(key) || m24Tables.has(table) || m25Fields.has(key) || m26Fields.has(key) || m27Tables.has(table) || m28Fields.has(key) || table === 'characters' && deltaCharacterFields.has(field)
       const signedDisposition = delta ? null : signedOverrides[key] ?? signedDefaults[code]
       if (!field || !rule || rule.length !== 3 || !PORTABLE_FIELD_DISPOSITIONS.has(rule[0])
         || typeof rule[1] !== 'string' || !rule[1] || typeof rule[2] !== 'string' || !rule[2]
@@ -126,6 +134,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
                             : m25Fields.has(key) ? 'm25-delta'
                             : m26Fields.has(key) ? 'm26-delta'
                             : m27Tables.has(table) ? 'm27-delta'
+                            : m28Fields.has(key) ? 'm28-delta'
                             : delta ? 'm01-m05-delta' : 'signed-s01', signedDisposition }))
     }
   }
@@ -137,7 +146,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
   // 这是 M22 那次事故的镜像方向（那次是库里有列、策略里没登记），两种都会让
   // 「新加一列」这件事静默少一半：前者导出时报 PORTABLE_SCHEMA_UNSUPPORTED，
   // 后者更糟 —— 声明形同虚设，字段的来源标签永远落不到。
-  for (const key of [...m20Fields, ...m22Fields, ...m23Fields, ...m25Fields, ...m26Fields, ...optionalFields]) {
+  for (const key of [...m20Fields, ...m22Fields, ...m23Fields, ...m25Fields, ...m26Fields, ...m28Fields, ...optionalFields]) {
     if (!result.has(key)) formatError('PORTABLE_POLICY_INVALID')
   }
   return result

@@ -8,7 +8,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { getCurrentProjectPath, getProjectDb } from '../../database'
 import { countDraftUnits } from '../../../src/shared/draft-units'
+import { initializeLegacyBaselineSchema } from '../../migrations/baseline-schema'
+import { CURRENT_DESKTOP_SCHEMA_VERSION, getDesktopMigrationRegistry } from '../../migrations/desktop-registry'
+import { migrateSchema } from '../../migrations/runner'
+import { SqliteSchemaAdapter } from '../../migrations/sqlite-schema-adapter'
 import { FinalizationRepository } from '../finalization-repository'
+import { UpstreamRevisionRepository } from '../upstream-revision-repository'
 
 vi.mock('../../database', () => ({
   getProjectDb: vi.fn(),
@@ -283,5 +288,103 @@ describe('FinalizationRepository transaction seam', () => {
 
     expect(() => FinalizationRepository.listAuthoritativeForExport())
       .toThrow('第 1 章定稿正文为空')
+  })
+})
+
+/**
+ * M28（S6）：定稿时把「大纲是第几版」记下来。
+ *
+ * 这个文件的其余用例用的是**手写最小 schema**（没有 `outline_rev`、没有版本账），
+ * 那条路径本身就在守「老库不许因为缺列而炸掉定稿」—— 一个旁路判据没有资格弄失败
+ * 定稿这种核心动作。这里另建一个走完整迁移的库，守「有列时真的记准了」。
+ *
+ * 记准的判据只有一条：**记的是定稿那一刻的版本，不是之后某一刻的**。所以断言
+ * 必须在「定稿之后又改了大纲」还不许变 —— 一旦写成「读的时候现查当前版本」，
+ * 这个字段就退化成「永远等于当前版」，而它存在的理由正好是「证明它不等于」。
+ */
+describe('M28 定稿记录大纲版本', () => {
+  function migratedDb(): BetterSqlite3.Database {
+    const full = new Database(':memory:') as BetterSqlite3.Database
+    full.pragma('foreign_keys=ON')
+    full.transaction(() => initializeLegacyBaselineSchema(full))()
+    migrateSchema(new SqliteSchemaAdapter(full), getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
+    full.prepare("INSERT OR IGNORE INTO project_core(id) VALUES('main')").run()
+    return full
+  }
+
+  function seedFinalizable(target: BetterSqlite3.Database, chapterNumber: number): number {
+    const contentId = 5000 + chapterNumber
+    target.prepare('INSERT INTO contents (id, body) VALUES (?, ?)').run(contentId, '待定稿正文')
+    const inserted = target.prepare(`INSERT INTO drafts (chapter_number, version, status, content_id, word_count)
+      VALUES (?, 1, 'draft', ?, 0)`).run(chapterNumber, contentId)
+    return Number(inserted.lastInsertRowid)
+  }
+
+  function finalize(draftId: number, chapterNumber: number): void {
+    FinalizationRepository.commit({
+      finalizationId: `finalization-${chapterNumber}-${draftId}`,
+      draftId,
+      chapterNumber,
+      chapterTitle: `第${chapterNumber}章`,
+      content: `第${chapterNumber}章正文`,
+      contentHash: hash(`第${chapterNumber}章正文`),
+      contentRevision: 1,
+      targetFileName: `第${chapterNumber}章.txt`,
+    })
+  }
+
+  it('记下定稿那一刻的大纲版本；之后再改大纲也不许变', () => {
+    const full = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(full)
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [1] }, full)
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [1] }, full)
+      const draftId = seedFinalizable(full, 1)
+
+      finalize(draftId, 1)
+      expect(full.prepare('SELECT outline_rev FROM drafts WHERE id = ?').pluck().get(draftId)).toBe(2)
+
+      // 定稿之后作者又改了一版大纲 —— 那一版与「这一章的定稿依据」无关。
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [9] }, full)
+      expect(full.prepare('SELECT outline_rev FROM drafts WHERE id = ?').pluck().get(draftId)).toBe(2)
+    } finally { full.close() }
+  })
+
+  it('没有版本账（从没改过大纲）⇒ 记 -1，不是 0', () => {
+    const full = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(full)
+      const draftId = seedFinalizable(full, 2)
+      finalize(draftId, 2)
+      // `-1` = 显式的「没有记录」。`0` 在别处表示「假想再造一版」，两义共用会让
+      // 「还没记」被读成「按下一版算」。
+      expect(full.prepare('SELECT outline_rev FROM drafts WHERE id = ?').pluck().get(draftId)).toBe(-1)
+    } finally { full.close() }
+  })
+
+  it('读取侧每章只取最高版本那一行（一章多版定稿不该在清单里出现两遍）', () => {
+    const full = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(full)
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [3] }, full)
+      const first = seedFinalizable(full, 3)
+      finalize(first, 3)
+
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [3] }, full)
+      // 第 2 版重新定稿同一章：旧版行按业务是不动的，两行都还在。
+      full.prepare("UPDATE drafts SET status = 'revised' WHERE id = ?").run(first)
+      const second = full.prepare(`INSERT INTO drafts (chapter_number, version, status, content_id, word_count)
+        VALUES (3, 2, 'draft', ?, 0)`).run(5003)
+      finalize(Number(second.lastInsertRowid), 3)
+
+      expect(FinalizationRepository.readFinalizedOutlineRevs(full)).toEqual([{ chapterNumber: 3, outlineRev: 2 }])
+    } finally { full.close() }
+  })
+
+  it('缺这一列的老库 ⇒ 照样返回章号、版本记 -1（不许让正文层从清单里凭空消失）', () => {
+    // 这个文件 beforeEach 建的手写 schema 正好没有 `outline_rev`。
+    expect(FinalizationRepository.readFinalizedOutlineRevs(db)).toEqual([])
+    db.prepare("UPDATE drafts SET status = 'finalized' WHERE id = 17").run()
+    expect(FinalizationRepository.readFinalizedOutlineRevs(db)).toEqual([{ chapterNumber: 1, outlineRev: -1 }])
   })
 })

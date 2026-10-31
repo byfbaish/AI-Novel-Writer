@@ -132,6 +132,7 @@ interface PlanResult {
     unseen: { count: number; kinds: string[] }
     tier: string
     unaffected: { from: number; to: number } | null
+    reason: string
   }
   missing?: boolean
   error?: string
@@ -305,6 +306,100 @@ describe('db:invalidation-plan —— 中间环（大纲自己记 world/arc）',
     try {
       const result = await planFor(db, 9)
       expect(result.plan?.unseen.kinds).not.toContain('outline')
+    } finally { db.close() }
+  })
+})
+
+/**
+ * 已定稿章节（S6 / M28）：正文层也要进清单。
+ *
+ * 这一组的判据全在「定稿那一刻记下的 outline_rev」，所以测试必须**从库里读**，
+ * 不能直接给 plan 塞一个假值 —— 真正会坏的地方是写入侧漏记（`-1`），
+ * 而漏记的表现恰恰是「清单里安静得像没事」。
+ */
+describe('db:invalidation-plan —— 已定稿章节（S6 / M28）', () => {
+  function seedFinalized(db: Handle, chapterNumber: number, outlineRev: number): void {
+    const contentId = 7000 + chapterNumber
+    db.prepare('INSERT INTO contents (id, body) VALUES (?, ?)').run(contentId, `第${chapterNumber}章正文`)
+    db.prepare(`INSERT INTO drafts (chapter_number, version, status, source, content_id, word_count, source_dependencies, outline_rev)
+      VALUES (?, 1, 'finalized', 'write', ?, 1200, '[]', ?)`).run(chapterNumber, contentId, outlineRev)
+  }
+
+  function ask(db: Handle, request: Record<string, unknown>): Promise<PlanResult> {
+    mocks.getProjectDb.mockReturnValue(db)
+    return call('db:invalidation-plan', { domain: 'outline', rev: 0, ...request }) as Promise<PlanResult>
+  }
+
+  it('定稿过第 8 章、大纲改到第 9 章 ⇒ 清单里出现「第 8 章」，且强度是 strong', async () => {
+    const db = openDb()
+    try {
+      for (let rev = 1; rev <= 8; rev += 1) {
+        UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [8] }, db)
+      }
+      seedFinalized(db, 8, 8)
+
+      const result = await ask(db, { rev: 9 })
+      const finalized = result.plan!.groups.find(group => group.kind === 'finalized')!
+      expect(finalized.items.map(item => item.label)).toEqual(['第 8 章'])
+      // 只有正文这一组也不许降级：定稿行可能已经发布出去了。
+      expect(result.plan!.tier).toBe('strong')
+    } finally { db.close() }
+  })
+
+  it('落后的那几版都没改过这一章 ⇒ 定稿正文不报（收窄在正文层同样成立）', async () => {
+    const db = openDb()
+    try {
+      // 大纲走了两版：第 2 版动第 12 章，第 3 版动第 13 章。第 8 章定稿于第 1 版。
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [1] }, db)
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [12] }, db)
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [13] }, db)
+      seedFinalized(db, 8, 1)
+
+      // 假想「再改到第 3 版」= 与当前同版。区间 (1, 3] 里两版都有章集记录，
+      // 都不含第 8 章 ⇒ 判 valid。
+      const result = await ask(db, { rev: 3 })
+      expect(result.plan!.groups.map(group => group.kind)).not.toContain('finalized')
+      expect(result.plan!.unseen.kinds).not.toContain('finalized')
+    } finally { db.close() }
+  })
+
+  it('假想「再改一版」而这一版还没有章集记录 ⇒ 按全改算（保守方向，不是「一章没改」）', async () => {
+    const db = openDb()
+    try {
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [12] }, db)
+      seedFinalized(db, 8, 1)
+
+      // `rev: 0` 折算成 current + 1，而那一版**还没发生**，流水里自然没有它的章集。
+      // 这里必须报，不能因为「查不到改了哪些章」就当作没事 —— 那是最危险的低估。
+      const result = await ask(db, { rev: 0 })
+      expect(result.plan!.groups.find(group => group.kind === 'finalized')!.items.map(item => item.label))
+        .toEqual(['第 8 章'])
+    } finally { db.close() }
+  })
+
+  it('M28 之前定稿的（outline_rev = -1）⇒ 进 unseen 的 kinds 里，不冒充「没事」', async () => {
+    const db = openDb()
+    try {
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [8] }, db)
+      seedFinalized(db, 8, -1)
+
+      const result = await ask(db, { rev: 2 })
+      expect(result.plan!.groups.map(group => group.kind)).not.toContain('finalized')
+      expect(result.plan!.unseen.kinds).toContain('finalized')
+    } finally { db.close() }
+  })
+
+  it('reason 原样回显；来路不明的值收敛成 unknown（渲染侧只该认取值表那六个）', async () => {
+    const db = openDb()
+    try {
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [8] }, db)
+      seedFinalized(db, 8, 1)
+
+      expect((await ask(db, { rev: 2, reason: 'rollback' })).plan!.reason).toBe('rollback')
+      expect((await ask(db, { rev: 2, reason: 'author-edit' })).plan!.reason).toBe('author-edit')
+      // 没传 ⇒ unknown（不是空串）；传了乱值也一样。
+      expect((await ask(db, { rev: 2 })).plan!.reason).toBe('unknown')
+      expect((await ask(db, { rev: 2, reason: '因为我想改' })).plan!.reason).toBe('unknown')
     } finally { db.close() }
   })
 })

@@ -28,13 +28,14 @@ import { applyM24UpstreamRevisions, createM24Migration, verifyM24UpstreamRevisio
 import { applyM25DerivedSourceRef, createM25Migration, verifyM25DerivedSourceRef } from './m25-derived-source-ref'
 import { applyM26SynopsisSourceRef, createM26Migration, verifyM26SynopsisSourceRef } from './m26-synopsis-source-ref'
 import { applyM27UpstreamRevisionLog, createM27Migration, verifyM27UpstreamRevisionLog } from './m27-upstream-revision-log'
+import { applyM28DraftOutlineRev, createM28Migration, verifyM28DraftOutlineRev } from './m28-draft-outline-rev'
 import { initializeLegacyBaselineSchema, applyBaselineTables } from './baseline-schema'
 import { ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
 import { SqliteSchemaAdapter, sqliteSchemaFingerprint } from './sqlite-schema-adapter'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-export const CURRENT_DESKTOP_SCHEMA_VERSION = 28
+export const CURRENT_DESKTOP_SCHEMA_VERSION = 29
 let installed: MigrationRegistry | undefined
 
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -205,7 +206,12 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
     const m27 = createM27Migration({ database: native,
       verifyKnownSchema: db => upstreamRevisionLogFingerprints.has(sqliteSchemaFingerprint(native(db)))
         && verifyM27UpstreamRevisionLog(native(db)) })
-    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14, m15, m16, m17, m18, m19, m20, m21, m22, m23, m24, m25, m26, m27], [
+    for (const db of references) db.transaction(() => applyM28DraftOutlineRev(db))()
+    const draftOutlineRevSchemas = schemas(29), draftOutlineRevFingerprints = new Set(draftOutlineRevSchemas.map(item => item.fingerprint))
+    const m28 = createM28Migration({ database: native,
+      verifyKnownSchema: db => draftOutlineRevFingerprints.has(sqliteSchemaFingerprint(native(db)))
+        && verifyM28DraftOutlineRev(native(db)) })
+    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14, m15, m16, m17, m18, m19, m20, m21, m22, m23, m24, m25, m26, m27, m28], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),
       ...baselineSchemas, ...generationSchemas, ...identitySchemas,
       ...reviewCycleSchemas, ...importEffectSchemas, ...characterAssetSchemas, ...mergeSnapshotSchemas,
@@ -226,6 +232,7 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
       ...derivedSourceRefSchemas,
       ...synopsisSourceRefSchemas,
       ...upstreamRevisionLogSchemas,
+      ...draftOutlineRevSchemas,
     ])
     return installed
   } finally { reference.close(); donor.close() }

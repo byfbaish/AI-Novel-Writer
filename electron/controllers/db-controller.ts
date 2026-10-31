@@ -19,7 +19,7 @@ import {
 } from '../repositories/project-core-repository'
 import { ProjectClearRepository, ProjectClearOptions } from '../repositories/project-clear-repository'
 import { computeInvalidationPlan } from '../../src/shared/invalidation-plan'
-import { BOOK_SCOPE, upstreamRefKey, type UpstreamDomain } from '../../src/shared/upstream-revisions'
+import { BOOK_SCOPE, normalizeRevisionReason, upstreamRefKey, type UpstreamDomain } from '../../src/shared/upstream-revisions'
 import {
   BlueprintRepository,
   BlueprintData,
@@ -1044,7 +1044,7 @@ export function registerDatabaseController() {
    */
   ipcMain.handle('db:invalidation-plan', async (
     _event,
-    request: { domain: UpstreamDomain; scope?: string; rev: number },
+    request: { domain: UpstreamDomain; scope?: string; rev: number; reason?: string },
     expectedProjectPath: string,
   ) => {
     try {
@@ -1084,6 +1084,11 @@ export function registerDatabaseController() {
         // 新建项目第一次生成大纲时先吃到一张「1 项无法判断」。
         synopsisSourceRef: ProjectCoreRepository.readSynopsisSourceRef(db),
         hasSynopsis: Boolean(ProjectCoreRepository.get(db)?.synopsis?.trim()),
+        // S6 / M28：已定稿章节。判「改了第 12 章大纲，会不会影响第 8 章定稿正文」。
+        finalizedDrafts: FinalizationRepository.readFinalizedOutlineRevs(db),
+        // 回显这次动作的来由（`rollback` 时文案要逐层列出）。`normalizeRevisionReason`
+        // 把来路不明的值收敛到 `unknown` —— 渲染侧只该认取值表里的那六个。
+        reason: normalizeRevisionReason(request.reason),
       })
       return { success: true, plan }
     } catch (err) {

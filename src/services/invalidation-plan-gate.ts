@@ -1,6 +1,6 @@
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import { HYPOTHETICAL_NEXT_REV, type InvalidationPlan } from '../shared/invalidation-plan'
-import type { UpstreamDomain } from '../shared/upstream-revisions'
+import type { UpstreamDomain, UpstreamRevisionReason } from '../shared/upstream-revisions'
 import { isProjectSessionCurrent } from '../components/project-session-gate'
 import { ipc } from './ipc-client'
 
@@ -26,17 +26,24 @@ import { ipc } from './ipc-client'
  * `HYPOTHETICAL_NEXT_REV`（= 0，handler 折算成 current + 1）。UI 手边没有读版本表的
  * 通道，而要问的正是「再改一版会怎样」——口径与理由见
  * [`docs/design/architecture/upstream-invalidation-phase3-plan-and-ui.md`](../../docs/design/architecture/upstream-invalidation-phase3-plan-and-ui.md) §六。
+ *
+ * ## 为什么要传 `reason`
+ *
+ * 它只影响「影响范围」那句文案（回滚要按级联顺序逐层列出，不能只说「推荐全部重生成」），
+ * 不影响判定。**不传也能用**（落 `unknown`，文案与以前完全一致）——这是刻意的：
+ * 卷回滚原语还没落地，先让通道通着，等它真发货时不必再改一遍签名。
  */
 export async function readInvalidationPlan(
   session: ProjectSessionContext | null,
   domain: UpstreamDomain,
+  reason: UpstreamRevisionReason = 'unknown',
 ): Promise<InvalidationPlan | null> {
   if (!session || !isProjectSessionCurrent(session)) return null
   try {
     const result = await ipc.invokeWithProjectSession(
       session,
       'db:invalidation-plan',
-      { domain, rev: HYPOTHETICAL_NEXT_REV },
+      { domain, rev: HYPOTHETICAL_NEXT_REV, reason },
       session.projectPath,
     )
     return result?.success ? result.plan ?? null : null

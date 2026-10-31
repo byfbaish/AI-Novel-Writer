@@ -627,9 +627,10 @@ describe('portable project export service', { timeout: 20_000 }, () => {
       // 五版合计 +2 表 21 列 —— 21/63/604 → 26/65/625。
       // P2-3 期 3b / M26：+1 列（project_core.synopsis_source_ref）—— 26/65/625 → 26/65/626。
       // P2-3 / S6c / M27：+1 表 8 列（upstream_revision_log）—— 26/65/626 → 27/66/634。
+      // P2-3 / S6：+1 列（drafts.outline_rev）—— 27/66/634 → 27/66/635。
       // 版本号用常量而不是字面量：这条断言在 M20 之后每一版都得手改一次，而它想表达的只是
       // 「导出的 sourceEvidence 反映的是**当前**库」——写死 21 会让「迁移做对了」表现成「测试红了」。
-      sourceEvidence: { schemaVersion: CURRENT_DESKTOP_SCHEMA_VERSION, tableCount: 66, fieldCount: 634 },
+      sourceEvidence: { schemaVersion: CURRENT_DESKTOP_SCHEMA_VERSION, tableCount: 66, fieldCount: 635 },
     })
     expect(contextCalls).toEqual(['lease-current', 'lease-current', 'lease-current'])
     expect(fs.readFileSync(f.databasePath)).toEqual(before)
@@ -691,8 +692,8 @@ describe('portable project export service', { timeout: 20_000 }, () => {
     const receipt = await exportPortableProject(input(f))
     // 与上一条同源：M10 的两列与 M11 的两张表同样计入 donor 夹具（比上一条多 1 个字段）；
     // M15 加 1 表 13 列，M16 加 1 表 11 列，M17 加 1 表 13 列。
-    // donor 夹具在上一条基础上多一列，所以字段数比 634 多 1。
-    expect(receipt.sourceEvidence).toMatchObject({ schemaVersion: CURRENT_DESKTOP_SCHEMA_VERSION, tableCount: 66, fieldCount: 635 })
+    // donor 夹具在上一条基础上多一列，所以字段数比 635 多 1。
+    expect(receipt.sourceEvidence).toMatchObject({ schemaVersion: CURRENT_DESKTOP_SCHEMA_VERSION, tableCount: 66, fieldCount: 636 })
     const targetProjectRoot = path.join(f.base, 'restored-donor')
     await restorePortableProject({ archivePath: f.target, targetProjectRoot })
 

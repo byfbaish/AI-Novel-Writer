@@ -818,7 +818,7 @@ function ArchFileViewerSession({
    */
   const guardWithInvalidationPlan = async (domain: UpstreamDomain, action: () => Promise<void>) => {
     const session = recoverySession.current
-    const plan = await readInvalidationPlan(session, domain)
+    const plan = await readInvalidationPlan(session, domain, 'regenerate')
     if (!plan || plan.tier === 'silent') { await action(); return }
     pendingInvalidationAction.current = action
     setInvalidationPlan(plan)

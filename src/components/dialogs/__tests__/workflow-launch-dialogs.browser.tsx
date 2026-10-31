@@ -734,8 +734,13 @@ describe('P2-3 期 3a：重建前的失效清单闸门', () => {
     await act(async () => page.getByRole('button', { name: /确认生成/ }).click())
 
     await vi.waitFor(() => expect(document.querySelector('[data-testid="invalidation-gate"]')).not.toBeNull())
-    // 只问最上游那一域（本期三处写入点共用 BOOK_SOURCE_KEYS，分域各问会得到三份同样的单子）
-    expect(requests[0]).toEqual({ domain: 'worldbuilding', rev: 0 })
+    // `rev: 0` = 假想「再改一版」（UI 手边没有当前版本号）。
+    //
+    // S6 之后请求多带一个 `reason: 'regenerate'`：它只回显进 `plan.reason`，
+    // 让「影响范围」那句能区分回滚与重生成，**不参与判定**。所以这里用
+    // `toMatchObject` 钉住真正要守的两项，而不是把整个请求体钉死 ——
+    // 后者会让「多回显一个字段」表现成「闸门行为变了」。
+    expect(requests[0]).toMatchObject({ domain: 'worldbuilding', rev: 0 })
     expect(document.querySelector('[data-testid="invalidation-groups"]')?.textContent).toContain('章节蓝图（2）')
     expect(onConfirm).not.toHaveBeenCalled()
     await expect.element(page.getByRole('button', { name: /确认生成/ })).toBeDisabled()

@@ -45,7 +45,7 @@ import type { KnowledgeCandidateView } from './knowledge-candidate'
 import type { PowerAbilityDefinition, PowerAbilityInput } from './power-ability'
 import type { SecretDefinition, SecretInput } from './secret'
 import type { VolumeHandoffDefinition, VolumeHandoffInput } from './volume-handoff'
-import type { DerivedValidity, UpstreamDomain } from './upstream-revisions'
+import type { DerivedValidity, UpstreamDomain, UpstreamRevisionReason } from './upstream-revisions'
 import type { VolumeDefinition } from './volume-structure'
 import type {
   FinalizedContinuityProjection,
@@ -1190,7 +1190,12 @@ export interface DatabaseChannels {
    */
   'db:invalidation-plan': {
     args: [
-      request: { domain: UpstreamDomain; scope?: string; rev: number },
+      /**
+       * `reason` 可选（S6，方案 A 已裁定）：只回显进 `plan.reason`，让「影响范围」
+       * 那句文案能区分回滚与重生成，**不参与任何判定**。不传 ⇒ `unknown`，
+       * 行为与 S6 之前完全一致 —— 所以它不是一次「新增签名通道」。
+       */
+      request: { domain: UpstreamDomain; scope?: string; rev: number; reason?: UpstreamRevisionReason },
       expectedProjectPath: string,
     ]
     return: { success: boolean; plan?: InvalidationPlan; missing?: boolean; error?: string }
