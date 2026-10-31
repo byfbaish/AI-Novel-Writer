@@ -8,12 +8,14 @@ import {
   changedChaptersBetween,
   derivedStatusForChapters,
   expandChapterRange,
+  mergeRevisionLogIntoChangedChapters,
   parseChangedChapters,
   parseUpstreamRefKey,
   serializeChangedChapters,
   withChangedChapters,
   refCoversChapter,
   upstreamRefKey,
+  type UpstreamRevisionLogEntry,
 } from '../upstream-revisions'
 
 /**
@@ -136,6 +138,90 @@ describe('describeDrift', () => {
   it('S4b 版本倒退标注「版本回退」—— 与「作者又改了一版」必须能分开', () => {
     expect(describeDrift([{ key: 'outline:book', have: 5, need: 2 }]))
       .toBe('情节大纲 第5版→第2版（版本回退）')
+  })
+
+  it('S6c 期 2 第 3 层：每版带时间与原因，时间按**本地**时区渲染', () => {
+    const text = describeDrift([{
+      key: 'outline:book', have: 3, need: 5,
+      changed: [
+        { rev: 4, chapters: [12, 13, 14], at: '2026-10-31 14:05:00', reason: 'author-edit' },
+        { rev: 5, chapters: [31], at: '2026-10-31 15:20:00', reason: 'regenerate' },
+      ],
+    }])
+    // 时分不钉死（跑测机器的时区不同），但必须是 MM-DD HH:MM，
+    // 而不是把库里的 UTC 原文 `2026-10-31 14:05:00` 直接摆给作者。
+    expect(text).toMatch(
+      /^情节大纲 第3版→第5版（第4版 \d{2}-\d{2} \d{2}:\d{2} 作者手改，改过第12–14章；第5版 \d{2}-\d{2} \d{2}:\d{2} 重新生成，改过第31章）$/u,
+    )
+    expect(text).not.toContain('2026-10-31 14:05')
+  })
+
+  it('S6c 期 2：`unknown` 不渲染 —— 界面写「原因未知」对作者没有信息量', () => {
+    // 但数据库里必须留着它：`WHERE reason='unknown'` 是「还有多少处没接线」的计数口径。
+    expect(describeDrift([{
+      key: 'outline:book', have: 1, need: 2,
+      changed: [{ rev: 2, chapters: [7], at: '2026-10-31 14:05:00', reason: 'unknown' }],
+    }])).toMatch(/^情节大纲 第1版→第2版（第2版 \d{2}-\d{2} \d{2}:\d{2} 改过第7章）$/u)
+  })
+
+  it('S6c 期 2：`coversAll` 说「改动了全部章节」，不与「查不到」混为一谈', () => {
+    // 两种都是一个空章集，但方向相反：一个是「整本都重写了」，一个是「不知道改了哪些」。
+    expect(describeDrift([{
+      key: 'outline:book', have: 1, need: 2,
+      changed: [{ rev: 2, chapters: [], coversAll: true, at: '2026-10-31 14:05:00', reason: 'regenerate' }],
+    }])).toMatch(/改动了全部章节）$/u)
+    expect(describeDrift([{
+      key: 'outline:book', have: 1, need: 2,
+      changed: [{ rev: 2, chapters: [] }],
+    }])).toBe('情节大纲 第1版→第2版（第2版改动章未知）')
+  })
+})
+
+describe('mergeRevisionLogIntoChangedChapters（S6c 期 2）', () => {
+  function entry(
+    overrides: Partial<UpstreamRevisionLogEntry> & { rev: number },
+  ): UpstreamRevisionLogEntry {
+    return {
+      domain: 'outline', scope: 'book', at: '2026-10-31 14:05:00',
+      reason: 'unknown', changedChapters: [], coversAll: false,
+      ...overrides,
+    }
+  }
+
+  it('两段各覆盖一段时间：JSON 的旧版本 + 流水的新版本都要在（缺任一段 ⇒ 全改）', () => {
+    const base = parseChangedChapters('{"1":[3]}')
+    const merged = mergeRevisionLogIntoChangedChapters(base, [entry({ rev: 2, changedChapters: [7] })])
+    expect([...merged.byRev.entries()]).toEqual([[1, [3]], [2, [7]]])
+    // 两段都在，区间 (1,2] 才收窄得出「只改了第 7 章」；只有任一半都会返回 null。
+    expect(changedChaptersBetween(merged, 1, 2)).toEqual([7])
+  })
+
+  it('同 rev 两边都有 ⇒ 以流水为准（当前态列被 replace / 20 版上限加工过）', () => {
+    const base = parseChangedChapters('{"2":[9]}')
+    const merged = mergeRevisionLogIntoChangedChapters(base, [entry({ rev: 2, changedChapters: [7] })])
+    expect(merged.byRev.get(2)).toEqual([7])
+  })
+
+  it('coversAll 落成空章集 —— 判定侧「空 = 全改」的约定不许另造哨兵', () => {
+    const merged = mergeRevisionLogIntoChangedChapters(null, [entry({ rev: 1, coversAll: true })])
+    expect(merged.byRev.get(1)).toEqual([])
+    expect(changedChaptersBetween(merged, 0, 1)).toBeNull()
+    expect(merged.meta?.get(1)?.coversAll).toBe(true)
+  })
+
+  it('legacy 章集原样保留（流水没有「哪一版」这层信息，表达不了它）', () => {
+    const merged = mergeRevisionLogIntoChangedChapters(parseChangedChapters('[31,33]'), [])
+    expect(merged.legacyChapters).toEqual([31, 33])
+    expect(merged.meta).toBeUndefined()
+  })
+
+  it('撞号时后写的覆盖先写的（与 history 的 rev ASC, id ASC 同序）', () => {
+    const merged = mergeRevisionLogIntoChangedChapters(null, [
+      entry({ rev: 2, changedChapters: [4] }),
+      entry({ rev: 2, changedChapters: [5], reason: 'import-restore' }),
+    ])
+    expect(merged.byRev.get(2)).toEqual([5])
+    expect(merged.meta?.get(2)?.reason).toBe('import-restore')
   })
 })
 

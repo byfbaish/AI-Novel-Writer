@@ -53,7 +53,13 @@ export function rewriteBlueprintCharacters(
   if (rewrites.length === 0) return []
 
   const outlineRev = UpstreamRevisionRepository.bump(
-    { domain: 'outline', changedChapters: rewrites.map(rewrite => rewrite.chapter) },
+    {
+      domain: 'outline',
+      changedChapters: rewrites.map(rewrite => rewrite.chapter),
+      // 角色改名是作者动作，级联到蓝图 —— 记 `author-edit` 而不是留 `unknown`：
+      // 作者回头看「大纲为什么涨了一版」时要能一眼认出是自己改的名。
+      reason: 'author-edit',
+    },
     db,
   )
   // 来源快照按「这次的新 rev」算**一次**：每行都算等于每行读一遍整张版本表。

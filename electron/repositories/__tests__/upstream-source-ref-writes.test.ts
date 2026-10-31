@@ -7,7 +7,7 @@ import { CURRENT_DESKTOP_SCHEMA_VERSION, getDesktopMigrationRegistry } from '../
 import { migrateSchema } from '../../migrations/runner'
 import { SqliteSchemaAdapter } from '../../migrations/sqlite-schema-adapter'
 import { normalizeKeyEvents } from '../../../src/shared/blueprint-key-events'
-import { derivedStatus, derivedStatusForChapters, describeDrift } from '../../../src/shared/upstream-revisions'
+import { changedChaptersBetween, derivedStatus, derivedStatusForChapters, describeDrift } from '../../../src/shared/upstream-revisions'
 import { BlueprintRepository, type BlueprintData } from '../blueprint-repository'
 import { rewriteBlueprintCharacters } from '../blueprint-character-rewrite'
 import { parseSourceRefValue } from '../derived-source-ref'
@@ -513,8 +513,11 @@ describe('溯源流水（S6c / M27）', () => {
     const db = migratedDb()
     try {
       vi.mocked(getProjectDb).mockReturnValue(db)
-      BlueprintRepository.upsertMany([blueprintFor(1)])
-      BlueprintRepository.upsertMany([blueprintFor(2)])
+      // 直接走 `bump` 而不是业务路径：这条测的是**缺省值**。业务路径自
+      // S6c 期 2 起都带了原因（`upsertMany` 传 `author-edit`），拿它测缺省
+      // 等于用「接好线的那条」验证「没接线时什么样」。
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [1] }, db)
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [2] }, db)
 
       const history = UpstreamRevisionRepository.history('outline', 'book', db)
       expect(history.map(entry => entry.rev)).toEqual([1, 2])
@@ -524,6 +527,18 @@ describe('溯源流水（S6c / M27）', () => {
       // 章集逐版独立：第 2 版不该把第 1 章的章号带进来。
       expect(history.map(entry => entry.changedChapters)).toEqual([[1], [2]])
       expect(history.every(entry => entry.coversAll === false)).toBe(true)
+    } finally { db.close() }
+  })
+
+  it('作者侧的写入点都带上了原因 —— 文案第 3 层不该永远是「原因未知」', () => {
+    const db = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      BlueprintRepository.upsertMany([blueprintFor(1)])
+      expect(UpstreamRevisionRepository.latestLog('outline', 'book', db)?.reason).toBe('author-edit')
+
+      ProjectCoreRepository.update({ worldbuilding: '新世界' }, db)
+      expect(UpstreamRevisionRepository.latestLog('worldbuilding', 'book', db)?.reason).toBe('author-edit')
     } finally { db.close() }
   })
 
@@ -592,6 +607,81 @@ describe('溯源流水（S6c / M27）', () => {
       expect(latest.rev).toBe(2)
       expect(latest.reason).toBe('import-restore')
       expect(latest.changedChapters).toEqual([9])
+    } finally { db.close() }
+  })
+})
+
+/**
+ * S6c 期 2：章集从 `upstream_revisions` **彻底挪进流水**。
+ *
+ * ## 守的两件事
+ *
+ * 1. **列不再增长**。`changed_chapters` 带着两代格式与 20 版上限，让它继续长
+ *    等于让「为省空间设的补丁」继续决定判定精度；流水本身不设上限。
+ * 2. **历史尾巴不能丢**。流水只记 M27 之后的版本，之前那些只在这列里 ——
+ *    读取侧必须把两段合起来，缺任一段就判「收窄不了」⇒ 整域按全改算。
+ */
+describe('章集迁进流水（S6c 期 2）', () => {
+  function migratedDbAt(version: number) {
+    const db = new Database(':memory:')
+    db.pragma('foreign_keys=ON')
+    db.transaction(() => initializeLegacyBaselineSchema(db))()
+    migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), version)
+    db.prepare("INSERT OR IGNORE INTO project_core(id) VALUES('main')").run()
+    return db
+  }
+
+  function rawChanged(db: ReturnType<typeof migratedDb>, domain: string, scope = 'book'): string {
+    return db.prepare(
+      'SELECT changed_chapters FROM upstream_revisions WHERE domain = ? AND scope = ?',
+    ).pluck().get(domain, scope) as string
+  }
+
+  it('有流水表 ⇒ 不再写 changed_chapters 列，但 read() 仍拿得到章集', () => {
+    const db = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [31] }, db)
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [33] }, db)
+
+      // 列停在 DDL 默认值（`'[]'`）：一个字节都没被改写过。
+      expect(rawChanged(db, 'outline')).toBe('[]')
+      // 而对外语义不变 —— 调用方不该因为「迁到流水」而看到半个真相。
+      const row = UpstreamRevisionRepository.read('outline', 'book', db)!
+      expect([...row.changedChapters.byRev.entries()]).toEqual([[1, [31]], [2, [33]]])
+      expect(row.changedChapters.meta?.get(2)?.reason).toBe('unknown')
+    } finally { db.close() }
+  })
+
+  it('流水建立之前的旧版本仍从列里读 —— 两段合起来才收窄得出一章', () => {
+    const db = migratedDb()
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      // 模拟「M27 之前写过的库」：列里有 rev1，流水里还没有它。
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [3] }, db)
+      db.prepare("UPDATE upstream_revisions SET changed_chapters = ? WHERE domain = 'outline'").run('{"1":[3]}')
+      db.prepare('DELETE FROM upstream_revision_log').run()
+      UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [7] }, db)
+
+      const merged = UpstreamRevisionRepository.changeLog(db).get('outline:book')!
+      expect([...merged.byRev.entries()]).toEqual([[1, [3]], [2, [7]]])
+      // 只读流水会缺 rev1 ⇒ 判「说不清」；合起来才是「只改了第 7 章」。
+      expect(changedChaptersBetween(merged, 1, 2)).toEqual([7])
+    } finally { db.close() }
+  })
+
+  it('流水表不在（v27 老库）⇒ 回到旧路径，列照写且 20 版上限仍生效', () => {
+    const db = migratedDbAt(27)
+    try {
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      expect(UpstreamRevisionRepository.hasLog(db)).toBe(false)
+      for (let rev = 1; rev <= 25; rev += 1) {
+        UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [rev] }, db)
+      }
+      const parsed = UpstreamRevisionRepository.read('outline', 'book', db)!.changedChapters
+      // 上限生效：25 版被压到 20 条以内，且没有流水可以兜底。
+      expect(parsed.byRev.size).toBeLessThanOrEqual(20)
+      expect(parsed.meta).toBeUndefined()
     } finally { db.close() }
   })
 })

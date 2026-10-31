@@ -191,10 +191,27 @@ export interface DerivedDrift {
   changed?: readonly DriftChange[]
 }
 
-/** 某一版改了哪些章。`chapters === null` = 这一版在日志里取不到（如被 20 版上限挤掉）。 */
+/** 某一版改了哪些章，以及**什么时候、因为什么**（第 3 层，S6c 期 2）。 */
 export interface DriftChange {
   rev: number
   chapters: readonly number[] | null
+  /**
+   * 这一版被写下的时间（流水原文，UTC）。
+   *
+   * `undefined` = 没有流水（M27 之前的库，或该域在期 1 之前就改过）。
+   * **不要用空串或当前时间顶替** —— 文案里「没有时间」是诚实的，
+   * 补一个假时间会让作者对着手表怀疑整条记录。
+   */
+  at?: string
+  reason?: UpstreamRevisionReason
+  /**
+   * `true` = 这一版改动了**全部**章（整段替换）。
+   *
+   * 存在这一格是因为 `chapters` 为空数组时有两种相反的意思：「全改」与「说不清」。
+   * 判定侧对两者都用「按全改算」的保守方向，但**文案必须分开** ——
+   * 对作者说「这版改了全部章」和「这版改了哪些章我查不到」是两件事。
+   */
+  coversAll?: boolean
 }
 
 export type DerivedValidity =
@@ -302,12 +319,66 @@ function driftDetail(drift: DerivedDrift): string {
   if (drift.have > drift.need) return '（版本回退）'
   const changed = drift.changed
   if (!changed || changed.length === 0) return ''
-  const parts = changed.map((entry) => {
-    const chapters = entry.chapters
-    if (!chapters || chapters.length === 0) return `第${entry.rev}版改动章未知`
-    return `第${entry.rev}版改过${formatChapterList(chapters)}`
-  })
-  return `（${parts.join('；')}）`
+  return `（${changed.map(describeRevisionChange).join('；')}）`
+}
+
+/**
+ * 一版的读法：`第4版 10-31 22:05 作者手改，改过第12–14章`（S6c 期 2 加后两段）。
+ *
+ * ## 为什么缺失的段省掉而不是写「未知」
+ *
+ * 时间/原因只在流水里有，而流水只覆盖 M27 之后的版本。老库上大半版本没有这两段，
+ * 每条都写「时间未知、原因未知」会把真正重要的章集淹掉。
+ *
+ * ## `unknown` 不渲染
+ *
+ * 数据库里保留它是为了让「还没接线」可数（`WHERE reason='unknown'`），
+ * 但界面上写「原因未知」对作者没有信息量 —— 他要的是「帮我想起改了什么」，
+ * 不是「我们知道我们不知道」。等接线补齐，这里自然会出现具体原因。
+ *
+ * ## 章集取不到时仍要写出来
+ *
+ * 省略这半句会让作者以为「那一版没改东西」，而实际是「查不到」。两者方向相反。
+ */
+function describeRevisionChange(entry: DriftChange): string {
+  const at = entry.at ? formatRevisionAt(entry.at) : null
+  const reason = entry.reason && entry.reason !== 'unknown' ? REVISION_REASON_LABEL[entry.reason] : null
+  const tail = entry.coversAll
+    ? '改动了全部章节'
+    : entry.chapters && entry.chapters.length > 0
+      ? `改过${formatChapterList(entry.chapters)}`
+      : '改动章未知'
+  const head = `第${entry.rev}版`
+  // 没有时间也没有原因（M27 之前写的版本）⇒ 保持期 1 的读法：`第4版改过第12章`。
+  if (!at && !reason) return `${head}${tail}`
+  const decorated = [head, at, reason].filter((part): part is string => Boolean(part)).join(' ')
+  // 原因后面用逗号断开（`作者手改，改过…`），只有时间时用空格 —— 中文里
+  // 一个名词直接接动词读起来像在说「那次改动叫『改过第 12 章』」。
+  return `${decorated}${reason ? '，' : ' '}${tail}`
+}
+
+/** 原因取值表的人类读法。`unknown` 在这里也有值，只是 `describeRevisionChange` 不渲染它。 */
+const REVISION_REASON_LABEL: Record<UpstreamRevisionReason, string> = {
+  'author-edit': '作者手改',
+  regenerate: '重新生成',
+  rollback: '回滚',
+  'import-restore': '导入恢复',
+  clear: '清除',
+  unknown: '原因未知',
+}
+
+/**
+ * `2026-10-31 14:05:00`（UTC，库里的原文）→ `10-31 22:05`（本地）。
+ *
+ * 库里存 UTC 是为了与 `updated_at` 同口径、跨时区可排序；**给作者看必须转本地** ——
+ * 否则他会拿自己手表去对，然后认定整条记录是错的。
+ */
+function formatRevisionAt(at: string): string | null {
+  const ms = Date.parse(at.includes('T') ? at : `${at.replace(' ', 'T')}Z`)
+  if (!Number.isFinite(ms)) return null
+  const date = new Date(ms)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 /** `[12,13,14,31]` → `第12–14、31章`；单章 → `第12章`。 */
@@ -394,6 +465,20 @@ export function refCoversChapter(
  */
 export type ChangedChapterLog = ReadonlyMap<number /* rev */, readonly number[]>
 
+/**
+ * 某一版的取证信息（S6c 期 2）。
+ *
+ * 只有流水记得住这三样：`upstream_revisions.changed_chapters` 是「当前态快照」，
+ * 每一次 `UPDATE` 都会把上一版的时间盖掉，而原因从来没进过那一列。
+ */
+export interface ChangedChapterMeta {
+  /** 这一版被写下的时间（`datetime('now')`，UTC）。 */
+  at?: string
+  reason?: UpstreamRevisionReason
+  /** `true` = 这一版改动了全部章（`replace`）。 */
+  coversAll?: boolean
+}
+
 /** 解析结果。两代格式都在里面，判定侧只认一种语义。 */
 export interface ParsedChangedChapters {
   /**
@@ -405,9 +490,23 @@ export interface ParsedChangedChapters {
   legacyChapters: readonly number[]
   /** 新格式：rev → 章号。 */
   byRev: ChangedChapterLog
+  /**
+   * rev → 取证信息。**只有流水给得出**，所以 `parseChangedChapters`（读
+   * `upstream_revisions.changed_chapters`）不填它，由 `mergeRevisionLogIntoChangedChapters` 挂上。
+   *
+   * **判定不看这个字段**（判定只认 `byRev` / `legacyChapters`），它单喂文案：
+   * 让「判定语义」与「取证渲染」能各自演进，不会因为文案要加一格就动判定。
+   */
+  meta?: ReadonlyMap<number, ChangedChapterMeta>
 }
 
-/** `changed_chapters` 保留的 rev 条目上限；超出时把最旧的条目合并成「全部章」。 */
+/**
+ * `upstream_revisions.changed_chapters` 保留的 rev 条目上限（超出时最旧两条合并）。
+ *
+ * **S6c 期 2 起它只服务「没有流水表的老库」**：流水表存在时章集只记流水
+ * （`bump` 不再写这一列），流水不设上限。所以这个常量不再是「判定的精度上限」，
+ * 而是一段兼容路径的护栏 —— 别在这里加逻辑指望它影响新库。
+ */
 export const MAX_CHANGED_CHAPTER_REVS = 20
 
 function toChapterList(value: unknown): number[] {
@@ -483,7 +582,47 @@ export function withChangedChapters(
     byRev.delete(oldest)
     byRev.set(next, [...merged].sort((left, right) => left - right))
   }
-  return { legacyChapters: parsed.legacyChapters, byRev }
+  return { legacyChapters: parsed.legacyChapters, byRev, meta: parsed.meta }
+}
+
+/**
+ * 把流水折进「按 rev 分组的章集」（S6c 期 2）。
+ *
+ * ## 为什么要合并，而不是只读其中一边
+ *
+ * `upstream_revisions.changed_chapters` 记的是**流水表存在之前**那些版本
+ * （M27 之前只有它），`upstream_revision_log` 只记 M27 之后。两边都是真话，
+ * 各覆盖一段时间 —— 缺任一段，`changedChaptersBetween` 就会判「收窄不了」
+ * ⇒ 整个域按全改算（方向保守，但把按章收窄这件事整段废掉）。
+ *
+ * ## 流水优先
+ *
+ * 同 rev 两边都有时以流水为准：它是那一版被写下时的原始记录，而当前态列会被
+ * 后来的 `replace` 清空、被 20 版上限合并 —— 后者是加工过的二手数据。
+ * 撞号（导入更早备份后 rev 回退再涨）时按传入顺序后写覆盖先写，
+ * 与 `history()` 的 `ORDER BY rev ASC, id ASC` 同序。
+ */
+export function mergeRevisionLogIntoChangedChapters(
+  base: ParsedChangedChapters | null | undefined,
+  entries: readonly UpstreamRevisionLogEntry[],
+): ParsedChangedChapters {
+  const byRev = new Map<number, readonly number[]>(base?.byRev ?? [])
+  const meta = new Map<number, ChangedChapterMeta>(base?.meta ?? [])
+  for (const entry of entries) {
+    if (!Number.isSafeInteger(entry.rev) || entry.rev < 1) continue
+    // `coversAll` 落成空数组：判定的既有约定就是「空数组 = 覆盖全部章」。
+    // 另造一个哨兵值会让 `changedChaptersBetween` 与 `refCoversChapter` 各判一套，
+    // 两处迟早不一致。文案侧靠 `meta.coversAll` 把「全改」与「说不清」分开。
+    byRev.set(entry.rev, entry.coversAll
+      ? []
+      : [...entry.changedChapters].sort((left, right) => left - right))
+    meta.set(entry.rev, { at: entry.at, reason: entry.reason, coversAll: entry.coversAll })
+  }
+  return {
+    legacyChapters: base?.legacyChapters ?? [],
+    byRev,
+    meta: meta.size > 0 ? meta : undefined,
+  }
 }
 
 /**
@@ -539,7 +678,16 @@ function driftChangesInRange(
   if (!(need > have)) return undefined
   const changes: DriftChange[] = []
   for (let rev = have + 1; rev <= need; rev += 1) {
-    changes.push({ rev, chapters: log.byRev.get(rev) ?? null })
+    const meta = log.meta?.get(rev)
+    // 三格一起带出去：判定不读它们，但文案只有在这里才拿得到 ——
+    // 拒绝发生在渲染层/工作流，那边手里只有 `validity`（见 `DriftChange` 的类型注释）。
+    changes.push({
+      rev,
+      chapters: log.byRev.get(rev) ?? null,
+      at: meta?.at,
+      reason: meta?.reason,
+      coversAll: meta?.coversAll,
+    })
   }
   return changes.length > 0 ? changes : undefined
 }

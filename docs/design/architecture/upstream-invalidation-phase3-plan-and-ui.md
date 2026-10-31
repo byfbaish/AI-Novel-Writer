@@ -1,6 +1,6 @@
 # 上游失效 · 期 3 实施设计与作业图
 
-> 状态：已实施 · 2026-10-31 · 期 3a（S1–S5）+ S4b（硬拒带溯源链）+ 主入口接线（方案 B）+ 期 3b（S6a 收窄 + 中间环）+ S6c 期 1（溯源流水）；S6 / S6c 期 2 / S7 未排期
+> 状态：已实施 · 2026-10-31 · 期 3a（S1–S5）+ S4b（硬拒带溯源链）+ 主入口接线（方案 B）+ 期 3b（S6a 收窄 + 中间环）+ S6c 期 1（溯源流水）+ S6c 期 2（文案带时间/原因 + 章集迁流水）；S6 / S7 未排期
 > **施工期补的两个口径待作者裁定**：① request `rev <= 0` =「假想再改一版」（借 0 表达，不新增签名/通道）；② 影响范围的四种情形本期只判得出三种。见 §六。
 > **S6 的裁定已定（2026-10-31）**：定稿章只记 `outline` 一域（主稿 §十·2 ①）；并把 `BOOK_SOURCE_KEYS` 三域全记收窄成按类型分（S6a）。**S1–S5 不受影响，照原样施工。**
 > 上级稿：[`upstream-version-and-derived-invalidation-design.md`](upstream-version-and-derived-invalidation-design.md) §八（强提醒）· §九 步 4/5
@@ -119,7 +119,7 @@ flowchart TD
 | ~~S4b~~ | **零迁移，可随时插入**：`describeDrift` 升级成带证据链（主稿 §十·3 第 2 层）。输出格式钉死：`情节大纲 第3版→第5版（第4版改过第12–14章；第5版改过第31章）`；取不到的版本写「该版改动章未知」，**不猜不留空**。只改 `src/shared/upstream-revisions.ts` 一个函数 + 其调用点文案；**不动签名**（`behind` 形状不变） | `pnpm test src/shared/__tests__/upstream-revisions.test.ts` | 约 40 行 + 8 例 |
 | ~~S6a~~ | **已落地（期 3b，2026-10-31）**：把 `BOOK_SOURCE_KEYS`（三域全记）收窄成按派生类型分（主稿 §十·2 ①）。落地形态＝`SOURCE_KEYS_BY_KIND` + `currentSourceRefValue(db, kind, outlineRev?)`，四个写入点各自表态（蓝图两处 + 交接单 `chapter-plan`；剧情树 `architecture`） | `pnpm test electron/repositories/__tests__/upstream-source-ref-writes.test.ts` | 已落地 |
 | ~~S6~~ | **不排期**：**M28** 给 `drafts` 加 `outline_rev`；plan 加「已定稿章节」组（`project_core` 记 world/arc rev 那一半已由 M26 落地） | 未定 | 中 |
-| ~~S6c~~ | **期 1 已落地（2026-10-31，M27，schema 27 → 28）**：`upstream_revision_log`（只追加）记每版的时间 + 原因 + 章集 + `covers_all`。**它是"回滚要有据可查"的硬需求**：卷回滚一旦实现，回滚产生的 bump 与作者手改的 bump 在库里长得一模一样，事后无法区分（与 ADR-0026 同一条纪律）。`reason` 取值表已由作者拍板（2026-10-31「按建议来，未知就记作 unknown」）：`author-edit` / `regenerate` / `rollback` / `import-restore` / `clear` / `unknown`。**仍缺（期 2）**：把时间/原因渲染进硬拒文案；把章集从 `upstream_revisions` 彻底挪进流水（解除 20 版上限） | `pnpm test electron/migrations electron/repositories` | 期 1 已落地 |
+| ~~S6c~~ | **期 1 + 期 2 均已落地（2026-10-31，M27，schema 27 → 28）**：`upstream_revision_log`（只追加）记每版的时间 + 原因 + 章集 + `covers_all`。**它是"回滚要有据可查"的硬需求**：卷回滚一旦实现，回滚产生的 bump 与作者手改的 bump 在库里长得一模一样，事后无法区分（与 ADR-0026 同一条纪律）。`reason` 取值表已由作者拍板（2026-10-31「按建议来，未知就记作 unknown」）：`author-edit` / `regenerate` / `rollback` / `import-restore` / `clear` / `unknown`。**期 2 已补**：时间/原因渲染进硬拒文案（`describeDrift` 第 3 层）；章集从 `upstream_revisions` 彻底挪进流水，解除 `MAX_CHANGED_CHAPTER_REVS = 20`（该常量只剩「v27 老库」这一条兼容路径） | `pnpm test electron/repositories src/shared` | 已落地 |
 | ~~S7~~ | **不排期**：处置面板（清点 + 跳转，不亲自重算） | 未定 | 中 |
 
 ---
@@ -392,10 +392,11 @@ export function computeInvalidationPlan(input: {
 
 **为什么必须两张表**（不是把流水塞进 `upstream_revisions`）：
 
-- `upstream_revisions` 是**当前态**（一域一行，`UPDATE` 覆盖 `updated_at`）——判定只读它；
-- `upstream_revision_log` 是**流水**（只追加，一版一行）——取证只读它。
+- `upstream_revisions` 是**当前态**（一域一行，`UPDATE` 覆盖 `updated_at`）——「旧没旧」只看它；
+- `upstream_revision_log` 是**流水**（只追加，一版一行）——「哪一版、何时、为何、改了哪些章」看它。
 
-判定读流水会让「多一行少一行」影响「旧没旧」；取证读当前态会被覆盖掉历史时间（这正是建流水的原因）。
+**期 2 之后章集也记流水**（见下节）：当前态列冻结成历史尾巴，读取侧两段合并、流水优先。
+当前态表仍然只负责版本号 —— 那一个值不该有第二份。
 
 | 决策 | 取值 | 理由 |
 |---|---|---|
@@ -416,8 +417,56 @@ export function computeInvalidationPlan(input: {
 `upstream-source-ref-writes` 的「溯源流水」5 例（逐版一行 / 显式原因与 `covers_all` / 老库不阻断 / 清除归零 / rev 撞号）。
 便携与归档的计数同步 65/626 → **66/634**（donor 66/635）。
 
-**期 2 仍缺**（未排期）：① 硬拒文案把「什么时候、因为什么」渲染出来（现在只有域 + 版本区间 + 每版章集）；
-② 把章集**从** `upstream_revisions` 彻底挪进流水，解除 `MAX_CHANGED_CHAPTER_REVS = 20` 这个「为省空间设的补丁」。
+**期 2 已落地（2026-10-31）** → 见下节。
+
+### S6c 期 2 落地记录：文案带时间/原因 + 章集彻底迁进流水（2026-10-31）
+
+作者原话「回滚和变动要有据可查……可以帮助作者想起来自己改了什么」是这一期的判据：
+期 1 只让数据落盘，作者仍然只看得到「第 3 版→第 5 版（改过第 12–14 章）」。
+
+**① 硬拒文案的第 3 层**
+
+`DriftChange` 加 `at` / `reason` / `coversAll`，`describeDrift` 每版从
+`第4版改过第12–14章` 升级成 `第4版 10-31 22:05 作者手改，改过第12–14章`。
+
+| 决策 | 取值 | 理由 |
+|---|---|---|
+| 时间渲染 | `MM-DD HH:MM`，**转本地时区** | 库里存 UTC 是为了与 `updated_at` 同口径；直接摆给作者，他会拿手表去对，然后认定记录是错的 |
+| `unknown` 的原因 | **文案不渲染** | 数据库留着它是为了让「还没接线」可数（`WHERE reason='unknown'`）；界面上写「原因未知」对作者没有信息量 —— 他要的是「帮我想起改了什么」 |
+| 缺时间/原因 | 省掉那一段，**不写「未知」** | 老库上大半版本没有这两段，逐条写「时间未知」会把真正重要的章集淹掉 |
+| 章集取不到 | 仍然写「改动章未知」 | 省略会被读成「那一版没改东西」，与「查不到」方向相反 |
+| `coversAll` | 写「改动了全部章节」 | 与「改动章未知」共用一个空章集，但方向相反（整本重写 vs 不知道改了哪些），文案必须分开 |
+
+**② 章集从 `upstream_revisions` 迁进流水**
+
+- **写侧**：流水表存在 ⇒ `bump` 不再写 `changed_chapters` 列。该列冻结成「流水建立之前的历史尾巴」
+  —— 它带着两代格式与 20 版上限，让它继续长就是让那个「为省空间设的补丁」继续决定判定精度。
+  老库（v27）仍走旧路径，上限照旧生效。
+- **读侧**：`changeLog()` / `read()` 把两段合起来（`mergeRevisionLogIntoChangedChapters`），**流水优先**
+  —— 当前态列被 `replace` 清空过、被上限合并过，是加工过的二手数据。缺任一段，
+  `changedChaptersBetween` 都会判「收窄不了」⇒ 整域按全改算，按章收窄整段失效。
+- `coversAll` 在合并时落成**空章集**：判定的既有约定就是「空 = 覆盖全部章」，不许另造哨兵值。
+- `replace` 从此清不掉历史（流水只追加，那一版改过什么已经发生）。判定不受影响：
+  区间 `(have, need]` 只取 replace 那一版，空章集 ⇒ 按全改算。
+
+**③ 原因接线（只接得出确定答案的地方）**
+
+| 写入点 | 原因 | 判据 |
+|---|---|---|
+| `ProjectCoreRepository.update`（设置面板保存） | `author-edit` | 编辑器保存 |
+| `commitSynopsis` | `generationRunHandle ? regenerate : author-edit` | 有 handle = 生成落盘；恢复存稿与编辑器保存都是作者动作 |
+| `BlueprintRepository.upsert(bumpOutline)` / `upsertMany` | `author-edit` | 单章卡保存 / 保存全部 |
+| `commitRange` | `authorRecovery ? author-edit : generationRunHandle ? regenerate : unknown` | 三种来路共用一根管道；导入路径两个字段都没有 ⇒ `unknown`，不为记原因去改请求契约 |
+| `blueprint-character-rewrite` | `author-edit` | 作者改名级联到蓝图 |
+
+**落点**：`src/shared/upstream-revisions.ts`（`ChangedChapterMeta` / `mergeRevisionLogIntoChangedChapters` /
+`describeRevisionChange` / `formatRevisionAt`）· `upstream-revision-repository.ts`（写侧分流、读侧合并、
+`readRev` 改直查以免多一次流水扫描）· 上述五个写入点。
+
+**测试**：`upstream-revisions` 新增 8 例（期 2 文案 3 例：时间渲染 / `unknown` 不渲染 / `coversAll` 分开；
+合并 5 例：两段互补 / 流水优先 / `coversAll` 落空集 / `legacy` 保留 / 撞号）·
+`upstream-source-ref-writes` 新增 4 例（列不再增长但 `read()` 仍拿得到 / 旧尾巴仍参与判定 /
+v27 老库回旧路径且上限生效 / 作者侧写入点都带上了原因）。
 
 ### 两个已知边界（下一班接手先看这里）
 
@@ -450,7 +499,11 @@ export function computeInvalidationPlan(input: {
 2 例链路（`derivedStatusForChapters` → `describeDrift`）；`invalidation-plan.test.ts` 的 ⑬ 号断言同步
 （`behind` 里多了 `changed`，但仍是**结构化数据**不是文案）。
 
-**第 3 层**（每版**时间**与**触发原因**）：表与写入已由 S6c 期 1（M27）落地，**文案渲染仍待期 2**。
+**第 3 层**（每版**时间**与**触发原因**）：S6c 期 1（M27）落数据，期 2 把
+`at` / `reason` / `coversAll` 挂进 `DriftChange` 并渲染成
+`第4版 10-31 22:05 作者手改，改过第12–14章`。**仍缺**：`reason` 在两条多来路管道上
+（`commitRange` 的导入分支）留 `unknown` —— 要判准得让调用方携带来源，那会动请求契约，
+作者此前裁定「不增签名」，需重新裁。
 
 ### 为什么 S4 比的是原始行串
 

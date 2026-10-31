@@ -8,6 +8,7 @@ import { initializeLegacyBaselineSchema } from '../../migrations/baseline-schema
 import { CURRENT_DESKTOP_SCHEMA_VERSION, getDesktopMigrationRegistry } from '../../migrations/desktop-registry'
 import { migrateSchema } from '../../migrations/runner'
 import { SqliteSchemaAdapter } from '../../migrations/sqlite-schema-adapter'
+import { changedChaptersBetween, type UpstreamDomain } from '../../../src/shared/upstream-revisions'
 
 vi.mock('../../database', () => ({
   getProjectDb: vi.fn(),
@@ -45,10 +46,20 @@ afterEach(() => {
   db.close()
 })
 
+/**
+ * 版本行 + **合并后的章集**（`upstream_revisions.changed_chapters` ∪ 流水）。
+ *
+ * 不直查 `changed_chapters` 列：S6c 期 2 起章集只记流水，那一列冻结成
+ * 「流水建立之前的历史尾巴」。断言列内容等于断言「新代码没干活」。
+ */
 function revisions(): Array<{ domain: string; scope: string; rev: number; changed: string }> {
-  return db.prepare(
-    'SELECT domain, scope, rev, changed_chapters AS changed FROM upstream_revisions ORDER BY domain, scope',
-  ).all() as Array<{ domain: string; scope: string; rev: number; changed: string }>
+  const rows = db.prepare(
+    'SELECT domain, scope, rev FROM upstream_revisions ORDER BY domain, scope',
+  ).all() as Array<{ domain: string; scope: string; rev: number }>
+  return rows.map((row) => {
+    const parsed = UpstreamRevisionRepository.read(row.domain as UpstreamDomain, row.scope)
+    return { ...row, changed: JSON.stringify(Object.fromEntries(parsed!.changedChapters.byRev)) }
+  })
 }
 
 /** 构造 commitSynopsis 的 expected —— 默认值与 `project_core` 的 DDL 一致。 */
@@ -141,13 +152,17 @@ describe('UpstreamRevisionRepository', () => {
     expect([...row!.changedChapters.byRev.entries()]).toEqual([[1, [31]], [2, [33]]])
   })
 
-  it('mode=replace 把历史章集清掉（整本重生成 = 全部章都改过）', () => {
+  it('mode=replace 在新 rev 上记「全改」（空章集），不改写历史版本', () => {
     UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [31] })
     UpstreamRevisionRepository.bump({ domain: 'outline', changedChapters: [], mode: 'replace' })
     const row = UpstreamRevisionRepository.read('outline')
     expect(row?.rev).toBe(2)
-    expect([...row!.changedChapters.byRev.entries()]).toEqual([])
+    // 期 1 时 replace 会**清掉**历史章集；S6c 期 2 起清不掉了 —— 流水是只追加的，
+    // 那一版改过 31 章是发生过的事实。判定不受影响：区间 (1, 2] 只取 rev2。
+    expect([...row!.changedChapters.byRev.entries()]).toEqual([[1, [31]], [2, []]])
     expect(row!.changedChapters.legacyChapters).toEqual([])
+    // 「这一版改动了全部章」的表达就是收窄不了 ⇒ 按全改算。
+    expect(changedChaptersBetween(row!.changedChapters, 1, 2)).toBeNull()
   })
 
   it('表不存在时 bump 返回 null（不是 0）—— 0 是「第 0 版」，两者不能混', () => {

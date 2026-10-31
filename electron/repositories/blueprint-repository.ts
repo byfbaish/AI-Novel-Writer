@@ -651,7 +651,7 @@ export class BlueprintRepository {
             // 文件头「为什么 bump 不自己开事务」）。
             db.transaction(() => {
                 const outlineRev = UpstreamRevisionRepository.bump(
-                    { domain: 'outline', changedChapters: [data.chapterNumber] },
+                    { domain: 'outline', changedChapters: [data.chapterNumber], reason: 'author-edit' },
                     db,
                 )
                 BlueprintRepository.upsert(data, db, {
@@ -714,7 +714,7 @@ export class BlueprintRepository {
                 .map(item => item.chapterNumber)
                 .filter(chapter => Number.isSafeInteger(chapter) && chapter > 0)
             const outlineRev = UpstreamRevisionRepository.bump(
-                { domain: 'outline', changedChapters: chapters },
+                { domain: 'outline', changedChapters: chapters, reason: 'author-edit' },
                 db,
             )
             const columns = probeBlueprintWriteColumns(db)
@@ -835,6 +835,14 @@ export class BlueprintRepository {
                     domain: 'outline',
                     changedChapters: normalizedRequest.blueprints.map(item => item.chapterNumber),
                     ...(normalizedRequest.mode === 'full' ? { mode: 'replace' as const } : {}),
+                    // 这根管道被三种来路共用：作者恢复存稿、生成批落盘、导入既有小说。
+                    // 判据只用 request 上已有的字段，**不为记原因去改请求契约**：
+                    // - `authorRecovery` ⇒ 作者；
+                    // - `generationRunHandle` ⇒ 生成；
+                    // - 都没有（导入路径）⇒ `unknown`，诚实大于猜。
+                    reason: normalizedRequest.authorRecovery
+                        ? 'author-edit'
+                        : normalizedRequest.generationRunHandle ? 'regenerate' : 'unknown',
                 },
                 db,
             )

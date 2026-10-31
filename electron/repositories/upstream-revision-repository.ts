@@ -1,6 +1,7 @@
 import { getProjectDb } from '../database'
 import {
   BOOK_SCOPE,
+  mergeRevisionLogIntoChangedChapters,
   normalizeRevisionReason,
   parseChangedChapters,
   parseRevisionLogChapters,
@@ -25,11 +26,14 @@ import {
  *
  * ## 两张表的分工不许含糊
  *
- * - 当前态表是**判定原料**：`bump` 写、读取侧比对；
- * - 流水表是**取证原料**：`bump` 顺带追加一行（时间 + 原因），**判定侧不读它**。
+ * - 当前态表定「旧没旧」：一次一行，`rev` 是判定用的那个值；
+ * - 流水表记「哪一版、什么时候、因为什么、改了哪些章」：只追加，一版一行。
  *
- * 判定读流水会让「多一行少一行」影响「旧没旧」；取证读当前态会被 `UPDATE`
- * 覆盖掉历史时间（这正是建流水的原因）。
+ * **S6c 期 2 起章集只记流水**（流水表存在时 `bump` 不再写 `changed_chapters` 列，
+ * 该列冻结成流水建立之前的历史尾巴）。之所以敢把判定原料的一部分挪过去：
+ * 流水与 `bump` 同事务、同一次写入，不存在「两份可能不一致」的窗口期。
+ * 反过来的形状（判定读当前态、取证读流水）会让 `replace` 与 20 版上限
+ * 把历史越洗越糊，而流水是唯一没被加工过的那份。
  *
  * ## 为什么 `bump` 不自己开事务
  *
@@ -182,6 +186,21 @@ function appendLog(db: ProjectDatabase, input: BumpUpstreamRevisionInput, scope:
   )
 }
 
+/**
+ * 查某一域的全部流水（`rev` 升序，同 rev 按写入先后）。
+ *
+ * `read()` 与 `changeLog()` 都走这里：三处各写一遍 SQL，迟早有一处忘了加
+ * `covers_all` 或漏了排序 —— 那种漂移在测试里表现为「文案突然少一段」，
+ * 很难联想到这里。
+ */
+function queryHistory(db: ProjectDatabase, domain: string, scope: string): UpstreamRevisionLogEntry[] {
+  const rows = db.prepare(`
+    SELECT domain, scope, rev, at, reason, changed_chapters, covers_all
+    FROM upstream_revision_log WHERE domain = ? AND scope = ? ORDER BY rev ASC, id ASC
+  `).all(domain, scope) as RawLogRow[]
+  return rows.map(toLogEntry)
+}
+
 export class UpstreamRevisionRepository {
   /**
    * 版本表是否存在。**算失效清单之前必须问一次**（期 3a）。
@@ -226,37 +245,60 @@ export class UpstreamRevisionRepository {
     if (!hasRevisionTable(db)) return null
     const scope = input.scope ?? BOOK_SCOPE
     const mode: ChangedChaptersMode = input.mode ?? 'newRevOnly'
+    /**
+     * 章集记哪儿（S6c 期 2）。
+     *
+     * 流水表在 ⇒ **只记流水**，`changed_chapters` 列冻结成「流水建立之前的历史尾巴」。
+     * 这一列带着两代格式与 20 版上限，让它继续长就是让那个「为省空间设的补丁」
+     * 继续决定判定精度 —— 而流水本身不设上限。
+     *
+     * 流水表不在（未升到 v28 的老库）⇒ 只能走旧路径，上限仍生效。
+     */
+    const logOnly = hasLogTable(db)
     const attempt = (): number | null => {
       const existing = db.prepare(
         'SELECT rev, changed_chapters FROM upstream_revisions WHERE domain = ? AND scope = ?',
       ).get(input.domain, scope) as { rev: number; changed_chapters: string } | undefined
       const digest = input.digest ?? ''
       if (!existing) {
-        // `ON CONFLICT DO NOTHING` + `changes` 判定：另一进程刚插了同一行时不能盖掉它。
-        const inserted = db.prepare(`
-          INSERT INTO upstream_revisions (domain, scope, rev, digest, changed_chapters)
-          VALUES (?, ?, 1, ?, ?)
-          ON CONFLICT(domain, scope) DO NOTHING
-        `).run(
-          input.domain, scope, digest,
-          serializeChangedChapters(withChangedChapters(
-            { legacyChapters: [], byRev: new Map() }, 1, input.changedChapters ?? [],
-          )),
-        )
+        const inserted = logOnly
+          ? db.prepare(`
+            INSERT INTO upstream_revisions (domain, scope, rev, digest)
+            VALUES (?, ?, 1, ?)
+            ON CONFLICT(domain, scope) DO NOTHING
+          `).run(input.domain, scope, digest)
+          : db.prepare(`
+            INSERT INTO upstream_revisions (domain, scope, rev, digest, changed_chapters)
+            VALUES (?, ?, 1, ?, ?)
+            ON CONFLICT(domain, scope) DO NOTHING
+          `).run(
+            input.domain, scope, digest,
+            serializeChangedChapters(withChangedChapters(
+              { legacyChapters: [], byRev: new Map() }, 1, input.changedChapters ?? [],
+            )),
+          )
         return inserted.changes === 1 ? 1 : null
       }
       const nextRev = existing.rev + 1
-      const parsed = mode === 'replace'
-        ? { legacyChapters: [], byRev: new Map<number, readonly number[]>() }
-        : parseChangedChapters(existing.changed_chapters)
-      const nextChanged = mode === 'replace'
-        ? parsed
-        : withChangedChapters(parsed, nextRev, input.changedChapters ?? [])
-      const updated = db.prepare(`
-        UPDATE upstream_revisions
-        SET rev = ?, digest = ?, changed_chapters = ?, updated_at = datetime('now')
-        WHERE domain = ? AND scope = ? AND rev = ?
-      `).run(nextRev, digest, serializeChangedChapters(nextChanged), input.domain, scope, existing.rev)
+      // 流水表在时不碰 `changed_chapters`：那一列是历史尾巴，改写它等于
+      // 把「流水建立之前」的证据一起抹掉（`replace` 曾在这里清空它）。
+      const updated = logOnly
+        ? db.prepare(`
+          UPDATE upstream_revisions
+          SET rev = ?, digest = ?, updated_at = datetime('now')
+          WHERE domain = ? AND scope = ? AND rev = ?
+        `).run(nextRev, digest, input.domain, scope, existing.rev)
+        : db.prepare(`
+          UPDATE upstream_revisions
+          SET rev = ?, digest = ?, changed_chapters = ?, updated_at = datetime('now')
+          WHERE domain = ? AND scope = ? AND rev = ?
+        `).run(
+          nextRev, digest,
+          serializeChangedChapters(mode === 'replace'
+            ? { legacyChapters: [], byRev: new Map<number, readonly number[]>() }
+            : withChangedChapters(parseChangedChapters(existing.changed_chapters), nextRev, input.changedChapters ?? [])),
+          input.domain, scope, existing.rev,
+        )
       return updated.changes === 1 ? nextRev : null
     }
     const first = attempt()
@@ -300,19 +342,41 @@ export class UpstreamRevisionRepository {
     return typeof created === 'number' ? created : null
   }
 
-  /** 读一行。没有该行返回 `null`（**不返回 0**：「没有版本」和「第 0 版」是两件事）。 */
+  /**
+   * 读一行。没有该行返回 `null`（**不返回 0**：「没有版本」和「第 0 版」是两件事）。
+   *
+   * `changedChapters` 是**两份合起来的**（S6c 期 2）：`changed_chapters` 列只剩
+   * 流水表建立之前的那些版本，之后每一版都在流水里。只读列会让调用方看到半个
+   * 真相（新库上通常是空的），而空章集的判定语义是「全部章都改过」—— 一次
+   * 误读就是全库判脏。
+   */
   static read(domain: UpstreamDomain, scope: string = BOOK_SCOPE, database?: ProjectDatabase | null): UpstreamRevisionRow | null {
     const db = database ?? getProjectDb()
     if (!db || !hasRevisionTable(db)) return null
     const raw = db.prepare(
       'SELECT * FROM upstream_revisions WHERE domain = ? AND scope = ?',
     ).get(domain, scope) as RawRow | undefined
-    return raw ? toRow(raw) : null
+    if (!raw) return null
+    const row = toRow(raw)
+    if (!hasLogTable(db)) return row
+    const entries = queryHistory(db, domain, scope)
+    if (entries.length === 0) return row
+    return { ...row, changedChapters: mergeRevisionLogIntoChangedChapters(row.changedChapters, entries) }
   }
 
-  /** 单个键的当前 rev；没有该行返回 `null`（语义同上）。 */
+  /**
+   * 单个键的当前 rev；没有该行返回 `null`（语义同上）。
+   *
+   * **不走 `read()`**：`read()` 现在要顺带查流水补章集，而这里只问版本号 ——
+   * 调用点（plan、`buildSourceRef`）会连续问很多次，多一条流水查询纯属浪费。
+   */
   static readRev(domain: UpstreamDomain, scope: string = BOOK_SCOPE, database?: ProjectDatabase | null): number | null {
-    return UpstreamRevisionRepository.read(domain, scope, database)?.rev ?? null
+    const db = database ?? getProjectDb()
+    if (!db || !hasRevisionTable(db)) return null
+    const rev = db.prepare(
+      'SELECT rev FROM upstream_revisions WHERE domain = ? AND scope = ?',
+    ).pluck().get(domain, scope) as number | undefined
+    return typeof rev === 'number' ? rev : null
   }
 
   /**
@@ -328,11 +392,7 @@ export class UpstreamRevisionRepository {
   static history(domain: UpstreamDomain, scope: string = BOOK_SCOPE, database?: ProjectDatabase | null): UpstreamRevisionLogEntry[] {
     const db = database ?? getProjectDb()
     if (!db || !hasLogTable(db)) return []
-    const rows = db.prepare(`
-      SELECT domain, scope, rev, at, reason, changed_chapters, covers_all
-      FROM upstream_revision_log WHERE domain = ? AND scope = ? ORDER BY rev ASC, id ASC
-    `).all(domain, scope) as RawLogRow[]
-    return rows.map(toLogEntry)
+    return queryHistory(db, domain, scope)
   }
 
   /** 某一域最近一行流水（按 `id` 取，不按 `rev` —— 撞号时后写的才是最新的）。 */
@@ -365,13 +425,39 @@ export class UpstreamRevisionRepository {
   /**
    * 章集视图（`键 → 解析后的章集`），直接喂 `derivedStatusForChapters`。
    *
-   * 读一次全表就够：判定要逐行做，但在循环里反复调 `list()` 会把
-   * `sqlite_master` 探测与整表扫描乘以行数（`get-all` 上是上千倍）。
+   * ## 两份来源，流水优先（S6c 期 2）
+   *
+   * `upstream_revisions.changed_chapters` 覆盖「流水表建立之前」的版本，
+   * `upstream_revision_log` 覆盖之后每一版 —— 缺任一段，`changedChaptersBetween`
+   * 都会判「收窄不了」⇒ 整域按全改算，按章收窄这件事就整段失效。
+   * 同 rev 两边都有时以流水为准（当前态列被 `replace` / 20 版上限加工过）。
+   *
+   * ## 读一次全表就够
+   *
+   * 判定要逐行做，但在循环里反复调 `list()` 会把 `sqlite_master` 探测与整表扫描
+   * 乘以行数（`get-all` 上是上千倍）。
    */
   static changeLog(database?: ProjectDatabase | null): ReadonlyMap<string, ParsedChangedChapters> {
+    const db = database ?? getProjectDb()
     const map = new Map<string, ParsedChangedChapters>()
-    for (const row of UpstreamRevisionRepository.list(database)) {
+    for (const row of UpstreamRevisionRepository.list(db)) {
       map.set(upstreamRefKey(row.domain as UpstreamDomain, row.scope), row.changedChapters)
+    }
+    if (!db || !hasLogTable(db)) return map
+    const grouped = new Map<string, UpstreamRevisionLogEntry[]>()
+    for (const raw of db.prepare(`
+      SELECT domain, scope, rev, at, reason, changed_chapters, covers_all
+      FROM upstream_revision_log ORDER BY rev ASC, id ASC
+    `).all() as RawLogRow[]) {
+      const key = upstreamRefKey(raw.domain as UpstreamDomain, raw.scope)
+      const bucket = grouped.get(key)
+      if (bucket) bucket.push(toLogEntry(raw))
+      else grouped.set(key, [toLogEntry(raw)])
+    }
+    for (const [key, entries] of grouped) {
+      // 流水有、当前态行没有的键：只可能出现在「版本行被删、流水还留着」的库上。
+      // 不能丢 —— 丢了那些版本的章集就没了，判定退回全改。
+      map.set(key, mergeRevisionLogIntoChangedChapters(map.get(key), entries))
     }
     return map
   }

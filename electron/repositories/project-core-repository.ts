@@ -245,7 +245,7 @@ export class ProjectCoreRepository {
             // `synopsis` 的主路径是 `commitSynopsis`（带 CAS 与作者手改记录），但设置面板
             // 也可能直接写它。漏了这条，「作者在设置里改了大纲」就完全不留痕。
             if ('synopsis' in data) touched.push('outline')
-            for (const domain of touched) UpstreamRevisionRepository.bump({ domain }, db)
+            for (const domain of touched) UpstreamRevisionRepository.bump({ domain, reason: 'author-edit' }, db)
 
             // P2-3 期 3b（M26）：大纲自己的上游来源。
             //
@@ -315,6 +315,9 @@ export class ProjectCoreRepository {
             changedChapters: request.authorRecovery
                 ? expandChapterRange(request.authorRecovery.committedRange)
                 : [],
+            // 有 handle = 生成落盘；`authorRecovery`（恢复存稿）与无 handle 的
+            // 「编辑器保存大纲」都是作者动作。判据全在既有字段上，不新增参数。
+            reason: request.generationRunHandle ? 'regenerate' : 'author-edit',
         }, db)
         // P2-3 期 3b（M26）：记下这段大纲基于哪一版世界观 / 弧光。
         // 位置与 `update` 那条一致：bump 之后、同一事务内。
