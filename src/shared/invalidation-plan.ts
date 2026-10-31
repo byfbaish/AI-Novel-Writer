@@ -452,3 +452,58 @@ export function mergeInvalidationPlans(plans: readonly InvalidationPlan[]): Inva
     reason: plans.find((plan) => plan.reason !== 'unknown')?.reason ?? 'unknown',
   }
 }
+
+/**
+ * 上游各域**此刻**的版本（S7 清点页的抬头）。
+ *
+ * 为什么清点页需要它：清单只说「第 12 章蓝图落后了」，作者无法判断那是「昨天改了一版」
+ * 还是「三个月前」。把「现在第几版、什么时候、因为什么涨的」摆出来，作者才知道
+ * 该不该现在处置。
+ */
+export interface UpstreamRevisionLine {
+  domain: UpstreamDomain
+  scope: string
+  rev: number
+  /**
+   * 最近一次变动的时刻（ISO）。**取不到流水就 `null`**（M27 之前的老库），
+   * 不许拿 `updated_at` 冒充 —— 那是**当前态**被覆盖的时间，不是那一版**发生**的时间。
+   */
+  at: string | null
+  /** 最近一次变动的原因；流水里没记 ⇒ `unknown`。 */
+  reason: UpstreamRevisionReason
+}
+
+/**
+ * 派生清点结果（S7，只读快照）。
+ *
+ * ## 为什么 `groups` 与 `InvalidationPlan` 同形
+ *
+ * 清点与强提醒**共用同一份判定**（handler 里都走 `computeInvalidationPlan`，清点只是
+ * 不传 `overrides`）。另造一套行结构就等于写第二份判据，而那种分家只会在作者
+ * 同一天先后看到两个界面时暴露 —— 那时已经很难判谁对。
+ *
+ * ## 为什么没有 `tier` / `unaffected`
+ *
+ * 两个都是为「正要动手」那个场景算的：`tier` 回答「要不要逼你勾一句」，
+ * `unaffected` 回答「这一刀没砍到哪几章」。清点页既不动手也不问确认。
+ * 带上它们只有一个后果：UI 迟早拿 `tier` 上色或排序，然后「面板说 strong、
+ * 点重建只说 once」就没人答得出。
+ */
+export interface DerivedInventory {
+  groups: readonly InvalidationGroup[]
+  unseen: { count: number; kinds: readonly InvalidationGroupKind[] }
+  upstream: readonly UpstreamRevisionLine[]
+  /**
+   * 已定稿章节 → 正文草稿 id（**跳转用，不是判据**）。
+   *
+   * 定稿行的 `label` 只有章号，而打开正文要 `ai-novel://draft/<draftId>`。
+   * 让服务端一次带出来，而不是 UI 拿到章号再问一次 —— 两次查之间重新定稿，
+   * 「清单里看到的章」与「跳过去打开的章」就会错位。
+   *
+   * 老库缺 `outline_rev` 列时这里照样有值（draftId 与版本无关）。
+   */
+  finalizedDrafts: readonly { chapterNumber: number; draftId: number }[]
+  /** 盘点时刻（ISO）。UI 要显示「截至 HH:mm」，否则作者会把旧快照当实时。 */
+  scannedAt: string
+}
+

@@ -1036,6 +1036,43 @@ export function registerDatabaseController() {
   }
 
   /**
+   * 组装 `computeInvalidationPlan` 的全部入参（除 `overrides` / `reason`）。
+   *
+   * **两个 handler 共用**：`db:invalidation-plan`（「再改一版会怎样」）与
+   * `db:derived-inventory`（「现在已经怎样」，S7）。
+   *
+   * 抽出来不是为省几行：两处各写一遍读取，迟早有一处漏掉新加的那张表
+   * （S6 的定稿章就是这样进候选的）。漏的那一侧表现为「清点页说没事，
+   * 点重建却列出一堆」，而作者会先信清点页 —— 那比不做清点更糟。
+   */
+  function readPlanInputs(db: NonNullable<ReturnType<typeof getProjectDb>>) {
+    // 只读一次：一次上下文、两份 Map（设计稿 §5.6：禁止在逐行循环里查）。
+    const context = readDerivedReadContext(db)
+    const blueprintRefs = BlueprintRepository.readSourceRefs(db)
+    const handoffRefs = readVolumeHandoffSourceRefs(db)
+    const handoffs = hasVolumeHandoffSchema(db) ? listVolumeHandoffs(db) : []
+    return {
+      revisions: context.revisions,
+      changes: context.changes,
+      blueprints: [...blueprintRefs.entries()].map(([chapterNumber, sourceRef]) => ({ chapterNumber, sourceRef })),
+      handoffs: handoffs.map((entry) => ({
+        label: handoffLabel(entry),
+        // 要不要展开成章集合由 `volumeHandoffChapters` 决定（边界非 actual ⇒ [] = 覆盖全部章）。
+        chapters: volumeHandoffChapters(entry),
+        sourceRef: handoffRefs.get(entry.handoffId) ?? null,
+      })),
+      plotTreeSourceRef: PlotTreeRepository.readSourceRef(db),
+      // P2-3 期 3b：中间环。`synopsis` 有没有内容与「记没记来源」是两件事 ——
+      // 前者决定要不要把大纲当候选，后者决定它是否可信。合成一个 null 会让
+      // 新建项目第一次生成大纲时先吃到一张「1 项无法判断」。
+      synopsisSourceRef: ProjectCoreRepository.readSynopsisSourceRef(db),
+      hasSynopsis: Boolean(ProjectCoreRepository.get(db)?.synopsis?.trim()),
+      // S6 / M28：已定稿章节。判「改了第 12 章大纲，会不会影响第 8 章定稿正文」。
+      finalizedDrafts: FinalizationRepository.readFinalizedOutlineRevs(db),
+    }
+  }
+
+  /**
    * P2-3 期 3a：重建前的失效清单（主稿 §九 步 4）。
    *
    * **整个 handler 一个字节都不写**（plan 阶段 bump rev 是红线，§8.1）：作者在弹窗上
@@ -1053,8 +1090,8 @@ export function registerDatabaseController() {
       // 「拿不到清单」必须和「影响 0 项」分开：返回一份空 plan，UI 会显示「不影响任何东西」，
       // 而作者会据此判断「这一刀没有代价」。所以拿不到就报 `missing`，不是给空清单。
       if (!db || !UpstreamRevisionRepository.hasTable(db)) return { success: false, missing: true }
-      // 只读一次：一次上下文、两份 Map（设计稿 §5.6：禁止在逐行循环里查）。
-      const context = readDerivedReadContext(db)
+      // 入参组装与清点页共用（见 `readPlanInputs`）——两处各写一遍，迟早在某张表上分家。
+      const inputs = readPlanInputs(db)
       // ⚠️ 施工期补的口径（施工图未钉，已登记在 §六，待作者裁定）：
       // `rev <= 0` ⇒ 「假想这个域再改一版」（当前 rev + 1）。
       // 为什么需要它：UI 手边没有当前版本号（没有读版本表的 IPC），而它要问的正是
@@ -1063,34 +1100,51 @@ export function registerDatabaseController() {
       const requestedKey = upstreamRefKey(request.domain, request.scope ?? BOOK_SCOPE)
       const hypotheticalRev = request.rev > 0
         ? request.rev
-        : (context.revisions.get(requestedKey) ?? 0) + 1
-      const blueprintRefs = BlueprintRepository.readSourceRefs(db)
-      const handoffRefs = readVolumeHandoffSourceRefs(db)
-      const handoffs = hasVolumeHandoffSchema(db) ? listVolumeHandoffs(db) : []
+        : (inputs.revisions.get(requestedKey) ?? 0) + 1
       const plan = computeInvalidationPlan({
         overrides: [{ domain: request.domain, scope: request.scope, rev: hypotheticalRev }],
-        revisions: context.revisions,
-        changes: context.changes,
-        blueprints: [...blueprintRefs.entries()].map(([chapterNumber, sourceRef]) => ({ chapterNumber, sourceRef })),
-        handoffs: handoffs.map((entry) => ({
-          label: handoffLabel(entry),
-          // 要不要展开成章集合由 `volumeHandoffChapters` 决定（边界非 actual ⇒ [] = 覆盖全部章）。
-          chapters: volumeHandoffChapters(entry),
-          sourceRef: handoffRefs.get(entry.handoffId) ?? null,
-        })),
-        plotTreeSourceRef: PlotTreeRepository.readSourceRef(db),
-        // P2-3 期 3b：中间环。`synopsis` 有没有内容与「记没记来源」是两件事 ——
-        // 前者决定要不要把大纲当候选，后者决定它是否可信。合成一个 null 会让
-        // 新建项目第一次生成大纲时先吃到一张「1 项无法判断」。
-        synopsisSourceRef: ProjectCoreRepository.readSynopsisSourceRef(db),
-        hasSynopsis: Boolean(ProjectCoreRepository.get(db)?.synopsis?.trim()),
-        // S6 / M28：已定稿章节。判「改了第 12 章大纲，会不会影响第 8 章定稿正文」。
-        finalizedDrafts: FinalizationRepository.readFinalizedOutlineRevs(db),
+        ...inputs,
         // 回显这次动作的来由（`rollback` 时文案要逐层列出）。`normalizeRevisionReason`
         // 把来路不明的值收敛到 `unknown` —— 渲染侧只该认取值表里的那六个。
         reason: normalizeRevisionReason(request.reason),
       })
       return { success: true, plan }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  /**
+   * S7：派生清点（「这本书现在哪儿旧了」）。**整个 handler 一个字节都不写。**
+   *
+   * 与上面的 `db:invalidation-plan` 只差一个入参：`overrides: []` ⇒ 假想快照
+   * 就是真实版本表 ⇒ 判出来的**就是现状**。共用同一份 `computeInvalidationPlan`，
+   * 所以「清点页说没事、点重建却列出一堆」这种自相矛盾在结构上不可能发生。
+   *
+   * **不返回 `tier` / `unaffected`**（理由见 `DerivedInventory` 的注释）：清点页不是闸门。
+   */
+  ipcMain.handle('db:derived-inventory', async (_event, expectedProjectPath: string) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const db = getProjectDb()
+      // 同上面的失败口径：拿不到就 `missing`，绝不返回一份空清单冒充「一切正常」。
+      if (!db || !UpstreamRevisionRepository.hasTable(db)) return { success: false, missing: true }
+      const inputs = readPlanInputs(db)
+      const plan = computeInvalidationPlan({ overrides: [], ...inputs })
+      return {
+        success: true,
+        inventory: {
+          groups: plan.groups,
+          unseen: plan.unseen,
+          upstream: UpstreamRevisionRepository.listLines(db),
+          // 跳转用：定稿章 → draftId。**不参与判定**，`plan` 那边只要章号与版本。
+          finalizedDrafts: inputs.finalizedDrafts.map((draft) => ({
+            chapterNumber: draft.chapterNumber,
+            draftId: draft.draftId,
+          })),
+          scannedAt: new Date().toISOString(),
+        },
+      }
     } catch (err) {
       return { success: false, error: String(err) }
     }

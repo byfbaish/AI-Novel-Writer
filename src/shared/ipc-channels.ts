@@ -947,7 +947,7 @@ import type {
   ImportGlobalFactsRequest,
 } from './import-global-facts'
 import type { WorldStateView } from './world-state-view'
-import type { InvalidationPlan } from './invalidation-plan'
+import type { DerivedInventory, InvalidationPlan } from './invalidation-plan'
 
 // ===== 数据库操作 =====
 export interface DatabaseChannels {
@@ -1199,6 +1199,20 @@ export interface DatabaseChannels {
       expectedProjectPath: string,
     ]
     return: { success: boolean; plan?: InvalidationPlan; missing?: boolean; error?: string }
+  }
+  /**
+   * S7：派生清点（「这本书现在哪儿旧了」）。**纯读、零参数** —— 它不是针对某一域发问，
+   * 而是全书盘点，所以不需要 `domain` / `rev`。
+   *
+   * 与 `db:invalidation-plan` **共用同一份判定**（都不传 overrides 那一侧就是现状），
+   * 差别只在 `plan` 问「再改一版会怎样」、这里问「现在已经怎样」。
+   *
+   * `missing` 与 `success:false` 分得开：库没开 / 版本表不存在时用 `missing`，
+   * 让 UI 显示「这本书还没有版本记录」，而不是「一切正常」。
+   */
+  'db:derived-inventory': {
+    args: [expectedProjectPath: string]
+    return: { success: boolean; inventory?: DerivedInventory; missing?: boolean; error?: string }
   }
   'db:plot-tree-save': {
     args: [snapshot: PlotTreeSnapshot, expectedSourceRevision: string, expectedProjectPath: string]

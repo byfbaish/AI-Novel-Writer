@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { ShieldAlert } from 'lucide-react'
 
-import type { InvalidationGroupKind, InvalidationPlan } from '../../shared/invalidation-plan'
-import { parseUpstreamRefKey, type UpstreamDomain } from '../../shared/upstream-revisions'
+import type { InvalidationPlan } from '../../shared/invalidation-plan'
+import type { UpstreamDomain } from '../../shared/upstream-revisions'
 import { useLocaleStore } from '../../stores/locale-store'
+import { INVALIDATION_GROUP_LABEL, upstreamDomainLabel } from '../invalidation-labels'
 import { Button } from '../ui/Button'
 
 /**
@@ -24,28 +25,7 @@ import { Button } from '../ui/Button'
  * 「世界观变更影响全书设定」和「推荐下游全部重新生成」是两回事，判据在调用方
  * （它知道这次动的是哪个域）。组件只负责摆出来，这样它才能单独测。
  */
-const GROUP_LABEL: Record<InvalidationGroupKind, [string, string]> = {
-  // 期 3b 的中间环：世界观/弧光变了 ⇒ 先说大纲旧了，再由作者决定要不要重生成。
-  outline: ['情节大纲', 'Outline'],
-  blueprint: ['章节蓝图', 'Chapter blueprints'],
-  handoff: ['卷末交接单', 'Volume handoffs'],
-  'plot-tree': ['剧情树', 'Plot tree'],
-  // S6 / M28：正文是这条链的末端消费者，排在最后与级联顺序一致。
-  finalized: ['已定稿章节', 'Finalized chapters'],
-}
-
-/**
- * 域名的人类读法。
- *
- * **不复用 `describeDrift`**：那一版只有中文且连
- * 成一句话（给日志与硬拒文案用），这里要双语、要逐条列。
- * 两边一旦有一处改域名，另一处不会报 —— 这种漂移只能靠 `_test` 钉。
- */
-const DOMAIN_LABEL: Record<string, [string, string]> = {
-  worldbuilding: ['世界观', 'Worldbuilding'],
-  arc: ['弧光', 'Arc'],
-  outline: ['情节大纲', 'Outline'],
-}
+const GROUP_LABEL = INVALIDATION_GROUP_LABEL
 
 /**
  * 受影响的章数。**有一项覆盖全书时返回 `null`** —— 那时说不出一个数字，
@@ -203,9 +183,7 @@ export default function InvalidationPlanGatePanel({
                     <span style={{ color: 'var(--color-text)' }}>{item.label}</span>
                     {item.behind.length > 0 && (
                       <> · {item.behind.map((drift, index) => {
-                        const domain = parseUpstreamRefKey(drift.key)?.domain ?? drift.key
-                        const pair = DOMAIN_LABEL[domain] ?? [domain, domain]
-                        const name = locale === 'en-US' ? pair[1] : pair[0]
+                        const name = upstreamDomainLabel(drift.key, locale)
                         return (
                           <span key={drift.key}>
                             {index > 0 ? text('、', ', ') : ''}

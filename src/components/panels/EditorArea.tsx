@@ -27,6 +27,7 @@ import ThreeWayMerge from '../editor/ThreeWayMerge'  // 保留引用以防其他
 import { WriterWelcomePage } from '../pages/v2/use-project-overview'
 import KnowledgeOverview from '../pages/KnowledgeOverview'
 import WorldStatePage from '../pages/WorldStatePage'
+import DerivedHealthPage from '../pages/DerivedHealthPage'
 import { useProjectStore } from '../../stores/project-store'
 import { registerEditorExitSaveHandler, useEditorStore, type EditorTab } from '../../stores/editor-store'
 import { discardAndCloseEditorTab } from '../../stores/editor-discard'
@@ -468,6 +469,10 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
     // 世界状态用整块主区展示（与知识库 / 角色管理同构）：260px 左栏只放分类导航，
     // 四区内容在主区按自适应网格铺开。正文工作区仍保持挂载，只是被 hidden。
     auxiliaryPage = <WorldStatePage />
+  } else if (sidebarView === 'derived-health') {
+    // S7：派生内容清点。同样是整块主区；页面里每行的「去处置」会先把 sidebarView
+    // 切回 `project` 再开 tab —— 否则 tab 区被 `hidden` 挡住，点了像没反应。
+    auxiliaryPage = <DerivedHealthPage />
   }
 
   // 未打开项目时显示欢迎页

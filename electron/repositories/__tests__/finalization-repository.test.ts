@@ -375,9 +375,12 @@ describe('M28 定稿记录大纲版本', () => {
       full.prepare("UPDATE drafts SET status = 'revised' WHERE id = ?").run(first)
       const second = full.prepare(`INSERT INTO drafts (chapter_number, version, status, content_id, word_count)
         VALUES (3, 2, 'draft', ?, 0)`).run(5003)
-      finalize(Number(second.lastInsertRowid), 3)
+      const secondId = Number(second.lastInsertRowid)
+      finalize(secondId, 3)
 
-      expect(FinalizationRepository.readFinalizedOutlineRevs(full)).toEqual([{ chapterNumber: 3, outlineRev: 2 }])
+      // `draftId` 是给清点页跳转用的（S7）：清单说「第 3 章旧了」，点过去要能打开那一版正文。
+      expect(FinalizationRepository.readFinalizedOutlineRevs(full))
+        .toEqual([{ chapterNumber: 3, outlineRev: 2, draftId: secondId }])
     } finally { full.close() }
   })
 
@@ -385,6 +388,7 @@ describe('M28 定稿记录大纲版本', () => {
     // 这个文件 beforeEach 建的手写 schema 正好没有 `outline_rev`。
     expect(FinalizationRepository.readFinalizedOutlineRevs(db)).toEqual([])
     db.prepare("UPDATE drafts SET status = 'finalized' WHERE id = 17").run()
-    expect(FinalizationRepository.readFinalizedOutlineRevs(db)).toEqual([{ chapterNumber: 1, outlineRev: -1 }])
+    expect(FinalizationRepository.readFinalizedOutlineRevs(db))
+      .toEqual([{ chapterNumber: 1, outlineRev: -1, draftId: 17 }])
   })
 })

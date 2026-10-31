@@ -222,23 +222,26 @@ export class FinalizationRepository {
    */
   static readFinalizedOutlineRevs(
     database?: ProjectDatabase | null,
-  ): Array<{ chapterNumber: number; outlineRev: number }> {
+  ): Array<{ chapterNumber: number; outlineRev: number; draftId: number }> {
     const db = database ?? getProjectDb()
     if (!db) return []
     const revColumn = hasColumn(db, 'drafts', 'outline_rev')
       ? 'outline_rev' : `${M28_DRAFT_OUTLINE_REV_UNKNOWN} AS outline_rev`
+    // `id` 一并取是给清点页跳转用的（`ai-novel://draft/<id>`），**不是判据**：
+    // 多一次回查（按章号再问一次「哪条是定稿」）会让「清单里看到的章」与
+    // 「跳过去打开的章」在重新定稿的一瞬间对不上。
     const rows = db.prepare(`
-      SELECT chapter_number, ${revColumn}
+      SELECT id, chapter_number, ${revColumn}
       FROM drafts
       WHERE status = 'finalized'
       ORDER BY chapter_number ASC, version DESC, id DESC
-    `).all() as Array<{ chapter_number: number; outline_rev: number }>
+    `).all() as Array<{ id: number; chapter_number: number; outline_rev: number }>
     const seen = new Set<number>()
-    const result: Array<{ chapterNumber: number; outlineRev: number }> = []
+    const result: Array<{ chapterNumber: number; outlineRev: number; draftId: number }> = []
     for (const row of rows) {
       if (seen.has(row.chapter_number)) continue
       seen.add(row.chapter_number)
-      result.push({ chapterNumber: row.chapter_number, outlineRev: row.outline_rev })
+      result.push({ chapterNumber: row.chapter_number, outlineRev: row.outline_rev, draftId: row.id })
     }
     return result
   }

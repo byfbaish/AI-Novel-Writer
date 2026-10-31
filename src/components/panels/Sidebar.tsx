@@ -38,6 +38,8 @@ export default function Sidebar() {
     knowledge:  text('知识库', 'Knowledge'),
     characters: text('角色管理', 'Characters'),
     'world-state': text('世界状态', 'World state'),
+    // S7：侧栏没有可导航的层级，只给一句说明 —— 留一个空白面板会让作者以为没加载出来。
+    'derived-health': text('同步', 'Sync'),
   }
 
   return (
@@ -57,6 +59,14 @@ export default function Sidebar() {
         {sidebarView === 'knowledge'  && <KnowledgePanel />}
         {sidebarView === 'characters' && <CharactersView />}
         {sidebarView === 'world-state' && <WorldStateNav />}
+        {sidebarView === 'derived-health' && (
+          <p className="px-3 py-2 text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            {text(
+              '按「上游改了、下游还没跟上」列出派生内容。每一行的「去处置」会跳到对应编辑器，改不改由你决定。',
+              'Derived content that trails its upstream. "Open" jumps to the matching editor; whether to regenerate is up to you.',
+            )}
+          </p>
+        )}
       </div>
 
       {/* 动态右键菜单 */}

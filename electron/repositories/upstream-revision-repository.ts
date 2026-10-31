@@ -1,4 +1,5 @@
 import { getProjectDb } from '../database'
+import type { UpstreamRevisionLine } from '../../src/shared/invalidation-plan'
 import {
   BOOK_SCOPE,
   mergeRevisionLogIntoChangedChapters,
@@ -494,5 +495,34 @@ export class UpstreamRevisionRepository {
       map.set(key, override.rev)
     }
     return map
+  }
+
+  /**
+   * 清点页的抬头行：每域**当前**版本 + 最近一次变动的时刻与原因（S7）。
+   *
+   * ## 为什么 `at` 不去读 `updated_at`
+   *
+   * `upstream_revisions.updated_at` 是**当前态**被覆盖的时间。被覆盖过 N 次的域，
+   * 它只记得第 N 次 —— 拿去显示「这一版什么时候改的」，在「改完又回滚」的情形下
+   * 会说成一件没发生的事。**时间只能来自流水**，没有流水就 `null`（v27 之前的老库）。
+   *
+   * ## 为什么逐域查 `latestLog`
+   *
+   * 域数 ≤ 5，每条都是一次带索引的 `ORDER BY id DESC LIMIT 1`。反过来「扫全表流水
+   * 再在内存里分组」会把一整本书的历史（每改一次大纲就一行）读进来，只为取最后一条。
+   */
+  static listLines(database?: ProjectDatabase | null): UpstreamRevisionLine[] {
+    const db = database ?? getProjectDb()
+    if (!db) return []
+    return UpstreamRevisionRepository.list(db).map((row) => {
+      const latest = UpstreamRevisionRepository.latestLog(row.domain as UpstreamDomain, row.scope, db)
+      return {
+        domain: row.domain as UpstreamDomain,
+        scope: row.scope,
+        rev: row.rev,
+        at: latest?.at ?? null,
+        reason: latest?.reason ?? 'unknown',
+      }
+    })
   }
 }

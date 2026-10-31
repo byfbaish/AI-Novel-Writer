@@ -1,6 +1,6 @@
 # 上游失效 · 期 3 实施设计与作业图
 
-> 状态：已实施 · 2026-10-31 · 期 3a（S1–S5）+ S4b（硬拒带溯源链）+ 主入口接线（方案 B）+ 期 3b（S6a 收窄 + 中间环）+ S6c 期 1（溯源流水）+ S6c 期 2（文案带时间/原因 + 章集迁流水）+ S6（M28 定稿章组 + 回滚逐层列出）；S7 未排期
+> 状态：已实施 · 2026-10-31 · 期 3a（S1–S5）+ S4b（硬拒带溯源链）+ 主入口接线（方案 B）+ 期 3b（S6a 收窄 + 中间环）+ S6c 期 1（溯源流水）+ S6c 期 2（文案带时间/原因 + 章集迁流水）+ S6（M28 定稿章组 + 回滚逐层列出）+ **S7（派生清点页，2026-11-01）**
 > **施工期补的两个口径**：① request `rev <= 0` =「假想再改一版」（借 0 表达，不新增签名/通道）——**已由作者裁定保留**；② 影响范围的四种情形在 S6 之前只判得出三种。见 §六。
 > **S6 的裁定已定（2026-10-31）**：定稿章只记 `outline` 一域（主稿 §十·2 ①）；并把 `BOOK_SOURCE_KEYS` 三域全记收窄成按类型分（S6a）。**S1–S5 不受影响，照原样施工。**
 > **S6 的第二个裁定（2026-10-31）**：`db:invalidation-plan` 的请求加**可选** `reason?: UpstreamRevisionReason`（方案 A）——只有「回滚 ⇒ 逐层列出」那一档需要它，不传即旧行为。
@@ -100,15 +100,15 @@ flowchart TD
   S5["S5 收口<br/>状态行 + 台账 + 本稿 §六"]
   S1 --> S2 --> S3 --> S4 --> S5
   S6a["S6a 收窄 source_ref<br/>BOOK_SOURCE_KEYS → 按类型分"]
-  S6["S6 期 3b<br/>M26：drafts 记 outline_rev<br/>+ 大纲记 world/arc rev"]
+  S6["S6 定稿章组<br/>M28：drafts 记 outline_rev"]
   S6c["S6c 溯源流水<br/>upstream_revision_log<br/>时间 + 原因"]
-  S7["S7 期 4（不排期）<br/>处置面板：清点 + 跳转"]
+  S7["S7 已落地（2026-11-01）<br/>清点页：列出 + 跳转"]
   S4b["S4b 硬拒带溯源链<br/>describeDrift 升级<br/>零迁移"]
   S4 --> S4b
   S4 -.-> S6a -.-> S6 -.-> S6c -.-> S7
 ```
 
-**一句话读法**：S1–S5 是一条直线，每片都有独立验收命令，**任一片没绿就不许开下一片**；`S4b` 是挂在主线上的补丁（零迁移，可随时插入）；虚线四片本期只登记、不施工。
+**一句话读法**：S1–S5 是一条直线，每片都有独立验收命令，**任一片没绿就不许开下一片**；`S4b` 是挂在主线上的补丁（零迁移，可随时插入）；虚线四片是后续追加，**已全部落地**（S6a 期 3b → S6 → S6c → S7）。
 
 | 片 | 内容 | 验收命令（必须逐字跑） | 预计改动量 |
 |---|---|---|---|
@@ -237,6 +237,100 @@ export function computeInvalidationPlan(input: {
 2. 台账 `P2-3` 行把「期 3 未开工」改成已落地的片号；
 3. `node scripts/check-fast.mjs` 必须绿；`node scripts/check-doc-placement.mjs --update-baseline` 若基线缩小则收窄。
 
+### S7 · 派生清点页（2026-11-01 作者裁定，施工卡）
+
+**两处裁定**：① 范围 = **清点 + 跳转**（主稿 §九 步 5 的「一键重算」**不做**，理由见下）；
+② 入口 = **左栏新导航项**（与 `world-state` 同构）。
+
+**为什么只做清点不做重算**（三条，缺一条都足以否掉「一键」）：
+
+1. 四类派生的重算是**四条不同的 workflow**（蓝图逐章 / 交接单 / 剧情树 / 整章重写），没有统一的「重算」动作可调用；
+2. 代价差一个量级 —— 重写正文会花 token 并**覆盖已定稿内容**，重算蓝图近乎免费。并进一个按钮，等于让作者在最贵的那一项上误触；
+3. 与主稿 §十·2 ③「控制力度交给作者」相反。
+
+> 主稿 §九 步 5 的原文（「一键重算/确认」）**不删**，在 §9.3 记一条「期 4 裁定收窄」，避免以后有人照着旧表重做一遍。
+
+#### 数据形状（钉死，放 `src/shared/invalidation-plan.ts`）
+
+```ts
+/** 上游各域此刻的版本。给清点页抬头用：让「旧了」有一个可比的数字。 */
+export interface UpstreamRevisionLine {
+  domain: UpstreamDomain
+  scope: string
+  rev: number
+  /** 最近一次变动的时刻（ISO）。取不到流水 ⇒ null（v27 之前的老库）。 */
+  at: string | null
+  reason: UpstreamRevisionReason
+}
+
+export interface DerivedInventory {
+  /** 与 `InvalidationPlan.groups` **同形** —— 不另造一套行结构。 */
+  groups: readonly InvalidationGroup[]
+  unseen: { count: number; kinds: readonly InvalidationGroupKind[] }
+  upstream: readonly UpstreamRevisionLine[]
+  /** 盘点时刻（ISO）。UI 显示「截至 HH:mm」，否则作者会把旧快照当实时。 */
+  scannedAt: string
+}
+```
+
+**没有 `tier`、没有 `unaffected`** —— 两个都是为「正要动手」那个场景算的：`tier` 是「要不要逼你勾一句」，
+`unaffected` 是「这一刀没砍到哪几章」。清点页既不动手也不问确认。带上它们只有一个后果：
+UI 迟早拿 `tier` 上色/排序，然后「面板说 strong、点重建只说 once」就没人答得出。
+
+#### 通道
+
+`db:derived-inventory`（只读，除项目路径外**零参数**）。
+
+**不新增判据函数**：handler 里调 `computeInvalidationPlan` 时 `overrides: []` ⇒ `hypothetical` 就是真实
+版本表 ⇒ 判出来的就是现状。这不是取巧 —— 清点页与强提醒**共用同一份判定**，两处就不可能互相矛盾
+（写第二份判据，迟早在某个边界上分家，而那种分家只有作者同时看到两个界面时才会发现）。
+
+三条口径：
+
+1. **`missing: true` 与「0 项」分开**（沿用 plan 的失败口径）。版本表不存在 ⇒ `missing`，UI 说
+   「这本书还没有版本记录（旧项目）」，**不许**说「一切正常」。
+2. **`upstream.at` 取不到就 `null`**，**不许**拿 `updated_at` 冒充 —— 那是**当前态**被覆盖的时间，
+   不是那一版**发生**的时间（M27 里同一条纪律：改 `at` 等于伪造证据）。
+3. **一次扫描、一次快照**。面板不做轮询、不做增量：`get-all` 类的读取在上千章上是重活，
+   而「旧没旧」不是秒级事实。
+
+#### UI（`src/components/pages/DerivedHealthPage.tsx`）
+
+- 抬头：`N 项需要处置` + `另有 M 项无法判断` + `截至 HH:mm` + 刷新按钮；
+- 主体：按 `GROUP_ORDER` 分组，每行 = 标签 + `describeDrift(behind)` + 「去处置」；
+- `unseen` 折叠成一行小字（默认收起）：展开后列 `kinds` 的中文名。**不折成 0**（主稿 §十·1 第 3 条）；
+- 空态：「没有需要处置的派生内容」；
+- 组名与域名的双语表**抽成共享模块**，`InvalidationPlanGatePanel` 改为 import 它 ——
+  现在是面板内私有，复制一份到新页面就是第二处真相（`_test` 只钉得住一份）。
+
+#### 跳转表（五类，逐项对准已有入口）
+
+| 组 | 跳到 | 落点 |
+|---|---|---|
+| `outline` | 情节大纲 | `openArchFile('ai-novel://core/synopsis', '情节大纲')` |
+| `blueprint` | 第 N 章卡 | `openBuiltinEditor(…, 'chapter-card', undefined, N)` |
+| `handoff` | 卷末交接单 | `openBuiltinEditor(…, 'volume-handoff-registry')` |
+| `plot-tree` | 剧情树 | `openBuiltinEditor(…, 'narrative-thread', 'plot-tree')` |
+| `finalized` | 该章正文 | 需按章号取 draftId；**取不到就退化成章卡**，并在按钮 title 上说明 |
+
+**跳转失败不许弹「已跳转」**：拿不到目标就 `toast.error` 说明原因（同 `sidebar-file-openers` 的读失败口径）。
+
+#### 本片不做
+
+- **一键重算**（上面三条理由）；
+- **持久化「提示过一次」**（主稿 §十·1 第 4 条）：清点页是作者**主动打开**的，如实列出不构成打扰，
+  而记「已提示」需要新增一处持久位（schema 变更）—— 等有实际反馈再说；
+- **自动刷新 / 轮询**；
+- **按项目分 tab**：它是页面（`SidebarView`），不是 tab —— 走 tab 要登记 `editor-store` 的
+  per-project 逻辑，漏一处就会两个项目共用同一个 tab。
+
+#### 验收
+
+`db-controller-derived-inventory`（新）：5 例（判现状不判假想 / 版本表缺失 ⇒ `missing`
+/ `upstream` 带 rev 与流水时间 / 无流水 ⇒ `at: null` / 五个 kind 全覆盖）；
+`DerivedHealthPage.browser`（新）：4 例（空态 / 分组与计数 / 点「去处置」调用对应打开函数 /
+`unseen` 默认收起且展开后有域名）。
+
 ---
 
 ## 五、本稿不做
@@ -244,7 +338,8 @@ export function computeInvalidationPlan(input: {
 - **~~不给「已定稿章节」组硬造判据~~（S6 已补）**：M28 给 `drafts` 加 `outline_rev`，`finalized` 组落地。落地记录见 §十三。
   ~~原前置~~：S6a 收窄 `source_ref` 已落地（期 3b）；**迁移编号最终是 M28**（M26 被中期环用掉、M27 被 S6c 期 1 用掉）。
 - **不做伏笔计划组**。主稿 §八 已裁定它不进版本表（作者输入即上游）。
-- **不做处置面板**（S7，主稿 §九 步 5「最后做」）。
+- **~~不做处置面板~~（S7 已在做，2026-11-01）**：主稿 §九 步 5「最后做」的那一片，范围由作者裁定
+  **收窄成「清点 + 跳转」**（不亲自重算），施工卡见 §四 S7、落地记录见 §六。
 - **不做回滚原语**（主稿 §8.5）。卷回滚属 P0-1 残留，其"波及范围"口径已写进主稿 §十·2 ④，实现时照此。
 - **不在 plan 阶段 bump rev**（§8.1，红线）。
 - **不把大纲层做成硬拦**（主稿 §十·2 ③）。本项目定位是「规划层浅参与」，控制力度归作者；这条**不改变**期 2 已落地的 A 类硬拒（正文链遇 stale 蓝图拒绝写作）—— 越靠近正文越硬是既定口径。
@@ -282,6 +377,31 @@ export function computeInvalidationPlan(input: {
    回显进 `plan.reason`；`rollback` 时前置级联顺序那句话，其余三档一个字不变。
    不传 ⇒ `unknown` ⇒ 与旧行为完全一致（所以这不算「新增签名通道」：没有新的必填参数、
    没有新 channel，`HYPOTHETICAL_NEXT_REV` 那条约定的理由同样成立）。
+
+### 「假想下一版没有章集 ⇒ 全报」的观感裁定（2026-11-01 作者裁定：保持现状）
+
+**问题形态**：`HYPOTHETICAL_NEXT_REV` 问的是「这域再改一版会怎样」，而那一版**还不存在**，
+自然没有 `changed_chapters`。`changedChaptersBetween` 缺任一段就返回 `null` ⇒ 整域按全改算
+（期 2 的保守方向）⇒ 点「重建大纲」时，**所有已定稿章节都会被列进清单**，哪怕是第 3 章
+这种跟这次改动无关的。真实读数里的观感是「一说要动大纲，全书定稿章全红」。
+
+**裁定：保持现状，不为观感改动。** 作者原话：
+
+> 先全报吧，影响范围可以按照区间报，应该影响观感有限，如果实际用起来不太好再优化就是，
+> 体验的问题可以延后。
+
+三条落地口径：
+
+1. **不做任何代码改动**。全报是「不知道改成哪几章」时的正确答案，不是缺陷：
+   收窄成「按最近一版实际改动估」是在**猜**，猜错的方向是**漏报**（作者照旧空隙跳过该复查的章）。
+2. **影响范围沿用现有区间表达**：`unaffected` 给区间、`behind[].changed` 已按区间压缩
+   （`第12–14章`），**不要再逐章铺开** —— 逐章铺开才是观感真正崩掉的地方。
+3. **这是待观察项，不是结项**。若实际用起来仍难受，候选方向按优先级：① 分两栏
+   「确定受影响（有章集证据）」/「范围未知，保守列出」；② 保持；③ 按最近一版估 ——
+   **③ 不接受**（把「不知道」伪装成「知道」，与 §十·1 拒绝回填 `source_ref` 同一条纪律）。
+
+> **为什么记在这里而不是主稿**：这是「施工期补的口径 ②」那条的后续（影响范围的第 4 档），
+> 关闭它需要的是观感反馈，不是新判据。
 
 ### 主入口接线（方案 B，2026-10-31 作者裁定）
 
@@ -585,3 +705,60 @@ S4 用**全表原始行串逐字节比**（不顺手用仓储层的 `list()`）�
 · `finalization-repository` 新增 4 例（记准 / 无版本账记 `-1` / 每章取最高版 / 老库缺列照样返回）
 · `InvalidationPlanGatePanel.browser` 新增 4 例（勾选文案分档 / 无定稿组不许说「已定稿」/
   `rollback` 前置级联顺序 / 非 `rollback` 一个字不多）。
+
+### S7 落地记录：派生清点页（2026-11-01）
+
+**作者两处裁定**：① 范围 = 清点 + 跳转（主稿 §九 步 5 的「一键重算」不做）；② 入口 = 左栏新导航项。
+
+| 改动 | 落点 |
+|---|---|
+| 数据形状 | `src/shared/invalidation-plan.ts`：`UpstreamRevisionLine` / `DerivedInventory`（与 `InvalidationGroup` 同形） |
+| 通道 | `db:derived-inventory`（只读、零参数）· `src/shared/ipc-channels.ts` · `db-controller.ts` |
+| 入参共用 | `db-controller.ts` 抽出 `readPlanInputs(db)`，两个 handler 共用 —— 两处各写一遍读取会漏表 |
+| 抬头行 | `UpstreamRevisionRepository.listLines()`：逐域 `latestLog`（域数 ≤ 5，不扫全表流水） |
+| 跳转数据 | `FinalizationRepository.readFinalizedOutlineRevs` 顺带返回 `draftId`（同一次查询） |
+| 读侧 | `src/services/derived-inventory.ts`：`ok` / `missing` / `unavailable` **三态** |
+| 页面 | `src/components/pages/DerivedHealthPage.tsx` + `src/components/invalidation-labels.ts`（组名/域名双语表抽公共） |
+| 入口 | `SidebarView` 加 `'derived-health'` · 左栏「同步」按钮 · `EditorArea` 路由 · `Sidebar` 标题与一句说明 |
+
+#### ① 「清点 = 不传 overrides」
+
+清点没有自己的判据函数：handler 里 `computeInvalidationPlan({ overrides: [], ...readPlanInputs(db) })`
+——假想快照就等于真实版本表，判出来的**就是现状**。这不是省事：写第二份判据，
+「清点页说没事、点重建却列出一堆」这种自相矛盾只会在作者同一天先后打开两个界面时暴露，
+而那时已经很难判谁对。测试里每个「旧了」的用例都**同时用 `db:invalidation-plan` 复核**一遍。
+
+#### ② 跳转前必须切回 `project` 视图（实施时才发现）
+
+`EditorArea` 在 `auxiliaryPage !== null` 时用 `hidden` 把 tab 区整块藏起来（辅助页优先）。
+所以「打开 tab」≠「作者看见」：只开 tab 不切视图，表现是「点了一下，什么都没发生」。
+每一档跳转都先 `setSidebarView('project', …)` 再开。
+
+蓝图与剧情树不用手动改 tab 字段：`openFile` 对已存在的 tab 会写回 `chapterNumber` /
+`narrativeThreadViewRequest`，`ChapterCardEditor` 的 effect 依赖 `initialChapterNumber`，
+于是会定位到那一章。
+
+#### ③ 三态，不合并
+
+`missing`（版本表不存在）/ `unavailable`（这次没读到）/ `ok` 且组空（确实没有）——
+折成一份空清单，作者会把「不知道」读成「没问题」（主稿 §9.2）。
+
+#### ④ 一处与施工卡不同
+
+施工卡写「`finalized` 跳转取不到 draftId 就退化成章卡」。实际实现是**只 toast 说明**，
+没有自动打开章卡：自动跳到一个「不含该章」的编辑器，比说清「没找到定稿记录」更让人困惑。
+draftId 本身由 `readFinalizedOutlineRevs` 一并带出（同一次 `SELECT`），不额外回查 ——
+两次查之间若重新定稿，「清单里看到的章」与「跳过去打开的章」会错位。
+
+#### 测试
+
+`db-controller-derived-inventory`（7：库没开/表不存在各自 `missing` · 蓝图落后且与 plan 同源 ·
+刚写完不算旧 · 有流水带 rev/时间/原因 · 无流水 `at: null` · 定稿章带 draftId）
+· `DerivedHealthPage.browser`（6：missing 不说「一切正常」· 空态 · 分组计数 ·
+`unseen` 默认收起且展开列得出 · 行内带证据 · 两档跳转参数）
+· `finalization-repository` 两处断言同步（返回值多了 `draftId`）。
+
+**验证**：`src/shared` 97 套件 1650 例 · `electron/repositories + migrations` 77 套件 797 例 ·
+`electron/controllers` 424 例（1 例 `user-settings-package` 的 `rmSync` teardown EPERM，
+栈在 cleanup 不在断言，基线同样红）· `src/components/pages + dialogs` browser 179 例
+（`batch-chapter-completion-mode` 3 例既有红，已用 stash 在 HEAD 上复现）· `check:fast` 绿。

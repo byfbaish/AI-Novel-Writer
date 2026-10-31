@@ -8,6 +8,7 @@ import {
   GitBranch,
   History,
   Compass,
+  Activity,
 } from 'lucide-react'
 import { useLayoutStore, type SidebarView } from '../../stores/layout-store'
 import { useProjectStore } from '../../stores/project-store'
@@ -145,6 +146,13 @@ export default function LeftToolWindowBar() {
               'plot-tree',
             )
           }}
+        />
+        <LeftNavButton
+          icon={Activity}
+          label={text('同步', 'Sync')}
+          active={activeRailItem === 'derived-health'}
+          title={text('派生内容状态：哪些内容基于旧的上游', 'Derived content health: what is based on an older upstream')}
+          onClick={() => setSidebarView('derived-health')}
         />
         <LeftNavButton
           icon={History}
