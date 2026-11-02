@@ -42,7 +42,36 @@ function parseRequest(value: unknown): SystemNotificationRequest | null {
   const title = typeof raw.title === 'string' && raw.title.trim() !== ''
     ? raw.title.trim()
     : FALLBACK_TITLE
-  return { title, body: raw.body.trim(), sound, route: raw.route }
+  const coalesceKey = typeof raw.coalesceKey === 'string' && raw.coalesceKey.trim() !== ''
+    ? raw.coalesceKey.trim()
+    : undefined
+  return { title, body: raw.body.trim(), sound, route: raw.route, coalesceKey }
+}
+
+/**
+ * 合并抑制（N3·§4.3）：同 `coalesceKey` 在窗口期内只弹第一条。
+ *
+ * 与设计稿原文「只保留最后一条」的实现差异，理由要记在这里：
+ * 「延后 3 秒再弹、期间替换」会让**单条**任务完成的反馈也迟到 3 秒 ——
+ * 而绝大多数事件都是单条。提示类通知的价值在及时，同一 key 的正文差异
+ * （章节号）也不值得为它牺牲及时性。所以取「窗口内首条即弹、后续丢弃」，
+ * 效果上就是「3 秒内同类只弹一条」，这是 §4.3 的真实目的。
+ */
+const COALESCE_WINDOW_MS = 3_000
+const lastShownAtByKey = new Map<string, number>()
+
+function shownRecently(key: string, now: number): boolean {
+  const last = lastShownAtByKey.get(key)
+  return last !== undefined && now - last < COALESCE_WINDOW_MS
+}
+
+/** 记一次「真的弹了」。被抑制的不记 —— 否则切回前台后的第一条会被自己的抑制挡掉。 */
+function rememberShown(key: string, now: number): void {
+  lastShownAtByKey.set(key, now)
+  // 键来自规则 id，数量本来有限；顺手清过期的，避免进程长跑时无界增长。
+  for (const [candidate, at] of lastShownAtByKey) {
+    if (now - at >= COALESCE_WINDOW_MS) lastShownAtByKey.delete(candidate)
+  }
 }
 
 /**
@@ -93,6 +122,13 @@ export function showSystemNotification(
     return { shown: false, reason: 'suppressed-focused' }
   }
 
+  // 合并判定放在聚焦抑制之后：前台被挡掉的请求不该占用窗口，
+  // 否则作者切走后 3 秒内的第一条会被一条「其实没弹出去」的通知挡掉。
+  const now = Date.now()
+  if (request.coalesceKey && shownRecently(request.coalesceKey, now)) {
+    return { shown: false, reason: 'suppressed-coalesced' }
+  }
+
   const notification = new Notification({
     title: request.title,
     body: request.body,
@@ -102,6 +138,7 @@ export function showSystemNotification(
   })
   notification.on('click', () => focusAndActivate(win, request.route))
   notification.show()
+  if (request.coalesceKey) rememberShown(request.coalesceKey, now)
   return { shown: true }
 }
 

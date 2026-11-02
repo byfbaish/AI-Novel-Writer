@@ -290,7 +290,7 @@ docs/
 |---|---|---|
 | [`user-settings-package-design.md`](design/features/user-settings-package-design.md) | 待审核 · 未编码 | 用户级设置包（创作资产导出/导入） |
 | [`p1-2b-settings-period-authoring-guide.md`](design/features/p1-2b-settings-period-authoring-guide.md) | 草案 v1 | 世界观期次标注的作者操作手册 |
-| [`system-notification-design.md`](design/features/system-notification-design.md) | 待裁定 | 系统级 OS 通知 + 声音提醒（主进程发通知/渲染进程播音/聚焦抑制/注册表热插拔；N1–N3 分期） |
+| [`system-notification-design.md`](design/features/system-notification-design.md) | 已实施（2026-11-02） | 系统级 OS 通知 + 声音提醒（主进程发通知/渲染进程播音/聚焦抑制/注册表热插拔；N1–N3 全落地，音色待作者试听） |
 | [`task-completion-notify-design.md`](design/features/task-completion-notify-design.md) | 已列入待办（顺延） | 应用内 toast 统一宿主 + 热插拔注册表（作者裁先做系统级；将来可合并为双输出） |
 | [`ai-output-live-render-design.md`](design/features/ai-output-live-render-design.md) | ✅ 已实施 | AI 输出面板运行态只给状态行、不渲染流式文本（原文：审稿把渲染进程推到 10GB 的 O(n²) 取证与参数） |
 | [`p16b-prompt-config-and-trace-guide.md`](design/features/p16b-prompt-config-and-trace-guide.md) | ✅ 已实施 | 作者操作手册：三条配置边界、口味/数字之辨、三类打架、Prompt 追踪五步归因 |

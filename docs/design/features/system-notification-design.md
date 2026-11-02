@@ -1,6 +1,6 @@
 # 系统级通知与声音提醒设计
 
-> 状态：**已裁定（5/5）· 待作者发话开工** —— 2026-10-17 21:4x 作者裁毕全部待定项（结论见 §9）；作者明示**仍在运行使用项目，裁定后先不接入代码**，N1 待作者发话再动工。
+> 状态：已实施（2026-11-02，N1–N3 全部落地：主进程通知闭环 / 合成音与三条规则 / 3 秒合并 + 注册表单测）。实施记录与两处实现取舍见 §10；本稿 §1–§9 保持裁定时原样，不改写当时的判断。
 > 日期：2026-10-17
 > 分支：`dev_byf`
 > 上级稿：无（独立功能设计；与 `task-completion-notify-design.md` 的关系见 §8）
@@ -58,12 +58,20 @@
 
 一次 workflow run 完成 = 一条通知（run 级事件天然不刷屏）；但连续多个 run 完成（如批量链自动开下一章）会连弹 ⇒ 同 `ruleId` 的通知 3 秒内只保留最后一条。
 
+> **实施取舍（2026-11-02，N3）**：落地为「窗口内**首条即弹、后续丢弃**」，不是「延后 3 秒、期间替换」。
+> 理由：延后会让**单条**任务完成的反馈也迟到 3 秒，而绝大多数事件都是单条 —— 提示的价值在及时；
+> 同一 key 的正文差异只有章节号，不值得为它牺牲及时性。「3 秒内同类只弹一条」这个目的达到了。
+> 被聚焦抑制挡掉的请求**不占窗口**，否则作者切走后 3 秒内的第一条会被一条没弹出去的通知挡掉。
+
 ### 4.4 声音：Web Audio 合成（零二进制资源）
 
 不往仓库放音频文件：
 - `complete`：两声上行轻钟（C5→G5，正弦，各 ~120ms，指数衰减）
 - `error`：单声低鸣（A4→E4 下行，三角波，~200ms）
 - 合成参数集中在 `notification-sounds.ts` 一处；后续想换采样文件只改这一处（`public/sounds/` 路径预留）。
+
+> 落地时文件名取 `src/services/system-notify/sounds.ts`（与 `rules.ts` / `notify-hub.ts` 同目录，短名足够区分）；
+> 参数表 `TONE_SPECS` 就是那个「一处」。峰值另乘 0.35（`PEAK_FACTOR`）—— 两个音可能叠加，直接用 volume 当峰值会削波。
 
 理由：仓库卫生（不引二进制）、无版权问题、跨平台听感一致、音量/静音/试听全由 config 控制。音效质感上限有限——列为待裁项（§9.2）。
 
@@ -100,10 +108,12 @@ export interface SystemNotificationChannels {
       sound?: 'complete' | 'error'
       /** 点击通知后的跳转意图，由渲染进程消费 */
       route?: 'ai-output' | 'editor' | 'characters'
+      /** N3 新增：合并键，同 key 3 秒内只弹第一条。规则 id 即此值 */
+      coalesceKey?: string
     }]
     return: {
       shown: boolean
-      reason?: 'unsupported' | 'permission-denied' | 'suppressed-focused' | 'suppressed-cooldown'
+      reason?: 'unsupported' | 'suppressed-disabled' | 'suppressed-focused' | 'suppressed-coalesced' | 'invalid-request'
     }
   }
   'system-notification:permission': {
@@ -112,6 +122,11 @@ export interface SystemNotificationChannels {
   }
 }
 ```
+
+> 落地形态与上面**有两处不同**，都以代码 `src/shared/system-notification.ts` 为准：
+> ① 返回是判别联合（`{shown:true} | {shown:false, reason}`），不是可选字段 —— 调用方少一层 `?`；
+> ② 原因枚举多了 `suppressed-disabled`（总开关关）与 `invalid-request`（入参不合格），
+> 少了 `permission-denied`（Electron 41 主进程没有可用的授权查询 API，只能判 supported/unsupported）。
 
 点击通知后，主进程 `webContents.send('system-notification:activated', { route })` 回渲染进程，由渲染侧 layout-store 执行跳转（复用 `openRightPanel` / `setSidebarView` 等现有能力，不新造导航）。
 
@@ -234,3 +249,27 @@ notificationOnlyWhenUnfocused: boolean   // 聚焦抑制开关
 | 5 | 设置位置 | **「放进编辑器 tab」**——并入 `EditorSection`，不新建 tab | §5.4 |
 
 **附加约束（作者原话）**：「先不要接入，我还在使用运行项目」⇒ 裁定只改设计稿与台账，**代码零改动**；N1 待作者明确发话再开工。
+>
+> **该约束已于 2026-11-02 解除**：作者要求「把系统通知做完收尾」，N1–N3 一并落地（见 §10）。
+
+## 10. 实施记录（2026-11-02）
+
+### 10.1 落地清单
+
+| 期 | 落点 | 提交 |
+|---|---|---|
+| N1 | `electron/controllers/system-notification-controller.ts`（2 通道 + 聚焦抑制 + 点击回前台/回推 route）、`src/shared/system-notification.ts`（契约）、`src/services/system-notify/{rules,notify-hub}.ts`、`config-utils` 四键、`App.tsx` 一次 `initSystemNotifyHub()` | `2f5b49bc` |
+| N2 | `src/services/system-notify/sounds.ts`（Web Audio 合成，零二进制）、`workflow-error` / `finalize-complete` 两条规则、`SettingsModal` `EditorSection` 通知区（四控件 + 试听） | 见本稿同批提交 |
+| N3 | 主进程 3 秒同类合并（`coalesceKey`）、注册表热插拔单测（注册/同 id 覆盖/注销/null 返回） | 同上 |
+
+### 10.2 验证
+
+- 单测：controller 16 条（聚焦抑制 / 非法入参 / unsupported 降级 / 点击路由 / 合并窗口 / 抑制不占窗口）、hub 16 条（三类事件 / 按类型分流 / 会话校验 / 声音策略 / 热插拔）、sounds 8 条（两个音型的频率走向、峰值缩放、越界夹取、无 Web Audio 降级），共 40 条全过；`tsc` 与 `eslint --max-warnings 0` 干净。
+- 实机（dev + CDP）：设置区在「编辑器」tab 内渲染正常；音量滑条可拖、拖到 30% / 70% 后 `config:get` 回读一致（`readJsonFile` 每次真读文件 ⇒ 回读一致即落盘成功）；「窗口在前台时不弹通知」开关点击后落盘为 `false`；`WORKFLOW_ERROR` 事件链路无 console 异常；运行环境 `AudioContext.state === 'running'`（不需要用户手势即可发声）。
+
+### 10.3 已知限制（不是待办，是明确接受）
+
+1. **音色只按参数验过，没人真听过**：合成音的听感（尤其 `error` 的三角波是否刺耳）需要作者实际听一次。参数集中在 `TONE_SPECS`，不满意改数字即可，不用动结构。
+2. **macOS 授权状态只有两态**：Electron 41 主进程没有授权查询 API，只能区分 `granted` / `unsupported`；被系统级拒绝时无法区分，靠 OS 自己拦。
+3. **合并是「保留首条」而非「保留末条」**：理由见 §4.3 的实施取舍。
+4. **`batch_generate` 不报章数**：`WorkflowRun` 上没有章数字段，按设计稿「取不到则退化通用文案」处理，没有去猜数据来源。

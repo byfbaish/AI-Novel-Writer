@@ -222,4 +222,67 @@ describe('system notification controller', () => {
     await expect(handler('system-notification:permission')({}))
       .resolves.toBe('unsupported')
   })
+
+  // ---- N3：3 秒同类合并 ----
+
+  it('同 coalesceKey 3 秒内只弹第一条，超出窗口后恢复', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+    const win = new FakeWindow()
+    const show = handler('system-notification:show')
+    const request = { ...REQUEST, coalesceKey: 'workflow-complete' }
+
+    await expect(show(senderFor(win), request)).resolves.toEqual({ shown: true })
+
+    now.mockReturnValue(1_001_000)
+    await expect(show(senderFor(win), request))
+      .resolves.toEqual({ shown: false, reason: 'suppressed-coalesced' })
+
+    now.mockReturnValue(1_003_000)
+    await expect(show(senderFor(win), request))
+      .resolves.toEqual({ shown: true })
+
+    expect(mocks.notifications).toHaveLength(2)
+    now.mockRestore()
+  })
+
+  it('不同 coalesceKey 互不合并（完成与失败各有各的窗口）', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+    const win = new FakeWindow()
+    const show = handler('system-notification:show')
+
+    await expect(show(senderFor(win), { ...REQUEST, coalesceKey: 'workflow-complete' }))
+      .resolves.toEqual({ shown: true })
+    await expect(show(senderFor(win), { ...REQUEST, coalesceKey: 'workflow-error' }))
+      .resolves.toEqual({ shown: true })
+
+    expect(mocks.notifications).toHaveLength(2)
+    now.mockRestore()
+  })
+
+  it('不传 coalesceKey 就不合并（同一秒连发也各弹各的）', async () => {
+    const win = new FakeWindow()
+    const show = handler('system-notification:show')
+
+    await show(senderFor(win), REQUEST)
+    await show(senderFor(win), REQUEST)
+
+    expect(mocks.notifications).toHaveLength(2)
+  })
+
+  it('被聚焦抑制挡掉的那次不占窗口：切走后 3 秒内仍能弹第一条', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+    const win = new FakeWindow()
+    const show = handler('system-notification:show')
+    const request = { ...REQUEST, coalesceKey: 'workflow-complete' }
+
+    win.focused = true
+    await expect(show(senderFor(win), request))
+      .resolves.toEqual({ shown: false, reason: 'suppressed-focused' })
+
+    // 作者切走：同一毫秒内这次必须能弹，否则「切走后第一条」会被一条没弹出去的通知挡掉。
+    win.focused = false
+    await expect(show(senderFor(win), request)).resolves.toEqual({ shown: true })
+    expect(mocks.notifications).toHaveLength(1)
+    now.mockRestore()
+  })
 })

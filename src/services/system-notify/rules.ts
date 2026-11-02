@@ -9,7 +9,7 @@
  * 最后把 Promise 当 payload 发出去（设计稿 §5.2 明确要求同步）。
  */
 
-import type { GlobalEventType } from '../../shared/event-bus'
+import type { EventPayloadMap, GlobalEventType } from '../../shared/event-bus'
 import type {
   SystemNotificationRoute,
   SystemNotificationSound,
@@ -17,7 +17,12 @@ import type {
 import type { WorkflowRun } from '../../stores/workflow-store'
 
 export interface SystemNotifyContext {
-  run: WorkflowRun
+  /**
+   * 本次事件对应的 run，**可能为 null**：只有 `WORKFLOW_COMPLETE` 能按 runId 查实。
+   * `FINALIZE_COMPLETE` / `WORKFLOW_ERROR` 的载荷里没有 runId，硬造一个只会让
+   * 规则误以为拿到了自己需要的东西。
+   */
+  run: WorkflowRun | null
   event: GlobalEventType
   /** 双语函数，与组件里用的是同一个 `text(zh, en)`。 */
   text: (zhCNText: string, enUSText: string) => string
@@ -52,6 +57,7 @@ const workflowCompleteRule: SystemNotifyRule = {
   id: 'workflow-complete',
   events: ['WORKFLOW_COMPLETE'],
   build(_payload, { run, text }) {
+    if (!run) return null
     const subject = run.title.trim() || text('任务', 'Task')
     const completedBody = text(`「${subject}」已完成`, `“${subject}” completed`)
     switch (run.type) {
@@ -79,5 +85,73 @@ const workflowCompleteRule: SystemNotifyRule = {
   },
 }
 
-/** N1 只上这一条；`workflow-error` / `finalize-complete` 属 N2。 */
-export const BUILTIN_SYSTEM_NOTIFY_RULES: readonly SystemNotifyRule[] = [workflowCompleteRule]
+/**
+ * 失败提示（N2·§5.2）。**与完成音区分开**：`error` 走下行三角波，听感明确，
+ * 不必看屏幕也知道是坏消息。
+ *
+ * 正文必须带错误摘要：通知正文为空等于纯骚扰（契约里 `body` 必填）。但也只取
+ * **第一行前 120 字** —— 完整栈在应用内的 AlertDialog 里，系统通知放全文会变成
+ * 一块读不完的砖。
+ */
+const workflowErrorRule: SystemNotifyRule = {
+  id: 'workflow-error',
+  events: ['WORKFLOW_ERROR'],
+  build(payload, { text }) {
+    const error = payload as EventPayloadMap['WORKFLOW_ERROR'] | null
+    const subject = typeof error?.title === 'string' ? error.title.trim() : ''
+    if (!subject) return null
+    const headline = text(`「${subject}」失败`, `“${subject}” failed`)
+    const detail = summarizeError(error?.error)
+    return {
+      title: appTitle(text),
+      body: detail ? `${headline}：${detail}` : headline,
+      sound: 'error',
+      // 失败链在应用内有 AlertDialog 强提示兜底，这里只是「你可能没在看窗口」时的辅助，
+      // 落右栏 AI 输出（错误详情就在那儿），不抢编辑器焦点。
+      route: 'ai-output',
+    }
+  },
+}
+
+/**
+ * 定稿完成（N2·§5.2）。
+ *
+ * 为什么值得单独一条：定稿链会跑一长串后处理，作者常常切走干别的；等回来时
+ * 章已经落定，却没有任何「好了」的痕迹。应用内的自动开下一章窗口一旦被关掉，
+ * 这条就也没有了。
+ */
+const finalizeCompleteRule: SystemNotifyRule = {
+  id: 'finalize-complete',
+  events: ['FINALIZE_COMPLETE'],
+  build(payload, { text }) {
+    const finalization = payload as EventPayloadMap['FINALIZE_COMPLETE'] | null
+    const chapterNumber = finalization?.chapterNumber
+    if (typeof chapterNumber !== 'number' || !Number.isFinite(chapterNumber)) return null
+    const chapterTitle = typeof finalization?.chapterTitle === 'string' ? finalization.chapterTitle.trim() : ''
+    return {
+      title: appTitle(text),
+      body: chapterTitle
+        ? text(`第${chapterNumber}章「${chapterTitle}」已定稿`, `Chapter ${chapterNumber} “${chapterTitle}” finalized`)
+        : text(`第${chapterNumber}章已定稿`, `Chapter ${chapterNumber} finalized`),
+      sound: 'complete',
+      route: 'editor',
+    }
+  },
+}
+
+const MAX_ERROR_DETAIL = 120
+
+/** 错误摘要：取第一行有内容的文本，过长截断。多行栈不进通知。 */
+function summarizeError(error: unknown): string {
+  if (typeof error !== 'string') return ''
+  const firstLine = error.split('\n').map(line => line.trim()).find(line => line !== '')
+  if (!firstLine) return ''
+  return firstLine.length > MAX_ERROR_DETAIL ? `${firstLine.slice(0, MAX_ERROR_DETAIL)}…` : firstLine
+}
+
+/** 内置规则集（§5.2 三条全覆盖）。 */
+export const BUILTIN_SYSTEM_NOTIFY_RULES: readonly SystemNotifyRule[] = [
+  workflowCompleteRule,
+  workflowErrorRule,
+  finalizeCompleteRule,
+]

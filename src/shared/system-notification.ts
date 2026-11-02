@@ -25,6 +25,8 @@ export type SystemNotificationSuppressionReason =
   | 'suppressed-disabled'
   /** 窗口正在前台（`config.notificationOnlyWhenUnfocused !== false` 时才判）。 */
   | 'suppressed-focused'
+  /** 同类通知刚弹过（`coalesceKey` 命中合并窗口）。 */
+  | 'suppressed-coalesced'
   /** 请求体不合法：缺正文 / 字段类型不对 / 非法 route。 */
   | 'invalid-request'
 
@@ -35,6 +37,12 @@ export interface SystemNotificationRequest {
   body: string
   sound?: SystemNotificationSound
   route?: SystemNotificationRoute
+  /**
+   * 合并抑制键（N3·§4.3）。同 key 在窗口期内只弹第一条。
+   * 规则 id 就是这个 key —— 同一类通知短时间连发时，作者要的是「这事成了」，
+   * 不是逐条播报。不传则不合并。
+   */
+  coalesceKey?: string
 }
 
 export type SystemNotificationShowResult =

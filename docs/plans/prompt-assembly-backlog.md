@@ -1767,8 +1767,9 @@ P1 只做**逐字重复**消除。作者明确区分：
 
 > 缘起：作者「现在我想要的是弹系统级通知，因为还有声音提醒」——任务完成后要 **OS 原生通知 + 声音提醒**。
 > 现状：全仓零系统通知、零声音播放（全新功能）；但触发事件源已就绪（`WORKFLOW_COMPLETE` 唯一 emit = `workflow-store.ts:928`，8 种 WorkflowType 共用；另有 `FINALIZE_COMPLETE` / `WORKFLOW_ERROR`）。
-> 设计稿：[`docs/design/features/system-notification-design.md`](../design/features/system-notification-design.md)（**已裁定 · 未编码**）。
+> 设计稿：[`docs/design/features/system-notification-design.md`](../design/features/system-notification-design.md)（**已实施**，实施记录见其 §10）。
 > ⛔ **作者明示（2026-10-17 21:4x）：「先不要接入，我还在使用运行项目」⇒ 代码零改动，N1 待作者明确发话再开工。**
+> ✅ **该约束已于 2026-11-02 由作者解除**（「这跟主线功能无关，把这个做完收尾 close 掉算了」）—— 本节以下内容为立项时的原样记录。
 
 ### 作者裁定记录（5/5）
 
@@ -1784,9 +1785,9 @@ P1 只做**逐字重复**消除。作者明确区分：
 
 | # | 项 | 内容 | 状态 |
 |---|---|---|---|
-| N1 | 主进程闭环 | `NotificationController`（2 个 IPC 通道 + 聚焦抑制 + 点击回窗口/路由）+ 渲染侧 `SystemNotifyHub` + `workflow-complete` 一条规则（含按类型分流表）+ config 四键（默认值走使用侧宽容）+ 设置区并入 `EditorSection` | ⬜ **已裁定，待作者发话开工** |
-| N2 | 声音 + 全规则 | Web Audio 合成音（complete/error，零二进制资源）+ 音量/静音/试听 + `workflow-error` / `finalize-complete` 两条规则 | ⬜ |
-| N3 | 抑制完善 + 测试 | 3 秒同类合并 + 注册表单测 + 批量连弹人工验证 | ⬜ |
+| N1 | 主进程闭环 | `NotificationController`（2 个 IPC 通道 + 聚焦抑制 + 点击回窗口/路由）+ 渲染侧 `SystemNotifyHub` + `workflow-complete` 一条规则（含按类型分流表）+ config 四键（默认值走使用侧宽容）+ 设置区并入 `EditorSection` | ✅ 已实施（`2f5b49bc`） |
+| N2 | 声音 + 全规则 | Web Audio 合成音（complete/error，零二进制资源）+ 音量/静音/试听 + `workflow-error` / `finalize-complete` 两条规则 | ✅ 已实施（同批） |
+| N3 | 抑制完善 + 测试 | 3 秒同类合并 + 注册表单测 + 批量连弹人工验证 | ✅ 已实施（合并取「窗口内首条即弹」，理由见设计稿 §4.3） |
 
 ### 关键设计决策（稿内 §4，实施前必读）
 
@@ -1799,7 +1800,13 @@ P1 只做**逐字重复**消除。作者明确区分：
 
 ### 状态
 
-**✅ 5/5 已裁定（2026-10-17 21:4x）· ⛔ 未编码**。作者明示「先不要接入，我还在使用运行项目」——N1 待作者明确发话再开工。
+**✅ 已结项（2026-11-02）**：N1–N3 全部落地。作者 2026-11-02 要求「把这跟主线无关的一块做完收尾」，此前「先不要接入，我还在使用运行项目」的约束同时解除。
+
+- N1 `2f5b49bc`：主进程通知闭环 + 渲染侧规则注册表 + config 四键。
+- N2 同批：`sounds.ts` 合成音（C5→G5 上行为完成、A4→E4 下行为失败）、`workflow-error` / `finalize-complete` 两条规则、`EditorSection` 通知区（总开关 / 提示音 / 音量 / 聚焦抑制 / 试听）。
+- N3 同批：3 秒同类合并（`coalesceKey`，窗口内首条即弹、后续丢弃）、注册表热插拔单测。
+- 测试 40 条（controller 16 + hub 16 + sounds 8）；实机验证见设计稿 §10.2。
+- **剩一件不在代码里的事**：合成音音色需要作者实际听一次（`TONE_SPECS` 一处可调）。
 
 ### 裁定记录
 

@@ -28,6 +28,8 @@ import { NativeSelect } from '../ui/NativeSelect'
 import { cn } from '../../lib/utils'
 import { ipc } from '../../services/ipc-client'
 import { publishOutlineCharacterNudgeConfig, rearmAllOutlineCharacterNudges } from '../../services/architecture-character-nudge'
+import { refreshSystemNotifySoundPolicy } from '../../services/system-notify/notify-hub'
+import { DEFAULT_NOTIFICATION_SOUND_VOLUME, playSystemNotificationSound } from '../../services/system-notify/sounds'
 import { Switch } from '../ui/Switch'
 import { APP_BRAND } from '../../shared/brand'
 import { useLayoutStore, type SettingsSection } from '../../stores/layout-store'
@@ -1286,6 +1288,21 @@ function FontSelect({
   )
 }
 
+/** 系统通知四键（设计稿 §5.3）。默认值与 `DEFAULT_GLOBAL_CONFIG` 必须一致。 */
+interface NotifySettings {
+  systemNotificationEnabled: boolean
+  notificationSoundEnabled: boolean
+  notificationSoundVolume: number
+  notificationOnlyWhenUnfocused: boolean
+}
+
+const DEFAULT_NOTIFY_SETTINGS: NotifySettings = {
+  systemNotificationEnabled: true,
+  notificationSoundEnabled: true,
+  notificationSoundVolume: DEFAULT_NOTIFICATION_SOUND_VOLUME,
+  notificationOnlyWhenUnfocused: true,
+}
+
 function EditorSection() {
   const { writingFont, setWritingFont, uiFont, setUiFont } = useThemeStore()
   const { locale, setLocale, t, text } = useLocaleStore()
@@ -1305,6 +1322,11 @@ function EditorSection() {
   const [synopsisUnitMode, setSynopsisUnitModeState] = useState(true)
   const [synopsisUnitSaving, setSynopsisUnitSaving] = useState(false)
   const [synopsisUnitError, setSynopsisUnitError] = useState<string | null>(null)
+  // 系统通知四键（N2·§5.4）。同属一块设置，合并成一个对象：整块回滚比四个
+  // 各自回滚更不容易留下「一半存上了」的中间态；错误也只需一条提示。
+  const [notifySettings, setNotifySettings] = useState<NotifySettings>(DEFAULT_NOTIFY_SETTINGS)
+  const [notifySaving, setNotifySaving] = useState(false)
+  const [notifyError, setNotifyError] = useState<string | null>(null)
 
   useEffect(() => {
     ipc.invoke('config:get').then((config) => {
@@ -1313,6 +1335,15 @@ function EditorSection() {
       setAutoPromptOutlineCharacterSupplementState(config.autoPromptOutlineCharacterSupplement !== false)
       // 未写过 = 开：与 `synopsisUnitModeEnabled` 的兜底保持一致，两处口径必须相同。
       setSynopsisUnitModeState(config.synopsisUnitMode !== false)
+      // 通知四键同样宽容判断：旧配置文件根本没有这四个键，缺键一律按「开」。
+      setNotifySettings({
+        systemNotificationEnabled: config.systemNotificationEnabled !== false,
+        notificationSoundEnabled: config.notificationSoundEnabled !== false,
+        notificationSoundVolume: typeof config.notificationSoundVolume === 'number'
+          ? config.notificationSoundVolume
+          : DEFAULT_NOTIFICATION_SOUND_VOLUME,
+        notificationOnlyWhenUnfocused: config.notificationOnlyWhenUnfocused !== false,
+      })
     }).catch(() => {})
   }, [])
 
@@ -1392,6 +1423,32 @@ function EditorSection() {
       ))
     } finally {
       setAutoOpenNextSaving(false)
+    }
+  }
+
+  /**
+   * 保存通知设置。声音开关 / 音量改完要**立刻**生效：提示音策略在 hub 里缓存着，
+   * 不刷新就得重启应用才认账 —— 那会让「关掉声音」看起来没生效。
+   */
+  const applyNotifySettings = async (patch: Partial<NotifySettings>) => {
+    const previous = notifySettings
+    setNotifySettings(current => ({ ...current, ...patch }))
+    setNotifySaving(true)
+    setNotifyError(null)
+    try {
+      const result = await ipc.invoke('config:set', patch)
+      if (!result.success) throw new Error(result.error || text('未知错误', 'Unknown error'))
+      if ('notificationSoundEnabled' in patch || 'notificationSoundVolume' in patch) {
+        await refreshSystemNotifySoundPolicy()
+      }
+    } catch (error) {
+      setNotifySettings(previous)
+      setNotifyError(text(
+        `通知设置保存失败：${error instanceof Error ? error.message : String(error)}`,
+        `Could not save the notification setting: ${error instanceof Error ? error.message : String(error)}`,
+      ))
+    } finally {
+      setNotifySaving(false)
     }
   }
 
@@ -1485,6 +1542,110 @@ function EditorSection() {
         <Switch checked={synopsisUnitMode} onCheckedChange={(checked) => void applySynopsisUnitMode(checked)} disabled={synopsisUnitSaving} aria-label={text('按单元生成情节大纲', 'Generate the plot outline unit by unit')} />
       </div>
       {synopsisUnitError && <p role="alert" className="text-xs" style={{ color: 'var(--color-error-text)' }}>{synopsisUnitError}</p>}
+
+      {/* 系统通知（N2·§5.4）：与上面几项同族 —— 都是「任务完成后的自动行为」 */}
+      <div
+        className="rounded-xl p-4 space-y-4"
+        style={{ border: '1px solid var(--color-border)', backgroundColor: 'var(--color-panel)' }}
+      >
+        <div>
+          <p className="text-xs font-semibold" style={{ color: 'var(--color-text)' }}>{text('任务完成通知', 'Task completion notifications')}</p>
+          <p className="text-[0.68rem] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+            {text(
+              '任务完成或失败时弹出系统通知并响提示音。窗口正在前台时只响声音、不弹通知 —— 你本来就在看着。',
+              'Shows a system notification and plays a short sound when a task finishes or fails. While the window is focused, only the sound plays.',
+            )}
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>{text('系统通知', 'System notifications')}</p>
+            <p className="text-[0.68rem] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              {text('Windows 右下角 / macOS 通知中心。点击通知会把窗口拉回前台。', 'Windows action center / macOS notification center. Clicking brings the window back.')}
+            </p>
+          </div>
+          <Switch
+            checked={notifySettings.systemNotificationEnabled}
+            onCheckedChange={(checked) => void applyNotifySettings({ systemNotificationEnabled: checked })}
+            disabled={notifySaving}
+            aria-label={text('系统通知', 'System notifications')}
+          />
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>{text('提示音', 'Notification sound')}</p>
+            <p className="text-[0.68rem] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              {text('完成与失败用两种不同的音，不看屏幕也能听出结果。', 'Completion and failure use different tones, so you can tell them apart without looking.')}
+            </p>
+          </div>
+          <Switch
+            checked={notifySettings.notificationSoundEnabled}
+            onCheckedChange={(checked) => void applyNotifySettings({ notificationSoundEnabled: checked })}
+            disabled={notifySaving}
+            aria-label={text('提示音', 'Notification sound')}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>{text('音量', 'Volume')}</p>
+            <span className="text-[0.68rem] tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+              {Math.round(notifySettings.notificationSoundVolume * 100)}%
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round(notifySettings.notificationSoundVolume * 100)}
+              onChange={(event) => {
+                // 拖动只改本地值：每一格都写配置文件既慢又会和回滚打架，松手才存。
+                const volume = Number(event.target.value) / 100
+                setNotifySettings(current => ({ ...current, notificationSoundVolume: volume }))
+              }}
+              // 存值读 `currentTarget.value` 而不是闭包里的 state：拖动过程中每格
+              // 都会重渲染，闭包拿到的可能是前一格的值。
+              onPointerUp={(event) => void applyNotifySettings({ notificationSoundVolume: Number(event.currentTarget.value) / 100 })}
+              onKeyUp={(event) => void applyNotifySettings({ notificationSoundVolume: Number(event.currentTarget.value) / 100 })}
+              disabled={!notifySettings.notificationSoundEnabled || notifySaving}
+              // 不要 `appearance-none`：那会连原生轨道一起抹掉，只留一个孤零零的
+              // 滑块圆点（实测就是这个效果）。`accentColor` 已足够把轨道染成主题色。
+              className="flex-1 h-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ accentColor: 'var(--color-accent)' }}
+              aria-label={text('提示音音量', 'Notification volume')}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              // 试听故意不受「提示音」开关影响：关掉之后还能听见，是用来调音量的。
+              onClick={() => playSystemNotificationSound('complete', { volume: notifySettings.notificationSoundVolume })}
+            >
+              {text('试听', 'Test')}
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs font-medium" style={{ color: 'var(--color-text)' }}>{text('窗口在前台时不弹通知', 'Skip notifications while focused')}</p>
+            <p className="text-[0.68rem] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+              {text('你正盯着界面做事时，再弹一块系统通知是打扰；声音仍然照响。', 'When you are already looking at the app, a system notification is just noise. The sound still plays.')}
+            </p>
+          </div>
+          <Switch
+            checked={notifySettings.notificationOnlyWhenUnfocused}
+            onCheckedChange={(checked) => void applyNotifySettings({ notificationOnlyWhenUnfocused: checked })}
+            disabled={notifySaving}
+            aria-label={text('窗口在前台时不弹通知', 'Skip notifications while focused')}
+          />
+        </div>
+      </div>
+      {notifyError && <p role="alert" className="text-xs" style={{ color: 'var(--color-error-text)' }}>{notifyError}</p>}
 
       {/* 说明 */}
       <div
