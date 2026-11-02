@@ -189,7 +189,12 @@ function truncate(value: string, max: number): string {
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed
 }
 
-/** 区间文案：`第41–60章 · 折算`（来源必须露出来，作者才知道能不能信）。 */
+/**
+ * 区间文案：`第41–60章 · 折算（已写 48）`（来源必须露出来，作者才知道能不能信）。
+ *
+ * D19 之后 `last` 是**计划边界**、`actualLast` 是**进度**，两者不再互相改写；
+ * 进度落后于边界时把「已写 N」带出来 —— 否则「第7–10章」会让人以为已经写到 10 了。
+ */
 function rangeLabel(range: VolumeRange | undefined, text: LocaleText): string {
   if (!range) return text('—', '—')
   if (range.first === null || range.last === null) return text('起止未定', 'unresolved')
@@ -197,7 +202,13 @@ function rangeLabel(range: VolumeRange | undefined, text: LocaleText): string {
     : range.basis === 'headings' ? text('精确', 'exact')
       : range.basis === 'declared' ? text('折算', 'scaled')
         : text('估算', 'estimated')
-  return text(`第${range.first}–${range.last}章 · ${basis}`, `ch ${range.first}–${range.last} · ${basis}`)
+  const progress = range.actualLast !== null && range.actualLast !== range.last
+    ? text(`（已写 ${range.actualLast}）`, ` (written ${range.actualLast})`)
+    : ''
+  return text(
+    `第${range.first}–${range.last}章 · ${basis}${progress}`,
+    `ch ${range.first}–${range.last} · ${basis}${progress}`,
+  )
 }
 
 function writeErrorLabel(error: string | undefined, text: LocaleText): string {

@@ -154,17 +154,17 @@ describe('volume handoff repository', () => {
     } finally { db.close() }
   })
 
-  it('actual_last 覆盖 planned_last：写超的卷不会让早章提前拿到它的交接单', () => {
+  it('进度不推边界：写超计划章数也不把那卷的末章推后（D19）', () => {
     const db = migratedDb()
     try {
-      // 第 1 卷计划 1–20，实际写到 25。
+      // 第 1 卷计划 1–20，已定稿到 25（写超了）。
       const first = seedVolume(db, 1, 1, 20, 25)
       const second = seedVolume(db, 2, 21, 40)
       upsertVolumeHandoff(db, { volumeId: first, worldState: '第一卷' })
       upsertVolumeHandoff(db, { volumeId: second, worldState: '第二卷' })
-      // 第 23 章还在第 1 卷里 ⇒ 拿不到任何「上一卷」（第 1 卷自己还没结束）。
-      expect(findPreviousHandoff(db, 23)).toBeNull()
-      expect(findPreviousHandoff(db, 26)?.worldState).toBe('第一卷')
+      // 边界仍是计划末章 20 ⇒ 第 21 章起就算「进入第 2 卷」，可以拿到第 1 卷的交接单。
+      expect(findPreviousHandoff(db, 21)?.worldState).toBe('第一卷')
+      expect(findPreviousHandoff(db, 20)).toBeNull()
     } finally { db.close() }
   })
 
@@ -174,8 +174,9 @@ describe('volume handoff repository', () => {
       const first = seedVolume(db, 1, 1, 20, 25)
       seedVolume(db, 2, 21, 40)
       const saved = upsertVolumeHandoff(db, { volumeId: first })
-      expect([saved.firstChapter, saved.lastChapter]).toEqual([1, 25])
-      expect(saved.boundaryBasis).toBe('actual')
+      // 计划 1–20、已写 25 ⇒ 区间报计划的 1–20，进度不参与边界（`actualLast` 另走 25）。
+      expect([saved.firstChapter, saved.lastChapter]).toEqual([1, 20])
+      expect(saved.boundaryBasis).toBe('headings')
       const second = listVolumeHandoffs(db).find(entry => entry.volumeId === 'volume:2')
       // 第 2 卷没有交接单，所以这里只有一条；起点规则在 volume-structure 的测试里全覆盖。
       expect(second).toBeUndefined()

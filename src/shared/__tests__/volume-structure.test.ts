@@ -212,22 +212,32 @@ describe('volumeEffectiveRanges', () => {
     expect(ranges.map(range => [range.first, range.last])).toEqual([[1, 20], [21, 40]])
   })
 
-  it('actual 优先：实际末章覆盖计划末章，basis 变 actual', () => {
+  it('进度不改边界：actual_last 只落在 actualLast 上，last 仍是计划末章（D19）', () => {
     const ranges = volumeEffectiveRanges([
       volume({ volumeIndex: 1, plannedLast: 20, actualLast: 25, actualSource: 'finalized' }),
     ])
-    expect(ranges[0]!.last).toBe(25)
-    expect(ranges[0]!.basis).toBe('actual')
+    expect(ranges[0]!.last).toBe(20)
     expect(ranges[0]!.actualLast).toBe(25)
+    // basis 描述的是**边界**的来源，进度不参与 ⇒ 仍是计划来源。
+    expect(ranges[0]!.basis).toBe('headings')
   })
 
-  it('actual 覆盖后，下一卷起点跟着后移（区间天然不重叠）', () => {
+  it('进度不推下一卷起点：第 2 卷起点仍是计划末章 + 1（D19 实机形态 7–10 / 已写 9）', () => {
     const ranges = volumeEffectiveRanges([
-      volume({ volumeId: 'volume:1', volumeIndex: 1, plannedFirst: 1, plannedLast: 20, actualLast: 25, actualSource: 'finalized' }),
-      volume({ volumeId: 'volume:2', volumeIndex: 2, plannedFirst: 21, plannedLast: 40 }),
+      volume({ volumeId: 'volume:1', volumeIndex: 1, plannedFirst: 1, plannedLast: 6, actualLast: 6, actualSource: 'finalized' }),
+      volume({ volumeId: 'volume:2', volumeIndex: 2, plannedFirst: 7, plannedLast: 10, actualLast: 9, actualSource: 'finalized' }),
+      volume({ volumeId: 'volume:3', volumeIndex: 3, plannedFirst: 11, plannedLast: 15 }),
     ])
-    expect(ranges[1]!.first).toBe(26)
-    expect(ranges[1]!.basis).toBe('headings')
+    expect(ranges.map(range => [range.first, range.last])).toEqual([[1, 6], [7, 10], [11, 15]])
+    expect(ranges[1]!.actualLast).toBe(9)
+  })
+
+  it('计划末章缺失时才用 actual_last 兜底，此时 basis 报 actual', () => {
+    const ranges = volumeEffectiveRanges([
+      volume({ volumeIndex: 1, plannedFirst: 1, plannedLast: null, actualLast: 12, actualSource: 'author' }),
+    ])
+    expect(ranges[0]!.last).toBe(12)
+    expect(ranges[0]!.basis).toBe('actual')
   })
 
   it('没有 actual 时 basis 取 planned_source：even 不许被报成 headings', () => {
@@ -258,15 +268,15 @@ describe('volumeRangeEndingAt（P1-2 期 2 的「卷末章」判定）', () => {
     expect(volumeRangeEndingAt(twoVolumes(), 40)?.volumeId).toBe('volume:2')
   })
 
-  it('用 actual_last 判，不认计划末章', () => {
+  it('按计划末章判，不认进度（D19 回归：第 9 章不是第 2 卷末章，第 10 章才是）', () => {
     const volumes = [
-      volume({ volumeId: 'volume:1', volumeIndex: 1, plannedFirst: 1, plannedLast: 20, actualLast: 25, actualSource: 'finalized' }),
-      volume({ volumeId: 'volume:2', volumeIndex: 2, plannedFirst: 21, plannedLast: 40 }),
+      volume({ volumeId: 'volume:1', volumeIndex: 1, plannedFirst: 1, plannedLast: 6, actualLast: 6, actualSource: 'finalized' }),
+      volume({ volumeId: 'volume:2', volumeIndex: 2, plannedFirst: 7, plannedLast: 10, actualLast: 9, actualSource: 'finalized' }),
     ]
-    expect(volumeRangeEndingAt(volumes, 20)).toBeNull()
-    expect(volumeRangeEndingAt(volumes, 25)?.volumeId).toBe('volume:1')
-    // 卷 2 的起点跟着后移到 26，末章仍是 40。
-    expect(volumeRangeEndingAt(volumes, 40)?.first).toBe(26)
+    // 修前：actual_last=9 ⇒ 第 2 卷有效末章变 9 ⇒ 第 9 章判卷末、第 10 章被算成第 3 卷首章。
+    expect(volumeRangeEndingAt(volumes, 9)).toBeNull()
+    expect(volumeRangeEndingAt(volumes, 10)?.volumeId).toBe('volume:2')
+    expect(volumeRangeEndingAt(volumes, 10)?.first).toBe(7)
   })
 
   it('非末章、空结构、非法章号一律 null（调用方据此「本次不触发」）', () => {

@@ -47,7 +47,10 @@ export interface VolumeDefinition {
   plannedFirst: number | null
   plannedLast: number | null
   plannedSource: VolumePlannedSource
-  /** 唯一事实：该卷已定稿章的最大章号。只由「标记本卷已完成」写入。 */
+  /**
+   * 该卷**已定稿章的最大章号**（进度）。`'finalized'` = 定稿链每章推进（D14），
+   * `'author'` = 面板手点「标记完成」。**只作进度，不参与区间边界**（D19）。
+   */
   actualLast: number | null
   actualSource: VolumeActualSource | null
   outlineHash: string
@@ -271,7 +274,19 @@ function projectionSignature(volumes: readonly VolumePlannedNode[]): string {
  * 卷的**有效区间**（唯一实现）。
  *
  * - 起点 = 上一卷有效末章 + 1（第一卷用计划起点）。这样相邻卷天然不重叠，不需要另做校验。
- * - 末章 = `actual_last ?? planned_last`：**实际优先**，因为它是事实；没有实际才用物化的计划值。
+ * - 末章 = `planned_last ?? actual_last`：**边界走计划**，`actual_last` 只是进度。
+ *
+ * ## 为什么边界不看 `actual_last`（D19，2026-11-02）
+ *
+ * `actual_last` 原本是作者手填的「这卷实际到第几章结束」（`actual_source='author'`），
+ * 那时「实际优先」是对的。D14 A 起每定稿一章就推进它（`actual_source='finalized'`）——
+ * 同一个字段变成「进度」，再让它参与边界就会出三件事：
+ * ① 第 2 卷计划 7–10、写到第 9 章，有效末章就成了 9，第 3 卷起点被推成 10；
+ * ② 定稿链判卷末章用的是同一个函数，于是第 10 章（真卷末）不判卷末、交接单停在 7–9；
+ * ③ 开写闸门把第 10 章算成第 3 卷首章，提前一章弹，而它「确认一次永久放行」，
+ *    真正该弹的第 11 章反而不弹。三者同源，修在边界这一处即可。
+ *
+ * 计划值缺失（老项目 / 未物化）时才用实际值兜底，此时 `basis` 报 `actual`。
  * - `basis` 四态必须分开：`actual` / `headings` / `declared` / `even`。**不许把 `even` 报成 `headings`**
  *   —— 调用方（面板、渲染）要靠它决定说「实际」「全书」「计划」还是「估算」。
  */
@@ -282,14 +297,14 @@ export function volumeEffectiveRanges(volumes: readonly VolumeDefinition[]): Vol
 
   for (const volume of sorted) {
     const first = previousLast !== null ? previousLast + 1 : volume.plannedFirst
-    const last = volume.actualLast ?? volume.plannedLast
+    const last = volume.plannedLast ?? volume.actualLast
     ranges.push({
       volumeId: volume.volumeId,
       volumeIndex: volume.volumeIndex,
       name: volume.name,
       first,
       last,
-      basis: volume.actualLast !== null ? 'actual' : volume.plannedSource,
+      basis: volume.plannedLast !== null ? volume.plannedSource : 'actual',
       actualLast: volume.actualLast,
     })
     previousLast = last
@@ -300,7 +315,7 @@ export function volumeEffectiveRanges(volumes: readonly VolumeDefinition[]): Vol
 /**
  * 有效末章正好是 `chapterNumber` 的那一卷（P1-2 期 2 的「卷末章」判定）。
  *
- * 判定完全走 `volumeEffectiveRanges()`：末章 = `actual_last ?? planned_last`，
+ * 判定完全走 `volumeEffectiveRanges()`：末章 = `planned_last ?? actual_last`（**边界不是进度**，D19），
  * 起点由上一卷推出。**不在这里重算区间** —— 一旦有两份区间算法，面板显示的卷末章
  * 与触发条件就会不一致，而这类不一致不会报错，只会表现为「某一卷的交接单永远不生成」。
  *

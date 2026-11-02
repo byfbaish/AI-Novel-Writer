@@ -32,6 +32,29 @@ describe('volumeHandoffGateOf — 开写闸门', () => {
     expect(volumeHandoffGateOf({ volumes, handoffs: [], acknowledged: [], chapterNumber: 21 })).not.toBeNull()
   })
 
+  it('D19 回归：本卷写到倒数第二章时，下一章仍不该问跨卷记忆', () => {
+    // 第 2 卷计划 7–10、已定稿到 9（进度）。修前 `actual_last=9` 会把有效末章前移成 9，
+    // 于是第 10 章被算成第 3 卷首章、提前弹闸门；而闸门「确认一次永久放行」，真正的第 11 章反而不弹。
+    const threeVolumes = [
+      volume({ volumeId: 'volume:1', volumeIndex: 1, plannedFirst: 1, plannedLast: 6, actualLast: 6, actualSource: 'finalized' }),
+      volume({ volumeId: 'volume:2', volumeIndex: 2, plannedFirst: 7, plannedLast: 10, actualLast: 9, actualSource: 'finalized' }),
+      volume({ volumeId: 'volume:3', volumeIndex: 3, plannedFirst: 11, plannedLast: 15 }),
+    ]
+    const handoffs = [handoff({
+      volumeId: 'volume:2', volumeIndex: 2, firstChapter: 7, lastChapter: 10, source: 'generated',
+    })]
+    expect(volumeHandoffGateOf({
+      volumes: threeVolumes, handoffs, acknowledged: [], chapterNumber: 10,
+    })).toBeNull()
+
+    const gate = volumeHandoffGateOf({
+      volumes: threeVolumes, handoffs, acknowledged: [], chapterNumber: 11,
+    })
+    expect(gate?.state).toBe('unreviewed-draft')
+    expect(gate?.range.volumeId).toBe('volume:2')
+    expect([gate?.range.first, gate?.range.last]).toEqual([7, 10])
+  })
+
   it('上一卷没有交接单 ⇒ missing', () => {
     const gate = volumeHandoffGateOf({ volumes, handoffs: [], acknowledged: [], chapterNumber: 21 })
     expect(gate?.state).toBe('missing')

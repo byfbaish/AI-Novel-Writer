@@ -1,6 +1,6 @@
 # 实机链路验收缺陷清单（2026-11-01 轮）
 
-> 状态：待裁定（2026-11-02；D1 代码已改、实机未验证；D12 已定性；D14 已修且 A 已实机复验、B 待第 10 章）
+> 状态：待裁定（2026-11-02；D1 代码已改、实机未验证；D12 已定性；**D14 A+B 均已实机复验**；D19 已按方案甲修复并实机复验；其余未开工）
 > 日期：2026-11-01
 > 上级稿：[`live-verification-checklist.md`](live-verification-checklist.md)（一次新项目跑批要验什么）
 > 相关：[`e3-unit-batch-chain-design.md`](../architecture/e3-unit-batch-chain-design.md)（连续单元 / 链式新 run）、[`upstream-version-and-derived-invalidation-design.md`](../architecture/upstream-version-and-derived-invalidation-design.md)（上游失效）、[`volume-quota-context-budget-design.md`](../architecture/volume-quota-context-budget-design.md)（大纲前缀投影 L3 层）
@@ -554,6 +554,8 @@ B 部分**不需要新代码**：`ChapterCreationDialog:595` 早就集成了 `Vo
 - 定稿侧：把第 9 章「退回草稿」再重新定稿（零生成成本），`volume:2`（7–10）的 `actual_last` 由 `null` → **9**，`actual_source='finalized'`，其余 5 卷一动不动。
 - 回填侧：`volume:1`（1–6 章，6 章全在改代码之前就定稿）原本是 `null`。点一次「重建卷结构」→ **6**。这次实测把「只补事件不够」证实了：老项目的卷行是后建的，没有事件会再来一次，必须有一次性对账。
 - **B 仍未实机复验**：卡在 `ChapterCreationDialog:311` 的权威章号闸 —— 目标章必须等于「定稿后的下一章」（当前 = 10），而卷交接闸只在 `volumeRangeEndingAt(volumes, N−1)` 有解时触发（即第 7 / 11 / 16 / 21 / 26 章）。要验第 11 章那道闸，必须先写完并定稿第 10 章、再生成第 11 章蓝图。
+- **B 的复验（2026-11-02 12:10，本项目）**：点「写作第 10 章」，闸门**弹了** —— 但不是在第 11 章，而是在第 10 章，理由是「第2卷（第7–9章）只有一份模型初稿」。闸门本身工作正常（`volumes` 非空 ⇒ 它出现了，这正是 D14 说的"HANDOFF 面板早就集成、只是没数据"），**触发位置错了**：`actual_last=9` 把第 2 卷的有效末章前移成 9，于是第 10 章被算成第 3 卷首章。根因与修法见 **D19**。当场点了「取消，我先去处理」，未写任何确认记录（`consistency_exemptions` 仍为空）。
+- **B 验收通过（2026-11-02 12:48，D19 修复后）**：写完并定稿第 10 章、生成第 11–12 章大纲与蓝图后，点「写作第 11 章」→「开始创作」，闸门弹出「上一卷的跨卷记忆还没确认 / **第2卷（第7–10章）**的卷末交接单是更早写的，之后上游已经改过了」，三个出口齐全。**触发点、区间、状态三处都对**。D14 至此 A+B 全闭环，详见 D19「处置」。
 
 测试：`electron/services/__tests__/volume-structure-sync.test.ts` 13 条（自动落库 / 幂等不抄 `planned_last` / 无 core 返回 null / 定稿推进本卷 / 只推该卷 / **回填历史** / 对账幂等 / 空卷不抛 / 跨卷不串）；回归 `volume-structure-repository`(12) + `volume-handoff-repository`(14) + `volume-handoff-gate`(11) 全过；`tsc --noEmit` 干净。
 
@@ -631,6 +633,64 @@ changedChapters: request.authorRecovery ? expandChapterRange(request.authorRecov
 ① **拆互斥**：把「不得是事件」限定在「收尾行没点名该事件时」；收尾行本身是事件时，允许钩子写「该事件造成的未决后果」。两条条款各让半步，不再让模型二选一。
 ② **提交时加落点校验**：`suspense_hook` 与大纲该章「收尾：」行的实词交集为空 ⇒ 提交/落库时给警示（**不阻断**，因为合法的"另起悬念"也可能存在）。
 ③ **定稿后加兑现标记**：`suspense_hook` 的关键实词在正文 0 命中 ⇒ 在定稿卡片或检查面板提示「本章钩子未落地」，作者可改钩子或知悉放行。
+
+### D19（高）`actual_last` 被当成卷末 ⇒ 卷边界随进度漂移，开写闸门提前一章弹、交接单漏掉本卷最后一章
+
+**发现于 D14 B 的实机复验（2026-11-02 12:10）**：点「写作第 10 章」时闸门弹了，但它说的是「第2卷（第7–9章）只有一份模型初稿，还没经你确认」——第 10 章本身就是第 2 卷的章（`volume_units` 的 `unit:2:3` = 10–10），不该在这里问跨卷记忆。
+
+**证据链（四步，每步都可复算）**
+
+| # | 事实 | 出处 |
+|---|---|---|
+| 1 | `volume:2` 计划 7–10，`actual_last=9`（D14 A 定稿推进写入） | `volumes` 表 |
+| 2 | `volumeEffectiveRanges` 的末章取 `actual_last ?? planned_last` ⇒ 第 2 卷有效区间变成 **7–9** | `src/shared/volume-structure.ts:285` |
+| 3 | 起点 = 上一卷有效末章 + 1 ⇒ 第 3 卷起点被推成 **10** | 同文件 `:284` |
+| 4 | 闸门判「上一卷」= `volumeRangeEndingAt(volumes, 10-1)` = 以 9 结尾的那卷 = 第 2 卷 ⇒ 弹 | `src/shared/volume-handoff-gate.ts:63` |
+
+**这不是闸门的错**。`volumeEffectiveRanges` 注释写得很明确：「末章 = `actual_last ?? planned_last`：**实际优先，因为它是事实**」——在 P1-2 期 1b 里，`actual_last` 的语义是**作者手填的「这卷实际到第几章结束」**（`actual_source='author'`）。D14 A 新增 `actual_source='finalized'`（每定稿一章就推进），把「**进度**」写进了「**末章**」字段。一个字段两种含义，判定侧就必然读错。
+
+**三个连带后果（按严重度）**
+
+1. **交接单漏掉本卷最后一章**：`finalize()` 内部判卷末章时 `actual_last` 还没推进（`markVolumeProgressForChapter` 在 `finalize()` 返回**之后**才跑，`finalization-controller.ts:65`），第 10 章定稿时 `volume:2` 有效末章仍是 9 ⇒ 第 10 章不判为卷末 ⇒ 交接单停在「7–9」。现存那份（`handoff:0eb52c6c`，`created 2026-11-01T16:56:28Z`）`open_thread` 写的是「月底两本簿子对账这一关还没过」——**那正是第 10 章的钩子**，说明它是以第 9 章为末章生成的。
+2. **开写闸门提前一章弹**：第 10 章被算成第 3 卷首章。更要紧的是 `VolumeHandoffGatePanel` 的「已人工复查，继续」会写 `consistency_exemptions`（`volume-handoff:volume:2`），而闸门对已确认的卷**永久放行** ⇒ **真正该弹的第 11 章不会再弹**。频次设计（一卷一次）因此失效：提示出现在错的章上，对的章上反而没有。
+3. **面板区间随进度漂移**：第 2 卷显示「7–9」而不是「7–10」，与 D15 的单元区间重叠同源——`unit:2:1`(7–9) / `unit:2:2`(8–9) / `unit:2:3`(10–10) 只有在「卷 = 7–10」时才对得上。
+
+**修法方向（三选一，待裁定；不锁实现）**
+
+| 方案 | 做法 | 代价 |
+|---|---|---|
+| **甲（推荐）** | 边界回计划：`last = plannedLast ?? actualLast`，`actualLast` 只作进度；`basis='actual'` 仅在计划值缺失时出现 | 改 1 行 + 注释；4 处判定侧（闸门 / 定稿卷末 / 大纲进度闸 / 交接单区间）自动修正；2 处展示侧要改成读 `range.actualLast` 显示「已写 9 / 计划 10」 |
+| 乙 | `last = max(plannedLast, actualLast)` | 本 case 修好；但「计划 10 章、作者决定 9 章收卷」时边界永远停在 10，交接单永不生成（要作者去面板手动补） |
+| 丙 | 进度另开 `progress_last` 列，`actual_last` 回归「实际卷末」 | 语义最干净；要 schema 迁移 + 过 `PROJECT_CORE_NON_CONTENT_COLUMNS` 与 `VERSION_BOOKKEEPING_COLUMNS` 两处黑名单 |
+
+**修完后必须做的数据修复**：第 2 卷那份交接单要重新生成一次（现内容是 7–9），否则第 10 章的跨卷事实仍然缺位。
+
+#### 处置（2026-11-02，作者裁定方案甲）
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| `volumeEffectiveRanges` 末章 | `actual_last ?? planned_last`（进度覆盖边界） | `planned_last ?? actual_last`（计划优先，计划缺失才用实际兜底） |
+| `basis` | 有 actual 就报 `actual` | 只有**边界来自 actual**（计划缺失）时才报 `actual` |
+| 面板区间文案 | `第7–9章 · 估算`（被进度改写） | `第7–10章 · 估算（已写 9）`（边界 + 进度分开写） |
+| `VolumeDefinition.actualLast` 注释 | 「唯一事实：只由标记完成写入」 | 「已定稿章的最大章号（进度）；`finalized` = 定稿链推进、`author` = 面板手点；**不参与边界**」 |
+
+四处判定侧（开写闸门 / 定稿卷末章 / 大纲进度闸 / 交接单区间）**零改动**，全部因为共用 `volumeEffectiveRanges` 而自动修正。
+
+**实机复验（2026-11-02 12:20–12:48，本项目，链路一次跑通）**
+
+| 时点 | 动作 | 读数 |
+|---|---|---|
+| 12:20 | 点「写作第 10 章」 | **闸门不弹**（修前在这里误弹「第2卷 7–9」），直接进创作对话框 |
+| 12:24 | 生成第 10 章正文 | 1520 字，`drafts.id=21` |
+| 12:32 | 定稿第 10 章 | `volume:2.actual_last` 9 → **10**，其余 5 卷不动 |
+| 12:33 | （定稿后处理） | 卷末交接单**重新生成**：`source_ref` `outline:book 8`、`open_thread` 改为以第 10 章收尾（"陈砚承诺月底之前…多一行字"）。**修前它会停在 7–9** |
+| 12:37 | 生成第 11–12 章大纲 | outline `rev 8 → 9`，交接单 `source_ref=8` ⇒ 此后应为 `stale` |
+| 12:47 | 生成第 11–12 章蓝图 | 大纲覆盖到 12，蓝图 10 → 12 章 |
+| 12:48 | 点「写作第 11 章」→「开始创作」 | **闸门弹出**：「第2卷（**第7–10章**）的卷末交接单是更早写的，之后上游已经改过了…」 |
+
+最后一行的三处细节都是证据：**区间是 7–10**（修前是 7–9）、**触发在第 11 章**（修前提前到第 10 章）、**状态是 `stale` 而不是 `unreviewed-draft`**——因为生成第 11 章大纲把 `outline` 推到了 rev 9，而交接单基于 rev 8，`stale` 判定优先于「已确认」正是 P2-2 期 2 的设计（ADR-0026 同类）。当场点了「取消，我先去处理」，未写 `consistency_exemptions`。
+
+测试：`volume-structure` 的「actual 优先」两条改写为「进度不改边界」，新增「进度不推下一卷起点（7–10 / 已写 9）」「计划缺失才用 actual 兜底」两条；`volume-handoff-gate` 新增 D19 回归一条（第 10 章不弹 / 第 11 章弹且区间 7–10）；`volume-handoff-repository` 的「写超不提前给单」改写为「进度不推边界」。共 62 + 39 + 4 条全过，`tsc` 干净。
 
 ### D8 的现场实锤（2026-11-02）
 
