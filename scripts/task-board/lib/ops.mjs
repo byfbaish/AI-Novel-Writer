@@ -703,6 +703,16 @@ export function createOps(options) {
           `task ${taskId} is not awaiting review: it carries no ${REVIEW_TAG} label (only a worker handing the card back adds it)`,
         )
       }
+      // Both verdicts need the card back in the pool's column. `next` skips
+      // `running`, and `--pass` claims the card first (which requires `todo`).
+      // A card still elsewhere means the handover was incomplete — relabelling
+      // it would print "back in the pool" while `next` cannot see it at all.
+      if (task.status !== 'todo') {
+        throw new BoardError(
+          'conflict',
+          `task ${taskId} is ${task.status}, not todo; the worker did not release it when handing over (tag --release)`,
+        )
+      }
       const entry = {
         at: now(),
         by: requireAgent(),
@@ -710,15 +720,6 @@ export function createOps(options) {
         ...(cleanNote === '' ? {} : { note: cleanNote }),
       }
       if (cleanVerdict === 'rework') {
-        // A worker that hands a card back also releases it (§5.1.1). A card still
-        // sitting in another column means that handover was incomplete — relabelling
-        // it would print "back in the pool" while `next` cannot see it at all.
-        if (task.status !== 'todo') {
-          throw new BoardError(
-            'conflict',
-            `task ${taskId} is ${task.status}, not todo; the worker did not release it when handing over (tag --release), so it cannot go back to the pool`,
-          )
-        }
         // Back to the pool: `external` returns so `next` hands it out again,
         // `rework` marks why. No `release` — the worker already dropped its claim.
         const tagged = await ops.tag(taskId, { add: [REWORK_TAG, DEFAULT_TAG], remove: [REVIEW_TAG] })
@@ -739,11 +740,28 @@ export function createOps(options) {
         settled = await ops.done(taskId, { summary: cleanNote === '' ? `review passed: ${taskId}` : cleanNote })
       } catch (error) {
         // Hand the card back the way we found it (To Do, still labelled `review`)
-        // rather than leave a running card whose claim nobody owns.
-        await ops.release(taskId, { reason: 'review failed; card returned to To Do' }).catch(() => undefined)
-        throw error
+        // rather than leave a running card whose claim nobody owns. Say which of
+        // the two happened: "settlement failed" alone does not tell the reviewer
+        // whether the card is safe to retry.
+        const returned = await ops.release(taskId, { reason: 'review failed; card returned to To Do' })
+          .then(() => true, () => false)
+        const detail = returned
+          ? `the card is back in To Do and still labelled ${REVIEW_TAG}`
+          : `releasing the claim failed too — the card is still running, and reap will recover it`
+        throw error instanceof BoardError ? new BoardError(error.code, `${error.message} — ${detail}`) : error
       }
-      const cleared = await ops.tag(taskId, { remove: [REVIEW_TAG, REWORK_TAG] })
+      let cleared
+      try {
+        cleared = await ops.tag(taskId, { remove: [REVIEW_TAG, REWORK_TAG] })
+      } catch (error) {
+        // The card IS settled at this point; only the cosmetic cleanup failed.
+        // Saying so is the difference between "retry the review" (wrong, it will
+        // refuse: the card is no longer todo) and "clean the label by hand".
+        throw new BoardError(
+          'conflict',
+          `task ${taskId} is settled in Done; only the label cleanup failed (${error.message}) — run: tag ${taskId} --remove ${REVIEW_TAG} --remove ${REWORK_TAG}`,
+        )
+      }
       return { ledgerId, verdict: cleanVerdict, note: cleanNote, task: cleared.task, tags: cleared.tags, times: settled.times }
     },
 
