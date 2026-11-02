@@ -53,6 +53,8 @@ docs/
 | 接手别人的会话 | [`handoffs/`](handoffs/) —— **最近一份**：[`handoffs/2026-11-02-d14-volume-structure-sync-handoff.md`](handoffs/2026-11-02-d14-volume-structure-sync-handoff.md)（**D14 卷结构自动同步**：A 两步自动已落地 + 实机复验含历史回填、B 缺口提醒只差第 10 章、新登记 D17「大纲提交不记覆盖章区间」、脏状态分组）；上一份：[`handoffs/2026-11-01-invalidation-line-closeout.md`](handoffs/2026-11-01-invalidation-line-closeout.md)（**上游失效线收口**：P2-3 全线落地、schema 29，含「新加一列算不算内容」三处黑名单、既有红归因、三条已裁定别再讨论、下一步三候选）；再上：[`handoffs/2026-10-31-phase3-unattended-handoff.md`](handoffs/2026-10-31-phase3-unattended-handoff.md)（期 3a 无人值守作业手册）· [`handoffs/2026-10-30-invalidation-and-deletion-baseline.md`](handoffs/2026-10-30-invalidation-and-deletion-baseline.md)（删除/失效机制盘点：**上游重建不触碰任何下游表**，含删除收据 `keep_draft` 落点清单） |
 | 发布 / 交付 / 审查流程 | [`DEVELOPMENT.md`](DEVELOPMENT.md) · [`agents/delivery.md`](agents/delivery.md) |
 | **把活派给 Copilot CLI**（无头、另一进程、可校验副作用） | [`agents/copilot-channel.md`](agents/copilot-channel.md) —— 落点/PATH · 参数速查 · 权限模型 · 工具别名 · 已验证与未验证清单 |
+| **把活派给豆包电脑版**（桌面 UI，只能 CDP 驱动；用它的客户端积分） | [`agents/doubao-channel.md`](agents/doubao-channel.md) —— Launcher 吞参数真相 · 独立 profile 起法 · `doubao.mjs` 命令速查 · §5 跨 Agent 红线 |
+| **多 agent 并行改代码**（worktree 隔离 / 端口写死 / Master 合并） | [`agents/worktree-parallel.md`](agents/worktree-parallel.md) —— 槽位表（5180/9222 · 5181/9223 · 5182/9224）· 三条隔离机制 · 禁 `test:node` 等红线 |
 | **放文档 / 归档文档 / 判断该不该新建一份** | [`agents/documentation-charter.md`](agents/documentation-charter.md) —— 四层模型 + 单一事实源 + 完成定义 + 反例库 |
 | **要跑某个构建/验收/运维脚本，或想知道「改完这个该跑什么」** | [`../scripts/README.md`](../scripts/README.md) —— 按用途分类 + 「何时跑」+ 谁调用（npm script / CI / 手工） |
 | 产品术语 / 事实源边界 | [`product-domain.md`](product-domain.md) |

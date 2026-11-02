@@ -28,9 +28,47 @@ function applyDevEnvironmentFixes(command: string): void {
   delete process.env.ELECTRON_RUN_AS_NODE
   process.env.AI_NOVEL_APP_DATA_HOME ??= path.join(os.homedir(), '.ai-novel-writer-dev')
 }
+
+// Parallel-worktree isolation: one hard-coded slot per checkout.
+//   slot 1 / 2  ->  sibling git worktrees (../wt-1, ../wt-2), each needs its own
+//                   dev-server port, CDP port and Chromium profile.  The profile
+//                   matters as much as the ports: Electron's single-instance lock
+//                   and the sqlite/project runtime both key off `userData`, so two
+//                   instances sharing it would evict each other.
+// Slot 0 (unset) is the historical default and keeps every value unchanged.
+const WORKTREE_SLOTS = {
+  '1': { devServerPort: 5181, cdpPort: 9223 },
+  '2': { devServerPort: 5182, cdpPort: 9224 },
+} as const
+
+type WorktreeSlot = { devServerPort: number; cdpPort?: number; userDataDir?: string }
+
+function resolveWorktreeSlot(): WorktreeSlot {
+  const raw = process.env.AI_NOVEL_WORKTREE_SLOT?.trim()
+  if (!raw) return { devServerPort: 5180 }
+  const slot = WORKTREE_SLOTS[raw as keyof typeof WORKTREE_SLOTS]
+  if (!slot) {
+    throw new Error(`AI_NOVEL_WORKTREE_SLOT must be ${Object.keys(WORKTREE_SLOTS).join(' or ')}, received "${raw}"`)
+  }
+  return {
+    devServerPort: slot.devServerPort,
+    cdpPort: slot.cdpPort,
+    // `.runtime/` is gitignored, so the profile never leaks into the checkout.
+    userDataDir: path.join(__dirname, '.runtime', 'worktree', `slot-${raw}`, 'user-data'),
+  }
+}
 // https://vitejs.dev/config/
 export default defineConfig(({ command }) => {
   applyDevEnvironmentFixes(command)
+  const slot = resolveWorktreeSlot()
+  // AI_NOVEL_UI_DEBUG_PORT stays the explicit override; the slot only supplies a default.
+  const debugPort = process.env.AI_NOVEL_UI_DEBUG_PORT?.trim() || slot.cdpPort
+  const startupArgs = [
+    '.',
+    '--no-sandbox',
+    ...(debugPort ? [`--remote-debugging-port=${debugPort}`] : []),
+    ...(slot.userDataDir ? [`--user-data-dir=${slot.userDataDir}`] : []),
+  ]
   return {
   // BrowserWindow.loadFile() serves the renderer through file://.  Keep public
   // and bundled asset URLs relative to dist/ rather than the filesystem root.
@@ -39,10 +77,10 @@ export default defineConfig(({ command }) => {
     main: {
       // Shortcut of `build.lib.entry`.
       entry: 'electron/main.ts',
-      // 仅 `vite serve` 生效：设置 AI_NOVEL_UI_DEBUG_PORT 时把 CDP 端口透传给
-      // Electron，供浏览器自动化在真实界面上操作。未设置时行为完全不变。
-      onstart: process.env.AI_NOVEL_UI_DEBUG_PORT
-        ? ({ startup }) => startup(['.', '--no-sandbox', `--remote-debugging-port=${process.env.AI_NOVEL_UI_DEBUG_PORT}`])
+      // 仅 `vite serve` 生效：CDP 端口与 worktree profile 从常量表推导，
+      // 未设置 `AI_NOVEL_WORKTREE_SLOT` 且未设置 `AI_NOVEL_UI_DEBUG_PORT` 时行为完全不变。
+      onstart: debugPort || slot.userDataDir
+        ? ({ startup }) => startup(startupArgs)
         : undefined,
       vite: {
         build: {
@@ -65,7 +103,7 @@ export default defineConfig(({ command }) => {
   publicDir: 'public',
   server: {
     host: '127.0.0.1',
-    port: 5180,
+    port: slot.devServerPort,
     strictPort: true,
     watch: {
       ignored: ['**/docs/**']
