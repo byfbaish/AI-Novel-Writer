@@ -162,6 +162,10 @@ export default function App() {
     import('./services/project-service').then(({ initProjectService }) => {
       initProjectService()
     }).catch(e => console.warn('[ProjectService] 初始化失败:', e))
+    // 初始化系统通知（N1）：消费 WORKFLOW_COMPLETE → OS 通知；只消费，不 emit
+    import('./services/system-notify/notify-hub').then(({ initSystemNotifyHub }) => {
+      initSystemNotifyHub()
+    }).catch(e => console.warn('[SystemNotify] 初始化失败:', e))
 
     // C) 工作流完成时弹出 ActionToast 通知（不依赖任何面板状态）
     const unsubActionToast = globalEventBus.on('WORKFLOW_COMPLETE', ({ projectSession, runId }) => {

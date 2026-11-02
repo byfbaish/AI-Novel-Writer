@@ -11,6 +11,7 @@ import type { GraphGenerationChannels } from './graph-generation'
 import type { LegacyRosterGenerationChannels } from './legacy-roster-generation'
 import type { CharacterAvatarChannels } from './character-avatar'
 import type { CloudBackupChannels } from './cloud-backup'
+import type { SystemNotificationChannels, SystemNotificationEvents } from './system-notification'
 import type { ProjectOverview } from './project-overview'
 /**
  * IPC 频道定义 — 渲染进程与主进程的类型安全通信契约
@@ -238,6 +239,14 @@ export interface GlobalConfig {
     host: string
     port: number
   }
+  /** 系统级通知（OS toast）总开关（N1·§5.3；默认开；旧配置缺键时按「开」判） */
+  systemNotificationEnabled?: boolean
+  /** 声音提醒独立开关（N2·§5.3；默认开） */
+  notificationSoundEnabled?: boolean
+  /** 声音音量：0–1，0 = 全静音（N2·§5.3；默认 0.6） */
+  notificationSoundVolume?: number
+  /** 窗口在前台时抑制 OS toast，避免打扰正在写作的作者（N1·§5.3；默认开） */
+  notificationOnlyWhenUnfocused?: boolean
 }
 
 export type AppErrorCode =
@@ -1549,8 +1558,8 @@ export interface MCPChannels {
 }
 
 // ===== 合并所有频道 =====
-export type AllInvokeChannels = LegacyRosterGenerationChannels & CharacterAvatarChannels & CloudBackupChannels & GraphGenerationChannels & FinalizationGenerationChannels & EditorInlineGenerationChannels & ImportGenerationChannels & AgentGenerationChannels & ReviewRevisionGenerationInvokeChannels & FinalizedCharacterGenerationChannels & CharacterProposalChannels & GenerationOwnerChannels & StartupChannels & WindowChannels & OfficialHomepageChannels & ModelProviderResourceChannels & ConfigChannels & UpdateChannels & SkinChannels & ProjectChannels & FileChannels & AppDataChannels & UserSettingsPackChannels & LLMChannels & DatabaseChannels & KnowledgeBaseChannels & ChapterLifecycleChannels & ImportChannels & MCPChannels
-export type AllEventChannels = GenerationOwnerEvents & LLMStreamEvents & UpdateStateEvents & WindowEvents
+export type AllInvokeChannels = LegacyRosterGenerationChannels & CharacterAvatarChannels & CloudBackupChannels & GraphGenerationChannels & FinalizationGenerationChannels & EditorInlineGenerationChannels & ImportGenerationChannels & AgentGenerationChannels & ReviewRevisionGenerationInvokeChannels & FinalizedCharacterGenerationChannels & CharacterProposalChannels & GenerationOwnerChannels & StartupChannels & WindowChannels & OfficialHomepageChannels & ModelProviderResourceChannels & ConfigChannels & UpdateChannels & SkinChannels & ProjectChannels & FileChannels & AppDataChannels & UserSettingsPackChannels & LLMChannels & DatabaseChannels & KnowledgeBaseChannels & ChapterLifecycleChannels & ImportChannels & MCPChannels & SystemNotificationChannels
+export type AllEventChannels = GenerationOwnerEvents & LLMStreamEvents & UpdateStateEvents & WindowEvents & SystemNotificationEvents
 
 /** 提取 invoke 频道名 */
 export type InvokeChannel = keyof AllInvokeChannels

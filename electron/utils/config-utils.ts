@@ -128,6 +128,12 @@ export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
   editorFontSize: 16,
   editorFontFamily: 'Noto Serif SC',
   autoSaveInterval: 30,
+  // 系统级通知（N1·§5.3，作者裁定「都开」）。旧配置文件不会有这四个键，
+  // 使用侧一律宽容判断（`!== false` / `=== false`），这里的默认值只管新装。
+  systemNotificationEnabled: true,
+  notificationSoundEnabled: true,
+  notificationSoundVolume: 0.6,
+  notificationOnlyWhenUnfocused: true,
   proxy: {
     enabled: false,
     type: 'http',

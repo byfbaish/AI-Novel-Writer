@@ -22,6 +22,12 @@ vi.mock('../controllers/skin-controller', () => ({
 vi.mock('../controllers/window-controller', () => ({
   registerWindowController: mocks.registerWindowController,
 }))
+vi.mock('../controllers/system-notification-controller', () => ({
+  registerSystemNotificationController: vi.fn(),
+}))
+vi.mock('../controllers/user-settings-package-controller', () => ({
+  registerUserSettingsPackageController: vi.fn(),
+}))
 vi.mock('../controllers/config-controller', () => ({ registerConfigController: vi.fn() }))
 vi.mock('../controllers/project-controller', () => ({ registerProjectController: vi.fn() }))
 vi.mock('../controllers/project-archive-controller', () => ({ registerProjectArchiveController: vi.fn() }))

@@ -51,6 +51,7 @@ vi.mock('../controllers/db-controller', () => ({ registerDatabaseController: vi.
 vi.mock('../controllers/kb-controller', () => ({ registerKBController: vi.fn() }))
 vi.mock('../controllers/import-controller', () => ({ registerImportController: vi.fn() }))
 vi.mock('../controllers/window-controller', () => ({ registerWindowController: vi.fn() }))
+vi.mock('../controllers/system-notification-controller', () => ({ registerSystemNotificationController: vi.fn() }))
 vi.mock('../controllers/official-homepage-controller', () => ({ registerOfficialHomepageController: vi.fn() }))
 vi.mock('../controllers/model-provider-resource-controller', () => ({ registerModelProviderResourceController: vi.fn() }))
 vi.mock('../controllers/finalization-controller', () => ({ registerFinalizationController: vi.fn() }))
@@ -58,6 +59,7 @@ vi.mock('../controllers/chapter-lifecycle-controller', () => ({ registerChapterL
 vi.mock('../controllers/external-file-grant-controller', () => ({ registerExternalFileGrantController: vi.fn() }))
 vi.mock('../controllers/app-data-controller', () => ({ registerAppDataController: vi.fn() }))
 vi.mock('../controllers/skin-controller', () => ({ registerSkinController: vi.fn() }))
+vi.mock('../controllers/user-settings-package-controller', () => ({ registerUserSettingsPackageController: vi.fn() }))
 
 import { registerIPCHandlers } from '../ipc-handlers'
 import { M05_CHARACTER_ASSET_SQL } from '../migrations/m05-character-assets'
