@@ -1008,14 +1008,32 @@ export class BlueprintRepository {
         return tx()
     }
 
-    /** 删除蓝图 */
+    /**
+     * 删除蓝图。
+     *
+     * **故意不 bump 大纲版本**（2026-11-01 作者裁定）：蓝图在层级上是
+     * 「大纲 > 蓝图 > 正文」的中间层，是正文链的**副产物** —— 对正文算上游，
+     * 对大纲只是派生。删掉一张卡不等于大纲改了一版，记一次 bump 会让
+     * 全库下游按「大纲变了」重判，而大纲文本一个字没动。
+     *
+     * 对照 `commitRange` 的收缩分支（`blueprint-repository.ts` 里那条
+     * `mode: 'replace'`）：那里 bump 是因为**大纲本身被重写**（区间外的卡
+     * 是被新大纲取代的），不是因为"少了几张卡"。
+     */
     static delete(chapterNumber: number): void {
         const db = requireProjectDb()
 
         db.prepare('DELETE FROM blueprints WHERE chapter_number = ?').run(chapterNumber)
     }
 
-    /** 删除所有章节蓝图 */
+    /**
+     * 删除所有章节蓝图。**同样不 bump**（理由见 `delete`）。
+     *
+     * 注意调用方确认框的原话是「不会删除草稿或正文章节」—— 草稿留着、
+     * 蓝图没了，看着像"上游被删"，但这套机制判的是**大纲**有没有变，
+     * 而大纲（`synopsis`）确实没动。想要"清空后让下游重判"，动作应该是
+     * 重新生成大纲（那会 bump），不是在这里补一个 bump。
+     */
     static clearAll(): void {
         const db = requireProjectDb()
         const tx = db.transaction(() => {

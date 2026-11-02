@@ -44,6 +44,12 @@
  *   属确定性派生（A 档），现算即可，不记版本。
  * - `chapter` 域已有 `continuity_projection_meta.generation` 一整套机制，
  *   不复刻（见文件头「为什么不合并」）。
+ * - **`blueprints` 同理不进这张表**（2026-11-01 作者裁定）：真实层级是
+ *   **大纲 > 蓝图 > 正文**，蓝图是正文链的副产物 —— 它对正文算上游，对大纲
+ *   只是派生。所以蓝图自身的增删改**不是上游变更**，只通过 `outline` 的
+ *   `changed_chapters` 表达。**推论：`BlueprintRepository.delete` / `clearAll`
+ *   不 bump 是对的，别当漏项补上**（详见 `upstream-version-and-derived-invalidation-design.md`
+ *   §十·4）。
  */
 export type UpstreamDomain = 'worldbuilding' | 'arc' | 'outline'
 
@@ -263,7 +269,15 @@ export function derivedStatus(
   return behind.length === 0 ? { state: 'valid' } : { state: 'stale', behind }
 }
 
-/** 该派生是否需要在界面上提示、并在读取侧拦截（`legacy` 不在拦截范围，见设计稿 §十.4）。 */
+/**
+ * 该派生是否需要在界面上提示、并在读取侧拦截（`legacy` 不在拦截范围，见设计稿 §十.4）。
+ *
+ * **它是这条判据唯一有名字的出口**，但目前没有生产调用点 —— 八处消费方
+ * （`chapter-workflow` / `finalize-chapter.command` / `generate-draft.command` /
+ * `read-blueprint.tool` / 两个编辑器面板 …）一律直接写 `.validity?.state === 'stale'`。
+ * 保留它是因为「`legacy` 不拦」这条语义需要一个可引用的定义；真要统一口径，
+ * 从这八处逐个换成它，**别只删这个函数**（删了等于这条纪律失去落点）。
+ */
 export function blocksConsumption(result: DerivedValidity): boolean {
   return result.state === 'stale'
 }

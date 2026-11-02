@@ -229,6 +229,25 @@ export class GenerationRunRepository {
         if (result.changes !== 1) fail('GENERATION_PLANNING_CONTINUATION_CONFLICT');
         this.readPlanningContinuation(receipt.sourceHandle.runId);
     }
+    /**
+     * 把 run 的绑定基线推进到「本 run 刚刚自己写完这一次」之后的来源快照。
+     *
+     * 为什么需要：一次 run 内的多轮调用（一批多章、连写多个单元）里，第一轮写出的产物
+     * 本身就在上游指纹里（典型是情节大纲的 synopsis）。不推进基线的话，同一 run 的第二轮
+     * 校验会把自己的产物判成「来源已变更」，抛 GENERATION_SOURCE_CHANGED，整批静默中止。
+     *
+     * 只允许在**本 run 刚成功执行完一次调用**之后调用：那时执行前的校验刚证明过一致，
+     * 且生成期间作者写入有 in-flight 拦截，所以这期间的差异只可能来自本 run 自己的产物。
+     * `$runEffects` 是运行副作用记录（不参与指纹），原样保留。
+     */
+    advanceBinding(runId: string, next: RunBinding): void {
+        const original = this.db().prepare('SELECT binding_json FROM generation_runs WHERE run_id=?').pluck().get(runId) as string | undefined;
+        if (original === undefined) fail('GENERATION_RUN_MISSING');
+        const effects = (JSON.parse(original) as { $runEffects?: unknown }).$runEffects;
+        const payload = effects === undefined ? next : { ...next, $runEffects: effects };
+        const result = this.db().prepare('UPDATE generation_runs SET binding_json=? WHERE run_id=? AND binding_json=?').run(encode(payload), runId, original);
+        if (result.changes !== 1) fail('GENERATION_BINDING_ADVANCE_CONFLICT');
+    }
     budget(rootId: string): GenerationBudgetReceipt {
         const row = this.db().prepare('SELECT * FROM generation_roots WHERE root_action_id=?').get(rootId) as {
             action_json: string;

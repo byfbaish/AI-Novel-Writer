@@ -509,6 +509,24 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     return { outcome: finishReason === 'stop' ? { status: 'completed', content, finishReason, receipt: details }
       : { status: 'incomplete', content, finishReason, receipt: details }, run: viewOf(repository.get(receipt.run.runId)) }
   }
+  /**
+   * 本次调用成功后，把 run 的绑定基线推进到「执行之后」的来源快照。
+   *
+   * 一批里写多章时，第一次调用写出的产物（情节大纲的 synopsis）本身就在上游指纹里；
+   * 不推进基线，同一 run 的第二次调用会把自己的产物判成「来源已变更」并抛
+   * GENERATION_SOURCE_CHANGED，整批就此静默中止（实测每批只出 2–3 章即停）。
+   *
+   * 安全性：调用前的校验刚证明过基线与当时来源一致，且生成期间作者写入被 in-flight 拦截，
+   * 所以这期间的差异只可能来自本 run 自己的产物；作者编辑另有 compare-and-set 把关。
+   */
+  const advanceBindingAfterOwnWrite = (run: DurableGenerationRun) => {
+    let latest: DurableGenerationRun
+    try { latest = repository.get(run.runId) } catch { return }
+    let next: RunBinding
+    try { next = deps.rebuildBinding(latest.binding, currentModelReceipt(latest.binding)) } catch { return }
+    if (isDeepStrictEqual(next, latest.binding)) return
+    try { repository.advanceBinding(run.runId, next) } catch { /* 推进失败不改变本次执行结果：下次调用仍按旧基线做一次完整校验 */ }
+  }
   const execute = async (request: ExecuteGenerationRequest, agentExecution = false, importExecution = false, editorExecution = false, finalizationExecution = false, graphExecution = false, legacyExecution = false, shortOutlineRetryAttemptId?: string): Promise<MainGenerationExecuteReceipt> => {
     const run = requireRun(request.handle, true)
     if (run.binding.sourceManifest.operation === 'agent-round' && !agentExecution) throw new Error('GENERATION_AGENT_ADMISSION_REQUIRED')
@@ -619,6 +637,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       ...(agentExecution ? { agentToolNames: (run.binding.sourceManifest.agentContext as AgentGenerationContext).input.tools.map(tool => tool.name) } : {}) })
     if (receipt.failureCode || receipt.unsavedTail) volatileReceipts.set(receipt.attempt.attemptId, receipt)
     assertCurrent()
+    if (!receipt.failureCode && !receipt.unsavedTail) advanceBindingAfterOwnWrite(run)
     const snapshot = snapshotOf(receipt)
     if (snapshot) deps.onSnapshot?.(snapshot)
     return outcomeOf(receipt, task)
