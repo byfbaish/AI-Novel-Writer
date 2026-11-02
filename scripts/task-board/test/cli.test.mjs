@@ -217,6 +217,18 @@ test('create --parent publishes a subtask', async () => {
   await board.close()
 })
 
+test('create --parent prints the labels it inherited in text mode', async () => {
+  const board = await startFakeBoard({ tasks: [{ id: 'parent', status: 'todo', tags: [{ name: 'external' }] }] })
+  const result = await runCli(
+    ['create', '--title', 'child', '--prompt', 'P', '--parent', 'parent', '--add', 'batch', '--url', board.url, '--agent', 'test:agent'],
+    tempDir(),
+  )
+  assert.equal(result.code, 0, result.stderr)
+  assert.match(result.stdout, /tags: external, batch/u)
+  assert.match(result.stdout, /inherited: external/u)
+  await board.close()
+})
+
 test('an unknown option is a usage error, not a crash', async () => {
   const result = await runCli(['doctor', '--nope'], tempDir())
   assert.equal(result.code, 5)

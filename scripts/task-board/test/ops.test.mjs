@@ -314,6 +314,40 @@ test('create publishes a subtask that keeps its parentId', async () => {
   await board.close()
 })
 
+test('a subtask inherits its parent’s labels, promptPrefix included', async () => {
+  const { board, ops } = await setup([
+    { id: 'parent', status: 'todo', tags: [{ name: 'external', promptPrefix: 'ctx' }, { name: 'batch' }] },
+  ])
+  const child = await ops.create({ title: 'child', prompt: 'P', parentId: 'parent', tags: ['batch', '待review'] })
+  assert.deepEqual(child.task.tags, [
+    { name: 'external', promptPrefix: 'ctx' },
+    { name: 'batch' },
+    { name: '待review' },
+  ])
+  assert.deepEqual(child.inheritedTags, ['external', 'batch'])
+  // The inherited tag is what makes the child dispatchable at all: the parent
+  // is older, so the child is the second card `next` hands out.
+  assert.equal((await ops.next({ tag: 'external' })).task.id, 'parent')
+  const claimed = await ops.next({ tag: 'external' })
+  assert.equal(claimed.task.id, child.id)
+  assert.deepEqual(claimed.hints, ['ctx'])
+  await board.close()
+})
+
+test('inherited labels count against the tag limit', async () => {
+  const parentTags = Array.from({ length: 8 }, (_, index) => ({ name: `p${index}` }))
+  const { board, ops } = await setup([{ id: 'parent', status: 'todo', tags: parentTags }])
+  await assert.rejects(
+    () => ops.create({ title: 'child', prompt: 'P', parentId: 'parent', tags: ['one-more'] }),
+    (error) => error.code === 'usage' && error.message.includes('inherited'),
+  )
+  // Re-adding a label the parent already carries is a no-op, not an overflow.
+  const same = await ops.create({ title: 'child', prompt: 'P', parentId: 'parent', tags: ['p0'] })
+  assert.equal(same.task.tags.length, 8)
+  assert.equal(board.snapshot().tasks.length, 2)
+  await board.close()
+})
+
 test('create without an identity is a usage error and writes nothing', async () => {
   const board = await startFakeBoard({})
   const ops = createOps({ transport: httpTransport(board.url), stateDir: tempDir(), agentId: '' })

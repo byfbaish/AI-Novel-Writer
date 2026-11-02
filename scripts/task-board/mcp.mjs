@@ -43,7 +43,7 @@ const TOOLS = [
   },
   {
     name: 'task_board_create',
-    description: 'Publish a new card into To Do. title, description and prompt are all required by the board. Pass parentId to publish a subtask. Pass id when the prompt must name the card id itself (report path, retry hint). Add tags (for example ["external"]) or the pull-model CLI will never hand it to an external agent.',
+    description: 'Publish a new card into To Do. title, description and prompt are all required by the board. Pass parentId to publish a subtask: it inherits the parent\'s tags (which is how a child of an external-tagged card itself becomes dispatchable). Pass id when the prompt must name the card id itself (report path, retry hint). Add tags (for example ["external"]) or the pull-model CLI will never hand it to an external agent.',
     inputSchema: {
       type: 'object',
       properties: {

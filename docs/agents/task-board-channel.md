@@ -143,7 +143,7 @@ node C:/develop/workspace/AI-writer/develop/scripts/task-board/dsh-task-board.mj
 - 卡放 **To Do**，打标签 **`external`**（CLI 默认只认这个标签；可用 `--tag` 换）。
 - prompt **自包含**（外部 agent 没有 DSH 会话上下文），至少写清：目标、工作目录、允许/禁止的操作、验收标准、报告路径。
 - **不要给外部卡挂 schedule**：调度卡归 Host，CLI 默认跳过；且带 schedule 的卡即使外部成功回写也会落回 todo。
-- 允许 subtasks：tag 打在需要被认领的那张卡上。
+- 允许 subtasks：tag 打在需要被认领的那张卡上；**子卡建出来就继承父卡标签**（§4.1），所以「父卡挂 `external`、子卡一建就能派」成立。
 - 发布后不要点 Run：外部认领期间 Host 再跑会开出第二条执行；外部侧检测到会**让位**（exit 3），但双份工作已经发生。
 - **外部 agent 不得自己把卡结算成「已完成」** —— 这是硬规则，不是建议：`done` 发的是 `record-external-outcome`，插件对它的定义是「写一条真实执行记录，**终态列由该记录派生**」⇒ 卡会直接落进 Done，「人还没看过」这一步被整个跳过。完成后的正确去向见 §5.1。
 
@@ -160,9 +160,9 @@ node <abs>/dsh-task-board.mjs create \
   --add external \
   --agent workbuddy
 
-# 子卡：只多一个 --parent
+# 子卡：只多一个 --parent（标签从父卡继承，不用重抄 external）
 node <abs>/dsh-task-board.mjs create --title "子任务" --prompt-file ./child.md \
-  --add external --parent <父卡 id> --agent workbuddy
+  --parent <父卡 id> --agent workbuddy
 ```
 
 MCP 对应 `task_board_create`（`title` / `prompt` 必填，`description` / `tags` / `parentId` / `id` 可选）。
@@ -173,14 +173,17 @@ MCP 对应 `task_board_create`（`title` / `prompt` 必填，`description` / `ta
 |---|---|---|
 | `title` / `description` / `prompt` | 三者**都必须是字符串** | 少传 `description` 会让整条 action 被拒（`invalid-action`）；CLI 已默认填空串 |
 | `id` | 由**发起方**给，看板不生成 | 要让 prompt 引用自己的卡号，必须 `--id` 先固定；否则只能建完再 `update` 二次写 |
-| `tags` / `parentId` | 可选；标签 ≤ 8 个、名长 ≤ 32；父卡须存在且未归档 | 本地先拒（超限 exit 5 / 父卡问题 exit 3），不会写坏看板 |
+| `tags` / `parentId` | 可选；标签 ≤ 8 个、名长 ≤ 32；父卡须存在且未归档 | 本地先拒（超限 exit 5 / 父卡问题 exit 3），不会写坏看板；**上限按「继承 + 新增」的并集算** |
 
 四点容易踩：
 
-- **`--add external` 不是装饰**：`next` 只认 `external`，漏了这张卡就永远没人认领。
-- **标签不会自动继承**：给子卡要 `external` 就显式写（是否继承父卡标签**未验证**，别赌）。
+- **`--add external` 不是装饰**：`next` 只认 `external`，顶层卡漏了这张卡就永远没人认领。
+- **子卡继承父卡的标签（2026-11-03 落地）**：`--parent` 时本地把父卡标签并进子卡，同名的以**父卡那份**为准（它才可能带 `promptPrefix`，丢了就等于丢了指令），继承的排在前；`--add` 只补新增的。返回里有 `inheritedTags`，文本输出多一行 `inherited: …`。
+  - **继承来的标签也算进 8 个上限**：父卡已满 8 个再加新标签会 **exit 5** 并报「inherited N from …」，先把父卡减到 7 个再建。
+  - **继承是建卡那一刻的快照**：之后改父卡标签不会回头改子卡（要跟进就 `tag` 逐张改）。
+  - 因此**别再给子卡重复写 `--add external`**（写了也无害，同名去重）；反过来，父卡若已挂 `待review`，子卡会带着这个标签出生 —— 建子卡前先确认父卡身上没有状态类标签。
 - **卡一律落 To Do**；建完**不要点 Run**（理由同 §4）。
-- **子卡的深度与环由看板拒**（插件 `core/subtask.ts`），本地只查「父卡存在 + 未归档」。
+- **子卡的深度与环由看板拒**（插件 `core/subtask.ts`），本地只查「父卡存在 + 未归档」。约定上**只用两层**（父卡 + 一层子卡），不往子卡上再挂子卡。
 
 **外部 agent 不装我们的壳也能建**：看板只比对 `Origin` 的 host 与 `Host`，没有令牌。实测（2026-11-03）：零项目 import，用裸 `node:http` 向 `/api/task-board/action` POST 一条**字段不全**的 `create` → **HTTP 400 `invalid-action`**（字段校验失败），**不是 403** ⇒ 门是开的。最小载荷：
 
@@ -340,4 +343,14 @@ node scripts/task-board/dsh-task-board.mjs tag <taskId> --add 待review --remove
 
 真实卡残留（**待在 GUI 删除**）：`552f375a-2000-45ad-81b3-3d1a846a5204`（子卡，挂在 `46aaaa91-…` 下）、`11111111-2222-4333-8444-555555555555`（顶层卡）。
 
-仍未验：子卡**深度上限**（插件有 `core/subtask.ts` 与 `maxSubtaskDepth`，这次只建了一层）、标签**是否从父卡继承**（本次子卡无标签，无法判断）。
+**子卡继承父卡标签（2026-11-03 02:0x 落地；作者裁定「继承」，并定「深度两层到顶」）**
+
+| 检查 | 结果 |
+|---|---|
+| `node --test scripts/task-board/test/*.test.mjs` | **85 / 85**（+3：继承并集 / `promptPrefix` 保留且进 `tagHints` / 上限按并集算） |
+| 子卡标签 | 父卡 `[{external,prefix}, {batch}]` + `--add batch,待review` → `[{external,prefix}, {batch}, {待review}]`，`inheritedTags: [external, batch]` |
+| 派发链路 | 父卡被 `next` 取走后，**子卡是下一张被取走的** ⇒ 继承来的 `external` 确实让它可派（此前子卡必须手抄 `--add external`） |
+| 超限 | 父卡 8 个 + 1 个新 = **exit 5**，报「inherited 8 from <parent> + 1 new would make 9」；重加父卡已有的名字**不算**超限（去重后仍 8 个） |
+| 真看板 | **未跑**：不想再往真看板写第三张废卡。依据是本地 fake board 与看板 `createInput` 同源的入参校验（`fake-board.mjs` 的 create 分支逐条对齐插件） |
+
+仍未验：子卡**深度上限**（插件 `core/subtask.ts` 有 `maxSubtaskDepth`，只在约定层面定为两层到顶，未去撞看板的硬限制）。

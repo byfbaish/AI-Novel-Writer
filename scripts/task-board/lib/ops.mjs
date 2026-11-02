@@ -36,6 +36,42 @@ function sameTagSet(left, right) {
 }
 
 /**
+ * Union of the labels a subtask inherits from its parent and the ones asked for
+ * at creation time.
+ *
+ * The parent's entry wins a name collision: it is the only side that can carry
+ * a `promptPrefix`, and a child that silently dropped it would lose the
+ * instruction the parent's label exists to inject. Inherited names stay first
+ * so the card reads as "the parent's context, plus what this child adds".
+ *
+ * The limit is enforced on the union rather than on the new names, because the
+ * board refuses a card with more than TASK_TAG_LIMIT tags no matter who put
+ * them there — failing here keeps the refusal local and explainable.
+ */
+function mergeTags(inherited, own, parentId) {
+  const byName = new Map()
+  for (const entry of inherited) {
+    const name = typeof entry === 'string' ? entry : entry?.name
+    if (typeof name !== 'string' || name === '') continue
+    byName.set(name, typeof entry === 'string' ? { name } : { ...entry })
+  }
+  const fromParent = byName.size
+  const added = []
+  for (const value of Array.isArray(own) ? own : []) {
+    const name = normalizeTagName(value)
+    if (byName.has(name)) continue
+    byName.set(name, { name })
+    added.push(name)
+  }
+  const merged = [...byName.values()]
+  if (merged.length > TASK_TAG_LIMIT) {
+    const origin = parentId === '' ? `${added.length} new` : `${fromParent} inherited from ${parentId} + ${added.length} new`
+    throw new BoardError('usage', `a card keeps at most ${TASK_TAG_LIMIT} tags; ${origin} would make ${merged.length}`)
+  }
+  return { tags: merged, inherited: [...byName.keys()].slice(0, fromParent), added }
+}
+
+/**
  * Parse a lease duration: milliseconds (number), or strings such as `60m`,
  * `90s`, `2h`, and a bare number of minutes. Undefined means the default.
  */
@@ -297,6 +333,10 @@ export function createOps(options) {
      * `title`, `description` and `prompt` are all REQUIRED to be strings by the
      * board's own input validation, so `description` defaults to '' here rather
      * than being omitted (an omitted field fails the whole action).
+     *
+     * A subtask inherits its parent's labels. Without that, a parent tagged
+     * `external` would spawn children nobody dispatches: the pull-model CLI
+     * filters on the tag, and the board does not walk parents.
      */
     async create({ title, description = '', prompt, tags = [], parentId, id } = {}) {
       requireAgent()
@@ -306,26 +346,19 @@ export function createOps(options) {
         throw new BoardError('usage', 'description must be a string')
       }
       const cleanDescription = description ?? ''
-      const nextTags = []
-      const seen = new Set()
-      for (const value of Array.isArray(tags) ? tags : []) {
-        const name = normalizeTagName(value)
-        if (seen.has(name)) continue
-        seen.add(name)
-        nextTags.push({ name })
-      }
-      if (nextTags.length > TASK_TAG_LIMIT) {
-        throw new BoardError('usage', `a card keeps at most ${TASK_TAG_LIMIT} tags; this create would make ${nextTags.length}`)
-      }
       const snapshot = await state()
       let cleanParent = ''
+      let inherited = []
       if (parentId !== undefined && parentId !== null && parentId !== '') {
         if (typeof parentId !== 'string') throw new BoardError('usage', 'parentId must be a string')
         cleanParent = parentId.trim()
         const parent = snapshot.tasks.find((candidate) => candidate.id === cleanParent)
         if (parent === undefined) throw new BoardError('conflict', `unknown parent task ${cleanParent}`)
         if (parent.archivedAt != null) throw new BoardError('conflict', `parent task ${cleanParent} is archived`)
+        inherited = Array.isArray(parent.tags) ? parent.tags : []
       }
+      const keep = mergeTags(inherited, tags, cleanParent)
+      const nextTags = keep.tags
       const taskId = typeof id === 'string' && id.trim() !== '' ? id.trim() : randomId()
       if (snapshot.tasks.some((candidate) => candidate.id === taskId)) {
         throw new BoardError('conflict', `a card with id ${taskId} already exists; pass a different --id`)
@@ -349,7 +382,12 @@ export function createOps(options) {
       if (created === undefined) {
         throw new BoardError('invalid-response', `the board accepted the create but its snapshot does not contain card ${taskId}`)
       }
-      return { ledgerId, id: taskId, task: created, ...(cleanParent === '' ? {} : { parentId: cleanParent }) }
+      return {
+        ledgerId,
+        id: taskId,
+        task: created,
+        ...(cleanParent === '' ? {} : { parentId: cleanParent, inheritedTags: keep.inherited }),
+      }
     },
 
     async next({ tag = 'external', lease, autoReap = true } = {}) {

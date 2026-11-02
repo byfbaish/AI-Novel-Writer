@@ -41,7 +41,7 @@ Options:
   --description <text> create: card description (default empty)
   --prompt <text>      create: the task text the worker will read
   --prompt-file <path> create: read the task text from a file (instead of --prompt)
-  --parent <taskId>    create: publish this card as a subtask
+  --parent <taskId>    create: publish this card as a subtask (inherits its labels)
   --id <taskId>        create: pin the card id (needed when the prompt names it)
   --lease <duration>   claim lease, e.g. 60m, 90s, 2h (default 60m)
   --summary <text>     one-line result stored on the execution record (required for done/fail)
@@ -261,6 +261,9 @@ async function main(argv) {
       const names = (payload.task.tags ?? []).map((entry) => (typeof entry === 'string' ? entry : entry.name))
       if (names.length > 0) lines.push(`tags: ${names.join(', ')}`)
       if (payload.parentId !== undefined) lines.push(`parent: ${payload.parentId}`)
+      if (Array.isArray(payload.inheritedTags) && payload.inheritedTags.length > 0) {
+        lines.push(`inherited: ${payload.inheritedTags.join(', ')}`)
+      }
       printLines(lines)
       break
     }
