@@ -657,8 +657,11 @@ export function createOps(options) {
       const names = (result.tags ?? []).map((entry) => (typeof entry === 'string' ? entry : entry.name))
       // Carrying the review label IS the handover: that is the worker's finish
       // moment, and the only place it can be recorded (a `done` here would
-      // settle the card into Done and skip the review entirely).
-      if (names.includes(REVIEW_TAG)) stamp(taskId, { finishedAt: now() })
+      // settle the card into Done and skip the review entirely). The same write
+      // records WHO handed it over — without it the ledger only ever knows who
+      // closed a card, never who produced it, and `review` could not tell the
+      // worker from an outsider.
+      if (names.includes(REVIEW_TAG)) stamp(taskId, { finishedAt: now(), handedBy: requireAgent() })
       return {
         ledgerId,
         task: result,
@@ -711,6 +714,21 @@ export function createOps(options) {
         throw new BoardError(
           'conflict',
           `task ${taskId} is ${task.status}, not todo; the worker did not release it when handing over (tag --release)`,
+        )
+      }
+      // Separation of duties (§5.3): the agent that handed the card over may not
+      // pass its own work. Identity here is self-declared (`--agent`), so this
+      // raises the cost of self-review rather than making it impossible — but it
+      // does mean the rule is enforced by the tool instead of by whoever
+      // remembers to respect it. A card with no handover record (created before
+      // this existed, or labelled straight in the GUI) is not blocked: there is
+      // nothing to compare against, and guessing would break a working card.
+      const handover = readTimeline(stateDir, ledgerId, taskId)
+      const handedBy = typeof handover?.handedBy === 'string' ? handover.handedBy : ''
+      if (handedBy !== '' && handedBy === requireAgent()) {
+        throw new BoardError(
+          'conflict',
+          `task ${taskId} was handed over by ${handedBy}; the agent that did the work cannot review it — review with a different --agent, or have that agent rework the card itself`,
         )
       }
       const entry = {

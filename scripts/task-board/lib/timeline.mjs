@@ -22,6 +22,15 @@ const DIR_MODE = 0o700
 const FILE_MODE = 0o600
 const MAX_ID_LENGTH = 200
 const STAMP_KEYS = ['finishedAt', 'closedAt']
+/**
+ * Non-timestamp handover facts. `handedBy` records which agent carried the
+ * `review` label, i.e. who did the work. It has to live here: handing a card
+ * over writes no execution record, so the ledger only knows who *closed* the
+ * card, never who produced it. `review()` compares against it so a card cannot
+ * be passed by the agent that did it (§5.3 of the manual).
+ */
+const HANDOVER_KEYS = ['handedBy']
+const AGENT_ID_MAX_LENGTH = 200
 /** Older verdicts are kept for the trail, but only the tail is worth carrying. */
 export const REVIEW_LOG_LIMIT = 20
 
@@ -83,7 +92,8 @@ export function readTimeline(stateDir, ledgerId, taskId) {
 }
 
 /**
- * Merge stamps into a card's file. Only a number is accepted per key, so a
+ * Merge stamps and handover facts into a card's file. Only a finite number is
+ * accepted per stamp key and a short non-blank string per handover key, so a
  * caller cannot park arbitrary data here; unknown keys are ignored.
  */
 export function stampTimeline(stateDir, ledgerId, taskId, patch) {
@@ -91,6 +101,12 @@ export function stampTimeline(stateDir, ledgerId, taskId, patch) {
   for (const key of STAMP_KEYS) {
     const value = patch?.[key]
     if (typeof value === 'number' && Number.isFinite(value)) stamped[key] = value
+  }
+  for (const key of HANDOVER_KEYS) {
+    const value = patch?.[key]
+    if (typeof value === 'string' && value.trim() !== '' && value.length <= AGENT_ID_MAX_LENGTH) {
+      stamped[key] = value
+    }
   }
   if (Object.keys(stamped).length === 0) return readTimeline(stateDir, ledgerId, taskId)
   const current = readTimeline(stateDir, ledgerId, taskId) ?? { taskId }
@@ -152,5 +168,6 @@ export function cardTimes(task, stamp) {
     updatedAt: task.updatedAt,
     ...(typeof stamp?.finishedAt === 'number' ? { finishedAt: stamp.finishedAt } : {}),
     ...(typeof closable === 'number' ? { closableAt: closable } : {}),
+    ...(typeof stamp?.handedBy === 'string' && stamp.handedBy !== '' ? { handedBy: stamp.handedBy } : {}),
   }
 }

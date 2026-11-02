@@ -11,8 +11,10 @@ dsh-task-board next                 # 认领一张 tag=external 的卡，打印�
 # …在自己的 harness 里干活、验证；报告写进 <workspace>/.dsh-task-board/reports/<taskId>.md…
 dsh-task-board tag <taskId> --add review --remove external --release   # 交 review
 # 【不要 done】—— done 会直接把卡推进「已完成」，跳过复核（§5.1）
-dsh-task-board review <taskId> --pass|--rework --note "…"              # 复核者：一条命令定去留
+dsh-task-board review <taskId> --pass|--rework --note "…" --agent <另一身份>   # 复核者：定去留（同名会被拒，§5.3）
 ```
+
+**唯一一条不靠自觉的规则**：谁交回的卡，谁不能复核 —— `review` 比对 `handedBy`，同 `--agent` 直接 exit 3。所以**干活的与复核的必须用两个名字**（`workbuddy:worker` / `workbuddy:reviewer`）。
 
 看板仍是唯一账本；CLI 的本地目录 `~/.dsh-task-board/` 只记「谁认领、租到何时、重试用哪个 requestId」。
 
@@ -294,7 +296,7 @@ node scripts/task-board/dsh-task-board.mjs tag <taskId> --add review --remove ex
 - 底层走 `update` action：`{ kind: 'update', taskId, patch: { tags: [...] } }`；`patch.tags` 是**整组替换**（`null` 清空），标签元素是 `{ name, promptPrefix? }` 对象，CLI/过滤器按 `name` 比较。
 - ⚠️ **必须同时去掉 `external`**：`next` 只按 `external` 过滤，留着它这张卡就会被下一个 agent **再认领一次**。
 - `--release` 把卡从 running 还回 To Do 并清本地 claim；不加 `--release` 只改标签（卡仍停在 running，租约到期后由 `reap` 回收）。
-- 这条命令同时写下 `finishedAt`（§4.3）—— 这是"干完"唯一能落笔的时刻。
+- 这条命令同时写下 `finishedAt` 与 `handedBy`（§4.3 / §5.3）—— 后者是"谁干的"唯一记录，复核时用来拒掉自审。**所以执行者的 `--agent` 不要和复核者同名**。
 - MCP 对应：`task_board_tag { taskId, add: ["review"], remove: ["external"], release: true }`。
 
 #### 5.1.2 复核者：一条命令定去留（`review`，2026-11-03 新增）
@@ -314,6 +316,7 @@ node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
 - 打回后的卡是 `[external, rework]`，回 To Do；**下一次 `next` 就会把它派出去**，判词随 `hints` 打印：`rework requested by <复核者>: <判词>`。
 - 两种判词都写进 `<stateDir>/boards/<ledgerId>/timeline/<taskId>.json` 的 `reviews[]`（只留最近 20 条）。**卡正文跑过一次就冻结，这是唯一能记判词的地方。**
 - 卡上没有 `review` 标签时一律拒（exit 3）：没交回来的卡不谈复核。
+- **与交回者同名一律拒**（exit 3，§5.3）：`task <id> was handed over by <谁>; the agent that did the work cannot review it`。这条不是靠自觉，是 `review` 里比对的。真需要返工就 `--rework`，别自己过自己。
 - MCP 对应：`task_board_review { taskId, verdict: "pass"|"rework", note }`。
 - **人只在 GUI 操作**也可以：手工移 Done 不产生执行记录和 summary，报告文件是唯一凭证；要留 summary 就让一个 agent 用上面的命令代记。
 
@@ -326,19 +329,46 @@ node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
 
 **要认的代价**：执行者不调 `done`，所以它那次劳动在看板上**没有执行记录**，报告文件是唯一凭证。复核者 `--pass` 时会落一条 `external` 执行记录，但 `initiatedBy` 是**复核者** —— 别把它读成"执行者自己结算了"。
 
-### 5.2 主 Agent 自己也走这套（2026-11-03 作者定，不是只给"派活的 agent"看）
+### 5.2 干完 ≠ 已完成，谁都不例外（2026-11-03 作者定，2026-11-03 二次修订）
 
-**这条规则对主 agent 同样有效。** 主 agent 自己改的代码、写的文档、跑的数据，**同样不许自己宣布"已完成"**。区别只在"谁来审"：
+**这条规则不分身份。** 主 agent、子 agent、外部 agent 都一样：谁改的谁不许宣布"已完成"。区别只在"谁来审"：
 
 | 模式 | 谁审 | 隔离怎么做 |
 |---|---|---|
 | **单会话**（只有我自己） | 派一个**子 agent** 审 | 子 agent 只拿**产物 + 验收标准**（要求什么、交付了什么、怎么算通过），**不给**我的推理过程、结论、"我已经检查过了"这类话 |
 | **协作**（有豆包 / 其他 harness） | **交叉审** | 我做的东西交给外部 agent 审，外部 agent 做的我看 —— 同一个模型不做自己那份的裁判 |
+| **看板** | `review` 由**另一个 `--agent` 身份**执行 | 与交回者同名直接 exit 3（§5.3） |
 
 - **隔离是关键**：连过程一起交出去，子 agent 会顺着我的思路点头 —— 那叫附和，不叫复核。给过程 = 给答案。
-- **子 agent 也要留痕**：结论一句话写进卡或报告，别只在对话里说"审过了"。
-- **但结论由我定 —— 这条比隔离更要紧**（作者原话：**主 agent 必须有自己的定力**）：其他模型可能比我弱，**它的反对不自动成立，它的通过也不自动成立**。证据不足就要求补证据，看不懂就说不懂；绝不为了"尊重另一个模型的意见"把明显正确的东西改错，也绝不因为"它审过了"就把自己知道有问题的地方放过去。
-- **复核不是免责**：子 agent / 外部 agent 说通过，而我自己知道有问题 —— 以我为准，并说明理由。
+- **留痕**：结论一句话写进卡或报告，别只在对话里说"审过了"。
+- **意见要证据，不要立场**：无证据的通过和无证据的反对一样不成立；看不懂就说不懂，让对方补证据。有证据的反对**必须回应** —— 要么改，要么写明为什么不改。绝不为了"尊重另一个模型的意见"把明显正确的东西改错，也绝不因为"它审过了"就把自己知道有问题的地方放过去。
+- **但"最后由谁定"不能写成条款。** 这条规则早先写的是「**结论由我定**」，2026-11-03 删掉，理由见 §5.3：共享文档里的"我"会被每一个读者代入，强模型读到的是"别盲从"，弱模型读到的是"我可以无视复核意见"。同一句话对能力相反的读者起相反作用，就不能留在共享文档里。判断力靠实际怎么做，不靠一句话发放。
+- **复核不是免责**：审的人说通过，而我手上还有证据说不行 —— 继续查，结论要给证据，别用人头担保。
+
+### 5.3 身份是自报的，所以只能拦行为（2026-11-03）
+
+**事实前提**：`--agent` 是自报字符串（或 `DSH_BOARD_AGENT`），同一台机器、同一个 CLI、同一份状态目录，**没有任何认证**。任何 agent 都能声称自己是任何一个名字。所以规则不能写成「子 agent 不许……」—— 那反而给了它一个"我是主 agent"就能绕过的口子。
+
+**做法**：把禁令落在**行为**上，不落在身份上 —— 任何人不得复核自己交回的卡。
+
+| 环节 | 机制 |
+|---|---|
+| 交回时 | `tag --add review` 那一刻把 `handedBy`（交回者身份）写进 `timeline/<taskId>.json`（和 `finishedAt` 同一次写） |
+| 复核时 | `review` 比对 `handedBy` 与当前 `--agent`，**相同则 exit 3**，卡不动 |
+| 没有记录 | 放行（老卡、或在 GUI 上直接打的 `review` 标签 —— 没有可比的，猜会弄坏能用的卡） |
+| 审计 | `get` 的 `times` 里打印 `handed over by <id>`；`reviews[].by` 与 `handedBy` 不同才合规 |
+
+**因此有一条操作要求**：**执行者与复核者必须用不同的 `--agent` 名**，否则复核会被自己这道闸拦下。约定写成 `<harness>:<role>`：
+
+```bash
+--agent workbuddy:worker     # 干活的
+--agent workbuddy:reviewer   # 复核的
+--agent doubao               # 外部通道（它自己就是独立身份）
+```
+
+**能拦住什么、拦不住什么**：拦得住"顺手自己过一下"和"没意识到要换人"；**拦不住冒用别人的名字**（那时只剩 timeline 里两个名字对不上这一层可查）。所以真正的防线是三条一起用 —— 派出去时**不给** `review`/`done` 权限（预防）、`handedBy` 比对（阻断顺手）、timeline 留痕（事后可查）。**这不是安防项目**，做到"提高成本 + 可审计"就够，不上 OS 级隔离。
+
+**对派活任务书的要求**：写给子 agent 的任务里，只给"读产物 + 写报告"，**不写** `review` / `done` 的用法，也不写"你可以自己判断通过"。它读完本手册也不该拿到越权的路。
 
 ## 6. 故障与让位
 
@@ -346,6 +376,7 @@ node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
 |---|---|
 | `next` 退出 2 | 没有可认领任务，稍后轮询 |
 | `next`/`claim` 退出 3 | 被别的 agent 抢先或卡片已变，换下一张 |
+| `review` 退出 3 且提示 `handed over by <自己>` | **自审被拦**（§5.3）。换一个 `--agent` 做复核；若这张卡确实要返工，用 `--rework --note` |
 | `heartbeat`/`done` 退出 3 且提示 Host 接管 | **立刻停手**；Host 已开出自己的执行，外部结果不再写入 |
 | `done` 退出 3 且提示卡片已结算 | Host 或人已经把卡移走/结算；外部不再覆盖结论，claim 已清 |
 | `done`/`release` 退出 3 且提示没有本地 claim | 进程崩溃后 claim 丢了；等 `reap` 把卡回收成 To Do 再重新 `next` |
@@ -477,3 +508,14 @@ node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
 | 真看板 · 时间戳 | `tagged … times: created … · updated …`、`done` 后 `closable` 出现；未交 review 的卡不显示 `finished`/`closable`（不打印空档） |
 | 重要度标签 | 11 张开放卡全部打上（`I2`×6 / `I3`×5，两张留痕卡另加 `trace`）；新增容器卡 `61e4535d` 为 `I1` |
 | 复查发现的缺口 | **板上没有任何 D 系列卡**，而台账写着「作者指定：接下来重点修复 D1–D18」⇒ 补建容器卡 `61e4535d`（缺陷稿 §2 状态列为准）；派发契约已定，见 §7 |
+
+**职责分离（§5.3，2026-11-03 03:3x）**
+
+| 检查 | 结果 |
+|---|---|
+| `node --test scripts/task-board/test/*.test.mjs` | **106 / 106**（+2：同身份复核被拒且卡不动、无 `handedBy` 的老卡仍可复核） |
+| 交回时落 `handedBy` | `tag --add review` 与 `finishedAt` 同一次写进 `timeline/<taskId>.json`；`get` 的 `times` 打印 `handed over by <id>` |
+| 同身份复核 | exit 3，文案点名交回者；`--pass` 与 `--rework` 都被拦，卡片状态不变 |
+| 换身份复核 | `--agent test:reviewer` 通过，`reviews[].by` 与 `handedBy` 不同 |
+| 老卡 / 手打标签 | 无 `handedBy` ⇒ 放行（不猜、不弄坏能用的卡） |
+| 未做 | 真实看板上的两身份实跑（离线 fake board 已覆盖同一路径；真卡上暂不造废卡） |

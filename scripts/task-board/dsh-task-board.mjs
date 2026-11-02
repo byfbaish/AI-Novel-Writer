@@ -133,6 +133,8 @@ function when(value) {
  * updated, finished (worker handed it over), closable (review passed).
  * Missing stamps are omitted rather than printed as a dash, so "not yet
  * finished" and "finished at an unknown time" never look the same.
+ * `handedBy` is not a moment but is printed here because it is the only record
+ * of who produced the card, and review is refused when it matches the reviewer.
  */
 function renderTimes(times) {
   if (times === undefined) return []
@@ -145,6 +147,7 @@ function renderTimes(times) {
     .map(([label, value]) => [label, when(value)])
     .filter(([, text]) => text !== undefined)
     .map(([label, text]) => `${label} ${text}`)
+  if (typeof times.handedBy === 'string' && times.handedBy !== '') parts.push(`handed over by ${times.handedBy}`)
   return parts.length === 0 ? [] : [`times: ${parts.join(' · ')}`]
 }
 

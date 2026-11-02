@@ -114,23 +114,29 @@ test('tools/call drives claim, done and the empty-next case', async () => {
 
 test('task_board_review settles a handed-over card through the MCP shell', async () => {
   const board = await startFakeBoard({ tasks: [{ id: 't1', tags: [{ name: 'external' }, { name: 'I2' }] }] })
-  const session = startMcp({ stateDir: tempDir(), url: board.url, agent: 'test:reviewer' })
-  await initialize(session)
-  const claimed = toolPayload(await session.request('tools/call', { name: 'task_board_next', arguments: {} }))
+  const stateDir = tempDir()
+  const worker = startMcp({ stateDir, url: board.url, agent: 'test:agent' })
+  await initialize(worker)
+  const claimed = toolPayload(await worker.request('tools/call', { name: 'task_board_next', arguments: {} }))
   assert.equal(claimed.task.id, 't1')
-  const tagged = toolPayload(await session.request('tools/call', {
+  const tagged = toolPayload(await worker.request('tools/call', {
     name: 'task_board_tag',
     arguments: { taskId: 't1', add: ['review'], remove: ['external'], release: true },
   }))
   assert.deepEqual(tagged.tags.map((entry) => entry.name).sort(), ['I2', 'review'])
-  const reviewed = toolPayload(await session.request('tools/call', {
+  // Review is a second session with its own identity: the worker's id is on the
+  // handover record, and §5.3 refuses to let it pass its own card.
+  worker.child.kill()
+  const reviewer = startMcp({ stateDir, url: board.url, agent: 'test:reviewer' })
+  await initialize(reviewer)
+  const reviewed = toolPayload(await reviewer.request('tools/call', {
     name: 'task_board_review',
     arguments: { taskId: 't1', verdict: 'pass', note: 'checked' },
   }))
   assert.equal(reviewed.verdict, 'pass')
   assert.equal(reviewed.task.status, 'done')
   assert.deepEqual(reviewed.tags.map((entry) => entry.name), ['I2'])
-  session.child.kill()
+  reviewer.child.kill()
   await board.close()
 })
 

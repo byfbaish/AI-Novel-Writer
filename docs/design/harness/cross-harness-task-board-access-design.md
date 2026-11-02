@@ -274,6 +274,8 @@ dsh-task-board tag <taskId> --add review --remove external --release
 
 复核者用 `review` 一条命令定去留（2026-11-03 02:5x 起）：`review <taskId> --pass --note "…"` 会清标签 + 以自己身份 `claim` + `done`（落 `external` 执行记录，`initiatedBy` 是复核者）；`review <taskId> --rework --note "…"` 把卡变 `[external, rework]` 送回池子，判词随 `next` 的 hints 打给下一个 worker。纯人工在 GUI 移 Done 不产生 summary，报告文件是唯一凭证。禁止的是执行者自结算，不是复核者留结论。
 
+**职责分离（2026-11-03 03:3x 补）**：交回时 `tag --add review` 会把 `handedBy` 与 `finishedAt` 一起写进 `timeline/<taskId>.json`；`review` 比对当前 `--agent`，**同名 exit 3**。所以干活的和复核的必须是两个身份（`workbuddy:worker` / `workbuddy:reviewer`）。前提要认：`--agent` 是自报字符串、无法认证，这条只拦"顺手自己过一下"，拦不住冒名 —— 真正的防线是派活时不给 `review`/`done` 权限 + timeline 双名字可审计。无 `handedBy` 的老卡放行，不猜。
+
 ### 5.7 失败与恢复
 
 | 场景 | CLI 行为 | 退出码 |
@@ -373,6 +375,7 @@ dsh-task-board tag <taskId> --add review --remove external --release
 - 2026-11-03 作者裁定：CLI / MCP 服务名统一为 `dsh-task-board`，源码目录 `scripts/task-board/`，本地状态目录 `~/.dsh-task-board/`；报告 = summary + 工作区文件；看板定位 = 自动发现 + ledgerId 校验。进入实施。
 - 2026-11-03 作者追加 review 规则：**执行者不得自己 `done`**，干完只写报告 + 交 review（当时叫 `tag 待review --release`，现为 `tag --add review`）；由人/调度者复核后再进 Done（详见 §5.6）。为此新增 `tag` 子命令与 `task_board_tag` MCP 工具。
 - 2026-11-03 02:5x 简报增补（对应 `docs/agents/task-board-channel.md` §4.5 / §7）：标签统一为全英文 `external|review|rework|I1-3|trace`；新增 `review --pass|--rework --note` 与 `task_board_review`（第 15 个工具）；**容器卡不可认领**落成硬闸（有未完成子卡 ⇒ `next`/`claim` 都拒）；子卡深度按部署现状（两层）不改插件配置。
+- 2026-11-03 03:3x 补职责分离（§5.6）：交回落 `handedBy`，`review` 拒同身份复核；同时删掉「结论由我定」的表述 —— 共享文档里的"我"会被任何读者代入，对弱模型等于免责许可（详见手册 §5.2 / §5.3）。
 
 ## 12. 实施记录（2026-11-03）
 

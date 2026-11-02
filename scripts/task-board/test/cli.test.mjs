@@ -166,9 +166,15 @@ test('review --pass settles a handed-over card in one call', async () => {
   const board = await startFakeBoard({ tasks: [{ id: 't1', tags: [{ name: 'external' }] }] })
   const stateDir = tempDir()
   const env = ['--url', board.url, '--agent', 'test:agent']
+  // The reviewer is a second identity: the worker that handed the card over is
+  // recorded, and §5.3 refuses to let it pass its own work.
+  const reviewer = ['--url', board.url, '--agent', 'test:reviewer']
   assert.equal((await runCli(['next', ...env], stateDir)).code, 0)
   assert.equal((await runCli(['tag', 't1', '--add', 'review', '--remove', 'external', '--release', ...env], stateDir)).code, 0)
-  const reviewed = await runCli(['review', 't1', '--pass', '--json', ...env], stateDir)
+  const selfReview = await runCli(['review', 't1', '--pass', ...env], stateDir)
+  assert.equal(selfReview.code, 3, 'the worker cannot pass its own card')
+  assert.match(selfReview.stderr, /handed over by test:agent/u)
+  const reviewed = await runCli(['review', 't1', '--pass', '--json', ...reviewer], stateDir)
   assert.equal(reviewed.code, 0, reviewed.stderr)
   const payload = JSON.parse(reviewed.stdout)
   assert.equal(payload.verdict, 'pass')

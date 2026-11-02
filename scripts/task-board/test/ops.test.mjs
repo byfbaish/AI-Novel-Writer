@@ -25,6 +25,20 @@ async function setup(tasks, options = {}) {
   return { board, stateDir, ops }
 }
 
+/**
+ * A second agent on the same ledger. Review has to come from here: §5.3 forbids
+ * the agent that did the work from passing it, and `handedBy` is what makes that
+ * check possible.
+ */
+function reviewerFor({ board, stateDir }, options = {}) {
+  return createOps({
+    transport: httpTransport(board.url),
+    stateDir,
+    agentId: options.agentId ?? 'test:reviewer',
+    now: options.now,
+  })
+}
+
 test('next claims the oldest claimable task and moves it to running', async () => {
   const { board, ops } = await setup([
     { id: 'late', createdAt: 200, tags: [{ name: 'external' }] },
@@ -400,10 +414,11 @@ test('handing a card over for review stamps finishedAt, and done stamps closable
 
 test('review --pass clears the label and settles the card into Done', async () => {
   const at = 1_800_000_000_000
-  const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }, { name: 'I2' }] }], { now: () => at })
+  const ctx = await setup([{ id: 't1', tags: [{ name: 'external' }, { name: 'I2' }] }], { now: () => at })
+  const { board, ops } = ctx
   await ops.next({ tag: 'external' })
   await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
-  const reviewed = await ops.review('t1', { verdict: 'pass', note: 'looks right' })
+  const reviewed = await reviewerFor(ctx, { now: () => at }).review('t1', { verdict: 'pass', note: 'looks right' })
   assert.equal(reviewed.verdict, 'pass')
   assert.equal(reviewed.task.status, 'done')
   assert.deepEqual(reviewed.tags.map((entry) => entry.name), ['I2'], 'the review label is gone, the importance label stays')
@@ -411,17 +426,48 @@ test('review --pass clears the label and settles the card into Done', async () =
   await board.close()
 })
 
-test('review --rework needs a note, and sends the card back to the pool with it', async () => {
+test('a card cannot be passed by the agent that handed it over', async () => {
   const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  await ops.next({ tag: 'external' })
+  await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
+  // Same identity that did the work: the handover record names it, so the tool
+  // refuses instead of trusting whoever remembers the rule.
+  await assert.rejects(
+    () => ops.review('t1', { verdict: 'pass' }),
+    (error) => error.code === 'conflict' && /handed over by test:agent/u.test(error.message),
+  )
+  await assert.rejects(
+    () => ops.review('t1', { verdict: 'rework', note: 'not mine to judge' }),
+    (error) => error.code === 'conflict',
+  )
+  assert.equal(board.snapshot().tasks.find((task) => task.id === 't1').status, 'todo', 'a refused review moves nothing')
+  // The handover record is also the audit trail: `get` reports who produced it.
+  assert.equal((await ops.get('t1')).times.handedBy, 'test:agent')
+  await board.close()
+})
+
+test('a card labelled review by hand has no handover record, so review still works', async () => {
+  // Cards made before `handedBy` existed, or labelled straight in the GUI, must
+  // not become unreviewable: with nothing to compare, the check stands aside.
+  const { board, ops } = await setup([{ id: 't1', status: 'todo', tags: [{ name: 'review' }] }])
+  const reviewed = await ops.review('t1', { verdict: 'pass' })
+  assert.equal(reviewed.task.status, 'done')
+  await board.close()
+})
+
+test('review --rework needs a note, and sends the card back to the pool with it', async () => {
+  const ctx = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  const { board, ops } = ctx
+  const reviewer = reviewerFor(ctx)
   await ops.next({ tag: 'external' })
   await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
 
   await assert.rejects(
-    () => ops.review('t1', { verdict: 'rework' }),
+    () => reviewer.review('t1', { verdict: 'rework' }),
     (error) => error.code === 'usage' && /note/u.test(error.message),
   )
 
-  const reviewed = await ops.review('t1', { verdict: 'rework', note: '第 3 节的表格要按新列重排' })
+  const reviewed = await reviewer.review('t1', { verdict: 'rework', note: '第 3 节的表格要按新列重排' })
   assert.deepEqual(reviewed.tags.map((entry) => entry.name).sort(), ['external', 'rework'])
   assert.equal(reviewed.task.status, 'todo')
 
@@ -444,14 +490,16 @@ test('review refuses a card nobody handed back', async () => {
 })
 
 test('review --pass also clears a rework label left by the previous round', async () => {
-  const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  const ctx = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  const { board, ops } = ctx
+  const reviewer = reviewerFor(ctx)
   await ops.next({ tag: 'external' })
   await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
-  await ops.review('t1', { verdict: 'rework', note: 'fix the table' })
+  await reviewer.review('t1', { verdict: 'rework', note: 'fix the table' })
   // Second round: the worker hands the same card back again.
   await ops.next({ tag: 'external' })
   await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
-  const reviewed = await ops.review('t1', { verdict: 'pass', note: 'fixed' })
+  const reviewed = await reviewer.review('t1', { verdict: 'pass', note: 'fixed' })
   assert.equal(reviewed.task.status, 'done')
   assert.deepEqual(reviewed.tags, [], 'passing ends the rework: both labels go')
   await board.close()
