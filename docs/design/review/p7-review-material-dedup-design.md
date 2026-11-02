@@ -1,5 +1,6 @@
 # P7 · 审稿链材料去重（世界观 / 角色状态重复注入）
 
+> 状态：已实施（2026-10-16）· v2；作者裁定见 §9，实施记录见 §10
 > 版本：**v2**（2026-10-16）。**已实施**。裁定见 §9；实施记录见 §10。
 > 登记来源：`docs/plans/prompt-assembly-backlog.md` P7；同批取证见 `docs/design/review/c1-review-architecture-declaration-design.md` §8.1.3。
 > 触发：作者实测「审稿的负荷比写正文还大」+ 某供应商模型上下文有限、**第一次审稿失败**（`finishReason: 'length'`、输出为空，两次调用均失败）。

@@ -1,6 +1,6 @@
 # 角色内核层：把「动机 / 禁区 / 恐惧」下沉到一条 Lie
 
-> 状态：**已部分推翻**（2026-10-28 晚，作者裁定）→ 见 [`character-disposition-state-design.md`](character-disposition-state-design.md)
+> 状态：已裁定（2026-10-28）· 方案部分被推翻 → 见 [`character-disposition-state-design.md`](character-disposition-state-design.md)
 > **保留**：§2 三学科分层查证、§3「三条同源」诊断、§5 机制下限、§6 作用域分析。
 > **推翻**：落点。作者裁定「性格特征这一层就够」，且**性格要作为状态维护、按卷位移**——
 > 所以机制建在「if–then 倾向 + 位移」上，不建在「恒定的 Lie + 硬禁区」上。

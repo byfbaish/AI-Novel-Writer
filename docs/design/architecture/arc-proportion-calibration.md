@@ -1,6 +1,6 @@
 # 弧光篇幅比例校准（30:45:25 / 40:60 / 小弧差 ≤2 倍）
 
-> 状态：📝 待议 · **未实施**（作者 2026-10-18 定为「仅次于当前任务优先级」的独立立项）
+> 状态：已裁定（2026-10-18）· 立项优先级「仅次于当前任务」，方案已并入 arc-tree-expansion-design
 > 分支 `dev_byf` · 关联：`p13-arc-layer-expansion-design.md`（本层信息量已修）、`arc-nesting-design.md`（层级语义）
 >
 > ⚠️ **2026-10-18 已并入合并立项** → [`arc-budget-engine-design.md`](arc-budget-engine-design.md)

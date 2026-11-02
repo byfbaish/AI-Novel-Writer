@@ -1,6 +1,6 @@
 # 弹性配给 · 提示词 A/B/C 测试件
 
-> 状态：E2 完成 · 提示词层已验证（非惰性 / 单调 / 宽带 / 内容刚性下双向有效）· 未落代码
+> 状态：已结项（2026-10-19）· E2 完成：提示词层已验证（非惰性 / 单调 / 宽带 / 内容刚性下双向有效），未落代码
 > 日期：2026-10-19
 > 对应设计稿：[`unit-budget-elastic-allocation-design.md`](unit-budget-elastic-allocation-design.md) §4.4 / §9 E2
 

@@ -1,7 +1,7 @@
 # 用户级设置包（创作资产导出/导入）设计
 
 > 提出：2026-10-13 · 触发：为「旧项目升级」前置备份 + 把「番茄文风 / 起点风」这类可复用 prompt 资产固化为一等能力
-> 状态：**待审核，未编码**（本轮只做了现场备份，见 §1）
+> 状态：待裁定（2026-10-17）· 待审核，未编码（本轮只做了现场备份，见 §1）
 > 关联：`docs/design/prompt/prompt-payload-scoping-design.md`、`docs/design/prompt/chapter-prompt-pileup-triage.md`
 
 ---

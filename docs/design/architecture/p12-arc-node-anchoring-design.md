@@ -1,6 +1,6 @@
 # P12 · 弧光结构位锚定（Arc Node Anchoring）
 
-> 状态：待裁定
+> 状态：待裁定（2026-10-18）· 弧光结构位 ID（纯函数派生）+ covers + 三个不变量
 > 日期：2026-10-18
 > 上级稿：[`arc-delivery-audit-assessment.md`](arc-delivery-audit-assessment.md)（审计结论）
 > 相关：[`p11-plan-validity-and-fact-registry-design.md`](p11-plan-validity-and-fact-registry-design.md)（计划有效期）

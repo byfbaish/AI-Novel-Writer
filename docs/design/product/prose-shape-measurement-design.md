@@ -1,6 +1,6 @@
 # 正文形态统计器（P17-2）设计稿
 
-> 状态：**已裁定、已落地并已接入生成链**（Q1/Q2/Q3 全按推荐）· 2026-10-25
+> 状态：已落地（2026-10-25）· Q1/Q2/Q3 全按推荐，并接入生成链
 > 代码：`src/shared/prose-shape.ts` + `src/shared/__tests__/prose-shape.test.ts`（23 例）+ `src/shared/rhythm-profile-ids.ts`
 > 接线：`generate-draft.command.ts` 终稿闸后、落库前，**只写日志**；定向重写仍属 P17-3
 > 上游：(a) [`writing-capability-assessment.md`](./writing-capability-assessment.md) §7.2 约束一、§7.4 期 1 · (b) 台账 `prompt-assembly-backlog.md` P17-2

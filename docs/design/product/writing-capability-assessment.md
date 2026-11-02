@@ -1,6 +1,6 @@
 # 写作能力家底与定位空白评估
 
-> 状态：**Q1–Q4 已裁决**（2026-10-25）—— 答案与重排后的三阶段见 §7；§1–§6 是取证部分，不因裁决而改动
+> 状态：已裁定（2026-10-25）· Q1–Q4 已裁决：答案与重排后的三阶段见 §7；§1–§6 是取证部分，不因裁决而改动
 > 日期：2026-10-25
 > 核对基准：分支 `exp/resource-ledger` · HEAD `97406deb` · schema v21
 > 上游：[`industry-alignment-and-stage-goals.md`](../architecture/industry-alignment-and-stage-goals.md) §5 四问

@@ -1,5 +1,6 @@
 # P1 设计稿（v2）· Prompt 组装中的**逐字重复**消除
 
+> 状态：已实施（2026-10-17）· 单次请求内逐字重复消除（D1 收敛 2/2→1/1） · 状态行 2026-11-02 回溯补登
 > 目标读者：作者（审阅者）。本稿只做**设计与证据**，不含实现。  
 > 依据：`generate-draft.command.ts`、`chapter-materials.ts`、`generation-harness.ts`、`builtin-prompt-templates.ts`（dev_byf 当前状态）。  
 > v1 稿（`p1-user-guidance-split.md`）的前提已被推翻，本稿取代之。

@@ -1,6 +1,6 @@
 # P1 设计稿 · 蓝图角色 ↔ 角色卡 roster 同步
 
-> 状态：**✅ 已实施**（本文件写于 2026-10-10「设计待审」，**该状态行已过期**——机制早已落地并在实机中持续迭代）。
+> 状态：已实施（2026-10-15）· **原「设计待审」已过期**：机制早已上线并在实机中持续迭代
 > 实施落点：`blueprint-character-sync.ts`（同步操作）· `character-proposal-service.ts`（候选/暂存/批准/关系校验/锚点人物）
 > · `CharacterProposalSelectionPanel.tsx` / `CharacterProposalInbox.tsx`（UI 入口）· `character-card-generation.command.ts`（列表/确认步）。
 > 实战迭代（2026-10-15 台账，见 `docs/handoffs/archive/2026-10-15-keyevents-bprime-pause-handoff.md` §1.1）：

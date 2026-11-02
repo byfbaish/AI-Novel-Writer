@@ -1,5 +1,6 @@
 # P4 设计稿（v1）· 提示词配置整合（AI 优化按钮 → diff → 人工确认 → 保存）
 
+> 状态：待裁定（2026-10-17）· 提示词配置整合已排队待做 · 状态行 2026-11-02 回溯补登
 > 目标读者：作者（审阅者）。本稿只做**设计与证据**，不含实现。
 > 依据：`prompt-assembly-backlog.md §P4`（`:209-232`）、作者 2026-10-10 的需求与两张界面截图、
 > `PromptSettings.tsx`、`prompt-catalog.ts`、`prompt-templates.ts`、`render-prompt.ts`、

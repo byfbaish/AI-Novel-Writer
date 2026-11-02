@@ -1,7 +1,7 @@
 # P1-3 实施级设计稿：L1 变量出口语义化（`acceptsScopes` / `enforceRequiredContext`）
 
 > 上级稿：`docs/design/prompt/prompt-payload-scoping-design.md`（§6 L1 / §7 表 P1-3 行 / 附录 A / 附录 D / §11 清单两项）。  
-> 状态：**待作者裁定**（D1–D4 见 §8）。本稿只取证 + 判定 + 提替代，**未动一行代码**。  
+> 状态：待裁定（2026-10-17）· D1–D4 见 §8；本稿只取证 + 判定 + 提替代，未动一行代码
 > 版本：**v2**（2026-10-16。采纳同行评审：① 结论**分述**（`acceptsScopes`=抽象层级错 / `enforceRequiredContext`=语义混淆+适用边界），不合并；② 新增 §3.1 适用边界；③ 新增 §7.1 全量消费点扫描；④ C1 补 A/B 两解法；⑤ 可观测性收窄为"先做 `projection` 元数据"）。  
 > 取证源：① 内置模板静态审计（esbuild 打包 `builtin-prompt-templates.ts` 后跑，见 §10）；② 作者项目 20 份全局覆盖版；③ 实机 trace 21 份 / 18 个 snapshot（`C:\develop\workspace\AI-writer\每天第一句谎话都会成真\debug\prompt-trace\`）。
 

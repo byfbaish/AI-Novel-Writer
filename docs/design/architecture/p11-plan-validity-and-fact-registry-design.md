@@ -1,6 +1,6 @@
 # P11 · 计划的有效期与事实登记（Plan Validity & Fact Registry）
 
-> 状态：待裁定
+> 状态：已实施（2026-10-30）· 分批落地：P11-1 部分撤下（见「实施记录 · P11-1 撤下记录」），其余见 §分期表
 > 日期：2026-10-18
 > 上级稿：本文是**层内**议题，与 AC1/AC2/AC3（层间引用完整性）射程不重叠，见 §9.2。
 > 台账：[`docs/plans/prompt-assembly-backlog.md`](../../plans/prompt-assembly-backlog.md) §P11

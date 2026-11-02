@@ -1,6 +1,6 @@
 # P8 小设计稿 · 番茄向正文的质量闸门（字数 / 番茄味 / AI 味）
 
-> 状态：**已实施 · 复验 #3：首稿自足（2 次调用、2482 达标）、比喻与段长口径改善；但对话占比 20.60% 跌回 25% 以下、末句回软、连续叙述段 18（§10.9）。单章样本已不足以判定，需 ≥3 章**
+> 状态：已实施（2026-10-17）· P1 生效；复验 #3 见 §10.9（对话占比 20.60% 回跌，单章样本不足，需 ≥3 章）
 > 日期：2026-10-17 · 分支 `dev_byf` · 基准 SHA `a1b36c2b`
 > 上级稿：[`prompt-payload-scoping-design.md`](prompt-payload-scoping-design.md)（§5 装配矩阵、§7 待办 B 系列）
 > 前序诊断：[`chapter-prompt-pileup-triage.md`](chapter-prompt-pileup-triage.md) §2.2（字数基准不一致）

@@ -1,6 +1,6 @@
 # 任务完成提示 · 统一宿主与热插拔注册设计
 
-> 状态：**已列入待办**（2026-10-17 作者裁定：先做系统级通知 → [`system-notification-design.md`](system-notification-design.md)；本稿顺延，届时两稿注册表可合并为双输出「完成通知中心」）
+> 状态：已搁置（2026-10-17，作者裁先做系统级通知 [`system-notification-design.md`](system-notification-design.md)，本稿顺延）· 届时两稿注册表可合并为双输出「完成通知中心」
 > 日期：2026-10-17
 > 分支：`dev_byf`
 > 上级稿：无（独立功能设计）

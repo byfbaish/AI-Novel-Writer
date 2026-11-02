@@ -1,6 +1,6 @@
 # 大纲前缀预算：从「整段塞入」到「三层投影」（E4）
 
-> 状态：🟡 **实施中**（分支 `exp/arc-tree-v2`：T2–T8 ✅ / **T11 卷末快照 ⬜（优先级上提，2026-10-20：E4 内部剩余项之首；全项目 Top = E3）** / T9 按卷冻结 ⬜（往后放） / T10 弧光进全量清除 🟡（作者确认搁置，不等待）；逐条进度见施工记录）。作者 2026-10-19 八轮裁定：① 卷级额度是派生量 ② 大纲前缀会撑爆上下文 ③ 卷末快照按 compaction 语义链式传递 ④ 弧光必须进全量清除 ⑤ 冻结与定稿同机制、由作者触发 ⑥ 冻结按卷、当前卷永不冻；回滚单独立项 ⑦ 默认折叠可全量展开 + 卷/单元只读树 ⑧ **树用可 pin 的抽屉；Tab 实例 LRU 保留 4 个（审稿对照工作集）**
+> 状态：已实施（2026-10-19）· T2–T8 完成；T11 卷末快照优先、T9 按卷冻结后放、T10 弧光进全量清除（作者确认搁置）；逐条进度见施工记录
 > 日期：2026-10-19
 > 上级稿：[`unit-budget-elastic-allocation-design.md`](unit-budget-elastic-allocation-design.md)（弹性配给制 · E1/E2 已实施）｜[`arc-budget-engine-design.md`](arc-budget-engine-design.md)（章数由代码算）
 > 直接相关：[`p0-0-upstream-projection-design.md`](../prompt/p0-0-upstream-projection-design.md)（上游投影 · 下游已有先例）、[`arc-v7-implementation-design.md`](arc-v7-implementation-design.md)、[`2026-10-19-arc-budget-handoff.md`](../../handoffs/2026-10-19-arc-budget-handoff.md)、[`2026-10-19-e4-implementation-log.md`](../../handoffs/2026-10-19-e4-implementation-log.md)（**E4 施工记录 · append-only，实施进度以它为准**）

@@ -1,6 +1,6 @@
 # P9 小设计稿 · 平台文风层：从「写在 prompt 里」到「可选择的文风资料库」
 
-> 状态：**待裁定**（本稿只出方案与落点，未编码）
+> 状态：待裁定（2026-10-17）· 本稿只出方案与落点，未编码
 > 日期：2026-10-17 · 分支 `dev_byf` · 基准 SHA `a1b36c2b`
 > 上级稿：[`prompt-payload-scoping-design.md`](prompt-payload-scoping-design.md)
 > 前序稿：[`p8-fanqie-flavor-draft-quality-design.md`](p8-fanqie-flavor-draft-quality-design.md)（本轮风格闸门；本稿解释它为什么只能做到一半）

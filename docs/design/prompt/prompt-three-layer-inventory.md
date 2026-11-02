@@ -1,6 +1,6 @@
 # Prompt 三层全景清单（系统级 / 工程级 / 作者级）
 
-> 状态：已核对（2026-10-24）
+> 状态：已实施（2026-10-24）· 清单已核对入库，测试锁定真实消费方
 > 核对基准：分支 `exp/resource-ledger` · HEAD `404c356d` · 仓库 schema 20
 > 用途：**这份清单就是"不必再全量扫一遍"的凭据。** 下次只需跑 §8 的八条增量核对。
 > 上级稿：[`prompt-three-layer-alignment-assessment.md`](./prompt-three-layer-alignment-assessment.md)（行业口径对照与缺口分级）· 相关：[`p1-literal-dedup.md`](./p1-literal-dedup.md)（去重）、[`prompt-clause-admission.md`](./prompt-clause-admission.md)（条款三问）

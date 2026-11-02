@@ -1,6 +1,6 @@
 # AC5 · 数值与资源一致性（机读数值行）
 
-> **状态**：⛔ **部分否决（2026-10-21 晚）** —— 见 [`world-state-review-and-wiring-plan.md`](./world-state-review-and-wiring-plan.md) §7
+> 状态：已裁定（2026-10-21）· **部分否决**：机读数值行不做，保留判据 —— 见 [`world-state-review-and-wiring-plan.md`](./world-state-review-and-wiring-plan.md) §7
 > **否决的是**：第 2 维机读数值行与 `unit/mech/earn/cost` 字段集、N-a/b/c 三判（题材专用；且"让世界适配解析器"这条路在本项目的空间机读行上已实测失败：8 条里 4 条静默失效）
 > **保留的是**：判据 CJ / CK / CL / CM、§1 的四类缺陷分解与三种读法算术、§5.1 覆盖版遮蔽实测（升级为全球状态方案的地基阻断项）、§1.5 四条修法
 > **日期**：2026-10-21 · 分支 `exp/arc-tree-v2`

@@ -1,6 +1,6 @@
 # 弧光 v7 落地方案：解析器兼容 + 画像注入（P1/P2）
 
-> 状态：待裁定（未改代码）
+> 状态：已实施（2026-10-19）· P1–P4 落地，P4（UI / i18n）见 §7
 > 日期：2026-10-19
 > 上级稿：提示词定稿 [`arc-prompt-v7-web-test.md`](arc-prompt-v7-web-test.md) ｜ 定位 [`arc-layer-handoff.md`](arc-layer-handoff.md) ｜ 画像方向 [`arc-budget-engine-design.md`](arc-budget-engine-design.md)
 > 分支：`exp/arc-tree-v2`

@@ -4,7 +4,7 @@
 > 触发：作者实测「越修越倒退」，提供实机 trace 两份
 > - `师父派我来除魔，幕后真凶竟是小师妹/debug/prompt-trace/20261021-143750-201-精修-75a23f09.{md,json}`（问题样本）
 > - `…/debug/prompt-trace/20261021-135755-068-正文-ch4-fd14047a.{md,json}`（同章上游正文链，用于对照）
-> 状态：**✅ 已实施**（作者逐条裁定 4 项决策后落地）
+> 状态：已实施（2026-10-21）· 作者逐条定 4 项决策后落地
 > 上级稿：[`prompt-payload-scoping-design.md`](prompt-payload-scoping-design.md)（载荷作用域总纲）
 
 ---
