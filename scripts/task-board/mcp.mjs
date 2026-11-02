@@ -108,7 +108,7 @@ const TOOLS = [
   },
   {
     name: 'task_board_done',
-    description: 'Record a succeeded outcome for the claimed card and release it. The summary is one line; pass the full report path in --report.',
+    description: 'Record a succeeded outcome for the claimed card and release it. The card must already carry the review label: settling skips the review, so the board refuses to close a card nobody handed over, and refuses one handed over by this same agent. The summary is one line; pass the full report path in report.',
     inputSchema: {
       type: 'object',
       properties: {

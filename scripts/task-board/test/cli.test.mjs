@@ -83,7 +83,9 @@ test('done requires a summary (usage, exit 5)', async () => {
 })
 
 test('done records the outcome and the board settles the card', async () => {
-  const board = await startFakeBoard({ tasks: [{ id: 't1', tags: [{ name: 'external' }] }] })
+  // Pre-labelled `review`: `done` refuses a card nobody handed over, and this
+  // test is about the CLI surface, not the handover path.
+  const board = await startFakeBoard({ tasks: [{ id: 't1', tags: [{ name: 'external' }, { name: 'review' }] }] })
   const stateDir = tempDir()
   assert.equal((await runCli(['next', '--url', board.url, '--agent', 'test:agent'], stateDir)).code, 0)
   const result = await runCli(

@@ -286,6 +286,16 @@ export function createOps(options) {
     // gets looked at. `review --pass` is untouched — it runs as the reviewer,
     // whose id is by definition not the one on the handover record.
     if (result === 'succeeded') {
+      // And the wider door: never hand the card over at all, just claim and
+      // settle. A card only reaches Done through a review, so `done` requires
+      // the label that says one is pending. `fail` is not gated — failing is
+      // not claiming completion.
+      if (!tagNames(task).includes(REVIEW_TAG)) {
+        throw new BoardError(
+          'conflict',
+          `task ${taskId} is not awaiting review; hand it over first (tag ${taskId} --add ${REVIEW_TAG} --remove ${DEFAULT_TAG} --release), then let another identity settle it`,
+        )
+      }
       const handover = readTimeline(stateDir, ledgerId, taskId)
       if (typeof handover?.handedBy === 'string' && handover.handedBy === requireAgent()) {
         throw new BoardError(
@@ -674,7 +684,13 @@ export function createOps(options) {
       // records WHO handed it over — without it the ledger only ever knows who
       // closed a card, never who produced it, and `review` could not tell the
       // worker from an outsider.
-      if (names.includes(REVIEW_TAG)) stamp(taskId, { finishedAt: now(), handedBy: requireAgent() })
+      //
+      // Only the transition INTO review counts. Re-stamping on every later tag
+      // would overwrite the producer with whoever touches the card next — a
+      // reviewer adding a label would erase the worker's name and then be
+      // blocked by the very check that protects it.
+      const hadReview = current.some((entry) => (typeof entry === 'string' ? entry : entry.name) === REVIEW_TAG)
+      if (!hadReview && names.includes(REVIEW_TAG)) stamp(taskId, { finishedAt: now(), handedBy: requireAgent() })
       return {
         ledgerId,
         task: result,
@@ -770,16 +786,28 @@ export function createOps(options) {
         appendReview(stateDir, ledgerId, taskId, entry)
         settled = await ops.done(taskId, { summary: cleanNote === '' ? `review passed: ${taskId}` : cleanNote })
       } catch (error) {
-        // Hand the card back the way we found it (To Do, still labelled `review`)
-        // rather than leave a running card whose claim nobody owns. Say which of
-        // the two happened: "settlement failed" alone does not tell the reviewer
-        // whether the card is safe to retry.
-        const returned = await ops.release(taskId, { reason: 'review failed; card returned to To Do' })
-          .then(() => true, () => false)
-        const detail = returned
-          ? `the card is back in To Do and still labelled ${REVIEW_TAG}`
-          : `releasing the claim failed too — the card is still running, and reap will recover it`
-        throw error instanceof BoardError ? new BoardError(error.code, `${error.message} — ${detail}`) : error
+        // Two very different things look like a failed settle: a lost reply
+        // after the board already recorded it, and a real failure. Look at the
+        // card before apologising — and never `release` blindly, because
+        // `release` moves the card back to To Do, which on an already-settled
+        // card means dragging it out of Done and losing the fact.
+        const current = await state().then(
+          (snapshot) => findTask(snapshot, taskId),
+          () => null,
+        )
+        if (current !== null && current.status === 'done') {
+          // The settle landed; only the reply was lost. Carry on to the label
+          // cleanup and report success — nothing is broken.
+          settled = { task: current, times: cardTimes(current, readTimeline(stateDir, ledgerId, taskId)) }
+        } else {
+          const returned = current !== null && current.status === 'running'
+            ? await ops.release(taskId, { reason: 'review failed; card returned to To Do' }).then(() => true, () => false)
+            : false
+          const detail = returned
+            ? `the card is back in To Do and still labelled ${REVIEW_TAG}, so it can be retried`
+            : `the card is ${current?.status ?? 'in an unknown state'}; check it with get before retrying`
+          throw error instanceof BoardError ? new BoardError(error.code, `${error.message} — ${detail}`) : error
+        }
       }
       let cleared
       try {

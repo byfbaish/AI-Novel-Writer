@@ -132,7 +132,9 @@ test('heartbeat yields when the Host starts its own run', async () => {
 })
 
 test('done records an external outcome, settles the card and drops the claim', async () => {
-  const { board, stateDir, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  // Pre-labelled `review`: `done` refuses a card nobody handed over, and this
+  // test is about the write itself, not about the handover path.
+  const { board, stateDir, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }, { name: 'review' }] }])
   await ops.next({ tag: 'external' })
   const result = await ops.done('t1', { summary: 'fixed the thing', report: 'docs/report.md' })
   assert.equal(result.task.status, 'done')
@@ -225,7 +227,7 @@ test('expectedLedgerId pins the board resolved before the first call', async () 
 })
 
 test('done recovers a lost response when the board already recorded our outcome', async () => {
-  const { board, stateDir, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  const { board, stateDir, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }, { name: 'review' }] }])
   await ops.next({ tag: 'external' })
   const requestId = 'lost-response-1'
   updateClaim(stateDir, board.ledgerId, 't1', { outcomeRequestId: requestId })
@@ -467,6 +469,33 @@ test('the agent that handed a card over cannot settle it afterwards', async () =
   // The reviewer can still close it — a different identity on the same record.
   await ops.release('t1', { reason: 'handing back so a reviewer can settle it' })
   const reviewed = await reviewerFor(ctx).review('t1', { verdict: 'pass', note: 'checked by someone else' })
+  assert.equal(reviewed.task.status, 'done')
+  await board.close()
+})
+
+test('done refuses a card that was never handed over', async () => {
+  // The widest door: skip the handover entirely and settle straight away.
+  const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  await ops.next({ tag: 'external' })
+  await assert.rejects(
+    () => ops.done('t1', { summary: 'no review needed' }),
+    (error) => error.code === 'conflict' && /not awaiting review/u.test(error.message),
+  )
+  assert.equal(board.snapshot().tasks.find((task) => task.id === 't1').status, 'running', 'the refused settle moves nothing')
+  await board.close()
+})
+
+test('a later tag does not move the handover record to whoever touched the card', async () => {
+  const ctx = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  const { board, ops } = ctx
+  const reviewer = reviewerFor(ctx)
+  await ops.next({ tag: 'external' })
+  await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
+  // A reviewer adding an unrelated label must not become the producer: that
+  // would erase the trail AND let the card slip past its own self-review check.
+  await reviewer.tag('t1', { add: ['I2'] })
+  assert.equal((await ops.get('t1')).times.handedBy, 'test:agent')
+  const reviewed = await reviewer.review('t1', { verdict: 'pass' })
   assert.equal(reviewed.task.status, 'done')
   await board.close()
 })

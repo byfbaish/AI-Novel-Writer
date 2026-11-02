@@ -88,7 +88,8 @@ test('initialize negotiates a version and lists the fifteen task_board tools', a
 })
 
 test('tools/call drives claim, done and the empty-next case', async () => {
-  const board = await startFakeBoard({ tasks: [{ id: 't1', tags: [{ name: 'external' }] }] })
+  // Pre-labelled `review`: `done` refuses a card nobody handed over.
+  const board = await startFakeBoard({ tasks: [{ id: 't1', tags: [{ name: 'external' }, { name: 'review' }] }] })
   const session = startMcp({ stateDir: tempDir(), url: board.url, agent: 'test:agent' })
   await initialize(session)
 
