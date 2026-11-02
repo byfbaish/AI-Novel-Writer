@@ -149,11 +149,31 @@ const openTaskMode = async client => {
   return 'clicked'
 }
 
-/** Locate the bottom-bar 项目 button (no data-testid; matched by label + position). */
-const projectButtonFinder = `() => [...document.querySelectorAll('button')]
-  .filter(el => (el.innerText || '').trim() === '项目')
-  .filter(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.y > 400; })
-  .sort((a, b) => b.getBoundingClientRect().y - a.getBoundingClientRect().y)[0] ?? null`
+/** Locate the bottom-bar 项目 chip.
+ *
+ * Label matching alone is not enough: once a project is selected the chip shows
+ * the **project name** ("AI-writer-wt-1"), not the word 项目. So the anchor is
+ * positional - the first button to the right of the mode chip on the same row -
+ * and the label is only a fallback.
+ */
+const projectButtonFinder = `() => {
+  const mode = document.querySelector(${JSON.stringify('[data-testid="chat_input_action_mode"]')});
+  if (mode) {
+    const row = mode.getBoundingClientRect();
+    const right = [...document.querySelectorAll('button')]
+      .map(el => ({ el, rect: el.getBoundingClientRect() }))
+      .filter(({ el, rect }) => rect.width > 0
+        && Math.abs((rect.y + rect.height / 2) - (row.y + row.height / 2)) < 12
+        && rect.x >= row.right - 1
+        && (el.innerText || '').trim() !== '')
+      .sort((a, b) => a.rect.x - b.rect.x)[0];
+    if (right) return right.el;
+  }
+  return [...document.querySelectorAll('button')]
+    .filter(el => (el.innerText || '').trim() === '项目')
+    .filter(el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.y > 400; })
+    .sort((a, b) => b.getBoundingClientRect().y - a.getBoundingClientRect().y)[0] ?? null;
+}`
 
 /** Open the project menu and read its items. Menu stays open afterwards. */
 const openProjectMenu = async client => {
@@ -181,8 +201,11 @@ const openProjectMenu = async client => {
 /** Select a project by exact (or case-insensitive) name. */
 const selectProject = async (client, name) => {
   const items = await openProjectMenu(client)
+  // Menu rows render as "<name> <absolute path>", so prefix matching is required.
+  const wanted = name.trim().toLowerCase()
   const target = items.find(item => item.name === name)
-    ?? items.find(item => item.name.toLowerCase() === name.toLowerCase())
+    ?? items.find(item => item.name.toLowerCase() === wanted)
+    ?? items.find(item => item.name.toLowerCase().startsWith(`${wanted} `))
   if (!target) {
     throw new Error(`项目「${name}」不在列表里。可选：${items.map(item => item.name).join(' / ')}`)
   }
@@ -227,19 +250,49 @@ const createNewChat = async client => {
   return { method, fresh, before, after }
 }
 
-const focusEditor = client => client.evaluate(js(`
-  const editor = ${EDITOR_JS};
-  if (!editor) return { ok: false, reason: 'editor-missing' };
-  editor.focus();
-  const selection = window.getSelection();
-  if (selection && selection.rangeCount === 0) {
-    const range = document.createRange();
-    range.selectNodeContents(editor);
-    range.collapse(false);
-    selection.addRange(range);
-  }
-  return { ok: document.activeElement === editor || editor.contains(document.activeElement) };
-`))
+/**
+ * Focus the composer.
+ *
+ * `editor.focus()` alone is not reliable: the automation instance is an
+ * **inactive window**, and a DOM focus call does not always move
+ * `document.activeElement` when the window has never been clicked. A real CDP
+ * mouse press at the editor centre does, so it is the second attempt.
+ *
+ * The last resort is "editor exists" - `Input.insertText` routes to the
+ * renderer's focused node regardless of OS window activation, so a failed
+ * focus check must not abort a run that would otherwise work.
+ */
+const focusEditor = async client => {
+  const probe = `(${EDITOR_JS})`
+  const attempt = () => client.evaluate(js(`
+    const editor = ${probe};
+    if (!editor) return { ok: false, reason: 'editor-missing' };
+    editor.focus();
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount === 0) {
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      selection.addRange(range);
+    }
+    const rect = editor.getBoundingClientRect();
+    return {
+      ok: document.activeElement === editor || editor.contains(document.activeElement),
+      x: rect.x + rect.width / 2,
+      y: rect.y + rect.height / 2,
+    };
+  `))
+
+  const first = await attempt()
+  if (!first) return { ok: false, reason: 'editor-missing' }
+  if (first.ok) return { ok: true, method: 'dom-focus' }
+
+  await mouseClick(client, first.x, first.y)
+  await sleep(400)
+  const second = await attempt()
+  if (second?.ok) return { ok: true, method: 'cdp-mouse' }
+  return { ok: Boolean(second), method: 'unverified', degraded: true }
+}
 
 const editorText = client => client.evaluate(js(`
   const editor = ${EDITOR_JS};
@@ -283,6 +336,9 @@ const submit = async client => {
   throw new Error(`发送失败：输入框未清空（尝试 ${attempts.join(' / ')}）`)
 }
 
+/** Placeholder bubbles that stay on screen for many seconds before real text arrives. */
+const PLACEHOLDER = /^(正在思考|思考中|生成中|正在生成|Thinking|Generating)[.…]*$/iu
+
 /** Wait until the last assistant turn stops growing. */
 const waitForReply = async (client, timeoutMs) => {
   const deadline = Date.now() + timeoutMs
@@ -292,7 +348,9 @@ const waitForReply = async (client, timeoutMs) => {
     await sleep(1_500)
     const turns = await client.evaluate(TRANSCRIPT_JS)
     const last = [...turns].reverse().find(turn => turn.role === 'assistant')?.text ?? ''
-    if (last && last === previous) {
+    // A placeholder is *stable* but not *done*: accepting it makes `task` return
+    // "正在思考" as the answer 8 seconds in, long before the agent does anything.
+    if (last && !PLACEHOLDER.test(last.trim()) && last === previous) {
       stableRounds += 1
       if (stableRounds >= 3) return { turns, reply: last, settled: true }
     } else {

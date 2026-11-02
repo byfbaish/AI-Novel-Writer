@@ -130,3 +130,4 @@ git branch -d agent/wt-1 agent/wt-2
 | 「查不到端口」 | 沙箱代理劫持 `127.0.0.1` 回 502；加 `-NoProxy` |
 | 「从工具会话起的 dev 几秒后消失」 | 命令结束会连带回收子进程树；长跑 dev 请在独立终端里起 |
 | 「worktree 里 `pnpm` 报 `This: command not found`」 | 本机 sh 里的 npm shim 坏了；用 `node scripts/worktree-dev.mjs <slot>` 或 PowerShell |
+| **「worktree 里 `check-fast` 报 doc-links 断链，主工作区却是绿的」** | `.workbuddy/` 是 gitignore 的，worktree 里**不存在**。只要有一份入库文档链接到 `.workbuddy/memory/...`（现状：`docs/design/architecture/p11-plan-validity-and-fact-registry-design.md`），新 worktree 就必然断链 ⇒ 从主工作区把那几个文件 `cp` 过去（它们不会进提交），再去掉 `--no-verify` 的诱惑。**根因是「入库文档链到未入库目录」，属于文档债，不是 worktree 债** |

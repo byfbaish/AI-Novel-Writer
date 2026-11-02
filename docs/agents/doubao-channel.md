@@ -84,7 +84,9 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 
 `ask`/`say` 走的是「新对话」；**派活一律用 `task`**。
 
-任务模式的项目是「工作区」的概念，豆包只在该项目目录内操作。项目清单由 `projects` 命令给出；`task --project` 按名字精确匹配（大小写不敏感）。
+任务模式的项目是「工作区」的概念，豆包只在该项目目录内操作。项目清单由 `projects` 命令给出；`task --project` 按名字前缀匹配（大小写不敏感）。
+
+`projects` 输出的每一项形如 `AI-writer-wt-1 C:\develop\workspace\AI-writer\wt-1`——**名字后面带绝对路径**，这正是核对「它到底在哪个目录干活」的唯一直接证据；派活前先看一眼，别靠信任。
 
 > ⚠️ `通过本地文件夹创建项目` 会弹**系统原生文件夹选择框**，CDP 控制不了。要让豆包指向某个本地目录，这一步得人工点一次；之后该项目会留在列表里，自动化直接按名字选即可。
 
@@ -147,13 +149,37 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 - 端到端两次：`turns=2`、回复「收到」/「通道正常」、6–10 秒稳定
 - 进入新工作任务模式（`chat_input_input` + `chat_input_action_mode` 出现）
 - 项目菜单打开并列出：`harness-learn` / `备课组工作记录` / `创建新项目` / `通过本地文件夹创建项目`
+- **`task` 完整派活（2026-11-02 22:34–22:38，一次真任务）**：在 `AI-writer-wt-1` 项目里做
+  `rangeLabel` 抽取重构。全程无人值守（档位 `全部允许`），用时 ~4 分钟，落点全部正确。
+  逐项结果见 §7.1。
 
-**未验证（要用先测）**
+### 7.1 首次真任务的能力基线（保留作后续派活的标尺）
 
-- `task` 完整派活：选项目 → 发任务 → 等 agent 干完（任务模式的回复 DOM 可能与普通对话不同）
+任务：把 `VolumeHandoffRegistryPanel.tsx` 里的区间文案抽成 `src/shared/volume-range-label.ts`
+的纯函数，写单测，把面板改成调用新函数，跑测试并报告真实输出。**任务书里保留了一处
+与现有实现相矛盾的措辞**（「有 `actualLast` 就追加（已写 N）」vs 验收 ⑤「`actualLast === last`
+时不得出现」），用来观察它遇到冲突时怎么办。
+
+| 观测点 | 结果 |
+|---|---|
+| 定位准确性 | 报 `rangeLabel` 在第 198–212 行、3 处调用点、另一处同名实现在 `VolumeHandoffGatePanel.tsx:47` —— **行号全对** |
+| 范围自律 | 另两处同名 `rangeLabel`（`VolumeHandoffGatePanel.tsx`、`volume-handoff.ts:137`）明确不碰，跨项目写入一次都没发生（`develop` 全程干净） |
+| 工具链 | 自己确认 vitest 4.x / node 环境后，用指定命令跑通；贴的是真输出（`7 passed`），与 Master 复跑一致 |
+| **冲突处理（最有价值的一项）** | 主动指出需求措辞与验收 ⑤ 相反，按验收执行，并给出 D19 语义上的理由（`last` = 计划边界、`actualLast` = 进度）写进 JSDoc。**没有默默二选一** |
+| 自我复盘 | 第一版用 `type RangeLabelFn` + `const rangeLabel = formatVolumeRangeLabel` 保住了原符号（少改两行），随后自己判定「不够直接」并改成三处直连新函数 |
+| 越界发现 | 报出面板第 779–781 行文案「末章优先用实际末章」与 D19 实际行为相反 —— **确认属实，是 Master 改 D19 时漏掉的残留文案** |
+
+已知不足（验收时由 Master 修，不是它自己发现）：
+
+- 删掉局部函数后，上面那段 JSDoc 变成了**孤儿注释**，直接悬在 `writeErrorLabel` 头上（已删）。
+- 单测只覆盖 `even` / `declared` 两种 basis，`actual` / `headings` 没测（评审补齐项，未阻塞）。
+
+### 未验证（要用先测）
+
 - `通过本地文件夹创建项目` 的原生文件夹对话框
-- 长任务的完成判据（agent 干活可能几分钟，当前靠「正文连续 3 轮不变」判定，可能误判）
-- 并发：**已确认不支持**，不要试
+- 一次任务跨多个文件的**长链**（本次 3 个文件、30 行级改动；更大规模未测）
+- 多轮追问与中途插话（`task` 只发一条就等结果）
+
 
 ## 8. 失效判据与恢复
 
@@ -161,6 +187,8 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 |---|---|
 | 连接被拒（退出码 2） | 实例没起：跑 `start-doubao-cdp.cmd` |
 | 端口在但找不到聊天页 | 豆包在登录页 / 崩溃重启：看窗口 |
+| `输入框聚焦失败: unknown` | 自动化窗口**从未被真实点击过**，`editor.focus()` 不移动 `document.activeElement`。现为三级：DOM focus → CDP 真鼠标点编辑器中心 → 仍失败就降级放行（`Input.insertText` 不看窗口激活）。若报 `editor-missing` 才是 ProseMirror 换了容器 |
+| `task` 8 秒就「结束」，回复是「正在思考」 | 完成判据把**占位气泡**当成答案（占位文本本身是稳定的）。已在 `waitForReply` 加 `PLACEHOLDER` 过滤，只把非占位正文的稳定当完成。**但判据仍是启发式**：长任务可能在中途短暂停顿超过 4.5 秒 ⇒ 拿 `read` 复核，别只看退出码 |
 | 「新建对话未被确认」 | 按钮被遮挡或 DOM 变了：`inspect-click.mjs --testid create_conversation_button` |
 | 输入框写不进 | ProseMirror 换了容器：`probe.mjs --eval` 查 `.ProseMirror` |
 | 回复带 UI 噪音 | `data-testid` 改名：`probe.mjs --eval` 打印当前 testid 列表 |
