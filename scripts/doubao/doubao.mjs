@@ -12,8 +12,14 @@
  *   node scripts/doubao/doubao.mjs say  "文本" [--new]
  *   node scripts/doubao/doubao.mjs ask  "文本" [--new] [--timeout 240]
  *   node scripts/doubao/doubao.mjs read
+ *   node scripts/doubao/doubao.mjs markers               # 只看队列标记，秒判做到第几项
  *   node scripts/doubao/doubao.mjs projects              # 列出任务模式可选项目
- *   node scripts/doubao/doubao.mjs task "任务" [--project 名称] [--timeout 600]
+ *   node scripts/doubao/doubao.mjs task "任务" [--project 名称] [--timeout 600] [--file 路径] [--no-charter]
+ *
+ * `--file` reads the task body from a file (long queue text, no shell escaping).
+ * `--charter` is ON by default and prepends the "read AGENTS.md first" preamble,
+ * but only when the text does not already mention AGENTS.md - queue task-books
+ * carry their own 必读 section, and duplicating it wastes the agent's context.
  *
  * `task` uses 新工作任务 (agent mode with local file/terminal rights), which is
  * what you want for real work - plain 新对话 has no local access.
@@ -21,6 +27,7 @@
  * Exit codes: 0 ok / 1 failure / 2 not connected
  */
 
+import { readFileSync } from 'node:fs'
 import { DEFAULT_PORT, withChat, sleep } from './cdp.mjs'
 
 const SELECTORS = {
@@ -34,6 +41,8 @@ const SELECTORS = {
   taskComposer: '[data-testid="chat_input_input"]',
   /** Bottom bar mode chip ("本地电脑" / "云电脑"). */
   taskRunMode: '[data-testid="chat_input_action_mode"]',
+  /** Reasoning-effort chip ("自动 高"). Recorded so every dispatch leaves level evidence. */
+  taskModel: '[data-testid="chat_input_action_model"]',
   /** Conversation container. */
   messageList: '[data-testid="message-list"]',
   /** One user turn. */
@@ -299,16 +308,36 @@ const editorText = client => client.evaluate(js(`
   return editor ? editor.innerText.trim() : null;
 `))
 
+/** Whitespace-insensitive compare: ProseMirror turns `\n` into paragraphs, so a
+ * needle containing a newline never matches the rendered innerText verbatim. */
+const compact = value => String(value ?? '').replace(/\s+/g, '')
+
+/** Empty the composer so a retry never concatenates onto leftover text. */
+const clearEditor = async client => {
+  await client.evaluate(js(`
+    const editor = ${EDITOR_JS};
+    if (editor) editor.focus();
+    return Boolean(editor);
+  `))
+  await client.key('a', 'KeyA', 65, 2)
+  await sleep(150)
+  await client.key('Backspace', 'Backspace', 8)
+  await sleep(400)
+  const left = (await editorText(client)) ?? ''
+  if (left.trim()) throw new Error(`清空输入框失败（残留 ${left.length} 字符）`)
+}
+
 /**
  * Type text into ProseMirror.
  * Input.insertText goes through Chromium's real input pipeline, which ProseMirror
  * accepts; execCommand is the fallback when the page holds no focus.
  */
 const typeText = async (client, text) => {
-  const needle = text.slice(0, Math.min(20, text.length))
+  await clearEditor(client)
+  const needle = compact(text).slice(0, 24)
   await client.insertText(text)
   await sleep(300)
-  if ((await editorText(client))?.includes(needle)) return 'cdp-input'
+  if (compact(await editorText(client)).includes(needle)) return 'cdp-input'
   await client.evaluate(js(`
     const editor = ${EDITOR_JS};
     editor.focus();
@@ -316,7 +345,7 @@ const typeText = async (client, text) => {
     return true;
   `))
   await sleep(300)
-  if ((await editorText(client))?.includes(needle)) return 'execCommand'
+  if (compact(await editorText(client)).includes(needle)) return 'execCommand'
   throw new Error('无法把文本写入输入框（ProseMirror 拒绝了两条注入路径）')
 }
 
@@ -363,6 +392,72 @@ const waitForReply = async (client, timeoutMs) => {
   return { turns, reply: last, settled: false }
 }
 
+/**
+ * Charter preamble, injected by machine so "did you read AGENTS.md" stops
+ * depending on the agent's own diligence. Skipped when the task body already
+ * mentions AGENTS.md (queue task-books carry their own 必读 section).
+ */
+const CHARTER_PREAMBLE = `【章程前置 · 机器注入，不可跳过】开工前先读 AGENTS.md（仓库根）与 docs/agents/documentation-charter.md 的 §4 / §6，然后用 3 行复述你必须遵守的红线，复述完再动手。
+
+---
+
+`
+
+const readModelLabel = client => client.evaluate(js(`
+  const el = document.querySelector(${JSON.stringify(SELECTORS.taskModel)});
+  return el ? el.innerText.trim().replace(/\\s+/g, ' ') : null;
+`))
+
+/**
+ * Queue markers. Long unattended runs report progress as `## [T3] DONE ...`,
+ * so completion can be read off the page instead of trusted from an exit code
+ * (the stable-reply heuristic settles early when the agent pauses).
+ *
+ * The `#` prefix is optional on purpose: Doubao renders markdown, so `## [T3]`
+ * arrives in the DOM as a heading whose innerText is bare `[T3] DONE ...`.
+ */
+const MARKER_LINE = /^(?:#{1,4}\s*)?\[(T\d+|QUEUE)\]\s*(DONE|BLOCKED|SKIPPED|EMPTY|EMPTIED|STOPPED)\b\s*(.*)$/i
+const ISO_STAMP = /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)/
+
+const extractMarkers = text => {
+  const lines = String(text ?? '').split('\n')
+  const out = []
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = MARKER_LINE.exec(lines[i].trim())
+    if (!match) continue
+    // The stamp may sit on the marker line or within the next two lines.
+    let timestamp = ISO_STAMP.exec(lines[i])?.[1] ?? null
+    for (let k = 1; k <= 2 && !timestamp && i + k < lines.length; k += 1) {
+      timestamp = ISO_STAMP.exec(lines[i + k])?.[1] ?? null
+    }
+    out.push({
+      marker: match[1].toUpperCase(),
+      state: match[2].toUpperCase(),
+      note: match[3].trim().slice(0, 160),
+      timestamp,
+    })
+  }
+  return out
+}
+
+/**
+ * Everything the agent has produced since the last user turn.
+ *
+ * Task-mode execution logs (「已编辑文件 …」「已执行代码 …」) render outside
+ * `message_text_content`, so the transcript reader alone misses them - and the
+ * queue markers sit at the end of exactly those logs. Anchor on the last user
+ * message and take the page text after it; the transcript turn is the fallback.
+ */
+const LATEST_OUTPUT_JS = `(() => {
+  const turns = (${TRANSCRIPT_FN})();
+  const lastUser = [...turns].reverse().find(turn => turn.role === 'user')?.text ?? '';
+  const anchor = lastUser.trim().slice(0, 30);
+  const body = document.body.innerText;
+  const index = anchor ? body.lastIndexOf(anchor) : -1;
+  if (index < 0) return [...turns].reverse().find(turn => turn.role === 'assistant')?.text ?? '';
+  return body.slice(index + anchor.length);
+})()`
+
 const main = async () => {
   if (command === 'status') {
     return withChat(async client => {
@@ -404,24 +499,74 @@ const main = async () => {
   }
 
   if (command === 'task') {
-    const text = positional[0]
-    if (!text) throw new Error('用法: node scripts/doubao/doubao.mjs task "任务描述" [--project 项目名] [--timeout 600]')
+    const fromFile = option('file', null)
+    if (fromFile && positional[0]) throw new Error('--file 与位置参数不能同时给')
+    let text = positional[0]
+    if (fromFile) {
+      text = readFileSync(fromFile, 'utf8').trim()
+      if (!text) throw new Error(`任务文件是空的: ${fromFile}`)
+    }
+    if (!text) {
+      throw new Error('用法: node scripts/doubao/doubao.mjs task "任务描述" | --file 路径 [--project 项目名] [--timeout 600] [--no-charter]')
+    }
+    // Queue task-books already carry a 必读 section; only inject when absent.
+    const charter = !flag('no-charter') && !/AGENTS\.md/.test(text)
+    const body = charter ? CHARTER_PREAMBLE + text : text
     const projectName = option('project', null)
     const timeoutMs = Number(option('timeout', 600)) * 1_000
     return withChat(async client => {
       const taskMode = await openTaskMode(client)
       const project = projectName ? await selectProject(client, projectName) : null
+      const model = await readModelLabel(client)
       const focus = await focusEditor(client)
       if (!focus?.ok) throw new Error(`输入框聚焦失败: ${focus?.reason ?? 'unknown'}`)
-      const inputPath = await typeText(client, text)
+      const inputPath = await typeText(client, body)
       const submitted = await submit(client)
       const startedAt = Date.now()
-      console.log(JSON.stringify({ port, taskMode, project, inputPath, submitted: submitted.method, text }, null, 2))
+      console.log(JSON.stringify({
+        port,
+        taskMode,
+        project,
+        model,
+        charter,
+        inputPath,
+        submitted: submitted.method,
+        textFrom: fromFile ?? '(inline)',
+        textLength: body.length,
+        preview: text.slice(0, 120).replace(/\s+/g, ' '),
+      }, null, 2))
       const result = await waitForReply(client, timeoutMs)
+      const markers = extractMarkers(await client.evaluate(LATEST_OUTPUT_JS))
       console.log('\n--- reply ---')
       console.log(result.reply || '(未取到回复)')
-      console.log(`\n[turns=${result.turns.length} settled=${result.settled} waited=${Math.round((Date.now() - startedAt) / 1000)}s]`)
+      console.log('\n--- queue markers ---')
+      console.log(JSON.stringify(markers, null, 1))
+      console.log(`\n[turns=${result.turns.length} settled=${result.settled} waited=${Math.round((Date.now() - startedAt) / 1000)}s model=${model ?? '?'}]`)
       if (!result.settled) process.exitCode = 1
+    }, port)
+  }
+
+  if (command === 'markers') {
+    return withChat(async client => {
+      const turns = await client.evaluate(TRANSCRIPT_JS)
+      const markers = extractMarkers(await client.evaluate(LATEST_OUTPUT_JS))
+      const done = markers.filter(item => item.state === 'DONE').map(item => item.marker)
+      const blocked = markers.filter(item => item.state === 'BLOCKED')
+      const stamps = markers.filter(item => item.timestamp)
+      console.log(JSON.stringify({
+        port,
+        turnCount: turns.length,
+        model: await readModelLabel(client),
+        done,
+        blocked: blocked.map(item => `${item.marker}: ${item.note}`),
+        queueEmpty: markers.some(item => item.marker === 'QUEUE'),
+        lastMarker: markers.at(-1) ?? null,
+        lastTimestamp: stamps.at(-1)?.timestamp ?? null,
+        elapsedFromFirstMarker: stamps.length > 1
+          ? Math.round((Date.parse(stamps.at(-1).timestamp) - Date.parse(stamps[0].timestamp)) / 1000)
+          : null,
+        markers,
+      }, null, 2))
     }, port)
   }
 

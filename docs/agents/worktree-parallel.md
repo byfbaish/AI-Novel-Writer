@@ -109,6 +109,7 @@ Invoke-RestMethod "http://127.0.0.1:9223/json/version" -NoProxy   # => Chrome/�
 2. Master 在主工作区 `git merge --no-ff agent/wt-1`，冲突只由 Master 解；
 3. worktree 内**不** rebase 别人的分支、不 `push --force`；
 4. 合并后先 `node scripts/check-fast.mjs`，再按需跑全量测试。
+5. **合并完把 agent 分支拉回主线**：`git -C ../wt-1 reset --hard <主线 HEAD>`。不拉回的话，下一轮 worktree 从旧 commit 出发，第一次合并就会带回一堆「已经合过的差异」，看起来像冲突其实是脏基线。注意 `develop` 是**目录名**，主线分支叫 `exp/resource-ledger` —— `reset --hard develop` 会报 `ambiguous argument`，用 `$(git -C <主工作区> rev-parse HEAD)` 取 hash 更稳。
 
 ## 9. 回收
 
