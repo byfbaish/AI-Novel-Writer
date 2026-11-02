@@ -39,6 +39,11 @@ export default defineConfig(({ command }) => {
     main: {
       // Shortcut of `build.lib.entry`.
       entry: 'electron/main.ts',
+      // 仅 `vite serve` 生效：设置 AI_NOVEL_UI_DEBUG_PORT 时把 CDP 端口透传给
+      // Electron，供浏览器自动化在真实界面上操作。未设置时行为完全不变。
+      onstart: process.env.AI_NOVEL_UI_DEBUG_PORT
+        ? ({ startup }) => startup(['.', '--no-sandbox', `--remote-debugging-port=${process.env.AI_NOVEL_UI_DEBUG_PORT}`])
+        : undefined,
       vite: {
         build: {
           // 强制输出 CommonJS，保证 better-sqlite3 等 native 模块能正常加载
