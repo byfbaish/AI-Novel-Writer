@@ -156,7 +156,10 @@ function renderNext(result) {
   if (Array.isArray(result.hints) && result.hints.length > 0) {
     lines.push('', '--- tag hints ---', ...result.hints)
   }
-  lines.push('', `# when done: dsh-task-board done ${result.task.id} --summary "<one-line result>"`)
+  // `done` would now be refused (the card was never handed over), so printing it
+  // here would send the worker straight into an error. The handover is the exit.
+  lines.push('', '# when done, hand it over — do not settle it yourself:')
+  lines.push(`#   dsh-task-board tag ${result.task.id} --add review --remove external --release`)
   return lines
 }
 

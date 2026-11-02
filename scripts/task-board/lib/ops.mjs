@@ -281,29 +281,6 @@ export function createOps(options) {
     }
     const snapshot = await state()
     const task = findTask(snapshot, taskId)
-    // Closing a card you handed over is the same self-review through a different
-    // door: claim your own card back, then settle it, and the review label never
-    // gets looked at. `review --pass` is untouched — it runs as the reviewer,
-    // whose id is by definition not the one on the handover record.
-    if (result === 'succeeded') {
-      // And the wider door: never hand the card over at all, just claim and
-      // settle. A card only reaches Done through a review, so `done` requires
-      // the label that says one is pending. `fail` is not gated — failing is
-      // not claiming completion.
-      if (!tagNames(task).includes(REVIEW_TAG)) {
-        throw new BoardError(
-          'conflict',
-          `task ${taskId} is not awaiting review; hand it over first (tag ${taskId} --add ${REVIEW_TAG} --remove ${DEFAULT_TAG} --release), then let another identity settle it`,
-        )
-      }
-      const handover = readTimeline(stateDir, ledgerId, taskId)
-      if (typeof handover?.handedBy === 'string' && handover.handedBy === requireAgent()) {
-        throw new BoardError(
-          'conflict',
-          `${handover.handedBy} handed ${taskId} over for review, so it cannot settle it afterwards; the verdict has to come from another --agent (release the card back to To Do first)`,
-        )
-      }
-    }
     const claim = await readOwnClaim(taskId)
     if (claim === null) {
       throw new BoardError('conflict', `no local claim for ${taskId}; if the process crashed, wait for reap to recover the card and claim it again`)
@@ -326,6 +303,35 @@ export function createOps(options) {
         return { snapshot, task, requestId: claim.outcomeRequestId, recovered: true, ledgerId }
       }
       throw new BoardError('conflict', `task ${taskId} is ${task.status}, not running; the Host or a human already settled it`)
+    }
+    // The review gates come LAST, after "is this card even ours to settle".
+    // Run them first and a worker whose card the Host took over gets told to
+    // "hand it over first" — following that advice would leave a running card
+    // wearing the review label with no handover record: a half-state nobody
+    // can review. Ownership problems must be reported as ownership problems.
+    if (result === 'succeeded') {
+      // Closing a card you handed over is the same self-review through a
+      // different door: claim your own card back, then settle it, and the review
+      // label never gets looked at. `review --pass` is untouched — it runs as the
+      // reviewer, whose id is by definition not the one on the handover record.
+      //
+      // And the wider door: never hand the card over at all, just claim and
+      // settle. A card only reaches Done through a review, so `done` requires
+      // the label that says one is pending. `fail` is not gated — failing is
+      // not claiming completion.
+      if (!tagNames(task).includes(REVIEW_TAG)) {
+        throw new BoardError(
+          'conflict',
+          `task ${taskId} is not awaiting review; hand it over first (tag ${taskId} --add ${REVIEW_TAG} --remove ${DEFAULT_TAG} --release), then let another identity settle it`,
+        )
+      }
+      const handover = readTimeline(stateDir, ledgerId, taskId)
+      if (typeof handover?.handedBy === 'string' && handover.handedBy === requireAgent()) {
+        throw new BoardError(
+          'conflict',
+          `${handover.handedBy} handed ${taskId} over for review, so it cannot settle it afterwards; the verdict has to come from another --agent (release the card back to To Do first)`,
+        )
+      }
     }
     const requestId = claim.outcomeRequestId ?? randomId()
     await updateClaim(stateDir, ledgerId, taskId, { outcomeRequestId: requestId })
@@ -796,8 +802,20 @@ export function createOps(options) {
           () => null,
         )
         if (current !== null && current.status === 'done') {
-          // The settle landed; only the reply was lost. Carry on to the label
-          // cleanup and report success — nothing is broken.
+          // The settle landed; only the reply was lost. But "in Done" is not the
+          // same as "our settle landed": the Host or a human may have closed the
+          // card while the review ran, and reporting that as our pass would
+          // fabricate a verdict. Only our own outcome counts — and the claim we
+          // took has to go either way, because nothing else will drop it.
+          const last = (current.executions ?? []).at(-1)
+          const ours = last !== undefined && last.external === true && last.initiatedBy === requireAgent()
+          await dropClaim(taskId)
+          if (!ours) {
+            throw new BoardError(
+              'conflict',
+              `task ${taskId} was settled by ${last?.initiatedBy ?? 'someone else'} while the review ran; this verdict was not applied. The card keeps its ${REVIEW_TAG} label in Done — clear it with: tag ${taskId} --remove ${REVIEW_TAG}`,
+            )
+          }
           settled = { task: current, times: cardTimes(current, readTimeline(stateDir, ledgerId, taskId)) }
         } else {
           const returned = current !== null && current.status === 'running'

@@ -485,6 +485,24 @@ test('done refuses a card that was never handed over', async () => {
   await board.close()
 })
 
+test('a card the Host took over says so, not "hand it over first"', async () => {
+  // Ownership problems must be reported as ownership problems. If the review
+  // gate ran first, the worker would be told to hand over a card it no longer
+  // owns, and following that advice leaves a running card wearing `review`
+  // with no handover record — a half-state nobody can review.
+  const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  await ops.next({ tag: 'external' })
+  // The Host starts its own run on the card we already hold: an open execution
+  // appears. (Once that exists the board refuses to move the card at all, so it
+  // has to be injected after the claim rather than set up front.)
+  board.tasks.find((task) => task.id === 't1').executions.push({ external: false, startedAt: 1 })
+  await assert.rejects(
+    () => ops.done('t1', { summary: 'x' }),
+    (error) => error.code === 'conflict' && /Host took over/u.test(error.message),
+  )
+  await board.close()
+})
+
 test('a later tag does not move the handover record to whoever touched the card', async () => {
   const ctx = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
   const { board, ops } = ctx
