@@ -304,6 +304,62 @@ test('create refuses bad input before any board write', async () => {
   await board.close()
 })
 
+test('update rewrites the text of a card that has not run', async () => {
+  const { board, ops } = await setup([{ id: 't1', status: 'todo', prompt: 'old', description: 'old d' }])
+  const result = await ops.update('t1', { prompt: 'new prompt', description: 'new d' })
+  assert.equal(result.changed, true)
+  assert.deepEqual(result.changedFields.sort(), ['description', 'prompt'])
+  const stored = board.snapshot().tasks[0]
+  assert.equal(stored.prompt, 'new prompt')
+  assert.equal(stored.description, 'new d')
+  assert.equal(stored.title, 'task t1', 'an omitted field keeps its value')
+  await board.close()
+})
+
+test('update refuses a card that already ran or is being worked', async () => {
+  const { board, ops } = await setup([
+    { id: 'ran', status: 'todo', prompt: 'p', executions: [{ startedAt: 1, endedAt: 2, result: 'succeeded' }] },
+    { id: 'busy', status: 'todo', prompt: 'p', tags: [{ name: 'external' }] },
+    { id: 'fresh', status: 'todo', prompt: 'p' },
+  ])
+  await assert.rejects(
+    () => ops.update('ran', { prompt: 'rewritten' }),
+    (error) => error.code === 'conflict' && /execution record/u.test(error.message),
+  )
+  // A pull-model claim writes no execution record, so `running` is the only
+  // signal that an external agent holds the card.
+  await ops.claim('busy')
+  await assert.rejects(
+    () => ops.update('busy', { prompt: 'rewritten' }),
+    (error) => error.code === 'conflict' && /being worked/u.test(error.message),
+  )
+  const revisionBefore = board.snapshot().revision
+  const noop = await ops.update('fresh', { prompt: 'p' })
+  assert.equal(noop.changed, false)
+  assert.equal(board.snapshot().revision, revisionBefore, 'a no-op must not bump the ledger')
+  await assert.rejects(() => ops.update('fresh', {}), (error) => error.code === 'usage')
+  await assert.rejects(() => ops.update('fresh', { prompt: '   ' }), (error) => error.code === 'usage')
+  await board.close()
+})
+
+test('handing a card over for review stamps finishedAt, and done stamps closable', async () => {
+  const at = 1_800_000_000_000
+  const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }], { now: () => at })
+  await ops.next({ tag: 'external' })
+  const handedOver = await ops.tag('t1', { add: ['待review'], remove: ['external'], release: true })
+  assert.equal(handedOver.times.finishedAt, at)
+  assert.equal(handedOver.times.closableAt, undefined, 'not closable until the review passes')
+  await ops.claim('t1')
+  const closed = await ops.done('t1', { summary: 'reviewed' })
+  assert.equal(closed.task.status, 'done')
+  assert.equal(closed.times.closableAt, at)
+  const fetched = await ops.get('t1')
+  assert.equal(fetched.times.finishedAt, at)
+  assert.equal(typeof fetched.times.createdAt, 'number')
+  assert.equal(typeof fetched.times.updatedAt, 'number')
+  await board.close()
+})
+
 test('create publishes a subtask that keeps its parentId', async () => {
   const { board, ops } = await setup([{ id: 'parent', status: 'todo' }])
   const child = await ops.create({ title: 'child', prompt: 'P', parentId: 'parent' })

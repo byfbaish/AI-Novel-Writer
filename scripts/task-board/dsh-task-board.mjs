@@ -18,6 +18,7 @@ const HELP = `Usage: dsh-task-board <command> [options]
 Commands:
   next                 claim the next task tagged "external" and print it
   create               publish a new card (title/description/prompt are required)
+  update <taskId>      rewrite a card's own text (before it has run)
   claim <taskId>       claim a specific task
   heartbeat <taskId>   extend the lease while you work
   done <taskId>        record a succeeded external outcome
@@ -37,11 +38,10 @@ Options:
   --add <name>         create/tag: attach this label (repeatable)
   --remove <name>      tag: remove a label (repeatable)
   --release            tag: also move the card back to To Do
-  --title <text>       create: card title
-  --description <text> create: card description (default empty)
-  --prompt <text>      create: the task text the worker will read
-  --prompt-file <path> create: read the task text from a file (instead of --prompt)
-  --parent <taskId>    create: publish this card as a subtask (inherits its labels)
+  --title <text>       create/update: card title
+  --description <text> create/update: card description (create defaults to empty)
+  --prompt <text>      create/update: the task text the worker will read
+  --prompt-file <path> create/update: read the task text from a file  --parent <taskId>    create: publish this card as a subtask (inherits its labels)
   --id <taskId>        create: pin the card id (needed when the prompt names it)
   --lease <duration>   claim lease, e.g. 60m, 90s, 2h (default 60m)
   --summary <text>     one-line result stored on the execution record (required for done/fail)
@@ -115,6 +115,34 @@ function renderTask(task) {
   return lines
 }
 
+/** Local clock, minute precision: a card's timestamps are read by a human. */
+function when(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  const date = new Date(value)
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+/**
+ * The four moments one card reports, in the order they happen: created,
+ * updated, finished (worker handed it over), closable (review passed).
+ * Missing stamps are omitted rather than printed as a dash, so "not yet
+ * finished" and "finished at an unknown time" never look the same.
+ */
+function renderTimes(times) {
+  if (times === undefined) return []
+  const parts = [
+    ['created', times.createdAt],
+    ['updated', times.updatedAt],
+    ['finished', times.finishedAt],
+    ['closable', times.closableAt],
+  ]
+    .map(([label, value]) => [label, when(value)])
+    .filter(([, text]) => text !== undefined)
+    .map(([label, text]) => `${label} ${text}`)
+  return parts.length === 0 ? [] : [`times: ${parts.join(' · ')}`]
+}
+
 function renderNext(result) {
   const lines = [`# claimed ${result.task.id}`, ...renderTask(result.task)]
   if (Array.isArray(result.hints) && result.hints.length > 0) {
@@ -128,7 +156,9 @@ function renderList(result) {
   if (result.tasks.length === 0) return ['no tasks matched']
   const lines = [`ledger ${result.ledgerId} · revision ${result.revision}`, '']
   for (const task of result.tasks) {
-    lines.push(`${String(task.status).padEnd(8)} ${task.id.slice(0, 8)}  ${task.title ?? ''}`)
+    const times = result.times?.[task.id]
+    const updated = when(times?.updatedAt) ?? ''
+    lines.push(`${String(task.status).padEnd(8)} ${task.id.slice(0, 8)}  ${updated.padEnd(16)} ${task.title ?? ''}`)
   }
   return lines
 }
@@ -209,6 +239,25 @@ async function main(argv) {
       })
       break
     }
+    case 'update': {
+      if (typeof flags.prompt === 'string' && typeof flags['prompt-file'] === 'string') {
+        throw new BoardError('usage', 'use either --prompt or --prompt-file, not both')
+      }
+      let prompt = flags.prompt
+      if (typeof flags['prompt-file'] === 'string') {
+        try {
+          prompt = fs.readFileSync(flags['prompt-file'], 'utf8')
+        } catch (error) {
+          throw new BoardError('usage', `cannot read --prompt-file ${flags['prompt-file']}: ${error.message}`)
+        }
+      }
+      payload = await ops.update(taskId, {
+        title: flags.title,
+        description: flags.description,
+        prompt,
+      })
+      break
+    }
     case 'next':
       payload = await ops.next({
         tag: typeof flags.tag === 'string' ? flags.tag : 'external',
@@ -264,11 +313,20 @@ async function main(argv) {
       if (Array.isArray(payload.inheritedTags) && payload.inheritedTags.length > 0) {
         lines.push(`inherited: ${payload.inheritedTags.join(', ')}`)
       }
+      lines.push(...renderTimes(payload.times))
       printLines(lines)
       break
     }
+    case 'update': {
+      if (payload.changed === false) {
+        printLines([`unchanged ${payload.task.id}: the given fields already hold those values`])
+        break
+      }
+      printLines([`updated ${payload.task.id}: ${payload.changedFields.join(', ')}`, ...renderTimes(payload.times)])
+      break
+    }
     case 'get':
-      printLines(renderTask(payload.task))
+      printLines([...renderTask(payload.task), '', ...renderTimes(payload.times)])
       break
     case 'next':
     case 'claim':
@@ -279,7 +337,7 @@ async function main(argv) {
       break
     case 'done':
     case 'fail':
-      printLines([`recorded ${payload.task.status} for ${payload.task.id}`])
+      printLines([`recorded ${payload.task.status} for ${payload.task.id}`, ...renderTimes(payload.times)])
       break
     case 'release':
       printLines([`released ${payload.taskId}`])
@@ -287,7 +345,10 @@ async function main(argv) {
     case 'tag': {
       const names = payload.tags.map((entry) => (typeof entry === 'string' ? entry : entry.name))
       const suffix = `${payload.released ? ' (released to To Do)' : ''}${payload.changed ? '' : ' (unchanged)'}`
-      printLines([`tagged ${payload.task.id}: ${names.length === 0 ? '(no tags)' : names.join(', ')}${suffix}`])
+      printLines([
+        `tagged ${payload.task.id}: ${names.length === 0 ? '(no tags)' : names.join(', ')}${suffix}`,
+        ...renderTimes(payload.times),
+      ])
       break
     }
     case 'reap':

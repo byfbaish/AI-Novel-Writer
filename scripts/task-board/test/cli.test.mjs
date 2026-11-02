@@ -229,6 +229,21 @@ test('create --parent prints the labels it inherited in text mode', async () => 
   await board.close()
 })
 
+test('update rewrites the card text and prints its timestamps', async () => {
+  const board = await startFakeBoard({ tasks: [{ id: 't1', status: 'todo', prompt: 'old' }] })
+  const stateDir = tempDir()
+  const env = ['--url', board.url, '--agent', 'test:agent']
+  const updated = await runCli(['update', 't1', '--prompt', 'new', ...env], stateDir)
+  assert.equal(updated.code, 0, updated.stderr)
+  assert.match(updated.stdout, /updated t1: prompt/u)
+  assert.match(updated.stdout, /times: created .+ · updated /u)
+  assert.equal(board.snapshot().tasks[0].prompt, 'new')
+  const again = await runCli(['update', 't1', '--prompt', 'new', ...env], stateDir)
+  assert.equal(again.code, 0, again.stderr)
+  assert.match(again.stdout, /unchanged t1/u)
+  await board.close()
+})
+
 test('an unknown option is a usage error, not a crash', async () => {
   const result = await runCli(['doctor', '--nope'], tempDir())
   assert.equal(result.code, 5)

@@ -12,12 +12,15 @@ import os from 'node:os'
 import { BoardError } from './errors.mjs'
 import { claimableTasks, hasOpenExecution, tagHints, reapPlan } from './select.mjs'
 import { claimsDir, writeClaim, readClaim, deleteClaim, listClaims, updateClaim } from './claims.mjs'
+import { cardTimes, readTimeline, stampTimeline } from './timeline.mjs'
 
 export const DEFAULT_LEASE_MS = 60 * 60 * 1000
 export const EXTERNAL_SUMMARY_MAX_LENGTH = 1000
 /** Mirrors the board's own tag limits (core/tasks.ts). */
 export const TASK_TAG_LIMIT = 8
 export const TAG_NAME_MAX_LENGTH = 32
+/** The label that means "worker handed this back for review" (§5.1 of the manual). */
+export const REVIEW_TAG = '待review'
 
 function normalizeTagName(value) {
   const name = typeof value === 'string' ? value.trim() : ''
@@ -159,6 +162,25 @@ export function createOps(options) {
     const task = snapshot.tasks.find((candidate) => candidate.id === taskId)
     if (task === undefined) throw new BoardError('conflict', `unknown task ${taskId}`)
     return task
+  }
+
+  /** The card plus its four moments; ledger timestamps first, local stamps after. */
+  function withTimes(task) {
+    return { task, times: cardTimes(task, readTimeline(stateDir, ledgerId, task.id)) }
+  }
+
+  /**
+   * Stamp the moments the ledger cannot hold. A card handed back for review
+   * writes `finishedAt`; a card the reviewer settled writes `closedAt`.
+   * Best effort: a stamp is bookkeeping, so a failed write must not undo a
+   * board transition that already landed.
+   */
+  function stamp(taskId, patch) {
+    try {
+      return stampTimeline(stateDir, ledgerId, taskId, patch)
+    } catch {
+      return null
+    }
   }
 
   async function move(taskId, status) {
@@ -314,12 +336,17 @@ export function createOps(options) {
         }
         return true
       })
-      return { ledgerId, revision: snapshot.revision, tasks }
+      // `tasks` keeps its shape (a plain task list); the extra `times` map is
+      // additive so existing consumers of the payload keep working.
+      const times = {}
+      for (const task of tasks) times[task.id] = cardTimes(task, readTimeline(stateDir, ledgerId, task.id))
+      return { ledgerId, revision: snapshot.revision, tasks, times }
     },
 
     async get(taskId) {
       const snapshot = await state()
-      return { ledgerId, revision: snapshot.revision, task: findTask(snapshot, taskId) }
+      const task = findTask(snapshot, taskId)
+      return { ledgerId, revision: snapshot.revision, ...withTimes(task) }
     },
 
     /**
@@ -386,8 +413,66 @@ export function createOps(options) {
         ledgerId,
         id: taskId,
         task: created,
+        times: cardTimes(created, readTimeline(stateDir, ledgerId, taskId)),
         ...(cleanParent === '' ? {} : { parentId: cleanParent, inheritedTags: keep.inherited }),
       }
+    },
+
+    /**
+     * Rewrite a card's own text.
+     *
+     * The board freezes a card's content once it has any execution record:
+     * the text is the record of what was planned, so editing it after a run
+     * would change history under the run. `canEditTaskContent` is exactly
+     * `archivedAt === undefined && executions.length === 0`, and this refuses
+     * the same two cases locally so the reason arrives before the wire.
+     *
+     * Only the keys actually passed are patched (a patch that omits a field
+     * keeps it), and a patch that changes nothing is not sent at all — the
+     * board would otherwise bump `updatedAt` for a no-op.
+     */
+    async update(taskId, { title, description, prompt } = {}) {
+      requireAgent()
+      const fields = { title, description, prompt }
+      const given = Object.entries(fields).filter(([, value]) => value !== undefined)
+      if (given.length === 0) {
+        throw new BoardError('usage', 'update needs at least one of title/description/prompt')
+      }
+      for (const [name, value] of given) {
+        if (typeof value !== 'string') throw new BoardError('usage', `${name} must be a string`)
+      }
+      if (title !== undefined && title.trim() === '') throw new BoardError('usage', 'title cannot be emptied')
+      if (prompt !== undefined && prompt.trim() === '') throw new BoardError('usage', 'prompt cannot be emptied')
+      const snapshot = await state()
+      const task = findTask(snapshot, taskId)
+      if (task.archivedAt != null) throw new BoardError('conflict', `task ${taskId} is archived`)
+      if (Array.isArray(task.executions) && task.executions.length > 0) {
+        throw new BoardError(
+          'conflict',
+          `task ${taskId} already has an execution record; the board freezes a card's text after it has run`,
+        )
+      }
+      // Our own claims leave no execution record (the board only appends one
+      // for a Host run), so a card being worked by an external agent would
+      // otherwise stay editable while someone rewrites its prompt underneath.
+      if (task.status === 'running') {
+        throw new BoardError('conflict', `task ${taskId} is being worked right now (running); release it before rewriting its text`)
+      }
+      const patch = {}
+      for (const [name, value] of given) {
+        if ((task[name] ?? '') !== value) patch[name] = value
+      }
+      const changedNames = Object.keys(patch)
+      if (changedNames.length === 0) {
+        return { ledgerId, changed: false, task, changedFields: [], ...withTimes(task) }
+      }
+      const next = await transport.apply({
+        requestId: randomId(),
+        action: { kind: 'update', taskId, patch },
+        initiator: requireAgent(),
+      })
+      const updated = findTask(next, taskId)
+      return { ledgerId, changed: true, task: updated, changedFields: changedNames, ...withTimes(updated) }
     },
 
     async next({ tag = 'external', lease, autoReap = true } = {}) {
@@ -445,7 +530,10 @@ export function createOps(options) {
     },
 
     async done(taskId, { summary, report } = {}) {
-      return recordOutcome(taskId, { summary, report, result: 'succeeded' })
+      const result = await recordOutcome(taskId, { summary, report, result: 'succeeded' })
+      // The reviewer's settlement is the moment the card became closable.
+      stamp(taskId, { closedAt: now() })
+      return { ...result, times: cardTimes(result.task, readTimeline(stateDir, ledgerId, taskId)) }
     },
 
     async fail(taskId, { summary, report } = {}) {
@@ -513,7 +601,19 @@ export function createOps(options) {
         released = true
       }
       const result = findTask(latest, taskId)
-      return { ledgerId, task: result, tags: result.tags ?? [], changed, released }
+      const names = (result.tags ?? []).map((entry) => (typeof entry === 'string' ? entry : entry.name))
+      // Carrying the review label IS the handover: that is the worker's finish
+      // moment, and the only place it can be recorded (a `done` here would
+      // settle the card into Done and skip the review entirely).
+      if (names.includes(REVIEW_TAG)) stamp(taskId, { finishedAt: now() })
+      return {
+        ledgerId,
+        task: result,
+        tags: result.tags ?? [],
+        changed,
+        released,
+        times: cardTimes(result, readTimeline(stateDir, ledgerId, taskId)),
+      }
     },
 
     async mine() {

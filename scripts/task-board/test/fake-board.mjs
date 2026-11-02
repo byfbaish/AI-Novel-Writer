@@ -147,6 +147,15 @@ export async function startFakeBoard(options = {}) {
         if (task === undefined) return refuse('unknown task')
         if (task.archivedAt !== undefined) return refuse('task is archived')
         const patch = action.patch ?? {}
+        // Mirrors canEditTaskContent: the text is frozen once anything ran.
+        const contentKeys = ['title', 'description', 'prompt'].filter((key) => key in patch)
+        if (contentKeys.length > 0) {
+          if (task.executions.length > 0) return refuse('task has already been executed')
+          for (const key of contentKeys) {
+            if (typeof patch[key] !== 'string') return refuse('invalid-action')
+            task[key] = patch[key]
+          }
+        }
         if ('tags' in patch) {
           if (patch.tags === null) {
             delete task.tags

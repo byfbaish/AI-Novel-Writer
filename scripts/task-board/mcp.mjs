@@ -59,6 +59,21 @@ const TOOLS = [
     },
   },
   {
+    name: 'task_board_update',
+    description: 'Rewrite a card\'s own text (title / description / prompt). The board freezes a card\'s text once it has any execution record — use this only on cards that have not run. A patch that changes nothing is not sent, so updatedAt does not move for a no-op.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string' },
+        title: { type: 'string' },
+        description: { type: 'string' },
+        prompt: { type: 'string', description: 'the task text a worker reads; rewriting it does not re-tag or re-schedule anything' },
+      },
+      required: ['taskId'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'task_board_next',
     description: 'Claim the next card tagged external (oldest first) and return its prompt. Call this before doing any work. Returns {claimed:false} when there is nothing to do.',
     inputSchema: {
@@ -223,6 +238,8 @@ async function callToolOnce(name, args) {
         parentId: args.parentId,
         id: args.id,
       })
+    case 'task_board_update':
+      return ops.update(args.taskId, { title: args.title, description: args.description, prompt: args.prompt })
     case 'task_board_next':
       try {
         return await ops.next({ tag: args.tag ?? 'external', lease: args.lease, autoReap: args.autoReap !== false })

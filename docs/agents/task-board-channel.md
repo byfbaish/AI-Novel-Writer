@@ -183,7 +183,53 @@ MCP 对应 `task_board_create`（`title` / `prompt` 必填，`description` / `ta
   - **继承是建卡那一刻的快照**：之后改父卡标签不会回头改子卡（要跟进就 `tag` 逐张改）。
   - 因此**别再给子卡重复写 `--add external`**（写了也无害，同名去重）；反过来，父卡若已挂 `待review`，子卡会带着这个标签出生 —— 建子卡前先确认父卡身上没有状态类标签。
 - **卡一律落 To Do**；建完**不要点 Run**（理由同 §4）。
-- **子卡的深度与环由看板拒**（插件 `core/subtask.ts`），本地只查「父卡存在 + 未归档」。约定上**只用两层**（父卡 + 一层子卡），不往子卡上再挂子卡。
+- **每张卡必须带一个重要度标签**（§4.2）。
+- **子卡的深度与环由看板拒**（插件 `core/subtask.ts`）。部署默认只允许 **1 层**子卡（`DEFAULT_SUBTASK_DEPTH=1`，本机未改配置 ⇒ 实际就是两层：根 + 一层），可配到 `SUBTASK_DEPTH_MAX=3`（最多四层）。**树深度与派发深度是两件事，契约仍待作者裁定**，见 §7。
+
+### 4.2 重要度标签（2026-11-03 作者定，硬规矩）
+
+**每张卡恰好一个 `I` 标签**，取值只有三档：
+
+| 标签 | 含义 | 判据（问自己） |
+|---|---|---|
+| `I1` | 最高的那一档 | 不做它，别的卡就卡住／主线今天就该往前走它 |
+| `I2` | 该做的实质项 | 范围清楚、条件齐、排得上队，只差工时 |
+| `I3` | 备选／条件未到 | 等作者裁定、等前置落地、或纯粹留痕 |
+
+- **只用一个字母 I**，不用 `P0/P1`：本项目的 `P1-1`/`P2-3`/`P11-1` 是**设计稿的期号**，卡上再挂 `P1` 必然被读混。
+- **`I3` 不等于"不做"**：留痕卡（评估过决定不做、已拍板延后）也是 `I3`，另配一个 `留痕` 标签自解释。
+- **建卡时就打**，不要等复查；复查时按现状改档是正常操作（改档用 `tag --add/--remove`）。
+- **重要度不进 `next` 的排序**：`next` 仍按 `createdAt` 先进先出，标签只是给人看、给筛选用的。要让某张卡先做，用 `--tag I1` 取，别指望它自己冒头。
+
+### 4.3 一张卡的四个时刻（2026-11-03 作者定）
+
+| 时刻 | 谁写 | 存在哪 |
+|---|---|---|
+| `createdAt` 创建 | 看板 | 台账 `task.createdAt` |
+| `updatedAt` 更新 | 看板 | 台账 `task.updatedAt`（任何一次写入都会刷新） |
+| `finishedAt` 执行者完成 | 壳（我们） | `<stateDir>/boards/<ledgerId>/timeline/<taskId>.json` |
+| `closableAt` 可 close（复核确认、移进完成栏） | 壳／看板 | 复核者 `done` 时壳写 `closedAt`；已进 Done 的卡回落到最后一条执行记录的 `endedAt` |
+
+**为什么要自己存 `finishedAt`**：交 review 那条路**不写执行记录**（写了就等于自结算，§5.1 禁止），所以台账里根本没有"这张卡什么时候干完的"。壳在 `tag` 结果带上 `待review` 的那一刻写时间戳，这是唯一能记下来的地方。
+
+**看板侧的两条硬事实**（不在我们手里，别绕）：
+- 卡只要有**任一执行记录**，正文（title/description/prompt）就冻结（`canEditTaskContent = 未归档 && executions.length === 0`）。
+- 我们的 `claim` **不产生执行记录**（只有 Host 跑才有），所以「正在被外部 agent 干」只能靠 `status === 'running'` 判断 —— `update` 因此同时拒 `running` 和"已有执行记录"两种情况。
+
+**怎么看**：`get <taskId>` 打印 `times: created … · updated … · finished … · closable …`（没有的时刻直接不显示，不打印空档）；`list` 每行带 `updated`。JSON 里是 `get` 的 `times` 字段、`list` 的 `times[taskId]`。
+
+### 4.4 改过期正文（`update`，2026-11-03 新增）
+
+复查会发现卡里写的路径／前提过期了。`tag` 只改标签，改正文要用 `update`：
+
+```bash
+node <abs>/dsh-task-board.mjs update <taskId> --prompt-file ./fixed-prompt.md --agent workbuddy
+node <abs>/dsh-task-board.mjs update <taskId> --title "新标题" --description "新描述"
+```
+
+- 只发改动过的字段；**一个字段都没变就不发请求**（返回 `changed:false`，看板 `revision` 不动）——否则一次"我只是看看"会把 `updatedAt` 顶掉。
+- 已跑过的卡、正在 `running` 的卡**拒改**（exit 3），理由见 §4.3。
+- MCP 对应 `task_board_update`。
 
 **外部 agent 不装我们的壳也能建**：看板只比对 `Origin` 的 host 与 `Host`，没有令牌。实测（2026-11-03）：零项目 import，用裸 `node:http` 向 `/api/task-board/action` POST 一条**字段不全**的 `create` → **HTTP 400 `invalid-action`**（字段校验失败），**不是 403** ⇒ 门是开的。最小载荷：
 
@@ -211,7 +257,7 @@ node .../dsh-task-board.mjs heartbeat <taskId>
 node .../dsh-task-board.mjs tag <taskId> --add 待review --remove external --release
 ```
 
-MCP 下对应工具：`task_board_next / task_board_heartbeat / task_board_done / task_board_fail / task_board_release / task_board_tag / task_board_create / task_board_list / task_board_get / task_board_claim / task_board_mine / task_board_reap / task_board_doctor`。**注意 `task_board_done` 同样会自结算进 Done，受 §5.1 约束；执行者只应 `task_board_tag` + `task_board_release`。**
+MCP 下对应工具：`task_board_next / task_board_heartbeat / task_board_done / task_board_fail / task_board_release / task_board_tag / task_board_create / task_board_update / task_board_list / task_board_get / task_board_claim / task_board_mine / task_board_reap / task_board_doctor`（14 个）。**注意 `task_board_done` 同样会自结算进 Done，受 §5.1 约束；执行者只应 `task_board_tag` + `task_board_release`。**
 
 报告约定：完整四段报告（改动清单 / 执行记录 / 原始输出 / 未做的事）写进任务工作区的 `.dsh-task-board/reports/<taskId>.md`；**不调 `done` 时看板不会存 summary，这份报告就是唯一凭证**。
 
@@ -276,7 +322,8 @@ node scripts/task-board/dsh-task-board.mjs tag <taskId> --add 待review --remove
 - 残余竞态：`done` 的「仍 running」检查与回写之间有毫秒级窗口，Host 恰在此间结算时外部结果仍可能覆盖结论；`reap` 的过期判定也会在写入前再查一次租约，但不能做到真原子。
 - 不读账本文件、不伪造 `dsh-auth-*` cookie、不走 `/connect`。
 - 看板 summary 存在执行记录的 `error` 字段、GUI 按错误样式渲染：成功记录也会显示成一行「错误样式」文字，属插件实现，不是失败。
-- 改标签已由 `tag` 子命令封装（`update` action，整组替换）；交 review 用 §5.1 的一条命令完成「换标签 + release」。执行者仍不得调 `done`（§5.1）；复核者要留 summary 时用自己身份 `claim + done`。
+- **树深度 vs 派发深度（⏸ 待作者裁定，2026-11-03）**：看板侧 `maxSubtaskDepth` 默认 1（根 + 一层）、上限 3（最多四层），`normalizeSubtaskDepth` 会把 4 夹回 3 ⇒ **五层的树在本部署装不下**。而主 agent 梳理一个大模块确实需要 3–5 层，真正派发给外部 agent 的只是最底那一两层。两个概念必须拆开：树深度归看板配置，派发深度应固定在叶子。**未裁定的部分**：① 是否把部署深度调到 3（改 `~/.dsh/profiles/desktop/cordis.patch.yml` 的 `ui-task-board.config.maxSubtaskDepth`，或 GUI 设置卡热改）；② `next`/`claim` 是否要硬拒「有未完成子卡」的容器卡（Host 自己的判据是 `hasOutstandingDescendants`，即 `status !== 'done'`）；③ `待review` 这类**状态标签**是否排除在继承之外。裁定前**默认仍按"子卡只一层、叶子才打 `external`"**操作。
+- 改标签已由 `tag` 子命令封装（`update` action，整组替换）；改正文由 `update` 封装（§4.4）。交 review 用 §5.1 的一条命令完成「换标签 + release」。执行者仍不得调 `done`（§5.1）；复核者要留 summary 时用自己身份 `claim + done`。
 - CP936（`chcp 936`）控制台下，**中文标签的回显**可能乱码（`待review` 显示成 `寰卹eview`）——那是终端解码 stdout 的问题，**不是参数坏了**：实测经 PowerShell 直调 `node`、经 `.cmd` shim、经 `cmd.exe`，argv 均为正确 UTF-8（`e5be85726576696577`）。别因为回显乱码去改标签名或加转义。
 
 ## 8. 验证记录（2026-11-03）
@@ -354,3 +401,14 @@ node scripts/task-board/dsh-task-board.mjs tag <taskId> --add 待review --remove
 | 真看板 | **未跑**：不想再往真看板写第三张废卡。依据是本地 fake board 与看板 `createInput` 同源的入参校验（`fake-board.mjs` 的 create 分支逐条对齐插件） |
 
 仍未验：子卡**深度上限**（插件 `core/subtask.ts` 有 `maxSubtaskDepth`，只在约定层面定为两层到顶，未去撞看板的硬限制）。
+
+**`update` 子命令 + 四个时刻（2026-11-03 02:3x）**
+
+| 检查 | 结果 |
+|---|---|
+| `node --test scripts/task-board/test/*.test.mjs` | **89 / 89**（+4：改正文 / 拒已跑与 running / 交 review 记 `finishedAt`、复核记 `closableAt` / CLI 文本带 `times`） |
+| 真实卡 · 改正文 | 5 张 AC/阶段 2.5 卡改成功（纯替换过期路径与前置说明，正文其余照抄）；`updated` 只报实际变了的字段 |
+| 真看板 · 冻结规则 | 11 张开放卡 `executions` 全为 0 ⇒ 正文可改；`update` 另外**拒 `running`**（我们的 claim 不写执行记录，见 §4.3） |
+| 真看板 · 时间戳 | `tagged … times: created … · updated …`、`done` 后 `closable` 出现；未交 review 的卡不显示 `finished`/`closable`（不打印空档） |
+| 重要度标签 | 11 张开放卡全部打上（`I2`×6 / `I3`×5，两张留痕卡另加 `留痕`）；新增容器卡 `61e4535d` 为 `I1` |
+| 复查发现的缺口 | **板上没有任何 D 系列卡**，而台账写着「作者指定：接下来重点修复 D1–D18」⇒ 补建容器卡 `61e4535d`（缺陷稿 §2 状态列为准）；派发契约待裁定另立 `c063270b` |
