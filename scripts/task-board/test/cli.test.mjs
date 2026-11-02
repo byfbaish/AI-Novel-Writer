@@ -153,12 +153,35 @@ test('tag marks a card for review and releases it in one call', async () => {
   const stateDir = tempDir()
   const env = ['--url', board.url, '--agent', 'test:agent']
   assert.equal((await runCli(['next', ...env], stateDir)).code, 0)
-  const tagged = await runCli(['tag', 't1', '--add', '待review', '--remove', 'external', '--release', '--json', ...env], stateDir)
+  const tagged = await runCli(['tag', 't1', '--add', 'review', '--remove', 'external', '--release', '--json', ...env], stateDir)
   assert.equal(tagged.code, 0, tagged.stderr)
   const payload = JSON.parse(tagged.stdout)
   assert.equal(payload.released, true)
-  assert.deepEqual(payload.tags, [{ name: '待review' }])
+  assert.deepEqual(payload.tags, [{ name: 'review' }])
   assert.equal(board.snapshot().tasks[0].status, 'todo')
+  await board.close()
+})
+
+test('review --pass settles a handed-over card in one call', async () => {
+  const board = await startFakeBoard({ tasks: [{ id: 't1', tags: [{ name: 'external' }] }] })
+  const stateDir = tempDir()
+  const env = ['--url', board.url, '--agent', 'test:agent']
+  assert.equal((await runCli(['next', ...env], stateDir)).code, 0)
+  assert.equal((await runCli(['tag', 't1', '--add', 'review', '--remove', 'external', '--release', ...env], stateDir)).code, 0)
+  const reviewed = await runCli(['review', 't1', '--pass', '--json', ...env], stateDir)
+  assert.equal(reviewed.code, 0, reviewed.stderr)
+  const payload = JSON.parse(reviewed.stdout)
+  assert.equal(payload.verdict, 'pass')
+  assert.equal(payload.task.status, 'done')
+  assert.equal(board.snapshot().tasks[0].status, 'done')
+  await board.close()
+})
+
+test('review needs exactly one verdict flag', async () => {
+  const board = await startFakeBoard({ tasks: [{ id: 't1', tags: [{ name: 'review' }] }] })
+  const result = await runCli(['review', 't1', '--url', board.url, '--agent', 'test:agent'], tempDir())
+  assert.equal(result.code, 5)
+  assert.match(result.stderr, /--pass or --rework/u)
   await board.close()
 })
 

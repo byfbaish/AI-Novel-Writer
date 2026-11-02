@@ -25,6 +25,7 @@ Commands:
   fail <taskId>        record a failed external outcome
   release <taskId>     give a claimed task back to the To Do column
   tag <taskId>         change labels, optionally release the card back to To Do
+  review <taskId>      --pass (settle into Done) | --rework --note "<what to change>"
   list                 list tasks (todo by default)
   get <taskId>         print one task in full
   mine                 list this agent's claims
@@ -41,8 +42,12 @@ Options:
   --title <text>       create/update: card title
   --description <text> create/update: card description (create defaults to empty)
   --prompt <text>      create/update: the task text the worker will read
-  --prompt-file <path> create/update: read the task text from a file  --parent <taskId>    create: publish this card as a subtask (inherits its labels)
+  --prompt-file <path> create/update: read the task text from a file
+  --parent <taskId>    create: publish this card as a subtask (inherits its labels)
   --id <taskId>        create: pin the card id (needed when the prompt names it)
+  --pass               review: accept the card (clears "review", settles it into Done)
+  --rework             review: send it back with "rework" + "external" so it can be claimed again
+  --note <text>        review: the verdict that stays on the card (required for --rework)
   --lease <duration>   claim lease, e.g. 60m, 90s, 2h (default 60m)
   --summary <text>     one-line result stored on the execution record (required for done/fail)
   --report <path>      path to the full report inside the task workspace
@@ -55,9 +60,9 @@ Options:
   -h, --help           show this help
 `
 
-const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'no-auto-reap', 'help', 'release'])
+const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'no-auto-reap', 'help', 'release', 'pass', 'rework'])
 const MULTI_FLAGS = new Set(['add', 'remove'])
-const VALUE_FLAGS = new Set(['url', 'agent', 'tag', 'lease', 'summary', 'report', 'reason', 'column', 'query', 'title', 'description', 'prompt', 'prompt-file', 'parent', 'id'])
+const VALUE_FLAGS = new Set(['url', 'agent', 'tag', 'lease', 'summary', 'report', 'reason', 'column', 'query', 'title', 'description', 'prompt', 'prompt-file', 'parent', 'id', 'note'])
 
 function parseArgs(argv) {
   const flags = {}
@@ -287,6 +292,13 @@ async function main(argv) {
         release: flags.release === true,
       })
       break
+    case 'review': {
+      const pass = flags.pass === true
+      const rework = flags.rework === true
+      if (pass === rework) throw new BoardError('usage', 'review needs exactly one of --pass or --rework')
+      payload = await ops.review(taskId, { verdict: pass ? 'pass' : 'rework', note: flags.note })
+      break
+    }
     case 'mine':
       payload = await ops.mine()
       break
@@ -349,6 +361,15 @@ async function main(argv) {
         `tagged ${payload.task.id}: ${names.length === 0 ? '(no tags)' : names.join(', ')}${suffix}`,
         ...renderTimes(payload.times),
       ])
+      break
+    }
+    case 'review': {
+      const names = (payload.tags ?? []).map((entry) => (typeof entry === 'string' ? entry : entry.name))
+      const lines = payload.verdict === 'pass'
+        ? [`reviewed ${payload.task.id}: pass — settled into Done`]
+        : [`reviewed ${payload.task.id}: rework — back in the pool as [${names.join(', ')}]`]
+      if (typeof payload.note === 'string' && payload.note !== '') lines.push(`note: ${payload.note}`)
+      printLines([...lines, ...renderTimes(payload.times)])
       break
     }
     case 'reap':

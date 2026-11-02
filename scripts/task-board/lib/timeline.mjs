@@ -22,6 +22,8 @@ const DIR_MODE = 0o700
 const FILE_MODE = 0o600
 const MAX_ID_LENGTH = 200
 const STAMP_KEYS = ['finishedAt', 'closedAt']
+/** Older verdicts are kept for the trail, but only the tail is worth carrying. */
+export const REVIEW_LOG_LIMIT = 20
 
 function assertSafeId(value, label) {
   if (typeof value !== 'string' || value === '' || value.length > MAX_ID_LENGTH) {
@@ -102,6 +104,37 @@ export function stampTimeline(stateDir, ledgerId, taskId, patch) {
   fs.mkdirSync(timelineDir(stateDir, ledgerId), { recursive: true, mode: DIR_MODE })
   writeFileAtomic(timelinePath(stateDir, ledgerId, taskId), `${JSON.stringify(next, null, 2)}\n`)
   return next
+}
+
+/**
+ * Append one review verdict. The ledger has nowhere to keep "why this came
+ * back", and the card's own text is frozen once it has run, so the note lives
+ * beside the stamps. Only the tail is kept: an old verdict that has since been
+ * reworked past has no reader.
+ */
+export function appendReview(stateDir, ledgerId, taskId, entry) {
+  if (entry === null || typeof entry !== 'object') {
+    throw new TypeError('appendReview needs a review entry object')
+  }
+  const current = readTimeline(stateDir, ledgerId, taskId) ?? { taskId }
+  const history = Array.isArray(current.reviews) ? current.reviews : []
+  const next = {
+    ...current,
+    reviews: [...history, entry].slice(-REVIEW_LOG_LIMIT),
+    schemaVersion: TIMELINE_SCHEMA_VERSION,
+    taskId,
+    boardLedgerId: ledgerId,
+  }
+  fs.mkdirSync(timelineDir(stateDir, ledgerId), { recursive: true, mode: DIR_MODE })
+  writeFileAtomic(timelinePath(stateDir, ledgerId, taskId), `${JSON.stringify(next, null, 2)}\n`)
+  return next
+}
+
+/** The latest verdict on a card, or `null` when it has never been reviewed. */
+export function lastReview(stamp) {
+  const history = Array.isArray(stamp?.reviews) ? stamp.reviews : []
+  const entry = history.at(-1)
+  return entry !== null && typeof entry === 'object' ? entry : null
 }
 
 /**

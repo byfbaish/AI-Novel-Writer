@@ -9,8 +9,9 @@
 ```bash
 dsh-task-board next                 # 认领一张 tag=external 的卡，打印任务
 # …在自己的 harness 里干活、验证；报告写进 <workspace>/.dsh-task-board/reports/<taskId>.md…
-dsh-task-board tag <taskId> --add 待review --remove external --release   # 交 review
-# 【不要 done】—— done 会直接把卡推进「已完成」，跳过人的复核（§5.1）
+dsh-task-board tag <taskId> --add review --remove external --release   # 交 review
+# 【不要 done】—— done 会直接把卡推进「已完成」，跳过复核（§5.1）
+dsh-task-board review <taskId> --pass|--rework --note "…"              # 复核者：一条命令定去留
 ```
 
 看板仍是唯一账本；CLI 的本地目录 `~/.dsh-task-board/` 只记「谁认领、租到何时、重试用哪个 requestId」。
@@ -181,10 +182,10 @@ MCP 对应 `task_board_create`（`title` / `prompt` 必填，`description` / `ta
 - **子卡继承父卡的标签（2026-11-03 落地）**：`--parent` 时本地把父卡标签并进子卡，同名的以**父卡那份**为准（它才可能带 `promptPrefix`，丢了就等于丢了指令），继承的排在前；`--add` 只补新增的。返回里有 `inheritedTags`，文本输出多一行 `inherited: …`。
   - **继承来的标签也算进 8 个上限**：父卡已满 8 个再加新标签会 **exit 5** 并报「inherited N from …」，先把父卡减到 7 个再建。
   - **继承是建卡那一刻的快照**：之后改父卡标签不会回头改子卡（要跟进就 `tag` 逐张改）。
-  - 因此**别再给子卡重复写 `--add external`**（写了也无害，同名去重）；反过来，父卡若已挂 `待review`，子卡会带着这个标签出生 —— 建子卡前先确认父卡身上没有状态类标签。
+  - 因此**别再给子卡重复写 `--add external`**（写了也无害，同名去重）。状态标签（`review` / `rework`）**理论上不该出现在父卡上**：容器卡不可认领（§7），父卡根本走不到"交 review"那一步。真出现了，说明有人绕过流程在 GUI 上手打了标签 —— 那是流程被绕过，不是流程有洞。
 - **卡一律落 To Do**；建完**不要点 Run**（理由同 §4）。
 - **每张卡必须带一个重要度标签**（§4.2）。
-- **子卡的深度与环由看板拒**（插件 `core/subtask.ts`）。部署默认只允许 **1 层**子卡（`DEFAULT_SUBTASK_DEPTH=1`，本机未改配置 ⇒ 实际就是两层：根 + 一层），可配到 `SUBTASK_DEPTH_MAX=3`（最多四层）。**树深度与派发深度是两件事，契约仍待作者裁定**，见 §7。
+- **子卡的深度与环由看板拒**（插件 `core/subtask.ts`）。部署默认只允许 **1 层**子卡（`DEFAULT_SUBTASK_DEPTH=1`，本机未改配置 ⇒ 实际两层：根 + 一层），可配到 `SUBTASK_DEPTH_MAX=3`。**深度按现状不动**（2026-11-03 作者定：插件是上游第三方、随时可能更新，不做侵入式改配置）：需要更深的树就拆成**串联的多棵树**——上一棵树的叶子报告成为下一棵树的根卡依据。**派发深度**由 §7 的容器闸保证只落在叶子上。
 
 ### 4.2 重要度标签（2026-11-03 作者定，硬规矩）
 
@@ -197,7 +198,7 @@ MCP 对应 `task_board_create`（`title` / `prompt` 必填，`description` / `ta
 | `I3` | 备选／条件未到 | 等作者裁定、等前置落地、或纯粹留痕 |
 
 - **只用一个字母 I**，不用 `P0/P1`：本项目的 `P1-1`/`P2-3`/`P11-1` 是**设计稿的期号**，卡上再挂 `P1` 必然被读混。
-- **`I3` 不等于"不做"**：留痕卡（评估过决定不做、已拍板延后）也是 `I3`，另配一个 `留痕` 标签自解释。
+- **`I3` 不等于"不做"**：留痕卡（评估过决定不做、已拍板延后）也是 `I3`，另配一个 `trace` 标签自解释。
 - **建卡时就打**，不要等复查；复查时按现状改档是正常操作（改档用 `tag --add/--remove`）。
 - **重要度不进 `next` 的排序**：`next` 仍按 `createdAt` 先进先出，标签只是给人看、给筛选用的。要让某张卡先做，用 `--tag I1` 取，别指望它自己冒头。
 
@@ -210,7 +211,7 @@ MCP 对应 `task_board_create`（`title` / `prompt` 必填，`description` / `ta
 | `finishedAt` 执行者完成 | 壳（我们） | `<stateDir>/boards/<ledgerId>/timeline/<taskId>.json` |
 | `closableAt` 可 close（复核确认、移进完成栏） | 壳／看板 | 复核者 `done` 时壳写 `closedAt`；已进 Done 的卡回落到最后一条执行记录的 `endedAt` |
 
-**为什么要自己存 `finishedAt`**：交 review 那条路**不写执行记录**（写了就等于自结算，§5.1 禁止），所以台账里根本没有"这张卡什么时候干完的"。壳在 `tag` 结果带上 `待review` 的那一刻写时间戳，这是唯一能记下来的地方。
+**为什么要自己存 `finishedAt`**：交 review 那条路**不写执行记录**（写了就等于自结算，§5.1 禁止），所以台账里根本没有"这张卡什么时候干完的"。壳在 `tag` 结果带上 `review` 的那一刻写时间戳，这是唯一能记下来的地方。
 
 **看板侧的两条硬事实**（不在我们手里，别绕）：
 - 卡只要有**任一执行记录**，正文（title/description/prompt）就冻结（`canEditTaskContent = 未归档 && executions.length === 0`）。
@@ -230,6 +231,21 @@ node <abs>/dsh-task-board.mjs update <taskId> --title "新标题" --description 
 - 只发改动过的字段；**一个字段都没变就不发请求**（返回 `changed:false`，看板 `revision` 不动）——否则一次"我只是看看"会把 `updatedAt` 顶掉。
 - 已跑过的卡、正在 `running` 的卡**拒改**（exit 3），理由见 §4.3。
 - MCP 对应 `task_board_update`。
+
+### 4.5 标签词表：一套词，全英文（2026-11-03 作者定）
+
+看板把标签名**原样显示在卡上**，混着来就是两套词汇在界面上打架。全部用小写英文，理由只有一个：`external` 是 pull 通道的默认标签，写死在 `DEFAULT_TAG`、`next` 的默认值和每个外部 agent 的任务书里，改动面最大；反过来统一成中文就得先动它，等于动派发通道本身。
+
+| 标签 | 谁打 | 含义 | 怎么消 |
+|---|---|---|---|
+| `external` | 建卡人 | 这张卡可以被外部 agent 认领 | 交 review 时去掉；`next` 唯一认它 |
+| `review` | 执行者 | 干完了，等复核 | `review --pass` 或 `--rework`（§5.1） |
+| `rework` | 复核者（由 `--rework` 写） | 打回了、要返工，判词在卡的 timeline 里 | 下一轮交 review 时换成 `review` |
+| `I1` / `I2` / `I3` | 建卡人 | 重要度，每卡恰好一个（§4.2） | 复查时改档 |
+| `trace` | 建卡人 | 留痕：记录决策，**不派发** | 不删，它就是留痕 |
+
+- **状态标签只有 `review` / `rework` 两个**，且只由 `tag` / `review` 子命令写，**不手工在 GUI 上编辑**（手改会绕开判词记录）。
+- 旧的 `待review` 已全量迁移为 `review`，`留痕` 迁移为 `trace`。
 
 **外部 agent 不装我们的壳也能建**：看板只比对 `Origin` 的 host 与 `Host`，没有令牌。实测（2026-11-03）：零项目 import，用裸 `node:http` 向 `/api/task-board/action` POST 一条**字段不全**的 `create` → **HTTP 400 `invalid-action`**（字段校验失败），**不是 403** ⇒ 门是开的。最小载荷：
 
@@ -253,50 +269,76 @@ node C:/develop/workspace/AI-writer/develop/scripts/task-board/dsh-task-board.mj
 # 3) 长任务定期续租（默认租约 60 分钟）
 node .../dsh-task-board.mjs heartbeat <taskId>
 # 4) 写报告（唯一凭证）：<workspace>/.dsh-task-board/reports/<taskId>.md
-# 5) 交 review：换成「待review」并去掉 external，同时 release 回 To Do —— 【不要 done】，详见 §5.1
-node .../dsh-task-board.mjs tag <taskId> --add 待review --remove external --release
+# 5) 交 review：换成 "review" 并去掉 external，同时 release 回 To Do —— 【不要 done】，详见 §5.1
+node .../dsh-task-board.mjs tag <taskId> --add review --remove external --release
 ```
 
-MCP 下对应工具：`task_board_next / task_board_heartbeat / task_board_done / task_board_fail / task_board_release / task_board_tag / task_board_create / task_board_update / task_board_list / task_board_get / task_board_claim / task_board_mine / task_board_reap / task_board_doctor`（14 个）。**注意 `task_board_done` 同样会自结算进 Done，受 §5.1 约束；执行者只应 `task_board_tag` + `task_board_release`。**
+MCP 下对应工具：`task_board_next / task_board_heartbeat / task_board_done / task_board_fail / task_board_release / task_board_tag / task_board_review / task_board_create / task_board_update / task_board_list / task_board_get / task_board_claim / task_board_mine / task_board_reap / task_board_doctor`（15 个）。**注意 `task_board_done` 同样会自结算进 Done，受 §5.1 约束；执行者只应 `task_board_tag` + `task_board_release`，复核者才用 `task_board_review`。**
 
 报告约定：完整四段报告（改动清单 / 执行记录 / 原始输出 / 未做的事）写进任务工作区的 `.dsh-task-board/reports/<taskId>.md`；**不调 `done` 时看板不会存 summary，这份报告就是唯一凭证**。
 
 ### 5.1 完成 ≠ 已完成：交 review，不许自己结算
 
-**规则（2026-11-03 作者定）**：外部 agent 干完只做两件事 —— 写报告、把卡打上 **`待review`** 标签；**禁止调 `done` / `task_board_done`**。由人复核后再手工移进 Done，或由 Host 跑验收。
+**规则（2026-11-03 作者定）**：执行者干完只做两件事 —— 写报告、把卡打上 **`review`** 标签；**禁止调 `done` / `task_board_done`**。去留由复核者一条命令定（§5.1.2）。
 
-**为什么不能用 `done`**：它发 `record-external-outcome`，插件对该动作的定义是「写一条真实执行记录，**终态列由这条记录派生**」⇒ `done` 等于「直接把卡推进 Done」，人的复核环节被跳过。这不是"约定俗成"，是接口语义决定的。落列映射是写死的：`succeeded → done`（卡若挂了 schedule 则回 `todo`）、`failed → failed`。
+**为什么不能用 `done`**：它发 `record-external-outcome`，插件对该动作的定义是「写一条真实执行记录，**终态列由这条记录派生**」⇒ `done` 等于「直接把卡推进 Done」，复核环节被跳过。这不是"约定俗成"，是接口语义决定的。落列映射是写死的：`succeeded → done`（卡若挂了 schedule 则回 `todo`）、`failed → failed`。
 
 **干不成怎么办**：`fail <taskId> --summary "..."` 照旧可用 —— 它把卡送进 **Failed** 列，不是「已完成」，所以不在禁令内。但不要为了"让卡回到能认领的状态"把失败卡手工挪进 To Do 冒充没干过；失败该留痕。
 
-**怎么改标签（`tag` 子命令，2026-11-03 已实现）**：
+#### 5.1.1 执行者：交回（一条命令）
 
 ```bash
-# 交 review：换成「待review」并同时去掉 external，一次完成「改标签 + release 回 To Do」
-node scripts/task-board/dsh-task-board.mjs tag <taskId> --add 待review --remove external --release
+node scripts/task-board/dsh-task-board.mjs tag <taskId> --add review --remove external --release
 ```
 
 - 底层走 `update` action：`{ kind: 'update', taskId, patch: { tags: [...] } }`；`patch.tags` 是**整组替换**（`null` 清空），标签元素是 `{ name, promptPrefix? }` 对象，CLI/过滤器按 `name` 比较。
 - ⚠️ **必须同时去掉 `external`**：`next` 只按 `external` 过滤，留着它这张卡就会被下一个 agent **再认领一次**。
 - `--release` 把卡从 running 还回 To Do 并清本地 claim；不加 `--release` 只改标签（卡仍停在 running，租约到期后由 `reap` 回收）。
-- 不通过复核时：`tag <taskId> --add external --remove 待review`（卡已在 To Do，直接回到可认领状态）。
-- MCP 对应工具：`task_board_tag { taskId, add: ["待review"], remove: ["external"], release: true }`。
+- 这条命令同时写下 `finishedAt`（§4.3）—— 这是"干完"唯一能落笔的时刻。
+- MCP 对应：`task_board_tag { taskId, add: ["review"], remove: ["external"], release: true }`。
+
+#### 5.1.2 复核者：一条命令定去留（`review`，2026-11-03 新增）
+
+```bash
+# 通过 → 清 review + 以复核者身份结算进 Done（写 closedAt），note 变成那行 summary
+node scripts/task-board/dsh-task-board.mjs review <taskId> --pass \
+  --note "过了：第 2 节数字与 §4.3 表对得上" --agent workbuddy:reviewer
+
+# 打回 → 清 review、加 rework + external，判词记在卡上
+node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
+  --note "第 3 节表格要按新列重排；报告里没写回滚方案" --agent workbuddy:reviewer
+```
+
+- `--pass` = 清标签 + `claim` + `done` 三步合一（`done` 要求先有 claim，所以封装进命令）；卡进 Done，`closableAt` 落在此刻。
+- `--rework` **必须带 `--note`**（否则 exit 5）。说不清要改什么就打回，等于把卡扔回池子里让人猜。
+- 打回后的卡是 `[external, rework]`，回 To Do；**下一次 `next` 就会把它派出去**，判词随 `hints` 打印：`rework requested by <复核者>: <判词>`。
+- 两种判词都写进 `<stateDir>/boards/<ledgerId>/timeline/<taskId>.json` 的 `reviews[]`（只留最近 20 条）。**卡正文跑过一次就冻结，这是唯一能记判词的地方。**
+- 卡上没有 `review` 标签时一律拒（exit 3）：没交回来的卡不谈复核。
+- MCP 对应：`task_board_review { taskId, verdict: "pass"|"rework", note }`。
+- **人只在 GUI 操作**也可以：手工移 Done 不产生执行记录和 summary，报告文件是唯一凭证；要留 summary 就让一个 agent 用上面的命令代记。
 
 **交 review 的四步**（`tag` 命令把第 2–3 步合并成一条）：
 
 1. 报告写进任务工作区 `.dsh-task-board/reports/<taskId>.md`（改动清单 / 执行记录 / 原始输出 / 未做的事）；
-2. 标签换成 `[待review]`（同时去掉 `external`）；
+2. 标签换成 `[review]`（同时去掉 `external`）；
 3. 同一命令带 `--release`，把卡还回 To Do 并清 claim；
-4. 人复核：**通过 → 移进 Done**；不通过 → 标签改回 `external`，卡回到可认领状态。
-5. 复核通过后顺手清标签：`tag <taskId> --remove 待review`（**不带 `--release`**，卡留在 Done）。实测 2026-11-03：卡进 Done 后 `待review` 会一直挂着，Done 列里混着一堆"已处理但还标着待评审"的卡。用复核者身份 `done` 也一样不会自动清标签。
+4. 复核者用 §5.1.2 的一条命令定去留 —— **通过进 Done，打回变 `rework`**。
 
-**复核后还能不能留 summary？** 能，但取决于复核者是谁：
+**要认的代价**：执行者不调 `done`，所以它那次劳动在看板上**没有执行记录**，报告文件是唯一凭证。复核者 `--pass` 时会落一条 `external` 执行记录，但 `initiatedBy` 是**复核者** —— 别把它读成"执行者自己结算了"。
 
-- **复核者是 agent / DSH 会话（调度者）**：`claim <taskId>` 后再 `done <taskId> --summary "review accepted: <一句话>; worker report: <path>"` —— 卡片进 Done，看板落一条 `external` 执行记录，**initiatedBy 是复核者**（不是执行者）。这条 summary 是复核结论，worker 的原始报告仍以文件为准。
-- **复核者是人、只在 GUI 操作**：手工移 Done 不产生执行记录和 summary —— 报告文件是唯一凭证。要留 summary，就让一个 DSH 会话/agent 用上面的命令代记。
-- 注意：规则禁止的是**执行者自己 `done`**；复核者用自己身份 `claim + done` 是允许的，记录也如实标成复核者。
+### 5.2 主 Agent 自己也走这套（2026-11-03 作者定，不是只给"派活的 agent"看）
 
-**要认的代价**：不调 `done` 就没有执行记录，看板上不会有那行 summary（也就没有「成功记录显示成错误样式」那个怪癖）。所以第 1 步的报告文件必须写，它是唯一凭证。
+**这条规则对主 agent 同样有效。** 主 agent 自己改的代码、写的文档、跑的数据，**同样不许自己宣布"已完成"**。区别只在"谁来审"：
+
+| 模式 | 谁审 | 隔离怎么做 |
+|---|---|---|
+| **单会话**（只有我自己） | 派一个**子 agent** 审 | 子 agent 只拿**产物 + 验收标准**（要求什么、交付了什么、怎么算通过），**不给**我的推理过程、结论、"我已经检查过了"这类话 |
+| **协作**（有豆包 / 其他 harness） | **交叉审** | 我做的东西交给外部 agent 审，外部 agent 做的我看 —— 同一个模型不做自己那份的裁判 |
+
+- **隔离是关键**：连过程一起交出去，子 agent 会顺着我的思路点头 —— 那叫附和，不叫复核。给过程 = 给答案。
+- **子 agent 也要留痕**：结论一句话写进卡或报告，别只在对话里说"审过了"。
+- **但结论由我定 —— 这条比隔离更要紧**（作者原话：**主 agent 必须有自己的定力**）：其他模型可能比我弱，**它的反对不自动成立，它的通过也不自动成立**。证据不足就要求补证据，看不懂就说不懂；绝不为了"尊重另一个模型的意见"把明显正确的东西改错，也绝不因为"它审过了"就把自己知道有问题的地方放过去。
+- **复核不是免责**：子 agent / 外部 agent 说通过，而我自己知道有问题 —— 以我为准，并说明理由。
 
 ## 6. 故障与让位
 
@@ -311,8 +353,8 @@ node scripts/task-board/dsh-task-board.mjs tag <taskId> --add 待review --remove
 | 退出 4 / 提示 forbidden | 看板不可达或被同源守卫拒绝；先跑 `dsh-task-board doctor --json` |
 | 自动发现报多块看板 | 用 `--url http://127.0.0.1:<port>` 指定；`doctor` 会打印 ledgerId |
 | 认领后进程崩溃 | 租约到期后由 `reap` 或下一次 `next` 把卡移回 To Do；不需要手工清理 |
-| 卡已经进了 Done，但没人复核过 | 违规自结算（§5.1）。手工把标签改成 `待review` 并移回 To Do，补上复核 |
-| 打了 `待review` 却被下一个 agent 又认领走 | 标签是**整组替换**，加 `待review` 时必须同时去掉 `external` —— `next` 只认 `external` |
+| 卡已经进了 Done，但没人复核过 | 违规自结算（§5.1）。把标签改回 `review` 并移回 To Do，补上复核 |
+| 打了 `review` 却被下一个 agent 又认领走 | 标签是**整组替换**，加 `review` 时必须同时去掉 `external` —— `next` 只认 `external` |
 | 想靠 `done --summary` 之外的参数"只记结果不改列" | 不存在这种参数。`record-external-outcome` 的终态列由记录派生，无法只写一半 |
 
 ## 7. 已知边界
@@ -322,9 +364,9 @@ node scripts/task-board/dsh-task-board.mjs tag <taskId> --add 待review --remove
 - 残余竞态：`done` 的「仍 running」检查与回写之间有毫秒级窗口，Host 恰在此间结算时外部结果仍可能覆盖结论；`reap` 的过期判定也会在写入前再查一次租约，但不能做到真原子。
 - 不读账本文件、不伪造 `dsh-auth-*` cookie、不走 `/connect`。
 - 看板 summary 存在执行记录的 `error` 字段、GUI 按错误样式渲染：成功记录也会显示成一行「错误样式」文字，属插件实现，不是失败。
-- **树深度 vs 派发深度（⏸ 待作者裁定，2026-11-03）**：看板侧 `maxSubtaskDepth` 默认 1（根 + 一层）、上限 3（最多四层），`normalizeSubtaskDepth` 会把 4 夹回 3 ⇒ **五层的树在本部署装不下**。而主 agent 梳理一个大模块确实需要 3–5 层，真正派发给外部 agent 的只是最底那一两层。两个概念必须拆开：树深度归看板配置，派发深度应固定在叶子。**未裁定的部分**：① 是否把部署深度调到 3（改 `~/.dsh/profiles/desktop/cordis.patch.yml` 的 `ui-task-board.config.maxSubtaskDepth`，或 GUI 设置卡热改）；② `next`/`claim` 是否要硬拒「有未完成子卡」的容器卡（Host 自己的判据是 `hasOutstandingDescendants`，即 `status !== 'done'`）；③ `待review` 这类**状态标签**是否排除在继承之外。裁定前**默认仍按"子卡只一层、叶子才打 `external`"**操作。
-- 改标签已由 `tag` 子命令封装（`update` action，整组替换）；改正文由 `update` 封装（§4.4）。交 review 用 §5.1 的一条命令完成「换标签 + release」。执行者仍不得调 `done`（§5.1）；复核者要留 summary 时用自己身份 `claim + done`。
-- CP936（`chcp 936`）控制台下，**中文标签的回显**可能乱码（`待review` 显示成 `寰卹eview`）——那是终端解码 stdout 的问题，**不是参数坏了**：实测经 PowerShell 直调 `node`、经 `.cmd` shim、经 `cmd.exe`，argv 均为正确 UTF-8（`e5be85726576696577`）。别因为回显乱码去改标签名或加转义。
+- **树深度 vs 派发深度（2026-11-03 已裁定）**：看板侧 `maxSubtaskDepth` 默认 1（根 + 一层）、上限 3，`normalizeSubtaskDepth` 会把 4 夹回 3 ⇒ **超过四层的树在这个部署里装不下**。三条结论：① **深度按现状不动** —— 插件是上游第三方、随时可能更新，不做侵入式改配置；要更深的树就拆成**串联的多棵树**（上一棵的叶子报告成为下一棵根卡的依据）；② **容器卡不可认领，已落成硬闸** —— `select.mjs` 的 `containerTaskIds()` 把「还有未完成子卡」的卡剔出候选池，`next` 与 `claim` 都拒，判据直接复用 Host 的 `hasOutstandingDescendants`（`status !== 'done'`，归档子卡不再算）；③ **状态标签不继承这件事不是问题** —— 容器卡压根进不了派发环节，父卡到不了"交 review"那一步；真出现了就是有人绕过流程手打标签（§5.2）。
+- 改标签已由 `tag` 子命令封装（`update` action，整组替换）；改正文由 `update` 封装（§4.4）；复核去留由 `review` 封装（§5.1.2）。交 review 用 §5.1.1 的一条命令完成「换标签 + release」。执行者仍不得调 `done`（§5.1）。
+- CP936（`chcp 936`）控制台下**中文标签的回显**会乱码（当初的 `待review` 显示成 `寰卹eview`）——那是终端解码 stdout 的问题，**不是参数坏了**：实测经 PowerShell 直调 `node`、经 `.cmd` shim、经 `cmd.exe`，argv 均为正确 UTF-8（`e5be85726576696577`）。别因为回显乱码去改标签名或加转义。**现在标签全部是英文（§4.5），这条已不再触发，留作排障参考。**
 
 ## 8. 验证记录（2026-11-03）
 
@@ -352,11 +394,11 @@ node scripts/task-board/dsh-task-board.mjs tag <taskId> --add 待review --remove
 |---|---|
 | 豆包自己认领 | 报告的 claim JSON 里有 `agentId:"doubao"`、`pid:50112`、`host:BAIYUNFEI`、`leaseUntil` —— 是它真跑了 CLI，不是它"以为"跑了 |
 | 写报告 | `<workspace>/.dsh-task-board/reports/46aaaa91-….md`，1473 字节，四段齐全 |
-| 交 review（按 §5.1） | 卡变 `todo` + 标签只剩 `待review`，**`executions: 0`** ⇒ 确实没调 `done` |
+| 交 review（按 §5.1） | 卡变 `todo` + 标签只剩 `review`，**`executions: 0`** ⇒ 确实没调 `done` |
 | 不会被二次认领 | `list --tag external` = **0 张**（`external` 被去掉，`next` 捡不到） |
-| 中文标签 | 看板上原样显示 `待review`，无乱码（§7 说的乱码只发生在 CP936 控制台回显） |
+| 标签回显 | 看板上原样显示，无乱码（§7 说的乱码只发生在 CP936 控制台回显） |
 | 复核者路径 | `claim` + `done --summary` 由 `workbuddy:reviewer` 执行 → `status:done`、1 条 `external` 执行记录、`initiatedBy=workbuddy:reviewer` |
-| 复核后清标签 | `tag --remove 待review`（不带 `--release`）→ `status` 仍 `done`、`tags: []` |
+| 复核后清标签 | `tag --remove review`（不带 `--release`）→ `status` 仍 `done`、`tags: []` |
 
 结论：**§5.1 的全套流程在本机真跑通过**，含"执行者不自结算"和"复核者身份留 summary"两侧。`done` / `fail` / `heartbeat` / `tag` 的写通路均已在真实卡上验证（此前标为未验的两项就此关闭）。
 
@@ -388,19 +430,29 @@ node scripts/task-board/dsh-task-board.mjs tag <taskId> --add 待review --remove
 | 真看板 · 重复 id | **exit 3**：`conflict: a card with id … already exists`，未写入 |
 | 不污染劳动力池 | 两张测试卡都没打 `external` ⇒ `next` 仍 **exit 2** |
 
-真实卡残留（**待在 GUI 删除**）：`552f375a-2000-45ad-81b3-3d1a846a5204`（子卡，挂在 `46aaaa91-…` 下）、`11111111-2222-4333-8444-555555555555`（顶层卡）。
+真实卡残留 `552f375a-…`（子卡）、`11111111-…`（顶层）**已由作者在 GUI 删除**（2026-11-03 02:4x），板上不再有测试废卡。
 
-**子卡继承父卡标签（2026-11-03 02:0x 落地；作者裁定「继承」，并定「深度两层到顶」）**
+**子卡继承父卡标签（2026-11-03 02:0x 落地；作者裁定「继承」，深度按部署现状不调）**
 
 | 检查 | 结果 |
 |---|---|
 | `node --test scripts/task-board/test/*.test.mjs` | **85 / 85**（+3：继承并集 / `promptPrefix` 保留且进 `tagHints` / 上限按并集算） |
-| 子卡标签 | 父卡 `[{external,prefix}, {batch}]` + `--add batch,待review` → `[{external,prefix}, {batch}, {待review}]`，`inheritedTags: [external, batch]` |
-| 派发链路 | 父卡被 `next` 取走后，**子卡是下一张被取走的** ⇒ 继承来的 `external` 确实让它可派（此前子卡必须手抄 `--add external`） |
+| 子卡标签 | 父卡 `[{external,prefix}, {batch}]` + `--add batch,review` → `[{external,prefix}, {batch}, {review}]`，`inheritedTags: [external, batch]` |
+| 派发链路 | 继承来的 `external` 确实让子卡可派（此前子卡必须手抄 `--add external`） |
 | 超限 | 父卡 8 个 + 1 个新 = **exit 5**，报「inherited 8 from <parent> + 1 new would make 9」；重加父卡已有的名字**不算**超限（去重后仍 8 个） |
 | 真看板 | **未跑**：不想再往真看板写第三张废卡。依据是本地 fake board 与看板 `createInput` 同源的入参校验（`fake-board.mjs` 的 create 分支逐条对齐插件） |
 
-仍未验：子卡**深度上限**（插件 `core/subtask.ts` 有 `maxSubtaskDepth`，只在约定层面定为两层到顶，未去撞看板的硬限制）。
+**容器闸与复核状态机（2026-11-03 02:5x 落地；作者裁定「不改插件深度、容器卡不可认领、状态标签不继承不是问题」）**
+
+| 检查 | 结果 |
+|---|---|
+| `node --test scripts/task-board/test/*.test.mjs` | **99 / 99**（+5 容器闸 / +4 复核去留 / +2 CLI） |
+| 容器闸 | `containerTaskIds()` 剔出「还有未完成子卡」的卡；`next` 跳过、`claim` 拒（exit 3，报未完成子卡 id）；子卡全 done 或全归档后父卡恢复可认领 |
+| 池子空时报原因 | `no leaf card tagged external; skipped 1 container card(s) …` —— 不再是一句「no claimable」让人去找标签错在哪 |
+| 复核通过 | `review --pass` 一条命令完成「清 `review` + `claim` + `done`」，`closableAt` 落此刻，`I` 标签保留 |
+| 复核打回 | `review --rework` **强制 `--note`**（缺则 exit 5）；卡变 `[external, rework]` 回 To Do，判词随 `hints` 打印给下一个 worker |
+| 判词落盘 | `<stateDir>/boards/<ledgerId>/timeline/<taskId>.json` 的 `reviews[]`（留最近 20 条）—— 卡正文跑过就冻结，这是唯一能写判词的地方 |
+| 未交回就复核 | exit 3：`not awaiting review: it carries no review label` |
 
 **`update` 子命令 + 四个时刻（2026-11-03 02:3x）**
 
@@ -410,5 +462,5 @@ node scripts/task-board/dsh-task-board.mjs tag <taskId> --add 待review --remove
 | 真实卡 · 改正文 | 5 张 AC/阶段 2.5 卡改成功（纯替换过期路径与前置说明，正文其余照抄）；`updated` 只报实际变了的字段 |
 | 真看板 · 冻结规则 | 11 张开放卡 `executions` 全为 0 ⇒ 正文可改；`update` 另外**拒 `running`**（我们的 claim 不写执行记录，见 §4.3） |
 | 真看板 · 时间戳 | `tagged … times: created … · updated …`、`done` 后 `closable` 出现；未交 review 的卡不显示 `finished`/`closable`（不打印空档） |
-| 重要度标签 | 11 张开放卡全部打上（`I2`×6 / `I3`×5，两张留痕卡另加 `留痕`）；新增容器卡 `61e4535d` 为 `I1` |
-| 复查发现的缺口 | **板上没有任何 D 系列卡**，而台账写着「作者指定：接下来重点修复 D1–D18」⇒ 补建容器卡 `61e4535d`（缺陷稿 §2 状态列为准）；派发契约待裁定另立 `c063270b` |
+| 重要度标签 | 11 张开放卡全部打上（`I2`×6 / `I3`×5，两张留痕卡另加 `trace`）；新增容器卡 `61e4535d` 为 `I1` |
+| 复查发现的缺口 | **板上没有任何 D 系列卡**，而台账写着「作者指定：接下来重点修复 D1–D18」⇒ 补建容器卡 `61e4535d`（缺陷稿 §2 状态列为准）；派发契约已定，见 §7 |

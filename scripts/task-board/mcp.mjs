@@ -142,7 +142,7 @@ const TOOLS = [
   },
   {
     name: 'task_board_tag',
-    description: 'Change a card\'s labels (for example add a review marker) and optionally release it back to To Do without recording an outcome. Use this when the work needs review before it is settled.',
+    description: 'Change a card\'s labels and optionally release it back to To Do without recording an outcome. A worker that finished uses this to swap "external" for "review" (the handover). It does not decide the card.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -152,6 +152,20 @@ const TOOLS = [
         release: { type: 'boolean', description: 'also move the card back to To Do and clear the local claim' },
       },
       required: ['taskId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'task_board_review',
+    description: 'Decide a card that a worker handed back (it must carry the "review" label). verdict "pass" clears the label and settles the card into Done; verdict "rework" clears the label, adds "rework" and "external" so the card is claimable again, and requires a note saying what to change. Either verdict is kept on the card as the review record.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        taskId: { type: 'string' },
+        verdict: { type: 'string', enum: ['pass', 'rework'] },
+        note: { type: 'string', description: 'required for rework: what the worker must change' },
+      },
+      required: ['taskId', 'verdict'],
       additionalProperties: false,
     },
   },
@@ -259,6 +273,8 @@ async function callToolOnce(name, args) {
       return ops.release(args.taskId, { reason: args.reason })
     case 'task_board_tag':
       return ops.tag(args.taskId, { add: args.add ?? [], remove: args.remove ?? [], release: args.release === true })
+    case 'task_board_review':
+      return ops.review(args.taskId, { verdict: args.verdict, note: args.note })
     case 'task_board_mine':
       return ops.mine()
     case 'task_board_reap':

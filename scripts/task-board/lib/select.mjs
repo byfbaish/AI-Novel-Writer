@@ -4,10 +4,39 @@
  *
  * A card is claimable when it is published for outside work:
  * todo, not archived, not hidden, tagged with the requested tag *name*,
- * not schedule-armed (scheduled cards belong to the Host), and has a prompt.
+ * not schedule-armed (scheduled cards belong to the Host), has a prompt, and
+ * is not a container (see `containerTaskIds`).
  */
 
 export const DEFAULT_TAG = 'external'
+
+/**
+ * Cards that still own unfinished work — a parent with at least one descendant
+ * not yet in Done.
+ *
+ * Such a card is a container: it exists to be broken down, not handed to a
+ * worker. The Host draws the same line (`hasOutstandingDescendants` in
+ * `core/subtask.ts`: a card with open children is forced under the autonomous
+ * dispatcher preset, and one run never expands the subtree into its session),
+ * but the pull channel never asked, so a container tagged `external` would be
+ * dispatched as if it were a leaf.
+ *
+ * The predicate is deliberately the Host's, not a new one: a child counts while
+ * `status !== 'done'`, and an archived child no longer holds its parent. A
+ * grandchild needs no separate walk — every id that has an open child is itself
+ * a key here, so the set of parents is already closed under parenthood.
+ */
+export function containerTaskIds(tasks) {
+  const parents = new Set()
+  for (const task of Array.isArray(tasks) ? tasks : []) {
+    if (task === null || typeof task !== 'object') continue
+    if (typeof task.id !== 'string' || task.id === '') continue
+    if (typeof task.parentId !== 'string' || task.parentId === '') continue
+    if (task.archivedAt != null || task.status === 'done') continue
+    parents.add(task.parentId)
+  }
+  return parents
+}
 
 /** Last execution still open means the Host is running the card right now. */
 export function hasOpenExecution(task) {
@@ -22,13 +51,14 @@ function matchesTag(tags, tag) {
   return tags.some((entry) => (typeof entry === 'string' ? entry : entry?.name) === tag)
 }
 
-export function isClaimable(task, { tag = DEFAULT_TAG } = {}) {
+export function isClaimable(task, { tag = DEFAULT_TAG, containers } = {}) {
   if (task === null || typeof task !== 'object') return false
   if (task.status !== 'todo') return false
   if (task.archivedAt != null) return false
   if (task.hidden === true) return false
   if (task.schedule?.enabled === true) return false
   if (typeof task.prompt !== 'string' || task.prompt.trim() === '') return false
+  if (containers instanceof Set && typeof task.id === 'string' && containers.has(task.id)) return false
   return matchesTag(task.tags, tag)
 }
 
@@ -40,7 +70,10 @@ function createdAtOf(task) {
 /** Claimable cards, oldest first (first published, first served). */
 export function claimableTasks(tasks, opts = {}) {
   if (!Array.isArray(tasks)) return []
-  return tasks.filter((task) => isClaimable(task, opts)).sort((a, b) => createdAtOf(a) - createdAtOf(b))
+  const containers = opts.containers ?? containerTaskIds(tasks)
+  return tasks
+    .filter((task) => isClaimable(task, { ...opts, containers }))
+    .sort((a, b) => createdAtOf(a) - createdAtOf(b))
 }
 
 /** Non-empty `tags[].promptPrefix` strings, in tag order, de-duplicated. */

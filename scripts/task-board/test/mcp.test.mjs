@@ -69,7 +69,7 @@ function toolPayload(response) {
   return JSON.parse(response.result.content[0].text)
 }
 
-test('initialize negotiates a version and lists the fourteen task_board tools', async () => {
+test('initialize negotiates a version and lists the fifteen task_board tools', async () => {
   const board = await startFakeBoard({})
   const session = startMcp({ stateDir: tempDir(), url: board.url, agent: 'test:agent' })
   const init = await initialize(session)
@@ -78,7 +78,7 @@ test('initialize negotiates a version and lists the fourteen task_board tools', 
   assert.deepEqual(init.result.capabilities, { tools: {} })
   const list = await session.request('tools/list', {})
   const names = list.result.tools.map((tool) => tool.name)
-  assert.equal(names.length, 14)
+  assert.equal(names.length, 15)
   assert.ok(names.every((name) => name.startsWith('task_board_')))
   assert.ok(names.includes('task_board_create'))
   assert.ok(names.includes('task_board_update'))

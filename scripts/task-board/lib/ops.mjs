@@ -10,17 +10,23 @@
 import crypto from 'node:crypto'
 import os from 'node:os'
 import { BoardError } from './errors.mjs'
-import { claimableTasks, hasOpenExecution, tagHints, reapPlan } from './select.mjs'
+import { claimableTasks, containerTaskIds, DEFAULT_TAG, hasOpenExecution, tagHints, reapPlan } from './select.mjs'
 import { claimsDir, writeClaim, readClaim, deleteClaim, listClaims, updateClaim } from './claims.mjs'
-import { cardTimes, readTimeline, stampTimeline } from './timeline.mjs'
+import { appendReview, cardTimes, lastReview, readTimeline, stampTimeline } from './timeline.mjs'
 
 export const DEFAULT_LEASE_MS = 60 * 60 * 1000
 export const EXTERNAL_SUMMARY_MAX_LENGTH = 1000
 /** Mirrors the board's own tag limits (core/tasks.ts). */
 export const TASK_TAG_LIMIT = 8
 export const TAG_NAME_MAX_LENGTH = 32
-/** The label that means "worker handed this back for review" (§5.1 of the manual). */
-export const REVIEW_TAG = '待review'
+/**
+ * Labels the channel gives meaning to. All of them are English on purpose: the
+ * board UI shows tag names verbatim, so a half-translated set (`external` next
+ * to `待review`) reads as two vocabularies. `external` is fixed by the pull
+ * channel's default tag, which settles the language for the rest.
+ */
+export const REVIEW_TAG = 'review'
+export const REWORK_TAG = 'rework'
 
 function normalizeTagName(value) {
   const name = typeof value === 'string' ? value.trim() : ''
@@ -72,6 +78,28 @@ function mergeTags(inherited, own, parentId) {
     throw new BoardError('usage', `a card keeps at most ${TASK_TAG_LIMIT} tags; ${origin} would make ${merged.length}`)
   }
   return { tags: merged, inherited: [...byName.keys()].slice(0, fromParent), added }
+}
+
+/** Tag names of a card, whether the board stored strings or objects. */
+function tagNames(task) {
+  return (task?.tags ?? [])
+    .map((entry) => (typeof entry === 'string' ? entry : entry?.name))
+    .filter((name) => typeof name === 'string' && name !== '')
+}
+
+/**
+ * What the worker should read before starting: the tag `promptPrefix` strings,
+ * plus the last verdict when the card was sent back. The note is the entire
+ * reason the card is claimable again, and it cannot live in the card text —
+ * the board freezes a card's text once it has run.
+ */
+function dispatchHints(task, stamp) {
+  const hints = tagHints(task)
+  const verdict = lastReview(stamp)
+  if (tagNames(task).includes(REWORK_TAG) && verdict?.verdict === 'rework' && typeof verdict.note === 'string' && verdict.note !== '') {
+    hints.push(`rework requested by ${verdict.by}: ${verdict.note}`)
+  }
+  return hints
 }
 
 /**
@@ -479,7 +507,8 @@ export function createOps(options) {
       requireAgent()
       if (autoReap) await ops.reap()
       const snapshot = await state()
-      const candidates = claimableTasks(snapshot.tasks, { tag })
+      const containers = containerTaskIds(snapshot.tasks)
+      const candidates = claimableTasks(snapshot.tasks, { tag, containers })
       for (const candidate of candidates) {
         try {
           await move(candidate.id, 'running')
@@ -496,7 +525,21 @@ export function createOps(options) {
           await move(candidate.id, 'todo').catch(() => undefined)
           throw error
         }
-        return { claimed: true, ledgerId, claim, task, hints: tagHints(task) }
+        return { claimed: true, ledgerId, claim, task, hints: dispatchHints(task, readTimeline(stateDir, ledgerId, task.id)) }
+      }
+      // Say *why* the pool is empty when the reason is the container gate:
+      // "no claimable task" sends the caller looking for a tagging mistake.
+      const containersSkipped = snapshot.tasks.filter(
+        (task) => task.status === 'todo'
+          && task.archivedAt == null
+          && containers.has(task.id)
+          && (task.tags ?? []).some((entry) => (typeof entry === 'string' ? entry : entry?.name) === tag),
+      )
+      if (containersSkipped.length > 0) {
+        throw new BoardError(
+          'no-candidate',
+          `no leaf card tagged ${tag}; skipped ${containersSkipped.length} container card(s) that still have unfinished subtasks: ${containersSkipped.map((task) => task.id).join(', ')}`,
+        )
       }
       throw new BoardError('no-candidate', `no claimable task tagged ${tag}`)
     },
@@ -505,6 +548,16 @@ export function createOps(options) {
       requireAgent()
       const snapshot = await state()
       const task = findTask(snapshot, taskId)
+      const containers = containerTaskIds(snapshot.tasks)
+      if (containers.has(taskId)) {
+        const open = snapshot.tasks.filter(
+          (child) => child.parentId === taskId && child.archivedAt == null && child.status !== 'done',
+        )
+        throw new BoardError(
+          'conflict',
+          `task ${taskId} is a container card: ${open.length} subtask(s) are not in Done yet (${open.map((child) => child.id).join(', ')}); dispatch a leaf instead`,
+        )
+      }
       const claimable = task.status === 'todo'
         && task.archivedAt == null
         && task.hidden !== true
@@ -522,7 +575,7 @@ export function createOps(options) {
         await move(taskId, 'todo').catch(() => undefined)
         throw error
       }
-      return { claimed: true, ledgerId, claim, task: running, hints: tagHints(running) }
+      return { claimed: true, ledgerId, claim, task: running, hints: dispatchHints(running, readTimeline(stateDir, ledgerId, taskId)) }
     },
 
     async heartbeat(taskId, { lease } = {}) {
@@ -614,6 +667,58 @@ export function createOps(options) {
         released,
         times: cardTimes(result, readTimeline(stateDir, ledgerId, taskId)),
       }
+    },
+
+    /**
+     * The reviewer's single move. `pass` closes the card (clears the review
+     * label, then settles it into Done as this agent); `rework` sends it back
+     * to the pool with the verdict attached.
+     *
+     * Both leave a verdict on the card's timeline, because that note is the
+     * only place a reviewer can explain a decision: the board freezes a card's
+     * text once it has run, so a `rework` with no reason is just a card that
+     * mysteriously came back.
+     */
+    async review(taskId, { verdict, note } = {}) {
+      requireAgent()
+      const cleanVerdict = typeof verdict === 'string' ? verdict.trim().toLowerCase() : ''
+      if (cleanVerdict !== 'pass' && cleanVerdict !== 'rework') {
+        throw new BoardError('usage', 'verdict must be "pass" or "rework"')
+      }
+      const cleanNote = typeof note === 'string' ? note.trim() : ''
+      if (cleanVerdict === 'rework' && cleanNote === '') {
+        throw new BoardError('usage', 'a rework verdict needs --note saying what to change')
+      }
+      const snapshot = await state()
+      const task = findTask(snapshot, taskId)
+      if (!tagNames(task).includes(REVIEW_TAG)) {
+        throw new BoardError(
+          'conflict',
+          `task ${taskId} is not awaiting review: it carries no ${REVIEW_TAG} label (only a worker handing the card back adds it)`,
+        )
+      }
+      const entry = {
+        at: now(),
+        by: requireAgent(),
+        verdict: cleanVerdict,
+        ...(cleanNote === '' ? {} : { note: cleanNote }),
+      }
+      if (cleanVerdict === 'rework') {
+        // Back to the pool: `external` returns so `next` hands it out again,
+        // `rework` marks why. No `release` — the worker released the card when
+        // it handed it over, so there is no claim of ours to drop.
+        const tagged = await ops.tag(taskId, { add: [REWORK_TAG, DEFAULT_TAG], remove: [REVIEW_TAG] })
+        appendReview(stateDir, ledgerId, taskId, entry)
+        return { ledgerId, verdict: cleanVerdict, note: cleanNote, task: tagged.task, tags: tagged.tags, times: tagged.times }
+      }
+      // `pass`: clear the label first, so a later failure cannot leave a card in
+      // Done still wearing `review`. `done` needs our own claim first —
+      // record-external-outcome refuses to settle a card nobody holds.
+      const cleared = await ops.tag(taskId, { remove: [REVIEW_TAG] })
+      appendReview(stateDir, ledgerId, taskId, entry)
+      await ops.claim(taskId)
+      const settled = await ops.done(taskId, { summary: cleanNote === '' ? `review passed: ${taskId}` : cleanNote })
+      return { ledgerId, verdict: cleanVerdict, note: cleanNote, task: settled.task, tags: cleared.tags, times: settled.times }
     },
 
     async mine() {

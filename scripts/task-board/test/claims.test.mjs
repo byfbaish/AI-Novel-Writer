@@ -13,7 +13,7 @@ import {
   listClaims,
   updateClaim,
 } from '../lib/claims.mjs'
-import { claimableTasks, hasOpenExecution, isClaimable, reapPlan, tagHints } from '../lib/select.mjs'
+import { claimableTasks, containerTaskIds, hasOpenExecution, isClaimable, reapPlan, tagHints } from '../lib/select.mjs'
 
 const TMP = []
 function makeStateDir() {
@@ -175,6 +175,45 @@ test('claimableTasks sorts by createdAt ascending', () => {
   assert.deepEqual(claimableTasks(tasks).map((task) => task.id), ['a', 'b', 'c'])
   assert.deepEqual(tasks.map((task) => task.id), ['b', 'skip', 'c', 'a'], 'input is not mutated')
   assert.deepEqual(claimableTasks(undefined), [])
+})
+
+test('containerTaskIds marks every parent that still owns unfinished work', () => {
+  assert.deepEqual([...containerTaskIds(undefined)], [])
+  assert.deepEqual([...containerTaskIds([makeTask({ id: 'p' }), makeTask({ id: 'c', parentId: 'p' })])], ['p'])
+  assert.deepEqual(
+    [...containerTaskIds([makeTask({ id: 'p' }), makeTask({ id: 'c', parentId: 'p', status: 'done' })])],
+    [],
+    'a parent whose children all landed is a leaf again',
+  )
+  assert.deepEqual(
+    [...containerTaskIds([makeTask({ id: 'p' }), makeTask({ id: 'c', parentId: 'p', archivedAt: 5 })])],
+    [],
+    'an archived child no longer holds its parent',
+  )
+  assert.deepEqual(
+    [...containerTaskIds([makeTask({ id: 'p' }), makeTask({ id: 'c', parentId: 'p', status: 'running' })])],
+    ['p'],
+    'a child in flight is exactly when dispatching the parent would duplicate work',
+  )
+  const chain = [
+    makeTask({ id: 'root' }),
+    makeTask({ id: 'mid', parentId: 'root' }),
+    makeTask({ id: 'leaf', parentId: 'mid' }),
+  ]
+  assert.deepEqual([...containerTaskIds(chain)].sort(), ['mid', 'root'])
+})
+
+test('claimableTasks never hands out a container card', () => {
+  const tasks = [
+    makeTask({ id: 'container', createdAt: 100, tags: [{ name: 'external' }] }),
+    makeTask({ id: 'leaf', createdAt: 200, parentId: 'container', tags: [{ name: 'external' }] }),
+  ]
+  assert.deepEqual(claimableTasks(tasks).map((task) => task.id), ['leaf'])
+  const containers = containerTaskIds(tasks)
+  assert.equal(isClaimable(tasks[0], { containers }), false)
+  // Without the set the predicate stays tag-only; every dispatch path builds the
+  // set first (claimableTasks does it on its own), so this is not a gap in `next`.
+  assert.equal(isClaimable(tasks[0]), true)
 })
 
 test('hasOpenExecution looks only at the last execution', () => {

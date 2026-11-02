@@ -45,6 +45,44 @@ test('next reports no-candidate when nothing is claimable', async () => {
   await board.close()
 })
 
+test('next hands out the leaf, never the container that owns it', async () => {
+  const { board, ops } = await setup([
+    { id: 'container', createdAt: 100, tags: [{ name: 'external' }] },
+    { id: 'leaf', createdAt: 200, parentId: 'container', tags: [{ name: 'external' }] },
+  ])
+  const claimed = await ops.next({ tag: 'external' })
+  assert.equal(claimed.task.id, 'leaf')
+  assert.equal(board.snapshot().tasks.find((task) => task.id === 'container').status, 'todo')
+  await board.close()
+})
+
+test('next names the containers it skipped when they are the only tagged cards', async () => {
+  const { board, ops } = await setup([
+    { id: 'container', createdAt: 100, tags: [{ name: 'external' }] },
+    { id: 'child', createdAt: 200, parentId: 'container', tags: [{ name: 'batch' }] },
+  ])
+  await assert.rejects(
+    () => ops.next({ tag: 'external', autoReap: false }),
+    (error) => error.code === 'no-candidate'
+      && /container/u.test(error.message)
+      && error.message.includes('container'),
+  )
+  await board.close()
+})
+
+test('claim refuses a container card instead of dispatching it', async () => {
+  const { board, ops } = await setup([
+    { id: 'container', tags: [{ name: 'external' }] },
+    { id: 'child', parentId: 'container' },
+  ])
+  await assert.rejects(
+    () => ops.claim('container'),
+    (error) => error.code === 'conflict' && /container/u.test(error.message) && error.message.includes('child'),
+  )
+  assert.equal(board.snapshot().tasks.find((task) => task.id === 'container').status, 'todo', 'a refused claim must not move the card')
+  await board.close()
+})
+
 test('two concurrent claims never both win the same card', async () => {
   const { board, ops } = await setup([{ id: 'only', tags: [{ name: 'external' }] }])
   const results = await Promise.allSettled([
@@ -220,8 +258,8 @@ test('an over-long agent identity is a usage error before any board write', asyn
 test('tag adds/removes labels, preserves promptPrefix, and releases on demand', async () => {
   const { board, stateDir, ops } = await setup([{ id: 't1', tags: [{ name: 'external', promptPrefix: 'keep me' }] }])
   await ops.next({ tag: 'external' })
-  const tagged = await ops.tag('t1', { add: ['待review'], remove: ['external'] })
-  assert.deepEqual(tagged.tags, [{ name: '待review' }])
+  const tagged = await ops.tag('t1', { add: ['review'], remove: ['external'] })
+  assert.deepEqual(tagged.tags, [{ name: 'review' }])
   const withPrefix = await ops.tag('t1', { add: ['external'] })
   const kept = withPrefix.tags.find((tag) => tag.name === 'external')
   assert.equal(kept.promptPrefix, undefined)
@@ -346,7 +384,7 @@ test('handing a card over for review stamps finishedAt, and done stamps closable
   const at = 1_800_000_000_000
   const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }], { now: () => at })
   await ops.next({ tag: 'external' })
-  const handedOver = await ops.tag('t1', { add: ['待review'], remove: ['external'], release: true })
+  const handedOver = await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
   assert.equal(handedOver.times.finishedAt, at)
   assert.equal(handedOver.times.closableAt, undefined, 'not closable until the review passes')
   await ops.claim('t1')
@@ -357,6 +395,51 @@ test('handing a card over for review stamps finishedAt, and done stamps closable
   assert.equal(fetched.times.finishedAt, at)
   assert.equal(typeof fetched.times.createdAt, 'number')
   assert.equal(typeof fetched.times.updatedAt, 'number')
+  await board.close()
+})
+
+test('review --pass clears the label and settles the card into Done', async () => {
+  const at = 1_800_000_000_000
+  const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }, { name: 'I2' }] }], { now: () => at })
+  await ops.next({ tag: 'external' })
+  await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
+  const reviewed = await ops.review('t1', { verdict: 'pass', note: 'looks right' })
+  assert.equal(reviewed.verdict, 'pass')
+  assert.equal(reviewed.task.status, 'done')
+  assert.deepEqual(reviewed.tags.map((entry) => entry.name), ['I2'], 'the review label is gone, the importance label stays')
+  assert.equal(reviewed.times.closableAt, at)
+  await board.close()
+})
+
+test('review --rework needs a note, and sends the card back to the pool with it', async () => {
+  const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  await ops.next({ tag: 'external' })
+  await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
+
+  await assert.rejects(
+    () => ops.review('t1', { verdict: 'rework' }),
+    (error) => error.code === 'usage' && /note/u.test(error.message),
+  )
+
+  const reviewed = await ops.review('t1', { verdict: 'rework', note: '第 3 节的表格要按新列重排' })
+  assert.deepEqual(reviewed.tags.map((entry) => entry.name).sort(), ['external', 'rework'])
+  assert.equal(reviewed.task.status, 'todo')
+
+  // The note is the whole reason the card is claimable again: it travels to the
+  // next worker as a hint, because the card's own text is frozen now.
+  const reclaim = await ops.next({ tag: 'external' })
+  assert.equal(reclaim.task.id, 't1')
+  assert.ok(reclaim.hints.some((hint) => /第 3 节/u.test(hint)), `expected the verdict in the hints, got ${JSON.stringify(reclaim.hints)}`)
+  await board.close()
+})
+
+test('review refuses a card nobody handed back', async () => {
+  const { board, ops } = await setup([{ id: 't1', status: 'todo', tags: [{ name: 'external' }] }])
+  await assert.rejects(
+    () => ops.review('t1', { verdict: 'pass' }),
+    (error) => error.code === 'conflict' && /review/u.test(error.message),
+  )
+  await assert.rejects(() => ops.review('t1', { verdict: 'maybe' }), (error) => error.code === 'usage')
   await board.close()
 })
 
@@ -374,16 +457,16 @@ test('a subtask inherits its parent’s labels, promptPrefix included', async ()
   const { board, ops } = await setup([
     { id: 'parent', status: 'todo', tags: [{ name: 'external', promptPrefix: 'ctx' }, { name: 'batch' }] },
   ])
-  const child = await ops.create({ title: 'child', prompt: 'P', parentId: 'parent', tags: ['batch', '待review'] })
+  const child = await ops.create({ title: 'child', prompt: 'P', parentId: 'parent', tags: ['batch', 'review'] })
   assert.deepEqual(child.task.tags, [
     { name: 'external', promptPrefix: 'ctx' },
     { name: 'batch' },
-    { name: '待review' },
+    { name: 'review' },
   ])
   assert.deepEqual(child.inheritedTags, ['external', 'batch'])
-  // The inherited tag is what makes the child dispatchable at all: the parent
-  // is older, so the child is the second card `next` hands out.
-  assert.equal((await ops.next({ tag: 'external' })).task.id, 'parent')
+  // The parent now owns an unfinished child, so the container gate keeps it out
+  // of the pool entirely: the child is the first card `next` hands out, and the
+  // inherited `ctx` prefix travels with it.
   const claimed = await ops.next({ tag: 'external' })
   assert.equal(claimed.task.id, child.id)
   assert.deepEqual(claimed.hints, ['ctx'])
