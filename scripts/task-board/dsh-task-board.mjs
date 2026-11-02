@@ -151,15 +151,19 @@ function renderTimes(times) {
   return parts.length === 0 ? [] : [`times: ${parts.join(' · ')}`]
 }
 
-function renderNext(result) {
+function renderNext(result, tag = 'external') {
   const lines = [`# claimed ${result.task.id}`, ...renderTask(result.task)]
   if (Array.isArray(result.hints) && result.hints.length > 0) {
     lines.push('', '--- tag hints ---', ...result.hints)
   }
   // `done` would now be refused (the card was never handed over), so printing it
   // here would send the worker straight into an error. The handover is the exit.
+  //
+  // The dispatch label is whatever was claimed with, not always `external`: a
+  // batch or channel label left on the card means the next `next --tag <same>`
+  // picks this very card up again while it waits for review.
   lines.push('', '# when done, hand it over — do not settle it yourself:')
-  lines.push(`#   dsh-task-board tag ${result.task.id} --add review --remove external --release`)
+  lines.push(`#   dsh-task-board tag ${result.task.id} --add review --remove ${tag} --release`)
   return lines
 }
 
@@ -348,7 +352,7 @@ async function main(argv) {
       break
     case 'next':
     case 'claim':
-      printLines(renderNext(payload))
+      printLines(renderNext(payload, typeof flags.tag === 'string' ? flags.tag : 'external'))
       break
     case 'heartbeat':
       printLines([`renewed lease for ${payload.task.id} until ${new Date(payload.claim.leaseUntil).toISOString()}`])
