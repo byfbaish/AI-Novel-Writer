@@ -208,6 +208,7 @@
 | `__tests__/` | 46 个 `*.test.ts` / `*.test.mjs` | **`scripts/` 自己的单测**（门禁脚本、release 逻辑、CI workflow 契约）；由 `pnpm test` 一并跑 |
 | `fixtures/` | `quality-modernization-production.fixture.mjs`、`s14a-baseline-native-source.json.gz`、`s14c-official-old-sources/`（LanceDB 二进制老版本快照） | 升级 / 迁移测试的输入，**不要手改**；`s14c-*` 内是真实 LanceDB 目录结构 |
 | `browser-fixtures/` | `locale-shell-harness.*`、`update-section-harness.*` | `vitest.browser` 的 HTML/TSX 夹具页 |
+| `task-board/` | `dsh-task-board.mjs`（CLI）、`mcp.mjs`（stdio MCP 壳）、`lib/`（transport / ops / claims / select / identity）、`test/`（`node --test`）、`probe-mcp-stdio.mjs` | 跨 harness 任务看板通道：外部 agent 自己来认领任务。**零依赖、不进产物**；用法与硬规则见 [`docs/agents/task-board-channel.md`](../docs/agents/task-board-channel.md) |
 
 ---
 

@@ -54,6 +54,7 @@ docs/
 | 发布 / 交付 / 审查流程 | [`DEVELOPMENT.md`](DEVELOPMENT.md) · [`agents/delivery.md`](agents/delivery.md) |
 | **把活派给 Copilot CLI**（无头、另一进程、可校验副作用） | [`agents/copilot-channel.md`](agents/copilot-channel.md) —— 落点/PATH · 参数速查 · 权限模型 · 工具别名 · 已验证与未验证清单 |
 | **把活派给豆包电脑版**（桌面 UI，只能 CDP 驱动；用它的客户端积分） | [`agents/doubao-channel.md`](agents/doubao-channel.md) —— Launcher 吞参数真相 · 独立 profile 起法 · `doubao.mjs` 命令速查 · §5 跨 Agent 红线 |
+| **让外部 agent 自己来认领看板任务**（同机、拉取式、干完交 review 不自结算） | [`agents/task-board-channel.md`](agents/task-board-channel.md) —— `dsh-task-board` CLI/MCP · 发布约定 · 各 harness 接入片段 · 退出码与让位规则 · **§5.1 禁自结算** |
 | **多 agent 并行改代码**（worktree 隔离 / 端口写死 / Master 合并） | [`agents/worktree-parallel.md`](agents/worktree-parallel.md) —— 槽位表（5180/9222 · 5181/9223 · 5182/9224）· 三条隔离机制 · 禁 `test:node` 等红线 |
 | **放文档 / 归档文档 / 判断该不该新建一份** | [`agents/documentation-charter.md`](agents/documentation-charter.md) —— 四层模型 + 单一事实源 + 完成定义 + 反例库 |
 | **要跑某个构建/验收/运维脚本，或想知道「改完这个该跑什么」** | [`../scripts/README.md`](../scripts/README.md) —— 按用途分类 + 「何时跑」+ 谁调用（npm script / CI / 手工） |
@@ -307,11 +308,12 @@ docs/
 | [`config-registry-write-paths-assessment.md`](design/product/config-registry-write-paths-assessment.md) | 待裁定 | 配置与登记格**五条写入路径只有两条带确认面**；手填的真负担是「护锚」不是建账；「抽卡变追加」与「输入框看不清」是同一个缺口（缺显式替换动作），diff 面板正好补它 |
 | [`live-pipeline-acceptance-defects-assessment.md`](design/product/live-pipeline-acceptance-defects-assessment.md) | 📝 待裁定（2026-11-01） | **2026-11-01 实机链路验收的 11 条缺陷**（D1–D11，均带证据）。最重要结论：**界面上无法区分「在跑」和「已死」**——批内第二次调用即被判 `GENERATION_SOURCE_CHANGED`（D1），而中止后既无失败回执也无终态落库（D2）；另有 L3 降级静默（D3）、卷数脱离总章数（D6）、模板尖括号占位符原样落库（D5）等 |
 
-### 4.7 Harness 与文档治理 · [`design/harness/`](design/harness/)（1 篇）
+### 4.7 Harness 与文档治理 · [`design/harness/`](design/harness/)（2 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
 | [`harness-and-docs-reorganization-plan.md`](design/harness/harness-and-docs-reorganization-plan.md) | 待裁定 | 用五子系统（指令/工具/环境/状态/反馈）给本仓库打分：**环境与工具已经很强，状态与反馈是两条短腿**，并附一处可 `git show` 复盘的漂移实例；三档方案（A 止血 / B 状态归一 / C 历史清理），本次只出了 A 档的一半 |
+| [`cross-harness-task-board-access-design.md`](design/harness/cross-harness-task-board-access-design.md) | 已实施（2026-11-03） | 外部 agent 用 `dsh-task-board` CLI / MCP 壳走看板 HTTP action 拉取任务；`move` 即 CAS，本地租约记归属/过期/重试；端口随机靠自动发现 + `ledgerId` 防串板；看板仍是唯一账本，不改 DSH、不改插件、不做主动派发 |
 
 ---
 
