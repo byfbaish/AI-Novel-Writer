@@ -42,7 +42,7 @@ node scripts/check-doc-placement.mjs --status-of "期 2"   # 收口：把写着�
 2. **每份设计稿头部必须有 `> 状态：` 行**（日期必填），取值只能取 charter §5.2 受控词表里的一个：`待裁定` / `已裁定` / `已实施`（`已落地`）/ `已搁置（原因）` / `已结项`。状态变化只改这一行，不新建文件。**脚本 C1b 校验，别自创写法。**
 3. **收口一期要改「所有」写着该期状态的位置** —— 顶部状态行、分期表、台账、路线图表。只改顶部 = 读者以为没做完。**别靠记忆，跑 `--status-of "<期名>"` 把位置列全**（2026-10-30 就漏过：提交说期 2 完成，两份稿子还写着未开工/未改代码）。
 4. **改代码在同一提交内同步文档**；提交前 `pnpm check:fast`（pre-commit 已自动执行）。
-5. **提交前跑受影响的测试文件**，不只是改动所在模块的测试。`tsc` 通过 ≠ 测试通过。
+5. **提交前跑受影响的测试文件**，不只是改动所在模块的测试。`tsc` 通过 ≠ 测试通过。**在 worktree 里并行干活时只准单元测试**：禁全量、禁 `test:browser`/验收脚本、禁 `pnpm test:node`（切 ABI 会打断所有槽位的 dev）→ [`docs/agents/worktree-parallel.md`](docs/agents/worktree-parallel.md)。
 6. **改 prompt 文案前**先读 `docs/design/prompt/prompt-three-layer-inventory.md`（三层承载物 + 16 条装配链路）与 `prompt-clause-admission.md`（条款三问）。作者事实与红线不得删除（ADR 0020）。
 7. **不猜根因**：先取证（代码 / 日志 / prompt trace），再改。测试失败先用 `git stash` 对照确认是否既有红。
 8. **图用 Mermaid**，每张图配一句读法；不贴截图（无法 diff）。
