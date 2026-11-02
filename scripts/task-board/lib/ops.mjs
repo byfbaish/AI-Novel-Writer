@@ -281,6 +281,19 @@ export function createOps(options) {
     }
     const snapshot = await state()
     const task = findTask(snapshot, taskId)
+    // Closing a card you handed over is the same self-review through a different
+    // door: claim your own card back, then settle it, and the review label never
+    // gets looked at. `review --pass` is untouched — it runs as the reviewer,
+    // whose id is by definition not the one on the handover record.
+    if (result === 'succeeded') {
+      const handover = readTimeline(stateDir, ledgerId, taskId)
+      if (typeof handover?.handedBy === 'string' && handover.handedBy === requireAgent()) {
+        throw new BoardError(
+          'conflict',
+          `${handover.handedBy} handed ${taskId} over for review, so it cannot settle it afterwards; the verdict has to come from another --agent (release the card back to To Do first)`,
+        )
+      }
+    }
     const claim = await readOwnClaim(taskId)
     if (claim === null) {
       throw new BoardError('conflict', `no local claim for ${taskId}; if the process crashed, wait for reap to recover the card and claim it again`)

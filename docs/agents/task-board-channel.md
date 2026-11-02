@@ -355,6 +355,7 @@ node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
 |---|---|
 | 交回时 | `tag --add review` 那一刻把 `handedBy`（交回者身份）写进 `timeline/<taskId>.json`（和 `finishedAt` 同一次写） |
 | 复核时 | `review` 比对 `handedBy` 与当前 `--agent`，**相同则 exit 3**，卡不动 |
+| 结算时（`done`） | 同样比对 —— 交回者把卡 `claim` 回来自己 `done` 也拒（exit 3）。否则绕过复核只需要"交回后自己再关一次" |
 | 没有记录 | 放行（老卡、或在 GUI 上直接打的 `review` 标签 —— 没有可比的，猜会弄坏能用的卡） |
 | 审计 | `get` 的 `times` 里打印 `handed over by <id>`；`reviews[].by` 与 `handedBy` 不同才合规 |
 
@@ -377,6 +378,7 @@ node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
 | `next` 退出 2 | 没有可认领任务，稍后轮询 |
 | `next`/`claim` 退出 3 | 被别的 agent 抢先或卡片已变，换下一张 |
 | `review` 退出 3 且提示 `handed over by <自己>` | **自审被拦**（§5.3）。换一个 `--agent` 做复核；若这张卡确实要返工，用 `--rework --note` |
+| `done` 退出 3 且提示 `handed … over for review` | 交回过的卡不能由交回者结算（§5.3，同一个洞的另一扇门）。换复核者身份走 `review --pass` |
 | `heartbeat`/`done` 退出 3 且提示 Host 接管 | **立刻停手**；Host 已开出自己的执行，外部结果不再写入 |
 | `done` 退出 3 且提示卡片已结算 | Host 或人已经把卡移走/结算；外部不再覆盖结论，claim 已清 |
 | `done`/`release` 退出 3 且提示没有本地 claim | 进程崩溃后 claim 丢了；等 `reap` 把卡回收成 To Do 再重新 `next` |
@@ -513,9 +515,10 @@ node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
 
 | 检查 | 结果 |
 |---|---|
-| `node --test scripts/task-board/test/*.test.mjs` | **106 / 106**（+2：同身份复核被拒且卡不动、无 `handedBy` 的老卡仍可复核） |
+| `node --test scripts/task-board/test/*.test.mjs` | **107 / 107**（+3：同身份复核被拒且卡不动、同身份结算被拒、无 `handedBy` 的老卡仍可复核） |
 | 交回时落 `handedBy` | `tag --add review` 与 `finishedAt` 同一次写进 `timeline/<taskId>.json`；`get` 的 `times` 打印 `handed over by <id>` |
 | 同身份复核 | exit 3，文案点名交回者；`--pass` 与 `--rework` 都被拦，卡片状态不变 |
+| 同身份结算 | 交回者再 `claim` + `done` 也 exit 3（绕过复核的另一扇门） |
 | 换身份复核 | `--agent test:reviewer` 通过，`reviews[].by` 与 `handedBy` 不同 |
 | 老卡 / 手打标签 | 无 `handedBy` ⇒ 放行（不猜、不弄坏能用的卡） |
 | 未做 | 真实看板上的两身份实跑（离线 fake board 已覆盖同一路径；真卡上暂不造废卡） |

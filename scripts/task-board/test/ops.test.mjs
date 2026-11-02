@@ -396,17 +396,22 @@ test('update refuses a card that already ran or is being worked', async () => {
 
 test('handing a card over for review stamps finishedAt, and done stamps closable', async () => {
   const at = 1_800_000_000_000
-  const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }], { now: () => at })
+  const ctx = await setup([{ id: 't1', tags: [{ name: 'external' }] }], { now: () => at })
+  const { board, ops } = ctx
   await ops.next({ tag: 'external' })
   const handedOver = await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
   assert.equal(handedOver.times.finishedAt, at)
   assert.equal(handedOver.times.closableAt, undefined, 'not closable until the review passes')
-  await ops.claim('t1')
-  const closed = await ops.done('t1', { summary: 'reviewed' })
+  // Settlement comes from the reviewer's identity: the worker's own `done` is
+  // refused now (it stamped `handedBy` when it handed over).
+  const reviewer = reviewerFor(ctx, { now: () => at })
+  await reviewer.claim('t1')
+  const closed = await reviewer.done('t1', { summary: 'reviewed' })
   assert.equal(closed.task.status, 'done')
   assert.equal(closed.times.closableAt, at)
   const fetched = await ops.get('t1')
   assert.equal(fetched.times.finishedAt, at)
+  assert.equal(fetched.times.handedBy, 'test:agent')
   assert.equal(typeof fetched.times.createdAt, 'number')
   assert.equal(typeof fetched.times.updatedAt, 'number')
   await board.close()
@@ -443,6 +448,26 @@ test('a card cannot be passed by the agent that handed it over', async () => {
   assert.equal(board.snapshot().tasks.find((task) => task.id === 't1').status, 'todo', 'a refused review moves nothing')
   // The handover record is also the audit trail: `get` reports who produced it.
   assert.equal((await ops.get('t1')).times.handedBy, 'test:agent')
+  await board.close()
+})
+
+test('the agent that handed a card over cannot settle it afterwards', async () => {
+  // The other door to self-review: claim your own card again and `done` it.
+  // Nothing about the review label stops that, so `done` checks the handover
+  // record too.
+  const ctx = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  const { board, ops } = ctx
+  await ops.next({ tag: 'external' })
+  await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
+  await ops.claim('t1')
+  await assert.rejects(
+    () => ops.done('t1', { summary: 'settling my own work' }),
+    (error) => error.code === 'conflict' && /handed t1 over for review/u.test(error.message),
+  )
+  // The reviewer can still close it — a different identity on the same record.
+  await ops.release('t1', { reason: 'handing back so a reviewer can settle it' })
+  const reviewed = await reviewerFor(ctx).review('t1', { verdict: 'pass', note: 'checked by someone else' })
+  assert.equal(reviewed.task.status, 'done')
   await board.close()
 })
 
