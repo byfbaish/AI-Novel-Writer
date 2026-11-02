@@ -767,8 +767,8 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                             </div>
                             <p className="text-[10px] mt-1" style={{ color: 'var(--color-text-muted)' }}>
                               {text(
-                                '区间由卷结构算出：起点接着上一卷，末章优先用「实际末章」（标记完成时取该卷已定稿章的最大章号）。',
-                                'Ranges come from the volume structure: the start continues the previous volume, and the end prefers the actual last chapter (max finalized chapter when you mark it done).',
+                                '区间由卷结构算出：起点接着上一卷，末章用「计划边界」；只有老项目没有计划值时才退回「实际末章」兜底。',
+                                'Ranges come from the volume structure: the start continues the previous volume, and the end uses the planned boundary; only legacy volumes without a planned value fall back to the actual last chapter.',
                               )}
                             </p>
                             <div className="grid gap-2 mt-2" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))' }}>
