@@ -34,6 +34,20 @@ const AGENT_ID_MAX_LENGTH = 200
 /** Older verdicts are kept for the trail, but only the tail is worth carrying. */
 export const REVIEW_LOG_LIMIT = 20
 
+/**
+ * The two reasons a card may be sent back. Quality has no upper bound, so "this
+ * could be better" is not one of them: a reviewer can only say the card missed
+ * something it promised (`unmet`) or broke something that used to work
+ * (`regression`). Anything else is new scope and belongs on its own card.
+ */
+export const REVIEW_KINDS = ['unmet', 'regression']
+/**
+ * Backstop for the same card bouncing forever. `unmet` is bounded by the
+ * reviewer's own note (a finite list), so a card that keeps coming back past
+ * this is a card whose acceptance criteria were never written down.
+ */
+export const MAX_REWORKS = 3
+
 function assertSafeId(value, label) {
   if (typeof value !== 'string' || value === '' || value.length > MAX_ID_LENGTH) {
     throw new TypeError(`${label} must be a non-empty string (<=${MAX_ID_LENGTH} chars)`)
@@ -151,6 +165,23 @@ export function lastReview(stamp) {
   const history = Array.isArray(stamp?.reviews) ? stamp.reviews : []
   const entry = history.at(-1)
   return entry !== null && typeof entry === 'object' ? entry : null
+}
+
+/**
+ * How many times this card has already been sent back, and by which reason.
+ * A card with no timeline file has never been reviewed, so everything is zero —
+ * cards that predate this bookkeeping must keep working unchanged.
+ */
+export function reviewStats(stamp) {
+  const history = Array.isArray(stamp?.reviews) ? stamp.reviews : []
+  const stats = { reviews: history.length, reworks: 0, unmet: 0, regression: 0 }
+  for (const entry of history) {
+    if (entry?.verdict !== 'rework') continue
+    stats.reworks += 1
+    if (entry.kind === 'regression') stats.regression += 1
+    else if (entry.kind === 'unmet') stats.unmet += 1
+  }
+  return stats
 }
 
 /**

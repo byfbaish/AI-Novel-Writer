@@ -307,17 +307,19 @@ node scripts/task-board/dsh-task-board.mjs review <taskId> --pass \
   --note "过了：第 2 节数字与 §4.3 表对得上" --agent workbuddy:reviewer
 
 # 打回 → 清 review、加 rework + external，判词记在卡上
-node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
+node scripts/task-board/dsh-task-board.mjs review <taskId> --rework --kind unmet \
   --note "第 3 节表格要按新列重排；报告里没写回滚方案" --agent workbuddy:reviewer
 ```
 
 - `--pass` = 清标签 + `claim` + `done` 三步合一（`done` 要求先有 claim，所以封装进命令）；卡进 Done，`closableAt` 落在此刻。
-- `--rework` **必须带 `--note`**（否则 exit 5）。说不清要改什么就打回，等于把卡扔回池子里让人猜。
-- 打回后的卡是 `[external, rework]`，回 To Do；**下一次 `next` 就会把它派出去**，判词随 `hints` 打印：`rework requested by <复核者>: <判词>`。
-- 两种判词都写进 `<stateDir>/boards/<ledgerId>/timeline/<taskId>.json` 的 `reviews[]`（只留最近 20 条）。**卡正文跑过一次就冻结，这是唯一能记判词的地方。**
+- `--rework` **必须带 `--note` 和 `--kind`**（缺任一 exit 5）。说不清要改什么就打回，等于把卡扔回池子里让人猜；说不清是哪种问题，就等于把"还能更好"混进了阻塞项。
+- `--kind` 只认两个值：**`unmet`**（卡自己承诺的验收标准没做到）、**`regression`**（这次改动打坏了原本能用的东西）。**没有第三个值** —— "可以更简洁/更全面/更规范"不是打回理由，是新卡（§5.4）。
+- 打回后的卡是 `[external, rework]`，回 To Do；**下一次 `next` 就会把它派出去**，判词随 `hints` 打印：`rework requested by <复核者> — <原因>, round <n> of 3: <判词>`。轮次直接印给执行者，省掉"还差几轮"的来回问。
+- **同一张卡最多打回 3 次**（`MAX_REWORKS`，`lib/timeline.mjs`）；第 4 次 exit 3，提示只能 `--pass` 或拆新卡。上限不是质量要求，是止损坏循环。
+- 两种判词都写进 `<stateDir>/boards/<ledgerId>/timeline/<taskId>.json` 的 `reviews[]`（只留最近 20 条），`rework` 条目带 `kind` 字段。**卡正文跑过一次就冻结，这是唯一能记判词的地方。**
 - 卡上没有 `review` 标签时一律拒（exit 3）：没交回来的卡不谈复核。
 - **与交回者同名一律拒**（exit 3，§5.3）：`task <id> was handed over by <谁>; the agent that did the work cannot review it`。这条不是靠自觉，是 `review` 里比对的。真需要返工就 `--rework`，别自己过自己。
-- MCP 对应：`task_board_review { taskId, verdict: "pass"|"rework", note }`。
+- MCP 对应：`task_board_review { taskId, verdict: "pass"|"rework", kind: "unmet"|"regression", note }`。
 - **人只在 GUI 操作**也可以：手工移 Done 不产生执行记录和 summary，报告文件是唯一凭证；要留 summary 就让一个 agent 用上面的命令代记。
 
 **交 review 的四步**（`tag` 命令把第 2–3 步合并成一条）：
@@ -344,7 +346,7 @@ node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
 - **意见要证据，不要立场**：无证据的通过和无证据的反对一样不成立；看不懂就说不懂，让对方补证据。有证据的反对**必须回应** —— 要么改，要么写明为什么不改。绝不为了"尊重另一个模型的意见"把明显正确的东西改错，也绝不因为"它审过了"就把自己知道有问题的地方放过去。
 - **但"谁说了算"不能写成条款。** 这条规则早先写的是「**结论由我定**」，2026-11-03 删掉：共享文档里的"我"会被每一个读者代入 —— 强模型读成"别盲从"，弱模型读成"我可以无视复核意见"。同一句话对能力相反的读者起相反作用，就不能留在共享文档里。判断力靠实际怎么做，不靠一句话发放。
 - **分歧怎么收**：只认证据，不认人头。两边都有证据而结论相反时，按 §5.3 最后一段处理 —— 证据并排写进判词，由当时能执行 `review` 的身份落判并写明依据。这不叫"身份豁免"，叫"裁决必须留理由"。**复核不是免责**：审的人说通过而我手上还有证据说不行，继续查。
-- **复核要收敛，只跑一轮（2026-11-03 作者纠正后加）**：复核只判一件事 —— **本批声明的验收标准做到了没有**。它额外列出的"还能更好"不进本轮，写进 §7 或 backlog。修完**直接交付**，不再让同一个复核者复审第二轮之后的东西。理由（实际踩过）：每轮都能找到新的边界情形，边界是无穷的，按"还有没有问题"去问，成本没有上限；而后面几轮抓到的基本是文案和打磨，不是机制失效。**把"不是安防"这句话落实到轮数上，不是只落实到措辞上。**
+- **复核要收敛，只跑一轮（2026-11-03 作者纠正后加）**：复核只判一件事 —— **本批声明的验收标准做到了没有**。它额外列出的"还能更好"不进本轮，写进 §7 或 backlog。修完**直接交付**，不再让同一个复核者复审第二轮之后的东西。理由（实际踩过）：每轮都能找到新的边界情形，边界是无穷的，按"还有没有问题"去问，成本没有上限；而后面几轮抓到的基本是文案和打磨，不是机制失效。**把"不是安防"这句话落实到轮数上，不是只落实到措辞上。** 这条现在由工具执行，不靠记性 → **§5.4**（`--rework` 必须带 `--kind`，只收 `unmet` / `regression`，第 4 次打回直接 exit 3）。
 
 ### 5.3 身份是自报的，所以只能拦行为（2026-11-03）
 
@@ -373,6 +375,35 @@ node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
 **对派活任务书的要求**：写给子 agent 的任务只给"读产物 + 写报告"，不写 `review` / `done` 的用法，也不写"你可以自己判断通过"。**注意这只是减少机会，不是权限隔离** —— 手册是共享文档，它读得到 `review` 的用法；真正拦住它的是 `handedBy` 比对，不是"它不知道"。
 
 **复核意见明显错了怎么办**：不认人头，认证据 —— 谁的主张都要落到文件、行号、命令输出上。分歧未解时**不许任何一方单独把卡推进或驳回**：两边的证据并排写进判词（`review --pass|--rework` 的 `--note` 是唯一能落笔的地方），完整版放报告文件。落判的是**当时能执行 `review` 的那个身份** —— 同一时刻只有它能改卡的列，它必须写明采纳哪边、依据是什么。这**不是身份豁免**（它同样要给证据），是"决定必须落成文字、且可被下一个人核对"。注意 `reviews[]` 只有 `review` 命令能写，worker 写不进去，所以 worker 的意见请写进自己的报告文件，别指望它自动出现在卡上。
+
+### 5.4 质量边界：不是"还有问题"，是"哪个承诺没兑现"（2026-11-03 作者定）
+
+**问题**：按"还有没有问题"去复核，成本没有上限 —— 每轮都能找到新的小毛病，卡永远出不去。**质量没有天花板，所以验收必须有。** 上一节那句"只跑一轮"是纪律，纪律靠人记；这一节把它落成工具会拒的规则。
+
+**能打回的，只有两种**（`--kind`，没有第三个值）：
+
+| `--kind` | 含义 | 判据 |
+|---|---|---|
+| `unmet` | 卡**自己写明的**验收标准没做到 | 指着卡正文（或上一轮判词）的某一条说"这条没兑现"；指不出条目就不是 `unmet` |
+| `regression` | 这次改动打坏了原本能用的东西 | 能给"改之前能跑、改之后不能"的证据（命令、报错、截图） |
+
+**不能打回的三类**（真实存在也不算阻塞项，工具会拒）：
+
+- **更优雅**：能跑但可以更抽象、更短、命名更好；
+- **更全面**：这次没要求覆盖的边界情形、没要求写的测试；
+- **更规范**：注释、目录、提交粒度、文档措辞。
+
+**它们去哪**：新开一张卡（`--add external`，重要度自己判）、或写进 §7 / 交付说明的"有意不修"。**新开卡不丢东西**，它把"以后再说"从口头变成可检索的记录 —— 这比在判词里攒一串待办强，因为攒在判词里的人没人会回看。
+
+**为什么分类而不是限制轮数**：限制轮数是止痛药，卡在第 2 轮照样能被"更优雅"卡住。分类把题集变成**单调递减**的：`unmet` 只能引用已有的条目，`regression` 只能引用本次改动，两者都不可能凭空生出新要求 ⇒ 题集有限且只减不增，收敛是结构性的。**3 次上限只是兜底**（防判词写得含糊导致来回磨），不是主要手段。
+
+**依据（不是自创概念）**：验收边界用 **Definition of Done**（Scrum 标准术语，DoD = 质量标准的形式化描述）；复核标准用 Google Engineering Practices 里 *The Standard of Code Review* 那句 —— "if it improves the overall code health of a system, you should generally approve it even if it isn't perfect"，并明确 nit 不阻塞。行业早就承认"完美不可达"，所以复核的判据一直是**比之前好**而不是**足够好**。本项目的差别只是把这个判据写进了 `review` 命令，而不是留给复核者自由裁量。
+
+**落到操作上的三句话**：
+
+1. 建卡时就写清验收标准（"做到什么算完"），没有验收标准的卡必然被反复打回 —— 那是建卡的问题，不是复核的问题。
+2. 复核只回答"卡上那几条兑现了没有"，**不回答"还能不能更好"**。
+3. 打回一次就把话说尽（一次列全 `unmet` 项 + `regression` 证据），别挤牙膏 —— 挤一次牙膏就多一轮往返，而每一轮都要重新起 agent、重新读上下文。
 
 ## 6. 故障与让位
 
@@ -403,10 +434,23 @@ node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
 - 不读账本文件、不伪造 `dsh-auth-*` cookie、不走 `/connect`。
 - 看板 summary 存在执行记录的 `error` 字段、GUI 按错误样式渲染：成功记录也会显示成一行「错误样式」文字，属插件实现，不是失败。
 - **树深度 vs 派发深度（2026-11-03 已裁定）**：看板侧 `maxSubtaskDepth` 默认 1（根 + 一层）、上限 3，`normalizeSubtaskDepth` 会把 4 夹回 3 ⇒ **超过四层的树在这个部署里装不下**。三条结论：① **深度按现状不动** —— 插件是上游第三方、随时可能更新，不做侵入式改配置；要更深的树就拆成**串联的多棵树**（上一棵的叶子报告成为下一棵根卡的依据）；② **容器卡不可认领，已落成硬闸** —— `select.mjs` 的 `containerTaskIds()` 把「还有未完成子卡」的卡剔出候选池，`next` 与 `claim` 都拒，判据直接复用 Host 的 `hasOutstandingDescendants`（`status !== 'done'`，归档子卡不再算）；③ **状态标签不继承这件事不是问题** —— 容器卡压根进不了派发环节，父卡到不了"交 review"那一步；真出现了就是有人绕过流程手打标签（§5.2）。
+- **质量边界只保证"有分类"，不保证"分类诚实"（2026-11-03）**：`--kind` 是自报的 —— 把"更优雅"硬写成 `unmet`，工具拦不住，正如它拦不住冒用 `--agent`（§5.3）。工具能拦的是**没有分类**（exit 5）和**轮次超限**（exit 3）；分类诚不诚实只能事后看判词：`unmet` 若引不出卡上的条目、`regression` 若拿不出"改前能跑"的证据，就是伪装成阻塞项的 scope。**3 次上限是兜底，不是质量要求** —— 真要放宽就改 `lib/timeline.mjs` 的 `MAX_REWORKS`，但改之前先想清楚：放宽的是止损线，不是质量线。
 - 改标签已由 `tag` 子命令封装（`update` action，整组替换）；改正文由 `update` 封装（§4.4）；复核去留由 `review` 封装（§5.1.2）。交 review 用 §5.1.1 的一条命令完成「换标签 + release」。执行者仍不得调 `done`（§5.1）。
 - CP936（`chcp 936`）控制台下**中文标签的回显**会乱码（当初的 `待review` 显示成 `寰卹eview`）——那是终端解码 stdout 的问题，**不是参数坏了**：实测经 PowerShell 直调 `node`、经 `.cmd` shim、经 `cmd.exe`，argv 均为正确 UTF-8（`e5be85726576696577`）。别因为回显乱码去改标签名或加转义。**现在标签全部是英文（§4.5），这条已不再触发，留作排障参考。**
 
 ## 8. 验证记录（2026-11-03）
+
+**质量边界（§5.4）落地验证（2026-11-03 04:1x）**
+
+| 检查 | 结果 |
+|---|---|
+| `node --test scripts/task-board/test/*.test.mjs` | **113 / 113 通过**（3.6s），比上一轮 110 条新增 3 条 |
+| `review --rework` 不带 `--kind` | exit 5，报 `--kind unmet\|regression` + 两个值的含义；卡不动 |
+| `--kind better`（改进当理由） | exit 5，报 `unknown option` 之外的专属提示：改为**新开卡**再 pass 本卡 |
+| 连续打回 4 次 | 前 3 次落 `reviews[].kind`（`unmet`/`regression`），第 4 次 **exit 3**，报 `limit 3`；此后 `--pass` 仍可结算 |
+| `next` 的 hints | 打印 `rework requested by <id> — <原因>, round <n> of 3: <判词>` |
+| CLI 输出 | `reviewed <id>: rework (unmet, round 1/3) — back in the pool as [external, rework]` |
+| 老卡兼容 | 无 `timeline/<id>.json` ⇒ `reviewStats` 全 0，不受上限影响 |
 
 - `node --test scripts/task-board/test/*.test.mjs`：72 条全绿（transport / identity / claims / ops / cli / mcp）。
 - 实机 `doctor --json`：自动发现 `http://127.0.0.1:62185`，`ledgerId=0bdbb2fa-…`，`schemaVersion=7`，`revision=77`（读只读，无写入）。

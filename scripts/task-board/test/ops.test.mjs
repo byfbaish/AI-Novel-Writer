@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { httpTransport } from '../lib/transport.mjs'
 import { createOps } from '../lib/ops.mjs'
+import { MAX_REWORKS } from '../lib/timeline.mjs'
 import { readClaim, updateClaim } from '../lib/claims.mjs'
 import { startFakeBoard } from './fake-board.mjs'
 
@@ -444,7 +445,7 @@ test('a card cannot be passed by the agent that handed it over', async () => {
     (error) => error.code === 'conflict' && /handed over by test:agent/u.test(error.message),
   )
   await assert.rejects(
-    () => ops.review('t1', { verdict: 'rework', note: 'not mine to judge' }),
+    () => ops.review('t1', { verdict: 'rework', kind: 'unmet', note: 'not mine to judge' }),
     (error) => error.code === 'conflict',
   )
   assert.equal(board.snapshot().tasks.find((task) => task.id === 't1').status, 'todo', 'a refused review moves nothing')
@@ -539,15 +540,70 @@ test('review --rework needs a note, and sends the card back to the pool with it'
     (error) => error.code === 'usage' && /note/u.test(error.message),
   )
 
-  const reviewed = await reviewer.review('t1', { verdict: 'rework', note: '第 3 节的表格要按新列重排' })
+  const reviewed = await reviewer.review('t1', { verdict: 'rework', kind: 'unmet', note: '第 3 节的表格要按新列重排' })
   assert.deepEqual(reviewed.tags.map((entry) => entry.name).sort(), ['external', 'rework'])
   assert.equal(reviewed.task.status, 'todo')
+  assert.equal(reviewed.kind, 'unmet')
+  assert.equal(reviewed.reviews.reworks, 1)
 
   // The note is the whole reason the card is claimable again: it travels to the
   // next worker as a hint, because the card's own text is frozen now.
   const reclaim = await ops.next({ tag: 'external' })
   assert.equal(reclaim.task.id, 't1')
   assert.ok(reclaim.hints.some((hint) => /第 3 节/u.test(hint)), `expected the verdict in the hints, got ${JSON.stringify(reclaim.hints)}`)
+  await board.close()
+})
+
+test('a rework must name one of two bounded reasons — "better" is not one of them', async () => {
+  const ctx = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  const { board, ops } = ctx
+  const reviewer = reviewerFor(ctx)
+  await ops.next({ tag: 'external' })
+  await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
+
+  // Quality has no ceiling, so an unclassified bounce is refused outright: the
+  // reviewer has to say which finite promise the card broke.
+  await assert.rejects(
+    () => reviewer.review('t1', { verdict: 'rework', note: '可以再干净一点' }),
+    (error) => error.code === 'usage' && /--kind/u.test(error.message),
+  )
+  // Naming the improvement as the kind gets told where it belongs.
+  await assert.rejects(
+    () => reviewer.review('t1', { verdict: 'rework', kind: 'better', note: '可以再干净一点' }),
+    (error) => error.code === 'usage' && /new card/u.test(error.message),
+  )
+  assert.equal(board.snapshot().tasks.find((task) => task.id === 't1').status, 'todo', 'a refused rework moves nothing')
+  assert.deepEqual(
+    board.snapshot().tasks.find((task) => task.id === 't1').tags.map((entry) => entry.name),
+    ['review'],
+    'still awaiting a real verdict',
+  )
+  await board.close()
+})
+
+test('a card stops bouncing at the limit, and can still be passed from there', async () => {
+  const ctx = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  const { board, ops } = ctx
+  const reviewer = reviewerFor(ctx)
+  for (let round = 1; round <= MAX_REWORKS; round += 1) {
+    await ops.next({ tag: 'external' })
+    await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
+    const reviewed = await reviewer.review('t1', {
+      verdict: 'rework',
+      kind: round === MAX_REWORKS ? 'regression' : 'unmet',
+      note: `round ${round}`,
+    })
+    assert.equal(reviewed.reviews.reworks, round, `round ${round} is counted`)
+  }
+  await ops.next({ tag: 'external' })
+  await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
+  await assert.rejects(
+    () => reviewer.review('t1', { verdict: 'rework', kind: 'unmet', note: 'again' }),
+    (error) => error.code === 'conflict' && new RegExp(`limit ${MAX_REWORKS}`, 'u').test(error.message),
+  )
+  // The way out is not "try harder": it is closing the card as it stands.
+  const reviewed = await reviewer.review('t1', { verdict: 'pass', note: 'as it stands' })
+  assert.equal(reviewed.task.status, 'done')
   await board.close()
 })
 
@@ -567,7 +623,7 @@ test('review --pass also clears a rework label left by the previous round', asyn
   const reviewer = reviewerFor(ctx)
   await ops.next({ tag: 'external' })
   await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
-  await reviewer.review('t1', { verdict: 'rework', note: 'fix the table' })
+  await reviewer.review('t1', { verdict: 'rework', kind: 'unmet', note: 'fix the table' })
   // Second round: the worker hands the same card back again.
   await ops.next({ tag: 'external' })
   await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
@@ -583,7 +639,7 @@ test('review refuses a card the worker never released', async () => {
   // Handover without --release: the card is still running and still claimed.
   await ops.tag('t1', { add: ['review'], remove: ['external'] })
   await assert.rejects(
-    () => ops.review('t1', { verdict: 'rework', note: 'nope' }),
+    () => ops.review('t1', { verdict: 'rework', kind: 'unmet', note: 'nope' }),
     (error) => error.code === 'conflict' && /running/u.test(error.message),
   )
   assert.equal(board.snapshot().tasks.find((task) => task.id === 't1').status, 'running')

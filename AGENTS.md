@@ -45,7 +45,7 @@ node scripts/check-doc-placement.mjs --status-of "期 2"   # 收口：把写着�
 6. **改 prompt 文案前**先读 `docs/design/prompt/prompt-three-layer-inventory.md`（三层承载物 + 16 条装配链路）与 `prompt-clause-admission.md`（条款三问）。作者事实与红线不得删除（ADR 0020）。
 7. **不猜根因**：先取证（代码 / 日志 / prompt trace），再改。测试失败先用 `git stash` 对照确认是否既有红。
 8. **图用 Mermaid**，每张图配一句读法；不贴截图（无法 diff）。
-9. **干完 ≠ 已完成，谁都不例外**：改完的东西**不许自己宣布完成** —— 派一个**上下文隔离**的子 agent 审（只给「要求什么 / 交付了什么 / 怎么算通过」，**不给推理过程和结论**）；协作模式**交叉审**；派出去的人**不给 `review`/`done` 权限**。复核意见**要证据**，无证据的通过与反对都不成立；但**通过与否必须由另一个身份签字**（看板 `review` 会拒掉与交回者同名的复核）→ [`docs/agents/task-board-channel.md`](docs/agents/task-board-channel.md) §5.2 / §5.3
+9. **干完 ≠ 已完成，谁都不例外**：改完的东西**不许自己宣布完成** —— 派一个**上下文隔离**的子 agent 审（只给「要求什么 / 交付了什么 / 怎么算通过」，**不给推理过程和结论**）；协作模式**交叉审**；派出去的人**不给 `review`/`done` 权限**。复核意见**要证据**，无证据的通过与反对都不成立；**签字必须换个身份**（`review` 拒同名）。**打回只认两种**：`unmet`（卡上验收标准没兑现）/ `regression`（打坏了原来能用的）—— "还能更好"不是理由，那属新卡（质量无上限，不设边界就永远出不去）→ [`docs/agents/task-board-channel.md`](docs/agents/task-board-channel.md) §5.2 / §5.3 / §5.4
 
 ## 要做什么 → 先读什么
 

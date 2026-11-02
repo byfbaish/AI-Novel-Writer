@@ -12,7 +12,16 @@ import os from 'node:os'
 import { BoardError } from './errors.mjs'
 import { claimableTasks, containerTaskIds, DEFAULT_TAG, hasOpenExecution, tagHints, reapPlan } from './select.mjs'
 import { claimsDir, writeClaim, readClaim, deleteClaim, listClaims, updateClaim } from './claims.mjs'
-import { appendReview, cardTimes, lastReview, readTimeline, stampTimeline } from './timeline.mjs'
+import {
+  appendReview,
+  cardTimes,
+  lastReview,
+  MAX_REWORKS,
+  readTimeline,
+  REVIEW_KINDS,
+  reviewStats,
+  stampTimeline,
+} from './timeline.mjs'
 
 export const DEFAULT_LEASE_MS = 60 * 60 * 1000
 export const EXTERNAL_SUMMARY_MAX_LENGTH = 1000
@@ -97,7 +106,12 @@ function dispatchHints(task, stamp) {
   const hints = tagHints(task)
   const verdict = lastReview(stamp)
   if (tagNames(task).includes(REWORK_TAG) && verdict?.verdict === 'rework' && typeof verdict.note === 'string' && verdict.note !== '') {
-    hints.push(`rework requested by ${verdict.by}: ${verdict.note}`)
+    // The count is part of the message on purpose: the worker can see how many
+    // bounces are left, so "fix exactly what the note says" reads as the only
+    // way to finish rather than as one option among several.
+    const spent = reviewStats(stamp).reworks
+    const reason = verdict.kind === 'regression' ? 'this broke something that worked' : 'the card missed its own criteria'
+    hints.push(`rework requested by ${verdict.by} — ${reason}, round ${spent} of ${MAX_REWORKS}: ${verdict.note}`)
   }
   return hints
 }
@@ -717,7 +731,7 @@ export function createOps(options) {
      * text once it has run, so a `rework` with no reason is just a card that
      * mysteriously came back.
      */
-    async review(taskId, { verdict, note } = {}) {
+    async review(taskId, { verdict, note, kind } = {}) {
       requireAgent()
       const cleanVerdict = typeof verdict === 'string' ? verdict.trim().toLowerCase() : ''
       if (cleanVerdict !== 'pass' && cleanVerdict !== 'rework') {
@@ -726,6 +740,20 @@ export function createOps(options) {
       const cleanNote = typeof note === 'string' ? note.trim() : ''
       if (cleanVerdict === 'rework' && cleanNote === '') {
         throw new BoardError('usage', 'a rework verdict needs --note saying what to change')
+      }
+      // Quality has no ceiling, so "this could be better" cannot be a reason to
+      // send a card back — that loop never terminates. A rework has to name one
+      // of two finite things: something the card promised and did not deliver,
+      // or something that worked before and no longer does. Everything else is
+      // new scope: a new card, not a bounce.
+      const cleanKind = typeof kind === 'string' ? kind.trim().toLowerCase() : ''
+      if (cleanVerdict === 'rework' && !REVIEW_KINDS.includes(cleanKind)) {
+        throw new BoardError(
+          'usage',
+          cleanKind === ''
+            ? `a rework verdict needs --kind ${REVIEW_KINDS.join('|')}: "unmet" = the card missed what its own acceptance criteria promised, "regression" = this change broke something that worked before`
+            : `--kind ${cleanKind} is not a rework reason (only ${REVIEW_KINDS.join('|')}); improvements that were never part of this card are new scope — publish a new card for them and pass this one as it stands`,
+        )
       }
       if (cleanNote.length > EXTERNAL_SUMMARY_MAX_LENGTH) {
         throw new BoardError(
@@ -766,18 +794,40 @@ export function createOps(options) {
           `task ${taskId} was handed over by ${handedBy}; the agent that did the work cannot review it — review with a different --agent, or have that agent rework the card itself`,
         )
       }
+      // A card that keeps coming back is not a quality problem to grind out, it
+      // is a card whose acceptance criteria were never pinned down. Past this
+      // point the review has to end: pass it as it stands and open new cards for
+      // whatever is still wrong, or the loop simply never closes.
+      const stats = reviewStats(handover)
+      if (cleanVerdict === 'rework' && stats.reworks >= MAX_REWORKS) {
+        throw new BoardError(
+          'conflict',
+          `task ${taskId} has been sent back ${stats.reworks} times already (limit ${MAX_REWORKS}: ${stats.unmet} unmet, ${stats.regression} regression); the review has to end here — pass it as it stands and publish new cards for what is still missing`,
+        )
+      }
+      const reviewedAt = now()
       const entry = {
-        at: now(),
+        at: reviewedAt,
         by: requireAgent(),
         verdict: cleanVerdict,
+        ...(cleanVerdict === 'rework' ? { kind: cleanKind } : {}),
         ...(cleanNote === '' ? {} : { note: cleanNote }),
       }
       if (cleanVerdict === 'rework') {
         // Back to the pool: `external` returns so `next` hands it out again,
         // `rework` marks why. No `release` — the worker already dropped its claim.
         const tagged = await ops.tag(taskId, { add: [REWORK_TAG, DEFAULT_TAG], remove: [REVIEW_TAG] })
-        appendReview(stateDir, ledgerId, taskId, entry)
-        return { ledgerId, verdict: cleanVerdict, note: cleanNote, task: tagged.task, tags: tagged.tags, times: tagged.times }
+        const stamp = appendReview(stateDir, ledgerId, taskId, entry)
+        return {
+          ledgerId,
+          verdict: cleanVerdict,
+          kind: cleanKind,
+          note: cleanNote,
+          reviews: reviewStats(stamp),
+          task: tagged.task,
+          tags: tagged.tags,
+          times: tagged.times,
+        }
       }
       // `pass`: settle FIRST, drop the labels LAST.
       //
@@ -839,7 +889,15 @@ export function createOps(options) {
           `task ${taskId} is settled in Done; only the label cleanup failed (${error.message}) — run: tag ${taskId} --remove ${REVIEW_TAG} --remove ${REWORK_TAG}`,
         )
       }
-      return { ledgerId, verdict: cleanVerdict, note: cleanNote, task: cleared.task, tags: cleared.tags, times: settled.times }
+      return {
+        ledgerId,
+        verdict: cleanVerdict,
+        note: cleanNote,
+        reviews: { ...stats, reviews: stats.reviews + 1 },
+        task: cleared.task,
+        tags: cleared.tags,
+        times: settled.times,
+      }
     },
 
     async mine() {

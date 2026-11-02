@@ -193,6 +193,26 @@ test('review needs exactly one verdict flag', async () => {
   await board.close()
 })
 
+test('review --rework carries its reason and prints the round', async () => {
+  const board = await startFakeBoard({ tasks: [{ id: 't1', tags: [{ name: 'external' }] }] })
+  const stateDir = tempDir()
+  const env = ['--url', board.url, '--agent', 'test:agent']
+  const reviewer = ['--url', board.url, '--agent', 'test:reviewer']
+  await runCli(['next', ...env], stateDir)
+  await runCli(['tag', 't1', '--add', 'review', '--remove', 'external', '--release', ...env], stateDir)
+
+  // No reason, no bounce: the flag is what keeps the loop finite.
+  const missing = await runCli(['review', 't1', '--rework', '--note', '可以更好', ...reviewer], stateDir)
+  assert.equal(missing.code, 5)
+  assert.match(missing.stderr, /--kind unmet\|regression/u)
+
+  const bounced = await runCli(['review', 't1', '--rework', '--kind', 'unmet', '--note', '第 3 节没按新列重排', ...reviewer], stateDir)
+  assert.equal(bounced.code, 0, bounced.stderr)
+  assert.match(bounced.stdout, /rework \(unmet, round 1\/3\)/u)
+  assert.match(bounced.stdout, /back in the pool/u)
+  await board.close()
+})
+
 test('create publishes a card that next can then claim', async () => {
   const board = await startFakeBoard({})
   const stateDir = tempDir()

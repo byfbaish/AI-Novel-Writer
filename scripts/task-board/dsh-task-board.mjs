@@ -11,6 +11,7 @@ import process from 'node:process'
 import fs from 'node:fs'
 import { resolveBoard, stateDirFrom } from './lib/identity.mjs'
 import { createOps, parseLeaseDuration } from './lib/ops.mjs'
+import { MAX_REWORKS } from './lib/timeline.mjs'
 import { BoardError, describeError, exitCodeFor, EXIT } from './lib/errors.mjs'
 
 const HELP = `Usage: dsh-task-board <command> [options]
@@ -25,7 +26,7 @@ Commands:
   fail <taskId>        record a failed external outcome
   release <taskId>     give a claimed task back to the To Do column
   tag <taskId>         change labels, optionally release the card back to To Do
-  review <taskId>      --pass (settle into Done) | --rework --note "<what to change>"
+  review <taskId>      --pass (settle into Done) | --rework --kind unmet|regression --note "<what to change>"
   list                 list tasks (todo by default)
   get <taskId>         print one task in full
   mine                 list this agent's claims
@@ -47,6 +48,7 @@ Options:
   --id <taskId>        create: pin the card id (needed when the prompt names it)
   --pass               review: accept the card (clears "review", settles it into Done)
   --rework             review: send it back with "rework" + "external" so it can be claimed again
+  --kind <name>        review --rework: unmet (missed its own criteria) | regression (broke what worked)
   --note <text>        review: the verdict that stays on the card (required for --rework)
   --lease <duration>   claim lease, e.g. 60m, 90s, 2h (default 60m)
   --summary <text>     one-line result stored on the execution record (required for done/fail)
@@ -62,7 +64,7 @@ Options:
 
 const BOOLEAN_FLAGS = new Set(['json', 'dry-run', 'no-auto-reap', 'help', 'release', 'pass', 'rework'])
 const MULTI_FLAGS = new Set(['add', 'remove'])
-const VALUE_FLAGS = new Set(['url', 'agent', 'tag', 'lease', 'summary', 'report', 'reason', 'column', 'query', 'title', 'description', 'prompt', 'prompt-file', 'parent', 'id', 'note'])
+const VALUE_FLAGS = new Set(['url', 'agent', 'tag', 'lease', 'summary', 'report', 'reason', 'column', 'query', 'title', 'description', 'prompt', 'prompt-file', 'parent', 'id', 'note', 'kind'])
 
 function parseArgs(argv) {
   const flags = {}
@@ -306,7 +308,7 @@ async function main(argv) {
       const pass = flags.pass === true
       const rework = flags.rework === true
       if (pass === rework) throw new BoardError('usage', 'review needs exactly one of --pass or --rework')
-      payload = await ops.review(taskId, { verdict: pass ? 'pass' : 'rework', note: flags.note })
+      payload = await ops.review(taskId, { verdict: pass ? 'pass' : 'rework', note: flags.note, kind: flags.kind })
       break
     }
     case 'mine':
@@ -377,8 +379,13 @@ async function main(argv) {
       const names = (payload.tags ?? []).map((entry) => (typeof entry === 'string' ? entry : entry.name))
       const lines = payload.verdict === 'pass'
         ? [`reviewed ${payload.task.id}: pass — settled into Done`]
-        : [`reviewed ${payload.task.id}: rework — back in the pool as [${names.join(', ')}]`]
+        : [
+            `reviewed ${payload.task.id}: rework (${payload.kind}, round ${payload.reviews.reworks}/${MAX_REWORKS}) — back in the pool as [${names.join(', ')}]`,
+          ]
       if (typeof payload.note === 'string' && payload.note !== '') lines.push(`note: ${payload.note}`)
+      if (payload.verdict === 'rework' && payload.reviews.reworks >= MAX_REWORKS) {
+        lines.push(`# this is the last bounce: the next review can only pass. Anything else still wrong is a new card.`)
+      }
       printLines([...lines, ...renderTimes(payload.times)])
       break
     }

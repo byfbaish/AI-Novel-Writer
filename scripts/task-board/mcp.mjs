@@ -157,12 +157,13 @@ const TOOLS = [
   },
   {
     name: 'task_board_review',
-    description: 'Decide a card that a worker handed back (it must carry the "review" label). verdict "pass" clears the label and settles the card into Done; verdict "rework" clears the label, adds "rework" and "external" so the card is claimable again, and requires a note saying what to change. Either verdict is kept on the card as the review record.',
+    description: 'Decide a card that a worker handed back (it must carry the "review" label). verdict "pass" clears the label and settles the card into Done; verdict "rework" clears the label, adds "rework" and "external" so the card is claimable again. A rework needs both a note and a kind, and the kind is limited to two things: "unmet" (the card missed what its own acceptance criteria promised) or "regression" (this change broke something that worked before). Improvements that were never part of this card are new scope — publish a new card for those and pass this one; no card is bounced more than 3 times.',
     inputSchema: {
       type: 'object',
       properties: {
         taskId: { type: 'string' },
         verdict: { type: 'string', enum: ['pass', 'rework'] },
+        kind: { type: 'string', enum: ['unmet', 'regression'], description: 'required for rework: unmet = missed its own criteria, regression = broke what worked' },
         note: { type: 'string', description: 'required for rework: what the worker must change' },
       },
       required: ['taskId', 'verdict'],
@@ -274,7 +275,7 @@ async function callToolOnce(name, args) {
     case 'task_board_tag':
       return ops.tag(args.taskId, { add: args.add ?? [], remove: args.remove ?? [], release: args.release === true })
     case 'task_board_review':
-      return ops.review(args.taskId, { verdict: args.verdict, note: args.note })
+      return ops.review(args.taskId, { verdict: args.verdict, note: args.note, kind: args.kind })
     case 'task_board_mine':
       return ops.mine()
     case 'task_board_reap':
