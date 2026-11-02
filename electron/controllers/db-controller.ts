@@ -138,6 +138,7 @@ import {
   readVolumeStructure,
   rebuildVolumes,
 } from '../repositories/volume-structure-repository'
+import { refreshVolumeProgress, syncVolumeStructureFromCore } from '../services/volume-structure-sync'
 
 type ProjectDatabaseHandler = (event: unknown, ...args: never[]) => unknown
 
@@ -262,6 +263,11 @@ export function registerDatabaseController() {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       ProjectCoreRepository.update(data)
+      // D14：作者手动改架构（含直接编辑卷 / 单元结构）同样要重建。
+      if ('plotStructurePlan' in data || 'synopsis' in data) {
+        const database = getProjectDb()
+        if (database) syncVolumeStructureFromCore(database)
+      }
       return { success: true }
     } catch (err) {
       console.error('[db:project-core-update] 失败:', err)
@@ -280,6 +286,12 @@ export function registerDatabaseController() {
         assertGenerationSourcesCurrent(request.generationRunHandle)
         ProjectCoreRepository.update(request.data)
       })).immediate()
+      // D14：卷结构是 `plot_structure_plan` 的结构化投影，架构一改就该重建。
+      // 此前全库只有「卷末交接」面板那一次手动点击会建卷，导致 volumes 长期为空、
+      // `l3-handoff-missing` 变成必然状态。幂等、失败不阻断（见 volume-structure-sync.ts 头注）。
+      if ('plotStructurePlan' in request.data || 'synopsis' in request.data) {
+        syncVolumeStructureFromCore(database)
+      }
       return { success: true }
     } catch (error) { return { success: false, error: String(error) } }
   })
@@ -1959,6 +1971,10 @@ export function registerDatabaseController() {
         synopsis: core.synopsis,
         totalChapters: core.totalChapters,
       })
+      // 「重建卷结构」的语义是「按当前大纲和正文重算」：计划列来自大纲，
+      // `actual_*` 来自已定稿的草稿。只重算前者会让作者看到「6 章都写完了，
+      // 进度还是空的」。`refreshVolumeProgress` 是纯查询，不会覆盖任何作者决定。
+      refreshVolumeProgress(db)
       return {
         success: true,
         volumes: result.volumes,

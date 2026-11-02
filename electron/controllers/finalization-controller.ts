@@ -1,8 +1,9 @@
 import { ipcMain } from 'electron'
 
-import { getCurrentProjectPath } from '../database'
+import { getCurrentProjectPath, getProjectDb } from '../database'
 import { projectAccess } from '../services/project-access'
 import { FinalizationService } from '../services/finalization-service'
+import { markVolumeProgressForChapter } from '../services/volume-structure-sync'
 import type { ProjectSessionContext } from '../../src/shared/ipc-channels'
 import { isProjectSessionContext } from '../../src/shared/project-session-context'
 import type { FinalizationSnapshot } from '../../src/services/finalization-snapshot'
@@ -53,7 +54,7 @@ export function registerFinalizationController(): void {
         throw new Error('定稿快照与项目会话不匹配')
       }
       const active = projectAccess.assertCurrentProjectContext(context, getCurrentProjectPath())
-      return await finalizationService.finalize({
+      const result = await finalizationService.finalize({
         projectRoot: active.rootPath,
         draftId: candidate.draftId,
         chapterNumber: candidate.chapterNumber,
@@ -61,6 +62,16 @@ export function registerFinalizationController(): void {
         content: candidate.content,
         contentRevision: candidate.contentRevision,
       })
+      // D14：定稿是「这一卷已写到第几章」的唯一事实来源，但此前要作者去
+      // 「卷末交接」面板手点「标记完成」才会写进 `volumes.actual_last`，
+      // 于是第 1 卷 6 章全定稿之后 actual_last 仍然是 null。
+      // `markVolumeDone` 本身是纯查询（取本卷区间内已定稿的最大章号），无决策成分。
+      // 纯派生维护，失败不阻断定稿（见 volume-structure-sync.ts 头注）。
+      if (result.success) {
+        const database = getProjectDb()
+        if (database) markVolumeProgressForChapter(database, candidate.chapterNumber)
+      }
+      return result
     } catch (error) {
       return { success: false, committed: false, error: String(error) }
     }
