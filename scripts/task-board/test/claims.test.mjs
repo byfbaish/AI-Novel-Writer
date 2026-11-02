@@ -201,6 +201,14 @@ test('containerTaskIds marks every parent that still owns unfinished work', () =
     makeTask({ id: 'leaf', parentId: 'mid' }),
   ]
   assert.deepEqual([...containerTaskIds(chain)].sort(), ['mid', 'root'])
+  // A finished middle card does not rescue its parent: `root` still owns the
+  // open `leaf` two levels down, which is exactly what the Host counts.
+  const stepped = [
+    makeTask({ id: 'root' }),
+    makeTask({ id: 'mid', parentId: 'root', status: 'done' }),
+    makeTask({ id: 'leaf', parentId: 'mid' }),
+  ]
+  assert.deepEqual([...containerTaskIds(stepped)].sort(), ['mid', 'root'])
 })
 
 test('claimableTasks never hands out a container card', () => {
@@ -211,8 +219,9 @@ test('claimableTasks never hands out a container card', () => {
   assert.deepEqual(claimableTasks(tasks).map((task) => task.id), ['leaf'])
   const containers = containerTaskIds(tasks)
   assert.equal(isClaimable(tasks[0], { containers }), false)
-  // Without the set the predicate stays tag-only; every dispatch path builds the
-  // set first (claimableTasks does it on its own), so this is not a gap in `next`.
+  // NOTE: `containers` is optional and omitting it makes the predicate tag-only.
+  // That is a footgun for any new caller — `claimableTasks` and `ops.claim` are
+  // the sanctioned entry points and both build the set first. Do not add a third.
   assert.equal(isClaimable(tasks[0]), true)
 })
 

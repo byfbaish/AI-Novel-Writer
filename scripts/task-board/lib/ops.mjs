@@ -689,6 +689,12 @@ export function createOps(options) {
       if (cleanVerdict === 'rework' && cleanNote === '') {
         throw new BoardError('usage', 'a rework verdict needs --note saying what to change')
       }
+      if (cleanNote.length > EXTERNAL_SUMMARY_MAX_LENGTH) {
+        throw new BoardError(
+          'usage',
+          `note is ${cleanNote.length} chars; the board keeps at most ${EXTERNAL_SUMMARY_MAX_LENGTH}`,
+        )
+      }
       const snapshot = await state()
       const task = findTask(snapshot, taskId)
       if (!tagNames(task).includes(REVIEW_TAG)) {
@@ -704,21 +710,41 @@ export function createOps(options) {
         ...(cleanNote === '' ? {} : { note: cleanNote }),
       }
       if (cleanVerdict === 'rework') {
+        // A worker that hands a card back also releases it (§5.1.1). A card still
+        // sitting in another column means that handover was incomplete — relabelling
+        // it would print "back in the pool" while `next` cannot see it at all.
+        if (task.status !== 'todo') {
+          throw new BoardError(
+            'conflict',
+            `task ${taskId} is ${task.status}, not todo; the worker did not release it when handing over (tag --release), so it cannot go back to the pool`,
+          )
+        }
         // Back to the pool: `external` returns so `next` hands it out again,
-        // `rework` marks why. No `release` — the worker released the card when
-        // it handed it over, so there is no claim of ours to drop.
+        // `rework` marks why. No `release` — the worker already dropped its claim.
         const tagged = await ops.tag(taskId, { add: [REWORK_TAG, DEFAULT_TAG], remove: [REVIEW_TAG] })
         appendReview(stateDir, ledgerId, taskId, entry)
         return { ledgerId, verdict: cleanVerdict, note: cleanNote, task: tagged.task, tags: tagged.tags, times: tagged.times }
       }
-      // `pass`: clear the label first, so a later failure cannot leave a card in
-      // Done still wearing `review`. `done` needs our own claim first —
+      // `pass`: settle FIRST, drop the labels LAST.
+      //
+      // The `review` label is the only thing that says "this card still owes a
+      // verdict". Clearing it before the settlement would leave a card that
+      // `next` will not hand out (no `external`) and `review` will not touch (no
+      // `review`) if `claim` or `done` then fails. `done` needs our own claim —
       // record-external-outcome refuses to settle a card nobody holds.
-      const cleared = await ops.tag(taskId, { remove: [REVIEW_TAG] })
-      appendReview(stateDir, ledgerId, taskId, entry)
       await ops.claim(taskId)
-      const settled = await ops.done(taskId, { summary: cleanNote === '' ? `review passed: ${taskId}` : cleanNote })
-      return { ledgerId, verdict: cleanVerdict, note: cleanNote, task: settled.task, tags: cleared.tags, times: settled.times }
+      let settled
+      try {
+        appendReview(stateDir, ledgerId, taskId, entry)
+        settled = await ops.done(taskId, { summary: cleanNote === '' ? `review passed: ${taskId}` : cleanNote })
+      } catch (error) {
+        // Hand the card back the way we found it (To Do, still labelled `review`)
+        // rather than leave a running card whose claim nobody owns.
+        await ops.release(taskId, { reason: 'review failed; card returned to To Do' }).catch(() => undefined)
+        throw error
+      }
+      const cleared = await ops.tag(taskId, { remove: [REVIEW_TAG, REWORK_TAG] })
+      return { ledgerId, verdict: cleanVerdict, note: cleanNote, task: cleared.task, tags: cleared.tags, times: settled.times }
     },
 
     async mine() {

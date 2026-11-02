@@ -267,12 +267,12 @@ stdio、零依赖、newline-delimited JSON-RPC；stdout 只允许协议帧，日
 **交 review（作者 2026-11-03 定）**：执行者干完**不得自己 `done`**（那会把卡直接推进 Done，跳过人的复核）。正确做法是写报告 + 一条命令交 review：
 
 ```bash
-dsh-task-board tag <taskId> --add 待review --remove external --release
+dsh-task-board tag <taskId> --add review --remove external --release
 ```
 
 `tag` 走看板 `update` action 的 `tags` 整组替换（元素是 `{name, promptPrefix?}`，上限 8），`--release` 再把卡从 running 还回 todo 并清本地 claim。必须同时去掉 `external`，否则下一个 agent 会再次认领它。
 
-复核者在复核后想留 summary 时：用**自己的身份** `claim` + `done --summary "review accepted: …; worker report: <path>"`，卡片进 Done 并落一条 `external` 执行记录（`initiatedBy` 是复核者）；纯人工在 GUI 移 Done 不产生 summary，报告文件是唯一凭证。禁止的是执行者自结算，不是复核者留结论。
+复核者用 `review` 一条命令定去留（2026-11-03 02:5x 起）：`review <taskId> --pass --note "…"` 会清标签 + 以自己身份 `claim` + `done`（落 `external` 执行记录，`initiatedBy` 是复核者）；`review <taskId> --rework --note "…"` 把卡变 `[external, rework]` 送回池子，判词随 `next` 的 hints 打给下一个 worker。纯人工在 GUI 移 Done 不产生 summary，报告文件是唯一凭证。禁止的是执行者自结算，不是复核者留结论。
 
 ### 5.7 失败与恢复
 
@@ -371,7 +371,8 @@ dsh-task-board tag <taskId> --add 待review --remove external --release
 
 - 2026-11-03 初稿 + builder check；据评审修正：`move` 即 CAS（租约不承担 CAS）、tags 为对象、`hidden`/`archived` 过滤、`promptPrefix` 输出、`record-external-outcome` 的 startedAt/endedAt 语义、summary 存在 `error` 字段的显示怪癖、端口每次启动变化与 ledgerId 身份校验、Host 接管时让位。
 - 2026-11-03 作者裁定：CLI / MCP 服务名统一为 `dsh-task-board`，源码目录 `scripts/task-board/`，本地状态目录 `~/.dsh-task-board/`；报告 = summary + 工作区文件；看板定位 = 自动发现 + ledgerId 校验。进入实施。
-- 2026-11-03 作者追加 review 规则：**执行者不得自己 `done`**，干完只写报告 + `tag 待review --release`；由人/调度者复核后再进 Done（详见 §5.6）。为此新增 `tag` 子命令与 `task_board_tag` MCP 工具。
+- 2026-11-03 作者追加 review 规则：**执行者不得自己 `done`**，干完只写报告 + 交 review（当时叫 `tag 待review --release`，现为 `tag --add review`）；由人/调度者复核后再进 Done（详见 §5.6）。为此新增 `tag` 子命令与 `task_board_tag` MCP 工具。
+- 2026-11-03 02:5x 简报增补（对应 `docs/agents/task-board-channel.md` §4.5 / §7）：标签统一为全英文 `external|review|rework|I1-3|trace`；新增 `review --pass|--rework --note` 与 `task_board_review`（第 15 个工具）；**容器卡不可认领**落成硬闸（有未完成子卡 ⇒ `next`/`claim` 都拒）；子卡深度按部署现状（两层）不改插件配置。
 
 ## 12. 实施记录（2026-11-03）
 

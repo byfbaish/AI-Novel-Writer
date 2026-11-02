@@ -22,20 +22,33 @@ export const DEFAULT_TAG = 'external'
  * dispatched as if it were a leaf.
  *
  * The predicate is deliberately the Host's, not a new one: a child counts while
- * `status !== 'done'`, and an archived child no longer holds its parent. A
- * grandchild needs no separate walk — every id that has an open child is itself
- * a key here, so the set of parents is already closed under parenthood.
+ * `status !== 'done'`, and an archived child no longer holds its parent. A card
+ * is a container if **any** descendant is open, so a finished middle card does
+ * not rescue its parent — the walk follows each open child up the whole ancestor
+ * chain rather than looking one level down.
  */
 export function containerTaskIds(tasks) {
-  const parents = new Set()
+  const parentOf = new Map()
+  const openParents = new Set()
   for (const task of Array.isArray(tasks) ? tasks : []) {
     if (task === null || typeof task !== 'object') continue
     if (typeof task.id !== 'string' || task.id === '') continue
     if (typeof task.parentId !== 'string' || task.parentId === '') continue
+    parentOf.set(task.id, task.parentId)
     if (task.archivedAt != null || task.status === 'done') continue
-    parents.add(task.parentId)
+    openParents.add(task.parentId)
   }
-  return parents
+  const containers = new Set()
+  for (const id of openParents) {
+    const seen = new Set()
+    let cursor = id
+    while (typeof cursor === 'string' && cursor !== '' && !seen.has(cursor)) {
+      seen.add(cursor)
+      containers.add(cursor)
+      cursor = parentOf.get(cursor)
+    }
+  }
+  return containers
 }
 
 /** Last execution still open means the Host is running the card right now. */

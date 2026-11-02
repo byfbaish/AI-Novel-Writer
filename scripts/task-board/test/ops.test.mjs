@@ -443,6 +443,59 @@ test('review refuses a card nobody handed back', async () => {
   await board.close()
 })
 
+test('review --pass also clears a rework label left by the previous round', async () => {
+  const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  await ops.next({ tag: 'external' })
+  await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
+  await ops.review('t1', { verdict: 'rework', note: 'fix the table' })
+  // Second round: the worker hands the same card back again.
+  await ops.next({ tag: 'external' })
+  await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
+  const reviewed = await ops.review('t1', { verdict: 'pass', note: 'fixed' })
+  assert.equal(reviewed.task.status, 'done')
+  assert.deepEqual(reviewed.tags, [], 'passing ends the rework: both labels go')
+  await board.close()
+})
+
+test('review refuses a card the worker never released', async () => {
+  const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  await ops.next({ tag: 'external' })
+  // Handover without --release: the card is still running and still claimed.
+  await ops.tag('t1', { add: ['review'], remove: ['external'] })
+  await assert.rejects(
+    () => ops.review('t1', { verdict: 'rework', note: 'nope' }),
+    (error) => error.code === 'conflict' && /running/u.test(error.message),
+  )
+  assert.equal(board.snapshot().tasks.find((task) => task.id === 't1').status, 'running')
+  await board.close()
+})
+
+test('a note too long to keep as a summary is refused before anything moves', async () => {
+  const { board, ops } = await setup([{ id: 't1', tags: [{ name: 'external' }] }])
+  await ops.next({ tag: 'external' })
+  await ops.tag('t1', { add: ['review'], remove: ['external'], release: true })
+  const before = board.snapshot().revision
+  await assert.rejects(
+    () => ops.review('t1', { verdict: 'pass', note: 'x'.repeat(1200) }),
+    (error) => error.code === 'usage' && /1000/u.test(error.message),
+  )
+  const after = board.snapshot().tasks.find((task) => task.id === 't1')
+  assert.equal(after.status, 'todo', 'the card is untouched')
+  assert.deepEqual(after.tags.map((entry) => entry.name), ['review'], 'and still says it owes a verdict')
+  assert.equal(board.snapshot().revision, before)
+  await board.close()
+})
+
+test('a parent becomes claimable again once its children land', async () => {
+  const { board, ops } = await setup([
+    { id: 'parent', status: 'todo', tags: [{ name: 'external' }] },
+    { id: 'child', status: 'done', parentId: 'parent', tags: [{ name: 'external' }] },
+  ])
+  const claimed = await ops.next({ tag: 'external' })
+  assert.equal(claimed.task.id, 'parent')
+  await board.close()
+})
+
 test('create publishes a subtask that keeps its parentId', async () => {
   const { board, ops } = await setup([{ id: 'parent', status: 'todo' }])
   const child = await ops.create({ title: 'child', prompt: 'P', parentId: 'parent' })

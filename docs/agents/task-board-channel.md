@@ -454,6 +454,19 @@ node scripts/task-board/dsh-task-board.mjs review <taskId> --rework \
 | 判词落盘 | `<stateDir>/boards/<ledgerId>/timeline/<taskId>.json` 的 `reviews[]`（留最近 20 条）—— 卡正文跑过就冻结，这是唯一能写判词的地方 |
 | 未交回就复核 | exit 3：`not awaiting review: it carries no review label` |
 
+**独立复核这一批（2026-11-03 03:1x，上下文隔离子 agent，按 §5.2 第一种模式跑的第一例）**
+
+6 条验收标准：2 条通过、4 条有问题。采纳并修掉：
+
+| 复核发现 | 修法 |
+|---|---|
+| `review --pass` 先清 `review` 再结算，`claim`/`done` 任一步失败就留下「标签已清、没进 Done、`next` 与 `review` 都不认」的死卡（探针实测三种触发：卡仍 running、`--note` 超 1000 字、带 `review` 的容器卡） | **顺序倒过来**：先 `claim` → `done`，最后才清标签；失败时 `release` 把卡放回 To Do 且**保留 `review`**，可直接重试。`--note` 超 1000 字在入口就拒（exit 5），不再等到 `done` 才炸 |
+| `--pass` 不清 `rework`，通过的卡进 Done 还挂着「待返工」 | `--pass` 同时清 `review` + `rework` |
+| `containerTaskIds()` 只看一层父子：`root → mid(done) → leaf(todo)` 时 Host 判 `root` 是容器，我们判叶子 | 改为**沿祖先链上溯**。当前部署深度 1 碰不到，但原注释写「父链已封闭」是错的 |
+| `--rework` 在卡还 `running` 时只改标签不挪列，CLI 仍打印「back in the pool」 | 加前置检查：不是 `todo` 就 exit 3，说明执行者漏了 `--release` |
+
+**没修、记为已知限制**：卡已有 8 个标签时 `--rework` 会 exit 5（`rework` + `external` 顶掉上限）—— 报错清晰，手工减一个标签再试。单测 **99 → 104**。
+
 **`update` 子命令 + 四个时刻（2026-11-03 02:3x）**
 
 | 检查 | 结果 |
