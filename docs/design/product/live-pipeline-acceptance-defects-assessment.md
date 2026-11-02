@@ -1,6 +1,7 @@
 # 实机链路验收缺陷清单（2026-11-01 轮）
 
-> 状态：待裁定（2026-11-02；D1 代码已改、实机未验证；D12 已定性；**D14 A+B 均已实机复验**；D19 已按方案甲修复并实机复验；其余未开工）
+> 状态：待裁定（2026-11-02；**逐条状态见每个条目顶部的 `> 状态：` 行** —— ✅ 2 条（D14 / D19，已复验）· 🟡 1 条（D1，症状已实机复验、机制待正文批量）· ⬜ 16 条未开工；D12 真因已定性、修法待作者点头）
+
 > 日期：2026-11-01
 > 上级稿：[`live-verification-checklist.md`](live-verification-checklist.md)（一次新项目跑批要验什么）
 > 相关：[`e3-unit-batch-chain-design.md`](../architecture/e3-unit-batch-chain-design.md)（连续单元 / 链式新 run）、[`upstream-version-and-derived-invalidation-design.md`](../architecture/upstream-version-and-derived-invalidation-design.md)（上游失效）、[`volume-quota-context-budget-design.md`](../architecture/volume-quota-context-budget-design.md)（大纲前缀投影 L3 层）
@@ -39,30 +40,41 @@
 
 ## 2. 缺陷清单（按严重度排序）
 
-| 编号 | 级别 | 一句话 | 证据位置 |
-|---|---|---|---|
-| D1 | 阻塞 | 批内多单元/多章生成时第二次调用即抛 `GENERATION_SOURCE_CHANGED`，整批静默中止 | `electron/services/main-generation-owner.ts:931`；`electron/services/agent-generation.ts:158/190/196`；`src/services/agent/agent-generation-client.ts:33` |
-| D12 | 阻塞 | 正文重演被丢弃且无重试、无回流。**真因是短细纲把上一章全文当成本章任务**，不是校验过严（见「第二轮实测」） | `generate-draft.command.ts:1536`（拦截）、`:1142-1144`（注入全文）；`chapter-materials.ts:622-624`（required、不裁剪） |
-| D2 | 高 | 批次中断在 UI 上完全静默：无失败回执，进度条「假继续」 | `generation_runs` 36 条无终态、`blocked_code` 为 NULL；`generation_attempts` 却为 `settled` |
-| D13 | 高 | 同一章三次失败分别挂在三个不同层，失败原因互不相关且都无恢复路径 | 短细纲层 / 重演层 / `GENERATION_COMPOSITION_NO_PROGRESS` |
-| D14 | 高 | 卷结构三步（建卷结构 / 标卷完成 / 登记交接）全手动，生成流程从不调用、系统从不提示 → `l3-handoff-missing` 必然。**2026-11-02 已修**：建结构 + 推进进度改为自动（A 已实机复验，含历史回填），缺口提醒（B）沿用既有闸门、待第 10 章之后复验 | `VolumeHandoffRegistryPanel.tsx:269/293`（原全库唯一调用点）；`volumes` / `volume_units` / `volume_handoffs` 三表初始 0 行；`volumes.actual_last` 定稿后仍全 `null` |
-| D3 | 高 | `degraded=l3-handoff-missing` 提示过弱且不阻断（**根因见 D14**，两者同源） | `src/shared/synopsis-projection.ts:520`（push）、`:504–522`（`actual`/`plan` 回退）、`:351`（类型） |
-| D4 | 中 | UI 散落「来源已变化」文案，但没有任何地方把它和批次中止关联 | `src/components/panels/AIOutputPanel.tsx:398` |
-| D5 | 中 | 卷/单元结构输出里模板尖括号占位符原样保留 | `debug/prompt-trace/20261101-213138-718-弧光-d57a1d5d.json` → `ioCalls[0].output` |
-| D6 | 中 | 卷数由平台画像固定区间决定，与总章数解耦 | 同上 trace 的 `【节奏推荐】` 与「输出前自检」第 2 条 |
-| D7 | 中 | 单元 → 章折算偏保守，且与对话框预告不符 | `ArchitectureConfirmDialog.tsx:774`；`partial_arch.json` 的 `synopsis_volume_deviations` |
-| D8 | 中 | 检查点残留导致模式自动降级，提示藏在段落里；同屏两个互相矛盾的章数 | `ArchitectureConfirmDialog.tsx:707`（10 章）vs `:932`（本批 5 章） |
-| D15 | 中 | 第 2 卷单元区间重叠（7–9 / 8–9 / 10–10），第 8、9 章归属不唯一 | `volume_units` 落库后读出的 `planned_first` / `planned_last` |
-| D9 | 低 | 单章大纲调用可能长时间不返回，无超时/无中断 | `debug/prompt-trace/20261101-215546-106-大纲-ch10-b79a98f3.json`（`ioCalls` 为空） |
-| D10 | 低 | 「清空生成内容」未清掉历史审稿/生成记录面板 | 库内计数为 0 vs 界面卡片残留 |
-| D11 | 低 | 生成完成后「补角色卡」提示按批重复堆积 | `src/services/architecture-character-nudge.ts:112`（指纹函数）、`:130–137`（判定） |
-| D16 | 低 | 模型指示器与实际调用不一致：日志确认调 `deepseek-v4.1-flash-free`，状态栏显示 `deepseek-均衡` | 主进程 stderr `model:` 字段 vs 界面底部状态栏 |
-| D17 | 中 | 生成路径提交大纲**不记覆盖章区间**（`changedChapters` 恒为空集）⇒ 判定退化为「整本大纲都改了」⇒ 每追加一批大纲就把此前所有已定稿章/蓝图/交接单拖进失效清单。**预演与实测一致，机制本身是成功的（作者 2026-11-02 认定）**，缺的是输入的章集 | `electron/repositories/project-core-repository.ts:315-317`（只有 `authorRecovery` 才有章集）vs `src/shared/upstream-revisions.ts:668`（空集 ⇒ `null` ⇒ 按全改算）；实测：同步页 7 项「改动章未知」 |
-| D18 | 中 | 蓝图结尾钩子可**无校验地**偏离大纲「收尾：」行：模板两条条款互斥（「必须落在收尾行」vs「不得是事件」）+ 钩子可自造设定 + 正文未兑现无告警。第 6 章 `suspense_hook` 写成结论句，正文里 `寿元` / `因果纹` 各 **0** 次 | `builtin-prompt-templates.ts:1165`（条款互斥）、`src/shared/blueprint-semantic-contract.ts`（「威胁/后果」给它授权）、`generate-draft.command.ts`（`withSuspenseHook` 注入）；**排除审查/改写**：`generation_artifacts` rowid 117（run `fd6f4edc`）与 `blueprint_commit_operations` `directory-f348fe27-…-1-6` 逐字一致 |
+| 编号 | 级别 | 状态 | 一句话 | 证据位置 |
+|---|---|---|---|---|
+| D1 | 阻塞 | 🟡 已实施（部分复验） | 批内多单元/多章生成时第二次调用即抛 `GENERATION_SOURCE_CHANGED`，整批静默中止。**2026-11-02**：连写 2 单元已实机跑通（12 → 15 章）；机制层补 8 条单测，同 run 多调用路径（正文批量）仍未复验 | `electron/services/main-generation-owner.ts:931`；`electron/services/agent-generation.ts:158/190/196`；`src/services/agent/agent-generation-client.ts:33` |
+| D12 | 阻塞 | ⬜ 待裁定 | 正文重演被丢弃且无重试、无回流。**真因是短细纲把上一章全文当成本章任务**，不是校验过严（见「第二轮实测」） | `generate-draft.command.ts:1536`（拦截）、`:1142-1144`（注入全文）；`chapter-materials.ts:622-624`（required、不裁剪） |
+| D2 | 高 | ⬜ 待裁定 | 批次中断在 UI 上完全静默：无失败回执，进度条「假继续」 | `generation_runs` 36 条无终态、`blocked_code` 为 NULL；`generation_attempts` 却为 `settled` |
+| D13 | 高 | ⬜ 待裁定 | 同一章三次失败分别挂在三个不同层，失败原因互不相关且都无恢复路径 | 短细纲层 / 重演层 / `GENERATION_COMPOSITION_NO_PROGRESS` |
+| D14 | 高 | ✅ 已实施（已复验） | 卷结构三步（建卷结构 / 标卷完成 / 登记交接）全手动，生成流程从不调用、系统从不提示 → `l3-handoff-missing` 必然。**2026-11-02 已修**：建结构 + 推进进度改为自动（A 已实机复验，含历史回填），缺口提醒（B）沿用既有闸门、待第 10 章之后复验 | `VolumeHandoffRegistryPanel.tsx:269/293`（原全库唯一调用点）；`volumes` / `volume_units` / `volume_handoffs` 三表初始 0 行；`volumes.actual_last` 定稿后仍全 `null` |
+| D3 | 高 | ⬜ 待裁定 | `degraded=l3-handoff-missing` 提示过弱且不阻断（**根因见 D14**，两者同源） | `src/shared/synopsis-projection.ts:520`（push）、`:504–522`（`actual`/`plan` 回退）、`:351`（类型） |
+| D19 | 高 | ✅ 已实施（已复验） | `actual_last` 被当成卷末 ⇒ 卷边界随进度漂移，开写闸门提前一章弹、交接单漏本卷最后一章 | `src/shared/volume-structure.ts:285`（末章取 `actual_last ?? planned_last`）；`src/shared/volume-handoff-gate.ts:63`（闸门判上一卷）；`finalization-controller.ts:65`（推进在 finalize 之后） |
+| D4 | 中 | ⬜ 待裁定 | UI 散落「来源已变化」文案，但没有任何地方把它和批次中止关联 | `src/components/panels/AIOutputPanel.tsx:398` |
+| D5 | 中 | ⬜ 待裁定 | 卷/单元结构输出里模板尖括号占位符原样保留 | `debug/prompt-trace/20261101-213138-718-弧光-d57a1d5d.json` → `ioCalls[0].output` |
+| D6 | 中 | ⬜ 待裁定 | 卷数由平台画像固定区间决定，与总章数解耦 | 同上 trace 的 `【节奏推荐】` 与「输出前自检」第 2 条 |
+| D7 | 中 | ⬜ 待裁定 | 单元 → 章折算偏保守，且与对话框预告不符 | `ArchitectureConfirmDialog.tsx:774`；`partial_arch.json` 的 `synopsis_volume_deviations` |
+| D8 | 中 | ⬜ 待裁定 | 检查点残留导致模式自动降级，提示藏在段落里；同屏两个互相矛盾的章数 | `ArchitectureConfirmDialog.tsx:707`（10 章）vs `:932`（本批 5 章） |
+| D15 | 中 | ⬜ 待裁定 | 第 2 卷单元区间重叠（7–9 / 8–9 / 10–10），第 8、9 章归属不唯一 | `volume_units` 落库后读出的 `planned_first` / `planned_last` |
+| D9 | 低 | ⬜ 待裁定 | 单章大纲调用可能长时间不返回，无超时/无中断 | `debug/prompt-trace/20261101-215546-106-大纲-ch10-b79a98f3.json`（`ioCalls` 为空） |
+| D10 | 低 | ⬜ 待裁定 | 「清空生成内容」未清掉历史审稿/生成记录面板 | 库内计数为 0 vs 界面卡片残留 |
+| D11 | 低 | ⬜ 待裁定 | 生成完成后「补角色卡」提示按批重复堆积 | `src/services/architecture-character-nudge.ts:112`（指纹函数）、`:130–137`（判定） |
+| D16 | 低 | ⬜ 待裁定 | 模型指示器与实际调用不一致：日志确认调 `deepseek-v4.1-flash-free`，状态栏显示 `deepseek-均衡` | 主进程 stderr `model:` 字段 vs 界面底部状态栏 |
+| D17 | 中 | ⬜ 待裁定 | 生成路径提交大纲**不记覆盖章区间**（`changedChapters` 恒为空集）⇒ 判定退化为「整本大纲都改了」⇒ 每追加一批大纲就把此前所有已定稿章/蓝图/交接单拖进失效清单。**预演与实测一致，机制本身是成功的（作者 2026-11-02 认定）**，缺的是输入的章集 | `electron/repositories/project-core-repository.ts:315-317`（只有 `authorRecovery` 才有章集）vs `src/shared/upstream-revisions.ts:668`（空集 ⇒ `null` ⇒ 按全改算）；实测：同步页 7 项「改动章未知」 |
+| D18 | 中 | ⬜ 待裁定 | 蓝图结尾钩子可**无校验地**偏离大纲「收尾：」行：模板两条条款互斥（「必须落在收尾行」vs「不得是事件」）+ 钩子可自造设定 + 正文未兑现无告警。第 6 章 `suspense_hook` 写成结论句，正文里 `寿元` / `因果纹` 各 **0** 次 | `builtin-prompt-templates.ts:1165`（条款互斥）、`src/shared/blueprint-semantic-contract.ts`（「威胁/后果」给它授权）、`generate-draft.command.ts`（`withSuspenseHook` 注入）；**排除审查/改写**：`generation_artifacts` rowid 117（run `fd6f4edc`）与 `blueprint_commit_operations` `directory-f348fe27-…-1-6` 逐字一致 |
+
+共 **19 条**：阻塞 2 · 高 5 · 中 8 · 低 4。**做完的 3 条里 2 条在「高」段（D14 / D19），两条阻塞都还没真正验收** —— D1 代码已改但没跑过真实多章批次，D12 连修法都还没定。
+
+> **状态列怎么读**：取值沿用 [`documentation-charter.md`](../../agents/documentation-charter.md) §5.2 的受控词表，
+> 条目上**不另造词表**；图标只是同一套值的快读形式 ——
+> ✅ = 已实施且实机复验过 · 🟡 = 已实施，但验证还不完整（只有单测，或只复验了症状没复验机制）· ⬜ = 待裁定（未开工）。
+> 每条正文顶部有对应的 `> 状态：` 行，括号里写**验证到什么程度 + 提交号**；
+> 两处若冲突，以正文那行为准（表格是索引，正文是记录）。
 
 ---
 
 ## D1（阻塞）批内多单元/多章生成时，第二次调用即抛 GENERATION_SOURCE_CHANGED，整批静默中止
+
+> 状态：已实施（2026-11-02 · 症状已实机复验 + 补 8 条单测；同 run 多调用路径未复验 · `b19f159b`）
 
 ### 现象
 
@@ -102,9 +114,47 @@ run 在 `begin` 时把上游 `sourceRef` 指纹绑进 `binding`；批次内**第
 
 方向（不指定实现）：让「本批自己写入的产物」不参与来源指纹比对。可选思路有三类——① 指纹只覆盖批次开始时的**只读上游**（前提/世界观/角色/弧光），把本链产出的情节大纲排除在外；② 批次内每个单元重新 `begin` 新 run、各自绑定当时的上游（即把「一批」在语义上拆成「一串单单元 run」）；③ 判定为 `conflict` 时区分「本链自写」与「外部改动」两种来源，前者降级为继续、后者才中止。三条都需要先回答同一个问题：**同一条链上「我写的」和「别人写的」如何区分**，这可能需要 `sourceRef` 带上写入者标识。
 
+### 处置（2026-11-02）：走了 ② + ③ 各一半，症状已实机消失，机制层补了单测
+
+**② 已经落地了，而且不是我这次加的**：E3 T12 的「连写」是**链式新 run**——每写完一个单元就
+`launchCreativeWorkflow` 起一个新 run（`App.tsx:425` 的 `advance(receipt.runId)`），新 run 的绑定
+按**当时**的上游重建。所以「同一 run 内第二次调用」在情节大纲这条路上已经不存在，
+②这条路把 D1 从「语义上会撞」变成「结构上撞不到」。
+
+**③ 的一半由 `b19f159b` 落地**：`GenerationRunRepository.advanceBinding`（CAS）+ `main-generation-owner`
+在**本次调用成功之后**推进绑定基线（`!receipt.failureCode && !receipt.unsavedTail` 才推）。它保护的是
+**一批里仍会发多次调用**的路径——正文批量（一章至少两次：短细纲 + 正文）、蓝图批量。
+
+**实机复验（2026-11-02 21:36–21:44，本项目：第 10 章已定稿、大纲覆盖到 12）**
+
+| 时点 | 动作 | 读数 |
+|---|---|---|
+| 21:36 | 故事架构 → 情节大纲「续批（第 13 章起）」→ 单元模式，起点 = 第3卷第2单元第1章（全书第13章），本卷还剩 2 单元 ⇒ **连写 2 个单元** | 对话框预告「本卷剩余 3 章，名义上界 2 章」 |
+| 21:36 | 上游失效预演（P2-3 期 3a） | 列 3 项：蓝图 11–12、第 2 卷交接单；勾选承认后继续 |
+| 21:36:38 | 第 1 个单元 run `0030f404` 起 | 21:39 前落库 |
+| 21:39:53 | 第 2 个单元 run `290d435b` 起（链式新 run，**不是**同一 run 的第二次调用） | 21:42 前落库 |
+| 21:44 | 读检查点 | `synopsis_covered_to` **12 → 15**、`synopsis_incomplete` = **false**、游标走到 `{volumeIndex:4, unitIndex:1, writtenInVolume:0}`；trace 新增 `-大纲-ch13`…`-ch15` |
+
+**结论要说清边界**：这一次验的是**用户可见症状**——「点一次连写 N 个单元，不会写到一半静默停住」。
+它**没有**覆盖 `advanceBinding` 想防的场景，因为今天两次模型调用落在两个 run 里。
+同 run 多调用那条路径是**正文批量**，今天没跑到，卡在两道具设计意义的闸上（不是能顺手点掉的）：
+第 11 章是第 3 卷首章、撞着卷交接闸（第 2 卷交接单 `stale`）；第 11–12 章蓝图因这次大纲推进
+（`outline` rev 10 → 11）转 stale。**这两道都要作者处置，不该由验收脚本代点。**
+
+**补的单测（原本零覆盖）**：`electron/repositories/__tests__/generation-run-advance-binding.test.ts` 8 条——
+推进后绑定换成「执行之后」那份 / 只改绑定不动 run 状态 / `$runEffects` 原样保留且不进 `get()` 的 binding /
+无副作用记录时不凭空造字段 / 连续推进以**库内当前绑定**为基线 / run 不存在抛 `GENERATION_RUN_MISSING` /
+同值推进幂等 / `sourceRefs` 随推进一起换。`tsc` 与 `eslint --max-warnings 0` 干净。
+
+> **没覆盖的那条分支写在测试注释里**：`GENERATION_BINDING_ADVANCE_CONFLICT` 是「SELECT 之后、UPDATE 之前
+> 被别人改过」才走的防御分支。better-sqlite3 同步执行，两个语句之间没有可插入的窗口 ⇒ 单测造不出来；
+> 要造只能把 db 层打桩，那测的是桩不是仓储。
+
 ---
 
 ## D2（高）批次中断在 UI 上完全静默：无失败回执，进度条「假继续」
+
+> 状态：待裁定（2026-11-01 · 未开工；2026-11-02 追加「成功路径也不留终态」的现场，见下方同名小节）
 
 ### 现象
 
@@ -126,6 +176,25 @@ run 在 `begin` 时把上游 `sourceRef` 指纹绑进 `binding`；批次内**第
 - **`running` → `paused` 不是这批 run 自己走到的终态**：`electron/repositories/generation-run-repository.ts:680` 的 `recoverInterrupted()` 在启动时对每个非冻结 root 逐个调 `pause(id)`（`:651`），`pause` 在 `:659` 把 `generation_runs.status` 写成 `paused`。也就是说：**只有进程重启才会把这个状态改掉**；run 自身从未 finalize，`blocked_code` 全程为空，因此「失败」在两处都没有留下痕迹。
 - 与此同时 `generation_attempts.attempt_json.status` 是 `settled`——模型调用本身成功返回了。即：**模型调用成功、批次失败、run 无终态**，三者同时成立。
 - 上表最后一行 `b79a98f3` 的 attempt 是 `unknown`（见 D9：调用发出后 12 分钟未返回）。
+
+#### 2026-11-02 21:39–21:46 追加：**成功路径上同样不留终态**
+
+跑 D1 复验（情节大纲连写 2 单元）时顺手取到的旁证——这次批次是**成功**的，run 一样没有终态：
+
+| 时点 | `generation_runs` | `generation_attempts` | 检查点 |
+|---|---|---|---|
+| 21:39:46 | `0030f404`（第 1 单元）running | settled | `covered_to` 14、`incomplete` false |
+| 21:39:55 | `290d435b`（第 2 单元）running | dispatch-marked | `incomplete` true（起批标记） |
+| 21:41:26 | 同一个 run，仍 running | settled | `covered_to` **15**、`incomplete` **false**、游标进第 4 卷 |
+| 21:46:23（+5 分钟） | **两个 run 仍 running，`blocked_code` 全程 NULL** | settled | 无变化 |
+
+也就是说：这条缺陷不只是「失败没留痕」。**批次成功跑完、内容已落库，run 也不会走到终态**——
+`running` 只在进程重启时被 `recoverInterrupted()` 改写成 `paused`。所以「这个 run 结束了没有」
+这个问题，在库里根本没有答案；UI 只能靠内存里的运行列表判断，重启即失忆。
+
+这同时解释了为什么「假继续」修起来比想象中难：不是某条分支忘了写终态，而是**没有任何一条路径
+负责写终态**。修法方向不变（D2 的三条要点），但要先决定「终态由谁写」——是调用方在收尾时 seal，
+还是主进程在批次收口时统一 seal。
 
 ### 代码位置
 
@@ -152,6 +221,8 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 ---
 
 ## D3（高）`degraded=l3-handoff-missing` 提示过弱，且不阻断
+
+> 状态：待裁定（2026-11-01 · 根因同 D14；D14 只把状态建得起来，**「让作者看见」这半边还没动**）
 
 ### 现象
 
@@ -182,6 +253,8 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 
 ## D4（中）UI 里散落「来源已变化」文案，但没有任何地方把它和批次中止关联起来
 
+> 状态：待裁定（2026-11-01 · 未开工）
+
 ### 现象
 
 面板存在「来源已变化；候选仍可复制，不能直接保存」这类提示，但与「任务停摆」之间没有因果说明。
@@ -203,6 +276,8 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 ---
 
 ## D5（中）卷/单元结构输出里模板尖括号占位符原样保留
+
+> 状态：待裁定（2026-11-01 · 未开工）
 
 ### 现象
 
@@ -243,6 +318,8 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 ---
 
 ## D6（中）卷数由平台画像固定区间决定，与总章数解耦
+
+> 状态：待裁定（2026-11-01 · 未开工）
 
 ### 现象
 
@@ -295,6 +372,8 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 
 ## D7（中）单元 → 章 折算偏保守且与对话框预告不符
 
+> 状态：待裁定（2026-11-01 · 未开工）
+
 ### 现象
 
 对话框预告「本卷剩余 5 章，名义上界 2 章」；实测「连写 3 个单元」只落 3 章（1 单元 = 1 章）。全书 18 个单元按此折算只有 18 章，到不了配置的 30 章。
@@ -322,6 +401,8 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 ---
 
 ## D8（中）检查点残留导致模式自动降级，且提示藏在段落里
+
+> 状态：待裁定（2026-11-01 · 未开工）
 
 ### 现象
 
@@ -351,6 +432,8 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 
 ## D9（低）单章大纲调用可能长时间不返回，无超时/无中断
 
+> 状态：待裁定（2026-11-01 · 未开工）
+
 ### 现象
 
 第 10 章大纲调用持续 12 分钟未返回（Ollama `/api/ps` 的 `expires_at` 一直在延长，说明模型在算），最终只能通过重启 dev 进程清掉。UI 无任何「正在生成 / 已超时」的区分。
@@ -373,6 +456,8 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 ---
 
 ## D10（低）「清空生成内容」未清掉历史审稿/生成记录面板
+
+> 状态：待裁定（2026-11-01 · 未开工）
 
 ### 现象
 
@@ -397,6 +482,8 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 ---
 
 ## D11（低）生成完成后「补角色卡」提示按批重复堆积
+
+> 状态：待裁定（2026-11-01 · 未开工）
 
 ### 现象
 
@@ -448,6 +535,8 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 
 ### D12（阻塞级）正文与上一章开头重演时，结果被直接丢弃且无重试、无回流路径
 
+> 状态：待裁定（2026-11-01 · 真因已定性；修法要动「作者裁定给全文」那一条，需作者点头）
+
 - 现象：第 2 章写稿两次尝试（批量模式一次、单章模式一次），正文都生成成功（trace 中 `chapter-draft` 输出 1418 字符），但**均未落库**，`drafts` 表始终只有第 1 章。
 - 界面原文（编辑器/日志区，非任务面板）：
   > 第 2 章 · 写稿 · 工作流未完成
@@ -472,6 +561,8 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 - 96M token 上限对 6 章（每章 1500 字）而言等于无限制，不会触发。建议文案改为「累计请求输出 512K / 96M Tokens」，避免被读成"请求次数配额"。
 
 ### D13（高）同一章三次失败分别挂在三个不同层，失败原因互不相关且都无恢复路径
+
+> 状态：待裁定（2026-11-01 · 未开工）
 
 实测第 2 章（同一蓝图、同一模型 `qwen3.5:9b-128k`），三次尝试三种死法：
 
@@ -520,6 +611,8 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 
 ### D14（高）卷结构三步全手动，无自动触发、无提醒 → `l3-handoff-missing` 是必然结果
 
+> 状态：已实施（2026-11-02 · A+B 均已实机复验 · `00bac89e`）
+
 **这一条推翻了第一轮的判断**（"第 1 卷没定稿所以第 2 卷大纲不能生成"）。实测：
 
 | 表 | 第 1 卷 6 章全部定稿后 | 点「重建卷结构」后 |
@@ -561,13 +654,19 @@ B 部分**不需要新代码**：`ChapterCreationDialog:595` 早就集成了 `Vo
 
 ### D15（中）第 2 卷单元区间重叠
 
+> 状态：待裁定（2026-11-01 · 未开工；D19 修完需复核单元区间是否还对得上）
+
 卷结构落库后读到的第 2 卷（计划 7–10 章）三个单元区间为 **7–9 / 8–9 / 10–10** —— 单元 1 与单元 2 在 8–9 章上重叠。第 1 卷（1–3 / 4–4 / 5–6）无此问题。后果：第 8、9 章归属哪个单元不唯一，按单元续写时的起点/终点判定会摇摆。
 
 ### D16（低）模型指示器与实际调用不一致
 
+> 状态：待裁定（2026-11-01 · 未开工）
+
 把创作对话框的模型切到 `our-free-model/deepseek-v4.1-flash-free` 后，主进程日志确认实际调用的正是该模型（`model: 'our-free-model/deepseek-v4.1-flash-free'`），但界面底部状态栏仍显示 `deepseek-均衡`。作者无法从界面判断这一章到底用了哪个模型。
 
 ### D17（中）生成路径提交大纲**不记覆盖章区间** ⇒ 下游失效退化为「整本大纲都改了」
+
+> 状态：待裁定（2026-11-02 · 机制已认定成功，只缺「章集输入」）
 
 **先说结论：机制本身是成功的（作者 2026-11-02 裁定）**。这一屏做对了四件事：认出对象（蓝图 3 / 交接单 1 / 已定稿 3，分三类列）、算出跨度（每条都写 `情节大纲 6 → 7`）、点名不可回头的那条（"其中含卷末交接单：它会被拒绝读取，下一卷会开不了工"）、给退路且守约（先取消一次，`upstream_revision_log` 里一位版本号都没动，rev 仍为 6）。
 
@@ -592,6 +691,8 @@ changedChapters: request.authorRecovery ? expandChapterRange(request.authorRecov
 **修法方向（未定，两条都要）**：① `commitSynopsis` 在生成落盘路径上把本次覆盖章区间（请求里已有 `synopsisRange` / 单元 `{from,to}`）写进 `changedChapters`；② 判定侧遇到「有本次范围但流水是空集」时不要直接按全改算，至少要能把「不知道」与「全改」分开呈现。**不锁实现。**
 
 ### D18（中）蓝图结尾钩子可无校验地偏离大纲「收尾：」行：条款互斥 + 自造设定 + 正文未兑现无告警
+
+> 状态：待裁定（2026-11-02 · 三环节合并登记）
 
 > 作者 2026-11-02 裁定：三个环节（钩子怎么写 → 能不能偏离 → 有没有落地）**合并成一条登记**，因为它们同属一根链条，单修任何一环都会被下一环绕过。
 
@@ -635,6 +736,8 @@ changedChapters: request.authorRecovery ? expandChapterRange(request.authorRecov
 ③ **定稿后加兑现标记**：`suspense_hook` 的关键实词在正文 0 命中 ⇒ 在定稿卡片或检查面板提示「本章钩子未落地」，作者可改钩子或知悉放行。
 
 ### D19（高）`actual_last` 被当成卷末 ⇒ 卷边界随进度漂移，开写闸门提前一章弹、交接单漏掉本卷最后一章
+
+> 状态：已实施（2026-11-02 · 方案甲 · `c9dade26`）
 
 **发现于 D14 B 的实机复验（2026-11-02 12:10）**：点「写作第 10 章」时闸门弹了，但它说的是「第2卷（第7–9章）只有一份模型初稿，还没经你确认」——第 10 章本身就是第 2 卷的章（`volume_units` 的 `unit:2:3` = 10–10），不该在这里问跨卷记忆。
 
