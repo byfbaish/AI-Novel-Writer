@@ -1,7 +1,7 @@
 import { ipc } from '../ipc-client'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
-import type { BeginGenerationRequest } from '../../shared/generation-owner-contract'
+import type { BeginGenerationRequest, GenerationSealOutcome, GenerationSealReceipt } from '../../shared/generation-owner-contract'
 import type { MainGenerationRunHandle, MainGenerationRunView, MainGenerationTransport } from './generation-runtime'
 import { PLOT_OUTLINE_PROTOCOL } from '../../shared/plot-outline-contract'
 
@@ -83,6 +83,17 @@ export function createMainGenerationTransport(captureSession = getActiveProjectS
       if (handleKey(view.handle) !== handleKey(frozen)) throw new Error('GENERATION_RESPONSE_IDENTITY_MISMATCH')
       return bindView(view, session)
     },
+    /**
+     * D2：批次收口。`historical` 是必须的 —— 批次收尾往往发生在会话 epoch 已经推进之后
+     * （切项目、重开项目），此时按 current-epoch 校验会把一次合法收口判成身份不符，
+     * 结果又是「终态没写成」，等于没修。
+     */
+    async seal(handle: MainGenerationRunHandle, outcome: GenerationSealOutcome, code?: string): Promise<GenerationSealReceipt> {
+      const frozen = { ...handle }, session = sessionFor(frozen, true)
+      const receipt = await ipc.invokeWithProjectSession(session, 'generation:seal', { handle: frozen, outcome, ...(code ? { code } : {}) })
+      if (receipt.runId !== frozen.runId || receipt.rootActionId !== frozen.rootActionId) throw new Error('GENERATION_RESPONSE_IDENTITY_MISMATCH')
+      return receipt
+    },
     async resume(sessionInput: ProjectSessionContext, handle: MainGenerationRunHandle) {
       const session = freezeSession(sessionInput), frozen = { ...handle }
       assertHandle(session, frozen, true)
@@ -109,6 +120,7 @@ export function createMainGenerationTransport(captureSession = getActiveProjectS
 export const mainGenerationTransport = createMainGenerationTransport()
 export const beginMainGeneration = mainGenerationTransport.begin
 export const pauseMainGeneration = mainGenerationTransport.pause
+export const sealMainGeneration = mainGenerationTransport.seal
 export const resumeMainGeneration = mainGenerationTransport.resume
 export const restartMainGeneration = mainGenerationTransport.restart
 export const discardMainGenerationCandidate = mainGenerationTransport.discard

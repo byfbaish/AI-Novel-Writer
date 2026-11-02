@@ -17,6 +17,7 @@ import {
   type PromptBudgetFailureCode,
 } from '../services/generation/prompt-budget-failure'
 import type { PromptBudgetReport } from '../services/generation/generation-harness'
+import { createMainGenerationTransport } from '../services/generation/main-generation-transport'
 import {
   isProjectSessionContext,
   projectSessionContextFromProject,
@@ -948,6 +949,33 @@ export const useWorkflowStore = create<WorkflowState>()((set, get) => ({
             `[Warning] onComplete failed: ${e}`,
           ), context.uiLocale)
         }
+      }
+    }
+
+    // D2：批次收口 —— 把终态写进主进程账本。
+    //
+    // 位置是刻意的：上方所有终态分支（步骤失败 / 取消 / 会话失效 / 正常完成）都在这里汇合，
+    // 这是**唯一**一处能同时看到最终结果的地方。散回各调用方等于把「有没有写终态」重新
+    // 变成每个调用方的自觉 —— 而 D2 的成因正是「没有任何一条路径负责写终态」。
+    //
+    // 失败绝不能影响收尾：终态缺失是个缺陷，但「因为写终态失败导致工作流卡在收尾」是
+    // 更严重的缺陷，所以这里吞掉异常只记一条 warn。
+    const settledRun = get().activeRuns.find(r => r.id === run.id) ?? finalRun
+    const sealOutcome = context.cancelled
+      ? 'cancelled' as const
+      : settledRun?.status === 'completed'
+        ? 'completed' as const
+        : settledRun?.status === 'failed' ? 'failed' as const : null
+    if (sealOutcome && context.mainGenerationRootHandle) {
+      try {
+        await createMainGenerationTransport(() => context.projectSession)
+          .seal(context.mainGenerationRootHandle, sealOutcome)
+      } catch (error) {
+        get().addLog('warn', uiText(
+          context.uiLocale,
+          `[警告] 批次终态未能写入账本（本次结果不受影响，但运行记录可能仍显示为进行中）：${String(error)}`,
+          `[Warning] The batch terminal state could not be persisted (this result stands, but the run may still read as running): ${String(error)}`,
+        ), context.uiLocale)
       }
     }
 

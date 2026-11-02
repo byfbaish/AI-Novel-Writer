@@ -1,6 +1,6 @@
 # 实机链路验收缺陷清单（2026-11-01 轮）
 
-> 状态：待裁定（2026-11-02；**逐条状态见每个条目顶部的 `> 状态：` 行** —— ✅ 2 条（D14 / D19，已复验）· 🟡 2 条（D1 症状已实机复验、机制待正文批量；D2 修法选定方案乙、未实施）· ⬜ 15 条未开工；D12 真因已定性、修法待作者点头）
+> 状态：待裁定（2026-11-02；**逐条状态见每个条目顶部的 `> 状态：` 行** —— ✅ 2 条（D14 / D19，已复验）· 🟡 2 条（D1 症状已实机复验、机制待正文批量；D2 方案乙代码落地、待实机复验）· ⬜ 15 条未开工；D12 真因已定性、修法待作者点头）
 
 > 日期：2026-11-01
 > 上级稿：[`live-verification-checklist.md`](live-verification-checklist.md)（一次新项目跑批要验什么）
@@ -44,7 +44,7 @@
 |---|---|---|---|---|
 | D1 | 阻塞 | 🟡 已实施（部分复验） | 批内多单元/多章生成时第二次调用即抛 `GENERATION_SOURCE_CHANGED`，整批静默中止。**2026-11-02**：连写 2 单元已实机跑通（12 → 15 章）；机制层补 8 条单测，同 run 多调用路径（正文批量）仍未复验 | `electron/services/main-generation-owner.ts:931`；`electron/services/agent-generation.ts:158/190/196`；`src/services/agent/agent-generation-client.ts:33` |
 | D12 | 阻塞 | ⬜ 待裁定 | 正文重演被丢弃且无重试、无回流。**真因是短细纲把上一章全文当成本章任务**，不是校验过严（见「第二轮实测」） | `generate-draft.command.ts:1536`（拦截）、`:1142-1144`（注入全文）；`chapter-materials.ts:622-624`（required、不裁剪） |
-| D2 | 高 | 🟡 已裁定（方案乙，未实施） | 批次中断在 UI 上完全静默：无失败回执，进度条「假继续」 | `generation_runs` 36 条无终态、`blocked_code` 为 NULL；`generation_attempts` 却为 `settled` |
+| D2 | 高 | 🟡 已实施（方案乙；待实机复验） | 批次中断在 UI 上完全静默：无失败回执，进度条「假继续」 | `generation_runs` 36 条无终态、`blocked_code` 为 NULL；`generation_attempts` 却为 `settled` |
 | D13 | 高 | ⬜ 待裁定 | 同一章三次失败分别挂在三个不同层，失败原因互不相关且都无恢复路径 | 短细纲层 / 重演层 / `GENERATION_COMPOSITION_NO_PROGRESS` |
 | D14 | 高 | ✅ 已实施（已复验） | 卷结构三步（建卷结构 / 标卷完成 / 登记交接）全手动，生成流程从不调用、系统从不提示 → `l3-handoff-missing` 必然。**2026-11-02 已修**：建结构 + 推进进度改为自动（A 已实机复验，含历史回填），缺口提醒（B）沿用既有闸门、待第 10 章之后复验 | `VolumeHandoffRegistryPanel.tsx:269/293`（原全库唯一调用点）；`volumes` / `volume_units` / `volume_handoffs` 三表初始 0 行；`volumes.actual_last` 定稿后仍全 `null` |
 | D3 | 高 | ⬜ 待裁定 | `degraded=l3-handoff-missing` 提示过弱且不阻断（**根因见 D14**，两者同源） | `src/shared/synopsis-projection.ts:520`（push）、`:504–522`（`actual`/`plan` 回退）、`:351`（类型） |
@@ -154,7 +154,7 @@ run 在 `begin` 时把上游 `sourceRef` 指纹绑进 `binding`；批次内**第
 
 ## D2（高）批次中断在 UI 上完全静默：无失败回执，进度条「假继续」
 
-> 状态：已裁定（2026-11-02 · 作者选**方案乙「主进程批次收口统一 seal」**，否决丙「两处都写 + 主进程兜底」为过度设计；尚未实施）
+> 状态：已实施（2026-11-02 · 方案乙「主进程批次收口统一 seal」；落成**两级**：Tier 1 写 run 终态、Tier 2 才封 root。单测 12 条 + 控制器 3 条 + 渲染层 4 条，实机复验见文末「修后读数」）
 
 ### 现象
 
@@ -218,21 +218,65 @@ D1 让批次必然死，D2 让「死了」看不出来。两者叠加后的可�
 
 方向：给批次一个**可落库的失败终态**，并让 UI 读它。要点三条——① 抛错时同步写 `blocked_code` / 失败原因（现在的 `block()` 只在特定路径被调），使失败在库里可见；② 区分「进程重启导致的暂停」与「业务失败导致的中止」，两者不能共用一个 `paused`；③ 失败回执要能指回具体是哪一步、哪个单元、什么原因，而不是只给一个错误码。
 
-### 处置：方案乙（已裁定，待实施）
+### 处置：方案乙（已实施，2026-11-02）
 
 **选它不选甲的理由**：甲（调用方各自 seal）改动最小，但「跑完了要不要 seal」就变成每个调用方的自觉——本缺陷的成因正是「没有任何一条路径负责写终态」，甲只是把「没有路径」换成「十个地方都可能漏」。
 
 **否决丙的理由**（作者 2026-11-02 判断）：丙 = 甲 + 主进程兜底，两套写入点要做幂等、要处理「先 seal 后兜底」的时序，而乙已经把写入点收敛到一处，兜底那一层没有独立价值。
 
-**实施前必须先定的边界问题**（这是乙的唯一难点，别绕过）：
+#### 落地形态（比计划简化了一处，收紧了一处）
 
-> 「批次」在库里没有对应实体。渲染侧的 `workflow-store` 才有 run 的开始/结束（`status: 'completed' | 'failed'`），主进程只看见一个个 `generation_runs`。
-> 所以「主进程收口」不是纯主进程的事——它需要一个**批次边界信号**从渲染侧传下来：
-> ① 渲染侧 run 收尾时带上「这批涉及哪些 `rootActionId`」调一个 `generation:seal-batch` IPC；
-> ② 主进程据 root 逐个 seal（终态 + `blocked_code` + 归因），幂等（重复调不报错、不覆盖已 seal 的）。
-> 边界取「workflow run 收尾」而不是「每次 `attempt` 结束」——后者会把「这一单元还要继续写」误判成整批完成。
+原计划担心「主进程不知道这批涉及哪些 `rootActionId`，得从渲染侧传一个列表」。实施时查清：**同批所有 run 共享同一个 root**，而 `MainGenerationRunHandle` 本身就带 `rootActionId` ⇒ 不需要列表，通道就叫 `generation:seal`（不叫 `seal-batch`），请求体 `{ handle, outcome, code? }`。
 
-未做之前，库里 `generation_runs.status` 仍然是「只有进程重启才会变」——别用「查库看到 `running`」去判断批次是否在跑。
+| 级 | 做什么 | 条件 |
+|---|---|---|
+| **Tier 1（永远做）** | 把该 root 下 `running` / `paused` 的 run 写成 `completed` / `failed` | root 不是 `cancelled` / `sealed`；`WHERE status IN ('running','paused')` |
+| **Tier 2（谨慎）** | `generation_roots.status = 'sealed'` | `structurallySealable()` 全真 **且** owner 层证明确实写完了 |
+
+Tier 1 单独成立，就是本缺陷的主症状被修好的那一半：**run 不再依赖进程重启才有终态**。
+
+**写入点只有一个**：`src/stores/workflow-store.ts` 里 `activeRuns → history` 之前那一段。上方所有终态分支（步骤失败 / 取消 / 会话失效 / 正常完成）都在那里汇合，是唯一能同时看到 completed 与 failed 的地方。散回各调用方等于把「有没有写终态」重新变成自觉。
+
+#### root 生命周期：为什么 Tier 2 默认 fail-open（唯一反直觉点）
+
+`root` **不是「一次点击一个」**。以下 5 条路径会让它跨多次点击复用，`open({ parentRootActionId })` 又要求 root 必须是 `active`：
+
+1. 同 workflow 多阶段（`workflow-main-generation.ts:98/107/114`）
+2. 目录「继续第 N–M 章（沿用原预算）」（`directory-workflow.ts:69-83`）
+3. 批次恢复（`draft-recovery-workflow.ts:82-90`）
+4. **审稿 → 修稿**（`review-revision-generation.ts:161`）
+5. 同章定稿 / agent 轮次（`agent-generation.ts:164/321/392`）
+
+⇒ **「run 收尾就把 root seal 掉」会让作者点「继续」直接撞 `GENERATION_PARENT_INVALID`，比停在 `running` 更糟。** 所以首版只对两类 operation 开放封口，其余一律不封：
+
+- `batch-chapters` 且 `draftEffects.readBatch(batchId).nextChapterNumber === null`；
+- `chapter-blueprint-directory` 且该 root 的 `remainingRange === null`。
+
+**与计划的一处偏差**：计划里写「批次声明 completed 但进度未完 → 抛 `GENERATION_SEAL_CONFLICT`」，实现时**去掉了**。原因是 `auto_finalize` 模式会在「正文写完但还没定稿」时留下非 null 的 `nextChapterNumber`（`generation-draft-effects.ts:114` 的 `break`），那是正常中间态，抛冲突码会把它误报成异常。现在改为**静默不封 root**。
+
+#### 顺带修掉的两个坑（不修就白改）
+
+1. **`pause()` 的 UPDATE 缺 `status IN`**：`recoverInterrupted()` 每次启动都会对每个 root 调 `pause()`，原来那句会无条件把 `generation_runs.status` 刷成 `paused` —— 刚写好的 `completed` 下次启动就没了。已加 `AND status IN ('running','paused')`，并有专门回归用例锁住。
+2. **`DurableGenerationRun.status` 原是 `string`**：收窄成 `'running' | 'paused' | 'completed' | 'failed' | 'cancelled'`，读取时对非法值 `fail('GENERATION_RUN_STATUS_INVALID')`。拼错字从此是编译期错误，不用等实机发现库里多了个没人认得的状态。
+
+#### 本期**没做**的（明确留口）
+
+- **失败码不落库**（作者已选）：`generation_runs` 只落 `completed` / `failed`，`blocked_code` 仍是门禁字段、不被 seal 触碰。所以「库里看不到具体失败原因」这条**仍然成立**，要查只能看 attempt 与渲染层回执。下一期若要做，需新增 `terminal_code` 列（M29），别直接写 `blocked_code`——它是 `open` / `resume` / `activate` 四处都读的门禁字段，写进去等于永久掐断这一批的续写与恢复。
+- **`authorEditedRoot` 分支仍无终态**：该分支连 `pause()` 都会早退（作者手改过的 root 不冻结、不暂停）。这是既有设计，本期不动，但要知道它是个例外。
+
+#### 修后读数（2026-11-02 23:25–23:31 实机）
+
+现场：`师父派我来除魔` 项目，情节大纲续批 1 个单元（第 16 章），模型 `deepseek-均衡`。
+
+| 检查点 | 修前 | 修后（实测） |
+|---|---|---|
+| 批次正常跑完，`generation_runs.status` | 恒 `running`，只有重启才变 `paused` | **`completed`**（`79b7742c`，attempt `settled` / `finish=stop`） |
+| 重启一次后，已经 `completed` 的 run | 会被 `pause()` 打回 `paused` | **保持 `completed`**（dev 重启后复查） |
+| `generation_roots.action_json.status`（`generate-plot-outline`） | 恒 `active` | 仍 `active` —— **这是对的**：该 operation 不在 Tier 2 白名单，作者还要续批第 17 章 |
+| 同库里两条历史 run（21:39/21:41 批次） | 一直是 `running` | dev 重启后变 `paused` —— **旧数据不会被追溯修**，符合预期（seal 只在收尾时写，不补历史） |
+
+**未实机验的两条**（单测覆盖，实机造不出来或成本过高）：批次**失败**时的 `failed` 终态（要造一次真实失败）、Tier 2 的 `sealed` 封口（要 `batch-chapters` 写到卷末且定稿链完整）。这两条目前只有 `generation-run-seal.test.ts` 的断言背书。
+
 
 ---
 

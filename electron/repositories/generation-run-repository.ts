@@ -2,7 +2,7 @@ import { parsePlanningTargetUnits, DEFAULT_PLANNING_TARGET_UNITS } from '../../s
 import { isDeepStrictEqual } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import type Database from 'better-sqlite3';
-import type { VisibleCompositionReceipt, VisibleCompositionAlgorithm, DirectoryGenerationProgress, PlanningContinuationReceipt, BlueprintAuthorEditReceipt, GenerationAuthorInput } from '../../src/shared/generation-owner-contract';
+import type { VisibleCompositionReceipt, VisibleCompositionAlgorithm, DirectoryGenerationProgress, PlanningContinuationReceipt, BlueprintAuthorEditReceipt, GenerationAuthorInput, GenerationSealOutcome, GenerationSealReceipt } from '../../src/shared/generation-owner-contract';
 import { generationPrimaryOutput } from '../../src/shared/generation-owner-contract';
 import { composeVisibleContinuation, VISIBLE_CONTINUATION_VERSION } from '../../src/shared/visible-continuation';
 import { composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, isDraftVisibleTextVersion, sanitizeDraftText } from '../../src/shared/draft-visible-text';
@@ -31,7 +31,7 @@ export interface DurableGenerationRun {
     runId: string;
     rootActionId: string;
     binding: RunBinding;
-    status: string;
+    status: DurableRunStatus;
 }
 export interface GenerationBudgetReceipt {
     root: RootAction;
@@ -90,6 +90,14 @@ export const textHash = (text: string) => createHash('sha256').update(text, 'utf
 const encode = (value: unknown): string => JSON.stringify(value);
 const authorEffectPath = '$."$runEffects"';
 function fail(code: string): never { throw new Error(code); }
+/**
+ * D2 之后的 run 状态值域。收窄成联合类型是**编译期护栏**：新增写入点若拼错字，
+ * `tsc` 直接红，不用等实机发现「库里多了个没人认得的 status」。
+ * `MainGenerationSnapshot['status']` 另含 `'unknown'`（渲染层对未知来源的兜底），
+ * 两者不是一回事，别合并。
+ */
+const RUN_STATUS = ['running', 'paused', 'completed', 'failed', 'cancelled'] as const;
+export type DurableRunStatus = (typeof RUN_STATUS)[number];
 const completeHandle = (handle: DirectoryGenerationProgress['sourceHandle']) => handle && typeof handle === 'object'
     && Object.keys(handle).length === 4 && ['projectId', 'epoch', 'rootActionId', 'runId'].every(key => typeof handle[key as keyof typeof handle] === 'string' && handle[key as keyof typeof handle].trim());
 function binding(request: RunBinding): RunBinding {
@@ -123,7 +131,10 @@ export class GenerationRunRepository {
             fail('GENERATION_RUN_MISSING');
         const { $runEffects, ...frozen } = JSON.parse(row.binding_json) as RunBinding & { $runEffects?: unknown };
         void $runEffects;
-        return { runId: row.run_id, rootActionId: row.root_action_id, binding: frozen, status: row.status };
+        // 本表只有本应用在写；认不得的状态说明账本被外部改过，早失败好过静默降级。
+        if (!(RUN_STATUS as readonly string[]).includes(row.status))
+            fail('GENERATION_RUN_STATUS_INVALID');
+        return { runId: row.run_id, rootActionId: row.root_action_id, binding: frozen, status: row.status as DurableRunStatus };
     }
     private authorEditedRoot(rootId: string): boolean {
         return !!this.db().prepare('SELECT 1 FROM generation_runs WHERE root_action_id=? AND json_type(binding_json,?) IS NOT NULL LIMIT 1').get(rootId, authorEffectPath);
@@ -663,6 +674,55 @@ export class GenerationRunRepository {
             return next;
         });
     }
+    /**
+     * D2：把批次收口写进账本。**唯一的终态写入点**。
+     *
+     * 两级，写入点只有一个：
+     * - Tier 1（永远做）：该 root 下所有 `running` / `paused` 的 run 改写成终态。
+     *   这一步就修好了「成功批次也停在 running」——它与 root 能不能封口无关。
+     * - Tier 2（`sealRoot` 由调用方算好）：root 从 `active` 改成 `sealed`。
+     *   调用方必须先证明「这个 root 之后不会再被续写」，否则作者点「继续」会撞
+     *   `open()` 的 `parent.root.status !== 'active'` 检查（`GENERATION_PARENT_INVALID`），
+     *   比停在 running 更糟。所以这里只做结构性检查，业务进度判断留在 owner 层。
+     *
+     * 幂等：root 已 `cancelled` / `sealed` 时什么都不改（`pause(rootId, true)` 已经是终态）。
+     */
+    seal(rootId: string, outcome: GenerationSealOutcome, options: { sealRoot?: boolean } = {}): GenerationSealReceipt {
+        return this.transaction(() => {
+            const budget = this.budget(rootId);
+            const terminal: GenerationSealReceipt = {
+                runId: this.db().prepare('SELECT run_id FROM generation_runs WHERE root_action_id=? ORDER BY rowid DESC LIMIT 1').pluck().get(rootId) as string,
+                rootActionId: rootId, runStatus: outcome, rootStatus: budget.root.status as GenerationSealReceipt['rootStatus'],
+                settledRuns: 0, verdict: 'already-terminal',
+            };
+            if (['cancelled', 'sealed'].includes(budget.root.status))
+                return terminal;
+            const settled = this.db().prepare("UPDATE generation_runs SET status=? WHERE root_action_id=? AND status IN ('running','paused')").run(outcome, rootId);
+            // 一条都没改 = 这条路径对账本没有产生任何影响，与「root 已终态」同义，统一报 already-terminal。
+            const receipt: GenerationSealReceipt = { ...terminal, settledRuns: settled.changes, verdict: settled.changes === 0 ? 'already-terminal' : 'runs-settled' };
+            if (!options.sealRoot || !this.structurallySealable(budget))
+                return receipt;
+            budget.root.status = 'sealed';
+            // `stopClockIfIdle` 的口径：结算已用量，停表。封口之后这个 root 不会再有 attempt。
+            this.db().prepare('UPDATE generation_roots SET action_json=?,active_elapsed_ms=?,active_since_ms=NULL WHERE root_action_id=?')
+                .run(encode(budget.root), budget.activeElapsedMs, rootId);
+            return { ...receipt, rootStatus: 'sealed', verdict: 'sealed' };
+        });
+    }
+    /**
+     * Tier 2 的结构性条件。**只回答「账本允不允许封口」，不回答「业务上写完了没有」**
+     * —— 后者需要按 operation 看进度，而进度在 owner 层（batch 进度是现算的，`
+     * draftEffects.readBatch`），仓储层没有这个信息，也不该为它去猜。
+     */
+    private structurallySealable(budget: GenerationBudgetReceipt): boolean {
+        if (budget.root.status !== 'active' || budget.blockedCode)
+            return false;
+        // `reserved` / `dispatch-marked` 意味着有一个物理请求在飞；这时候封口会把它的回执写丢。
+        if (budget.attempts.some(attempt => ['reserved', 'dispatch-marked'].includes(attempt.status)))
+            return false;
+        // 刚把 running/paused 改完，这里应为 0；留着是给「同 root 下还有别的 run 没写终态」兜底。
+        return this.db().prepare("SELECT COUNT(*) FROM generation_runs WHERE root_action_id=? AND status IN ('running','paused')").pluck().get(budget.root.rootActionId) === 0;
+    }
     block(rootId: string, code: string): void {
         if (this.authorEditedRoot(rootId)) fail('GENERATION_PLOT_OUTLINE_AUTHOR_SAVED');
         this.db().prepare('UPDATE generation_roots SET blocked_code=? WHERE root_action_id=?').run(code, rootId);
@@ -675,7 +735,9 @@ export class GenerationRunRepository {
                 return;
             budget.root.status = cancel ? 'cancelled' : 'paused';
             this.db().prepare('UPDATE generation_roots SET action_json=?,active_elapsed_ms=?,active_since_ms=NULL WHERE root_action_id=?').run(encode(budget.root), budget.activeElapsedMs, rootId);
-            this.db().prepare('UPDATE generation_runs SET status=? WHERE root_action_id=?').run(cancel ? 'cancelled' : 'paused', rootId);
+            // 只把「还活着」的 run 打回 paused。`recoverInterrupted()` 每次启动都会调它，
+            // 少了这个条件就会把 seal 刚写好的 completed / failed 抹回 paused —— 改了等于没改。
+            this.db().prepare("UPDATE generation_runs SET status=? WHERE root_action_id=? AND status IN ('running','paused')").run(cancel ? 'cancelled' : 'paused', rootId);
             for (const attempt of budget.attempts)
                 if (attempt.status === 'reserved') {
                     attempt.status = 'cancelled-before-dispatch';

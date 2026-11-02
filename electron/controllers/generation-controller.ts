@@ -288,6 +288,8 @@ export function registerGenerationController(options: {
   register('generation:list', 0, owner => owner.list())
   register('generation:list-directory-progress', 0, owner => owner.listDirectoryProgress())
   register('generation:pause', 1, (owner, handle) => owner.pause(handle))
+  // D2：批次收口。渲染侧 workflow run 收尾调一次，主进程按 root 幂等 —— 唯一的终态写入点。
+  register('generation:seal', 1, (owner, request) => owner.seal(request.handle, request.outcome, request.code))
   register('generation:cancel', 1, (owner, handle) => owner.cancel(handle))
   register('generation:resume', 1, (owner, handle) => guardKnowledge(owner, readActionContext(owner, handle).knowledgeSnapshot, () => owner.resume(handle)))
   register('generation:restart', 2, (owner, handle, request) => {

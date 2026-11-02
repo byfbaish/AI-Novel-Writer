@@ -365,6 +365,39 @@ export interface ExecuteGenerationRequest {
   invocationNonce: string
   task: GenerationTask
 }
+/**
+ * D2：批次收口。
+ *
+ * 缺陷现场：批次写完后 `generation_runs.status` 永远停在 `running`，只有进程重启时
+ * `recoverInterrupted()` 才会把它改写成 `paused` —— 也就是「成功」和「崩了」在库里长得一样。
+ * 根因不是某条分支漏写，而是**没有任何一条路径负责写终态**。
+ *
+ * 写入点只此一处：渲染侧 workflow run 收尾 → 一个 IPC → 主进程按 root 幂等收口。
+ * 边界取「workflow run 收尾」而不是「每次 attempt 结束」，否则「这一单元还要接着写」
+ * 会被误判成整批完成。
+ */
+export type GenerationSealOutcome = 'completed' | 'failed' | 'cancelled'
+export interface SealGenerationRequest {
+  handle: MainGenerationRunHandle
+  outcome: GenerationSealOutcome
+  /** 只接受白名单失败码；任意字符串会被主进程拒收，避免把自由文本写进账本。 */
+  code?: string
+}
+export interface GenerationSealReceipt {
+  runId: string
+  rootActionId: string
+  /** 该 root 下所有 run 收口后的状态（本次写的值）。 */
+  runStatus: GenerationSealOutcome
+  rootStatus: 'active' | 'paused' | 'cancelled' | 'sealed'
+  /** 本次真正被改写的 run 条数；幂等重放时为 0。 */
+  settledRuns: number
+  /**
+   * `runs-settled` = 只写了 run 终态，root 保留（还能接着写）；
+   * `sealed` = root 一并封口（确认没有后续续写）；
+   * `already-terminal` = 重放，什么都没改。
+   */
+  verdict: 'runs-settled' | 'sealed' | 'already-terminal'
+}
 export interface GenerationOwnerChannels {
   'generation:prepare-draft-context': { args: [PrepareDraftContextRequest]; return: PreparedDraftContext }
   'generation:commit-draft': { args: [GenerationDraftCommitRequest]; return: GenerationDraftCommitReceipt }
@@ -384,6 +417,7 @@ export interface GenerationOwnerChannels {
   'generation:list': { args: []; return: MainGenerationRunView[] }
   'generation:cancel': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
   'generation:pause': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
+  'generation:seal': { args: [SealGenerationRequest]; return: GenerationSealReceipt }
   'generation:resume': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
   'generation:restart': { args: [MainGenerationRunHandle, BeginGenerationRequest]; return: MainGenerationRunView }
   'generation:discard-candidate': { args: [MainGenerationRunHandle, string]; return: MainGenerationRunView }

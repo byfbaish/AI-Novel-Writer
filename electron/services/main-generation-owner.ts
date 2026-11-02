@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import type { BeginGenerationRequest, ExecuteGenerationRequest, BeginGenerationBatchRequest, GenerationDraftCommitRequest, GenerationRecoveryContext, MaterialDecisionReceipt, VisibleCompositionAlgorithm, GenerationOwnerChannels, ShortOutlineRetry, PlanningContinuation } from '../../src/shared/generation-owner-contract'
+import type { BeginGenerationRequest, ExecuteGenerationRequest, BeginGenerationBatchRequest, GenerationDraftCommitRequest, GenerationRecoveryContext, MaterialDecisionReceipt, VisibleCompositionAlgorithm, GenerationOwnerChannels, ShortOutlineRetry, PlanningContinuation, GenerationSealOutcome, GenerationSealReceipt } from '../../src/shared/generation-owner-contract'
 import { isDraftVisibleTextVersion } from '../../src/shared/draft-visible-text'
 import { architecturePlanningRange, generationOutputContract, generationOutputForPurpose, type GenerationAuthorInput } from '../../src/shared/generation-owner-contract'
 import type { MainGenerationExecuteReceipt, MainGenerationRunHandle, MainGenerationRunView, MainGenerationSnapshot } from '../../src/services/generation/generation-runtime'
@@ -1382,6 +1382,36 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     readVisibleComposition: (handle: MainGenerationRunHandle) => {
       const run = requireRun(handle), composition = repository.readVisibleComposition(run.runId)
       return composition ? { ...composition, authorInputs: structuredClone(run.binding.sourceManifest.authorInputs as GenerationAuthorInput[] | undefined) } : null
+    },
+    /**
+     * D2：批次收口。渲染侧 workflow run 收尾时调用一次，幂等。
+     *
+     * run 终态（Tier 1）总会写；root 封口（Tier 2）只在**能证明没有后续续写**时才做：
+     * 一个 root 会跨多次点击复用（同 workflow 多阶段 / 目录续写 / 批次恢复 / 审稿→修稿 /
+     * 同章定稿轮次），所以「run 收尾」不等于「这批活干完了」。判错的代价是作者点「继续」
+     * 撞 `GENERATION_PARENT_INVALID`，比停在 running 更糟 —— 所以默认不封，宁可漏封。
+     *
+     * **不额外报错**：`auto_finalize` 模式会在「正文写完但还没定稿」时留下非 null 的
+     * `nextChapterNumber`，那是正常中间态；在这里抛冲突码会把它误报成异常。
+     */
+    seal: (handle: MainGenerationRunHandle, outcome: GenerationSealOutcome, code?: string): GenerationSealReceipt => {
+      // 参数先于资源校验：非法 code 不该因为「这个 run 恰好不存在」而被改写成一个查不到的错。
+      if (code !== undefined && !/^[A-Z][A-Z0-9_]{2,63}$/.test(code)) throw new Error('GENERATION_SEAL_CODE_INVALID')
+      const run = requireRun(handle)
+      const rootOperation = repository.budget(run.rootActionId).root.operation
+      const batchFinished = (batchId: string): boolean => {
+        try { return draftEffects.readBatch(batchId, deps.projectId).nextChapterNumber === null } catch { return false }
+      }
+      // 批次根 run 的 runId 就是 batchId；单元 run 则从自己的 binding 里取。
+      const batchId = (run.binding.sourceManifest.batchId as string | undefined)
+        ?? (rootOperation === 'batch-chapters' ? run.runId : undefined)
+      const sealRoot = outcome === 'completed' && (
+        rootOperation === 'batch-chapters' && batchId
+          ? batchFinished(batchId)
+          : rootOperation === 'chapter-blueprint-directory'
+            ? repository.listDirectoryProgress().some(item => item.sourceHandle.rootActionId === run.rootActionId && item.remainingRange === null)
+            : false)
+      return repository.seal(run.rootActionId, outcome, { sealRoot })
     },
     pause: (handle: MainGenerationRunHandle) => { const run = requireRun(handle, true); service.pause(run.rootActionId); return viewOf(repository.get(run.runId)) },
     cancel: (handle: MainGenerationRunHandle) => { const run = requireRun(handle); service.cancel(run.rootActionId); return viewOf(repository.get(run.runId)) },

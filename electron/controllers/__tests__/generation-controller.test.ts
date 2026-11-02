@@ -788,3 +788,27 @@ describe('chapter outline command through registered main IPC and formal CAS', (
     } finally { model.temperature = temperature }
   })
 })
+
+/**
+ * D2：`generation:seal` 是唯一的终态写入点，所以它自己的拒绝路径必须可查 ——
+ * 否则「终态没写成」又会回到只能靠实机观察的老路上。
+ */
+describe('generation:seal 契约', () => {
+  // `session` 由 beforeEach 赋值，describe 体本身跑在收集阶段 —— 这里必须惰性取。
+  const ghost = () => ({ projectId: session.projectId, epoch: session.leaseId, rootActionId: 'ghost-root', runId: 'ghost-run' })
+
+  it('缺项目会话 → 直接拒绝，根本进不到 owner', async () => {
+    await expect(mocks.handlers.get('generation:seal')!({ sender }, { handle: ghost(), outcome: 'completed' }))
+      .rejects.toThrow('GENERATION_PROJECT_SESSION_REQUIRED')
+  })
+
+  it('伪造 handle 的错不被压成 GENERATION_REQUEST_FAILED（压了真因就永久消失）', async () => {
+    await expect(invoke('generation:seal', { handle: ghost(), outcome: 'completed' }))
+      .rejects.toThrow(/^GENERATION_(?:RUN_MISSING|RUN_IDENTITY_MISMATCH)$/u)
+  })
+
+  it('非白名单失败码在碰账本之前就被拒（参数校验先于资源查找）', async () => {
+    await expect(invoke('generation:seal', { handle: ghost(), outcome: 'failed', code: 'lowercase code with spaces' }))
+      .rejects.toThrow('GENERATION_SEAL_CODE_INVALID')
+  })
+})
