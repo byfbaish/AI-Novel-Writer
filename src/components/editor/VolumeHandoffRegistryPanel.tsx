@@ -7,7 +7,8 @@ import {
   type VolumeHandoffDefinition,
   type VolumeHandoffInput,
 } from '../../shared/volume-handoff'
-import { volumeEffectiveRanges, type VolumeDefinition, type VolumeRange } from '../../shared/volume-structure'
+import { volumeEffectiveRanges, type VolumeDefinition } from '../../shared/volume-structure'
+import { formatVolumeRangeLabel } from '../../shared/volume-range-label'
 import type { ConsistencyExemption } from '../../shared/consistency-preflight'
 import { volumeHandoffAckKey } from '../../shared/volume-handoff-gate'
 import { outlineProgressAckKey } from '../../shared/outline-progress-gate'
@@ -187,28 +188,6 @@ function bodyChars(row: DraftRow): number {
 function truncate(value: string, max: number): string {
   const trimmed = value.trim()
   return trimmed.length > max ? `${trimmed.slice(0, max)}…` : trimmed
-}
-
-/**
- * 区间文案：`第41–60章 · 折算（已写 48）`（来源必须露出来，作者才知道能不能信）。
- *
- * D19 之后 `last` 是**计划边界**、`actualLast` 是**进度**，两者不再互相改写；
- * 进度落后于边界时把「已写 N」带出来 —— 否则「第7–10章」会让人以为已经写到 10 了。
- */
-function rangeLabel(range: VolumeRange | undefined, text: LocaleText): string {
-  if (!range) return text('—', '—')
-  if (range.first === null || range.last === null) return text('起止未定', 'unresolved')
-  const basis = range.basis === 'actual' ? text('实际', 'actual')
-    : range.basis === 'headings' ? text('精确', 'exact')
-      : range.basis === 'declared' ? text('折算', 'scaled')
-        : text('估算', 'estimated')
-  const progress = range.actualLast !== null && range.actualLast !== range.last
-    ? text(`（已写 ${range.actualLast}）`, ` (written ${range.actualLast})`)
-    : ''
-  return text(
-    `第${range.first}–${range.last}章 · ${basis}${progress}`,
-    `ch ${range.first}–${range.last} · ${basis}${progress}`,
-  )
 }
 
 function writeErrorLabel(error: string | undefined, text: LocaleText): string {
@@ -694,7 +673,7 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                             >{text('已过期', 'Outdated')}</div>
                           ) : null}
                         </td>
-                        <td className="px-1 py-0.5 align-top" data-field="range-cell">{rangeLabel(range, text)}</td>
+                        <td className="px-1 py-0.5 align-top" data-field="range-cell">{formatVolumeRangeLabel(range, text)}</td>
                         <td className="px-1 py-0.5 align-top" data-field="worldState-cell">{truncate(row.worldState, 20) || '—'}</td>
                         <td className="px-1 py-0.5 align-top" data-field="heroState-cell">{truncate(row.heroState, 20) || '—'}</td>
                         <td className="px-1 py-0.5 align-top" data-field="events-cell">{toList(row.events).length}</td>
@@ -742,7 +721,7 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                                   <option value="">{text('（请选择卷）', '(choose a volume)')}</option>
                                   {volumes.map(volume => (
                                     <option key={volume.volumeId} value={volume.volumeId}>
-                                      {`第${volume.volumeIndex}卷${volume.name ? ` · ${volume.name}` : ''} · ${rangeLabel(rangeById.get(volume.volumeId), text)}${volume.source === 'retained' ? text('（大纲已无此卷，保留）', ' (retained)') : ''}`}
+                                      {`第${volume.volumeIndex}卷${volume.name ? ` · ${volume.name}` : ''} · ${formatVolumeRangeLabel(rangeById.get(volume.volumeId), text)}${volume.source === 'retained' ? text('（大纲已无此卷，保留）', ' (retained)') : ''}`}
                                     </option>
                                   ))}
                                   {/* 交接单指向已删的卷：给一个失效选项，让作者能看见并改选。 */}
@@ -756,7 +735,7 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
                               <div className="block">
                                 <span className="block text-[11px]" style={{ color: 'var(--color-text-muted)' }}>{text('区间（自动，不可编辑）', 'Range (automatic)')}</span>
                                 <div data-field="range-readonly" className="flex items-center gap-2" style={{ ...inputStyle, minHeight: 24 }}>
-                                  <span>{rangeLabel(range, text)}</span>
+                                  <span>{formatVolumeRangeLabel(range, text)}</span>
                                   <Button size="sm" variant="ghost" data-action="mark-volume-done"
                                     onClick={() => void markDone(row)}
                                     disabled={busy || !row.volumeId || volume?.source === 'retained'}>
