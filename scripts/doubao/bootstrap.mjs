@@ -7,7 +7,7 @@
  *   1. whether the automation instance is up, and how to start it;
  *   2. clicking 新工作任务 for a clean thread;
  *   3. switching the mode chip from 对话 (no local-file rights!) to 本地电脑;
- *   4. raising the reasoning level from 自动 中 to 自动 高;
+ *   4. setting the reasoning level (default 自动 高, `--effort 中` for 自动 中);
  *   5. confirming which project directory the agent will actually work in.
  *
  * ## Order is load-bearing
@@ -33,6 +33,7 @@
  *
  * Usage:
  *   node scripts/doubao/bootstrap.mjs                  # full: ensure → new thread → 本地电脑 → 高 → check
+ *   node scripts/doubao/bootstrap.mjs --effort 中      # same, but 自动 中 (cheaper)
  *   node scripts/doubao/bootstrap.mjs --check          # read-only diagnosis, starts nothing, clicks nothing
  *   node scripts/doubao/bootstrap.mjs --keep           # reuse the current thread (no 新工作任务 click)
  *   node scripts/doubao/bootstrap.mjs --project 名称   # also switch the project
@@ -68,6 +69,13 @@ const option = (name, fallback) => {
 const port = Number(option('port', DEFAULT_PORT))
 const checkOnly = flag('check')
 const keepThread = flag('keep')
+/**
+ * 目标推理档位（`--effort 中|高`，默认「高」）。
+ *
+ * 作者 2026-11-04：高推理度对积分额度消耗夸张，先按「中」跑，干不动再回「高」。
+ * 取值必须与豆包菜单里的字面量一致（菜单项是「中」/「高」，chip 显示「自动 中」）。
+ */
+const effortTarget = option('effort', '高')
 /**
  * 显式要求「自己拉起实例」。默认**不**这样做：`start-doubao-cdp.cmd` 是未签名
  * 脚本，经 shell 执行要过「是否运行」的确认框，本工具会话无人可点；而用 spawn
@@ -257,7 +265,8 @@ const PROJECT_CHIP = `() => {
 // ------------------------------------------------------------------ live steps
 
 const hasLocalComputer = snapshot => /本地电脑/.test(snapshot.runMode ?? '')
-const hasHighEffort = snapshot => /高/.test(snapshot.model ?? '')
+/** 档位判据按目标值判定 —— 写死「高」会让 `--effort 中` 的成功被判成失败。 */
+const hasEffort = (snapshot, target = effortTarget) => (snapshot.model ?? '').includes(target)
 
 /** 新工作任务 → fresh thread. Must run FIRST: it resets the level chip to 中. */
 const createThread = async client => {
@@ -296,10 +305,12 @@ const switchRunMode = async client => {
   return { status: 'ok', evidence: `runMode=${after.runMode}（method=${method}）` }
 }
 
-/** 自动 中 → 自动 高. The chip's first-level label is 「推理强度」. */
+/** 切到 `effortTarget`（默认 自动 高）. The chip's first-level label is 「推理强度」. */
 const switchEffort = async client => {
   const before = await snapshot(client)
-  if (hasHighEffort(before) && !force) return { status: 'skip', evidence: `model=${before.model}` }
+  // 已经是目标档位就跳过，`--force` 也一样：菜单里点「已经是当前值」的项会找不到
+  // 可点的条目，于是把一次成功报成 [fail]（2026-11-03 实测过这个误报）。
+  if (hasEffort(before)) return { status: 'skip', evidence: `model=${before.model}${force ? '（--force 已忽略：已是目标档位）' : ''}` }
 
   const opened = await clickReal(client, byTestId('chat_input_action_model'))
   if (!opened) return { status: 'fail', evidence: '找不到底栏档位 chip' }
@@ -311,15 +322,15 @@ const switchEffort = async client => {
     path.push('推理强度')
     await sleep(900)
   }
-  const picked = await clickMenuEntry(client, menuEntryExactly('高'))
+  const picked = await clickMenuEntry(client, menuEntryExactly(effortTarget))
   if (!picked) {
     await client.key('Escape', 'Escape', 27)
-    return { status: 'fail', evidence: `档位菜单里没有「高」（点前 model=${before.model}）` }
+    return { status: 'fail', evidence: `档位菜单里没有「${effortTarget}」（点前 model=${before.model}）` }
   }
-  path.push('高')
+  path.push(effortTarget)
   await sleep(1_200)
   const after = await snapshot(client)
-  if (!hasHighEffort(after)) {
+  if (!hasEffort(after)) {
     return { status: 'fail', evidence: `点击后 model 仍是 ${after.model}（${path.join(' → ')}）` }
   }
   return { status: 'ok', evidence: `model=${after.model}（${path.join(' → ')}）` }
@@ -525,7 +536,7 @@ const main = async () => {
     if (checkOnly) {
       step(initial.taskMode ? 'ok' : 'fail', '工作任务模式', initial.taskMode ? '输入框就位' : '不在任务模式（对话页）')
       step(hasLocalComputer(initial) ? 'ok' : 'fail', '运行模式', `runMode=${initial.runMode ?? '(无 chip)'}`)
-      step(hasHighEffort(initial) ? 'ok' : 'fail', '推理档位', `model=${initial.model ?? '(无 chip)'}`)
+      step(hasEffort(initial) ? 'ok' : 'fail', `推理档位（目标 ${effortTarget}）`, `model=${initial.model ?? '(无 chip)'}`)
       step('skip', '项目路径', `${initial.projectChip ?? '(空)'}（chip 常只显示项目名；绝对路径要开项目菜单，--check 不点击）`)
       step(initial.turnCount === 0 ? 'skip' : 'ok', '当前线程', `turnCount=${initial.turnCount} title=${initial.title}`)
       console.log(JSON.stringify({
@@ -536,10 +547,10 @@ const main = async () => {
         runMode: initial.runMode,
         model: initial.model,
         project: { label: initial.projectChip, hasAbsolutePath: hasPath(initial.projectChip), verified: false },
-        ready: initial.taskMode && hasLocalComputer(initial) && hasHighEffort(initial),
+        ready: initial.taskMode && hasLocalComputer(initial) && hasEffort(initial),
         steps,
       }, null, 2))
-      if (!initial.taskMode || !hasLocalComputer(initial) || !hasHighEffort(initial)) return 1
+      if (!initial.taskMode || !hasLocalComputer(initial) || !hasEffort(initial)) return 1
       return 0
     }
 
@@ -567,10 +578,10 @@ const main = async () => {
     // 4. effort
     if (problems.length === 0) {
       const effort = await switchEffort(client)
-      step(effort.status, '推理档位 → 自动 高', effort.evidence)
+      step(effort.status, `推理档位 → 自动 ${effortTarget}`, effort.evidence)
       if (effort.status === 'fail') problems.push('推理档位')
     } else {
-      step('skip', '推理档位 → 自动 高', '上一步失败，未处理')
+      step('skip', `推理档位 → 自动 ${effortTarget}`, '上一步失败，未处理')
     }
 
     // 5. project: switch when asked, otherwise resolve which one is active.

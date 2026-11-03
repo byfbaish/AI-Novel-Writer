@@ -97,13 +97,14 @@ cmd //c "C:\develop\workspace\AI-writer\develop\scripts\doubao\start-doubao-cdp.
 
 ## 2.1 一键启动（bootstrap）
 
-`bootstrap.mjs` 把「起实例 → 建新线程 → 切本地电脑 → 切高 → 核对项目」压成一条命令。**它不杀进程、不重启实例**：在线就跳过启动，只保证「有」和「就绪」。
+`bootstrap.mjs` 把「起实例 → 建新线程 → 切本地电脑 → 切档位（默认高）→ 核对项目」压成一条命令。**它不杀进程、不重启实例**：在线就跳过启动，只保证「有」和「就绪」。
 
 ```bash
 node scripts/doubao/bootstrap.mjs               # 完整拉起并自检
 node scripts/doubao/bootstrap.mjs --check       # 只读诊断：不启动、不点击，只打印当前状态
 node scripts/doubao/bootstrap.mjs --keep        # 不新建线程，复用当前线程
 node scripts/doubao/bootstrap.mjs --force       # 即使已是目标值也重跑一次切换（验证「切得动」，不只是「本来就对」）
+node scripts/doubao/bootstrap.mjs --effort 中   # 推理档位切「自动 中」而不是「自动 高」（省积分）
 node scripts/doubao/bootstrap.mjs --project AI-writer-wt-1   # 额外切项目（可选）
 node scripts/doubao/bootstrap.mjs --launch       # 例外：要求脚本自己 spawn 实例（短命，见 §2）
 ```
