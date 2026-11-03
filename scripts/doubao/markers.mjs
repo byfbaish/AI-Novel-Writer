@@ -28,6 +28,11 @@
  *   1. a state token immediately followed by `|` - real output never writes
  *      `DONE|BLOCKED`;
  *   2. the note is nothing but a placeholder (`<一句话说明>` / `（…）`).
+ *
+ * `## [QUEUE] EMPTY` carries an empty note, so neither rule can catch it, and
+ * a task-book ends its closing section with that same line. The terminal rule
+ * (see `isTerminalQueueMarker`) therefore requires a preceding real DONE on
+ * top of the "last non-blank line" property before an EMPTY counts.
  */
 
 export const MARKER_LINE = /^(?:#{1,4}\s*)?\[(T\d+|QUEUE)\]\s*(DONE|BLOCKED|SKIPPED|EMPTY|EMPTIED|STOPPED)\b\s*(.*)$/iu
@@ -47,6 +52,36 @@ export const isTemplateMarker = (line, note) => {
   if (STATE_PIPE.test(line)) return true
   if (note.startsWith('|')) return true
   return PLACEHOLDER_ONLY.test(note)
+}
+
+/**
+ * True when a QUEUE/EMPTY marker is the *terminal* "queue is empty" report and
+ * not a task-book format example. Non QUEUE/EMPTY markers always pass.
+ *
+ * `markers` is the already-parsed sequence - each entry is what parseMarkerLine
+ * returned plus the caller-attached 0-based `line` index and the source text's
+ * last non-blank line index `lastContentLine` ("last valid line" is a
+ * text-level property, so extractMarkers attaches it). `index` points at the
+ * candidate.
+ *
+ * Two conditions, both required - only one satisfied means discard:
+ *
+ *   1. terminal line: the marker sits on the last non-blank line of the text
+ *      (nothing but blank lines follows). A mid-stream EMPTY is never a
+ *      terminal report.
+ *   2. preceded by a real DONE: at least one DONE marker precedes it in the
+ *      already template-filtered sequence. A task-book's closing section ends
+ *      with `## [QUEUE] EMPTY` too, but its DONE examples are `<一句话说明>`
+ *      placeholders that isTemplateMarker already dropped, so no real DONE can
+ *      precede the book's EMPTY - without this rule the book's trailing EMPTY
+ *      would be reported once, before the agent has ever replied.
+ */
+export const isTerminalQueueMarker = (markers, index) => {
+  const m = markers[index]
+  if (m.marker !== 'QUEUE' || m.state !== 'EMPTY') return true
+  if (m.line !== m.lastContentLine) return false
+  if (!markers.slice(0, index).some(p => p.state === 'DONE')) return false
+  return true
 }
 
 /**
@@ -72,19 +107,32 @@ export const parseMarkerLine = line => {
  * in the page (it needs the live DOM), so this function only decides what
  * counts as a marker inside what it is given.
  *
+ * Optional `{ afterIndex }` restricts the scan to the text after the last
+ * user-message anchor: the caller passes the character offset of the anchor,
+ * and everything at or before it (a task-book's body, including its format
+ * examples) is ignored. Omitted - or `undefined` - scans the whole text, which
+ * keeps every existing call site unchanged.
+ *
  * The timestamp may sit on the marker line or within the next two lines.
  */
-export const extractMarkers = text => {
-  const lines = String(text ?? '').split('\n')
-  const out = []
+export const extractMarkers = (text, { afterIndex } = {}) => {
+  const source = afterIndex == null ? String(text ?? '') : String(text ?? '').slice(afterIndex)
+  const lines = source.split('\n')
+  let lastContentLine = -1
   for (let i = 0; i < lines.length; i += 1) {
-    const parsed = parseMarkerLine(lines[i])
-    if (!parsed) continue
+    if (lines[i].trim() !== '') lastContentLine = i
+  }
+  const parsed = []
+  for (let i = 0; i < lines.length; i += 1) {
+    const marker = parseMarkerLine(lines[i])
+    if (!marker) continue
     let timestamp = ISO_STAMP.exec(lines[i])?.[1] ?? null
     for (let k = 1; k <= 2 && !timestamp && i + k < lines.length; k += 1) {
       timestamp = ISO_STAMP.exec(lines[i + k])?.[1] ?? null
     }
-    out.push({ ...parsed, timestamp })
+    parsed.push({ ...marker, timestamp, line: i, lastContentLine })
   }
-  return out
+  return parsed
+    .filter((_, i) => isTerminalQueueMarker(parsed, i))
+    .map(({ line, lastContentLine, ...rest }) => rest)
 }

@@ -414,6 +414,7 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 - 每项结束要求它输出 `## [Tn] DONE|BLOCKED|SKIPPED <一句话>` + 下一行真实时间戳；
 - `markers` 从「最后一条用户消息之后的页面文字」里扫，所以**既能看到标记，也能看到「已编辑文件 …」「已执行代码 …」这类执行流水**；
 - 任务书里教格式的那行（`## [T1] DONE|BLOCKED|SKIPPED <一句话说明>`）**不会被算成标记**：解析在 `scripts/doubao/markers.mjs`，会丢掉「状态后接 `|` 枚举」和「note 只是占位符」的模板行（2026-11-03 修，此前会把示例行当成 `[T1] DONE`）；
+- **`## [QUEUE] EMPTY` 另有一条终端判据**（2026-11-04 修，`isTerminalQueueMarker`）：它 note 为空，前一条模板判据管不住，而任务书收尾小节又恰好以这一行结尾 ⇒ 派活瞬间就报两条 EMPTY（实测把任务书写进输入框后 `markers` 立刻读出 2 条）。现在要求**两个条件同时成立**才认：①它是最后一行非空内容；②它之前至少有一条**真 DONE**（模板行已被前一条判据丢掉）。**代价（有意接受）**：助手如果只回一行 `## [QUEUE] EMPTY`、没有任何 DONE，`markers` 读不到 —— 这表示「本轮什么都没做」，不当作队列耗尽信号；判「队列到底空不空」看 `task` 的退出状态，不靠 markers。
 - **markers 是检查点工具，不是轮询工具**：设 2 个点（+10 min / +30 min），只看「做到第几项 / 有没有连续 BLOCKED / diff 是否越界」。
 
 **为什么不能只看退出码**：`waitForReply` 的稳定判据在长任务中途停顿超过 4.5 秒就会判 settled（本轮实测：T1 跑完前 CLI 就退出过一次）。**退出码 0 不等于任务完成**。
@@ -459,6 +460,7 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 | `markers` 读不到任何标记，但页面上明明有 | 两个原因叠加：① 豆包渲染 markdown，`## [T1]` 到 DOM 里成了标题，`#` 没了 → 正则的 `#` 前缀必须可省；② 任务模式的执行流水（「已编辑文件…」）**不在** `data-testid="message_text_content"` 里 → 改成读「最后一条用户消息之后的页面文字」。两处均已修 |
 | `markers` 读出 `[T1] DONE` 但 note 是 `\|BLOCKED\|SKIPPED <一句话说明>` | 任务书正文里的**格式示例**被当成真标记（示例行里状态后面紧跟 `\|` 枚举）。**已修**：解析抽到 `scripts/doubao/markers.mjs`，`extractMarkers` 丢弃「状态后接竖线」与「note 只是 `<…>` 占位」的模板行 |
 | 读回时 `src/shared/__tests__/x.ts` 显示成 `src/shared/tests/x.ts` | markdown 把 `__tests__` 当粗体语法吞了下划线。**这是渲染假象**：模型看的是源文本，本轮它实际落点就是正确的 `__tests__` 目录。别据此认定任务书写错了——要验证就看 `git status` 的真实路径 |
+| **中档**派活后它只做一件就收工（回复「我先探查…」然后 turn 结束） | `--effort 中` 的 agent 循环撑不住多步任务：2026-11-04 实测首轮只发出 1 次工具调用就 `settled`（页面显示「已处理 2 分 29 秒」，无停止按钮 = 真的结束了）。**补一句话催它继续即可**（`doubao.mjs say "继续执行 Tn：直接改…，跑完测试再输出标记。不要只做说明。"`），催过之后能一路跑完 11 分 36 秒、3 项全交付。⇒ 中档**能用但需要 nudge**，不是「干不了活」 |
 | 豆包升级后全崩 | 先记版本，再按上表逐项复测；`testid` 是**最稳的锚点**，class 全是 Tailwind 随机串，别用 |
 
 **恢复顺序**：先 `probe.mjs` 看 testid 还在不在 → 再 `inspect-click.mjs` 看按钮还能不能点 → 最后才改 `SELECTORS`。
