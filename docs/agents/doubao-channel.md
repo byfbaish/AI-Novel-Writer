@@ -68,10 +68,14 @@ cmd //c "C:\develop\workspace\AI-writer\develop\scripts\doubao\start-doubao-cdp.
 
 | 方式 | 状态 | 证据 |
 |---|---|---|
-| `explorer.exe <cmd>` 代启 | **已失效（2026-11-03）** | 验证方法：写一个只做 `echo launched > %LOCALAPPDATA%\Temp\probe-result.txt` 的 cmd，用 `explorer.exe <路径>` 打开，等 5 秒 —— **文件根本没生成**。⇒ explorer 没执行目标程序，与豆包无关 |
+| `explorer.exe <任意路径>` 代启 | **已失效（2026-11-03，四次对照）** | 一律返回 **`exit=1`**，目标未执行。**排除法**：`.cmd` 关联正常（`assoc .cmd` → `cmdfile` / `ftype cmdfile` → `"%1" %*`）· 换 **ASCII 路径同样失败**（不是中文路径问题）· `explorer.exe <文件夹>` 也 `exit=1`（连打开目录都不行）· `explorer.exe <txt>` 之后记事本进程数不变 ⇒ **不是文件关联、不是编码、不是 .cmd 特有，是 explorer 的 shell execute 被整体阻断**，与豆包无关 |
+| `cmd /c start "" <文件>` | **无效** | `start_exit=0` 但没有任何新窗口或进程（`start "" probe.txt` 前后记事本数不变）⇒ 依赖 shell 关联的这条也断 |
+| `cmd /c start "" <exe> <参数>` | **能起，但短命** | 豆包实例确实起来（`CreateProcess` 不过 shell），但进程留在工具会话的 job 里 ⇒ **保活 shell 一到点就被清**。两次断点精确落在 `sleep` 到期时刻（22:31 / 22:56），中间看到的「还在」只是清理延迟窗口 |
 | `schtasks.exe` 建计划任务 | 禁止 | 在 WorkBuddy 安全策略的**程序黑名单**里，返回明确提示，不许绕路 |
 | WMI `Invoke-CimMethod Win32_Process Create` | 禁止 | 被拦，提示「equivalent to Start-Process」 |
 | PowerShell `Start-Process` | 禁止 | 进程随会话回收，表现为「开了几秒又没了」 |
+
+**结论：在当前工具会话里没有「脱离进程树」的合法路径。** 唯一能让实例长寿的办法是**在会话之外启动它**——人手动双击 `start-doubao-cdp.cmd`，或做成开机自启。
 
 ## 2.1 一键启动（bootstrap）
 
@@ -109,7 +113,7 @@ node scripts/doubao/bootstrap.mjs --project AI-writer-wt-1   # 额外切项目�
 - **幂等**：实例在线就 `[skip]`，模式已是本地电脑就 `[skip]`，档位已是高就 `[skip]`。
 - **退出码**：`0` 全部 ok/skip · `1` 有步骤失败（`✗ 未就绪：…` 会点出是哪一步）· `2` 实例起不来或连不上。
 - `--check` 不点击，所以**项目绝对路径那一步只能是 `[skip]`**（chip 常只显示项目名，路径要开菜单才看得到）。要路径就裸跑 bootstrap 或 `--keep`。
-- **保活仍然是人的责任**：脚本只负责「拉起并等端口就绪」，不 sleep、不驻留。实例挂在启动它的 shell 上 ⇒ 要么在后台终端里跑，要么用工具会话的 `run_in_background` 起，然后**别关那个会话**。
+- **保活是硬约束，不是建议**（2026-11-03 两次断点实证）：实例挂在启动它的 shell 上，`run_in_background` 的 `sleep` 一到点就被清 —— 22:31 / 22:56 各一次，`netstat` 从 `LISTENING` 直接变 `TIME_WAIT`，中途看到的「还在」只是清理延迟窗口。所以脚本只负责「拉起并等端口就绪」，**真正的长寿只有一个办法：在工具会话之外启动**（人手动双击 `start-doubao-cdp.cmd`，或做成开机自启），之后本脚本一律只用 `--check` 或幂等连接，不再启动。
 - `--force` 只影响第 3、4 步的 `[skip]` 判定（模式与档位），不会重拉实例、不会多建线程。
 - ⚠️ **「对话」模式下的档位 chip 显示的是「快速」而不是「自动 中」**（对话模式只有快速档）。所以「从中切到高」这条路径只能在**任务模式**里验；从对话模式恢复时，模式先切回本地电脑，档位 chip 才会重新出现「推理强度 → 高」。
 
