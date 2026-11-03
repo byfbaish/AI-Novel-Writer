@@ -287,7 +287,7 @@ docs/
 | [`character-proposal-adoption-merge-design.md`](design/characters/character-proposal-adoption-merge-design.md) | ✅ 已实施 | 采用到已有角色时改为字段合并（不覆盖已引用设定）+ 候选→已有卡的关系可直接采用 |
 | [`character-roster-rebuild-design.md`](design/characters/character-roster-rebuild-design.md) | ✅ 已实施 | 架构重建＝整册替换：同名默认采用、字段覆盖、名单外旧卡退休、同对关系边收敛 |
 
-### 4.5 功能与设置 · [`design/features/`](design/features/)（6 篇）
+### 4.5 功能与设置 · [`design/features/`](design/features/)（7 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -297,6 +297,7 @@ docs/
 | [`task-completion-notify-design.md`](design/features/task-completion-notify-design.md) | 已列入待办（顺延） | 应用内 toast 统一宿主 + 热插拔注册表（作者裁先做系统级；将来可合并为双输出） |
 | [`ai-output-live-render-design.md`](design/features/ai-output-live-render-design.md) | ✅ 已实施 | AI 输出面板运行态只给状态行、不渲染流式文本（原文：审稿把渲染进程推到 10GB 的 O(n²) 取证与参数） |
 | [`p16b-prompt-config-and-trace-guide.md`](design/features/p16b-prompt-config-and-trace-guide.md) | ✅ 已实施 | 作者操作手册：三条配置边界、口味/数字之辨、三类打架、Prompt 追踪五步归因 |
+| [`d2-run-lease-abort-design.md`](design/features/d2-run-lease-abort-design.md) | 已裁定 · 部分实施 | D2 方案甲：`generation_runs` 加执行租约三列（M29），启动时把「主人已死」判成 `aborted`。已落地迁移/仓储/8 条单测；**心跳与 resume 交互待裁定（A4）** |
 
 ### 4.6 产品与方法论 · [`design/product/`](design/product/)（4 篇）
 

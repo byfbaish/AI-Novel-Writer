@@ -96,8 +96,24 @@ function fail(code: string): never { throw new Error(code); }
  * `MainGenerationSnapshot['status']` 另含 `'unknown'`（渲染层对未知来源的兜底），
  * 两者不是一回事，别合并。
  */
-const RUN_STATUS = ['running', 'paused', 'completed', 'failed', 'cancelled'] as const;
+const RUN_STATUS = ['running', 'paused', 'completed', 'failed', 'cancelled', 'aborted'] as const;
 export type DurableRunStatus = (typeof RUN_STATUS)[number];
+
+/**
+ * 执行租约的存活时长（D2 方案甲）。
+ *
+ * 取 180s = 3 × 心跳间隔（60s）：容忍连续两次心跳丢失仍不误判，同时保证
+ * 「渲染层崩了」能在 3 分钟内被发现。这两个数是工程默认值，不是行业标准值
+ * —— 小说正文生成这个细分场景没有公开的租约配比可查。约束只有一条：
+ * **TTL ≥ 3 × 心跳间隔**，改一个必须改另一个。
+ */
+export const GENERATION_RUN_LEASE_TTL_MS = 180_000;
+
+/**
+ * 本进程的执行者身份。模块加载时生成一次，同一主进程内所有 run 共用；
+ * 进程重启即换新 —— 这正是「启动时 fence」能认出「旧主人」的依据。
+ */
+const PROCESS_EXECUTION_OWNER = randomUUID();
 const completeHandle = (handle: DirectoryGenerationProgress['sourceHandle']) => handle && typeof handle === 'object'
     && Object.keys(handle).length === 4 && ['projectId', 'epoch', 'rootActionId', 'runId'].every(key => typeof handle[key as keyof typeof handle] === 'string' && handle[key as keyof typeof handle].trim());
 function binding(request: RunBinding): RunBinding {
@@ -110,7 +126,9 @@ function binding(request: RunBinding): RunBinding {
 export class GenerationRunRepository {
     private readonly database: Database.Database | null;
     constructor(getDb: () => Database.Database | null = getProjectDb, private readonly now: () => number = Date.now,
-        private readonly isFrozen: (table: PortableRuntimeFreezeTable, recordId: string) => boolean = () => false) {
+        private readonly isFrozen: (table: PortableRuntimeFreezeTable, recordId: string) => boolean = () => false,
+        /** 执行者身份。测试用它模拟「上一个进程留下的租约」；生产恒为本进程 ID。 */
+        private readonly executionOwner: () => string = () => PROCESS_EXECUTION_OWNER) {
         // Capture this project's admitted handle once. A later project switch
         // must never redirect in-flight generation writes into another DB.
         this.database = getDb();
@@ -310,7 +328,10 @@ export class GenerationRunRepository {
                 this.db().prepare('INSERT INTO generation_roots(root_action_id,idempotency_key,action_json,budget_json) VALUES(?,?,?,?)').run(action.rootActionId, key, encode(action), encode(request.budget));
             }
             const runId = randomUUID();
-            this.db().prepare('INSERT INTO generation_runs VALUES(?,?,?,?,?,?)').run(runId, action.rootActionId, encode(frozen), 'running', this.now(), openKey);
+            // 列名必须显式写：加了租约三列之后，`INSERT ... VALUES(?,?,?,?,?,?)` 会因
+            // 值个数与表列数不等而在**运行时**抛错（迁移与类型检查都拦不住）。
+            this.db().prepare('INSERT INTO generation_runs(run_id,root_action_id,binding_json,status,created_at_ms,open_key,execution_owner,execution_epoch,lease_expires_at) VALUES(?,?,?,?,?,?,?,?,?)')
+                .run(runId, action.rootActionId, encode(frozen), 'running', this.now(), openKey, this.executionOwner(), 1, this.now() + GENERATION_RUN_LEASE_TTL_MS);
             return this.get(runId);
         });
     }
@@ -758,6 +779,19 @@ export class GenerationRunRepository {
             this.db().prepare('UPDATE generation_runs SET binding_json=?,status=? WHERE run_id=?').run(encode(next), 'running', runId);
         });
     }
+    /**
+     * 续租（D2 方案甲）。返回 `false` 表示这条 run 的租约已不属于本执行者
+     * —— 要么被 fence 判了终态，要么被另一个会话接管过，两种情况下调用方都不该
+     * 继续把它当自己的活干。
+     *
+     * 只在 `running` / `paused` 上续：终态 run 的租约没有意义，续了反而让
+     * 「这条到底结束了没有」重新变得模糊。
+     */
+    renewLease(runId: string): boolean {
+        const result = this.db().prepare("UPDATE generation_runs SET lease_expires_at=? WHERE run_id=? AND execution_owner=? AND status IN ('running','paused')")
+            .run(this.now() + GENERATION_RUN_LEASE_TTL_MS, runId, this.executionOwner());
+        return result.changes > 0;
+    }
     recoverInterrupted(): void {
         this.transaction(() => {
             const roots = this.db().prepare('SELECT root_action_id FROM generation_roots').all() as {
@@ -770,6 +804,14 @@ export class GenerationRunRepository {
                         attempt.status = 'unknown';
                         this.db().prepare('UPDATE generation_attempts SET attempt_json=? WHERE attempt_id=?').run(encode(attempt), attempt.attemptId);
                     }
+                // 先 fence 再 pause：`pause()` 只会写 `paused`，而 `paused` 承载不了
+                // 「这一批已经中止」——它同时是「等作者继续」的写法。判据两条，缺一不可：
+                // ①持有者不是本进程（上个进程崩了 / 老数据 owner 为空）；
+                // ②租约已过期（本进程内渲染层崩了，心跳停了）。
+                // `aborted` 不在 pause 的 `status IN ('running','paused')` 里，所以下面
+                // 那次 pause 不会把它抹掉 —— 这是 fence 必须放在 pause **之前**的原因。
+                this.db().prepare("UPDATE generation_runs SET status='aborted' WHERE root_action_id=? AND status IN ('running','paused') AND (execution_owner<>? OR lease_expires_at<=?)")
+                    .run(id, this.executionOwner(), this.now());
                 this.pause(id);
             }
         });

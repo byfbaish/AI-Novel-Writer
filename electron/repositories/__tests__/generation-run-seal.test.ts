@@ -2,6 +2,7 @@ import { createRequire } from 'node:module'
 import { describe, expect, it } from 'vitest'
 import { initializeLegacyBaselineSchema } from '../../migrations/baseline-schema'
 import { M01_GENERATION_SQL } from '../../migrations/m01-generation-runs'
+import { applyM29GenerationRunLease } from '../../migrations/m29-generation-run-lease'
 import { GenerationRunRepository, type RunBinding } from '../generation-run-repository'
 
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
@@ -58,6 +59,9 @@ function fixture(options: {
   const db = new Database(':memory:')
   db.pragma('foreign_keys=ON')
   db.transaction(() => { initializeLegacyBaselineSchema(db); db.exec(M01_GENERATION_SQL) })()
+  // 真实老库就是「M01 建表 + M29 补租约列」这条路径，fixture 必须走同一条，
+  // 否则测的是一个生产环境不存在的表形状。
+  applyM29GenerationRunLease(db)
   const operation = options.operation ?? 'chapter-draft'
   db.prepare('INSERT INTO generation_roots(root_action_id,idempotency_key,action_json,budget_json,blocked_code) VALUES(?,?,?,?,?)')
     .run('root-1', 'idem-1', JSON.stringify(rootAction(options.rootStatus ?? 'active', operation)), JSON.stringify(BUDGET), options.blockedCode ?? null)

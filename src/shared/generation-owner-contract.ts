@@ -375,6 +375,11 @@ export interface ExecuteGenerationRequest {
  * 写入点只此一处：渲染侧 workflow run 收尾 → 一个 IPC → 主进程按 root 幂等收口。
  * 边界取「workflow run 收尾」而不是「每次 attempt 结束」，否则「这一单元还要接着写」
  * 会被误判成整批完成。
+ *
+ * `aborted` 与 `failed` 不是一回事：`failed` = 工作流跑到了失败分支（有人执行了收口），
+ * `aborted` = 执行者已经没了、由启动时的租约 fence 判死（D2 方案甲，2026-11-04）。
+ * 混用会让「这批到底有没有跑过」重新失去答案 —— 那正是 D2 要消除的东西。
+ * 它不由 seal 写入（`generation:seal` 只接前三个），只在主进程启动恢复时落库。
  */
 export type GenerationSealOutcome = 'completed' | 'failed' | 'cancelled'
 export interface SealGenerationRequest {
