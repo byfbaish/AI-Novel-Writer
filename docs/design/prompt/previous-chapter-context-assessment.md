@@ -433,3 +433,44 @@ flowchart TD
 - **R3 三条没做**：白名单、新栏目、6 条上限 —— 那是第二步。
 - **没有 A/B**：本次改动的判据是「D12 的故障形态消失」，不是「短细纲质量变好」。§8.7 那三条仍未取证。
 - **R4 风险上调未处理**：要点仍由同一个 9B 生成，质量不稳的问题没有解决；只是这次它进的是**计划步骤**（错了顶多分段偏），不再是**事实来源**。
+
+---
+
+## 10. 取证：`blueprints.notes` 与快照 `chapter_notes` 确实会分叉（2026-11-04，豆包 T10 产出 + 主 agent 复核）
+
+§9.3 把「两者是否分叉」列为未实测。本轮清点完毕，**结论是「能分叉」，且不是理论上的**。
+
+### 10.1 两边的写入点（`文件:行` 已复核）
+
+| 列 | 写入点 | 说明 |
+|---|---|---|
+| `blueprints.notes` | `electron/repositories/blueprint-repository.ts:1046` `updateNotes()` | 定稿后处理写它 |
+| 同上 | `electron/repositories/blueprint-repository.ts:693-700` `static upsert()`（`ON CONFLICT ... DO UPDATE SET notes = excluded.notes`） | **整行写入会覆盖 notes** |
+| `summary_snapshots.chapter_notes` | `electron/repositories/summary-repository.ts:965-1001` `saveFinalizedContinuity()` | 唯一写入点，唯一调用方 = `finalization-generation.ts` 的定稿后处理 |
+
+`db:blueprint-update-notes` 是**守卫桩**（`db-controller.ts:744-748`，恒抛 `GENERATION_FINALIZATION_ADMISSION_REQUIRED`），不是写入点 —— 别把它算进去。
+
+### 10.2 分叉路径不止「作者手改」
+
+`static upsert()` 的调用方包括作者侧保存（`db:blueprint-upsert` / `-many` / `commit-range`）、agent 工具（`agent-domain-tool-effect.ts:57`，`{...before, ...changes}` 会保住原值）、导入（`import-run-repository.ts:2405`）。
+
+**真正会清空的是这一条**：作者在章节卡编辑器里保存恢复稿 → `ChapterCardEditor.tsx:157` 发 `db:blueprint-commit-range`，载荷里的蓝图由 `parseTextBlueprintsStrict()` **从纯文本重新解析**，而解析器对缺失字段的默认值是空串：
+
+```ts
+// src/shared/blueprint-semantic-contract.ts:333-336
+const optionalText = (key: 'userGuidance' | 'notes' | 'notesUpdatedAt'): string => {
+  const value = candidate[key]
+  if (value === undefined) return ''      // ← 文本里没有 notes 就写空串
+```
+
+文本蓝图通常不带 `notes`（那是定稿后生成的附加列）⇒ **一次恢复稿保存就能把整段章号的 `notes` 写成空串**，而快照侧 `chapter_notes` 不动。
+
+### 10.3 对 R6 的影响：无（但理由要说清）
+
+R6 取的是**快照** `summary_snapshots.chapter_notes`（§9.3），所以 `blueprints.notes` 被清空不影响短细纲前驱。
+
+反过来说：如果当初按「`blueprints.notes` 更贴近蓝图」的直觉去取，作者保存一次恢复稿就会让前驱变成空的 —— 这正是 §9.3 选快照的实际价值，不是口味问题。
+
+### 10.4 独立的一处风险（本轮只记录，不修）
+
+`blueprints.notes` 会变而 `chapter_notes` 不变 ⇒ `finalization-generation-source.ts:22-26` 的 `finalizationNotesBaseline` 把两列的 hash 分别记进基线。若清空发生在**生成开始之后、定稿之前**，基线比对就会看到 `blueprints.notes` 变了。**未实测这条会不会真的抛 `GENERATION_SOURCE_CHANGED`** —— 记在这里，等实机碰上了直接查这里，别从零查。

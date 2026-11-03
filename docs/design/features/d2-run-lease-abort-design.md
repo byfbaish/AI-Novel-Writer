@@ -344,3 +344,48 @@ WHERE root_action_id=? AND status='running' AND execution_owner<>?
 ### 10.6 仍然欠着的一件事（明确不当作已完成）
 
 **心跳 IPC 未接。** 后果：`renewLease()` 没有调用方，「渲染层崩了但主进程还活着」这条**今天判不出来**（要等下次启动靠 owner 变化兜）。判据从「过期」换成「换进程」只是让误判消失，并没有让这条覆盖变强。接心跳时必须同时把 §10.4 里去掉的那条租约判据加回来 —— 两者拆开做，都会单独变成 bug。
+
+---
+
+## 11. 心跳接线的前置清点（2026-11-04，豆包 T11 产出 + 主 agent 复核）
+
+只清点、未动代码。**接线本身仍未开工**（§10.6 的欠账还是欠着）。
+
+### 11.1 通道模板（已复核）
+
+| 项 | 位置 |
+|---|---|
+| 注册 | `electron/controllers/generation-controller.ts:276` `register('generation:read', 1, (owner, handle) => owner.read(handle))` |
+| 契约 | `src/shared/generation-owner-contract.ts:421` `'generation:read': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }` |
+
+`MainGenerationRunHandle` 里**已带 `runId`**（`src/services/generation/generation-runtime.ts:75-80`），所以渲染层不必持有别的东西，`repository.renewLease(handle.runId)` 直接可调。
+
+### 11.2 一处必须更正的前提（豆包给的「可复用定时器」不成立）
+
+它把 `AIOutputPanel.tsx:890-901` 的 `useLowFrequencyValue` 当成「现成的轮询基建」。**复核后要更正**：
+
+```ts
+// AIOutputPanel.tsx:892-901 —— 它只是把 prop 节流后重渲染，useEffect 里没有 invoke
+const timer = window.setInterval(() => setSlow(latest.current), intervalMs)
+```
+
+- 它是**渲染节流器**，不是轮询器：没有 IPC 调用，`value` 由上层（`generation:snapshot` 订阅 / `generation:list`）推进；
+- 真正的定时器只有 `BottomPanel.tsx:810` 的 2s `load`。
+
+⇒ 心跳不能「复用」它，得**在同一个组件里新增一个 `setInterval`**（或挂到 transport 层）。差别不是风格问题：把心跳塞进一个「只在有值变化时才渲染」的 hook 里，帧率与续租周期会绑在一起，排查时会互相误导。
+
+### 11.3 渲染层拿不到活跃批（这决定了心跳该放哪一侧）
+
+`src/stores/workflow-store.ts:78-122` 的 `WorkflowRun` 只有工作流自己的 `id` 与 `projectSession`，**没有 `MainGenerationRunHandle`**；生成批的 handle 只存在于 `AIOutputPanel` 的组件本地 state（`generation:list` / `generation:list-batches` 的返回值）。
+
+因此「渲染层定时续租」这条路要先解决**状态归属**问题（把 handle 提到 store，或者让主进程自己续）。
+
+### 11.4 一个更省的替代（本轮提出，未实施、未裁定）
+
+主进程里本来就有 1s 的 `flush` 定时器（`electron/services/generation-run-service.ts:199`，attempt 活动期间每 1s 跑）。**在 `flush` 里顺手续租**（按「距上次续租 > 60s 才写」节流）可以做到：
+
+- 不需要新 IPC 通道、不需要改渲染层、不需要 handle 上提；
+- `execution_owner` 本来就是主进程身份（`this.executionOwner()`），主进程续租在语义上是对的；
+- 代价：`flush` 只在**有 attempt 在跑**时存在。**两次 attempt 之间的空档**没有续租 ⇒ 若将来加「同进程扫描」，长空档会被误判中止。这正是 §10.4 那条判据为什么不能随手加回来的原因。
+
+⇒ 若要接心跳，先在「主进程 flush 续租」与「渲染层 IPC 续租」之间二选一，并把「要不要加同进程扫描」一起定。**两件拆开做各自都是 bug**（§10.6）。

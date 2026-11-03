@@ -1,6 +1,6 @@
 # 实机链路验收缺陷清单（2026-11-01 轮）
 
-> 状态：待裁定（2026-11-02；**逐条状态见每个条目顶部的 `> 状态：` 行** —— ✅ 2 条（D14 / D19，已复验）· 🟡 2 条（D1 症状已实机复验、机制待正文批量；D2 方案乙代码落地、待实机复验）· ⬜ 15 条未开工；D12 真因已定性、修法待作者点头）
+> 状态：待裁定（**逐条状态见每个条目顶部的 `> 状态：` 行**；末次刷新 2026-11-04 —— 收口 3 条（D14 / D19 实机复验通过；D12 只到单测级）· 🟡 2 条（D1 症状已实机复验、机制待正文批量；D2 方案乙 + 甲两半代码落地、待实机复验）· 🔍 1 条（D7 已取证，不成立半句）· ⬜ 13 条未开工）
 
 > 日期：2026-11-01
 > 上级稿：[`live-verification-checklist.md`](live-verification-checklist.md)（一次新项目跑批要验什么）
@@ -43,8 +43,8 @@
 | 编号 | 级别 | 状态 | 一句话 | 证据位置 |
 |---|---|---|---|---|
 | D1 | 阻塞 | 🟡 已实施（部分复验） | 批内多单元/多章生成时第二次调用即抛 `GENERATION_SOURCE_CHANGED`，整批静默中止。**2026-11-02**：连写 2 单元已实机跑通（12 → 15 章）；机制层补 8 条单测，同 run 多调用路径（正文批量）仍未复验 | `electron/services/main-generation-owner.ts:931`；`electron/services/agent-generation.ts:158/190/196`；`src/services/agent/agent-generation-client.ts:33` |
-| D12 | 阻塞 | ⬜ 待裁定 | 正文重演被丢弃且无重试、无回流。**真因是短细纲把上一章全文当成本章任务**，不是校验过严（见「第二轮实测」）。修法已与上一章注入评估合并评审 → 短细纲砍全文（R6），**可单独收口** | `generate-draft.command.ts:1536`（拦截）、`:1142-1144`（注入全文）；`chapter-materials.ts:622-624`（required、不裁剪）；合并稿 `previous-chapter-context-assessment.md` §8 |
-| D2 | 高 | 🟡 已实施（方案乙；待实机复验） | 批次中断在 UI 上完全静默：无失败回执，进度条「假继续」 | `generation_runs` 36 条无终态、`blocked_code` 为 NULL；`generation_attempts` 却为 `settled` |
+| D12 | 阻塞 | ✅ 已实施（2026-11-04 · 单测级，未实机） | 正文重演被丢弃且无重试、无回流。**真因是短细纲把上一章全文当成本章任务**，不是校验过严（见「第二轮实测」）。修法 = R6 短细纲砍全文（要点 + 结尾 ≤300 字）+ 判据改结构化对应，`ba3d4bc5` | `generate-draft.command.ts:1536`（拦截）；`chapter-materials.ts`（`previousChapterEnding(content, maxChars)`）；`draft-short-outline.ts`（`draftShortOutlinePredecessor`）；合并稿 `previous-chapter-context-assessment.md` §8/§9 |
+| D2 | 高 | 🟡 已实施（方案乙 + 甲；待实机复验） | 批次中断在 UI 上完全静默：无失败回执，进度条「假继续」。乙 = 收口统一 seal；甲 = 执行租约 + 启动 fence 判 `aborted`（`68a37585`），`aborted` 现为不可续终态 | `generation_runs` 36 条无终态、`blocked_code` 为 NULL；`generation_attempts` 却为 `settled`；设计稿 `features/d2-run-lease-abort-design.md` §10 |
 | D13 | 高 | ⬜ 待裁定 | 同一章三次失败分别挂在三个不同层，失败原因互不相关且都无恢复路径 | 短细纲层 / 重演层 / `GENERATION_COMPOSITION_NO_PROGRESS` |
 | D14 | 高 | ✅ 已实施（已复验） | 卷结构三步（建卷结构 / 标卷完成 / 登记交接）全手动，生成流程从不调用、系统从不提示 → `l3-handoff-missing` 必然。**2026-11-02 已修**：建结构 + 推进进度改为自动（A 已实机复验，含历史回填），缺口提醒（B）沿用既有闸门、待第 10 章之后复验 | `VolumeHandoffRegistryPanel.tsx:269/293`（原全库唯一调用点）；`volumes` / `volume_units` / `volume_handoffs` 三表初始 0 行；`volumes.actual_last` 定稿后仍全 `null` |
 | D3 | 高 | ⬜ 待裁定 | `degraded=l3-handoff-missing` 提示过弱且不阻断（**根因见 D14**，两者同源） | `src/shared/synopsis-projection.ts:520`（push）、`:504–522`（`actual`/`plan` 回退）、`:351`（类型） |
@@ -609,7 +609,7 @@ Tier 1 单独成立，就是本缺陷的主症状被修好的那一半：**run �
 
 ### D12（阻塞级）正文与上一章开头重演时，结果被直接丢弃且无重试、无回流路径
 
-> 状态：待裁定（2026-11-04 更新 · 真因已定性；修法要动「作者裁定给全文」那一条，需作者点头。**已与 [上一章注入形态评估](../../design/prompt/previous-chapter-context-assessment.md) §8 合并评审** —— 合并后提出 R6：短细纲的前驱改为「蓝图要点 + 尾部 ≤1,000 字」，且**这一步不依赖要点通路补齐，可单独收口**）
+> 状态：已实施（2026-11-04 · **R6** 落地：短细纲前驱从「上一章全文」改为「要点 + 结尾 ≤300 字」，并同改判据 —— 「只能用材料里已有的事件」→「每段必须对应本章蓝图的一个事件」。只到单测级（短细纲 22 / 正文命令 245 / tsc 0 error），**未实机复验**、**无 A/B**。实施记录见 [上一章注入形态评估](../../design/prompt/previous-chapter-context-assessment.md) §9 · `ba3d4bc5`）
 
 - 现象：第 2 章写稿两次尝试（批量模式一次、单章模式一次），正文都生成成功（trace 中 `chapter-draft` 输出 1418 字符），但**均未落库**，`drafts` 表始终只有第 1 章。
 - 界面原文（编辑器/日志区，非任务面板）：
