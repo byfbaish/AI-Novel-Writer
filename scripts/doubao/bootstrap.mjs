@@ -17,20 +17,26 @@
  * The only correct order is: new thread → mode → level → dispatch. This script
  * enforces that order; doing the clicks by hand is where the trap bites.
  *
- * ## Why the launch branch only launches
+ * ## Why it does not launch the instance by default
  *
- * The instance survives as long as the shell that started it. Killing or
- * restarting a live instance is never this script's job (a running batch would
- * be cut off), and sleeping forever to "keep it alive" would make `bootstrap`
- * never return. It starts the instance when absent, waits for the CDP endpoint,
- * and then gets out of the way - see docs/agents/doubao-channel.md §2.1 for the
- * keep-alive patterns that actually hold.
+ * `start-doubao-cdp.cmd` is an unsigned script: running it through the shell
+ * always raises the "unknown publisher / run?" confirmation (2026-11-04: a
+ * Hello-World stub raises it too, so it is the script-execution policy, not the
+ * content). Nobody is at this terminal to click it, and spawning around the
+ * confirmation puts the instance in the tool shell's job — it dies when that
+ * shell ends, which reads as "it started, then vanished minutes later".
+ *
+ * So the default is: instance offline → print the exact command for a human and
+ * exit 2 with the marker `NEED_HUMAN_LAUNCH`. `--launch` keeps the old
+ * spawn-and-hope behaviour, for the deliberate "background shell + keep-alive"
+ * pattern in docs/agents/doubao-channel.md §2.1.
  *
  * Usage:
  *   node scripts/doubao/bootstrap.mjs                  # full: ensure → new thread → 本地电脑 → 高 → check
  *   node scripts/doubao/bootstrap.mjs --check          # read-only diagnosis, starts nothing, clicks nothing
  *   node scripts/doubao/bootstrap.mjs --keep           # reuse the current thread (no 新工作任务 click)
  *   node scripts/doubao/bootstrap.mjs --project 名称   # also switch the project
+ *   node scripts/doubao/bootstrap.mjs --launch         # try to start the instance ourselves (short-lived)
  *
  * Options: --port 9331 · --launch-timeout 45 (seconds)
  *
@@ -62,6 +68,13 @@ const option = (name, fallback) => {
 const port = Number(option('port', DEFAULT_PORT))
 const checkOnly = flag('check')
 const keepThread = flag('keep')
+/**
+ * 显式要求「自己拉起实例」。默认**不**这样做：`start-doubao-cdp.cmd` 是未签名
+ * 脚本，经 shell 执行要过「是否运行」的确认框，本工具会话无人可点；而用 spawn
+ * 绕过确认起出来的实例挂在工具 shell 的 job 里，shell 一结束就被回收，表现为
+ * 「起了、几分钟后又没了」。所以默认把这一下交给人（见 printHumanLaunch）。
+ */
+const autoLaunch = flag('launch')
 /** 即使已是目标值也重跑一次切换：用来验证「切得动」，不只是「本来就是对」。 */
 const force = flag('force')
 const projectName = option('project', null)
@@ -87,6 +100,39 @@ const step = (status, name, evidence = '') => {
   console.log(`[${status}] ${name}${evidence ? ` ${evidence}` : ''}`)
 }
 const note = text => console.log(`[note] ${text}`)
+
+/**
+ * 拉不起实例时的收场：把「要人做的那一下」原样印出来。
+ *
+ * 为什么不自己起：`start-doubao-cdp.cmd` 是未签名脚本，经 shell 执行必然弹
+ * 「未知发布者 / 是否运行」的确认框（2026-11-04 作者实测：换成只写 Hello World
+ * 的空脚本同样弹窗 ⇒ 与脚本内容无关，是 Windows 对脚本执行的策略）。本工具会话
+ * 无人可点那个按钮，所以这一下只能交给人。
+ *
+ * 尾行的 `NEED_HUMAN_LAUNCH` 是给 agent 看的机读标记：见到它就弹确认框把命令
+ * 交给作者，不要反复重试启动。见 docs/agents/doubao-channel.md §2.2。
+ */
+const printHumanLaunch = reason => {
+  console.log('')
+  console.log('─'.repeat(72))
+  console.log('⚠  需要人工启动（本会话拉不起来）')
+  console.log(`   原因：${reason}`)
+  console.log('')
+  console.log('   请在【你自己的】PowerShell / Windows Terminal 里执行：')
+  console.log('')
+  console.log(`     & "${LAUNCH_SCRIPT}"`)
+  console.log('')
+  console.log('   或 cmd：')
+  console.log('')
+  console.log(`     "${LAUNCH_SCRIPT}"`)
+  console.log('')
+  console.log('   若弹「未知发布者 / 是否运行」→ 点「运行」，窗口留着别关。')
+  console.log('   （双击执行必弹；从终端直接跑的弹窗行为未实测）')
+  console.log('   起来后重跑本命令（在线就全 [skip]，不会新建线程、不重读章程）。')
+  console.log('─'.repeat(72))
+  console.log('NEED_HUMAN_LAUNCH')
+  steps.push({ step: '人工启动', status: 'fail', evidence: reason })
+}
 
 // ------------------------------------------------------------------- snapshot
 
@@ -415,14 +461,23 @@ const main = async () => {
     page = first.page
     step('skip', '实例在线', `${shortId(page.url)}`)
   } else if (checkOnly) {
-    step('fail', '实例在线', first.portUp
+    const why = first.portUp
       ? `端口 ${port} 在，但找不到豆包聊天页（登录页 / 崩溃重启？看窗口）`
-      : `端口 ${port} 未监听（--check 不启动实例）`)
+      : `端口 ${port} 未监听`
+    step('fail', '实例在线', checkOnly && !first.portUp ? `${why}（--check 不启动实例）` : why)
+    printHumanLaunch(why)
     return 2
   } else if (first.portUp) {
     // Port is taken but the page is unusable: launching again would just fight
     // the profile lock, and the fix is human (log in / restart the window).
-    step('fail', '实例在线', `端口 ${port} 在，但找不到豆包聊天页（登录页 / 崩溃重启？看窗口），不重复启动`)
+    const why = `端口 ${port} 在，但找不到豆包聊天页（登录页 / 崩溃重启？看窗口），不重复启动`
+    step('fail', '实例在线', why)
+    printHumanLaunch(why)
+    return 2
+  } else if (!autoLaunch) {
+    const why = `端口 ${port} 未监听`
+    step('fail', '实例在线', `${why}（默认不自动启动：脚本执行要过确认框，无人可点）`)
+    printHumanLaunch(why)
     return 2
   } else {
     startInstance()
@@ -430,9 +485,11 @@ const main = async () => {
     launchedInstance = true
     page = launched.page
     if (!page) {
-      step('fail', '启动实例', launched.portUp
+      const why = launched.portUp
         ? `端口 ${port} 已监听，但 ${launchTimeoutMs / 1_000}s 内没等到聊天页（登录页 / 崩溃重启？看窗口）`
-        : `${launchTimeoutMs / 1_000}s 内 ${port} 未就绪；手动执行 scripts/doubao/start-doubao-cdp.cmd 后重试`)
+        : `${launchTimeoutMs / 1_000}s 内 ${port} 未就绪`
+      step('fail', '启动实例', launched.portUp ? why : `${why}；需要人工启动`)
+      printHumanLaunch(why)
       return 2
     }
     step('ok', '启动实例', `${LAUNCH_SCRIPT} → ${shortId(page.url)}`)
@@ -560,5 +617,7 @@ main()
   .catch(error => {
     const message = String(error?.message ?? error)
     console.error(`✗ ${message}`)
-    process.exitCode = /找不到豆包聊天页|ECONNREFUSED|fetch failed/.test(message) ? 2 : 1
+    const instanceGone = /找不到豆包聊天页|ECONNREFUSED|fetch failed/.test(message)
+    if (instanceGone) printHumanLaunch(`连不上实例：${message}`)
+    process.exitCode = instanceGone ? 2 : 1
   })

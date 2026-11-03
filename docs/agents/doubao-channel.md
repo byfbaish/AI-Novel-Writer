@@ -1,6 +1,6 @@
 # 给豆包电脑版派活（协作通道操作手册）
 
-> 状态：已实施（2026-11-03）· 实测版本 豆包 2.34.6 Launcher / Chromium 147.0.7727.149
+> 状态：已实施（2026-11-04）· 实测版本 豆包 2.34.6 Launcher / Chromium 147.0.7727.149
 > 用途：**让本机 agent 会话把活派给豆包客户端**，用它的「新工作任务」agent 模式操作本地文件。
 > 关系：与 [`copilot-channel.md`](./copilot-channel.md) 并列——Copilot 是命令行进程，豆包是**桌面 UI**，只能靠 CDP 驱动。
 > 缘起：2026-11-02 打通。此前只能人在豆包窗口里手打发，不是可编排通道。
@@ -24,9 +24,11 @@ node scripts/doubao/doubao.mjs task "任务描述" --project <项目名>   # 再
 | `Application\Doubao.exe` 是 **Launcher 2.34.6**（1.8MB），不是主程序 | 它**吞掉**未知参数，`--remote-debugging-port` 传不到 renderer |
 | `Application\app\Doubao.exe` 才是 Chromium 主体（147.0.7727.149） | CDP 参数必须给它，进度条日志可证 renderer 收到了 |
 | 同一份 `User Data` 有单实例锁 | 直启内层程序 + 原 profile = 启动后自己退出（`engine.cc ### NO global context`） |
-| Launcher 启动的进程会 detach | 从工具会话直启的进程会随命令结束被回收，必须在一个**保持存活的后台 shell** 里跑启动脚本（§2.1）。~~经 Explorer 代启~~ —— 2026-11-03 实测失效，见 §2 |
+| Launcher 启动的进程会 detach | 从工具会话直启的进程会随命令结束被回收，必须在一个**保持存活的后台 shell** 里跑启动脚本（§2.1），或者干脆**由人启动**（§2.2，推荐） |
 
 ⇒ 唯一可行组合：**内层 exe + 独立 `--user-data-dir` + 一个活着的后台 shell 保住启动进程**。
+
+> **2026-11-04 更正**：上一版这里（以及 §2 表格）写着「Explorer 代启已失效 / shell execute 被整体阻断」，**这是错的**。真相是 `explorer.exe <cmd>` 确实执行了目标，但停在 Windows 的「未知发布者 / 是否运行」确认框上；无人点它，探针文件自然不生成。作者实测：**换成只写 Hello World 的空脚本同样弹窗** ⇒ 与脚本内容无关，是脚本执行策略。原始错误结论保留在 git 历史 `368a679c`，本节已改正。
 
 ```mermaid
 flowchart LR
@@ -52,30 +54,46 @@ flowchart LR
 | 一键启动/切换 | `scripts/doubao/bootstrap.mjs`（§2.1） |
 | 调试探针 | `scripts/doubao/probe.mjs`（只读，可随时跑） |
 
-启动（2026-11-03 实测有效的**唯一**方式）：在**一个不会退出的后台 shell** 里执行启动脚本，该 shell 随后保持存活。
+### 启动：默认由人来做（2026-11-04 起）
+
+**推荐做法 —— 人启动一次，之后一直复用同一个窗口：**
+
+```powershell
+# 在你自己的 PowerShell / Windows Terminal 里（不是工具会话里）：
+& "C:\develop\workspace\AI-writer\develop\scripts\doubao\start-doubao-cdp.cmd"
+```
+
+或者在资源管理器里双击 `scripts\doubao\start-doubao-cdp.cmd`。
+
+- **会弹「未知发布者 / 是否运行」→ 点「运行」**（双击路径已实测；终端直接跑的弹窗行为未实测）。这一下之后窗口常驻，`9331` 一直在，**不新建线程就不重读章程**。
+- 这份确认框与脚本内容无关：作者实测换成只写 `Hello World` 的空脚本同样会弹 ⇒ 是 Windows 对脚本执行的策略，不是脚本有问题，也不是 explorer 坏了。
+
+**工具会话里不要指望自己起**：脚本执行要过确认框而无人可点；绕过确认用 `spawn` 起出来的实例挂在工具 shell 的 job 里，shell 一结束就被回收（两次断点精确落在 `sleep` 到期时刻：22:31 / 22:56）⇒ 表现为「起来了几分钟又没了」。所以 `bootstrap.mjs` **默认不自动启动**，只在实例不在线时把命令交给人（§2.2）。
 
 ```bash
-# 在后台终端 / 工具会话的 run_in_background 里：
+# 备选：确实需要在后台 shell 里保住实例时（知道它会随 shell 短命再用）
 cmd //c "C:\develop\workspace\AI-writer\develop\scripts\doubao\start-doubao-cdp.cmd"
 # 之后这个 shell 不要退出（例如接着 sleep 900）；shell 一退，实例随后消失
+# 或者：node scripts/doubao/bootstrap.mjs --launch   # 显式要求脚本自己 spawn
 ```
 
 实测：12 秒后 `127.0.0.1:9331` LISTENING，`node scripts/doubao/doubao.mjs status` 正常返回，父 shell 存活期间实例稳定。
 
 > 路径里**含空格**时上面那行会被 cmd 的引号规则坑掉（`cmd /c "a b.cmd"` 会把引号吞掉再按空格切，实测报「不是内部或外部命令」）。此时用 `cmd /d /s /c call "<路径>"` —— 这也是 `bootstrap.mjs` 内部采用的形式（2026-11-03 用带空格的探针 `.cmd` 实测：`call` 形式目标文件生成成功，`cmd /c "…"` 形式失败）。
 
-### ⛔ 已失效 / 被拦截的启动方式（别再试，都是实测结论）
+### 各种启动方式的实际结论（2026-11-04 校正）
 
-| 方式 | 状态 | 证据 |
+| 方式 | 状态 | 证据 / 说明 |
 |---|---|---|
-| `explorer.exe <任意路径>` 代启 | **已失效（2026-11-03，四次对照）** | 一律返回 **`exit=1`**，目标未执行。**排除法**：`.cmd` 关联正常（`assoc .cmd` → `cmdfile` / `ftype cmdfile` → `"%1" %*`）· 换 **ASCII 路径同样失败**（不是中文路径问题）· `explorer.exe <文件夹>` 也 `exit=1`（连打开目录都不行）· `explorer.exe <txt>` 之后记事本进程数不变 ⇒ **不是文件关联、不是编码、不是 .cmd 特有，是 explorer 的 shell execute 被整体阻断**，与豆包无关 |
-| `cmd /c start "" <文件>` | **无效** | `start_exit=0` 但没有任何新窗口或进程（`start "" probe.txt` 前后记事本数不变）⇒ 依赖 shell 关联的这条也断 |
+| **人手动执行/双击 `start-doubao-cdp.cmd`** | ✅ **推荐** | 进程挂在桌面会话下，与工具会话无关 ⇒ 窗口常驻可复用。双击会弹「未知发布者 / 是否运行」，点「运行」即可 |
+| `explorer.exe <任意路径>` 代启 | ⚠️ **会执行，但停在确认框** | 上一版写成「已失效 / shell execute 被整体阻断」，**是误判**。2026-11-04 作者实测：只写 Hello World 的空脚本同样弹确认框 ⇒ `explorer` 找对了目标，只是无人点「运行」，所以探针文件没生成、`exit=1`。**结论：这条路通，但无人值守过不去** |
+| `cmd /c start "" <文件>` | **结论不可信（原判据有缺陷）** | 上一版用「记事本进程数不变」判它无效 —— Windows 11 记事本**多标签共用进程**，新窗口数量不会反映到进程计数上，作者肉眼确认窗口确实开了。⇒ 这条判据作废，实际行为**未重新验证** |
 | `cmd /c start "" <exe> <参数>` | **能起，但短命** | 豆包实例确实起来（`CreateProcess` 不过 shell），但进程留在工具会话的 job 里 ⇒ **保活 shell 一到点就被清**。两次断点精确落在 `sleep` 到期时刻（22:31 / 22:56），中间看到的「还在」只是清理延迟窗口 |
 | `schtasks.exe` 建计划任务 | 禁止 | 在 WorkBuddy 安全策略的**程序黑名单**里，返回明确提示，不许绕路 |
 | WMI `Invoke-CimMethod Win32_Process Create` | 禁止 | 被拦，提示「equivalent to Start-Process」 |
 | PowerShell `Start-Process` | 禁止 | 进程随会话回收，表现为「开了几秒又没了」 |
 
-**结论：在当前工具会话里没有「脱离进程树」的合法路径。** 唯一能让实例长寿的办法是**在会话之外启动它**——人手动双击 `start-doubao-cdp.cmd`，或做成开机自启。
+**结论（改正版）：工具会话里拉不起长寿实例，卡点不是「explorer 坏了」，而是「未签名脚本执行要过一道道人工确认，而这里没有人」。** 所以启动这一下**交给人**（§2.2），agent 只负责连上去、切模式档位、派活。
 
 ## 2.1 一键启动（bootstrap）
 
@@ -87,15 +105,18 @@ node scripts/doubao/bootstrap.mjs --check       # 只读诊断：不启动、不
 node scripts/doubao/bootstrap.mjs --keep        # 不新建线程，复用当前线程
 node scripts/doubao/bootstrap.mjs --force       # 即使已是目标值也重跑一次切换（验证「切得动」，不只是「本来就对」）
 node scripts/doubao/bootstrap.mjs --project AI-writer-wt-1   # 额外切项目（可选）
+node scripts/doubao/bootstrap.mjs --launch       # 例外：要求脚本自己 spawn 实例（短命，见 §2）
 ```
 
 选项：`--port 9331` · `--launch-timeout 45`（秒）。
+
+**默认不自动启动。** 实例不在线时它不尝试 spawn，直接打印人工启动命令并以退出码 2 结束（§2.2）——这是 2026-11-04 按作者要求改的行为：脚本自己起只能得到短命实例，反而不如老实交给人。
 
 **步骤顺序是有原因的（写死在脚本里）：**
 
 | # | 步骤 | 为什么必须在这个位置 |
 |---|---|---|
-| 1 | 实例在线（不在线就调 `start-doubao-cdp.cmd` 并等端口就绪） | 后面全是 CDP 操作，没实例什么都做不了 |
+| 1 | 实例在线（不在线 → 打印人工启动命令，退出 2；加 `--launch` 才自己起） | 后面全是 CDP 操作，没实例什么都做不了 |
 | 1.5 | 等界面就绪（等**编辑器**出现，上限 45s） | 端口通 ≠ UI 就绪：刚拉起的实例约 8–12s 才渲染出输入框，早一步找按钮会得到「找不到「新工作任务」按钮」。**等编辑器不等任务输入框**——实例可能停在「对话」模式，那时任务输入框本就不存在，等它会白等到超时 |
 | 2 | 新建工作任务线程 | **它会把推理档位重置回「中」**（模式保留）⇒ 必须先建线程再切档位，顺序反了等于白切 |
 | 3 | 模式 → 本地电脑 | 默认是「对话」，**对话模式没有本地文件权限**，它只会回「我无法读取你本地磁盘文件」 |
@@ -126,10 +147,58 @@ node scripts/doubao/bootstrap.mjs --project AI-writer-wt-1   # 额外切项目�
 
 **这条实测同时否定了两个"看起来能用"的假设**：①「端口通了就能派活」（页面还要 8–12s 才渲染）；②「幂等跳过等于切得动」（要 `--force` 才真验过）。
 
+> 第一条的「裸跑就自己起」已**不再适用**：2026-11-04 起默认不自动启动，要复现这条得加 `--launch`（§2.2）。
+
+## 2.2 连不上时的处理：弹框交给作者（2026-11-04 起）
+
+**触发条件**：`bootstrap.mjs` 退出码 **2**，或输出里出现 `NEED_HUMAN_LAUNCH`。含义是「实例不在线，本会话拉不起来」——不是模型变笨、不是代码坏了。
+
+脚本会把命令原样印出来（实测输出，2026-11-04）：
+
+```
+────────────────────────────────────────────────────────────────────────
+⚠  需要人工启动（本会话拉不起来）
+   原因：端口 9331 未监听
+
+   请在【你自己的】PowerShell / Windows Terminal 里执行：
+
+     & "C:\develop\workspace\AI-writer\develop\scripts\doubao\start-doubao-cdp.cmd"
+
+   或 cmd：
+
+     "C:\develop\workspace\AI-writer\develop\scripts\doubao\start-doubao-cdp.cmd"
+
+   若弹「未知发布者 / 是否运行」→ 点「运行」，窗口留着别关。
+   （双击执行必弹；从终端直接跑的弹窗行为未实测）
+   起来后重跑本命令（在线就全 [skip]，不会新建线程、不重读章程）。
+────────────────────────────────────────────────────────────────────────
+NEED_HUMAN_LAUNCH
+```
+
+### agent 的硬约定（见 `NEED_HUMAN_LAUNCH` 就必须这么做）
+
+1. **立刻弹一次确认框**（交互式提问），把上面的**完整路径**放进去，让作者能直接复制；选项给「已启动，继续」/「先不派活」两类即可，**不要**让作者自己去翻文档找命令。
+2. **不要反复重试**：同一轮里最多试 1 次连接、1 次弹框。连续重试只会烧时间，实例不会因为重试而出现。
+3. **不要自己 spawn / 不要杀豆包进程**：`--launch` 起出来的实例随工具 shell 短命（§2），杀进程会切断作者正在用的窗口或正在跑的批次。
+4. **作者确认启动后**，重跑 `node scripts/doubao/bootstrap.mjs`（需要新线程）或 `--keep`（复用当前线程）。**别新建线程就没必要新建**——复用窗口 = 不重读章程 = 省 token。
+5. 作者说「先不派活」就停在这里，把队列任务书落盘待用，不要挂起等待、不要改派别的通道顶替。
+
+### 为什么不能自己扛过去
+
+| 尝试 | 结果 |
+|---|---|
+| `explorer.exe <cmd>` | 会执行，但停在「未知发布者 / 是否运行」确认框，无人可点（§2 表格） |
+| `spawn` / `cmd start`（绕过确认） | 实例能起来，但挂在工具 shell 的 job 里，shell 一结束就被回收 |
+| `schtasks` / WMI / `Start-Process` | 安全策略黑名单或等价拦截（§2 表格） |
+
+⇒ 这一下**只有人能点**，所以它是设计上的交接点，不是待修的 bug。
+
 ## 3. 命令速查
 
 ```bash
-node scripts/doubao/bootstrap.mjs [--check|--keep]   # 一键：起实例 → 新线程 → 本地电脑 → 高 → 项目自检
+node scripts/doubao/bootstrap.mjs [--check|--keep]   # 一键：新线程 → 本地电脑 → 高 → 项目自检
+                                                     # 实例不在线 → 打印人工启动命令，退出 2（§2.2）
+node scripts/doubao/bootstrap.mjs --launch            # 例外：脚本自己 spawn 实例（短命）
 node scripts/doubao/doubao.mjs status                 # 端口/页面/是否任务模式/最后一条回复
 node scripts/doubao/doubao.mjs projects               # 任务模式里可选的项目
 node scripts/doubao/doubao.mjs task "任务" --project "harness-learn" [--timeout 600]
@@ -211,6 +280,7 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 
 | 检查 | 谁做 | 证据长什么样 | 不查的后果 |
 |---|---|---|---|
+| **实例在线** | bootstrap 探测 CDP；不在线就退出 2 并打印 `NEED_HUMAN_LAUNCH` | 在线：`[skip] 实例在线 12ab…`；离线：横幅 + `NEED_HUMAN_LAUNCH` | 后面全是 CDP 操作。**见到标记就弹框把路径交给作者（§2.2），不要重试** |
 | **会话是新的** | bootstrap 点「新工作任务」并核对 href / `turnCount` | `[ok] 新建线程 href=3845… turnCount=0` | 在旧会话里接着聊，章程 preamble 因「同会话不重复」被跳过 |
 | **模式是「本地电脑」** | bootstrap 点模式 chip 后核对 chip 文本 | `[ok] 运行模式 → 本地电脑 runMode=本地电脑` | **默认是「对话」，而对话模式没有本地文件权限** —— 实测它会直接回「我无法读取你本地磁盘文件」。这是最容易被误读成「模型变笨了」的坑 |
 | **档位是「高」** | bootstrap 点档位 chip 后核对 chip 文本 | `[ok] 推理档位 → 自动 高 model=自动 高` | 新线程默认「自动 中」，档位是**会话级**的，不跨线程继承 |
@@ -359,15 +429,23 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 - `通过本地文件夹创建项目` 的原生文件夹对话框
 - 一次任务跨多个文件的**长链**（本次 3 个文件、30 行级改动；更大规模未测）
 - 多轮追问与中途插话（`task` 只发一条就等结果）
-- **bootstrap 冷启动**（从零拉起实例）与它的三个点击动作（新建线程 / 切模式 / 切档位）：2026-11-03 实现时实例正被占用跑真任务，杀或抢占会切断在跑批次，故只验到 `--check` 与 `--keep` 两条不改变状态的路径
+- **从终端直接执行 `.cmd` 是否也弹确认框**：双击必弹（已实测），终端路径的弹窗行为未测
+- `--launch`（脚本自己 spawn）分支在 2026-11-04 改动后未复跑；此前行为是「能起、随 shell 短命」
+
+**已验证（2026-11-04，人工启动交接）**
+
+- 离线分支（`--check --port 9999`）：打印横幅 + `NEED_HUMAN_LAUNCH`，真实退出码 **2**，横幅里两条命令路径完整
+- 默认不自动启动：实例在线时 `--check` 直接 `[skip] 实例在线`，不 spawn、不点击
+- **弹窗根因确认（作者实测）**：把脚本换成只写 `Hello World` 的空脚本，同样弹「未知发布者 / 是否运行」⇒ 与脚本内容无关，是 Windows 对脚本执行的策略；此前「explorer 被整体阻断」的结论作废
+- 反证上一版判据：Windows 11 记事本多标签共用进程，用「进程数变化」判断窗口是否打开**不可靠**（作者肉眼确认窗口确实开了）
 
 
 ## 8. 失效判据与恢复
 
 | 症状 | 先查 |
 |---|---|
-| 连接被拒（退出码 2） | 实例没起：跑 `start-doubao-cdp.cmd`（§2 的活后台 shell 方式）或直接 `node scripts/doubao/bootstrap.mjs` |
-| `explorer 代启不执行` | 用 `explorer.exe <cmd>` 后目标程序**根本没跑**（2026-11-03：连 `echo > 文件` 的探针都没生成）。这不是豆包的问题，是 explorer 不再执行该关联。改用 §2 的后台 shell 方式 |
+| 退出码 2 / 输出 `NEED_HUMAN_LAUNCH` | 实例没起，**本会话拉不起来**（脚本执行要过确认框）。按 §2.2：弹框把启动命令与路径交给作者，等确认后重跑。**别重试、别 spawn、别杀进程** |
+| `explorer 代启后目标没跑` | **旧结论已推翻（2026-11-04）**：不是 explorer 坏了，是停在「未知发布者 / 是否运行」确认框上（无人点 ⇒ 探针文件不生成）。见 §2 表格 |
 | `runMode` 是「对话」 | **对话模式没有本地文件权限**，它会回「我无法读取你本地磁盘文件」。跑 `bootstrap.mjs` 切「本地电脑」，或手动点 `chat_input_action_mode` → 选「本地电脑」 |
 | 新建线程把档位打回「中」 | `create_office_task_button` 会重置档位（模式保留）。顺序必须是「建线程 → 切模式 → 切档位」，别先切档位 |
 | 端口在但找不到聊天页 | 豆包在登录页 / 崩溃重启：看窗口 |
