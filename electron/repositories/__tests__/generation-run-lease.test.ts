@@ -94,19 +94,23 @@ describe('D2 甲 · 执行租约', () => {
 })
 
 describe('D2 甲 · 启动时 fence', () => {
-  it('租约过期 ⇒ aborted（而不是被抹成 paused）', () => {
-    const { repository, statusOf, advance } = fixture()
+  /** 模拟「应用重启」：新的执行者身份（生产里 PROCESS_EXECUTION_OWNER 每次启动都换）。 */
+  const restart = (db: any, clock = 1_000_000) =>
+    new GenerationRunRepository(() => db, () => clock, () => false, () => 'owner-B')
+
+  it('换进程 + 还在 running ⇒ aborted（崩了没人写终态的那条）', () => {
+    const { repository, statusOf, advance, db } = fixture()
     const run = repository.open(openRequest('n1'))
-    advance(GENERATION_RUN_LEASE_TTL_MS + 1)
-    repository.recoverInterrupted()
+    advance(GENERATION_RUN_LEASE_TTL_MS * 5)
+    restart(db).recoverInterrupted()
     expect(statusOf(run.runId)).toBe('aborted')
   })
 
-  it('租约仍有效 ⇒ 不判死，走原来的 paused（作者还能接着写）', () => {
-    const { repository, statusOf } = fixture()
+  it('租约还剩很久也照判：owner 是硬判据（重启往往发生在 TTL 之内）', () => {
+    const { repository, statusOf, db } = fixture()
     const run = repository.open(openRequest('n1'))
-    repository.recoverInterrupted()
-    expect(statusOf(run.runId)).toBe('paused')
+    restart(db).recoverInterrupted()
+    expect(statusOf(run.runId)).toBe('aborted')
   })
 
   it('老数据 owner 为空 ⇒ 判死（迁移不回填，如实说「无人持有」）', () => {
@@ -116,9 +120,29 @@ describe('D2 甲 · 启动时 fence', () => {
     expect(statusOf('run-legacy')).toBe('aborted')
   })
 
+  it('同进程租约过期不判死：心跳未接之前，「过期」只等于「跑得久」', () => {
+    const { repository, statusOf, advance } = fixture()
+    const run = repository.open(openRequest('n1'))
+    advance(GENERATION_RUN_LEASE_TTL_MS * 5)
+    repository.recoverInterrupted()
+    expect(statusOf(run.runId)).toBe('paused')
+  })
+
+  it('作者暂停后重启 ⇒ 仍是 paused 且能续（A4 之后误判等于丢工作）', () => {
+    const { repository, statusOf, db } = fixture()
+    const run = repository.open(openRequest('n1'))
+    repository.pause(run.rootActionId)
+    expect(statusOf(run.runId)).toBe('paused')
+    const restarted = restart(db)
+    restarted.recoverInterrupted()
+    expect(statusOf(run.runId)).toBe('paused')
+    restarted.resume(run.runId, { ...run.binding, epoch: 'epoch-2' })
+    expect(statusOf(run.runId)).toBe('running')
+  })
+
   it('不误杀已有终态：completed / failed / cancelled 一个都不动', () => {
     const { repository, statusOf, advance, db, legacyRun } = fixture()
-    // 三种终态各造一条，owner 为空、租约 0 —— 最容易被误判的形状。
+    // 三种终态各造一条，owner 为空 —— 最容易被误判的形状。
     for (const [id, status] of [['run-ok', 'completed'], ['run-bad', 'failed'], ['run-cancel', 'cancelled']] as const) {
       legacyRun(id, status)
     }
@@ -131,13 +155,36 @@ describe('D2 甲 · 启动时 fence', () => {
   })
 
   it('aborted 是终态：后来的 seal 不会把它翻成 completed', () => {
-    const { repository, statusOf, advance } = fixture()
+    const { repository, statusOf, db } = fixture()
     const run = repository.open(openRequest('n1'))
-    advance(GENERATION_RUN_LEASE_TTL_MS + 1)
-    repository.recoverInterrupted()
+    const restarted = restart(db)
+    restarted.recoverInterrupted()
     expect(statusOf(run.runId)).toBe('aborted')
-    const receipt = repository.seal(run.rootActionId, 'completed')
+    const receipt = restarted.seal(run.rootActionId, 'completed')
     expect(statusOf(run.runId)).toBe('aborted')
     expect(receipt.settledRuns).toBe(0)
+  })
+
+  // A4（作者 2026-11-04 裁定方案甲）：`aborted` 是不可续的终态。
+  // 这条用例故意把「判据陷阱」也钉住：fence 之后 root 一定是 `paused`（root 的值域
+  // 只有 active/paused/cancelled/sealed），所以**只看 root 的实现在这里必然放行**。
+  it('resume() 拒绝 aborted：root 尚为 paused 也复活不了', () => {
+    const { repository, statusOf, db } = fixture()
+    const run = repository.open(openRequest('n1'))
+    const restarted = restart(db)
+    restarted.recoverInterrupted()
+    expect(statusOf(run.runId)).toBe('aborted')
+    expect(db.prepare("SELECT json_extract(action_json,'$.status') FROM generation_roots WHERE root_action_id=?").pluck().get(run.rootActionId)).toBe('paused')
+    expect(() => restarted.resume(run.runId, { ...run.binding, epoch: 'epoch-2' })).toThrow('GENERATION_RUN_ABORTED')
+    expect(statusOf(run.runId)).toBe('aborted')
+  })
+
+  it('resume() 仍接受 paused：没被 fence 判死的照旧可续', () => {
+    const { repository, statusOf } = fixture()
+    const run = repository.open(openRequest('n1'))
+    repository.recoverInterrupted()
+    expect(statusOf(run.runId)).toBe('paused')
+    repository.resume(run.runId, { ...run.binding, epoch: 'epoch-2' })
+    expect(statusOf(run.runId)).toBe('running')
   })
 })

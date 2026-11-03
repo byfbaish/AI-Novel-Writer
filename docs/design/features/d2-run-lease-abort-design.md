@@ -1,6 +1,6 @@
 # D2 方案甲 · 给生成批次加执行租约，让「异常退出」有可落库的终态
 
-> 状态：已裁定（2026-11-04 · 作者选甲）· 范围：迁移 + 仓储 + fence + 8 条单测；心跳与 A4 交互未开工
+> 状态：已实施（2026-11-04）· 范围：迁移 + 仓储 + fence + 12 条单测 + `resume` 拒绝 + 恢复面板文案；**心跳仍未开工**
 > 上级稿：[`live-pipeline-acceptance-defects-assessment.md`](../product/live-pipeline-acceptance-defects-assessment.md) §D2（`:155`）
 > 前置稿：同稿「处置：方案乙（已实施，2026-11-02）」（`:221`）—— **本稿只补乙没覆盖的那一半，不重做乙**
 > 作者裁定：2026-11-04 选「甲」（给 `generation_runs` 加租约，对齐 `import_runs` 已有机制）
@@ -284,3 +284,63 @@ fence 的 WHERE 包含 `paused`，因为 D2 记录的历史脏数据正是 `paus
 **功能上不会坏**（§9.2 已证 resume 能复活），坏的是「库里这个状态说明不了是哪一种」。真正的解法是给 `paused` 加一个来源标记（如 `paused_reason`），那是另一列、另一个迁移，**本稿不夹带**。
 
 ⇒ 当前实现的净效果：**「启动时把没人拥有的 run 从 `running` 里清出去」这件事成了；「作者主动暂停」与「进程崩了」在库里仍然分不开。** 后者比 D2 原症状轻得多（至少不再有永远 running 的幽灵行），但仍不是终点。
+
+---
+
+## 10. A4 裁定与随之收窄的 fence（2026-11-04，作者选甲）
+
+### 10.1 裁定内容
+
+| # | 分叉 | 作者选择 | 落点 |
+|---|---|---|---|
+| **A4** | `aborted` 是不是真终态 | **① 是**：`resume()` 显式拒绝 + UI 引导 | `generation-run-repository.ts` `resume()`、`AIOutputPanel.tsx` 恢复面板 |
+
+### 10.2 代码：拒绝落在 `run` 上，不落在 `root` 上
+
+```ts
+// generation-run-repository.ts resume()
+// root 的值域只有 active / paused / cancelled / sealed，装不下 aborted：
+// recoverInterrupted() 判完 aborted 仍会调 pause() 把 root 打回 paused。
+// 所以「root=paused + run=aborted」这个组合是**中止态的正常形状**，
+// 只看 root 的实现会把它当成「等作者继续」而静默复活。
+if (run.status === 'aborted') fail('GENERATION_RUN_ABORTED');
+```
+
+单测两条（`generation-run-lease.test.ts`）：① aborted 拒绝并在同一断言里钉住「root 此时确实是 paused」；② 未被判死的 `paused` 仍可 resume（防止一刀切把正常恢复也堵死）。
+
+### 10.3 UI：先禁按钮，不能等点了才报错
+
+`AIOutputPanel` 的恢复列表新增 `view.status === 'aborted'` 分支：按钮禁用 + 文案「这批生成已中止：上次执行者退出时未收尾，已超过租约期限，结果不能再续。已产出的片段仍可复制；要继续请从当前正文重新发起生成。」
+
+配套类型改动：`MainGenerationRunView['status']` 补 `'aborted'`（`src/services/generation/generation-runtime.ts:108`）。此前 `viewOf()` 用 `as` 强转把它藏掉了 —— **强转能藏住编译期，藏不住运行时**，界面拿到的值一直是新值。
+
+### 10.4 fence 必须跟着收窄（本节是 A4 的后果，不是另一次改动）
+
+A4 把 `aborted` 变成**不可逆**，于是「判错的代价」从「多点一次继续」变成「这一批彻底没了」。原来那版 fence 有两条判据，逐条复看：
+
+| 原判据 | 在本次实施环境下的真实含义 | 处理 |
+|---|---|---|
+| `status IN ('running','paused')` + `execution_owner <> 当前` | `paused` 在当时承载两种东西：作者主动暂停 / 旧版本把崩溃的 run 写成 paused。前者被判死后**永远续不回来** | **只判 `running`**。死尸在库里本来就是 `running`（崩了没人写终态），不需要借 `paused` 兜 |
+| `lease_expires_at <= now` | 心跳 IPC 尚未接线（§9.3）⇒ 租约从 `open()` 之后不再续 ⇒ **「租约过期」等价于「这条 run 跑了超过 180s」**。而 `suspendForProjectClose` 也走本函数，且此时 owner 是本进程 | **暂时去掉这条判据**。`lease_expires_at` 列与 `renewLease()` 保留，等心跳接上再与它**同一个提交**加回来 |
+
+收窄后的语句：
+
+```sql
+UPDATE generation_runs SET status='aborted'
+WHERE root_action_id=? AND status='running' AND execution_owner<>?
+```
+
+净效果：**「上个进程留下的 running」判 aborted；「有人主动停下的 paused」保持可续。** A5（§9.4「paused 分不清来源」）因此**不再影响功能** —— 两种来源都不判死，分不清也不会有后果。
+
+### 10.5 复验读数
+
+| 命令 | 读数 |
+|---|---|
+| `generation-run-lease.test.ts` | **12 passed**（原 8 条 + A4 两条 + 暂停后重启一条 + 换进程一条） |
+| `generate-draft.command.test.ts` | **245 passed** |
+| `draft-short-outline.test.ts` | **22 passed** |
+| `tsc --noEmit` | 0 error |
+
+### 10.6 仍然欠着的一件事（明确不当作已完成）
+
+**心跳 IPC 未接。** 后果：`renewLease()` 没有调用方，「渲染层崩了但主进程还活着」这条**今天判不出来**（要等下次启动靠 owner 变化兜）。判据从「过期」换成「换进程」只是让误判消失，并没有让这条覆盖变强。接心跳时必须同时把 §10.4 里去掉的那条租约判据加回来 —— 两者拆开做，都会单独变成 bug。

@@ -433,6 +433,10 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
       const changed = recovery.draftSave.kind === 'changed'
       const outlineOnly = !recovery.composition && recovery.attemptedPurposes.every(purpose => purpose === 'chapter-draft-short-outline')
         && (recovery.draftShortOutline?.completedOutput || recovery.draftShortOutline?.retry?.kind === 'available')
+      // `aborted` = 执行者已退出、租约过期后被主进程判定的终态（D2 方案甲）。
+      // 它不提供「继续」：主进程的 `resume()` 会直接拒（GENERATION_RUN_ABORTED），
+      // 所以这里必须先禁按钮并给出路，不能让作者点了才看到报错。
+      const aborted = view.status === 'aborted'
       return <article key={view.handle.runId} className="mb-3">
         <p>{changed ? runText(locale, `第${recovery.chapterNumber}章生成记录`, `Chapter ${recovery.chapterNumber} generation history`)
           : runText(locale, `第${recovery.chapterNumber}章候选`, `Chapter ${recovery.chapterNumber} candidate`)}</p>
@@ -450,13 +454,16 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
           <span className="whitespace-pre-wrap">{tail.text.slice(0, 180)}</span>
           <button type="button" className="icon-btn px-2" style={candidateTextButtonStyle} onClick={() => { void act(() => navigator.clipboard.writeText(tail.text)) }}>{runText(locale, '复制', 'Copy')}</button>
         </div>)}
-        <p>{changed ? runText(locale, '草稿已保存，正文后来已修改。请从草稿箱打开当前正文；原生成文字仍可复制。',
+        <p>{aborted ? runText(locale, '这批生成已中止：上次执行者退出时未收尾，已超过租约期限，结果不能再续。已产出的片段仍可复制；要继续请从当前正文重新发起生成。',
+          'This run was aborted: the previous executor exited without finishing and its lease expired, so it cannot be continued. Produced text can still be copied; start a new run from the current draft to continue.')
+          : changed ? runText(locale, '草稿已保存，正文后来已修改。请从草稿箱打开当前正文；原生成文字仍可复制。',
           'The draft was saved and later edited. Open the current text from Drafts. The original generated text can still be copied.')
           : runText(locale, '勾选顺序决定续接顺序；未完成或来源冲突的片段仍可复制。', 'Selection order determines continuation order. Incomplete or conflicted text can still be copied.')}</p>
-        <button type="button" className="icon-btn px-2" style={candidateTextButtonStyle} disabled={busy || changed || (!picked.length && !recovery.composition && !outlineOnly)} onClick={() => { void act(async () => {
+        <button type="button" className="icon-btn px-2" style={candidateTextButtonStyle} disabled={busy || aborted || changed || (!picked.length && !recovery.composition && !outlineOnly)} onClick={() => { void act(async () => {
           const workflow = await createDraftRecoveryWorkflow(session, view.handle, picked.length ? [...picked] : undefined)
           await useWorkflowStore.getState().startWorkflow(workflow)
-        }) }}>{changed ? runText(locale, '已保存，正文已修改', 'Saved, then edited') : outlineOnly ? recovery.draftShortOutline?.retry?.kind === 'available'
+        }) }}>{aborted ? runText(locale, '已中止，不能继续', 'Aborted, cannot continue')
+          : changed ? runText(locale, '已保存，正文已修改', 'Saved, then edited') : outlineOnly ? recovery.draftShortOutline?.retry?.kind === 'available'
           ? runText(locale, '重做一次细纲并继续写稿', 'Retry outline once and continue drafting')
           : runText(locale, '沿原细纲继续写稿', 'Continue drafting with the saved outline')
           : runText(locale, '确认继续已选正文', 'Confirm selected draft continuation')}</button>

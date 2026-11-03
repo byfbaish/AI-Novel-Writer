@@ -36,7 +36,8 @@ export interface RootAction extends ProjectEpoch {
 }
 export interface GenerationRun extends ProjectEpoch {
   runId: string; rootActionId: string; fingerprint: FrozenInputFingerprint
-  activeElapsedMs: number; status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
+  /** `aborted` = 执行者已退出且租约过期，启动时 fence 判定的终态；不可 resume（D2 方案甲）。 */
+  activeElapsedMs: number; status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'aborted'
 }
 export interface PhysicalAttempt {
   attemptId: string; reservationId: string; rootActionId: string

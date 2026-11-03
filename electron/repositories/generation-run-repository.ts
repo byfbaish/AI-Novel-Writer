@@ -771,6 +771,12 @@ export class GenerationRunRepository {
             this.assertPlotOutlineWritable(runId);
             const run = this.get(runId), budget = this.budget(run.rootActionId);
             binding(next);
+            // `aborted` 是**终态**（作者 2026-11-04 裁定方案甲）。若只看 root 状态会漏判：
+            // `recoverInterrupted()` 把 run 判成 aborted 之后仍会调 `pause()` 把 root 打回
+            // `paused`（root 只有 active/paused/cancelled/sealed 四值，装不下 aborted），
+            // 于是「root=paused + run=aborted」这组合会被当成普通的「等作者继续」而静默复活。
+            // 判据必须落在 run 上，不能落在 root 上。
+            if (run.status === 'aborted') fail('GENERATION_RUN_ABORTED');
             if (budget.attempts.some(a => a.status === 'dispatch-marked') || budget.root.status !== 'paused' || budget.blockedCode || next.projectId !== run.binding.projectId)
                 fail('GENERATION_RESUME_REFUSED');
             budget.root.epoch = next.epoch;
@@ -805,13 +811,24 @@ export class GenerationRunRepository {
                         this.db().prepare('UPDATE generation_attempts SET attempt_json=? WHERE attempt_id=?').run(encode(attempt), attempt.attemptId);
                     }
                 // 先 fence 再 pause：`pause()` 只会写 `paused`，而 `paused` 承载不了
-                // 「这一批已经中止」——它同时是「等作者继续」的写法。判据两条，缺一不可：
-                // ①持有者不是本进程（上个进程崩了 / 老数据 owner 为空）；
-                // ②租约已过期（本进程内渲染层崩了，心跳停了）。
+                // 「这一批已经中止」——它同时是「等作者继续」的写法。
+                //
+                // 判据在 A4（2026-11-04 作者裁方案甲：`aborted` 不可 resume）之后收窄成两条，
+                // **两条都是收紧，不是放宽**：
+                // ①只判 `running`：`paused` 一定是「有人主动停下、且可以继续」——作者点了暂停，
+                //   或旧版本把崩溃的 run 写成了 paused。判成 aborted 会让这次「停下」变成永久
+                //   不可恢复，那是拿一个终态去惩罚一次正常的暂停。真正的死尸在库里就是 `running`
+                //   （崩了没人写终态），不需要借 paused 兜。
+                // ②只判「持有者不是本进程」：`lease_expires_at` 今天**还不能当死亡判据** ——
+                //   心跳 IPC 尚未接线（见 d2 设计稿 §9.3），租约从 open() 之后不再续，于是
+                //   「租约过期」等价于「这条 run 跑了超过 180s」。拿它判死，任何长批次在
+                //   关闭项目（`suspendForProjectClose` 也走本函数，且 owner 是本进程）时
+                //   都会变成不可恢复的 aborted。lease 列与 `renewLease()` 先留着，
+                //   **等心跳接上再把这条判据加回来**，两件事必须同一个提交。
                 // `aborted` 不在 pause 的 `status IN ('running','paused')` 里，所以下面
                 // 那次 pause 不会把它抹掉 —— 这是 fence 必须放在 pause **之前**的原因。
-                this.db().prepare("UPDATE generation_runs SET status='aborted' WHERE root_action_id=? AND status IN ('running','paused') AND (execution_owner<>? OR lease_expires_at<=?)")
-                    .run(id, this.executionOwner(), this.now());
+                this.db().prepare("UPDATE generation_runs SET status='aborted' WHERE root_action_id=? AND status='running' AND execution_owner<>?")
+                    .run(id, this.executionOwner());
                 this.pause(id);
             }
         });

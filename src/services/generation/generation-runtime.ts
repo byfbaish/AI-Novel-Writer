@@ -105,7 +105,12 @@ export interface MainGenerationRunView {
   handle: MainGenerationRunHandle
   /** Read-only compatibility projection from the persistent main ledger. */
   budget: Readonly<GenerationSessionBudget>
-  status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled'
+  /**
+   * `aborted` = 执行者已退出且租约过期，主进程启动时 fence 判定的**终态**（D2 方案甲，
+   * 作者 2026-11-04 定：不可续）。它与 `paused` 的区别只在这里：`paused` 等作者点继续，
+   * `aborted` 只能重新发起。渲染层拿这个值只做「禁用继续 + 出说明」，不再尝试 resume。
+   */
+  status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'aborted'
   nonReplayable: boolean
   artifacts: readonly MainGenerationSnapshot[]
 }
