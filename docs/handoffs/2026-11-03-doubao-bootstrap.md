@@ -14,7 +14,7 @@
 | `scripts/doubao/markers.mjs` | **新增**。把 markers 解析抽成零依赖纯函数：`MARKER_LINE` / `ISO_STAMP` / `isTemplateMarker` / `parseMarkerLine` / `extractMarkers`。新增两条模板行判据（① 状态后紧跟 `\|` 的枚举残片；② note 只是 `<一句话说明>` / `（…）` / `(…)` 占位符） |
 | `scripts/doubao/__tests__/markers.test.mjs` | **新增**。11 条用例（vitest），回归样本用真实页面文本（含任务书里的格式示例行） |
 | `scripts/doubao/doubao.mjs` | 删掉本地 `MARKER_LINE` / `ISO_STAMP` / `extractMarkers`，改为 `import { extractMarkers } from './markers.mjs'`；补一段注释说明「切片起点在用户消息锚点之后，所以任务书正文仍会进切片，靠模板行过滤兜住」。**对外行为不变**（`markers` / `task` 输出格式未动） |
-| `docs/agents/doubao-channel.md` | 状态行改 `已实施（2026-11-03）`；§0 加 bootstrap 先行；§1 表格与 mermaid 从「Explorer 代启」改为「保持存活的后台 shell」；§2 换成实测有效的启动方式 + 新增「已失效/被拦截的启动方式」表（含 explorer 失效验证方法与 2026-11-03）；**新增 §2.1 一键启动（bootstrap）**（三种用法、五步顺序及原因、自检 JSON、幂等、退出码、保活责任）；§3 速查加 bootstrap 一行；§4 的 `task` 复用线程警告指向 bootstrap；§4.2 改写为「三项检查已由 bootstrap 自动完成」+ 对话模式无文件权限 + 顺序陷阱；§7 加 2026-11-03 验证记录（含未测项）；§7.2 markers 说明补「格式示例行不算标记」；§8 加三行失效判据（explorer 代启不执行 / runMode 是「对话」/ 新建线程把档位打回「中」）+ 一行 markers 幽灵标记 |
+| `docs/agents/doubao-channel.md` | 状态行改 `已实施（2026-11-03）`；§0 加 bootstrap 先行；§1 表格与 mermaid 从「Explorer 代启」改为「保持存活的后台 shell」；§2 换成实测有效的启动方式 + 新增「已失效/被拦截的启动方式」表（含 explorer 失效验证方法与 2026-11-03）；**新增 §2.1 一键启动（bootstrap）**（三种用法、五步顺序及原因、自检 JSON、幂等、退出码、保活责任）；§3 速查加 bootstrap 一行；§4 的 `task` 复用线程警告指向 bootstrap；§4.2 改写为「三项检查已由 bootstrap 自动完成」+ 对话模式无文件权限 + 顺序陷阱；§7 加 2026-11-03 验证记录（含未测项）；§7.2 markers 说明补「格式示例行不算标记」；§8 加三行失效判据（explorer 代启不执行 / runMode 是「对话」/ 新建线程把档位打回「中」）+ 一行 markers 幽灵标记（**该行中 explorer「已失效」的说法已于 2026-11-04 推翻，见 §5.5 顶部更正**） |
 
 未动：`cdp.mjs`、`start-doubao-cdp.cmd`、`probe.mjs`、`inspect-click.mjs`、`task-queue-20261103.md`（后者是本班开工前就存在的未跟踪文件，非本班产出）。未做任何 git 写操作、未改 `config.json` / `models.json`。
 
@@ -271,6 +271,14 @@
 ⇒ **D7「与对话框预告不符」不成立**（同源，只是显示精度差）；「偏保守」成立但属模型行为（写完即收），不是算法 bug。结论已写回缺陷稿 D7 的取证节与 §2 表格状态列。
 
 ### 5.5 explorer 代启失败的追查（四次对照，2026-11-03 23:00）
+
+> **⛔ 本节结论已被推翻（2026-11-04，`662bc2d6`）—— 读之前先看这段。**
+>
+> 作者实测：把脚本换成**只写 `Hello World` 的空脚本，同样弹「未知发布者 / 是否运行」** ⇒ 与脚本内容无关，是 Windows 对脚本执行的策略。
+>
+> 所以真相是：`explorer.exe` **确实执行了目标**，只是停在那个确认框上；无人点，标记文件自然不生成、`exit=1`。**不是 shell execute 被整体阻断。** 下文表 3/4 的两条判据也一并作废：Windows 11 记事本**多标签共用进程**，新窗口不反映到进程数，`MainWindowTitle` 只读主窗口 —— 作者肉眼确认那些窗口确实打开了。
+>
+> 保留下文原文只为记录当时的推理链；**结论以下面 292 行那句为准**（实例必须在工具会话之外启动），这一点没变。现行口径见 `docs/agents/doubao-channel.md` §2 / §2.2。
 
 起因：作者质疑「昨天是我做的验证，不是你手动起的」，且实测发现实例并未停 —— 逼出对启动方式的重新核对。
 
