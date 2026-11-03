@@ -52,7 +52,7 @@
 | D4 | 中 | ⬜ 待裁定 | UI 散落「来源已变化」文案，但没有任何地方把它和批次中止关联 | `src/components/panels/AIOutputPanel.tsx:398` |
 | D5 | 中 | ⬜ 待裁定 | 卷/单元结构输出里模板尖括号占位符原样保留 | `debug/prompt-trace/20261101-213138-718-弧光-d57a1d5d.json` → `ioCalls[0].output` |
 | D6 | 中 | ⬜ 待裁定 | 卷数由平台画像固定区间决定，与总章数解耦 | 同上 trace 的 `【节奏推荐】` 与「输出前自检」第 2 条 |
-| D7 | 中 | ⬜ 待裁定 | 单元 → 章折算偏保守，且与对话框预告不符 | `ArchitectureConfirmDialog.tsx:774`；`partial_arch.json` 的 `synopsis_volume_deviations` |
+| D7 | 中 | 🔍 已取证（2026-11-03）：「不符」**不成立**（两侧同一 `computeSynopsisUnitRange`，仅显示精度差）；「偏保守」成立且属模型行为 | 单元 → 章折算偏保守，且与对话框预告不符 | 对话框 `synopsis-unit-launch.ts:298` · 生成 `architecture.command.ts:2948` · prompt 精度 `arc-position.ts:960`；`partial_arch.json` 的 `synopsis_volume_deviations` |
 | D8 | 中 | ⬜ 待裁定 | 检查点残留导致模式自动降级，提示藏在段落里；同屏两个互相矛盾的章数 | `ArchitectureConfirmDialog.tsx:707`（10 章）vs `:932`（本批 5 章） |
 | D15 | 中 | ⬜ 待裁定 | 第 2 卷单元区间重叠（7–9 / 8–9 / 10–10），第 8、9 章归属不唯一 | `volume_units` 落库后读出的 `planned_first` / `planned_last` |
 | D9 | 低 | ⬜ 待裁定 | 单章大纲调用可能长时间不返回，无超时/无中断 | `debug/prompt-trace/20261101-215546-106-大纲-ch10-b79a98f3.json`（`ioCalls` 为空） |
@@ -432,7 +432,21 @@ Tier 1 单独成立，就是本缺陷的主症状被修好的那一半：**run �
 
 ## D7（中）单元 → 章 折算偏保守且与对话框预告不符
 
-> 状态：待裁定（2026-11-01 · 未开工）
+> 状态：待裁定（2026-11-01 · 未开工）· **2026-11-03 取证：把「偏保守」与「不符」拆开，后者不成立**
+
+### 2026-11-03 复核（外部 agent 串行取证 + 主 agent 逐处核对）
+
+`computeSynopsisUnitRange` 是**唯一**折算实现，两侧同源，三处已逐条核对：
+
+| 侧 | 位置 | 原文 |
+|---|---|---|
+| 对话框 | `src/services/workflows/synopsis-unit-launch.ts:298` | `computeSynopsisUnitRange(input.plotStructurePlan, totalChapters, cursor, coveredTo)` |
+| 生成 | `src/services/workflows/commands/architecture.command.ts:2948` | 同一个 `computeSynopsisUnitRange`；`:3052` 用其 `maxChapters` 推批次上界 |
+| prompt 文案 | `src/shared/arc-position.ts:960` | `const cap = Math.round(stats.maxChapters * 10) / 10`（保留 1 位小数） |
+
+⇒ **「与对话框预告不符」这一半不成立**：那条原判断把「显示精度差」当成了「算法不一致」。对话框显示已 `ceil` 的整数，prompt 侧显示 1 位小数的分数上界，两者出自同一份 `planUnitStats`。
+
+**但「偏保守」这一半成立，且原因不在算法**：`maxChapters` 只约束上限、不约束下限，模型按「一个单元 = 一段对峙局面」写完即收，实际章数由模型判断。所以修复方向的 ①（预告并列「名义上界 + 按当前倾向的估计」）仍然对；②③ 的「配给信号」要重新估——池子在卷内，不是改折算函数能补的。
 
 ### 现象
 

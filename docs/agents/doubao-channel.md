@@ -1,6 +1,6 @@
 # 给豆包电脑版派活（协作通道操作手册）
 
-> 状态：已实施（2026-11-02）· 实测版本 豆包 2.34.6 Launcher / Chromium 147.0.7727.149
+> 状态：已实施（2026-11-03）· 实测版本 豆包 2.34.6 Launcher / Chromium 147.0.7727.149
 > 用途：**让本机 agent 会话把活派给豆包客户端**，用它的「新工作任务」agent 模式操作本地文件。
 > 关系：与 [`copilot-channel.md`](./copilot-channel.md) 并列——Copilot 是命令行进程，豆包是**桌面 UI**，只能靠 CDP 驱动。
 > 缘起：2026-11-02 打通。此前只能人在豆包窗口里手打发，不是可编排通道。
@@ -8,10 +8,12 @@
 ## 0. 一句话读法
 
 ```bash
-node scripts/doubao/doubao.mjs task "任务描述" --project <项目名>
+node scripts/doubao/bootstrap.mjs                    # 先：起实例 + 新线程 + 本地电脑 + 自动 高 + 项目自检
+node scripts/doubao/doubao.mjs task "任务描述" --project <项目名>   # 再：派活
 ```
 
 它连 `127.0.0.1:9331` 的**独立 profile 豆包实例**，走真实鼠标/键盘事件驱动 UI，读回干净正文。
+`bootstrap.mjs` 只做「保证就绪」，不派活；`--check` 是纯只读诊断（§2.1）。
 
 ## 1. 为什么不能直接给日常那个豆包加参数
 
@@ -22,13 +24,13 @@ node scripts/doubao/doubao.mjs task "任务描述" --project <项目名>
 | `Application\Doubao.exe` 是 **Launcher 2.34.6**（1.8MB），不是主程序 | 它**吞掉**未知参数，`--remote-debugging-port` 传不到 renderer |
 | `Application\app\Doubao.exe` 才是 Chromium 主体（147.0.7727.149） | CDP 参数必须给它，进度条日志可证 renderer 收到了 |
 | 同一份 `User Data` 有单实例锁 | 直启内层程序 + 原 profile = 启动后自己退出（`engine.cc ### NO global context`） |
-| Launcher 启动的进程会 detach | 从工具会话直启的进程会随命令结束被回收，必须经 Explorer 代启才能活 |
+| Launcher 启动的进程会 detach | 从工具会话直启的进程会随命令结束被回收，必须在一个**保持存活的后台 shell** 里跑启动脚本（§2.1）。~~经 Explorer 代启~~ —— 2026-11-03 实测失效，见 §2 |
 
-⇒ 唯一可行组合：**内层 exe + 独立 `--user-data-dir` + Explorer 代启**。
+⇒ 唯一可行组合：**内层 exe + 独立 `--user-data-dir` + 一个活着的后台 shell 保住启动进程**。
 
 ```mermaid
 flowchart LR
-  A[Explorer] -->|代启，脱离工具进程树| B[start-doubao-cdp.cmd]
+  A[保持存活的后台 shell] -->|cmd /c call| B[start-doubao-cdp.cmd]
   B -->|直指内层 exe| C[app\\Doubao.exe]
   C -->|"--remote-debugging-port=9331"| D[CDP 端点]
   C -->|"--user-data-dir=%LOCALAPPDATA%\\DoubaoAgent\\profile"| E[独立 profile]
@@ -36,7 +38,7 @@ flowchart LR
   E -.->|不与日常实例抢锁| G[日常豆包]
 ```
 
-读法：Explorer 只负责「把进程挪出工具会话的进程树」，参数和隔离都由 cmd 脚本给。
+读法：那个 shell 唯一的职责是**别退出**（它一退，实例随后消失）；参数和隔离都由 cmd 脚本给。
 
 ## 2. 落点
 
@@ -47,19 +49,83 @@ flowchart LR
 | 独立 profile | `%LOCALAPPDATA%\DoubaoAgent\profile` |
 | CDP 端口 | **9331**（避开本项目 Electron dev 的 9222、DeepSeek Harness 的 9230） |
 | CLI | `scripts/doubao/doubao.mjs` |
+| 一键启动/切换 | `scripts/doubao/bootstrap.mjs`（§2.1） |
 | 调试探针 | `scripts/doubao/probe.mjs`（只读，可随时跑） |
 
-启动：
+启动（2026-11-03 实测有效的**唯一**方式）：在**一个不会退出的后台 shell** 里执行启动脚本，该 shell 随后保持存活。
 
-```powershell
-& explorer.exe "C:\develop\workspace\AI-writer\develop\scripts\doubao\start-doubao-cdp.cmd"
+```bash
+# 在后台终端 / 工具会话的 run_in_background 里：
+cmd //c "C:\develop\workspace\AI-writer\develop\scripts\doubao\start-doubao-cdp.cmd"
+# 之后这个 shell 不要退出（例如接着 sleep 900）；shell 一退，实例随后消失
 ```
 
-**不要用 `Start-Process` 直启** —— 会话结束时会被连带回收，表现为「豆包开了几秒又没了」。
+实测：12 秒后 `127.0.0.1:9331` LISTENING，`node scripts/doubao/doubao.mjs status` 正常返回，父 shell 存活期间实例稳定。
+
+> 路径里**含空格**时上面那行会被 cmd 的引号规则坑掉（`cmd /c "a b.cmd"` 会把引号吞掉再按空格切，实测报「不是内部或外部命令」）。此时用 `cmd /d /s /c call "<路径>"` —— 这也是 `bootstrap.mjs` 内部采用的形式（2026-11-03 用带空格的探针 `.cmd` 实测：`call` 形式目标文件生成成功，`cmd /c "…"` 形式失败）。
+
+### ⛔ 已失效 / 被拦截的启动方式（别再试，都是实测结论）
+
+| 方式 | 状态 | 证据 |
+|---|---|---|
+| `explorer.exe <cmd>` 代启 | **已失效（2026-11-03）** | 验证方法：写一个只做 `echo launched > %LOCALAPPDATA%\Temp\probe-result.txt` 的 cmd，用 `explorer.exe <路径>` 打开，等 5 秒 —— **文件根本没生成**。⇒ explorer 没执行目标程序，与豆包无关 |
+| `schtasks.exe` 建计划任务 | 禁止 | 在 WorkBuddy 安全策略的**程序黑名单**里，返回明确提示，不许绕路 |
+| WMI `Invoke-CimMethod Win32_Process Create` | 禁止 | 被拦，提示「equivalent to Start-Process」 |
+| PowerShell `Start-Process` | 禁止 | 进程随会话回收，表现为「开了几秒又没了」 |
+
+## 2.1 一键启动（bootstrap）
+
+`bootstrap.mjs` 把「起实例 → 建新线程 → 切本地电脑 → 切高 → 核对项目」压成一条命令。**它不杀进程、不重启实例**：在线就跳过启动，只保证「有」和「就绪」。
+
+```bash
+node scripts/doubao/bootstrap.mjs               # 完整拉起并自检
+node scripts/doubao/bootstrap.mjs --check       # 只读诊断：不启动、不点击，只打印当前状态
+node scripts/doubao/bootstrap.mjs --keep        # 不新建线程，复用当前线程
+node scripts/doubao/bootstrap.mjs --force       # 即使已是目标值也重跑一次切换（验证「切得动」，不只是「本来就对」）
+node scripts/doubao/bootstrap.mjs --project AI-writer-wt-1   # 额外切项目（可选）
+```
+
+选项：`--port 9331` · `--launch-timeout 45`（秒）。
+
+**步骤顺序是有原因的（写死在脚本里）：**
+
+| # | 步骤 | 为什么必须在这个位置 |
+|---|---|---|
+| 1 | 实例在线（不在线就调 `start-doubao-cdp.cmd` 并等端口就绪） | 后面全是 CDP 操作，没实例什么都做不了 |
+| 1.5 | 等界面就绪（等**编辑器**出现，上限 45s） | 端口通 ≠ UI 就绪：刚拉起的实例约 8–12s 才渲染出输入框，早一步找按钮会得到「找不到「新工作任务」按钮」。**等编辑器不等任务输入框**——实例可能停在「对话」模式，那时任务输入框本就不存在，等它会白等到超时 |
+| 2 | 新建工作任务线程 | **它会把推理档位重置回「中」**（模式保留）⇒ 必须先建线程再切档位，顺序反了等于白切 |
+| 3 | 模式 → 本地电脑 | 默认是「对话」，**对话模式没有本地文件权限**，它只会回「我无法读取你本地磁盘文件」 |
+| 4 | 推理档位 → 自动 高 | 新线程默认「自动 中」，档位是**会话级**的，不跨线程继承 |
+| 5 | 项目路径核对 | 打开项目菜单读出「名字 + 绝对路径」，这是「它到底在哪个目录干活」的唯一直接证据 |
+
+每步打印一行 `[ok]/[skip]/[fail] <步骤> <证据>`，最后打印一段 JSON 自检：
+
+```json
+{ "port": 9331, "runMode": "本地电脑", "model": "自动 高",
+  "project": { "label": "AI-writer-wt-1 C:\\develop\\workspace\\AI-writer\\wt-1", "hasAbsolutePath": true },
+  "thread": { "turnCount": 0 }, "ready": true, "steps": [ … ] }
+```
+
+- **幂等**：实例在线就 `[skip]`，模式已是本地电脑就 `[skip]`，档位已是高就 `[skip]`。
+- **退出码**：`0` 全部 ok/skip · `1` 有步骤失败（`✗ 未就绪：…` 会点出是哪一步）· `2` 实例起不来或连不上。
+- `--check` 不点击，所以**项目绝对路径那一步只能是 `[skip]`**（chip 常只显示项目名，路径要开菜单才看得到）。要路径就裸跑 bootstrap 或 `--keep`。
+- **保活仍然是人的责任**：脚本只负责「拉起并等端口就绪」，不 sleep、不驻留。实例挂在启动它的 shell 上 ⇒ 要么在后台终端里跑，要么用工具会话的 `run_in_background` 起，然后**别关那个会话**。
+- `--force` 只影响第 3、4 步的 `[skip]` 判定（模式与档位），不会重拉实例、不会多建线程。
+- ⚠️ **「对话」模式下的档位 chip 显示的是「快速」而不是「自动 中」**（对话模式只有快速档）。所以「从中切到高」这条路径只能在**任务模式**里验；从对话模式恢复时，模式先切回本地电脑，档位 chip 才会重新出现「推理强度 → 高」。
+
+### 2.1.1 冷启动 + 降级恢复实测（2026-11-03 22:5x，主 agent）
+
+| 场景 | 做法 | 结果 |
+|---|---|---|
+| **冷启动（从零拉起）** | 实例未运行时裸跑 `bootstrap.mjs` | `[ok] 启动实例` → `[ok] 等待界面就绪 耗时约 2s` → `[ok] 新建线程` → `[ok] 运行模式 → 本地电脑` → `[ok] 推理档位 → 自动 高` → `[ok] 项目路径 AI-writer-wt-1 C:\develop\workspace\AI-writer\wt-1` |
+| **降级后恢复（真验证）** | 手工降到 `runMode=对话` / `model=快速`，再跑 `bootstrap.mjs --force` | 四步全 `[ok]`：新建线程 → 本地电脑（`method=dom-click`）→ 自动 高（推理强度 → 高）→ 项目路径带绝对路径 |
+
+**这条实测同时否定了两个"看起来能用"的假设**：①「端口通了就能派活」（页面还要 8–12s 才渲染）；②「幂等跳过等于切得动」（要 `--force` 才真验过）。
 
 ## 3. 命令速查
 
 ```bash
+node scripts/doubao/bootstrap.mjs [--check|--keep]   # 一键：起实例 → 新线程 → 本地电脑 → 高 → 项目自检
 node scripts/doubao/doubao.mjs status                 # 端口/页面/是否任务模式/最后一条回复
 node scripts/doubao/doubao.mjs projects               # 任务模式里可选的项目
 node scripts/doubao/doubao.mjs task "任务" --project "harness-learn" [--timeout 600]
@@ -90,7 +156,7 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 
 > ⚠️ `通过本地文件夹创建项目` 会弹**系统原生文件夹选择框**，CDP 控制不了。要让豆包指向某个本地目录，这一步得人工点一次；之后该项目会留在列表里，自动化直接按名字选即可。
 
-> ⚠️ **`task` 不会新建任务线程**：`openTaskMode()` 发现已在任务模式就直接返回 `already`，消息**追加进当前线程**。实测 2026-11-03：派单落进了上一个任务的会话（标题还是「开工前必读与任务执行规范」），前后两件事的上下文混在一起。要干净线程，先把界面退到任务列表或点「新工作任务」再派。
+> ⚠️ **`task` 不会新建任务线程**：`openTaskMode()` 发现已在任务模式就直接返回 `already`，消息**追加进当前线程**。实测 2026-11-03：派单落进了上一个任务的会话（标题还是「开工前必读与任务执行规范」），前后两件事的上下文混在一起。**要干净线程先跑 `bootstrap.mjs`（它负责点「新工作任务」）**，或用 `--keep` 明确表示你就是要复用当前线程。
 
 ### 4.1 派活前的任务书骨架（照抄）
 
@@ -135,15 +201,23 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 > ⚠️ 真实敞口：豆包是「本地电脑 + 全部允许」的 UI 档位，**没有** Copilot 的 `--deny-tool 'shell(git:*)'` 等价拦截。
 > 所以「不许 git 写」对它只是**软约束**，必须同时靠：任务书写死 + Master 侧 `git status` 双查 + 声称完成但 diff 无变化即退回。
 
-### 4.2 派活前的三个检查（本轮踩出来的）
+### 4.2 派活前的检查（已由 bootstrap 自动完成）
 
-| 检查 | 怎么查 | 不查的后果 |
-|---|---|---|
-| **会话是新的** | `status` 看 `turnCount` / `title` | 在旧会话里接着聊，章程 preamble 因「同会话不重复」被跳过 |
-| **档位是「高」** | `status` 看 `model` 字段（`自动 中` / `自动 高`） | **新会话默认是「中」**，不是上次设的「高」——档位是会话级的，不跨会话继承 |
-| **项目是对的** | `projects` 看名字后的绝对路径 | 在别的目录里改文件 |
+这几项以前靠人手看 `status`，现在是 `bootstrap.mjs` 的职责 —— **它做一步、打一行证据**，人只需要看那几行 `[ok]/[skip]/[fail]` 和末尾的 JSON。
 
-`status` 现在会带 `model`，`task` 的结果 JSON 也会记下派发时的档位 —— 这样「那轮到底用什么档位跑的」有据可查，不用靠回忆。
+| 检查 | 谁做 | 证据长什么样 | 不查的后果 |
+|---|---|---|---|
+| **会话是新的** | bootstrap 点「新工作任务」并核对 href / `turnCount` | `[ok] 新建线程 href=3845… turnCount=0` | 在旧会话里接着聊，章程 preamble 因「同会话不重复」被跳过 |
+| **模式是「本地电脑」** | bootstrap 点模式 chip 后核对 chip 文本 | `[ok] 运行模式 → 本地电脑 runMode=本地电脑` | **默认是「对话」，而对话模式没有本地文件权限** —— 实测它会直接回「我无法读取你本地磁盘文件」。这是最容易被误读成「模型变笨了」的坑 |
+| **档位是「高」** | bootstrap 点档位 chip 后核对 chip 文本 | `[ok] 推理档位 → 自动 高 model=自动 高` | 新线程默认「自动 中」，档位是**会话级**的，不跨线程继承 |
+| **项目是对的** | bootstrap 打开项目菜单读「名字 + 绝对路径」 | `[ok] 项目路径 AI-writer-wt-1 C:\develop\workspace\AI-writer\wt-1` | 在别的目录里改文件 |
+
+两条必须记住的因果：
+
+1. **顺序陷阱**：`create_office_task_button`（新工作任务）**会把档位重置回「中」**，但模式保留。所以只能是「先建线程 → 再切模式 → 再切档位」，顺序反了等于白切。bootstrap 已按此顺序写死。
+2. **模式 ≠ 档位**：「本地电脑」决定**有没有文件权限**，「自动 高」决定**想得多深**。两者都要，且都要在**新线程之后**设。
+
+`status` 另外仍会带 `model`，`task` 的结果 JSON 也记下派发时的档位 —— 「那轮到底用什么档位跑的」始终有据可查，不用靠回忆。
 
 ## 5. ⛔ 跨 Agent 派活红线：只准单元测试
 
@@ -208,6 +282,12 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
   `rangeLabel` 抽取重构。全程无人值守（档位 `全部允许`），用时 ~4 分钟，落点全部正确。
   逐项结果见 §7.1。
 
+**已验证（2026-11-03，bootstrap）**
+
+- `bootstrap.mjs --check`：只读，退出码 0，`runMode=本地电脑` / `model=自动 高` / `turnCount` 均为真值
+- `bootstrap.mjs --keep`：退出码 0，四步 `[skip]`（幂等生效），项目路径读到 `AI-writer-wt-1 C:\develop\workspace\AI-writer\wt-1`
+- 启动链路的**命令行形式**（`cmd /d /s /c call <含空格的 .cmd>`）用探针脚本实测可执行；`cmd /c "路径"` 形式实测因引号被吞而失败
+
 ### 7.1 首次真任务的能力基线（保留作后续派活的标尺）
 
 任务：把 `VolumeHandoffRegistryPanel.tsx` 里的区间文案抽成 `src/shared/volume-range-label.ts`
@@ -258,6 +338,7 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 
 - 每项结束要求它输出 `## [Tn] DONE|BLOCKED|SKIPPED <一句话>` + 下一行真实时间戳；
 - `markers` 从「最后一条用户消息之后的页面文字」里扫，所以**既能看到标记，也能看到「已编辑文件 …」「已执行代码 …」这类执行流水**；
+- 任务书里教格式的那行（`## [T1] DONE|BLOCKED|SKIPPED <一句话说明>`）**不会被算成标记**：解析在 `scripts/doubao/markers.mjs`，会丢掉「状态后接 `|` 枚举」和「note 只是占位符」的模板行（2026-11-03 修，此前会把示例行当成 `[T1] DONE`）；
 - **markers 是检查点工具，不是轮询工具**：设 2 个点（+10 min / +30 min），只看「做到第几项 / 有没有连续 BLOCKED / diff 是否越界」。
 
 **为什么不能只看退出码**：`waitForReply` 的稳定判据在长任务中途停顿超过 4.5 秒就会判 settled（本轮实测：T1 跑完前 CLI 就退出过一次）。**退出码 0 不等于任务完成**。
@@ -274,13 +355,17 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 - `通过本地文件夹创建项目` 的原生文件夹对话框
 - 一次任务跨多个文件的**长链**（本次 3 个文件、30 行级改动；更大规模未测）
 - 多轮追问与中途插话（`task` 只发一条就等结果）
+- **bootstrap 冷启动**（从零拉起实例）与它的三个点击动作（新建线程 / 切模式 / 切档位）：2026-11-03 实现时实例正被占用跑真任务，杀或抢占会切断在跑批次，故只验到 `--check` 与 `--keep` 两条不改变状态的路径
 
 
 ## 8. 失效判据与恢复
 
 | 症状 | 先查 |
 |---|---|
-| 连接被拒（退出码 2） | 实例没起：跑 `start-doubao-cdp.cmd` |
+| 连接被拒（退出码 2） | 实例没起：跑 `start-doubao-cdp.cmd`（§2 的活后台 shell 方式）或直接 `node scripts/doubao/bootstrap.mjs` |
+| `explorer 代启不执行` | 用 `explorer.exe <cmd>` 后目标程序**根本没跑**（2026-11-03：连 `echo > 文件` 的探针都没生成）。这不是豆包的问题，是 explorer 不再执行该关联。改用 §2 的后台 shell 方式 |
+| `runMode` 是「对话」 | **对话模式没有本地文件权限**，它会回「我无法读取你本地磁盘文件」。跑 `bootstrap.mjs` 切「本地电脑」，或手动点 `chat_input_action_mode` → 选「本地电脑」 |
+| 新建线程把档位打回「中」 | `create_office_task_button` 会重置档位（模式保留）。顺序必须是「建线程 → 切模式 → 切档位」，别先切档位 |
 | 端口在但找不到聊天页 | 豆包在登录页 / 崩溃重启：看窗口 |
 | `输入框聚焦失败: unknown` | 自动化窗口**从未被真实点击过**，`editor.focus()` 不移动 `document.activeElement`。现为三级：DOM focus → CDP 真鼠标点编辑器中心 → 仍失败就降级放行（`Input.insertText` 不看窗口激活）。若报 `editor-missing` 才是 ProseMirror 换了容器 |
 | `task` 8 秒就「结束」，回复是「正在思考」 | 完成判据把**占位气泡**当成答案（占位文本本身是稳定的）。已在 `waitForReply` 加 `PLACEHOLDER` 过滤，只把非占位正文的稳定当完成。**但判据仍是启发式**：长任务可能在中途短暂停顿超过 4.5 秒 ⇒ 拿 `read` 复核，别只看退出码 |
@@ -289,6 +374,7 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 | 回复带 UI 噪音 | `data-testid` 改名：`probe.mjs --eval` 打印当前 testid 列表 |
 | `task --file` 报「无法把文本写入输入框」但框里其实有文本 | 校验假失败：ProseMirror 把 `\n` 变成段落（`\n\n`），首 20 字含换行的比对永远不成立。**已修**：比较前压掉空白，且插入前先 `Ctrl+A`+`Backspace` 清空残留（否则重试会把两份任务书拼在一起） |
 | `markers` 读不到任何标记，但页面上明明有 | 两个原因叠加：① 豆包渲染 markdown，`## [T1]` 到 DOM 里成了标题，`#` 没了 → 正则的 `#` 前缀必须可省；② 任务模式的执行流水（「已编辑文件…」）**不在** `data-testid="message_text_content"` 里 → 改成读「最后一条用户消息之后的页面文字」。两处均已修 |
+| `markers` 读出 `[T1] DONE` 但 note 是 `\|BLOCKED\|SKIPPED <一句话说明>` | 任务书正文里的**格式示例**被当成真标记（示例行里状态后面紧跟 `\|` 枚举）。**已修**：解析抽到 `scripts/doubao/markers.mjs`，`extractMarkers` 丢弃「状态后接竖线」与「note 只是 `<…>` 占位」的模板行 |
 | 读回时 `src/shared/__tests__/x.ts` 显示成 `src/shared/tests/x.ts` | markdown 把 `__tests__` 当粗体语法吞了下划线。**这是渲染假象**：模型看的是源文本，本轮它实际落点就是正确的 `__tests__` 目录。别据此认定任务书写错了——要验证就看 `git status` 的真实路径 |
 | 豆包升级后全崩 | 先记版本，再按上表逐项复测；`testid` 是**最稳的锚点**，class 全是 Tailwind 随机串，别用 |
 

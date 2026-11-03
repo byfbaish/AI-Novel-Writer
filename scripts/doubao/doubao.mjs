@@ -29,6 +29,7 @@
 
 import { readFileSync } from 'node:fs'
 import { DEFAULT_PORT, withChat, sleep } from './cdp.mjs'
+import { extractMarkers } from './markers.mjs'
 
 const SELECTORS = {
   /** ProseMirror rich-text editor - the only contenteditable on the chat page. */
@@ -393,11 +394,22 @@ const waitForReply = async (client, timeoutMs) => {
 }
 
 /**
- * Charter preamble, injected by machine so "did you read AGENTS.md" stops
- * depending on the agent's own diligence. Skipped when the task body already
- * mentions AGENTS.md (queue task-books carry their own 必读 section).
+ * Cross-agent red lines, injected by machine.
+ *
+ * 2026-11-03: this used to instruct the agent to go read AGENTS.md +
+ * documentation-charter (§4/§6) before every dispatch. That cost several
+ * thousand tokens per task and - because a fresh instance has no context -
+ * had to be paid again on every run. The rules themselves are four lines, so
+ * they are inlined here instead. Task books no longer need their own 必读
+ * section; if one still has it, this preamble stays out of the way.
  */
-const CHARTER_PREAMBLE = `【章程前置 · 机器注入，不可跳过】开工前先读 AGENTS.md（仓库根）与 docs/agents/documentation-charter.md 的 §4 / §6，然后用 3 行复述你必须遵守的红线，复述完再动手。
+const CHARTER_PREAMBLE = `【跨 agent 红线 · 机器注入，直接确认，不要为此去读文档】
+1. 只准单元测试（node node_modules/vitest/vitest.mjs run <单个测试文件>）。禁一切要起应用进程的测试（*.browser.tsx / pnpm test / test:node），禁 pnpm dev / 打包 / 验收脚本。
+2. 禁止任何 git 写操作（add / commit / reset / checkout / stash / push），提交权不在你。
+3. 只改任务书点名的路径。既有实现、既有测试的断言一律不动；发现 bug 只写进报告。
+4. 没读到的内容只能写「本次读取的文件内未找到」，不许写「全仓没有」；不确定的判定必须标「不确定」。
+
+确认方式：回一行 \`已确认红线 1-4\`，然后直接开工。
 
 ---
 
@@ -409,44 +421,17 @@ const readModelLabel = client => client.evaluate(js(`
 `))
 
 /**
- * Queue markers. Long unattended runs report progress as `## [T3] DONE ...`,
- * so completion can be read off the page instead of trusted from an exit code
- * (the stable-reply heuristic settles early when the agent pauses).
- *
- * The `#` prefix is optional on purpose: Doubao renders markdown, so `## [T3]`
- * arrives in the DOM as a heading whose innerText is bare `[T3] DONE ...`.
- */
-const MARKER_LINE = /^(?:#{1,4}\s*)?\[(T\d+|QUEUE)\]\s*(DONE|BLOCKED|SKIPPED|EMPTY|EMPTIED|STOPPED)\b\s*(.*)$/i
-const ISO_STAMP = /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z)/
-
-const extractMarkers = text => {
-  const lines = String(text ?? '').split('\n')
-  const out = []
-  for (let i = 0; i < lines.length; i += 1) {
-    const match = MARKER_LINE.exec(lines[i].trim())
-    if (!match) continue
-    // The stamp may sit on the marker line or within the next two lines.
-    let timestamp = ISO_STAMP.exec(lines[i])?.[1] ?? null
-    for (let k = 1; k <= 2 && !timestamp && i + k < lines.length; k += 1) {
-      timestamp = ISO_STAMP.exec(lines[i + k])?.[1] ?? null
-    }
-    out.push({
-      marker: match[1].toUpperCase(),
-      state: match[2].toUpperCase(),
-      note: match[3].trim().slice(0, 160),
-      timestamp,
-    })
-  }
-  return out
-}
-
-/**
  * Everything the agent has produced since the last user turn.
  *
  * Task-mode execution logs (「已编辑文件 …」「已执行代码 …」) render outside
  * `message_text_content`, so the transcript reader alone misses them - and the
  * queue markers sit at the end of exactly those logs. Anchor on the last user
  * message and take the page text after it; the transcript turn is the fallback.
+ *
+ * The slice starts at the anchor's end, so the **rest of the user's own task
+ * book** is included - including any `## [T1] DONE|BLOCKED|SKIPPED <…>` format
+ * example it contains. That is why `extractMarkers` (./markers.mjs) drops
+ * template-shaped lines instead of trusting every match.
  */
 const LATEST_OUTPUT_JS = `(() => {
   const turns = (${TRANSCRIPT_FN})();
@@ -509,8 +494,10 @@ const main = async () => {
     if (!text) {
       throw new Error('用法: node scripts/doubao/doubao.mjs task "任务描述" | --file 路径 [--project 项目名] [--timeout 600] [--no-charter]')
     }
-    // Queue task-books already carry a 必读 section; only inject when absent.
-    const charter = !flag('no-charter') && !/AGENTS\.md/.test(text)
+    // Preamble is four lines now, so it is always worth injecting: task books
+    // no longer carry a 必读 section of their own (2026-11-03). Opt out with
+    // --no-charter only when the task book is a pure read-only query.
+    const charter = !flag('no-charter')
     const body = charter ? CHARTER_PREAMBLE + text : text
     const projectName = option('project', null)
     const timeoutMs = Number(option('timeout', 600)) * 1_000
