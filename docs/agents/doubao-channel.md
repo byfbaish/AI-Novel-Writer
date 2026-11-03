@@ -8,7 +8,7 @@
 ## 0. 一句话读法
 
 ```bash
-node scripts/doubao/bootstrap.mjs                    # 先：起实例 + 新线程 + 本地电脑 + 自动 高 + 项目自检
+node scripts/doubao/bootstrap.mjs --effort 中           # 先：起实例 + 新线程 + 本地电脑 + 档位 + 项目自检
 node scripts/doubao/doubao.mjs task "任务描述" --project <项目名>   # 再：派活
 ```
 
@@ -52,6 +52,7 @@ flowchart LR
 | CDP 端口 | **9331**（避开本项目 Electron dev 的 9222、DeepSeek Harness 的 9230） |
 | CLI | `scripts/doubao/doubao.mjs` |
 | 一键启动/切换 | `scripts/doubao/bootstrap.mjs`（§2.1） |
+| 话题（侧栏线程）切换 | `doubao.mjs threads` / `doubao.mjs thread "标题片段"`（§2.3） |
 | 调试探针 | `scripts/doubao/probe.mjs`（只读，可随时跑） |
 
 ### 启动：默认由人来做（2026-11-04 起）
@@ -97,14 +98,16 @@ cmd //c "C:\develop\workspace\AI-writer\develop\scripts\doubao\start-doubao-cdp.
 
 ## 2.1 一键启动（bootstrap）
 
-`bootstrap.mjs` 把「起实例 → 建新线程 → 切本地电脑 → 切档位（默认高）→ 核对项目」压成一条命令。**它不杀进程、不重启实例**：在线就跳过启动，只保证「有」和「就绪」。
+`bootstrap.mjs` 把「起实例 → 建新线程 → 切本地电脑 → 切档位（**只在点名时**）→ 核对项目」压成一条命令。**它不杀进程、不重启实例**：在线就跳过启动，只保证「有」和「就绪」。
+
+> **档位默认不动**（2026-11-04 改）：不传 `--effort` 就只核对 chip 上有值，不会替你切档。此前默认「高」，于是「只想补选项目」的 `--keep --project` 会把中档悄悄抬成高档 —— 档位是钱，没点名不许动。
 
 ```bash
 node scripts/doubao/bootstrap.mjs               # 完整拉起并自检
 node scripts/doubao/bootstrap.mjs --check       # 只读诊断：不启动、不点击，只打印当前状态
 node scripts/doubao/bootstrap.mjs --keep        # 不新建线程，复用当前线程
 node scripts/doubao/bootstrap.mjs --force       # 即使已是目标值也重跑一次切换（验证「切得动」，不只是「本来就对」）
-node scripts/doubao/bootstrap.mjs --effort 中   # 推理档位切「自动 中」而不是「自动 高」（省积分）
+node scripts/doubao/bootstrap.mjs --effort 中   # 切「自动 中」；--effort 高 切「自动 高」；不传则不动档位
 node scripts/doubao/bootstrap.mjs --project AI-writer-wt-1   # 额外切项目（可选）
 node scripts/doubao/bootstrap.mjs --launch       # 例外：要求脚本自己 spawn 实例（短命，见 §2）
 ```
@@ -135,6 +138,7 @@ node scripts/doubao/bootstrap.mjs --launch       # 例外：要求脚本自己 s
 - **幂等**：实例在线就 `[skip]`，模式已是本地电脑就 `[skip]`，档位已是高就 `[skip]`。
 - **退出码**：`0` 全部 ok/skip · `1` 有步骤失败（`✗ 未就绪：…` 会点出是哪一步）· `2` 实例起不来或连不上。
 - `--check` 不点击，所以**项目绝对路径那一步只能是 `[skip]`**（chip 常只显示项目名，路径要开菜单才看得到）。要路径就裸跑 bootstrap 或 `--keep`。
+- **项目核对会认「没选」了**（2026-11-04 修）：底栏 chip 只剩占位文本「项目」时判 `[fail] 底栏「项目」未选`。此前它直接拿菜单里的 `active` 当当前项目，于是两个都没选项目的话题也报 `✓ AI-writer-wt-1`（还带着路径）（作者截图发现）。判据抽成纯函数 `scripts/doubao/project-chip.mjs`，单测 10 条。**代价**：`active` 只留作兜底（chip 有名字但菜单里没有这条时），所以 chip 显示的项目名与真实项目不一致这种极端情况仍会漏 —— 但不会再「什么都没选也报 ok」。
 - **保活是硬约束，不是建议**（2026-11-03 两次断点实证）：实例挂在启动它的 shell 上，`run_in_background` 的 `sleep` 一到点就被清 —— 22:31 / 22:56 各一次，`netstat` 从 `LISTENING` 直接变 `TIME_WAIT`，中途看到的「还在」只是清理延迟窗口。所以脚本只负责「拉起并等端口就绪」，**真正的长寿只有一个办法：在工具会话之外启动**（人手动双击 `start-doubao-cdp.cmd`，或做成开机自启），之后本脚本一律只用 `--check` 或幂等连接，不再启动。
 - `--force` 只影响第 3、4 步的 `[skip]` 判定（模式与档位），不会重拉实例、不会多建线程。
 - ⚠️ **「对话」模式下的档位 chip 显示的是「快速」而不是「自动 中」**（对话模式只有快速档）。所以「从中切到高」这条路径只能在**任务模式**里验；从对话模式恢复时，模式先切回本地电脑，档位 chip 才会重新出现「推理强度 → 高」。
@@ -151,6 +155,23 @@ node scripts/doubao/bootstrap.mjs --launch       # 例外：要求脚本自己 s
 > 第一条的「裸跑就自己起」已**不再适用**：2026-11-04 起默认不自动启动，要复现这条得加 `--launch`（§2.2）。
 
 ## 2.2 连不上时的处理：弹框交给作者（2026-11-04 起）
+
+### 2.3 多个话题同时开着：先认话题，再说话（2026-11-04 起）
+
+豆包是**多话题 SPA**，同一个实例可以并行开着好几轮任务；而 `say` / `task` 打的都是
+**当前打开的那一个**。2026-11-04 就出过：给新一轮补的「继续执行」打进了上一轮的话题，
+那个 agent 于是开始找一份它从没收到过的任务书，白烧三分钟。
+
+```text
+node scripts/doubao/doubao.mjs threads                 # 侧栏话题清单 + 当前 href
+node scripts/doubao/doubao.mjs thread "三个纯函数模块"   # 按标题片段切过去（真实鼠标点击，会验 href 变没变）
+node scripts/doubao/doubao.mjs say "继续"              # 与上次派活的话题不一致时**直接拒绝**
+```
+
+- 记录写在 `.runtime/doubao/last-thread.json`（gitignore），由 `task` / `say` / `thread` 维护；
+- 不一致时的报错会把「记录的话题」和「当前话题」都打出来，先 `thread` 切过去，或加 `--force`；
+- **`--new` 除外**（那是明确要开新话题）；记录写不进去只提示、不拦（护栏不该挡住正经派活）；
+- `threads` 的标题取自侧栏行文本，**同一标题可能有多条**（比如两轮「AI-writer-wt-1 任务执行」）⇒ `thread` 取第一条匹配；对不上就先 `status` 看当前 href 再决定。
 
 **触发条件**：`bootstrap.mjs` 退出码 **2**，或输出里出现 `NEED_HUMAN_LAUNCH`。含义是「实例不在线，本会话拉不起来」——不是模型变笨、不是代码坏了。
 
@@ -414,7 +435,8 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 - 每项结束要求它输出 `## [Tn] DONE|BLOCKED|SKIPPED <一句话>` + 下一行真实时间戳；
 - `markers` 从「最后一条用户消息之后的页面文字」里扫，所以**既能看到标记，也能看到「已编辑文件 …」「已执行代码 …」这类执行流水**；
 - 任务书里教格式的那行（`## [T1] DONE|BLOCKED|SKIPPED <一句话说明>`）**不会被算成标记**：解析在 `scripts/doubao/markers.mjs`，会丢掉「状态后接 `|` 枚举」和「note 只是占位符」的模板行（2026-11-03 修，此前会把示例行当成 `[T1] DONE`）；
-- **`## [QUEUE] EMPTY` 另有一条终端判据**（2026-11-04 修，`isTerminalQueueMarker`）：它 note 为空，前一条模板判据管不住，而任务书收尾小节又恰好以这一行结尾 ⇒ 派活瞬间就报两条 EMPTY（实测把任务书写进输入框后 `markers` 立刻读出 2 条）。现在要求**两个条件同时成立**才认：①它是最后一行非空内容；②它之前至少有一条**真 DONE**（模板行已被前一条判据丢掉）。**代价（有意接受）**：助手如果只回一行 `## [QUEUE] EMPTY`、没有任何 DONE，`markers` 读不到 —— 这表示「本轮什么都没做」，不当作队列耗尽信号；判「队列到底空不空」看 `task` 的退出状态，不靠 markers。
+- **`## [QUEUE] EMPTY` 另有一条终端判据**（2026-11-04 修，`isTerminalQueueMarker`）：它 note 为空，前一条模板判据管不住，而任务书收尾小节又恰好以这一行结尾 ⇒ 派活瞬间就报两条 EMPTY（实测把任务书写进输入框后 `markers` 立刻读出 2 条）。现在要求**两个条件同时成立**才认：①它是最后一行非空内容；②它之前至少有一条**真 DONE**（模板行已被前一条判据丢掉）。**代价（有意接受）**：助手如果只回一行 `## [QUEUE] EMPTY`、没有任何 DONE，`markers` 读不到 —— 这表示「本轮什么都没做」，不当作队列耗尽信号；判「队列到底空不空」看 `task` 的退出状态，不靠 markers。修后同一条派活命令的 `--- queue markers ---` 输出是 `[]`。
+- 同一次改动还给 `extractMarkers` 加了可选 `{ afterIndex }`，但**当前没有调用点传它**：页面侧 `LATEST_OUTPUT_JS`（`doubao.mjs:436-444`）已经按「最后一条用户消息的前 30 字锚点」切过了。留着是因为锚点匹配失败时会退化成「只取最后一条助手文本」，将来若改成整段传入，用它兜。
 - **markers 是检查点工具，不是轮询工具**：设 2 个点（+10 min / +30 min），只看「做到第几项 / 有没有连续 BLOCKED / diff 是否越界」。
 
 **为什么不能只看退出码**：`waitForReply` 的稳定判据在长任务中途停顿超过 4.5 秒就会判 settled（本轮实测：T1 跑完前 CLI 就退出过一次）。**退出码 0 不等于任务完成**。

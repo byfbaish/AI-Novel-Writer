@@ -13,6 +13,8 @@
  *   node scripts/doubao/doubao.mjs ask  "文本" [--new] [--timeout 240]
  *   node scripts/doubao/doubao.mjs read
  *   node scripts/doubao/doubao.mjs markers               # 只看队列标记，秒判做到第几项
+ *   node scripts/doubao/doubao.mjs threads               # 列出侧栏话题（标题 + 位置）
+ *   node scripts/doubao/doubao.mjs thread "标题片段"      # 切到那个话题（真实鼠标点击）
  *   node scripts/doubao/doubao.mjs projects              # 列出任务模式可选项目
  *   node scripts/doubao/doubao.mjs task "任务" [--project 名称] [--timeout 600] [--file 路径] [--no-charter]
  *
@@ -27,7 +29,9 @@
  * Exit codes: 0 ok / 1 failure / 2 not connected
  */
 
-import { readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { DEFAULT_PORT, withChat, sleep } from './cdp.mjs'
 import { extractMarkers } from './markers.mjs'
 
@@ -56,6 +60,8 @@ const SELECTORS = {
   suggestList: '[data-testid="suggest_message_list"]',
   /** Project picker items, once the 项目 menu is open. */
   projectOption: '[role="option"]',
+  /** One row in the sidebar conversation list ("新工作任务" 话题). */
+  threadItem: '[data-testid="conversation-list-v2-item"]',
 }
 
 const [, , commandArg, ...rest] = process.argv
@@ -70,6 +76,36 @@ const positional = rest.filter((value, index) => !value.startsWith('--') && !(in
 const port = Number(option('port', DEFAULT_PORT))
 
 const js = snippet => `(() => { ${snippet} })()`
+
+/**
+ * 上一次「往哪个话题里说过话」的记录。
+ *
+ * 为什么需要：`say` / `task` 打的都是**当前打开的那个话题**，而豆包是多话题 SPA，
+ * 同一台实例上可能并行开着两三个队列任务。2026-11-04 就出过：给「三个纯函数模块」
+ * 那一轮补的「继续执行」打进了上一轮 T9–T11 的话题，那个 agent 于是开始找一份
+ * 它从没收到过的任务书，白烧了三分钟。
+ * 记录放在 `.runtime/`（已 gitignore），拿不到记录时**不拦**，只提示。
+ */
+const DISPATCH_RECORD = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.runtime', 'doubao', 'last-thread.json')
+
+const readDispatchRecord = () => {
+  try { return JSON.parse(readFileSync(DISPATCH_RECORD, 'utf8')) } catch { return null }
+}
+
+const writeDispatchRecord = (href, note) => {
+  try {
+    mkdirSync(dirname(DISPATCH_RECORD), { recursive: true })
+    writeFileSync(DISPATCH_RECORD, JSON.stringify({ href, note, at: new Date().toISOString() }, null, 2))
+  } catch { /* 记录只是护栏，写不进去不该拦住派活 */ }
+}
+
+/** 当前话题和记录不一致时抛错（`--force` 放行）。 */
+const assertSameThread = (href, command, force) => {
+  const record = readDispatchRecord()
+  if (!record?.href || force || record.href === href) return record
+  throw new Error(`当前话题不是上次派活的那一个：\n  记录=${record.href}（${record.note ?? '-'}）\n  当前=${href}\n`
+    + '先 `thread "标题片段"` 切过去，或加 --force 说明你确实要往这个话题里说')
+}
 
 /**
  * Resolve the compose editor in either surface: the task-mode composer wraps its
@@ -110,7 +146,26 @@ const readState = client => client.evaluate(js(`
 `))
 
 const readConversationId = client => client.evaluate(js(`
-  return { href: location.href, turns: (${TRANSCRIPT_FN})().length };
+  return { href: location.href, title: document.title, turns: (${TRANSCRIPT_FN})().length };
+`))
+
+/**
+ * Sidebar rows, newest first (the order Doubao renders them in).
+ * `title` is the row's own text - it is the only handle the UI exposes; the
+ * conversation id is not in the DOM, so `thread` matches by title substring.
+ */
+const listThreads = client => client.evaluate(js(`
+  return [...document.querySelectorAll(${JSON.stringify(SELECTORS.threadItem)})]
+    .map(el => {
+      const rect = el.getBoundingClientRect();
+      return {
+        title: (el.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 80),
+        x: Math.round(rect.x + rect.width / 2),
+        y: Math.round(rect.y + rect.height / 2),
+        visible: rect.width > 0 && rect.height > 0
+      };
+    })
+    .filter(item => item.title && item.visible);
 `))
 
 /**
@@ -509,6 +564,7 @@ const main = async () => {
       if (!focus?.ok) throw new Error(`输入框聚焦失败: ${focus?.reason ?? 'unknown'}`)
       const inputPath = await typeText(client, body)
       const submitted = await submit(client)
+      writeDispatchRecord((await readConversationId(client)).href, `task: ${text.slice(0, 40)}`)
       const startedAt = Date.now()
       console.log(JSON.stringify({
         port,
@@ -557,6 +613,41 @@ const main = async () => {
     }, port)
   }
 
+  if (command === 'threads') {
+    return withChat(async client => {
+      const items = await listThreads(client)
+      const current = await readConversationId(client)
+      console.log(JSON.stringify({ port, current: current.href, threads: items.map(item => item.title) }, null, 2))
+    }, port)
+  }
+
+  if (command === 'thread') {
+    const query = positional[0]
+    if (!query) throw new Error('用法: node scripts/doubao/doubao.mjs thread "标题片段"')
+    return withChat(async client => {
+      const before = await readConversationId(client)
+      const items = await listThreads(client)
+      const target = items.find(item => item.title.includes(query))
+      if (!target) {
+        throw new Error(`侧栏里没有标题含「${query}」的话题。现有：\n- ${items.map(item => item.title).join('\n- ')}`)
+      }
+      await mouseClick(client, target.x, target.y)
+      await sleep(2_500)
+      const after = await readConversationId(client)
+      const switched = after.href !== before.href
+      // 目标话题可能**本来就开着**（本次操作就是想确认/记录它）——那不算失败。
+      // 判据用标题而不是「href 变了没有」：href 不变但标题已经是那条 = 已经在里面。
+      const landed = switched || after.title.includes(query)
+      if (landed) writeDispatchRecord(after.href, `thread: ${target.title}`)
+      console.log(JSON.stringify({ port, query, matched: target.title, before: before.href, after: after.href,
+        switched, title: after.title, landed }, null, 2))
+      if (!landed) {
+        console.error('✗ 话题没切换（点击落空，标题也对不上）——不要在此基础上继续发消息')
+        process.exitCode = 1
+      }
+    }, port)
+  }
+
   if (command === 'say' || command === 'ask') {
     const text = positional[0]
     if (!text) throw new Error(`用法: node scripts/doubao/doubao.mjs ${command} "文本"`)
@@ -568,10 +659,15 @@ const main = async () => {
           throw new Error(`新建对话失败（${created.method}：对话 id 与条数均未变化）——已中止，不允许把消息发进现有对话`)
         }
       }
+      const current = await readConversationId(client)
+      // 先确认「打的是对的话题」再动输入框：发错话题的代价是另一个 agent 收到
+      // 一份它没有上下文的任务指令（2026-11-04 实测过一次）。
+      assertSameThread(current.href, command, flag('force'))
       const focus = await focusEditor(client)
       if (!focus?.ok) throw new Error(`输入框聚焦失败: ${focus?.reason ?? 'unknown'}`)
       const inputPath = await typeText(client, text)
       const submitted = await submit(client)
+      writeDispatchRecord(current.href, `${command}: ${text.slice(0, 40)}`)
       const startedAt = Date.now()
       console.log(JSON.stringify({ port, inputPath, submitted: submitted.method, text }, null, 2))
       if (command === 'say') return

@@ -70,12 +70,16 @@ const port = Number(option('port', DEFAULT_PORT))
 const checkOnly = flag('check')
 const keepThread = flag('keep')
 /**
- * 目标推理档位（`--effort 中|高`，默认「高」）。
+ * 目标推理档位（`--effort 中|高`）。**不传就完全不动档位**。
  *
  * 作者 2026-11-04：高推理度对积分额度消耗夸张，先按「中」跑，干不动再回「高」。
  * 取值必须与豆包菜单里的字面量一致（菜单项是「中」/「高」，chip 显示「自动 中」）。
+ *
+ * 默认值原先写死「高」，于是「只想补选项目」也会被顺手抬到高档 —— 2026-11-04
+ * 实测过一次（`--keep --project` 把中档升成高档，得再跑一条命令改回来）。
+ * 档位是钱，**没点名就不许动**：默认 null = 保持现状、只核对 chip 上有值。
  */
-const effortTarget = option('effort', '高')
+const effortTarget = option('effort', null)
 /**
  * 显式要求「自己拉起实例」。默认**不**这样做：`start-doubao-cdp.cmd` 是未签名
  * 脚本，经 shell 执行要过「是否运行」的确认框，本工具会话无人可点；而用 spawn
@@ -266,7 +270,8 @@ const PROJECT_CHIP = `() => {
 
 const hasLocalComputer = snapshot => /本地电脑/.test(snapshot.runMode ?? '')
 /** 档位判据按目标值判定 —— 写死「高」会让 `--effort 中` 的成功被判成失败。 */
-const hasEffort = (snapshot, target = effortTarget) => (snapshot.model ?? '').includes(target)
+const hasEffort = (snapshot, target = effortTarget) =>
+  target ? (snapshot.model ?? '').includes(target) : Boolean((snapshot.model ?? '').trim())
 
 /** 新工作任务 → fresh thread. Must run FIRST: it resets the level chip to 中. */
 const createThread = async client => {
@@ -305,9 +310,10 @@ const switchRunMode = async client => {
   return { status: 'ok', evidence: `runMode=${after.runMode}（method=${method}）` }
 }
 
-/** 切到 `effortTarget`（默认 自动 高）. The chip's first-level label is 「推理强度」. */
+/** 切到 `effortTarget`（不传 `--effort` 则一步都不动）. The chip's first-level label is 「推理强度」. */
 const switchEffort = async client => {
   const before = await snapshot(client)
+  if (!effortTarget) return { status: 'skip', evidence: `未指定 --effort，保持 model=${before.model ?? '(无 chip)'}` }
   // 已经是目标档位就跳过，`--force` 也一样：菜单里点「已经是当前值」的项会找不到
   // 可点的条目，于是把一次成功报成 [fail]（2026-11-03 实测过这个误报）。
   if (hasEffort(before)) return { status: 'skip', evidence: `model=${before.model}${force ? '（--force 已忽略：已是目标档位）' : ''}` }
@@ -373,9 +379,12 @@ const inspectProject = async (client, chipLabel) => {
   if (!items) return { ok: false, evidence: '找不到底栏「项目」按钮' }
   if (!items.length) return { ok: false, evidence: '项目菜单没有打开（未取到任何选项）' }
   const chipName = String(chipLabel ?? '').trim()
-  const row = items.find(item => item.active)
-    ?? items.find(item => chipName && item.name.toLowerCase().startsWith(`${chipName.toLowerCase()} `))
-    ?? items.find(item => chipName && item.name.startsWith(chipName))
+  // chip 只剩占位文本 = 这个话题**没有项目**。此前这里直接取菜单里的 `active`，
+  // 于是「上次用过的项目」被当成「当前项目」，两个都没选项目的线程也报 ✓（2026-11-04 实测）。
+  if (isUnsetProjectChip(chipName)) {
+    return { ok: false, evidence: `底栏「项目」未选（chip=${chipName || '空'}）；用 --project 指定` }
+  }
+  const row = pickProjectRow(chipName, items)
   if (!row) {
     return { ok: false, evidence: `菜单里认不出当前项目（chip=${chipName || '空'}；可选：${items.map(item => item.name).join(' / ')}）` }
   }
@@ -536,7 +545,7 @@ const main = async () => {
     if (checkOnly) {
       step(initial.taskMode ? 'ok' : 'fail', '工作任务模式', initial.taskMode ? '输入框就位' : '不在任务模式（对话页）')
       step(hasLocalComputer(initial) ? 'ok' : 'fail', '运行模式', `runMode=${initial.runMode ?? '(无 chip)'}`)
-      step(hasEffort(initial) ? 'ok' : 'fail', `推理档位（目标 ${effortTarget}）`, `model=${initial.model ?? '(无 chip)'}`)
+      step(hasEffort(initial) ? 'ok' : 'fail', `推理档位（${effortTarget ? `目标 ${effortTarget}` : '未指定，保持当前'}）`, `model=${initial.model ?? '(无 chip)'}`)
       step('skip', '项目路径', `${initial.projectChip ?? '(空)'}（chip 常只显示项目名；绝对路径要开项目菜单，--check 不点击）`)
       step(initial.turnCount === 0 ? 'skip' : 'ok', '当前线程', `turnCount=${initial.turnCount} title=${initial.title}`)
       console.log(JSON.stringify({
@@ -578,10 +587,10 @@ const main = async () => {
     // 4. effort
     if (problems.length === 0) {
       const effort = await switchEffort(client)
-      step(effort.status, `推理档位 → 自动 ${effortTarget}`, effort.evidence)
+      step(effort.status, effortTarget ? `推理档位 → 自动 ${effortTarget}` : '推理档位（未指定，保持当前）', effort.evidence)
       if (effort.status === 'fail') problems.push('推理档位')
     } else {
-      step('skip', `推理档位 → 自动 ${effortTarget}`, '上一步失败，未处理')
+      step('skip', effortTarget ? `推理档位 → 自动 ${effortTarget}` : '推理档位（未指定，保持当前）', '上一步失败，未处理')
     }
 
     // 5. project: switch when asked, otherwise resolve which one is active.
