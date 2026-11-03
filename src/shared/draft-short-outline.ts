@@ -12,8 +12,11 @@ export const DRAFT_SHORT_OUTLINE_PURPOSE = 'chapter-draft-short-outline' as cons
  * 字散文）。这不是模型不听话，是载荷在误导。
  *
  * 现在只喂四块：本章蓝图（主料）、分段预算、前驱状态、本章执行合同。
- * 作者裁定：**后续计划边界不给**（已有蓝图，不应再多给信息）；前驱给**上一章定稿全文**；
- * 本章执行合同**给**。取舍记录见 `docs/design/prompt/p0-1-short-outline-scoping-design.md` §6。
+ * 作者裁定：**后续计划边界不给**（已有蓝图，不应再多给信息）；本章执行合同**给**；
+ * 前驱给「上一章要点 + 结尾 ≤300 字」（2026-11-04 由「上一章定稿全文」改，见 R6 ——
+ * 全文让这一步把上一章事件重新排成本章分段，实测 4 次全错，见 D12）。
+ * 取舍记录见 `docs/design/prompt/p0-1-short-outline-scoping-design.md` §6 与
+ * `docs/design/prompt/previous-chapter-context-assessment.md` §8。
  *
  * 2026-10-19：这一步从「第二个规划者」改成**预算执行者**。此前它不消费 `estimatedUnits`，
  * 只做定性组织（最多六条要点），结果与蓝图 `keyEvents` 重复；而 `estimatedUnits` 在全仓
@@ -24,7 +27,13 @@ export const DRAFT_SHORT_OUTLINE_PURPOSE = 'chapter-draft-short-outline' as cons
 export interface DraftShortOutlineMaterial {
   /** 本章蓝图 JSON（原样透传，不二次改写）。 */
   chapterInfo: string
-  /** 前驱状态：上一章定稿原文。首章、或前驱尚未定稿时省略。 */
+  /**
+   * 前驱状态：**上一章要点 + 结尾片段**（R6，作者 2026-11-04 裁定）。
+   *
+   * 由 `draftShortOutlinePredecessor()` 拼装；首章、或上一章还没有任何已定稿材料时省略。
+   * 不再给上一章全文 —— 实测（D12）全文会让这一步把**上一章**事件重新排进本章分段，
+   * 而它的任务只是「按预算把本章蓝图分成 N 段」。
+   */
   predecessor?: string
   /** 本章执行合同规则（自带 `【本章执行合同】` 标题，不要再套一层）。 */
   executionContract?: string
@@ -37,10 +46,48 @@ export interface DraftShortOutlineMaterial {
   segmentBudget?: string
 }
 
+/**
+ * 短细纲前驱里「上一章结尾片段」的长度上限。
+ *
+ * 作者 2026-11-04 裁定：**300 字**。它只做一件事 —— 让本章第一段接住上一章最后一屏的
+ * 语气、动作与站位，避免章间撕裂。**不该**用来重建上一章的情节（那是要点的事）。
+ *
+ * 与 `previousChapterEnding` 的 1,000 不是一个需求：1,000 是「开头重演守卫」的判据窗口
+ * （80 字符连续覆盖），改小会让守卫失准；这里的 300 只影响注入。
+ */
+export const DRAFT_SHORT_OUTLINE_PREDECESSOR_TAIL_CHARS = 300
+
+/**
+ * 短细纲【前驱状态】的正文：上一章要点 + 结尾片段。
+ *
+ * 两块给的是两类东西（这是 Re³ 的核心结论，见
+ * `docs/design/prompt/previous-chapter-context-assessment.md` §3.2）：
+ * 要点给「已经发生了什么」（判断本章起点），片段给「停在什么动作/语气上」（接住第一段）。
+ * 任一块为空就整块省略，不留空标题。
+ */
+export function draftShortOutlinePredecessor(
+  language: WritingLanguage,
+  input: { notes?: string; ending?: string },
+): string {
+  const notes = input.notes?.trim() ?? ''
+  const ending = input.ending?.trim() ?? ''
+  const blocks = language === 'en-US'
+    ? [
+        notes && `What the previous chapter completed (summary):\n${notes}`,
+        ending && `The last ~${DRAFT_SHORT_OUTLINE_PREDECESSOR_TAIL_CHARS} characters of the previous chapter `
+          + `(carry over the tone, the action in progress, and where everyone stands):\n${ending}`,
+      ]
+    : [
+        notes && `上一章已完成的事（要点）：\n${notes}`,
+        ending && `上一章最后约 ${DRAFT_SHORT_OUTLINE_PREDECESSOR_TAIL_CHARS} 字（只用于承接语气、未完成的动作与站位）：\n${ending}`,
+      ]
+  return blocks.filter(Boolean).join('\n\n')
+}
+
 /** 指令主体：与材料无关的纪律，两条语言各自成段。 */
 const INSTRUCTION_CORE: Readonly<Record<'zh-CN' | 'en-US', string>> = {
-  'zh-CN': '只写短细纲（分段执行表），不写正文。严格按【分段预算】给出的段数、顺序与字数，为每一段写一条：这一段发生什么（只写要点，不写对话、不写描写）；这一段结束时停在哪。段数与字数一律照抄【分段预算】，不得增加、删除、合并或重排 —— 预算是给定条件（蓝图的事件字数预算按本章目标字数折算而来），不要为了"用满字数"而加事，也不要因为"没什么可写"就把两段并成一段。只能用材料里已有的事件与约束：不得新增作者事实、禁令或目标，不得改动本章目标，也不得把计划写成已经发生的事实。没有【分段预算】时，才退回最多六条要点：原目标；前驱已完成的事；明确时点和约束；本章拟写的具体行动与结果；结尾状态。',
-  'en-US': 'Prepare a short chapter outline as a segment execution table, not prose. Follow the segment count, order, and per-segment length given in [Segment budget] exactly: for each segment, state what happens (key points only — no dialogue, no description) and where the segment stops. Copy the count and lengths verbatim: never add, drop, merge, or reorder segments. The budget is a given condition (the blueprint\'s event budgets converted to this chapter\'s target length), so do not invent events to fill it and do not merge two segments because there seems little to write. Use only the events and constraints supplied: add no author facts, prohibitions, or goals, change no goal, and never present planned events as established facts. When no [Segment budget] is supplied, fall back to at most six concise bullets: original goals; what the predecessor already completed; explicit time and constraints; proposed concrete actions and their results in this chapter; ending state.',
+  'zh-CN': '只写短细纲（分段执行表），不写正文。严格按【分段预算】给出的段数、顺序与字数，为每一段写一条：这一段发生什么（只写要点，不写对话、不写描写）；这一段结束时停在哪。段数与字数一律照抄【分段预算】，不得增加、删除、合并或重排 —— 预算是给定条件（蓝图的事件字数预算按本章目标字数折算而来），不要为了"用满字数"而加事，也不要因为"没什么可写"就把两段并成一段。分段的每一段都必须对应【本章蓝图】里的一个事件；【前驱状态】只用来确定本章从哪儿开始（上一章的事已经发生，不占本章任何一段）。不得新增作者事实、禁令或目标，不得改动本章目标，也不得把计划写成已经发生的事实。没有【分段预算】时，才退回最多六条要点：原目标；前驱已完成的事；明确时点和约束；本章拟写的具体行动与结果；结尾状态。',
+  'en-US': 'Prepare a short chapter outline as a segment execution table, not prose. Follow the segment count, order, and per-segment length given in [Segment budget] exactly: for each segment, state what happens (key points only — no dialogue, no description) and where the segment stops. Copy the count and lengths verbatim: never add, drop, merge, or reorder segments. The budget is a given condition (the blueprint\'s event budgets converted to this chapter\'s target length), so do not invent events to fill it and do not merge two segments because there seems little to write. Every segment must correspond to one event in [Current-chapter blueprint]; [Predecessor state] only tells you where this chapter starts — the previous chapter has already happened and occupies no segment here. Add no author facts, prohibitions, or goals, change no goal, and never present planned events as established facts. When no [Segment budget] is supplied, fall back to at most six concise bullets: original goals; what the predecessor already completed; explicit time and constraints; proposed concrete actions and their results in this chapter; ending state.',
 }
 
 /** 材料范围声明：明说本步只给什么、不给什么。 */
@@ -52,7 +99,7 @@ const INSTRUCTION_SCOPE: Readonly<Record<'zh-CN' | 'en-US', string>> = {
 const SECTION_LABELS = {
   chapterInfo: { 'zh-CN': '本章蓝图', 'en-US': 'Current-chapter blueprint' },
   segmentBudget: { 'zh-CN': '分段预算', 'en-US': 'Segment budget' },
-  predecessor: { 'zh-CN': '前驱状态 · 上一章定稿原文', 'en-US': 'Predecessor state · finalized prose of the previous chapter' },
+  predecessor: { 'zh-CN': '前驱状态 · 上一章要点 + 结尾片段', 'en-US': 'Predecessor state · previous-chapter summary + ending fragment' },
 } as const
 
 /**

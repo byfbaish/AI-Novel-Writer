@@ -3492,7 +3492,7 @@ ${headingPrefix}第3章：潮门
       expect(decision?.reconciliationPromptHash).toBeUndefined()
       expect(decision?.promptHash).toBe(createHash('sha256').update(stripDraftShortOutlineBlock(initial, '目标：读信；前驱：信已送到；行动与结果：本章读完信；结尾：保留原约束。')!).digest('hex'))
 
-      // P0-1：短细纲只喂该步材料 —— 本章蓝图 + 前驱全文 + 本章执行合同。
+      // P0-1：短细纲只喂该步材料 —— 本章蓝图 + 前驱（要点 + 结尾片段）+ 本章执行合同。
       const outlinePrompt = runtime.outline.mock.calls[0]![0].messages[0]!.content
       const blueprintLabel = writingLanguage === 'en-US' ? '[Current-chapter blueprint]' : '【本章蓝图】'
       const contractLabel = writingLanguage === 'en-US' ? '[Current-chapter execution contract]' : '【本章执行合同】'
@@ -3507,9 +3507,8 @@ ${headingPrefix}第3章：潮门
       }
     })
 
-    it.each(['zh-CN', 'en-US'] as const)('feeds the %s short outline the previous chapter in full, not just its ending excerpt', async writingLanguage => {
+    it.each(['zh-CN', 'en-US'] as const)('feeds the %s short outline the predecessor ending fragment instead of its full text (R6)', async writingLanguage => {
       const runtime = fakeOutcomes(outcome('初'.repeat(100), 'length'), outcome(`${'续'.repeat(400)}。`, 'stop'))
-      // previousChapterEnding 只保留结尾 ≤1,000 字 → 会丢掉开篇；作者裁定前驱给全文，故这里必须看得到开篇。
       const previous = `开篇标记${'旧'.repeat(1_500)}定稿结尾。`
       const f = setup({ runtime, wordsTarget: 500, writingLanguage, chapterNumber: 2, keyEvents: '读信',
         previousFinalizedContent: previous })
@@ -3518,8 +3517,26 @@ ${headingPrefix}第3章：潮门
 
       expect(previous.length).toBeGreaterThan(1_000)
       const outlinePrompt = runtime.outline.mock.calls[0]![0].messages[0]!.content
-      expect(outlinePrompt).toContain('开篇标记')
-      expect(outlinePrompt).toContain(previous)
+      // R6（作者 2026-11-04）：前驱不再是全文 —— 全文会让这一步把上一章事件重新排成本章分段
+      // （D12 成对记录 4/4 全错）。只给结尾 ≤300 字，用来接住语气、未完成的动作与站位。
+      expect(outlinePrompt).not.toContain('开篇标记')
+      expect(outlinePrompt).toContain('定稿结尾。')
+      expect(outlinePrompt).toContain(writingLanguage === 'en-US' ? 'The last ~300 characters' : '上一章最后约 300 字')
+    })
+
+    it.each(['zh-CN', 'en-US'] as const)('puts the %s previous-chapter notes in the short outline predecessor only', async writingLanguage => {
+      const runtime = fakeOutcomes(outcome('初'.repeat(100), 'length'), outcome(`${'续'.repeat(400)}。`, 'stop'))
+      const notes = '上一章要点哨兵：点卯已毕，铜锣挂回钉上。'
+      const f = setup({ runtime, wordsTarget: 500, writingLanguage, chapterNumber: 2, keyEvents: '读信',
+        previousFinalizedContent: '上一章定稿正文。',
+        continuity: [{ draftId: 41, chapterNumber: 1, chapterTitle: '作者第一章', chapterNotes: notes }] })
+
+      await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+
+      // 短细纲拿要点判断「上一章已经发生了什么」（R6）。
+      expect(runtime.outline.mock.calls[0]![0].messages[0]!.content).toContain(notes)
+      // 正文那一步仍按既有形态：要点只能经「前文事实」投影进场，原文不得逐字注入（不变量未变）。
+      for (const [task] of runtime.complete.mock.calls) expect(task.messages.at(-1)!.content).not.toContain(notes)
     })
 
     it.each(['zh-CN', 'en-US'] as const)('preserves %s source and requirements in the single condense request without generated planning', async writingLanguage => {

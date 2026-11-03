@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  DRAFT_SHORT_OUTLINE_PREDECESSOR_TAIL_CHARS,
   draftShortOutlineBlock,
+  draftShortOutlinePredecessor,
   draftShortOutlinePrompt,
   shortOutlineSegmentBudget,
   stripDraftShortOutlineBlock,
@@ -28,7 +30,7 @@ describe('draftShortOutlinePrompt（P0-1 分区契约）', () => {
     const segmentBudget = '1. 约 1400 字：读信\n合计 1400 字（本章目标 1400 字）。'
     const prompt = draftShortOutlinePrompt('zh-CN', { chapterInfo, segmentBudget, predecessor, executionContract })
     // 块头带换行：指令正文里也会提到「【分段预算】」这几个字，不带换行会命中指令而非块头。
-    const order = ['只写短细纲（分段执行表）', '【本章蓝图】\n', '【分段预算】\n', '【前驱状态 · 上一章定稿原文】\n', '【本章执行合同】']
+    const order = ['只写短细纲（分段执行表）', '【本章蓝图】\n', '【分段预算】\n', '【前驱状态 · 上一章要点 + 结尾片段】\n', '【本章执行合同】']
     const positions = order.map(marker => prompt.indexOf(marker))
     expect(positions.every(at => at >= 0)).toBe(true)
     expect(positions).toEqual([...positions].sort((left, right) => left - right))
@@ -54,7 +56,7 @@ describe('draftShortOutlinePrompt（P0-1 分区契约）', () => {
 
   it('无前驱时整块省略（首章是正常态，不是错误）', () => {
     const prompt = draftShortOutlinePrompt('zh-CN', { chapterInfo, executionContract })
-    expect(prompt).not.toContain('【前驱状态 · 上一章定稿原文】')
+    expect(prompt).not.toContain('【前驱状态 · ')
     expect(prompt).toContain('【本章蓝图】')
     expect(prompt).toContain('【本章执行合同】')
   })
@@ -63,13 +65,13 @@ describe('draftShortOutlinePrompt（P0-1 分区契约）', () => {
     const prompt = draftShortOutlinePrompt('zh-CN', { chapterInfo })
     expect(prompt).not.toContain('【本章执行合同】')
     // 空串与全空白都不得留下一个空标题块。
-    expect(draftShortOutlinePrompt('zh-CN', { chapterInfo, predecessor: '   ' })).not.toContain('【前驱状态')
+    expect(draftShortOutlinePrompt('zh-CN', { chapterInfo, predecessor: '   ' })).not.toContain('【前驱状态 · ')
   })
 
   it('en-US 用英文标签，不混中文块头', () => {
     const prompt = draftShortOutlinePrompt('en-US', { chapterInfo, predecessor, executionContract })
     expect(prompt).toContain('[Current-chapter blueprint]')
-    expect(prompt).toContain('[Predecessor state · finalized prose of the previous chapter]')
+    expect(prompt).toContain('[Predecessor state · previous-chapter summary + ending fragment]')
     expect(prompt).not.toContain('【本章蓝图】')
   })
 
@@ -133,5 +135,45 @@ describe('shortOutlineSegmentBudget（代码算预算，模型只执行）', () 
     const text = shortOutlineSegmentBudget('en-US', events, 2400)
     expect(text).toContain('1. ~1400 characters: 老陈追问')
     expect(text).toContain('Total 2400 characters (chapter target 2400).')
+  })
+})
+
+describe('draftShortOutlinePredecessor（R6：要点 + 结尾片段）', () => {
+  const notes = '时间定位：第二日卯时。空间锚点：碑坪。剧情节点：点卯已毕。'
+  const ending = '陈砚把铜锣挂回钉上，手还悬在半空。'
+
+  it('两块都给：要点在前，结尾片段在后，片段标明只作承接', () => {
+    const text = draftShortOutlinePredecessor('zh-CN', { notes, ending })
+    expect(text.indexOf(notes)).toBeLessThan(text.indexOf(ending))
+    expect(text).toContain(`上一章最后约 ${DRAFT_SHORT_OUTLINE_PREDECESSOR_TAIL_CHARS} 字`)
+    expect(text).toContain('上一章已完成的事')
+  })
+
+  it('只有要点时不留结尾空标题（老项目没有结尾摘录是正常态）', () => {
+    const text = draftShortOutlinePredecessor('zh-CN', { notes })
+    expect(text).toContain(notes)
+    expect(text).not.toContain('上一章最后约')
+  })
+
+  it('只有结尾时也成立：要点缺失不能把片段一起吞掉', () => {
+    const text = draftShortOutlinePredecessor('zh-CN', { ending })
+    expect(text).toContain(ending)
+    expect(text).not.toContain('上一章已完成的事')
+  })
+
+  it('两块都空时返回空串（首章整块省略，不是错误）', () => {
+    expect(draftShortOutlinePredecessor('zh-CN', {})).toBe('')
+    expect(draftShortOutlinePredecessor('zh-CN', { notes: '  ', ending: '\n' })).toBe('')
+  })
+
+  it('en-US 不混中文块头', () => {
+    const text = draftShortOutlinePredecessor('en-US', { notes, ending })
+    expect(text).toContain('What the previous chapter completed')
+    expect(text).not.toContain('上一章')
+  })
+
+  it('要点里的换行与措辞逐字透传，不做二次摘要', () => {
+    const multiline = '一、时间\n二、空间\n三、事件'
+    expect(draftShortOutlinePredecessor('zh-CN', { notes: multiline })).toContain(multiline)
   })
 })

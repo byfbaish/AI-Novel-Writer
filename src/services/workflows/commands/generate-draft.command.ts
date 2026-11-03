@@ -10,7 +10,10 @@ import { notePromptProjection } from '../../prompts/prompt-trace'
 import { appErrorMessage } from '../../../i18n/app-errors'
 import { sanitizeDraftText, composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, DRAFT_VISIBLE_TEXT_VERSION, isDraftVisibleTextVersion, type DraftVisibleTextVersion } from '../../../shared/draft-visible-text'
 import { DRAFT_RECONCILE_PURPOSE, draftReconciliationBlock } from '../../../shared/draft-reconciliation'
-import { DRAFT_SHORT_OUTLINE_PURPOSE, draftShortOutlinePrompt, draftShortOutlineBlock, shortOutlineSegmentBudget } from '../../../shared/draft-short-outline'
+import {
+  DRAFT_SHORT_OUTLINE_PREDECESSOR_TAIL_CHARS, DRAFT_SHORT_OUTLINE_PURPOSE,
+  draftShortOutlinePredecessor, draftShortOutlinePrompt, draftShortOutlineBlock, shortOutlineSegmentBudget,
+} from '../../../shared/draft-short-outline'
 export { sanitizeDraftText } from '../../../shared/draft-visible-text'
 import { synopsisSettingSectionsForDraft } from '../../../shared/synopsis-projection'
 import { projectScopedText } from '../../../shared/text-scope-tags'
@@ -80,6 +83,7 @@ import { extractWorldBuildingRules } from '../../../shared/worldbuilding-rules'
 import {
   assembleChapterMaterials,
   ChapterMaterialCapacityError,
+  previousChapterEnding,
   type ChapterMaterialAssembly,
   type ChapterMaterialReference,
   type FinalizedMaterialSource,
@@ -932,6 +936,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     let activeThreadContext = ''
     // P0-2：前文事实只在第 2 章起才有（第 1 章没有「前文」）。本书规则则每章都要。
     let consultationFacts: PrewriteFact[] = []
+    // R6：上一章要点，只给短细纲这一步用（正文那一步仍按既有形态，见 R2/R3）。
+    let predecessorNotes = ''
     // P1-1 制度：日序轴上「本章是第几天」没人知道（这一章还没写）。用**最近一个登记了
     // 日序的已定稿章**当作当前位置 —— 它只会比真实日序早，所以逾期只会少报、不会多报。
     let currentStoryDayOffset: number | null = null
@@ -946,6 +952,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       )
       finalizedSources = finalized.sources
       consultationFacts = finalized.consultationFacts
+      predecessorNotes = finalized.predecessorNotes
       // 晚于「最近一章」的日序不往回退：这里只取**最近一个非 null 的日序**，
       // 中间有缺日序的章就跳过它（W2 的「缺就说缺」只约束给模型的锚点文案，
       // 周期事件没有「第几天」这个输出，用更早的一天只会少报逾期）。
@@ -1137,11 +1144,16 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     const outlinePrompt = draftShortOutlinePrompt(writingLanguage, {
       // 本步没有 system 消息，作者本章指导只能靠蓝图 JSON 承载 → 不 drop userGuidance。
       chapterInfo: JSON.stringify(toBlueprintProjection(writerChapterInfo), null, 2),
-      // 前驱取上一章**定稿**原文（作者裁定给全文）；首章、或前驱仍是未定稿候选时退回
-      // 结尾摘录 —— 宁可少给，也不把未定稿候选当成已确立事实喂进"计划"。
-      predecessor: chapterMaterials.consumedFinalizedSources
-        .find(source => source.chapterNumber === this.chapterInfo.chapterNumber - 1)?.content?.trim()
-        || previousEnding,
+      // R6（作者 2026-11-04 裁定）：前驱 = 上一章**要点** + 结尾 ≤300 字，不再是全文。
+      // 全文会让这一步把上一章事件重新排成本章分段（D12 成对记录：同一蓝图 + 218 字强指导，
+      // 9B 4 次全重演）；而「上一章已完成的事」要点就是直接答案。
+      // 首章没有前驱 → 两块都空 → 整块省略（正常态，不是错误）。
+      predecessor: draftShortOutlinePredecessor(writingLanguage, {
+        notes: predecessorNotes,
+        // 只截 300：`previousEnding` 本身是 1,000 字（同一个函数，默认值不同），
+        // 1,000 那个上限是给开头重演守卫用的，不要顺手改它。
+        ending: previousChapterEnding(previousEnding, DRAFT_SHORT_OUTLINE_PREDECESSOR_TAIL_CHARS),
+      }),
       executionContract: chapterExecutionContract.rules,
       // 预算只依赖蓝图与本章目标字数：算不出（无 keyEvents）就整块省略，退回要点模式。
       segmentBudget: shortOutlineSegmentBudget(writingLanguage, this.chapterInfo.keyEvents, targetChars),
@@ -2363,6 +2375,15 @@ ${params.candidate.text}`,
      * 同一轮再渲染一遍就是两份措辞不一致的同一件事。
      */
     consultationFacts: PrewriteFact[]
+    /**
+     * R6：上一章的**要点**（`summary_snapshots.chapter_notes`，与连续性事实同源）。
+     *
+     * 短细纲的前驱用它回答「上一章已经发生了什么」，替代原来的上一章全文 —— 全文会让
+     * 这一步把上一章事件重新排成本章分段（D12 实测 4/4 全错）。取快照而不取
+     * `blueprints.notes`：两者在定稿后处理里同写一份（`finalization-generation.ts:107-112`），
+     * 但快照是本链连续性事实的唯一来源，跟着它走才不会出现「要点说一套、事实说另一套」。
+     */
+    predecessorNotes: string
   }> {
     const FULL_WINDOW = 5
     let finalizedContinuity: FinalizedContinuityProjection[] = []
@@ -2547,6 +2568,8 @@ ${params.candidate.text}`,
         storyDayLabel: projection.storyDayLabel ?? null,
       })),
       consultationFacts,
+      predecessorNotes: finalizedContinuity
+        .find(projection => projection.chapterNumber === currentChapter - 1)?.chapterNotes?.trim() ?? '',
     }
   }
 

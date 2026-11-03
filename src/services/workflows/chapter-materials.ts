@@ -380,11 +380,19 @@ export function adjacentEvidencePassages(
   }
 }
 
-export function previousChapterEnding(content: string): string {
+/**
+ * 取正文结尾片段：按码元上限截，再从第一个自然断句处起算，避免从半句话开头。
+ *
+ * `maxChars` 默认 1,000 —— **这个默认值是「开头重演守卫」的判据窗口**（80 字符连续覆盖），
+ * 不要为了别处的注入需求把它改小。短细纲要的 300 字由调用方显式传参
+ * （`draftShortOutlinePredecessor` 侧），两条需求共用这一份截断逻辑、两个上限。
+ */
+export function previousChapterEnding(content: string, maxChars: number = PREVIOUS_ENDING_MAX_CHARS): string {
+  const limit = Number.isSafeInteger(maxChars) && maxChars > 0 ? maxChars : PREVIOUS_ENDING_MAX_CHARS
   const trimmed = content.trim()
-  if (trimmed.length <= PREVIOUS_ENDING_MAX_CHARS) return trimmed
+  if (trimmed.length <= limit) return trimmed
 
-  const tail = trimmed.slice(-PREVIOUS_ENDING_MAX_CHARS)
+  const tail = trimmed.slice(-limit)
   const firstBoundary = /(?:\r?\n\s*\r?\n|[。！？!?][”’"'）)\]】」』]*|\.[”’"')\]]*(?=\s|$))/u.exec(tail)
   return firstBoundary
     ? tail.slice(firstBoundary.index + firstBoundary[0].length).trim() || tail.trim()
