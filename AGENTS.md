@@ -57,4 +57,4 @@ node scripts/check-doc-placement.mjs --status-of "期 2"   # 收口：把写着�
 | 改长篇结构（卷 / 单元 / 弧） | `design/architecture/long-form-readiness-review.md`（生产链）· `long-form-craft-alignment-assessment.md`（创作侧） |
 | 放 / 改 / 归档文档 | `docs/agents/documentation-charter.md` |
 | 找接下来做什么 | `plans/prompt-assembly-backlog.md` 顶部优先级表 |
-| 把活派给外部 agent | `docs/agents/copilot-channel.md` · `doubao-channel.md` · `task-board-channel.md`（建卡/认领/复核） |
+| 把活派给外部 agent | `docs/agents/copilot-channel.md` · `docs/agents/workbuddy-channel.md` · `docs/agents/doubao-channel.md` · `docs/agents/task-board-channel.md`（建卡/认领/复核） |
