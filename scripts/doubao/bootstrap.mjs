@@ -53,6 +53,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { DEFAULT_PORT, listTargets, pickChatPage, sleep, withChat } from './cdp.mjs'
+import { isUnsetProjectChip, pickProjectRow } from './project-chip.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(HERE, '..', '..')
