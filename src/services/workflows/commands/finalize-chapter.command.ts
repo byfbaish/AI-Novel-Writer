@@ -60,6 +60,7 @@ import type { Locale } from '../../../i18n/types'
 import type { FinalizedCharacterGenerationReceipt } from '../../../shared/finalized-character-generation'
 import { describeDrift } from '../../../shared/upstream-revisions'
 import { auditDraftHook } from '../../../shared/hook-payoff-audit'
+import { NAME_GRAZE_HINT_DEFAULT_ENABLED } from '../../../shared/hook-name-graze'
 import { summarizeDraftPayoffFindings } from '../../../shared/hook-payoff-report'
 import { findOutlineHookLine } from '../../../shared/hook-line-audit'
 import { parseHookLine } from '../../../shared/synopsis-hook-line'
@@ -67,6 +68,24 @@ import {
   parseResourceMovementExtraction,
   type LedgerExtractionDrops,
 } from '../../../shared/resource-ledger'
+
+/**
+ * 蓝图 `characters` → 专名表（C5 蹭线提示用）。去空、去重，保留出现顺序。
+ * 取不到 / 结构不符一律返回空表（调用点据此关掉提示，不报错）。
+ */
+function readProperNouns(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  const nouns: string[] = []
+  for (const item of value) {
+    if (typeof item !== 'string') continue
+    const noun = item.trim()
+    if (!noun || seen.has(noun)) continue
+    seen.add(noun)
+    nouns.push(noun)
+  }
+  return nouns
+}
 
 export interface FinalizeChapterParams {
   draftPath: string
@@ -935,10 +954,18 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
     // D18-C5 · 钩子未落地体检（产出层定稿侧，只报不拦；2026-11-04 首轮接线）。
     // 输入取蓝图 suspenseHook（正文 prompt 实际注入的文本），蓝图缺失才回退大纲钩子行。
     try {
-      const hookText = await this.resolveHookText(projectSession, project.path, snapshot.chapterNumber)
-      if (hookText) {
+      const hookInput = await this.resolveHookText(projectSession, project.path, snapshot.chapterNumber)
+      if (hookInput) {
         const hookReport = summarizeDraftPayoffFindings(
-          auditDraftHook({ hookText, draft: refinedDraftText }),
+          auditDraftHook({
+            hookText: hookInput.hookText,
+            draft: refinedDraftText,
+            // C5 蹭线提示（可插拔，D18 §11.14）：专名取蓝图 characters；
+            // 蓝图没有 characters 时传空表 + 关掉，fail-open。
+            nameGraze: hookInput.properNouns.length > 0
+              ? { properNouns: hookInput.properNouns, enabled: NAME_GRAZE_HINT_DEFAULT_ENABLED }
+              : { properNouns: [], enabled: false },
+          }),
           uiText,
         )
         if (hookReport) callbacks.log(hookReport)
@@ -1009,20 +1036,25 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
   /**
    * C5 的输入：优先蓝图 `suspenseHook`（正文 prompt 实际注入的就是它），
    * 蓝图没有该章时才回退到大纲钩子行（设计稿 §7 C5 行）。
+   *
+   * 同一个蓝图里顺带取 `characters` 作蹭线提示的专名表（D18 §11.14）——
+   * 反正已经读了一次 `db:blueprint-get`，不为此多打一次 IPC。
+   * 返回 `null` = 连钩子都取不到，调用点整段跳过体检。
    */
   private async resolveHookText(
     projectSession: ProjectSessionContext,
     projectPath: string,
     chapterNumber: number,
-  ): Promise<string | null> {
+  ): Promise<{ hookText: string; properNouns: string[] } | null> {
     const blueprint = await ipc.invokeWithProjectSession(
       projectSession,
       'db:blueprint-get',
       chapterNumber,
       projectPath,
-    ) as { suspenseHook?: string } | null
+    ) as { suspenseHook?: string; characters?: unknown } | null
+    const properNouns = readProperNouns(blueprint?.characters)
     const fromBlueprint = typeof blueprint?.suspenseHook === 'string' ? blueprint.suspenseHook.trim() : ''
-    if (fromBlueprint) return fromBlueprint
+    if (fromBlueprint) return { hookText: fromBlueprint, properNouns }
 
     const core = await ipc.invokeWithProjectSession(
       projectSession,
@@ -1031,7 +1063,9 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
     ) as { synopsis?: string } | null
     const line = typeof core?.synopsis === 'string' ? findOutlineHookLine(core.synopsis, chapterNumber) : null
     if (!line) return null
-    return parseHookLine(line)?.breakPoint.trim() || null
+    const breakPoint = parseHookLine(line)?.breakPoint.trim() || null
+    if (!breakPoint) return null
+    return { hookText: breakPoint, properNouns }
   }
 
   private async createBatchSnapshot(

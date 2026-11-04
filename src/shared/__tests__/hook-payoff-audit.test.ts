@@ -115,6 +115,63 @@ describe('裸文本入口（蓝图 suspenseHook，无「钩子：」标记）', 
   })
 })
 
+describe('C5 蹭线提示（C5-name-graze，可插拔、只报不拦）', () => {
+  // 真实形态的合成样本：过线段只有地名，悬念核（第三页中间 / 谁先翻到）正文 0 次。
+  // 6 字 ≥ 3，所以 C5-unplanted **不会**报 —— 这正是蹭线要补的那个缺口。
+  const GRAZE_HOOK = '第三段废料区那页抄件，最后会被谁先翻到'
+  const GRAZE_DRAFT = '他把车推过第三段废料区，风把灰吹到脸上。'
+  const NOUNS = ['第三段废料区', '陈砚']
+
+  it('命中时追加 C5-name-graze，且同时不报 C5-unplanted', () => {
+    const findings = auditDraftHook({
+      hookText: GRAZE_HOOK,
+      draft: GRAZE_DRAFT,
+      nameGraze: { properNouns: NOUNS },
+    })
+    const graze = findings.find(f => f.code === 'C5-name-graze')
+    expect(graze).toBeDefined()
+    expect(graze!.level).toBe('report')
+    expect(graze!.message).toContain('蹭线')
+    expect(graze!.message).toContain('整体落在人名/地名')
+    expect(graze!.message).toContain('只提示、不阻断、不改稿')
+    expect(graze!.metric).toEqual({ run: '第三段废料区', noun: '第三段废料区' })
+    expect(findings.some(f => f.code === 'C5-unplanted')).toBe(false)
+  })
+
+  it('enabled: false ⇒ 不含 C5-name-graze（其余判定不受影响）', () => {
+    const findings = auditDraftHook({
+      hookText: GRAZE_HOOK,
+      draft: GRAZE_DRAFT,
+      nameGraze: { properNouns: NOUNS, enabled: false },
+    })
+    expect(findings.some(f => f.code === 'C5-name-graze')).toBe(false)
+    expect(findings.some(f => f.code === 'C5-unplanted')).toBe(false)
+  })
+
+  it('不给 nameGraze ⇒ 行为与接线前逐字一致（向后兼容）', () => {
+    expect(auditDraftHook({ hookText: GRAZE_HOOK, draft: GRAZE_DRAFT })).toHaveLength(0)
+  })
+
+  it('properNouns 为空表 ⇒ 不报蹭线，C5 自身逻辑不变', () => {
+    const grazeHit = auditDraftHook({
+      hookText: GRAZE_HOOK,
+      draft: GRAZE_DRAFT,
+      nameGraze: { properNouns: [] },
+    })
+    expect(grazeHit.some(f => f.code === 'C5-name-graze')).toBe(false)
+    expect(grazeHit.some(f => f.code === 'C5-unplanted')).toBe(false)
+
+    // 未落地的样本仍然只报 C5-unplanted，不会因为接了蹭线而改口。
+    const unplanted = auditDraftHook({
+      hookText: '第一道因果纹灼烧皮肤带来的寿元透支危机已无法逆转',
+      draft: '他把袖子撸起来，皮肤在灯下泛着一层薄汗，随后又放下去。',
+      nameGraze: { properNouns: NOUNS },
+    })
+    expect(unplanted.some(f => f.code === 'C5-unplanted')).toBe(true)
+    expect(unplanted.some(f => f.code === 'C5-name-graze')).toBe(false)
+  })
+})
+
 describe('hookTokenCoverage：分母是钩子行', () => {
   it('钩子 token 全在目标里 ⇒ 1', () => {
     // 注意：tokenize 会丢掉含停用字的二元组（"停在""在半"因含「在」被丢），

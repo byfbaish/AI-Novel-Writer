@@ -48,3 +48,44 @@ describe('C5 未落地体检文案', () => {
     expect(text).toContain('不改稿')
   })
 })
+
+describe('C5 蹭线提示文案（C5-name-graze）', () => {
+  /** 蹭线命中：过线段整体是地名，C5-unplanted 因此不报。 */
+  function grazeFindings() {
+    return auditDraftHook({
+      hookText: '第三段废料区那页抄件，最后会被谁先翻到',
+      draft: '他把车推过第三段废料区，风把灰吹到脸上。',
+      nameGraze: { properNouns: ['第三段废料区'] },
+    })
+  }
+
+  it('蹭线 finding 走 C5 的 summarize，不串到 C3', () => {
+    const findings = grazeFindings()
+    expect(findings.some(item => item.code === 'C5-name-graze')).toBe(true)
+
+    const c5 = summarizeDraftPayoffFindings(findings, zh)
+    expect(c5).not.toBeNull()
+    expect(c5).toContain('C5')
+    expect(c5).toContain('蹭线')
+    expect(c5).toContain('第三段废料区')
+    expect(c5).toContain('已定稿')
+
+    // 关键：C3 那条线一个字都不能动，也不能被这条提示带出来。
+    expect(summarizeDraftCopyFindings(findings, zh)).toBeNull()
+  })
+
+  it('两种 C5 finding 同时存在时各占一句（未落地 + 蹭线）', () => {
+    // 构造输入：算法上两者互斥（同一 run 不可能既 <3 字又 ≥3 字），
+    // 所以这里直接给 findings 数组，验的是**文案拼装**不打架。
+    const text = summarizeDraftPayoffFindings([
+      ...unplantedFindings(),
+      ...grazeFindings(),
+    ], zh)
+    expect(text).not.toBeNull()
+    expect(text).toContain('钩子未落地体检（C5）')
+    expect(text).toContain('未落地')
+    expect(text).toContain('蹭线')
+    // 两句各自带引导语，不混成一句：
+    expect(text!.indexOf('未落地')).toBeLessThan(text!.indexOf('蹭线'))
+  })
+})

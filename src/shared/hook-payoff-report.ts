@@ -32,12 +32,22 @@ export function summarizeDraftCopyFindings(
   )
 }
 
-/** C5 · 未落地体检（正文定稿后跑）。无命中返回 null。 */
+/**
+ * C5 · 未落地体检（正文定稿后跑）。无命中返回 null。
+ *
+ * 同一行里带两种 finding：`C5-unplanted`（3 字线没过）与 `C5-name-graze`（过线了，
+ * 但整段落在人名 / 地名上 —— 蹭线提示，可插拔）。蹭线那条的 message 自带
+ * 「钩子疑似蹭线（C5）：」引导句，因此在本行里是**独立一句**，不与未落地那句混成一句。
+ * **不要**把它挪进 C3 的文案：C3 判的是"照抄"，这是"落地"的同一条血脉。
+ */
 export function summarizeDraftPayoffFindings(
   findings: PayoffFinding[],
   uiText: HookPayoffUiText,
 ): string | null {
-  const problems = messagesOf(findings, 'C5-unplanted', uiText)
+  const problems = [
+    ...messagesOf(findings, 'C5-unplanted', uiText),
+    ...messagesOf(findings, 'C5-name-graze', uiText),
+  ]
   if (problems.length === 0) return null
   const hint = uiText(
     '（正文已定稿；这是提示，不阻断，也不改稿。）',

@@ -5,6 +5,7 @@ import { analyzeBlueprintVerbatimCopy } from '../../../shared/blueprint-verbatim
 import { assertNotDegenerateVisibleText, findVisibleTextDegeneracies } from '../../../shared/visible-text-integrity'
 import { describeProseShapeViolation, measureProseShape } from '../../../shared/prose-shape'
 import { auditDraftHook } from '../../../shared/hook-payoff-audit'
+import { NAME_GRAZE_HINT_DEFAULT_ENABLED } from '../../../shared/hook-name-graze'
 import { summarizeDraftCopyFindings } from '../../../shared/hook-payoff-report'
 import { buildBoundaryNotice } from '../../../shared/chapter-boundary'
 import { projectArchitectureForDraft } from '../../../shared/architecture-projection'
@@ -1672,9 +1673,16 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       // D18-C3 · 照抄体检（产出层，只报不拦；2026-11-04 首轮接线）。
       // 判的是「正文末段是否把注入的钩子整句搬走」——只写步骤日志，不改稿、不阻断。
       try {
+        // 专名表取本章蓝图 characters（就是注入 prompt 的那份）；取不到就关掉蹭线提示。
+        const properNouns = Array.isArray(this.chapterInfo.characters)
+          ? this.chapterInfo.characters.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          : []
         const hookFindings = auditDraftHook({
           hookText: this.chapterInfo.suspenseHook?.trim() || '',
           draft: cleanDraftText,
+          nameGraze: properNouns.length > 0
+            ? { properNouns, enabled: NAME_GRAZE_HINT_DEFAULT_ENABLED }
+            : { properNouns: [], enabled: false },
         })
         const hookReport = summarizeDraftCopyFindings(hookFindings, uiText)
         if (hookReport) callbacks.log(hookReport)

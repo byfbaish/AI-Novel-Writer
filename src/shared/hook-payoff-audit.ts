@@ -8,6 +8,11 @@
  * 两条都**只报不改**，且**只判当章**（作者 2026-11-04 裁定 ⑫：主线之外不承诺绝对兑现，
  * 所以这里不建"后面几章必须收"的账）。
  *
+ * ## 附加旁证：C5 蹭线（`C5-name-graze`，可插拔、默认开）
+ * C5 的 3 字线会放过「过线段整体是人名 / 地名」（第 11 章靠「第三段废料区」6 字过线，
+ * 悬念核 0 落地）。判据在 `hook-name-graze.ts`，这里只在调用点给了 `nameGraze` 时追加一条
+ * finding，**不参与判定、不改 C5 结论**。开关唯一：`NAME_GRAZE_HINT_DEFAULT_ENABLED`。
+ *
  * ## 阈值：0.6 已用真实样本标定过一轮（2026-11-04）
  * 样本＝作者项目《师父派我来除魔》已落盘的 10 章成稿（第 1–10 章），比对端分别取大纲钩子行
  * 与蓝图 `suspenseHook`，共 20 组：
@@ -26,6 +31,7 @@
  * （只有整句被搬才触发），那会偏离设计稿的单一口径 —— 留到下一轮标定再定。
  */
 
+import { detectNameOnlyGraze } from './hook-name-graze'
 import { parseHookLine, type ParsedHookLine } from './synopsis-hook-line'
 import { tokenize } from './suspense-hook-alignment'
 
@@ -48,14 +54,22 @@ export const HOOK_COPY_RATIO_DEFAULT = 0.6
  */
 export const HOOK_PLANTED_MIN_RUN = 3
 
+/**
+ * C5 蹭线提示的**旁证**指标：命中的最长公共片段与容纳它的专名。
+ *
+ * `PayoffFinding.metric` 因此是「数字 ∪ 对象」：C3 是重合率、C5-unplanted 是片段长度，
+ * 而蹭线这条要的是片段本身（长度信息已在 `run` 里，且 3 字线已由 C5 判过）。
+ */
+export type NameGrazeMetric = { run: string; noun: string }
+
 export type PayoffFinding = {
-  code: 'C3-copy' | 'C5-unplanted'
+  code: 'C3-copy' | 'C5-unplanted' | 'C5-name-graze'
   level: 'report'
   message: string
   /** 出问题的原文片段（钩子行或正文末段）。 */
   excerpt: string
-  /** C3 = 重合率；C5 = 共享实词数。给标定用，不进界面文案。 */
-  metric: number
+  /** C3 = 重合率；C5-unplanted = 共享实词数；C5-name-graze = `{ run, noun }`。给标定用，不进界面文案。 */
+  metric: number | NameGrazeMetric
 }
 
 function toSet(tokens: string[]): Set<string> {
@@ -124,6 +138,21 @@ export type DraftHookAuditInput = {
   draft: string
   /** 覆盖默认阈值（标定用）。 */
   copyRatioThreshold?: number
+  /**
+   * C5 蹭线提示（**可插拔**）：给了才跑，`enabled: false` 关掉。
+   *
+   * `properNouns` 取该章蓝图 `characters`（人名 / 地名）。取不到时调用点传
+   * `{ properNouns: [], enabled: false }` —— 这条提示永远 fail-open，不因缺数据报错。
+   * 默认开关常量在 `hook-name-graze.NAME_GRAZE_HINT_DEFAULT_ENABLED`，调用点读它。
+   */
+  nameGraze?: NameGrazeAuditOption
+}
+
+export type NameGrazeAuditOption = {
+  /** 该章的专名表（蓝图 `characters`）。 */
+  properNouns: readonly string[]
+  /** 显式关闭。缺省视为开（由调用点按 `NAME_GRAZE_HINT_DEFAULT_ENABLED` 决定传不传 false）。 */
+  enabled?: boolean
 }
 
 /**
@@ -176,6 +205,24 @@ export function auditDraftHook(input: DraftHookAuditInput): PayoffFinding[] {
       excerpt: breakPoint.slice(0, 120),
       metric: plantedRun,
     })
+  }
+
+  // C5 蹭线提示（可插拔）· 过线段整体落在人名 / 地名上 —— 与 C5-unplanted **互斥**：
+  // 那条判「片段 < 3 字」，这条判「片段 ≥ 3 字但只是专名」，同一 `run` 不可能两边都中。
+  // 只在调用点显式给了 `nameGraze` 时才跑，且 `enabled: false` 直接跳过（插拔点）。
+  if (input.nameGraze && input.nameGraze.enabled !== false) {
+    const hit = detectNameOnlyGraze(breakPoint, draft, input.nameGraze.properNouns)
+    if (hit) {
+      findings.push({
+        code: 'C5-name-graze',
+        level: 'report',
+        message:
+          `钩子疑似蹭线（C5）：与正文的最长共同片段「${hit.run}」整体落在人名/地名「${hit.noun}」上，`
+          + '悬念核可能在正文里没有真正落地。请人判一次；只提示、不阻断、不改稿。',
+        excerpt: hit.run,
+        metric: { run: hit.run, noun: hit.noun },
+      })
+    }
   }
 
   return findings
