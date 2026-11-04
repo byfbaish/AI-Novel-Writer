@@ -56,7 +56,7 @@ docs/
 | **把活派给 Copilot CLI**（无头、另一进程、可校验副作用） | [`agents/copilot-channel.md`](agents/copilot-channel.md) —— 落点/PATH · 参数速查 · 权限模型 · 工具别名 · 已验证与未验证清单 |
 | **把活派给豆包电脑版**（桌面 UI，只能 CDP 驱动；用它的客户端积分） | [`agents/doubao-channel.md`](agents/doubao-channel.md) —— Launcher 吞参数真相 · 独立 profile 起法 · `doubao.mjs` 命令速查 · §5 跨 Agent 红线 |
 | **让外部 agent 自己来认领看板任务**（同机、拉取式、干完交 review 不自结算） | [`agents/task-board-channel.md`](agents/task-board-channel.md) —— `dsh-task-board` CLI/MCP · 发布约定 · 各 harness 接入片段 · 退出码与让位规则 · **§5.1 禁自结算** |
-| **多 agent 并行改代码**（worktree 隔离 / 端口写死 / Master 合并） | [`agents/worktree-parallel.md`](agents/worktree-parallel.md) —— 槽位表（5180/9222 · 5181/9223 · 5182/9224）· 三条隔离机制 · 禁 `test:node` 等红线 |
+| **多 agent 并行改代码**（worktree 隔离 / 端口写死 / Master 合并） | [`agents/worktree-parallel.md`](agents/worktree-parallel.md) —— 槽位表（5180/9222 · 5181/9223 · 5182/9224 · 5183/9225）· **§3.1 固定归属**（develop=主控 · wt-1=豆包 · wt-2=WorkBuddy · wt-3=DSH）· 三条隔离机制 · 禁 `test:node` 等红线 |
 | **放文档 / 归档文档 / 判断该不该新建一份** | [`agents/documentation-charter.md`](agents/documentation-charter.md) —— 四层模型 + 单一事实源 + 完成定义 + 反例库 |
 | **要跑某个构建/验收/运维脚本，或想知道「改完这个该跑什么」** | [`../scripts/README.md`](../scripts/README.md) —— 按用途分类 + 「何时跑」+ 谁调用（npm script / CI / 手工） |
 | 产品术语 / 事实源边界 | [`product-domain.md`](product-domain.md) |

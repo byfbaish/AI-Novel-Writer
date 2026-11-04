@@ -30,15 +30,19 @@ function applyDevEnvironmentFixes(command: string): void {
 }
 
 // Parallel-worktree isolation: one hard-coded slot per checkout.
-//   slot 1 / 2  ->  sibling git worktrees (../wt-1, ../wt-2), each needs its own
-//                   dev-server port, CDP port and Chromium profile.  The profile
-//                   matters as much as the ports: Electron's single-instance lock
-//                   and the sqlite/project runtime both key off `userData`, so two
-//                   instances sharing it would evict each other.
+//   slot 1 / 2 / 3  ->  sibling git worktrees (../wt-1, ../wt-2, ../wt-3), each needs
+//                       its own dev-server port, CDP port and Chromium profile.  The
+//                       profile matters as much as the ports: Electron's
+//                       single-instance lock and the sqlite/project runtime both key
+//                       off `userData`, so two instances sharing it would evict each
+//                       other.
 // Slot 0 (unset) is the historical default and keeps every value unchanged.
+// Ownership (which external platform works in which worktree) is NOT encoded here:
+// it follows the slot table in docs/agents/worktree-parallel.md §3.1.
 const WORKTREE_SLOTS = {
   '1': { devServerPort: 5181, cdpPort: 9223 },
   '2': { devServerPort: 5182, cdpPort: 9224 },
+  '3': { devServerPort: 5183, cdpPort: 9225 },
 } as const
 
 type WorktreeSlot = { devServerPort: number; cdpPort?: number; userDataDir?: string }

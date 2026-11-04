@@ -4,6 +4,7 @@
  *
  *   node scripts/worktree-dev.mjs 1     # wt-1 -> renderer 5181 / CDP 9223
  *   node scripts/worktree-dev.mjs 2     # wt-2 -> renderer 5182 / CDP 9224
+ *   node scripts/worktree-dev.mjs 3     # wt-3 -> renderer 5183 / CDP 9225
  *
  * Why a script instead of `AI_NOVEL_WORKTREE_SLOT=1 pnpm dev`:
  *   1. `pnpm` is broken under this machine's sh (npm shim resolves node to a
@@ -25,7 +26,7 @@ import { fileURLToPath } from 'node:url'
 import { ensureElectronNativeBinding } from './prepare-native-for-electron.mjs'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const SUPPORTED_SLOTS = ['1', '2']
+const SUPPORTED_SLOTS = ['1', '2', '3']
 
 const slot = String(process.argv[2] ?? '').trim()
 if (!SUPPORTED_SLOTS.includes(slot)) {
