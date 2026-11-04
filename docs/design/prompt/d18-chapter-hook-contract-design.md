@@ -796,3 +796,41 @@
 - **C**：彻底退役非单元大纲路径（大纲一律按单元批生成）。改动面最大（UI、续跑、指纹、旧项目兼容），不建议在 D18-② 里做。
 
 **没做**：本轮没有改代码、没有实机复验；A 方案落不落地取决于作者选哪条。选项确定后再单开提交（`arc-position.ts` + 单测 + 本节状态更新）。
+
+### 11.11 C1/C2 首条单元批实机读数（2026-11-04 晚，观察副本、作者库零写入）
+
+**目的**：接线后在**真实单元批产物**上取一次 C1 / C1b / C2 的读数 —— 会不会误报、会不会因内部错误静默跳过。
+
+**方法**：
+
+- 不动作者项目：把项目目录整份复制到 `C:\develop\workspace\AI-writer\_scratch-d18\师父派我来除魔-观察副本`，改副本 `.ai-novel/project.json` 的 `projectId` 为 `4a038973-cc48-4f88-973e-9ce2b661ff29`，把副本路径登记进 dev VELA_HOME 的 `recent-projects.json`（原文件备份 `.bak-d18`），在运行中的 APP 里 `openProject` 打开。观察结束已切回作者项目并恢复 `recent-projects.json`。
+- 副本 checkpoint 与作者一致：`synopsis_range 16–17`、`synopsis_unit_cursor {volumeIndex:4, unitIndex:2, writtenInVolume:2}`、`synopsis_covered_to 17`、`synopsis_facts_fingerprint 13sbmpn`。
+- 在副本上跑 `generate_architecture`，`selectedSteps:["synopsis"]`（只跑大纲，避免重写 premise / characters 导致源事实指纹失配），单元批 → 卷 4 单元 2（第 18–19 章）。
+- 产物后在渲染进程 import `src/shared/hook-line-audit.ts` 的 `auditOutlineHooks(core.synopsis)` 取 findings，并与工作流日志对照。
+
+**结果**（runId `36db126f-13fa-496d-9ca8-6117e01e76f5`；2026-11-04 23:17:44–23:21:05，completed，约 3 分 21 秒）：
+
+- 实际写 2 章（18–19），日志「本单元实际写 2 章（第 18–19 章）；下一个单元：卷 4 单元 3（本卷已写 4 章）」；前缀分层「合计 1361 字 / degraded=l3-handoff-missing」。
+- 新增两行钩子（DB 原文，副本 synopsis 11 532 → 13 360 字；样本 `scripts/.tmp/samples/scratch-unit-18-19-hooks.txt`）：
+  1. 第 18 章「钩子：危机降临 — 陈砚把最后一块伴生矿从壁里撬出来，矿壁顺着镐痕裂开一道新缝，缝里渗出的灵气颜色从青灰变成暗红｜种在：陈砚在丙七支脉挖出最后一块伴生矿那一处」
+  2. 第 19 章「钩子：信息炸弹 — 执事合上监测册往峰顶方向走，册子封面上按在丙七号那栏的红印还没干｜种在：矿道口那名执事手里的活脉监测册」
+  两行都没有问号、没有心理活动谓语、都有「种在：」。
+- `auditOutlineHooks` 全 19 章 findings = 0，18–19 范围内也是 0；工作流日志**没有**「钩子行体检」行 —— 与「只在命中时 log」一致。这同时排除了「内部错误被 catch 掉」：catch 分支会单独记「钩子行体检跳过」。
+- 负对照：把第 20 章合成钩子「钩子：悬念截断 — 他想知道黑笔账什么时候上门？｜种在：考课簿」临时追加到副本 synopsis 末尾，同一函数立即返回 `C1b-format`（问号 + 心理活动谓语）与 `C2-anchor`（断点与本章块无共享实词）⇒ 真实运行时这两档确实会报。
+
+**能说明什么**：
+
+- 新模板 + 单元批的第一个真实样本上，C1 / C1b / C2 **零误报**；接线点在真实运行时可达（负对照证明）。
+- 只能说明「不误报」，不能说明「不漏报」：样本只有 1 个单元 / 2 章，且这一轮模型恰好合规。
+- C2 的比对端是「本章块去掉钩子行后的文本」（§11.7 修的 bug），所以负对照能命中。
+
+**没取到的读数**：
+
+- C3 / C5：没有正文（单元批只跑大纲；作者项目正文链要 12–16 章定稿才能继续往下写）。
+- C1 重跑权限仍未开放（本轮只报）。
+
+**证据与边界**：
+
+- 副本 `C:\develop\workspace\AI-writer\_scratch-d18\师父派我来除魔-观察副本`（43MB、19 章）不在仓库内，未跟踪。
+- 观察前后只读核对作者库 `project_core.synopsis` 均为 11 532 字（未被写入）。
+- 脚本 `scripts/.tmp/audit-live.mjs`、`dump-syn.mjs`、`open-copy.mjs` 均未跟踪。
