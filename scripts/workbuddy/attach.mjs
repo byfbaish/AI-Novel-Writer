@@ -324,6 +324,34 @@ export function isSettledSignal({
   return baselineReply !== null && replyText !== baselineReply
 }
 
+/**
+ * 归属护栏用的纯路径比较：Windows 大小写不敏感，'C:\\a\\b' 与 'c:/a/b/' 必须等价。
+ */
+export function samePath(a, b) {
+  const norm = value => String(value ?? '').replace(/[\\/]+/g, '/').replace(/\/+$/, '').toLowerCase()
+  const left = norm(a)
+  return left !== '' && left === norm(b)
+}
+
+/**
+ * 归属护栏：WorkBuddy 只准在 pinnedCwd（wt-2）里干活（docs/agents/worktree-parallel.md §3.1）。
+ *
+ * 只做纯判断，打印与退出码在 CLI 层：返回 {ok:true}（forced 表示走了 --force），或 {ok:false, reason}。
+ * --force 是人工授权的唯一出口，必须在报告里写明原因。
+ */
+export function checkPinnedCwd({ cwd, pinnedCwd, force = false } = {}) {
+  if (!cwd) return { ok: false, reason: '缺少目标目录' }
+  if (!pinnedCwd) return { ok: false, reason: '未配置归属目录（pinnedCwd）' }
+  if (samePath(cwd, pinnedCwd)) return { ok: true, forced: false }
+  if (force) return { ok: true, forced: true }
+  return {
+    ok: false,
+    reason:
+      '目标目录不在本通道的固定归属里：\n  请求=' + cwd + '\n  归属=' + pinnedCwd +
+      '\n（WorkBuddy 固定用 wt-2，见 docs/agents/worktree-parallel.md §3.1；确需排障时加 --force，并在报告里写明）',
+  }
+}
+
 const PLACEHOLDER = /^(WorkBuddy|正在思考|思考中|正在生成|正在处理)$/
 const CHROME_LINE = [
   /^WorkBuddy$/,

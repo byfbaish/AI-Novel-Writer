@@ -10,6 +10,7 @@ import {
   buildSpaceActionExpression,
   buildStartCommands,
   buildTailTextExpression,
+  checkPinnedCwd,
   extractReply,
   isSettledSignal,
   looksLikePlaceholder,
@@ -17,6 +18,7 @@ import {
   pickPage,
   readRunState,
   resolveExePath,
+  samePath,
   snapshotInPage,
   stripAssistantChrome,
   summarizeSnapshot,
@@ -381,4 +383,35 @@ describe('isSettledSignal（回合收尾判据）', () => {
     expect(isSettledSignal({ ...base, agentCount: 1, messageCount: 1, baselineCount: 1, baselineMessageCount: 1, baselineReply: 'OK' })).toBe(false)
   })
 })
+describe('checkPinnedCwd（归属护栏：WorkBuddy 只准 wt-2）', () => {
+  const wt2 = 'C:\\develop\\workspace\\AI-writer\\wt-2'
+
+  it('大小写 / 分隔符 / 尾斜杠等价都算命中归属', () => {
+    expect(samePath(wt2, 'c:/develop/workspace/AI-writer/wt-2/')).toBe(true)
+    expect(checkPinnedCwd({ cwd: 'C:/develop/workspace/AI-writer/WT-2', pinnedCwd: wt2 })).toEqual({ ok: true, forced: false })
+  })
+
+  it('回归：--cwd 指到 wt-1 / develop 一律拒绝（2026-11-05 复核打回点：原先静默接受任意目录）', () => {
+    const wt1 = checkPinnedCwd({ cwd: 'C:/develop/workspace/AI-writer/wt-1', pinnedCwd: wt2 })
+    expect(wt1.ok).toBe(false)
+    expect(wt1.reason).toContain('固定归属')
+    expect(wt1.reason).toContain('--force')
+    expect(checkPinnedCwd({ cwd: 'C:/develop/workspace/AI-writer/develop', pinnedCwd: wt2 }).ok).toBe(false)
+  })
+
+  it('--force 是唯一出口，返回 forced=true 让 CLI 打警告', () => {
+    expect(checkPinnedCwd({ cwd: 'C:/develop/workspace/AI-writer/wt-1', pinnedCwd: wt2, force: true })).toEqual({ ok: true, forced: true })
+  })
+
+  it('前缀相近但不同的目录不算命中（wt-20 ≠ wt-2）', () => {
+    expect(checkPinnedCwd({ cwd: 'C:/develop/workspace/AI-writer/wt-20', pinnedCwd: wt2 }).ok).toBe(false)
+  })
+
+  it('缺参时不放行（宁可不干，不能猜目录）', () => {
+    expect(checkPinnedCwd({}).ok).toBe(false)
+    expect(checkPinnedCwd({ cwd: wt2 }).ok).toBe(false)
+    expect(checkPinnedCwd({ cwd: '   ', pinnedCwd: wt2 }).ok).toBe(false)
+  })
+})
+
 

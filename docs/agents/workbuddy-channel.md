@@ -55,7 +55,7 @@ if (n && /^\d+$/.test(n)) { electron.app.commandLine.appendSwitch('remote-debugg
 
 `status` / `task` 连不上 9333 时：
 
-- exit code **2**，标准输出末尾是 `NEED_HUMAN_DEBUG`，横幅里有三条可直接粘贴的命令（PowerShell / cmd / 仓库脚本）；
+- exit code **2**，横幅写到 **stderr**（最后一行是 `NEED_HUMAN_DEBUG`），stdout 只留给 `--json` 之类的机器可读输出；横幅里有三条可直接粘贴的命令（PowerShell / cmd / 仓库脚本）；
 - **agent 的硬约定**：立刻把整段横幅（不是摘要）发给作者；最多试 1 次；**不要**自己 spawn WorkBuddy.exe，**不要**杀别人的进程；作者说「启动好了」再重跑原命令；
 - 作者用 cmd 启动：`cmd /c scripts\workbuddy\start-workbuddy-debug.cmd`；用 PowerShell：
 
@@ -91,7 +91,7 @@ node scripts/workbuddy/workbuddy-attach.mjs task --file 任务书.md
 node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会话追问（不新建）
 ```
 
-选项：`--session <id>` · `--timeout 秒`（默认 900）· `--json` · `--no-wait` · `--force`（跳过 cwd 核对，慎用）· `--port` · `--model <名字>`（见 §4）。
+选项：`--session <id>` · `--timeout 秒`（默认 900）· `--json` · `--no-wait` · `--port` · `--model <名字>`（见 §4）· `--cwd <目录>`（默认且只允许 wt-2；指到别处 exit 1）· `--force`（越过归属护栏，排障用，报告里写明）。
 
 退出码：**0** 成功 · **1** 失败 · **2** 未连接（`NEED_HUMAN_DEBUG`）· **3** CLI 缺失（兜底通道）· **4** 等回复超时 · **5** 高峰时段拒绝派活。
 和豆包一样：**exit 0 只代表「拿到了稳定回复」，不代表任务做对了**——对错看任务书里的验收条件和 `## [Tn] DONE/BLOCKED` 标记。
@@ -105,7 +105,7 @@ node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会�
 | slot 2 | `wt-2`（5182 / 9224） | **WorkBuddy（本通道）** |
 | slot 3 | `wt-3`（5183 / 9225） | DeepSeek Harness |
 
-- 归属固定、不抢：WorkBuddy 不许在 develop 或 wt-1 里改文件；`--cwd` 改到别处等于绕过归属，默认拒绝。
+- 归属固定、不抢：WorkBuddy 不许在 develop 或 wt-1 里改文件；`--cwd` 指到别处会**直接 exit 1 拒绝**（`checkPinnedCwd`），只有 `--force` 能越过，且必须在报告里写明原因。
 - 分配前分支要 reset 到主线 HEAD（`git -C ../wt-2 reset --hard <main HEAD>`），否则平台在旧提交上干活。
 - 细则与「运行态 ≠ 归属」的探测方法见 [worktree-parallel.md §3.1 / §11](worktree-parallel.md)。
 
@@ -186,7 +186,7 @@ node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会�
 |---|---|
 | `status` exit 2 / `NEED_HUMAN_DEBUG` | 9333 没监听：按 §2.1 让作者重启 Debug 实例；确认旧实例已在托盘退出 |
 | `/json/version` 通但 `hasEditor=false` | 页面还在启动或开的是别的窗口；等 5s 重跑 `status` |
-| 「侧栏找不到空间 X 的新建按钮」 | 该目录还没在 WorkBuddy 里打开过：让作者打开一次 wt-2，或脚本用 `--cwd` 指到已存在的空间 |
+| 「侧栏找不到空间 wt-2 的新建按钮」 | 该目录还没在 WorkBuddy 里打开过：让作者打开一次 wt-2。**不要**换目录——归属固定，`--cwd` 指到别处会被拒 |
 | 「模型选择器里没有 X」 | 模型下架/改名：`status` 看 `chips.model`，用 `--model` 试现名，再更新 `model-policy.mjs` 白名单 |
 | 发送后输入框还有内容 | 发送按钮被挡（弹层/草稿）：`read` 看有没有回复；重跑会先清空编辑器 |
 | 等回复超时（exit 4） | 模型在长思考：加大 `--timeout`；或 `read` 看看是否已经答完只是没触发稳定信号。**2026-11-05 踩过**：界面早就答完却一直 exit 4，根因是收尾基线取在「打开新草稿之前」的快照上（`agentCount=1`），`grew` 永远 false ⇒ 已改成打字后取基线 + `messageCount +2` / 正文变化兜底（`isSettledSignal`，有单测） |

@@ -38,6 +38,7 @@ import {
   buildCurrentSessionExpression,
   readRunState,
   isSettledSignal,
+  checkPinnedCwd,
   extractReply,
   summarizeSnapshot,
   buildModelItemsExpression,
@@ -636,7 +637,8 @@ function usage() {
     '  node scripts/workbuddy/workbuddy-attach.mjs task --file 任务书.md',
     '  node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会话追问（不新建）',
     '',
-    '选项：--session <id> 指定会话 · --timeout 秒（默认 900） · --json · --no-wait · --force（跳过 cwd 核对） · --port 9333',
+    '选项：--session <id> 指定会话 · --timeout 秒（默认 900） · --json · --no-wait · --port 9333',
+    '     --cwd <目录>（只允许 wt-2；改到别处会被拒） · --force（越过归属护栏，排障用，报告里写明）',
     '     --model <名字> 显式指定模型（视为人工授权，绕过高峰拦截；只允许 Hy4 / DeepSeek-V4.1-Flash）',
     '',
     '模型策略（自动）：23:00–08:00 用 Hy4（夜间限免）· 工作日 09:00–12:00 / 14:00–18:00 是 DeepSeek',
@@ -666,6 +668,14 @@ async function main() {
   }
 
   if (command === 'help' || matches(flags, 'help')) { log(usage()); return EXIT.ok }
+
+  // 归属护栏：--cwd 只能指向 wt-2（归属固定，见 docs/agents/worktree-parallel.md §3.1）
+  const pin = checkPinnedCwd({ cwd: args.cwd, pinnedCwd: DEFAULT_CWD, force: args.force })
+  if (!pin.ok) {
+    process.stderr.write('[refuse] ' + pin.reason + '\n')
+    return EXIT.fail
+  }
+  if (pin.forced) process.stderr.write('[warn] --force 已越过归属护栏：本次目标 = ' + args.cwd + '\n')
 
   try {
     if (command === 'status') return await commandStatus(args)
