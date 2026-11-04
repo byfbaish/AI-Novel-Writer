@@ -209,14 +209,20 @@ export function auditOutlineHooks(synopsis: string): HookAuditResult {
 
   let chaptersWithHook = 0
   for (const block of blocks) {
-    const text = block.lines.join('\n')
     let hook: ParsedHookLine | null = null
-    for (const line of block.lines) {
+    let hookLineIndex = -1
+    block.lines.forEach((line, index) => {
       const parsed = parseHookLine(line)
-      if (parsed) hook = parsed
-    }
+      if (parsed) {
+        hook = parsed
+        hookLineIndex = index
+      }
+    })
     if (hook) chaptersWithHook += 1
-    findings.push(...auditChapterHook(block.chapter, hook, text))
+    // 钩子行本身不属于「本章正文」：比对 C2 / C4 时必须把它排除，否则断点永远与
+    // 自己所在的这一行共享实词，C2 变成恒不报的空判据（2026-11-04 接线时发现）。
+    const chapterText = block.lines.filter((_, index) => index !== hookLineIndex).join('\n')
+    findings.push(...auditChapterHook(block.chapter, hook, chapterText))
   }
 
   return { findings, chaptersWithHook, chaptersChecked: blocks.length }

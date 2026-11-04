@@ -137,3 +137,27 @@ describe('auditOutlineHooks：按章切块', () => {
     expect(result.findings).toHaveLength(0)
   })
 })
+
+describe('C2 与钩子行自身的隔离（2026-11-04 接线回归）', () => {
+  it('钩子行自带的词不能算作「本章正文」的共享实词', () => {
+    // 正文里没有「尸骨」二字 —— 唯一的重合来源就是钩子行本身。若把钩子行算进
+    // 比对文本，C2 会永远不报（空判据）。
+    const synopsis = [
+      '## 第1章：门口',
+      '他把门推开了。',
+      '钩子：悬念截断 — 尸骨停在半空｜种在：尸骨',
+    ].join('\n')
+    const result = auditOutlineHooks(synopsis)
+    expect(result.findings.some(f => f.code === 'C2-anchor' && f.chapter === 1)).toBe(true)
+  })
+
+  it('正文确实共享实词时不报 C2', () => {
+    const synopsis = [
+      '## 第1章：门口',
+      '赵铎的尸骨停在半空。',
+      '钩子：悬念截断 — 尸骨停在半空｜种在：尸骨',
+    ].join('\n')
+    const result = auditOutlineHooks(synopsis)
+    expect(result.findings.some(f => f.code === 'C2-anchor')).toBe(false)
+  })
+})

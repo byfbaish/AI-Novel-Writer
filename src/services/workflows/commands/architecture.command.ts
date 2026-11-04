@@ -49,6 +49,7 @@ import { declareTraceScopeChapterRange } from '../../prompts/trace-scope'
 import { CANONICAL_PROJECT_DIRECTORY } from '../../../shared/project-format'
 import { formatChapterPosition } from '../../../shared/chapter-position'
 import { outlineChapterHeading, parseOutlineChapterHeading } from '../../../shared/chapter-heading'
+import { auditOutlineHooks } from '../../../shared/hook-line-audit'
 import {
   BaseWorkflowCommand,
   injectWritingSkillIntoSession,
@@ -875,6 +876,55 @@ export function summarizeDispositionFindings(
   return uiText(
     `⚠️ 性格引用体检：${problems.join('；')}。（大纲已保存；这是提示，不阻断。）`,
     `⚠️ Disposition citation check: ${problems.join('; ')}. (The outline was saved; this is advisory only.)`,
+  )
+}
+
+/**
+ * 大纲写完后的**钩子行体检**（D18 的 C1 / C1b / C2 / C4）：只报告，不阻断、不重跑。
+ *
+ * 判定在 `auditOutlineHooks`（`src/shared/hook-line-audit.ts`）；这里只做两件事：
+ * 把只属于本批区间（`from`–`to`）的 finding 挑出来，翻成一句人话。
+ *
+ * ## 接线第一轮：C1 也先只报，不给重跑权限
+ *
+ * 设计稿 §7 把 C1（结构事故）定成唯一的 `accident` 档（⇒ 重跑该单元），但接线顺序
+ * 明确要求「先只报、不重跑」：判据刚上生产，还没有误报率读数，而重跑的成本是一个
+ * 单元。等这批读数够了，再单独给 C1 重跑权限（设计稿 §11.2）。
+ *
+ * 返回 null 表示无需提示（本批没有章条目 / 全部合规）。
+ */
+/** @internal 导出只为可单测；生产调用点只有 `execute` 内的那一处。 */
+export function summarizeHookAuditFindings(
+  body: string,
+  from: number,
+  to: number,
+  uiText: UiText,
+): string | null {
+  const audit = auditOutlineHooks(body)
+  const findings = audit.findings.filter(item => item.chapter === null || (item.chapter >= from && item.chapter <= to))
+  if (findings.length === 0) return null
+
+  const shown = findings.slice(0, 4).map(item => uiText(item.message, item.message).replace(/。$/u, ''))
+  const problems = [...shown]
+  if (findings.length > shown.length) {
+    problems.push(uiText(
+      `另有 ${findings.length - shown.length} 处钩子行问题`,
+      `${findings.length - shown.length} more hook-line issue(s)`,
+    ))
+  }
+  const accidents = findings.filter(item => item.level === 'accident').length
+  const hint = accidents > 0
+    ? uiText(
+      '（大纲已保存；本轮只报不重跑。结构问题请按提示改这一行，观察一段后再给 C1 重跑权限。）',
+      '(The outline was saved; this round reports only, no rerun. Fix the line per the hint; C1 rerun will be enabled after observation.)',
+    )
+    : uiText(
+      '（大纲已保存；这是提示，不阻断，也不重跑。）',
+      '(The outline was saved; this is advisory only — no block, no rerun.)',
+    )
+  return uiText(
+    `⚠️ 钩子行体检（C1/C1b/C2/C4）：${problems.join('；')}。${hint}`,
+    `⚠️ Hook-line check (C1/C1b/C2/C4): ${problems.join('; ')}. ${hint}`,
   )
 }
 
@@ -3594,6 +3644,21 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     if (!confirmedBody) {
       // persistAndRaiseResume 已以中断错误终结；此处仅为类型安全的兜底。
       throw new Error(text('情节大纲未完成且无法保存', 'The plot outline is incomplete and could not be saved.'))
+    }
+
+    // D18 C1/C1b/C2/C4 钩子行体检（只报告不阻断；接线第一轮 C1 也不重跑）：
+    // 只在单元批跑 —— 判定合同要求「本次生成的单元」，不扫历史大纲（§11.3）。
+    // 单独包一层：体检本身出任何错都不得影响这份已经校验通过的大纲落盘。
+    if (unitContext) {
+      try {
+        const hookAuditNote = summarizeHookAuditFindings(confirmedBody, from, to, text)
+        if (hookAuditNote) callbacks.log(hookAuditNote)
+      } catch (error) {
+        callbacks.log(text(
+          `钩子行体检跳过（内部错误：${error instanceof Error ? error.message : String(error)}）。大纲照常保存。`,
+          `Hook-line check skipped (internal error: ${error instanceof Error ? error.message : String(error)}). The outline is saved as usual.`,
+        ))
+      }
     }
 
     this.assertNotCancelled(context)
