@@ -208,6 +208,24 @@ describe('blueprint semantic contract', () => {
       .toContain('suspenseHook 始终必填')
   })
 
+  it('states the hook as an occurred event with an open result, never as a non-event', () => {
+    const zh = blueprintSemanticGenerationContract('zh-CN')
+    const en = blueprintSemanticGenerationContract('en-US')
+    // 与「钩子：」模板同口径：事件已发生、结果未发生、停在那一帧；旧版「它不是事件」是互斥源头。
+    expect(zh).toContain('正文停在写到的那一帧')
+    expect(zh).toContain('不写成问话')
+    expect(zh).not.toContain('它不是事件')
+    expect(en).toContain('the prose stops at that frame')
+    expect(en).toContain('Never phrase it as a question')
+    expect(en).not.toContain('suspenseHook is not an event')
+    // 中英对照：旧口径的两侧残句都必须消失（此前 en 漏删、zh 已删，测试拦不住）。
+    expect(zh).not.toContain('即使本章没有谜团')
+    expect(en).not.toContain('even without a mystery')
+    // 新口径两侧成对：停在那一帧 + 不写成问话，中英各一句。
+    expect(zh).toContain('事情已经发生、结果还没发生')
+    expect(en).toContain('it has already happened, its result has not')
+  })
+
   it('keeps narrative instructions free of the retired prose and count ceilings', () => {
     for (const language of ['en-US', 'zh-CN'] as const) {
       expect(blueprintSemanticGenerationContract(language)).not.toMatch(/1,?200|900|100–150|最多 (?:12|32|80)|at most (?:12|32|80)/u)
