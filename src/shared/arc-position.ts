@@ -1232,15 +1232,21 @@ export function renderArcPositionBlock(
     }
     return lines
   }
-  const coverableLabel = [
-    en
-      ? '- Slots this batch may claim (exactly one ID per chapter\'s "Covers:" line):'
-      : '- 本批可声明的结构位（每章「覆盖：」只写一个 ID）：',
-    ...slotLines(span.midIndex, span.midRange, span.midFields, span.midMinors),
-    ...(span.endMidIndex > span.midIndex
-      ? slotLines(span.endMidIndex, span.endMidRange, span.endMidFields, span.endMidMinors)
-      : []),
-  ].join('\n')
+  // D18-② A（2026-11-04 作者裁定）：两级命名（卷/单元）不再输出「按章认领结构位」清单 ——
+  // 两级输出合同明令禁止「覆盖：」行（`synopsis-two-level-suffix.ts:37`），旧清单与它直接互斥。
+  // 旧三级结构仍输出清单，逐字不变。
+  const coverableLabel = volumeWording
+    ? ''
+    : [
+        en
+          ? '- Slots this batch may claim (exactly one ID per chapter\'s "Covers:" line):'
+          : '- 本批可声明的结构位（每章「覆盖：」只写一个 ID）：',
+        ...slotLines(span.midIndex, span.midRange, span.midFields, span.midMinors),
+        ...(span.endMidIndex > span.midIndex
+          ? slotLines(span.endMidIndex, span.endMidRange, span.endMidFields, span.endMidMinors)
+          : []),
+      ].join('\n')
+  const slotBlock = coverableLabel ? `${coverableLabel}\n` : ''
 
   const crossing = span.nextMidBoundary !== null && span.nextMidName
     ? (en
@@ -1248,40 +1254,64 @@ export function renderArcPositionBlock(
         : `\n★ 本批跨越中弧边界：第 ${span.nextMidBoundary} 章起属于 中弧【${span.nextMidName}】。跨过边界后按**新中弧**的规格写（其完整规格见上方「弧光结构」中的该中弧），但**不得**连带把更后面的中弧内容提前。`)
     : ''
 
+  // D18-② A（2026-11-04 作者裁定）：两级命名下规则 2 不再提「覆盖：」行（两级合同禁写），
+  // 规则 5 换成与单元块同向的「篇幅由剧情决定」，并只在这里用两级字段名「离开状态」。
+  const afterBatchChapter = span.afterBatchMidBoundary ?? span.midRange[1] + 1
+  const rule2 = en
+    ? (volumeWording
+        ? `2. The goal / attempts / turning point of any unit AFTER this batch must NOT happen in this batch, and must NOT be declared as any chapter's structure slot — they belong to chapter ${afterBatchChapter} and beyond.`
+        : `2. The goal / attempts / turning point of any mid arc AFTER this batch must NOT happen in this batch, and must NOT appear in any chapter's "Covers:" line — they belong to chapter ${afterBatchChapter} and beyond.`)
+    : (volumeWording
+        ? `2. 本批之后的单元，「目标 / 尝试 / 转折」**不得在本批提前实现，也不得以「结构位声明」的形式写进任何一章** —— 它们属于第 ${afterBatchChapter} 章及以后；`
+        : `2. 本批之后的中弧，「目标 / 尝试 / 转折」**不得在本批提前实现，也不得出现在任何一章的「覆盖：」声明里** —— 它们属于第 ${afterBatchChapter} 章及以后；`)
+
+  const rule5 = en
+    ? (volumeWording
+        ? `5. A unit's length follows the story: stop once that unit's exit state holds — never pad the chapter count to fill it, and never stall because it is not used up.
+   Its "exit state" belongs to its **last** chapters: when there is no new event to advance, unfolding the consequences of the same step is allowed, but the exit state may not be paid off early.
+   ★ The chapter count is a **given condition** (divided from the volume / unit counts), not a writing budget: do not add material just to fill those chapters, and do not stall because they are not used up — whether a chapter is worth reading depends on its situation, not on which slot it occupies.
+   This holds **even when the batch covers the whole unit** — covering the whole unit is not permission to write it in one go, it is an obligation to spread it chapter by chapter.${crossing}`
+        : `5. A minor arc's chapter span is a **given, not an estimate**: 8 chapters means 8 chapters of content — never compress it into 1–2 chapters and fold the free ones into the next minor arc.
+   Its end state belongs to its **last** chapters: when there is no new event to advance, unfolding the consequences of the same step is allowed, but the end state may not be paid off early.
+   ★ The chapter count is a **given condition** (divided from the arc counts), not a writing budget: do not add material just to fill those chapters, and do not stall because they are not used up — whether a chapter is worth reading depends on its situation, not on which slot it occupies.
+   This holds **even when the batch covers the whole arc** — covering the whole arc is not permission to write it in one go, it is an obligation to spread it chapter by chapter.${crossing}`)
+    : (volumeWording
+        ? `5. 单元的篇幅由剧情决定：写到该单元的「离开状态」成立就停 —— 不要为了"用满章数"加料，也不要因为"章数还没用完"而拖延。
+   它的「离开状态」是**最后几章**才到的地方：没有新事件可推进时，写同一步的后果是允许的（这一章的任务是展开上一步的影响），但不得提前兑现离开状态。
+   ★ 章数只是**给定条件**（由卷/单元的划分均分而来），不是写作预算：不要为了"用满这几章"而加料，
+   也不要因为"这几章还没用完"而拖延 —— 一章值不值得看，取决于这一章的局面，不取决于它占第几格。
+   这一条在本批覆盖整个单元时**同样成立** —— 覆盖整单元不是"可以一次写完"的许可，而是"必须逐章分摊"。${crossing}`
+        : `5. 一个小弧的章数区间是**给定条件，不是估计值**：跨 8 章就得写出 8 章的内容，**不得**压缩进 1–2 章、再把空出来的章并进下一个小弧。
+   它的「落点状态」是**最后几章**才到的地方：没有新事件可推进时，写同一步的后果是允许的（这一章的任务是展开上一步的影响），但不得提前兑现落点。
+   ★ 章数只是**给定条件**（由弧光的个数均分而来），不是写作预算：不要为了"用满这几章"而加料，
+   也不要因为"这几章还没用完"而拖延 —— 一章值不值得看，取决于这一章的局面，不取决于它占第几格。
+   这一条在本批覆盖整条弧时**同样成立** —— 覆盖整弧不是"可以一次写完"的许可，而是"必须逐章分摊"。${crossing}`)
+
   const body = en
     ? `[ARC POSITION for this batch — derived from the arc structure, for placement only]
 - This batch: chapters ${from}–${to} of ${totalChapters}${rescale}
 - Major arc ${span.majorIndex} "${span.majorName}" (approx. ch. ${span.majorRange[0]}–${span.majorRange[1]})
 - Mid arc ${span.midIndex} "${span.midName}" (approx. ch. ${span.midRange[0]}–${span.midRange[1]})${spec ? ` | ${spec}` : ''}
-${coverableLabel}
-- Remaining mid arcs inside this major arc (do NOT execute them early, and never claim their slots):
+${slotBlock}- Remaining mid arcs inside this major arc (do NOT execute them early, and never claim their slots):
   - ${remaining}
 [HARD RULE — this failure has actually happened]
 1. Advance only what is still unplayed inside "${span.midName}".
-2. The goal / attempts / turning point of any mid arc AFTER this batch must NOT happen in this batch, and must NOT appear in any chapter's "Covers:" line — they belong to chapter ${span.afterBatchMidBoundary ?? span.midRange[1] + 1} and beyond.
+${rule2}
 3. If this batch reaches the turning point of the current mid arc, close it out and ease into the next minor arc; do not jump to the next mid arc's goal.
 4. The "ending state" of major arc ${span.majorIndex} is the **acceptance criterion for chapter ${span.majorRange[1]}**, not material you may use now. Do not pay off any of its clauses in this batch (e.g. a character taking on their first ledger entry, someone quoting a price for the first time) — those are the business of later mid arcs.
-5. A minor arc's chapter span is a **given, not an estimate**: 8 chapters means 8 chapters of content — never compress it into 1–2 chapters and fold the free ones into the next minor arc.
-   Its end state belongs to its **last** chapters: when there is no new event to advance, unfolding the consequences of the same step is allowed, but the end state may not be paid off early.
-   ★ The chapter count is a **given condition** (divided from the arc counts), not a writing budget: do not add material just to fill those chapters, and do not stall because they are not used up — whether a chapter is worth reading depends on its situation, not on which slot it occupies.
-   This holds **even when the batch covers the whole arc** — covering the whole arc is not permission to write it in one go, it is an obligation to spread it chapter by chapter.${crossing}`
+${rule5}`
     : `【本批所处弧位（据「弧光结构」推算，仅用于定位，不改变弧光本身）】
 - 本批范围：第 ${from}–${to} 章（全书 ${totalChapters} 章）${rescale}
 - 所在大弧：大弧${span.majorIndex}【${span.majorName}】（约第 ${span.majorRange[0]}–${span.majorRange[1]} 章）
 - 所在中弧：中弧${span.midIndex}【${span.midName}】（约第 ${span.midRange[0]}–${span.midRange[1]} 章）${spec ? `｜${spec}` : ''}
-${coverableLabel}
-- 本大弧内**后续**中弧（★ 本批不得提前执行，也不得写进覆盖声明）：
+${slotBlock}- 本大弧内**后续**中弧（★ 本批不得提前执行，也不得写进覆盖声明）：
   - ${remaining}
 【硬约束·防提前】（实测已发生过，务必遵守）
 1. 本批只推进【${span.midName}】内**尚未发生**的内容；
-2. 本批之后的中弧，「目标 / 尝试 / 转折」**不得在本批提前实现，也不得出现在任何一章的「覆盖：」声明里** —— 它们属于第 ${span.afterBatchMidBoundary ?? span.midRange[1] + 1} 章及以后；
+${rule2}
 3. 若本批已写到当前中弧的转折点，请在此收束并向下一小弧过渡，**不要**跳到下一个中弧的目标；
 4. 大弧${span.majorIndex}【${span.majorName}】的「结束状态」是本卷**第 ${span.majorRange[1]} 章才成立的验收标准**，不是本批可用的材料 —— 不得把其中任何一条在本批写掉（实测：第 4 章就把「鲁传福替他挡」写成事实，而那属于后续中弧的尝试 1）；
-5. 一个小弧的章数区间是**给定条件，不是估计值**：跨 8 章就得写出 8 章的内容，**不得**压缩进 1–2 章、再把空出来的章并进下一个小弧。
-   它的「落点状态」是**最后几章**才到的地方：没有新事件可推进时，写同一步的后果是允许的（这一章的任务是展开上一步的影响），但不得提前兑现落点。
-   ★ 章数只是**给定条件**（由弧光的个数均分而来），不是写作预算：不要为了"用满这几章"而加料，
-   也不要因为"这几章还没用完"而拖延 —— 一章值不值得看，取决于这一章的局面，不取决于它占第几格。
-   这一条在本批覆盖整条弧时**同样成立** —— 覆盖整弧不是"可以一次写完"的许可，而是"必须逐章分摊"。${crossing}`
+${rule5}`
 
   if (!volumeWording) return body
 

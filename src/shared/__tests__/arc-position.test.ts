@@ -636,12 +636,17 @@ describe('v7 两级结构（卷 / 单元）', () => {
     expect(isTwoLevelArcStructure(null)).toBe(false)
   })
 
-  it('弧位块换成「卷 / 单元」措辞，并给出可声明的「逼法」结构位', () => {
+  it('两级弧位块不给「覆盖：」清单，也不留三级的小弧配额规则（D18-② A）', () => {
     const block = renderArcPositionBlock(parseArcStructure(V7_PLAN), 60, 1, 6, 'zh-CN')
     expect(block).toContain('所在卷：卷1【一句我马上到，整条巷门牌全歪了】')
     expect(block).toContain('所在单元：单元1【老陈问还是老样子，他点头点歪门牌】')
-    // 两级结构的"转折"等价物是逼法：不给它，大纲层一个可声明位都没有
-    expect(block).toContain('M1-1/逼法')
+    // 两级合同禁写「覆盖：」行 ⇒ 弧位块不再给按章认领的清单，也不再提「覆盖：」
+    expect(block).not.toContain('可声明的结构位')
+    expect(block).not.toContain('覆盖：')
+    // 三级的小弧配额规则与「落点状态」旧术语一并去掉，换成两级字段名
+    expect(block).not.toContain('章数区间是')
+    expect(block).not.toContain('落点状态')
+    expect(block).toContain('离开状态')
     expect(block).not.toContain('中弧')
     expect(block).not.toContain('小弧')
   })
@@ -650,6 +655,10 @@ describe('v7 两级结构（卷 / 单元）', () => {
     const block = renderArcPositionBlock(parseArcStructure(PLAN), 845, 1, 20, 'zh-CN')
     expect(block).toContain('所在大弧：大弧1【')
     expect(block).toContain('所在中弧：中弧1【')
+    // 旧三级结构仍保留按章认领清单与「章数=给定条件」规则
+    expect(block).toContain('可声明的结构位')
+    expect(block).toContain('章数区间是')
+    expect(block).toContain('落点状态')
   })
 })
 
