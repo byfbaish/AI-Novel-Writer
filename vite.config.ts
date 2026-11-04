@@ -110,7 +110,12 @@ export default defineConfig(({ command }) => {
     port: slot.devServerPort,
     strictPort: true,
     watch: {
-      ignored: ['**/docs/**']
+      // Every worktree slot keeps its Chromium profile inside the checkout
+      // (.runtime/worktree/slot-N/user-data). Chromium holds an OS lock on
+      // files such as Network/Cookies, and chokidar's native watch surfaces
+      // that as an unhandled EBUSY that kills the dev server. Runtime data is
+      // never source, so keep the whole directory out of the watcher.
+      ignored: ['**/docs/**', '**/.runtime/**']
     }
   },
   define: {

@@ -155,6 +155,7 @@ git branch -d agent/wt-1 agent/wt-2 agent/wt-3
 | 「从工具会话起的 dev 几秒后消失」 | 命令结束会连带回收子进程树；长跑 dev 请在独立终端里起 |
 | 「worktree 里 `pnpm` 报 `This: command not found`」 | 本机 sh 里的 npm shim 坏了；用 `node scripts/worktree-dev.mjs <slot>` 或 PowerShell |
 | **「worktree 全灭但还是不能动」** | 归属固定（§3.1）：wt-1 归豆包、wt-2 归 WorkBuddy、wt-3 归 DSH；空着也不许抢，主控只在 `develop` |
+| **「slot-N dev 起来几秒后崩，报 `EBUSY ... watch '<repo>/.runtime/worktree/slot-N/user-data/Network/Cookies'`」** | vite 的 chokidar 把仓库内 `.runtime/` 也 watch 了，而 Chromium 正锁着 Cookies。`vite.config.ts` 的 `server.watch.ignored` 已加 `'**/.runtime/**'`；新槽位若仍崩，先确认 worktree 里的 `vite.config.ts` 是**含该行**的版本（worktree 从 commit 开，老提交里没有） |
 | **「worktree 里 `check-fast` 报 doc-links 断链，主工作区却是绿的」** | `.workbuddy/` 是 gitignore 的，worktree 里**不存在**。只要有一份入库文档链接到 `.workbuddy/memory/...`（现状：`docs/design/architecture/p11-plan-validity-and-fact-registry-design.md`），新 worktree 就必然断链 ⇒ 从主工作区把那几个文件 `cp` 过去（它们不会进提交），再去掉 `--no-verify` 的诱惑。**根因是「入库文档链到未入库目录」，属于文档债，不是 worktree 债** |
 
 ## 11. 占用探测：运行态能测，归属只能查表
