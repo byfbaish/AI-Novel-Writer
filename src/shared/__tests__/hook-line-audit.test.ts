@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { auditChapterHook, auditOutlineHooks } from '../hook-line-audit'
+import { auditChapterHook, auditOutlineHooks, findOutlineHookLine } from '../hook-line-audit'
 import { parseHookLine } from '../synopsis-hook-line'
 
 function hook(line: string) {
@@ -159,5 +159,29 @@ describe('C2 与钩子行自身的隔离（2026-11-04 接线回归）', () => {
     ].join('\n')
     const result = auditOutlineHooks(synopsis)
     expect(result.findings.some(f => f.code === 'C2-anchor')).toBe(false)
+  })
+})
+
+describe('findOutlineHookLine：C5 的大纲回退输入', () => {
+  const SYNOPSIS = [
+    '## 第1章：门口',
+    '他把门推开了。',
+    '收尾：门没关。',
+    '',
+    '## 第2章：门里',
+    '他合上了账本。',
+    '钩子：悬念截断 — 账本压在灯下｜种在：账本',
+  ].join('\n')
+
+  it('取指定章的钩子行原文（新名）', () => {
+    expect(findOutlineHookLine(SYNOPSIS, 2)).toBe('钩子：悬念截断 — 账本压在灯下｜种在：账本')
+  })
+
+  it('旧名「收尾：」也认', () => {
+    expect(findOutlineHookLine(SYNOPSIS, 1)).toBe('收尾：门没关。')
+  })
+
+  it('该章不存在时返回 null', () => {
+    expect(findOutlineHookLine(SYNOPSIS, 9)).toBeNull()
   })
 })

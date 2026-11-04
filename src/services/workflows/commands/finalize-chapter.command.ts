@@ -59,6 +59,10 @@ import { localize } from '../../../i18n/core'
 import type { Locale } from '../../../i18n/types'
 import type { FinalizedCharacterGenerationReceipt } from '../../../shared/finalized-character-generation'
 import { describeDrift } from '../../../shared/upstream-revisions'
+import { auditDraftHook } from '../../../shared/hook-payoff-audit'
+import { summarizeDraftPayoffFindings } from '../../../shared/hook-payoff-report'
+import { findOutlineHookLine } from '../../../shared/hook-line-audit'
+import { parseHookLine } from '../../../shared/synopsis-hook-line'
 import {
   parseResourceMovementExtraction,
   type LedgerExtractionDrops,
@@ -928,6 +932,24 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
       `Finalized content committed to SQLite and published as a manuscript (Chapter ${snapshot.chapterNumber})`,
     ))
 
+    // D18-C5 · 钩子未落地体检（产出层定稿侧，只报不拦；2026-11-04 首轮接线）。
+    // 输入取蓝图 suspenseHook（正文 prompt 实际注入的文本），蓝图缺失才回退大纲钩子行。
+    try {
+      const hookText = await this.resolveHookText(projectSession, project.path, snapshot.chapterNumber)
+      if (hookText) {
+        const hookReport = summarizeDraftPayoffFindings(
+          auditDraftHook({ hookText, draft: refinedDraftText }),
+          uiText,
+        )
+        if (hookReport) callbacks.log(hookReport)
+      }
+    } catch {
+      callbacks.log(uiText(
+        '钩子未落地体检跳过（内部错误）。定稿不受影响。',
+        'The unplanted-hook check was skipped due to an internal error. Finalization is unaffected.',
+      ))
+    }
+
     // 3. 通过 PostProcessPipeline 执行后处理（状态持久化 + 支持重试）
     callbacks.log(uiText(
       '正在启动后台大模型推演系统更新全书状态...',
@@ -982,6 +1004,34 @@ export class FinalizeChapterCommand extends BaseWorkflowCommand<void> {
     ))
     this.assertNotCancelled(context)
     await useProjectStore.getState().refreshFileTree(project.path, undefined, projectSession)
+  }
+
+  /**
+   * C5 的输入：优先蓝图 `suspenseHook`（正文 prompt 实际注入的就是它），
+   * 蓝图没有该章时才回退到大纲钩子行（设计稿 §7 C5 行）。
+   */
+  private async resolveHookText(
+    projectSession: ProjectSessionContext,
+    projectPath: string,
+    chapterNumber: number,
+  ): Promise<string | null> {
+    const blueprint = await ipc.invokeWithProjectSession(
+      projectSession,
+      'db:blueprint-get',
+      chapterNumber,
+      projectPath,
+    ) as { suspenseHook?: string } | null
+    const fromBlueprint = typeof blueprint?.suspenseHook === 'string' ? blueprint.suspenseHook.trim() : ''
+    if (fromBlueprint) return fromBlueprint
+
+    const core = await ipc.invokeWithProjectSession(
+      projectSession,
+      'db:project-core-get',
+      projectPath,
+    ) as { synopsis?: string } | null
+    const line = typeof core?.synopsis === 'string' ? findOutlineHookLine(core.synopsis, chapterNumber) : null
+    if (!line) return null
+    return parseHookLine(line)?.breakPoint.trim() || null
   }
 
   private async createBatchSnapshot(

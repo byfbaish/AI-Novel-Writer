@@ -4,6 +4,8 @@ import { keyEventsText } from '../../../shared/blueprint-key-events'
 import { analyzeBlueprintVerbatimCopy } from '../../../shared/blueprint-verbatim-overlap'
 import { assertNotDegenerateVisibleText, findVisibleTextDegeneracies } from '../../../shared/visible-text-integrity'
 import { describeProseShapeViolation, measureProseShape } from '../../../shared/prose-shape'
+import { auditDraftHook } from '../../../shared/hook-payoff-audit'
+import { summarizeDraftCopyFindings } from '../../../shared/hook-payoff-report'
 import { buildBoundaryNotice } from '../../../shared/chapter-boundary'
 import { projectArchitectureForDraft } from '../../../shared/architecture-projection'
 import { notePromptProjection } from '../../prompts/prompt-trace'
@@ -1667,6 +1669,21 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       }
       this.assertNotCancelled(context)
       draftPersisted = true
+      // D18-C3 · 照抄体检（产出层，只报不拦；2026-11-04 首轮接线）。
+      // 判的是「正文末段是否把注入的钩子整句搬走」——只写步骤日志，不改稿、不阻断。
+      try {
+        const hookFindings = auditDraftHook({
+          hookText: this.chapterInfo.suspenseHook?.trim() || '',
+          draft: cleanDraftText,
+        })
+        const hookReport = summarizeDraftCopyFindings(hookFindings, uiText)
+        if (hookReport) callbacks.log(hookReport)
+      } catch {
+        callbacks.log(uiText(
+          '钩子照抄体检跳过（内部错误）。草稿已保存。',
+          'Hook copy check was skipped due to an internal error. The draft was saved.',
+        ))
+      }
       return this.publishSavedDraft({ context, callbacks, projectSession, expectedProjectPath,
         cleanDraftText, id: createResult.id, nextVersion, mergedGuidance, targetChars })
     } catch (error) {

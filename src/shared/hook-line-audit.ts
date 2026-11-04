@@ -183,19 +183,16 @@ export function auditChapterHook(
   return findings
 }
 
+type OutlineBlock = { chapter: number | null; lines: string[] }
+
 /**
- * 校验一段（可能跨多章的）大纲文本。
- *
- * 切块复用 `chapter-heading.ts` 的唯一解析（红线 22：章标题只有一个解析处）。
+ * 按章切块。切块复用 `chapter-heading.ts` 的唯一解析（红线 22：章标题只有一个解析处）。
  * 第一个章标题之前的设定层不参与 —— 那里不该有钩子行。
  */
-export function auditOutlineHooks(synopsis: string): HookAuditResult {
-  const findings: HookFinding[] = []
+function splitOutlineBlocks(synopsis: string): OutlineBlock[] {
   const lines = synopsis.split(/\r?\n/)
-
-  type Block = { chapter: number | null; lines: string[] }
-  const blocks: Block[] = []
-  let current: Block | null = null
+  const blocks: OutlineBlock[] = []
+  let current: OutlineBlock | null = null
 
   for (const line of lines) {
     const heading = outlineChapterHeading(line)
@@ -206,6 +203,31 @@ export function auditOutlineHooks(synopsis: string): HookAuditResult {
     }
     if (current) current.lines.push(line)
   }
+  return blocks
+}
+
+/**
+ * 找出指定章在大纲里的钩子行原文（新名「钩子：」或旧名「收尾：」都算）。
+ *
+ * 给产出层的 C5 做**蓝图缺失时的回退输入**用：C5 的首选输入是蓝图 `suspenseHook`，
+ * 蓝图没有该章时才回退到大纲钩子行（设计稿 §7 C5 行）。
+ */
+export function findOutlineHookLine(synopsis: string, chapter: number): string | null {
+  const block = splitOutlineBlocks(synopsis).find(item => item.chapter === chapter)
+  if (!block) return null
+  let raw: string | null = null
+  for (const line of block.lines) {
+    if (parseHookLine(line)) raw = line
+  }
+  return raw
+}
+
+/**
+ * 校验一段（可能跨多章的）大纲文本。
+ */
+export function auditOutlineHooks(synopsis: string): HookAuditResult {
+  const findings: HookFinding[] = []
+  const blocks = splitOutlineBlocks(synopsis)
 
   let chaptersWithHook = 0
   for (const block of blocks) {
