@@ -45,7 +45,7 @@ D1 有人讨承诺 → 先要凭据
 const zh = (value: string) => value
 
 function chapter(index: number, choice: string): string {
-  return [`## 第${index}章：门口`, '', choice, '', '正文一段。', '', '收尾：门没关。', ''].join('\n')
+  return [`## 第${index}章：门口`, '', choice, '', '正文一段。', '', '钩子：门没关。', ''].join('\n')
 }
 
 describe('summarizeDispositionFindings', () => {

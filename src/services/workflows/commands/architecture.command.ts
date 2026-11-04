@@ -18,6 +18,7 @@ import {
   resolveOutlineVolumePosition,
 } from '../../../shared/synopsis-projection'
 import { readOutlinePrefixContext } from '../../outline-prefix-context'
+import { formatLastHookLine } from '../../../shared/synopsis-hook-line'
 import { auditArcCovers, listArcNodes, parseChapterArcCovers } from '../../../shared/arc-node'
 import { composeGenreLabel } from '../../../shared/genre-label'
 import { withSpaceConstraints } from '../../../shared/space-constraints'
@@ -1109,24 +1110,39 @@ export function synopsisUnitInstruction(
   unitIndex: number,
   unitName: string,
   totalChapters: number,
+  handoffHook?: string | null,
 ): string {
-  return promptLanguageText(
-    writingLanguage,
-    [
-      '【本次生成范围（重要）】',
-      `本次只写【第 ${volumeIndex} 卷第 ${unitIndex} 单元：${unitName}】这一段，从全书第 ${from} 章开始（全书共 ${totalChapters} 章）。`,
-      '写到该单元的「离开状态」成立为止：不要为了凑章数继续写，也不要因为章数少就跳过必要情节。',
-      '写完本单元立即停笔：不得进入下一个单元，也不得展开后续单元的内容；如需收尾，只允许写一行「后续概览：……」（不超过 200 字），且不得使用章标题行、不计入本批覆盖。',
-      '每章必须以独立行标题开头，并在标题下一行起写非空正文。',
-    ].join('\n'),
-    [
-      '[Generation scope for this batch (important)]',
-      `Write only [volume ${volumeIndex}, unit ${unitIndex}: ${unitName}], starting at book chapter ${from} (the book has ${totalChapters} chapters).`,
-      'Stop when this unit\'s "exit state" holds: do not keep writing to pad the chapter count, and do not skip required events because the count is small.',
-      'Stop immediately when this unit is done: do NOT enter the next unit or expand any later unit. If you need a closing note, write only one line "Later overview: ..." (200 characters or fewer); it must not use a "Chapter N" heading and does not count toward this batch\'s coverage.',
-      'Every chapter must start with its own heading line, followed by a non-empty body on the next line.',
-    ].join('\n'),
-  )
+  const zhLines = [
+    '【本次生成范围（重要）】',
+    `本次只写【第 ${volumeIndex} 卷第 ${unitIndex} 单元：${unitName}】这一段，从全书第 ${from} 章开始（全书共 ${totalChapters} 章）。`,
+    '写到该单元的「离开状态」成立为止：不要为了凑章数继续写，也不要因为章数少就跳过必要情节。',
+    '写完本单元立即停笔：不得进入下一个单元，也不得展开后续单元的内容；如需收尾，只允许写一行「后续概览：……」（不超过 200 字），且不得使用章标题行、不计入本批覆盖。',
+    '每章必须以独立行标题开头，并在标题下一行起写非空正文。',
+  ]
+  if (handoffHook) {
+    zhLines.push(
+      '',
+      '【上一单元交接项】',
+      `上一单元末章的钩子行原文：${handoffHook}`,
+      '本单元的**第一章**必须回应它：推进它，或明确交代它为什么不再悬着。跨批时你看不到上一单元末章的上下文，这一行原文就是唯一的接口。',
+    )
+  }
+  const enLines = [
+    '[Generation scope for this batch (important)]',
+    `Write only [volume ${volumeIndex}, unit ${unitIndex}: ${unitName}], starting at book chapter ${from} (the book has ${totalChapters} chapters).`,
+    'Stop when this unit\'s "exit state" holds: do not keep writing to pad the chapter count, and do not skip required events because the count is small.',
+    'Stop immediately when this unit is done: do NOT enter the next unit or expand any later unit. If you need a closing note, write only one line "Later overview: ..." (200 characters or fewer); it must not use a "Chapter N" heading and does not count toward this batch\'s coverage.',
+    'Every chapter must start with its own heading line, followed by a non-empty body on the next line.',
+  ]
+  if (handoffHook) {
+    enLines.push(
+      '',
+      '[Handoff from the previous unit]',
+      `The previous unit's last chapter ended with this hook line: ${handoffHook}`,
+      'The **first chapter** of this unit must answer it: advance it, or say plainly why it is no longer hanging. Across batches you cannot see the previous unit\'s last chapter — this quoted line is the only interface.',
+    )
+  }
+  return promptLanguageText(writingLanguage, zhLines.join('\n'), enLines.join('\n'))
 }
 
 /** 正常结束后以正文覆盖为准；可选自报进度不能与本批冲突。 */
@@ -3344,6 +3360,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
             unitContext.range.unitIndex,
             unitContext.stats?.unitName ?? '',
             totalChapters,
+            // D18：跨批交接项。取不到就是 null（首个单元 / 中断后无已完成文本）——
+            // 不注入、不拦、不报，别在这里抛错把正常的首次生成打断。
+            formatLastHookLine(partial.synopsis_result),
           )
         : '',
       // 分层投影在这里生效。空前缀 = 一篇大纲都没写（必然还在第 1 卷），不存在「上一卷」，

@@ -28,9 +28,9 @@ const handoff = (over: Partial<VolumeHandoffDefinition> = {}): VolumeHandoffDefi
 /** 16 章的大纲：第 1–8 章一组，第 9–16 章一章一条。 */
 function synopsis(units = 16): string {
   const lines: string[] = ['# 情节大纲', '', '全书总纲：这是一场关于欠债与还债的故事。', '']
-  lines.push('第1–8章：开篇', '选择：拖 —— 他先避开。', '收尾：门闩没关。', '')
+  lines.push('第1–8章：开篇', '选择：拖 —— 他先避开。', '钩子：门闩没关。', '')
   for (let chapter = 9; chapter <= units; chapter += 1) {
-    lines.push(`第${chapter}章：第${chapter}步`, `选择：认 —— 他认了第${chapter}笔账。`, '收尾：账本又厚一页。', '')
+    lines.push(`第${chapter}章：第${chapter}步`, `选择：认 —— 他认了第${chapter}笔账。`, '钩子：账本又厚一页。', '')
   }
   return lines.join('\n')
 }

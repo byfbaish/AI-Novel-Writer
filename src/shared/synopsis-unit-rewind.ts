@@ -36,8 +36,9 @@ export interface OutlineUnitRemoval {
  * 删除单元 = 从章标题行开始，一直删到「下一个不属于本区间的章标题行」之前。
  * 设定层（第一个章标题之前的文本）永远保留；区间外的章条目永远保留。
  *
- * 为什么按「块」而不是按行号：条目正文可能包含任意行（`选择：`/`收尾：`/引用/空行），
- * 只有下一个章标题才是真正的边界。
+ * 为什么按「块」而不是按行号：条目正文可能包含任意行（`选择：`/`钩子：`/引用/空行），
+ * 只有下一个章标题才是真正的边界。**行名在 2026-11-04 从「收尾：」改为「钩子：」（D18），
+ * 这里不解析行名，所以新旧两种都不影响切块** —— 别为了改名在这里加一段按行名过滤的逻辑。
  */
 export function removeOutlineChapterEntries(text: string, range: OutlineChapterRange): OutlineUnitRemoval {
   const lines = text.split('\n')

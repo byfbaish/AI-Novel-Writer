@@ -32,7 +32,7 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 - 第二行：「定性：<X编号 | 筹码：<名字> | 软肋：<名字> | 无> — <这一章碰到的是哪一条，一句话说清是哪类处境>」；
 - 第三行：「选择：<力源，或例外值 破／守> —— <他这一章做了什么>｜否掉了 <他本可以做的另一件事>，因为 <依据>」，依据只有四种：X<n>：<那条禁区>／顶撞X<n>：<他破了哪条、付了什么代价>／筹码：<名字>／软肋：<名字>；这一章确实没有他的戏，写「无：<为什么他不在场>」；
 - 其后：正文，连贯段落；
-- 最后一行：「收尾：<一句话>」。
+- 最后一行：「钩子：<类型> — <断点>｜种在：<本章哪一处>」。
 
 严禁输出「覆盖：」行 —— 本结构只有「卷 / 单元」两级，没有可声明的结构位；不得自造任何形如 V1-U1-Start、M1-1 的编号。
 严禁输出「正文前的声明行」「格式说明」「以下为正文」这类标签行，也不得把本节任何一句话抄进正文。
@@ -81,21 +81,23 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 - 这一行决定的不是情节，是**他在这一章里是谁**：同一件事，他动「他人」和动「规则」，写出来是两章完全不同的东西；
 - 后面章节蓝图会继承这一行（蓝图的任务描述必须以同一个力源开头），所以不得在这里写一个、正文里又演成另一个。
 
-【收尾：行的写法】
-- 必须独立成行，不得并入正文段落，也不得写成「收尾，……」这种句中插入；
-- 只写一句话：本章结束时仍未决的那个问题、威胁或代价；
-- 它的原材料必须全部来自本章正文：一个人、一件物、一句没答的话、一个没解释的细节。收尾只能把本章已经建立的东西推到「未决」，不得引入正文里没有的新事实、新人物、新事件、新信息；
-- 自检：写之前先问「这个悬念在本章哪一段被种下的」。答不上来就是外挂，不许写；
-- 不得与本章正文的任何陈述矛盾：正文写「他没答」，收尾就不能写「他已经递出去了」；
-- 不得把正文已经写过的动作再复述一遍 —— 注意这不是「禁止提本章发生的事」，而是禁止重复叙述；
-- 也不得写成下一章才发生的事件的预告：下一章才出现的人递来一张纸条、下一章才会被收走的东西，都不能在本章收尾里先发生；
-- 这一行是后续章节蓝图结尾钩子的唯一来源。缺了它，钩子只能由蓝图自行编造，与本章意图脱节。
+【钩子：行的写法】
+- 必须独立成行，格式「钩子：<类型> — <断点>｜种在：<本章哪一处>」，不得并入正文段落，也不得写成「钩子，……」这种句中插入；
+- 类型只能取六值之一：悬念截断 / 危机降临 / 信息炸弹 / 两难选择 / 情绪断裂 / 落点。由**这一章的剧情**决定，不受位置限制 —— 单元内、单元末、卷末都可以用任何一类；
+- 怎么选，只回答这一问：这一章结束时，读者手上被扣住的是哪一样？结局（动作或揭晓的下一步）→ 悬念截断；应对能力（能不能应付）→ 危机降临；解读（已到手的信息该怎么看）→ 信息炸弹；选择（走哪条）→ 两难选择；反应（人接下来怎么动）→ 情绪断裂；什么都扣不住、但账已结清且有一样变了 → 落点。六类都填不上就走落点，不许用一句含糊的话糊过去，也不许为凑类型在本章制造新事件；
+- 断点写一件**纸上已经发生**的事，**停在「这一步做完了、下一步还没做」的缝上**，扣住它的后果。只写停在哪一步，不写这一帧的全貌 —— 不交代环境、不补齐在场的人、不写表情与内心、不把这件事实的意义说出来；
+- 版式五条（违反即重写这一行）：①不出现问号；②不以心理活动作谓语（「他想知道」「他不知道」「心中疑惑」不算断点）；③不只写情绪形容词或抽象状态；④不解释、不总结、不补因果；⑤断点是一个完整的句子，停在场景边界上，不得停在句子中间；
+- 「种在：」只写**本章正文里哪一段**，用那一段里的一个具名对象指认，不写解释。指不出来就是**外挂**，重写；
+- 取材只能来自本章：人、物、地点、数字都必须在本章正文里出现过，不得引入正文里没有的新事实、新人物、新事件；
+- 不得与本章正文的任何陈述矛盾（正文写「他没答」，钩子就不能写「他已经递出去了」）；不得把正文已经写过的动作再复述一遍；也不得写成下一章才发生的事件的预告；
+- 这一行是后续章节蓝图结尾钩子的**锚点**：蓝图必须指向**同一件事**（同一个具名对象 + 同一个后果），不要求同一句措辞。
 
 【章与章的承接】（从第 2 章起，每章都要满足）
-- 上一章的「收尾：」行点明了某个仍未决的东西；本章正文必须从它接着写 —— 要么推进它，要么明确交代它为什么不再悬着（已经解决，或暂时搁置并给出理由）；
+- 上一章的「钩子：」行点明了某个仍未决的东西；本章正文必须从它接着写 —— 要么推进它，要么明确交代它为什么不再悬着（已经解决，或暂时搁置并给出理由）；
 - 「接着写」不等于「立刻解决」：那个未决项可以继续悬着，但读者必须看出本章知道它悬在那儿；
-- 不得写成整章与上一章的收尾毫无关系。最常见的断链形态是：上一章末尾抛出一个具体的报价、威胁或发现，本章开头直接换场景，一个字不提；
-- 本章末尾再写自己的「收尾：」行。
+- 不得写成整章与上一章的钩子毫无关系。最常见的断链形态是：上一章末尾抛出一个具体的报价、威胁或发现，本章开头直接换场景，一个字不提；
+- **本单元的第一章**若上文给了「上一单元交接项」，必须**回应**它：推进，或说清它为何不再悬着。跨批时你看不到上一单元末章的上下文，这一行原文就是唯一的接口；
+- 本章末尾再写自己的「钩子：」行。
 
 【每章正文写成一件事的因果与代价】
 不是事件流水账，也不是分场清单。先想清楚再动笔，写成连贯段落，不要写成字段列表 —— 包括「叙事任务」「进入状态」「离开状态」「段间推进」「逼法」这些结构里的标签，它们是结构层用语，不是正文写法：
@@ -104,7 +106,7 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 - 因为什么：上一章留下的哪个未决项、哪笔账、哪句没答的话，逼出了这个选择。这一条是本章与前文的接口，不许省；
 - 谁在挡他：具体的人、规矩、时间、钱、身体；且不得与上一章是同一种挡法；
 - 代价落在谁身上：丢了什么、欠下什么、露了什么底、谁的处境因此更糟。代价只落在"他自己心情不好"不算代价；
-- 章末仍未决的是什么 —— 就是收尾行，两处必须是同一件事。
+- 章末仍未决的是什么 —— 就是钩子行，两处必须是同一件事。
   ★ 怎么试、试了几次、分几段、每段占多少字：一律不写。那是章节蓝图的工作。
   本章答不出"因为什么"时，说明这一章还没有被分配到位置 —— 不是"这一章内容少"。
 
@@ -125,7 +127,7 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 - 主角必须为这个结局付出一样拿不回来的东西（退路、身份、某段关系、他一直护着的东西）；
 - 最后两章不得开新线：不出现新的施压方、新的谜团、新的「后面还有事」的暗示；
 - 终局那一击不得由金手指或外力代办：金手指只能处理他**已经选择付出代价之后**剩下的那一步；
-- 最后一章的「收尾：」行写新的常态（他此后怎么活），不是下一个威胁。
+- 最后一章的「钩子：」行写新的常态（他此后怎么活），不是下一个威胁。
 
 ★【作者对本步骤的额外指导（如有，最高优先级）】★：
 {{step_guidance}}`
@@ -185,17 +187,21 @@ Other constraints:
 - This line does not fix the plot; it fixes **who he is in this chapter**. The chapter blueprint inherits it, so do not write one thing here and play another in the prose.
 
 [The Hook line]
-- Must stand on its own line; one sentence only: the question, threat or cost still unresolved when the chapter ends;
-- Its material must come entirely from this chapter's prose. It may push something already established to "unresolved", but must not introduce a new fact, person, event or piece of information;
-- Self-check: ask which paragraph of this chapter planted it. If you cannot answer, it is bolted on — do not write it;
-- It must not contradict anything the prose states, and must not merely restate an action the prose already described;
-- It must not be a preview of what happens next chapter;
-- This line is the only source for the blueprint's ending hook.
+- Must stand on its own line, format: "Hook: <type> — <break point> | planted in: <which passage of this chapter>"; never fold it into the prose paragraph, never write it mid-sentence;
+- The type is exactly one of six: cut-off suspense / incoming threat / information bomb / dilemma / emotional break / quiet landing. Which one is decided by THIS chapter's story, not by position — any type is allowed inside a unit, at a unit end, or at a volume end;
+- How to choose — answer only this question: when the chapter ends, what is the reader left holding, withheld? outcome (the next step of an action or a reveal) → cut-off suspense; capacity to respond → incoming threat; interpretation (how to read information already in hand) → information bomb; the choice (which road) → dilemma; the reaction (what the person does next) → emotional break; nothing withheld but the account is settled and one thing has changed → quiet landing. If none fits, use quiet landing; never paper over it with a vague sentence, and never invent a new event just to fill a type;
+- The break point states one concrete thing that has already happened ON THE PAGE, stopping at the seam where "this step is done, the next step is not", and withholds its consequence. Write only where you stop, not a full frame — no setting, no rounding out who is present, no expression or inner monologue, no statement of what it means;
+- Five format rules (violating one means rewriting this line): (1) no question marks; (2) no mental verb as the predicate ("he wonders", "he does not know", "he is puzzled" are not break points); (3) no bare emotion adjectives or abstract states; (4) no explanation, summary or causal closure ("so that was it", "this means", "he finally understood"); (5) the break point is a complete sentence ending at a scene boundary — never stop mid-sentence;
+- "planted in:" names one passage of this chapter's prose through a named object in it, with no explanation. If you cannot point at it, it is bolted on — rewrite;
+- Material must come entirely from this chapter: every person, object, place and number must appear in this chapter's prose; never introduce a new fact, person or event;
+- It must not contradict anything the prose states, must not merely restate an action already described, and must not preview what happens next chapter;
+- This line is the ANCHOR for the blueprint's ending hook: the blueprint must point at the same thing (same named object + same consequence), not the same wording.
 
 [Continuity from chapter 2 onward]
 - The previous chapter's Hook names something unresolved; this chapter must pick it up — either advance it or explain why it is no longer hanging (resolved, or deliberately parked with a reason);
 - "Pick it up" does not mean "resolve it immediately";
-- Do not write a chapter unrelated to the previous hook. The most common break is: the previous chapter ends with a concrete offer, threat or discovery, and this chapter opens on a new scene without a word about it.
+- Do not write a chapter unrelated to the previous hook. The most common break is: the previous chapter ends with a concrete offer, threat or discovery, and this chapter opens on a new scene without a word about it;
+- **The first chapter of a unit** must, when a "previous unit handoff" line is provided, answer it: advance it, or say plainly why it is no longer hanging. Across batches you cannot see the previous unit's last chapter — that one quoted line is the only interface.
 
 [Write each chapter as the causality and cost of one thing]
 Not a chronicle of events, not a scene list. Write connected paragraphs, not field lists — "narrative task", "entry state", "exit state", "inter-unit progression" and "pressure" are structure-level labels, not prose.

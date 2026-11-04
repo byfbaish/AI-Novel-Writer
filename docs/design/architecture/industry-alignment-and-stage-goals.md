@@ -46,6 +46,8 @@ W6 资源账本：建表、逐章抽取变动、纯函数累加余额、三态�
 | 世界状态、六槽 | **continuity**（连续性）/ **story bible 的分区** | story bible 的标准分节：角色 / 地点 / 时间线 / 世界规则 / 术语表 / 未回收线索 |
 | 资源账本、余额 | **numerical contradictions**（数量矛盾）—— continuity error 的一个子类 | ConStory-Bench「事实与细节」类；判定方式是**两处陈述不能同时为真**，不是累加相等 |
 | 伏笔池、未回收伏笔 | **plot promises / unresolved threads / abandoned threads** | story bible 的 "Plot Promises and Resolutions" 节；ConStory-Bench 的 abandoned threads |
+| 收尾行（2026-11-04 起改名「钩子：」） | **chapter-end hook / cliffhanger**；连续未决问题 **question loop**；单元 / 卷末尾的强钩 **part-ending hook** | 定义与出处见 `design/prompt/d18-chapter-hook-contract-design.md` §1。**「落点」是本项目的操作化命名**（对应 sequel 的 decision / quiet landing / emotional shift），**不是行业标准分类**，别写成"业界六类"。失败形态属 **craft**，不是 continuity |
+| 旧口径「钩子要**回答**收尾行的问题」 | **不叫"回答"**，叫「**指同一件事**」（同具名对象 + 同后果，措辞不必同） | `回答` 是解释的动词，而解释正是 AI 的说明书本能；行业机制是 *withhold the consequence, not the event*。该口径 2026-11-04 已作废，见 D18 §5.1 |
 | 前置注入（W7） | **consult the bible before writing**（写前查阅）/ context assembly | 作者在写某场戏前先查 bible 核对细节，是行业常规动作 |
 | 跨部切片（W8） | **series bible 交接 / lock canon before book two** | 系列写作的标准做法：下一部开工前先锁定上一部的 canon |
 | 审稿 | **manuscript validation / continuity check** | Loreon 的 "manuscript validation"；输出 findings 而非改写 |

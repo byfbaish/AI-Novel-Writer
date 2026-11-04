@@ -120,7 +120,7 @@ describe('回滚后的检查点必须能通过续写校验（2026-10-21 实机 b
   const body = [
     '## 第1卷第1单元第1章（全书第1章）：甲',
     '选择：拖 —— 他请求宽限三日，借口去药渣堆寻药缓解毒性。'.repeat(8),
-    '收尾：未决。',
+    '钩子：未决。',
   ].join('\n')
 
   function checkpoint(overrides: Record<string, unknown> = {}) {

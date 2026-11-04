@@ -34,9 +34,10 @@ describe('synopsis 两级结构版输出合同', () => {
     expect(zh).toContain('不得把本节任何一句话抄进正文')
   })
 
-  it('保留选择行 / 收尾行 / 承接 / 因果代价 / 收束五块', () => {
+  it('保留选择行 / 钩子行 / 承接 / 因果代价 / 收束五块', () => {
     expect(zh).toContain('【选择：行的写法】')
-    expect(zh).toContain('【收尾：行的写法】')
+    // D18：这一节 2026-11-04 从「收尾：行的写法」改名为「钩子：行的写法」。
+    expect(zh).toContain('【钩子：行的写法】')
     expect(zh).toContain('【章与章的承接】')
     expect(zh).toContain('【每章正文写成一件事的因果与代价】')
     expect(zh).toContain('【材料只能从这四处取，且必须落在本章所属单元以内】')

@@ -647,7 +647,7 @@ Produce a complete outline in which every chapter states a concrete cause and a 
 6. Preserve the project-wide writing guidance.
 7. Return only the plot architecture, with no analysis or explanation.`,
     systemSuffix: `[Fixed per-chapter format — mandatory]
-Every chapter has three parts in this exact order: (1) chapter heading, (2) the declaration lines ("Covers:", "Qualify:" and "Choice:"), (3) the outline prose followed by a mandatory "Closes:" line.
+Every chapter has three parts in this exact order: (1) chapter heading, (2) the declaration lines ("Covers:", "Qualify:" and "Choice:"), (3) the outline prose followed by a mandatory "Hook:" line.
 
 (1) Chapter heading: "## Chapter N: title".
 
@@ -675,28 +675,30 @@ Every chapter has three parts in this exact order: (1) chapter heading, (2) the 
 - It answers "what did he decide", not "what happened to him". "He decided to face reality" or "he decided to investigate" is not one of the sources.
 - This line does not fix plot; it fixes whose hands the initiative is in. The chapter blueprint inherits it (its purpose must open with the same source), so never declare one here and dramatize another in the prose.
 
-(3) "Closes:" line — mandatory for every chapter, no exceptions:
-- Put it on its own line as "Closes: <one sentence>"; never fold it into the prose paragraph, and never write it mid-sentence as "in closing, ...".
-- One sentence only: the question, threat, or price that is still unresolved when this chapter ends.
-- **Every element of it must already exist in this chapter's prose**: a person, an object, a question left unanswered, a detail left unexplained. The Closes line may only push something this chapter already established into the unresolved; it must never introduce a new fact, character, event, or piece of information.
-- Test before writing: "which paragraph of this chapter planted this?" If you cannot name one, it is a bolt-on — do not write it.
-- **It must not contradict anything the prose states**: if the prose says he did not answer, the Closes line cannot say he has already filed it; if the old man said he could not tell, it cannot say the old man had seen it before.
-- Do not repeat an action the prose already narrated. Note this is not a ban on mentioning what happened in this chapter — it is a ban on restating it.
-- Do not preview something that only happens in the next chapter: a note handed over in the next chapter, an object removed in the next chapter, must not occur here — and must never be turned into an accomplished fact early.
-- This line is the sole source of the later chapter blueprint's ending hook. Without it the hook is invented by the blueprint and drifts away from this chapter's intent.
+(3) "Hook:" line — mandatory for every chapter, no exceptions:
+- Put it on its own line as "Hook: <type> — <break point> | planted in: <which passage of this chapter>"; never fold it into the prose paragraph, and never write it mid-sentence.
+- The type is exactly one of six: cut-off suspense / incoming threat / information bomb / dilemma / emotional break / quiet landing. Which one is decided by **this chapter's story**, not by position — any type is allowed inside a unit, at a unit end, or at a volume end.
+- How to choose — answer only this question: when the chapter ends, what is the reader left holding, withheld? outcome (the next step of an action or a reveal) → cut-off suspense; capacity to respond → incoming threat; interpretation (how to read information already in hand) → information bomb; the choice (which road) → dilemma; the reaction (what the person does next) → emotional break; nothing withheld but the account is settled and one thing has changed → quiet landing. If none fits, use quiet landing; never paper over it with a vague sentence, never invent a new event just to fill a type.
+- The break point states one concrete thing that has already happened **on the page**, stopping at the seam where "this step is done, the next step is not", and withholds its consequence. Write only where you stop, not a full frame — no setting, no rounding out who is present, no expression or inner monologue, no statement of what it means.
+- Five format rules (violating one means rewriting this line): (1) no question marks; (2) no mental verb as the predicate; (3) no bare emotion adjectives or abstract states; (4) no explanation, summary or causal closure; (5) the break point is a complete sentence ending at a scene boundary — never stop mid-sentence.
+- "planted in:" names one passage of this chapter's prose through a named object in it, with no explanation. If you cannot point at it, it is a bolt-on — rewrite.
+- **Every element of it must already exist in this chapter's prose**: a person, an object, a place, a number. It must never introduce a new fact, character, event, or piece of information.
+- **It must not contradict anything the prose states**: if the prose says he did not answer, the Hook line cannot say he has already filed it. Do not restate an action the prose already narrated, and do not preview something that only happens in the next chapter.
+- This line is the **anchor** for the later chapter blueprint's ending hook: the blueprint must point at the same thing (same named object + same consequence), not the same wording.
 
 (4) Chapter-to-chapter continuity — mandatory from the second chapter onward:
-- The previous chapter's "Closes:" line names something still unresolved. This chapter's prose must pick it up: either advance it, or state plainly why it is no longer hanging (already resolved, or set aside with a reason).
+- The previous chapter's "Hook:" line names something still unresolved. This chapter's prose must pick it up: either advance it, or state plainly why it is no longer hanging (already resolved, or set aside with a reason).
 - "Pick it up" does not mean "resolve it now": the item may stay unresolved, but the reader must see that this chapter knows it is still hanging.
-- Never write a chapter wholly unrelated to the previous chapter's Closes line. The commonest broken link is a chapter that opens on a fresh scene while the chapter before it left a concrete offer, threat, or discovery dangling.
-- Then close this chapter with its own "Closes:" line per (3).
+- Never write a chapter wholly unrelated to the previous chapter's Hook line. The commonest broken link is a chapter that opens on a fresh scene while the chapter before it left a concrete offer, threat, or discovery dangling.
+- **The first chapter of a unit** must, when a "previous unit handoff" line is provided, answer it: advance it, or say plainly why it is no longer hanging. Across batches you cannot see the previous unit's last chapter — that one quoted line is the only interface.
+- Then close this chapter with its own "Hook:" line per (3).
 
 (5) Every chapter's prose must realize the **cause and the cost of one thing**, not a stream of events and not a scene list. Think it through first, then render it as connected prose — never as a field list (including arc-layer labels such as “Goal:” “Stake:” “start:” “end state:”; those are this layer's vocabulary, not prose):
 - What he **actively chooses**: the same one of the four from the "Choice:" line, expanded into what it concretely looks like — if he hides, show how he detours, whom he avoids, what excuse he uses. Do not merely restate "he chose to hide".
 - **Because of what**: which unresolved item, debt, or unanswered line from the previous chapter forced this choice. This is the chapter's joint with the text before it; never omit it.
 - Who or what **blocks** him: a specific person, rule, deadline, debt, or bodily limit — and never the same kind of blocker as the previous chapter.
 - **Who pays the cost**: what is lost, owed, or exposed; whose situation gets worse. A cost that lands only on "he feels bad" is not a cost.
-- What is still unresolved at the end — this is the "Closes:" line from (3); the two must name the same thing.
+- What is still unresolved at the end — this is the "Hook:" line from (3); the two must name the same thing.
   ★ How he tries, how many attempts, how to split the chapter, how many units each part takes: **write none of it**. That is the chapter blueprint's job (it splits the chapter into 2–5 keyEvents with a word budget). Writing it here a second time leaves the blueprint nothing to do but copy, and the manuscript nothing to write.
   If you cannot answer "because of what", the chapter has not been given a position — it is not "a chapter with little content".
 
@@ -724,7 +726,7 @@ Never draw on: the next minor arc's required events; the next mid arc's Goal / A
   to come". An unexplained small detail is fine; a new main line is not (unless the author's project-wide guidance asks for a sequel hook).
 - The final blow **must not be delegated to the advantage or an outside force**: the advantage may only handle the step left
   over *after* he has chosen to pay the cost. He must give up one of the two things he wants.
-- The final chapter's "Closes:" line states the **new normal** (how he lives from now on), not the next threat.
+- The final chapter's "Hook:" line states the **new normal** (how he lives from now on), not the next threat.
 
 [Author guidance for this step — highest priority when present]
 {{step_guidance}}`,
@@ -754,7 +756,7 @@ Return exactly one object with a blueprints array. Every item must contain chapt
 When the plot outline inside [Story architecture] already names a chapter (formatted as "## Chapter N: Title"), reuse that title verbatim — punctuation and wording included. Never rewrite it, shorten it, restyle it, or make it catchier. Only invent a title when the outline gives none for that chapter. If the chapter content diverges slightly from the outline title, change the content, never the title.
 
 [Hook authority]
-The sole authority for suspenseHook is the same outline. When the outline for that chapter ends with a "Closes:" line, suspenseHook must land on the unresolved item that line already names. You may phrase it more concretely and more like a question, but never substitute a different suspense, and never drop the item the Closes line already identified. Only when the outline gives no "Closes:" line for that chapter may you derive the hook from the keyEvents/suspenseHook split above.
+The blueprint hook points at the SAME THING as the outline's "Hook:" line — not the same sentence. When the outline for that chapter ends with a "Hook:" line, suspenseHook must name the same thing that line names: the same named object plus the same consequence. Wording may differ; never substitute a different suspense, never drop the item the Hook line already identified. It must also state three things: (1) the same thing (which object, what consequence); (2) exactly where the prose stops (after which sentence); (3) what must NOT be written (the outcome, the explanation, the answer). No question marks, no naming the character's doubt, no causal closure. Only when the outline gives no "Hook:" line for that chapter may you derive the hook from the keyEvents/suspenseHook split above.
 
 [Choice authority]
 When the outline for that chapter carries a "Choice:" line, purpose must open with the exact token that follows "Choice:" in that line — copy it verbatim, never substitute a near-synonym from any list (the list itself may change; the outline text is authoritative) — and only then state what he wants to settle. keyEvents expand how that source of force is mobilized and how it fails; never swap in a different source, and never turn the road he ruled out into the main line.
@@ -786,7 +788,7 @@ The following are already-finalized prior chapters (brief excerpts, to prevent d
 3. Resolve or intensify relevant open threats and planted clues.
 4. Give every chapter a material event change; do not add filler.
 5. The plot outline inside [Story architecture] is the only authority for chapter titles: when it already names a chapter (formatted as "## Chapter N: Title"), reuse that title verbatim — punctuation and wording included — and never rewrite, shorten, restyle, or make it catchier. Invent a title only when the outline gives none. If the chapter content diverges slightly from the outline title, change the content, never the title.
-6. The sole authority for suspenseHook is the same outline. When the outline for that chapter ends with a "Closes:" line, suspenseHook must land on the unresolved item that line already names. You may phrase it more concretely and more like a question, but never substitute a different suspense, and never drop the item the Closes line already identified. Only when the outline gives no "Closes:" line for that chapter may you derive the hook freely.
+6. The blueprint hook points at the same thing as the outline's "Hook:" line — same named object, same consequence; wording may differ. State exactly where the prose stops and what must not be written (outcome, explanation, answer). Never ask the question in the hook, never name the character's doubt, never explain. Only when the outline gives no "Hook:" line for that chapter may you derive the hook freely.
 7. When the outline for that chapter carries a "Choice:" line, purpose must open with the exact token that follows "Choice:" in that line — verbatim, never a near-synonym from any list — before stating what he wants to settle; keyEvents expand how that source of force is mobilized, never a different one.
 8. Return exactly one JSON object with a blueprints array and no analysis, plan, explanation, Markdown, or code fence.
 

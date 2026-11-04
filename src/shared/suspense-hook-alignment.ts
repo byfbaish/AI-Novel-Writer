@@ -30,7 +30,14 @@ const STOPWORDS = ['的', '了', '在', '是', '和', '与', '也', '就', '都'
 /** 停用词字符集：把停用词逐字拆开，二元组内任一字符命中即丢弃。 */
 const STOPWORD_CHARS = new Set(STOPWORDS.flatMap((word) => [...word]))
 
-function tokenize(text: string): string[] {
+/**
+ * 字符二元组分词（汉字串 → 去停用词 → 去重）。
+ *
+ * 2026-11-04 导出：D18 的 C2（断点与本章正文有没有共享实词）与 C3（正文末段是否照抄
+ * 钩子行）用的是同一套手法，别再各写一份 —— 阈值与比对端可以不同，分词必须同源，
+ * 否则两条判据对"同一个词"的判断会不一致。
+ */
+export function tokenize(text: string): string[] {
   const runs = text.match(/[\u4e00-\u9fa5]+/g) ?? []
   const seen = new Set<string>()
   const tokens: string[] = []

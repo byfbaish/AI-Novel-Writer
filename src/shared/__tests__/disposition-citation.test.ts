@@ -32,12 +32,12 @@ const CARD_EN = parsePersonalityCard([
 ].join('\n'))
 
 function chapter(index: number, choice: string, name = '门口'): string {
-  return [`## 第${index}章：${name}`, '', choice, '', '正文一段。', '', '收尾：门没关。', ''].join('\n')
+  return [`## 第${index}章：${name}`, '', choice, '', '正文一段。', '', '钩子：门没关。', ''].join('\n')
 }
 
 /** 带「定性：」行的版本 —— 定性在章标题行与选择行之间，单独一行。 */
 function chapterQ(index: number, qualify: string, choice: string, name = '门口'): string {
-  return [`## 第${index}章：${name}`, '', qualify, '', choice, '', '正文一段。', '', '收尾：门没关。', ''].join('\n')
+  return [`## 第${index}章：${name}`, '', qualify, '', choice, '', '正文一段。', '', '钩子：门没关。', ''].join('\n')
 }
 
 const CODES = (synopsis: string, extra: Record<string, unknown> = {}) =>
