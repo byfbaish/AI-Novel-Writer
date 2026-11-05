@@ -185,6 +185,10 @@ export const SYNOPSIS_CHECKPOINT_KEYS = [
   'synopsis_volume_deviations',
   'synopsis_generation_handle',
   'synopsis_facts_fingerprint',
+  // D20 的两个分项哈希：重置 / 级联清空时必须跟 `synopsis_facts_fingerprint` 一起走，
+  // 否则会留下「分项还在、combined 没了」的 orphan，判定侧会把它当成旧检查点。
+  'synopsis_source_fingerprint',
+  'synopsis_template_fingerprint',
   'synopsis_body_hash',
   'synopsis_db_hash',
   'synopsis_protocol',

@@ -17,6 +17,9 @@ import {
   GeneratePlotStructureCommand,
   GeneratePlotArchitectureCommand,
   outlineWrittenRange,
+  synopsisFingerprintDrift,
+  synopsisInputFingerprintParts,
+  synopsisInputsFingerprint,
 } from '../architecture.command'
 import {
   createWorkflowRuntimeDependencies,
@@ -2921,5 +2924,100 @@ describe('outlineWrittenRange（D17 章区间）', () => {
   it('没有范围 / 没有检查点 ⇒ 退回全改', () => {
     expect(outlineWrittenRange({ incomplete: false }, 0, 100)).toBeUndefined()
     expect(outlineWrittenRange({ range: { from: 5, to: 6 } }, 0, 100)).toEqual({ from: 5, to: 6 })
+  })
+})
+
+/**
+ * D20：把组合指纹拆成「源事实 / 模板」两段。
+ *
+ * 最要紧的一条是 `combined` **必须与拆之前逐字相等** —— 写错了不是「多一个报错分支」，
+ * 而是**全部存量检查点一次性失效**，正是本方案要治的那种故障。
+ */
+describe('synopsisInputFingerprintParts / synopsisFingerprintDrift（D20 分项指纹）', () => {
+  const template = () => getBuiltinPromptTemplate('synopsis', 'zh-CN')
+  const otherTemplate = () => ({
+    ...(template() as unknown as { content: string }),
+    content: '另一份模板正文（作者改过）',
+  })
+  const expected = (overrides: { premise?: string } = {}) => ({
+    synopsis: '',
+    premise: overrides.premise ?? '故事前提：主角在铁砧镇当学徒，宗门封锁后必须找到失落传承。',
+    charactersArch: '角色图谱：主角、引导者、执法者。',
+    worldbuilding: '世界观：灵脉决定城邦兴衰。',
+    plotStructurePlan: '',
+    genre: '玄幻',
+    totalChapters: 100,
+    wordsPerChapter: 3000,
+    writingLanguage: 'zh-CN' as const,
+    plotStructure: 'three_act',
+    narrativePov: 'third_limited',
+    globalGuidance: '保持因果推进。',
+  })
+
+  it('combined 与拆之前的 synopsisInputsFingerprint 逐字相等（存量检查点不受影响）', () => {
+    for (const range of [{ from: 1, to: 100 }, { from: 21, to: 40 }, { from: 7, to: 7 }]) {
+      for (const guidance of ['', '只写本卷，别提前执行终局']) {
+        expect(synopsisInputFingerprintParts(expected(), guidance, range, template()).combined)
+          .toBe(synopsisInputsFingerprint(expected(), guidance, range, template()))
+      }
+    }
+  })
+
+  it('源事实段只随源事实变，模板段只随模板变', () => {
+    const range = { from: 1, to: 100 }
+    const base = synopsisInputFingerprintParts(expected(), '', range, template())
+
+    const templateChanged = synopsisInputFingerprintParts(expected(), '', range, otherTemplate())
+    expect(templateChanged.source).toBe(base.source)
+    expect(templateChanged.template).not.toBe(base.template)
+    expect(templateChanged.combined).not.toBe(base.combined)
+
+    const sourceChanged = synopsisInputFingerprintParts(expected({ premise: '另一份前提' }), '', range, template())
+    expect(sourceChanged.source).not.toBe(base.source)
+    expect(sourceChanged.template).toBe(base.template)
+    expect(sourceChanged.combined).not.toBe(base.combined)
+  })
+
+  it('归因六支：none / source / template / both / unknown / legacy', () => {
+    const range = { from: 1, to: 100 }
+    const current = synopsisInputFingerprintParts(expected(), '', range, template())
+    const sourceChanged = synopsisInputFingerprintParts(expected({ premise: '旧前提' }), '', range, template())
+    const templateChanged = synopsisInputFingerprintParts(expected(), '', range, otherTemplate())
+
+    // combined 相等就先判 none，连分项都不读 —— 旧检查点因此不会被误判成 legacy。
+    expect(synopsisFingerprintDrift({ synopsis_facts_fingerprint: current.combined }, current)).toBe('none')
+    expect(synopsisFingerprintDrift({
+      synopsis_facts_fingerprint: current.combined,
+      synopsis_source_fingerprint: '随便什么',
+      synopsis_template_fingerprint: '随便什么',
+    }, current)).toBe('none')
+
+    expect(synopsisFingerprintDrift({
+      synopsis_facts_fingerprint: sourceChanged.combined,
+      synopsis_source_fingerprint: sourceChanged.source,
+      synopsis_template_fingerprint: sourceChanged.template,
+    }, current)).toBe('source')
+
+    expect(synopsisFingerprintDrift({
+      synopsis_facts_fingerprint: templateChanged.combined,
+      synopsis_source_fingerprint: templateChanged.source,
+      synopsis_template_fingerprint: templateChanged.template,
+    }, current)).toBe('template')
+
+    expect(synopsisFingerprintDrift({
+      synopsis_facts_fingerprint: '两样都变时的组合哈希',
+      synopsis_source_fingerprint: sourceChanged.source,
+      synopsis_template_fingerprint: templateChanged.template,
+    }, current)).toBe('both')
+
+    // 分项全等而组合不等：不能悄悄放行，归到 unknown。
+    expect(synopsisFingerprintDrift({
+      synopsis_facts_fingerprint: '被外部改过的组合哈希',
+      synopsis_source_fingerprint: current.source,
+      synopsis_template_fingerprint: current.template,
+    }, current)).toBe('unknown')
+
+    // 旧检查点：只有 combined，没有两个分项 ⇒ 无法归因。
+    expect(synopsisFingerprintDrift({ synopsis_facts_fingerprint: '旧指纹' }, current)).toBe('legacy')
   })
 })

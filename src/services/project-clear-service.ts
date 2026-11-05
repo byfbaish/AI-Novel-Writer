@@ -162,8 +162,8 @@ export async function clearProjectData(
     /**
      * 「清除全部」把 premise / worldbuilding / plot_structure_plan / synopsis 一起清了，
      * 但检查点（`.ai-novel/partial_arch.json`）里的进度是另一份存储 —— 不一起作废，
-     * 作者会遇到「产物全没了，生成弹窗还说要从第 22 章继续」，然后一生成就报
-     * 「项目源事实自上次生成后已变化」（2026-10-21 实机）。
+     * 作者会遇到「产物全没了，生成弹窗还说要从第 22 章继续」，然后一生成就被指纹判定拦住
+     * （这一情形下报「源事实已变化」是对的，产物确实被清了；2026-10-21 实机）。
      */
     const { clearAllArchProgress } = await import('./workflows/arch-step-checkpoint')
     const clearedProgress = await clearAllArchProgress(projectSession)
