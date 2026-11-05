@@ -17,6 +17,7 @@ import {
   GeneratePlotStructureCommand,
   GeneratePlotArchitectureCommand,
   outlineWrittenRange,
+  promptRenderSignature,
   synopsisFingerprintDrift,
   synopsisInputFingerprintParts,
   synopsisInputsFingerprint,
@@ -3019,5 +3020,90 @@ describe('synopsisInputFingerprintParts / synopsisFingerprintDrift（D20 分项�
 
     // 旧检查点：只有 combined，没有两个分项 ⇒ 无法归因。
     expect(synopsisFingerprintDrift({ synopsis_facts_fingerprint: '旧指纹' }, current)).toBe('legacy')
+  })
+
+  it('combined 仍是原始四段拼：与 D20 落地时的字面值逐字相等（收窄没碰兼容字段）', () => {
+    // **外部基准**：这个常量取自 D20 落地时的实现输出，不是从当前实现反算的。
+    // 变红就说明 `combined` 的段数 / 顺序 / 序列化被动了 —— 那等于把存量检查点一次全废掉。
+    // 这里刻意用一份**测试自带**的模板字面量，而不是内置模板：内置模板的正常迭代不该弄红这条。
+    const stableTemplate = {
+      key: 'synopsis',
+      name: '稳定模板',
+      description: '测试用模板',
+      content: '正文',
+      variables: {},
+    }
+    expect(synopsisInputFingerprintParts(expected(), '', { from: 1, to: 100 }, stableTemplate).combined)
+      .toBe('2mj55g')
+  })
+})
+
+/**
+ * D20b：模板段从「整对象」收窄到「影响渲染的那几段」（方案稿 §4.6 轴 B）。
+ *
+ * 这两件事必须分开钉：`template` **分项**只认渲染输入（记账字段变了不报警），
+ * `combined` **兼容字段**仍按整对象算（一个字节都没动，存量检查点靠它兼容）。
+ */
+describe('promptRenderSignature（D20b 模板段收窄）', () => {
+  const builtin = () => getBuiltinPromptTemplate('synopsis', 'zh-CN')!
+
+  it('只改记账字段（name / description / variables / builtinRevision / writingLanguage）⇒ 签名不变', () => {
+    const base = promptRenderSignature(builtin(), 'zh-CN')
+    const variants = [
+      { ...builtin(), name: '另一个显示名' },
+      { ...builtin(), description: '另一个用途说明' },
+      { ...builtin(), variables: { ...builtin().variables, 追加说明: '新增的变量说明' } },
+      { ...builtin(), builtinRevision: '0123456789abcdef0123456789abcdef' },
+      { ...builtin(), writingLanguage: 'en-US' as const },
+    ]
+    for (const variant of variants) {
+      expect(promptRenderSignature(variant, 'zh-CN')).toBe(base)
+    }
+  })
+
+  it('改 content / taskGuidance / systemRole 任一 ⇒ 签名必变', () => {
+    const base = promptRenderSignature(builtin(), 'zh-CN')
+    expect(promptRenderSignature({ ...builtin(), content: `${builtin().content}\n再补一句。` }, 'zh-CN'))
+      .not.toBe(base)
+    expect(promptRenderSignature({ ...builtin(), taskGuidance: '只写本卷，别提前执行终局。' }, 'zh-CN'))
+      .not.toBe(base)
+    expect(promptRenderSignature({ ...builtin(), systemRole: '你是另一位审稿人。' }, 'zh-CN'))
+      .not.toBe(base)
+  })
+
+  it('内置输出合同（systemSuffix）进签名；覆盖版自带的那份不进（渲染也不用它）', () => {
+    const base = promptRenderSignature(builtin(), 'zh-CN')
+    // 覆盖版自己带 systemSuffix：渲染始终取内置那份（shared/render-prompt.ts:62-65），签名同理不看它。
+    expect(promptRenderSignature({ ...builtin(), systemSuffix: '另一份输出合同' }, 'zh-CN')).toBe(base)
+    // 内置那份换了（换成英文内置）⇒ 渲染的输出合同变了 ⇒ 签名必须变。
+    expect(promptRenderSignature(builtin(), 'en-US')).not.toBe(base)
+    // 正文一字不改、但 key 找不到内置模板（输出合同取空）⇒ 签名必须变：
+    // 这条直接证明「内置 systemSuffix 真的进了签名」，而不是签名里根本没有这一项。
+    expect(getBuiltinPromptTemplate('synopsis', 'zh-CN')!.systemSuffix).toBeTruthy()
+    expect(promptRenderSignature({ ...builtin(), key: 'no_such_builtin_prompt_key' }, 'zh-CN')).not.toBe(base)
+  })
+
+  it('收窄只动分项：只改 description ⇒ template 分项不变，combined 仍变（兼容字段未收窄）', () => {
+    const range = { from: 1, to: 100 }
+    const expectedFacts = {
+      synopsis: '',
+      premise: '故事前提：主角在铁砧镇当学徒。',
+      charactersArch: '角色图谱：主角、引导者。',
+      worldbuilding: '世界观：灵脉决定城邦兴衰。',
+      plotStructurePlan: '',
+      genre: '玄幻',
+      totalChapters: 100,
+      wordsPerChapter: 3000,
+      writingLanguage: 'zh-CN' as const,
+      plotStructure: 'three_act',
+      narrativePov: 'third_limited',
+      globalGuidance: '保持因果推进。',
+    }
+    const base = synopsisInputFingerprintParts(expectedFacts, '', range, builtin())
+    const renamed = synopsisInputFingerprintParts(
+      expectedFacts, '', range, { ...builtin(), description: '另一个用途说明' },
+    )
+    expect(renamed.template).toBe(base.template)
+    expect(renamed.combined).not.toBe(base.combined)
   })
 })
