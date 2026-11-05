@@ -1,6 +1,6 @@
 # D6 方案 · 卷数的事实源与「卷数 × 单元数 × 章数」乘法链
 
-> 状态：已裁定（2026-11-06 · **方向 A 与裁定 6 已撤回**；D6 重定义为「Prompt 层删硬条款 + 算术层反馈收敛」，卷数不进任何判据。**两张实施卡已开并派发**，见 §9.7）
+> 状态：已实施（2026-11-06 · **方向 A 与裁定 6 已撤回**；D6 重定义为「Prompt 层删硬条款 + 算术层反馈收敛」，卷数不进任何判据。**两张实施卡已复核通过并合并**（`cb2ede1c` / `57290b20`），开卡见 §9.7、实施与复核见 §9.8）
 > ⚠️ **§0 的病因命名、§4 方向 A、§7 六条裁定与 §8 处置已被 §9 取代；原文保留作历史记录，不得再照做。**
 > 上级登记：[`../product/live-pipeline-acceptance-defects-assessment.md`](../product/live-pipeline-acceptance-defects-assessment.md) §D6（`:380-431`）
 > 相邻条目：D7（单元→章偏保守，`:433-474`）、D15（单元区间重叠，`:729-753`）、D19（卷末章口径）
@@ -316,3 +316,23 @@ flowchart TD
 | 算术层 | `5f75acb4-d97e-4e5c-a60d-dac9bbaae307` | 修 `architecture.command.ts:3968/:168/:1074` 三处误报完成 / 真实章数被抹掉，把 `:4034-4037` 覆盖对账从「只到 log」升级为有消费点的反馈收敛闭环；不阻断、不判卷数合规、不造新机制 |
 
 派法按 `docs/agents/doubao-channel.md` §2.1.0：**`--keep` 复用「D6 卷数事实源归因审查」线程**（同主题后续活，不新开窗口、不重读章程），档位保持「自动 中」；两张卡按 A → B 顺序 `claim`，一次队列派完。边界照手册 §5：只准单元测试、禁 git 写、禁 `pnpm test:node`，报告落在 `wt-1/.dsh-task-board/reports/<卡号>.md`，执行者只交 `review`。占位卡 `a6c3e2df` 仍作留痕，不派活。
+
+### 9.8 实施与复核（2026-11-06 02:20）
+
+两卡均 `review --pass`（执行者 `doubao` / 复核者 `workbuddy:reviewer`，身份分离），按文件归属分两个提交并 `--ff-only` 合入主线：
+
+| 层 | 提交 | 内容 |
+|---|---|---|
+| Prompt 层 | `cb2ede1c` | zh / en 结构模板删「一律按区间取」「兄弟个数不许全同」与个数自检；`PROFILE_TEXT` 四档硬区间改方向性描述；唯一许可的 `prompt-language-contract.test.ts:465` 断言同向收紧 |
+| 算术层 | `57290b20` | `renderSynopsisDbText` 不再把 `covered_to` 换成计划数、缺字段 `?? 0`（fail-closed）、`:168` 注释改口径；新增 `isSynopsisSkeletonComplete` / `renderSynopsisProgressSignal`，对账信号注入下一批 `taskPrompt`；追加 4 条单测 |
+
+复核证据（Lead 独立复跑，非采信报告）：7 个相关测试文件 **484 passed**（458 + 26；`synopsis-unit-launch.test.ts` 实际在 `src/services/workflows/__tests__/`）；`node scripts/check-fast.mjs` 三项全绿（typecheck 32.2s / 1155 链接 0 断 / 384 份文档 0 违规）；`tsc --noEmit` 退出 0；diff 只含卡面点名的 6 个文件。另核三处耦合：`syncSynopsisUnitCursor` 确用 `delete`（完成判读前提成立）、`synopsisInputsFingerprint` 输入不含 `taskPrompt`（新信号未动 D20 指纹链）、`callbacks.log` 既有读数未删。
+
+**遗留（转 backlog，不构成本卡 unmet）**：
+
+1. `renderSynopsisProgressSignal` 措辞「按实际预期推进，不要拿计划章数当目标」与 `src/shared/arc-position.ts:819`「只用于展示与对账、不是规划基线」及同文件 `taskPrompt` 既有「不给章数目标」注释有张力，且同句自称「不是章数目标」自相矛盾。复核依手册 §5.4「只判验收标准」不判 `regression`（软提示，不自检 / 不拦截 / 不阻断），**留作者待裁**；保守方案 = 删该半句，只留对账读数。
+2. 账不齐（骨架不可解析 ⇒ 一条卷数账都没有）时，骨架已走完仍会挂「其余章节将在后续批次继续生成」；按 fail-closed 方向选的，属已知限制。
+3. 偏差信号只进下一批提示词，未接 `WorldBuildingEditor.tsx` / `arc-position.ts:700` 面板；卡面未点名，如需面板可见另开卡。
+4. `builtin-prompt-templates.ts:864`「节奏推荐只影响个数」与 `:808-809` 输出格式里「卷级划分：N 卷」仍是残留的个数话题（非判据），卡面未点名，另开卡处理。
+
+> 报告原文：`wt-1/.dsh-task-board/reports/<两卡号>.md`（四节，含原始输出与 2 / 3 点待拍板口径）。
