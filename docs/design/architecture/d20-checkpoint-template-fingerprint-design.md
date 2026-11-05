@@ -230,8 +230,17 @@ export function synopsisInputFingerprintParts(
 
 | 错的方向 | 具体 | 后果 |
 |---|---|---|
-| **该排除的没排除（过度失效）** | `name` / `description` / `variables` 说明串 / `builtinRevision` 全在 `JSON.stringify(template)` 里 | 改一句「用途说明」、改一个变量说明、内置版本号涨一格 ⇒ 旧检查点续不上，被告知"你的写作材料变了" |
+| **该排除的没排除（过度失效）** | `name` / `description` / `variables` 说明串 / `builtinRevision` 全在 `JSON.stringify(template)` 里 | 见下面的触发路径：改一句「用途说明」或只是**点一次保存**，旧检查点就续不上，还被告知"你的写作材料变了" |
 | **该追踪的漏了（漏判）** | 保存覆盖时 `delete template.systemSuffix`（`PromptSettings.tsx:373`/`:395`）⇒ 覆盖版 `systemSuffix` 为 `undefined` ⇒ 内置输出合同更新时，**有覆盖的项目指纹不变**（`builtinRevision` 又刻意排除了 `systemSuffix`），但渲染结果变了 | 输出合同悄悄换了，没有任何提示 |
+
+**这些记账字段到底什么时候真会变（两种生效路径不同，必须分开说）**：
+
+| 项目状态 | 模板从哪来 | 记账字段什么时候变 |
+|---|---|---|
+| **无覆盖**（走内置） | `getBuiltinPromptTemplate(key, language)`（`prompt-templates.ts:72-73`） | **跟着 app 版本变**。升级后内置的 `name`/`description`/`variables` 说明哪怕只改了一个字，指纹就变 ⇒ 旧检查点失效 |
+| **有覆盖**（全局或项目） | 覆盖文件（`resolved.template`） | **保存那一刻重新冻结**：落盘的是「当前内置模板 + 作者改过的 `systemRole`/`taskGuidance`」，`builtinRevision` 也刷新成当时的内置摘要（`prompt-builtin-revision.ts:1-19`）。⇒ **作者进设置页什么都没改、只是点了一次「保存自定义」，若内置自上次保存后变过，指纹就变** |
+
+> 一段必须写准的话：**收窄救不了 D17 那个具体案例。** 覆盖版是把当时的**内置正文整份冻结**，所以覆盖 vs 内置的 `content` 本来就不同——该失效。收窄消灭的是**另一类**假警报：`content`/`taskGuidance`/`systemRole` 一个字都没变，只有记账字段变了。
 
 也就是说：**今天的「整对象哈希」既不精细也不完整**——它把记账字段当成了事实，又把一整段输出合同按覆盖状态漏掉了。
 
