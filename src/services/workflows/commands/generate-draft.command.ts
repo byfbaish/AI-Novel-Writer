@@ -22,6 +22,8 @@ import { synopsisSettingSectionsForDraft } from '../../../shared/synopsis-projec
 import { projectScopedText } from '../../../shared/text-scope-tags'
 export { synopsisSettingSectionsForDraft } from '../../../shared/synopsis-projection'
 import { createWorkflowMainGenerationRuntime, type WorkflowMainGenerationRequest } from '../workflow-main-generation'
+import { safeProtocolCode } from '../structured-batch-executor'
+import { CHAPTER_FAILURE_CODES, incompleteFinishReasonCode } from '../../../shared/chapter-failure'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import { formatResourceUri } from '../../../shared/project-paths'
 import {
@@ -463,6 +465,11 @@ function recoveryFailureCode(error: unknown, cancelled: boolean): string {
   if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'string') {
     return error.code.slice(0, 160)
   }
+  // D13 §5.4 B 路：跨 IPC（Electron 包装）会丢类身份与 `code` 属性，只剩
+  // `Error invoking remote method '<channel>': Error: <协议码>` 形态的 message ——
+  // 用生产正则 `safeProtocolCode` 取码（导出复用，不复制第二份判据），不再一律兜底 GENERATION_FAILED。
+  const protocol = safeProtocolCode(error)
+  if (protocol) return protocol.code
   return 'GENERATION_FAILED'
 }
 
@@ -473,13 +480,13 @@ function draftTooShortError(
   units: number,
   targetUnits: number,
 ): Error {
-  return new Error(workflowUiText(
+  return Object.assign(new Error(workflowUiText(
     context,
     `模型已声明生成结束，但正文仅约 ${units}/${targetUnits} 字，明显未达到章节目标，结果未保存。` +
       '请提高最大输出 Tokens、降低本章目标字数，或改用输出能力更强的模型后重试。',
     `The model reported completion, but the draft is only about ${units}/${targetUnits} units and clearly misses the chapter target, so it was not saved. ` +
       'Increase the maximum output tokens, lower the chapter target, or use a model with greater output capacity and try again.',
-  ))
+  )), { code: CHAPTER_FAILURE_CODES.DRAFT_TOO_SHORT })
 }
 
 function chapterLengthContractText(writingLanguage: WritingLanguage, targetUnits: number): string {
@@ -1549,10 +1556,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         assertNotDegenerateVisibleText(cleanDraftText, context.uiLocale ?? 'zh-CN', { writingLanguage })
         const blueprintCopy = analyzeBlueprintVerbatimCopy(cleanDraftText, writerChapterInfo.keyEvents, { writingLanguage })
         if (blueprintCopy.severity === 'blocking') {
-          throw new Error(uiText(
+          throw Object.assign(new Error(uiText(
             `正文与本章必需事件连续重合 ${blueprintCopy.runs.length} 处、共 ${blueprintCopy.coveredUnits} 字（${Math.round(blueprintCopy.ratio * 100)}%），已构成照搬细纲，结果未保存。请重新生成：把事件写成场景，不要复用必需事件的原句。`,
             `The draft repeats ${blueprintCopy.runs.length} run(s) of the chapter's required events verbatim (${blueprintCopy.coveredUnits} units, ${Math.round(blueprintCopy.ratio * 100)}%), so it was not saved. Regenerate it and dramatize the events instead of reusing their wording.`,
-          ))
+          )), { code: CHAPTER_FAILURE_CODES.DRAFT_BLUEPRINT_COPY })
         }
         if (blueprintCopy.severity === 'advisory') {
           callbacks.log(uiText(
@@ -1562,10 +1569,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         }
       }
       if (!alreadySaved && hasSubstantialPreviousChapterReuse(previousEnding, cleanDraftText, writingLanguage)) {
-        throw new Error(uiText(
+        throw Object.assign(new Error(uiText(
           '新章节开头与上一章结尾存在大段重演，结果未保存。请重新生成，并让本章从上一章已完成事件之后继续。',
           'The new chapter substantially replays the previous ending, so it was not saved. Regenerate it and continue after the events already completed in the previous chapter.',
-        ))
+        )), { code: CHAPTER_FAILURE_CODES.DRAFT_PREVIOUS_ENDING_REPLAY })
       }
 
       // P17-2 形态读数：**测量仪，不是裁判**（`docs/design/product/prose-shape-measurement-design.md`）。
@@ -1621,7 +1628,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       this.assertNotCancelled(context)
       if (mainOwned && !alreadySaved
         && JSON.stringify(useProjectStore.getState().currentProject?.novelConfig) !== JSON.stringify(novelConfig))
-        throw new Error('GENERATION_DRAFT_AUTHOR_CONFIG_CHANGED')
+        // D13 §5.2：身份挪进 `code` 字段（消息保留原码名，既有测试 :833 断言消息包含该串，本卡不得改既有断言）。
+        throw Object.assign(new Error('GENERATION_DRAFT_AUTHOR_CONFIG_CHANGED'), { code: CHAPTER_FAILURE_CODES.DRAFT_AUTHOR_CONFIG_CHANGED })
       const createResult = mainOwned ? await (async () => {
         const handle = context.mainGenerationRunHandle
         if (!handle) throw new Error('GENERATION_COMPOSITION_HANDLE_REQUIRED')
@@ -1708,6 +1716,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       return this.publishSavedDraft({ context, callbacks, projectSession, expectedProjectPath,
         cleanDraftText, id: createResult.id, nextVersion, mergedGuidance, targetChars })
     } catch (error) {
+      // D13 裁定 2=A（§7.1：生产也留候选）经现场核对**无法在卡面红线内落地**：
+      // 放开 `!mainOwned` 会同时打破 3 条既有断言（generate-draft.command.test.ts :839/:893/:969，
+      // 全部钉死「mainOwned 失败不落 db:recovery-candidate-record」），而 §8.5 只许可改
+      // main-generation-owner.test.ts:2418 一条断言。按红线「既有断言一律不动」，
+      // 本分支保持 `!mainOwned` 原状；冲突细节与证据已写入本卡报告，请作者裁定。
       if (!mainOwned && !draftPersisted && recoverableDraftCandidate) {
         callbacks.replaceText?.(recoverableDraftCandidate)
         const failureCode = recoveryFailureCode(error, context.cancelled)
@@ -2051,10 +2064,10 @@ ${visibleDraft}`,
       if (noProgress || degenerate) {
         params.callbacks.replaceText?.(draft)
         if (noProgressRecoveryUsed) {
-          throw new Error(uiText(
+          throw Object.assign(new Error(uiText(
             '唯一一次无进展恢复请求仍未增加足够的新正文，结果未保存。请缩短章节目标后重试。',
             'The single no-progress recovery request still did not add enough new prose, so the result was not saved. Shorten the chapter target and try again.',
-          ))
+          )), { code: CHAPTER_FAILURE_CODES.DRAFT_NO_PROGRESS })
         }
         noProgressRecoveryUsed = true
         recoveryPending = true
@@ -2081,6 +2094,13 @@ ${visibleDraft}`,
       const error = this.createIncompleteCompletionError(lastFinishReason)
       if (lastFailureCode === 'GENERATION_PROVIDER_FAILED' || lastFailureCode === 'NETWORK_ERROR')
         Object.assign(error, { code: lastFailureCode })
+      else {
+        // D13 §5.2：非 stop 终态按 BoundedCompletionFailure.failureCode 映射成 DRAFT_INCOMPLETE_*（不许新增兜底码）。
+        // 只映射设计稿列出的 4 个 reason；'error' 不映射（既有测试 :5341 钉死「不可信失败文本不得变成显示码」，
+        // 且 'error' 的 message 可能夹带外部文本，只有 finishReason 判定不够安全）。
+        const code = incompleteFinishReasonCode(lastFinishReason)
+        if (code) Object.assign(error, { code })
+      }
       error.message = uiText(error.message, (() => {
         switch (lastFinishReason) {
           case 'length':
@@ -2128,6 +2148,9 @@ ${visibleDraft}`,
     const range = draftTargetUnitRange(params.targetChars)
     const original = () => {
       this.assertNotCancelled(params.context)
+      // D13 裁决（现场）：本守卫（压缩轮回退原稿）**不加码**——既有测试
+      // generate-draft.command.test.ts:4760 钉死 recovery-candidate-record.failureCode === 'GENERATION_FAILED'，
+      // 而该断言不在卡面许可改动清单（§8.5 唯一许可 main-generation-owner.test.ts:2418），红线禁止改既有断言。
       if (params.candidate.finishReason !== 'stop') throw this.createIncompleteCompletionError(params.candidate.finishReason)
       params.callbacks.replaceText?.(params.candidate.text)
       return params.candidate.text
@@ -2205,7 +2228,11 @@ ${params.candidate.text}`,
       return original()
     }
     this.assertNotCancelled(params.context)
-    if (outcome.finishReason === 'cancelled') throw this.createIncompleteCompletionError('cancelled')
+    if (outcome.finishReason === 'cancelled') throw Object.assign(
+      this.createIncompleteCompletionError('cancelled'),
+      // D13 §5.2：压缩轮取消 → DRAFT_CANCELLED（与 CANCELLED 二选一，本卡选 DRAFT_CANCELLED）。
+      { code: CHAPTER_FAILURE_CODES.DRAFT_CANCELLED },
+    )
     logDraftAttempt(params.callbacks, params.context, { zhCN: '压缩修订', enUS: 'Condense revision' }, outcome.receipt)
     const condensed = sanitizeDraftText(this.stripThinkingTags(outcome.content), params.compositionVersion)
     const units = countDraftUnits(condensed)

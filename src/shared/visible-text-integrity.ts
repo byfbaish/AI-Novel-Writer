@@ -1,6 +1,7 @@
 import { localize } from '../i18n/core'
 import type { Locale } from '../i18n/types'
 import type { WritingLanguage } from './writing-language'
+import { CHAPTER_FAILURE_CODES } from './chapter-failure'
 
 export const ZH_CN_TRUNCATION_MARKER = '\n…[内容已按上下文预算截断]…\n'
 export const EN_US_TRUNCATION_MARKER = '\n…[content truncated to fit the context budget]…\n'
@@ -141,6 +142,13 @@ const DEGENERACY_REASON: Record<VisibleTextDegeneracyKind, { zh: string; en: str
   'verbatim-repeat': { zh: '复读（同一长句反复出现）', en: 'verbatim repetition of a long sentence' },
   'placeholder-leak': { zh: '占位或拒绝语', en: 'a placeholder or refusal phrase' },
   'meta-leak': { zh: '写作工序词泄漏', en: 'writing-process vocabulary leakage' },
+}
+
+/** D13 §5.2：退化 kind → 受控码（与 chapter-failure 词表同源，不许在别处拼字符串）。 */
+const DEGENERACY_FAILURE_CODE: Record<VisibleTextDegeneracyKind, string> = {
+  'verbatim-repeat': CHAPTER_FAILURE_CODES.DRAFT_DEGENERATE_VERBATIM_REPEAT,
+  'placeholder-leak': CHAPTER_FAILURE_CODES.DRAFT_DEGENERATE_PLACEHOLDER,
+  'meta-leak': CHAPTER_FAILURE_CODES.DRAFT_DEGENERATE_META_LEAK,
 }
 
 function degenerationError(uiLocale: Locale, zhCNReason: string, enUSReason: string): Error {
@@ -298,5 +306,5 @@ export function assertNotDegenerateVisibleText(
   const blocking = findVisibleTextDegeneracies(text, options).find(finding => finding.severity === 'blocking')
   if (!blocking) return
   const reason = DEGENERACY_REASON[blocking.kind]
-  throw degenerationError(uiLocale, reason.zh, reason.en)
+  throw Object.assign(degenerationError(uiLocale, reason.zh, reason.en), { code: DEGENERACY_FAILURE_CODE[blocking.kind] })
 }

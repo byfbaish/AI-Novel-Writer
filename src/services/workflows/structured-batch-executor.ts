@@ -174,8 +174,11 @@ const PROTOCOL_CODE_MESSAGE = /^(?:Error invoking remote method(?: '[^']{0,256}'
 /**
  * 取出可回显的协议码文本与**码本身**。
  * `code` 不含诊断尾，用于对齐 `KNOWN_HARNESS_FAILURES` 做精确分类。
+ *
+ * D13（§5.4）导出复用：组装层四码跨 IPC 后只剩 Electron 包装形态的 message，
+ * 渲染层 `recoveryFailureCode` 靠本函数从 message 取码——不许复制正则产生第二份判据。
  */
-function safeProtocolCode(error: unknown): { text: string; code: string } | undefined {
+export function safeProtocolCode(error: unknown): { text: string; code: string } | undefined {
   const message = error instanceof Error ? error.message : undefined
   if (typeof message !== 'string') return undefined
   const match = PROTOCOL_CODE_MESSAGE.exec(message.trim())
