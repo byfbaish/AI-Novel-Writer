@@ -16,6 +16,7 @@ import {
   GenerateWorldBuildingCommand,
   GeneratePlotStructureCommand,
   GeneratePlotArchitectureCommand,
+  outlineWrittenRange,
 } from '../architecture.command'
 import {
   createWorkflowRuntimeDependencies,
@@ -2873,5 +2874,52 @@ describe('GenerateCharactersCommand structured roster seam', () => {
 
     await expect(execution).rejects.toThrow('工作流已取消')
     expect(domainIpcChannels(invoke)).toEqual(['db:project-core-get'])
+  })
+})
+
+/**
+ * D17：大纲落盘要交出「这次改了哪几章」。
+ *
+ * 四条规则里「中断」和「收缩」只能靠构造检查点触发，走整条命令跑一遍
+ * 才能测到就等于没测 —— 所以判据单独导出、单独测。
+ */
+describe('outlineWrittenRange（D17 章区间）', () => {
+  it('正常批：用实际范围，不用启动时的计划范围', () => {
+    expect(outlineWrittenRange(
+      { range: { from: 10, to: 23 }, incomplete: false, coveredTo: 20 },
+      9,
+      100,
+    )).toEqual({ from: 10, to: 23 })
+  })
+
+  it('中断落盘：不声称范围（返回 undefined ⇒ 判定按全改，保守）', () => {
+    expect(outlineWrittenRange(
+      { range: { from: 10, to: 20 }, incomplete: true, coveredTo: 9 },
+      9,
+      100,
+    )).toBeUndefined()
+  })
+
+  it('覆盖收缩：给到收缩前的 covered_to —— 被删掉的章也在里面', () => {
+    // 已写到第 30 章，作废后重规划只写 1–6 章 ⇒ 第 7–30 章的正文被删了。
+    // 只传 [1,6] 会让第 7–30 章的蓝图判 valid，而它们依赖的大纲章节已经不存在。
+    expect(outlineWrittenRange(
+      { range: { from: 1, to: 6 }, incomplete: false, coveredTo: 6 },
+      30,
+      100,
+    )).toEqual({ from: 1, to: 100 })
+  })
+
+  it('写超全书末：原样传（只记录不阻断，与 backfill 的 overflow 口径一致）', () => {
+    expect(outlineWrittenRange(
+      { range: { from: 90, to: 105 }, incomplete: false, coveredTo: 105 },
+      89,
+      100,
+    )).toEqual({ from: 90, to: 105 })
+  })
+
+  it('没有范围 / 没有检查点 ⇒ 退回全改', () => {
+    expect(outlineWrittenRange({ incomplete: false }, 0, 100)).toBeUndefined()
+    expect(outlineWrittenRange({ range: { from: 5, to: 6 } }, 0, 100)).toEqual({ from: 5, to: 6 })
   })
 })

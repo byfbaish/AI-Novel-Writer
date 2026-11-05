@@ -100,6 +100,17 @@ export interface ProjectCoreSynopsisCommitRequest {
     expected: ProjectCoreSynopsisExpected
     generationRunHandle?: import('../../src/services/generation/generation-runtime').MainGenerationRunHandle
     authorRecovery?: import('../../src/shared/plot-outline-contract').PlotOutlineAuthorEdit
+    /**
+     * 本次提交**实际写进**大纲的章区间（生成路径专用，D17）。
+     *
+     * 与 `expected.totalChapters` 无关：那是全书计划，这是「这一次动了几章」。
+     * 与生成请求里的 `synopsisRange` 也无关：那是**计划**范围，模型可能少写；
+     * 这里要的是 `backfillUnitBatch` 回填后的实际值（检查点 `synopsis_range`）。
+     *
+     * 缺省 = 不知道 —— 沿用「空章集 = 覆盖全部章」的既有约定，不新增第三态。
+     * 中断落盘刻意不传（见 `d17-outline-change-range-design.md` §3.3）。
+     */
+    writtenRange?: { from: number; to: number }
 }
 
 /** 数据库行 → 前端数据 */
@@ -306,15 +317,20 @@ export class ProjectCoreRepository {
         // **真的发生了**的那次写入，不是"尝试过的那次"。失败分支不 bump。
         //
         // scope 记 `book`：这一条写的是整本 `synopsis` 文本，粒度就是全书。
-        // 单元级（`outline:<unitId>`）由 E3 逐单元生成落盘时另记，期 2 接。
+        // 单元级（`outline:<unitId>`）已评估、**不采纳**：换键要让存量派生的
+        // `source_ref` 一起迁移，而按章收窄靠 `changed_chapters` 就够
+        // （`derivedStatusForChapters` 正是干这个的）。见 D17 稿 §4。
         //
-        // `changed_chapters` 取作者这次提交覆盖的章区间展开：**期 1 只落数据不消费**，
-        // 判定侧收窄要等派生侧开始记 `source_ref`（期 2）之后才有意义。
+        // `changed_chapters` 取「这次到底改了哪几章」展开（D17，2026-11-05）：
+        // - 作者手改 ⇒ `authorRecovery.committedRange`（作者自己说了范围）；
+        // - 生成落盘 ⇒ `writtenRange`（调用方从检查点算出的实际范围）；
+        // - 两者都没有 ⇒ 空集 = 不知道 ⇒ 判定侧按「全改」保守处理。
+        //   这条空集约定**不能改成「没改」**：整本重生成后所有派生会判 valid。
         UpstreamRevisionRepository.bump({
             domain: 'outline',
             changedChapters: request.authorRecovery
                 ? expandChapterRange(request.authorRecovery.committedRange)
-                : [],
+                : expandChapterRange(request.writtenRange),
             // 有 handle = 生成落盘；`authorRecovery`（恢复存稿）与无 handle 的
             // 「编辑器保存大纲」都是作者动作。判据全在既有字段上，不新增参数。
             reason: request.generationRunHandle ? 'regenerate' : 'author-edit',

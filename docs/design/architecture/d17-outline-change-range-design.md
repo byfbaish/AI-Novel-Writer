@@ -1,6 +1,6 @@
 # D17 方案 · 生成路径给大纲提交补上「这次改了哪几章」
 
-> 状态：待裁定（2026-11-05 · 方案已出，代码未动）
+> 状态：已实施（2026-11-05 · 单测 5 + 3 + 1 条全绿 · **待实机复验**：跑一次单元批大纲生成，看同步页是否只列该章的派生）
 > 上级稿：[`live-pipeline-acceptance-defects-assessment.md`](../product/live-pipeline-acceptance-defects-assessment.md) §D17（`:761`）
 > 所属线：[`upstream-version-and-derived-invalidation-design.md`](upstream-version-and-derived-invalidation-design.md)（该稿状态「已落地」，本稿是它的收尾补丁，不重做期 1–3）
 > 触发：2026-11-02 实测「提交 1 章大纲 ⇒ 同步页列 7 项待处置，每行理由都是『改动章未知』」
@@ -196,10 +196,13 @@ function outlineWrittenRange(
 | 文件 | 改动 | 规模 |
 |---|---|---|
 | `electron/repositories/project-core-repository.ts` | 请求类型加 `writtenRange?`（`:98`）；`bump` 的 `changedChapters` 加一条分支（`:315`） | ~10 行 |
-| `src/services/workflows/commands/architecture.command.ts` | 新增 `outlineWrittenRange()`；`commitSynopsisWithCheckpointRollback` 调用时传入（`:3948`） | ~25 行 |
-| `electron/repositories/__tests__/project-core-repository.test.ts`（若无则新建） | 4 条写入断言 | ~60 行 |
-| `src/services/workflows/commands/__tests__/plot-outline-batch.command.test.ts` | 2 条：正常批传范围 / 中断批不传 | ~40 行 |
-| 文档 | 缺陷稿 D17 状态、总设计稿 §4.1 补一句「写入侧已接」、`project-core-repository.ts:309` 的过期承诺 | — |
+| `src/services/workflows/commands/architecture.command.ts` | 新增并导出 `outlineWrittenRange()`；**三处**接上：`commitSynopsisWithCheckpointRollback`（批量/中断共用）、`runPlotOutlineChapters` 的完成提交（逐章路径）、以及它进入前的 `previousCoveredTo` 快照 | ~45 行 |
+| `src/services/workflows/commands/__tests__/architecture.command.test.ts` | `outlineWrittenRange` 5 条（正常 / 中断 / 收缩 / 写超 / 缺范围） | ~45 行 |
+| `electron/repositories/__tests__/upstream-revision-repository.test.ts` | 3 条写入断言（带范围 / `authorRecovery` 优先 / 不传为空集） | ~35 行 |
+| `src/shared/__tests__/upstream-revisions.test.ts` | 1 条链路正例（第 7 章蓝图 valid、第 10 章 stale、交接单 stale） | ~12 行 |
+| 文档 | 缺陷稿 D17 状态 + 修法段落、README §4 索引、`project-core-repository.ts` 的过期承诺 | — |
+
+**实施时发现原方案漏了一条路径**：`runPlotOutlineChapters`（逐章 / 断点续写）有一个**独立的** `db:project-core-synopsis-commit` 调用（`architecture.command.ts:3956`），不走 `commitSynopsisWithCheckpointRollback`。它也必须接 —— 但 `saveNavigation` 会就地改 `partial`，所以 `previousCoveredTo` 必须在它第一次被调用**之前**取下来。
 
 **IPC 层不用改**：`ipc-channels.ts:979` 只引用类型，字段随类型走。
 
@@ -207,19 +210,21 @@ function outlineWrittenRange(
 
 ## 7. 验证
 
-### 7.1 单测（提交前必须全绿）
+### 7.1 单测（已全绿）
 
-1. `commitSynopsis({ writtenRange: {from:10,to:10} })` ⇒ 流水 `changed_chapters='[10]'`、`covers_all=0`
-2. `commitSynopsis({})`（不传范围）⇒ `changed_chapters='[]'`、`covers_all=0` —— **行为与今天逐字一致**
+1. `commitSynopsis({ writtenRange: {from:10,to:10} })` ⇒ 流水 `changed_chapters=[10]`、`covers_all=0`，且 `changedChaptersBetween(0,1)` 收窄成 `[10]`
+2. `commitSynopsis({})`（不传范围）⇒ `[]`、`covers_all=0` —— **行为与改造前逐字一致**
 3. `commitSynopsis({ authorRecovery, writtenRange })` ⇒ 以 `authorRecovery.committedRange` 为准（两者不可能同时出现，但要锁住优先级）
-4. 收缩：`previous.covered_to=10`、`written={range:{1,3}, covered_to:3}` ⇒ 传 `{1, 10}`
+4. `outlineWrittenRange` 五条：正常 / 中断 / 收缩 / 写超 / 缺范围
+
+**实测（2026-11-05）**：`architecture.command` 59 + `upstream-revision-repository` 18 + `upstream-revisions` 44 + `plot-outline-batch` 42，全绿；tsc 0 error。
 
 ### 7.2 链路单测（判定的收益要能看见）
 
 合成一个 rev 序列：`outline` rev 6→7 只改第 10 章，第 7 章蓝图 `source_ref.outline:book=6`、第 10 章蓝图 `=6`、第 2 卷交接单（7–10）`=6`。
 
 期望：第 7 章蓝图 `valid`、第 10 章蓝图 `stale`、交接单 `stale`（它覆盖 7–10，含 10）。
-**这条用例是 D17 真正的验收标准** —— 修完之前它跑出来是三条全 stale。
+**这条用例是 D17 真正的验收标准** —— 修完之前它跑出来是三条全 stale。已落进 `upstream-revisions.test.ts`。
 
 ### 7.3 实机判据
 
@@ -243,8 +248,12 @@ function outlineWrittenRange(
 
 ---
 
-## 9. 需要作者拍板的三点
+## 9. 作者裁定（2026-11-05）
 
-1. **收缩按 `[1, max(previousCoveredTo, totalChapters)]` 算**（当前方案）—— 比「按全书 `[1..totalChapters]`」更准，但仍保守。也可以选择精确到「被删的那几章」单独列出（收益小、多一条规则）。
-2. **中断落盘保持「改动章未知」**（当前方案）—— 不为了美观去猜半截内容算不算改了。
-3. **要不要顺手把 `outline:<unitId>` 单元级作用域开成一张新卡**（本稿只标注「已评估、不采纳」，不改代码）。
+| # | 问题 | 裁定 |
+|---|---|---|
+| 1 | 收缩时标脏范围 | **按已覆盖区间** `[1, max(previousCoveredTo, totalChapters)]`。比全书准、比「精确列出被删章」少一条要维护的规则；方向仍偏保守 |
+| 2 | 单元级 `outline:<unitId>` | **标注「已评估、不采纳」，不开新卡**。D17 修好后症状消失，换键没有额外收益 |
+| 3 | 中断落盘 | **保持「改动章未知」按全改**。中断时正文是「前缀 + 半截内容 + 未完成标记」，哪几章算变了没有可信答案；多标一次比漏判便宜 |
+
+三条都不改变本稿范围：仍然只是「请求加一个字段 + 调用方算范围」。

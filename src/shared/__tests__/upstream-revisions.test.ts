@@ -341,6 +341,21 @@ describe('derivedStatusForChapters', () => {
     expect(derivedStatusForChapters(null, snapshotOf({}), changes({}), [1])).toEqual({ state: 'legacy' })
     expect(derivedStatusForChapters({}, snapshotOf({}), changes({}), [1])).toEqual({ state: 'legacy' })
   })
+
+  /**
+   * D17 的验收标准：**提交 1 章大纲只让这一章的派生变脏。**
+   *
+   * 修之前写入侧交的是空集 ⇒ 三条全 stale（就是同步页列 7 项的形状）。
+   * 这条用例一旦回退成空集就会红，比看界面可靠。
+   */
+  it('D17：rev7 只改了第 10 章 ⇒ 第 7 章蓝图有效、第 10 章蓝图脏、覆盖 7–10 的交接单脏', () => {
+    const log = changes({ 'outline:book': '{"7":[10]}' })
+    const current = snapshotOf({ 'outline:book': 7 })
+    expect(derivedStatusForChapters({ 'outline:book': 6 }, current, log, [7])).toEqual({ state: 'valid' })
+    expect(derivedStatusForChapters({ 'outline:book': 6 }, current, log, [10]).state).toBe('stale')
+    // 交接单覆盖整卷区间：只要其中一章被改过就得重算。
+    expect(derivedStatusForChapters({ 'outline:book': 6 }, current, log, [7, 8, 9, 10]).state).toBe('stale')
+  })
 })
 
 describe('expandChapterRange', () => {

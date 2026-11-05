@@ -135,7 +135,33 @@ describe('commitSynopsis 的版本分派', () => {
     expect(revisions()).toEqual([])
   })
 
-  it('没有作者手改记录时该 rev 的章集为空（= 全部覆盖，宁可多判脏）', () => {
+  it('D17：生成落盘带 writtenRange ⇒ 章集只记这些章，不再退化成「全改」', () => {
+    ProjectCoreRepository.commitSynopsis({
+      synopsis: '新大纲',
+      expected: synopsisExpected({ synopsis: '' }),
+      writtenRange: { from: 10, to: 10 },
+    })
+    expect(revisions()).toEqual([{ domain: 'outline', scope: 'book', rev: 1, changed: '{"1":[10]}' }])
+    const row = UpstreamRevisionRepository.read('outline', 'book')
+    // 收窄真的生效：第 7 章（写于 rev0）不被第 10 章的改动判脏。
+    expect(changedChaptersBetween(row!.changedChapters, 0, 1)).toEqual([10])
+  })
+
+  it('D17：authorRecovery 优先于 writtenRange（两者不该同时出现，但优先级要钉死）', () => {
+    ProjectCoreRepository.commitSynopsis({
+      synopsis: '新大纲',
+      expected: synopsisExpected({ synopsis: '' }),
+      writtenRange: { from: 10, to: 10 },
+      authorRecovery: {
+        sourceHandle: {} as never, leaseEpoch: 'epoch', operationId: 'op-1',
+        committedRange: { from: 3, to: 5 },
+      },
+    } as never)
+    const row = UpstreamRevisionRepository.read('outline', 'book')
+    expect(changedChaptersBetween(row!.changedChapters, 0, 1)).toEqual([3, 4, 5])
+  })
+
+  it('D17：不传 writtenRange（中断落盘 / 设置面板直写）⇒ 章集为空（= 全部覆盖，宁可多判脏）', () => {
     ProjectCoreRepository.commitSynopsis({ synopsis: '新大纲', expected: synopsisExpected({ synopsis: '' }) })
     expect(revisions()).toEqual([{ domain: 'outline', scope: 'book', rev: 1, changed: '{"1":[]}' }])
   })

@@ -1,6 +1,6 @@
 # 实机链路验收缺陷清单（2026-11-01 轮）
 
-> 状态：待裁定（**逐条状态见每个条目顶部的 `> 状态：` 行**；末次刷新 2026-11-05 —— 收口 3 条（D14 / D19 实机复验通过；D12 只到单测级）· 🟡 4 条（D1 症状已实机复验、机制待正文批量；D2 方案乙 + 甲两半代码落地、待实机复验；**D5 模板去尖括号 + 落库前接守卫 `87684f48`，待实机**；**D15 单元区间检出入接线，待实机**）· 🔍 1 条（D7 已取证，不成立半句）· ⬜ 11 条未开工（其中 **D3 / D4 / D6 / D8 / D13 / D17 已于 2026-11-05 裁定「做」，按 D17 → D6+D8 → D13 排序**；D5 / D15 已完成））
+> 状态：待裁定（**逐条状态见每个条目顶部的 `> 状态：` 行**；末次刷新 2026-11-05 —— 收口 3 条（D14 / D19 实机复验通过；D12 只到单测级）· 🟡 5 条（D1 症状已实机复验、机制待正文批量；D2 方案乙 + 甲两半代码落地、待实机复验；**D5 模板去尖括号 + 落库前接守卫 `87684f48`，待实机**；**D15 单元区间检出入接线，待实机**；**D17 大纲提交补覆盖章区间，待实机**）· 🔍 1 条（D7 已取证，不成立半句）· ⬜ 10 条未开工（其中 **D3 / D4 / D6 / D8 / D13 已于 2026-11-05 裁定「做」，按 D6+D8 → D13 排序**；D5 / D15 / D17 已完成））
 
 > 日期：2026-11-01
 > 上级稿：[`live-verification-checklist.md`](live-verification-checklist.md)（一次新项目跑批要验什么）
@@ -59,7 +59,7 @@
 | D10 | 低 | ⬜ 待裁定 | 「清空生成内容」未清掉历史审稿/生成记录面板 | 库内计数为 0 vs 界面卡片残留 |
 | D11 | 低 | ⬜ 待裁定 | 生成完成后「补角色卡」提示按批重复堆积 | `src/services/architecture-character-nudge.ts:112`（指纹函数）、`:130–137`（判定） |
 | D16 | 低 | ⬜ 待裁定 | 模型指示器与实际调用不一致：日志确认调 `deepseek-v4.1-flash-free`，状态栏显示 `deepseek-均衡` | 主进程 stderr `model:` 字段 vs 界面底部状态栏 |
-| D17 | 中 | ⬜ 待裁定 | 生成路径提交大纲**不记覆盖章区间**（`changedChapters` 恒为空集）⇒ 判定退化为「整本大纲都改了」⇒ 每追加一批大纲就把此前所有已定稿章/蓝图/交接单拖进失效清单。**预演与实测一致，机制本身是成功的（作者 2026-11-02 认定）**，缺的是输入的章集 | `electron/repositories/project-core-repository.ts:315-317`（只有 `authorRecovery` 才有章集）vs `src/shared/upstream-revisions.ts:668`（空集 ⇒ `null` ⇒ 按全改算）；实测：同步页 7 项「改动章未知」 |
+| D17 | 中 | 🟡 已实施（2026-11-05，待实机） | 生成路径提交大纲**不记覆盖章区间**（`changedChapters` 恒为空集）⇒ 判定退化为「整本大纲都改了」⇒ 每追加一批大纲就把此前所有已定稿章/蓝图/交接单拖进失效清单。**预演与实测一致，机制本身是成功的（作者 2026-11-02 认定）**，缺的是输入的章集 | `electron/repositories/project-core-repository.ts`（`commitSynopsis` 的 `changedChapters` 分支）vs `src/shared/upstream-revisions.ts:651`（空集 ⇒ `null` ⇒ 按全改算）；实测：同步页 7 项「改动章未知」 |
 | D18 | 中 | ⬜ 待裁定 | 蓝图结尾钩子可**无校验地**偏离大纲「收尾：」行：模板两条条款互斥（「必须落在收尾行」vs「不得是事件」）+ 钩子可自造设定 + 正文未兑现无告警。第 6 章 `suspense_hook` 写成结论句，正文里 `寿元` / `因果纹` 各 **0** 次 | `builtin-prompt-templates.ts:1165`（条款互斥）、`src/shared/blueprint-semantic-contract.ts`（「威胁/后果」给它授权）、`generate-draft.command.ts`（`withSuspenseHook` 注入）；**排除审查/改写**：`generation_artifacts` rowid 117（run `fd6f4edc`）与 `blueprint_commit_operations` `directory-f348fe27-…-1-6` 逐字一致 |
 
 共 **19 条**：阻塞 2 · 高 5 · 中 8 · 低 4。**做完的 3 条里 2 条在「高」段（D14 / D19），两条阻塞都还没真正验收** —— D1 代码已改但没跑过真实多章批次，D12 连修法都还没定。
@@ -760,7 +760,7 @@ B 部分**不需要新代码**：`ChapterCreationDialog:595` 早就集成了 `Vo
 
 ### D17（中）生成路径提交大纲**不记覆盖章区间** ⇒ 下游失效退化为「整本大纲都改了」
 
-> 状态：待裁定（2026-11-02 · 机制已认定成功，只缺「章集输入」）· **方案已出（2026-11-05，待拍板）→ [`d17-outline-change-range-design.md`](../architecture/d17-outline-change-range-design.md)**
+> 状态：🟡 已实施（2026-11-05 · 方案 [`d17-outline-change-range-design.md`](../architecture/d17-outline-change-range-design.md) · 待实机复验）
 
 **先说结论：机制本身是成功的（作者 2026-11-02 裁定）**。这一屏做对了四件事：认出对象（蓝图 3 / 交接单 1 / 已定稿 3，分三类列）、算出跨度（每条都写 `情节大纲 6 → 7`）、点名不可回头的那条（"其中含卷末交接单：它会被拒绝读取，下一卷会开不了工"）、给退路且守约（先取消一次，`upstream_revision_log` 里一位版本号都没动，rev 仍为 6）。
 
@@ -782,7 +782,13 @@ changedChapters: request.authorRecovery ? expandChapterRange(request.authorRecov
 
 **后果的量级**：每追加一批大纲 = 把此前所有已定稿章全部标脏。30 章时是一屏 7 条还能忍；300 章时就是「每次续写大纲都要人工忽略 290 条」。这也是长篇就绪度里「跨卷失真」的一个具体形状。
 
-**修法方向（未定，两条都要）**：① `commitSynopsis` 在生成落盘路径上把本次覆盖章区间（请求里已有 `synopsisRange` / 单元 `{from,to}`）写进 `changedChapters`；② 判定侧遇到「有本次范围但流水是空集」时不要直接按全改算，至少要能把「不知道」与「全改」分开呈现。**不锁实现。**
+**修法（2026-11-05 已实施，方案见 [`d17-outline-change-range-design.md`](../architecture/d17-outline-change-range-design.md)）**：
+
+① 请求加 `writtenRange`，由 `commitSynopsisWithCheckpointRollback` 从检查点算 —— 正常批用**实际**范围（`backfillUnitBatch` 回填后的 `to`），覆盖收缩时给到收缩前的 `covered_to`（被删的章一起标脏），中断落盘**不声称范围**（退回保守）。逐章路径 `runPlotOutlineChapters` 另接一处。
+
+② 核查后发现**不需要新代码**：`upstream_revision_log.covers_all` 独立成列、`meta.coversAll` 折入、`describeRevisionChange` 的「全书 / 改过第N章 / 改动章未知」三分在 M27 就建好了。② 的诉求实际是「让 `coversAll` 说实话」的副作用 —— 写入侧补上范围之后，文案自然从「改动章未知」变成「改过第10章」。
+
+**没做**：`outline:<unitId>` 单元级作用域（要迁存量 `source_ref` 键，已评估、不采纳）；历史 7 条空集记录不回填（真实范围当时没记，影响随 `(have, need]` 自然衰减）。
 
 ### D18（中）蓝图结尾钩子可无校验地偏离大纲「收尾：」行：条款互斥 + 自造设定 + 正文未兑现无告警
 

@@ -1066,6 +1066,53 @@ function renderSynopsisDbText(
 }
 
 /**
+ * 「这次落盘到底改了哪几章」（D17，2026-11-05）。
+ *
+ * 交给 `commitSynopsis` 写进 `upstream_revisions.changed_chapters`，让下游失效
+ * 按章收窄 —— 否则提交 1 章大纲会把此前所有已定稿章拖进失效清单。
+ *
+ * ## 为什么不直接读 `partial.synopsis_range`
+ *
+ * 那个字段**同名不同义**：完成路径（`:3683`）是 `backfillUnitBatch` 回填后的
+ * **实际**范围，中断路径（`:4023`）是启动时的**计划**范围。所以入参要显式分开
+ * 传 `incomplete`，顺序反了会把计划当实际报上去。
+ *
+ * ## 四条规则（改之前先读）
+ *
+ * 1. **中断 ⇒ 不声称范围**。此时正文是「前缀 + 半截内容 + 未完成标记」，
+ *    `covered_to` 被刻意压回 `from - 1` —— 「哪几章的正文算变了」没有可信答案。
+ *    返回 `undefined` ⇒ `commitSynopsis` 写空集 ⇒ 判定按全改（保守）。
+ * 2. **覆盖范围收缩 ⇒ 给到 `previousCoveredTo`**。`from = 1` 作废重规划后，
+ *    DB 正文只剩新写的几章，后面那些章的内容**被删了**。只传 `[from, to]`
+ *    会让被删章的蓝图判 valid —— 而它依赖的大纲章节已经不存在。
+ *    `totalChapters` 取 max 是因为写超全书时 `covered_to` 可能大于计划章数。
+ * 3. **写超全书末**（`to > totalChapters`）原样传，只记录不阻断
+ *    （与 `backfillUnitBatch` 的 overflow 口径一致）。
+ * 4. **没有范围 / 没有检查点** ⇒ `undefined`，退回全改。
+ *
+ * ⚠️ **导出是刻意的**：四条规则里有两条（中断、收缩）只能靠构造检查点触发，
+ * 走整条命令跑一遍才能测到就等于没测。测试必须复用本函数，不得抄一份判据。
+ */
+export function outlineWrittenRange(
+  step: {
+    range?: { from: number; to: number }
+    incomplete?: boolean
+    coveredTo?: number
+  },
+  previousCoveredTo: number,
+  totalChapters: number,
+): { from: number; to: number } | undefined {
+  if (step.incomplete === true) return undefined
+  const range = step.range
+  if (!range) return undefined
+  const coveredTo = step.coveredTo ?? range.to
+  if (coveredTo < previousCoveredTo) {
+    return { from: 1, to: Math.max(previousCoveredTo, totalChapters) }
+  }
+  return { from: range.from, to: range.to }
+}
+
+/**
  * 情节大纲检查点的**输入指纹**：把「本步真正依赖的源事实 + 步骤指导 + 批次范围 + 模板」
  * 绑成一个值，用于判断旧检查点能否续到当前上下文。
  *
@@ -3854,6 +3901,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       `【其余冻结作者配置，须保留全部硬要求】\n${JSON.stringify(additionalConfig)}`,
       `[Additional frozen author configuration; preserve all hard requirements]\n${JSON.stringify(additionalConfig)}`)] : [])].join('\n\n')
     const partial = (context.data.partial as PartialArchData) || await loadPartialData(expectedProjectPath, session)
+    // D17：进入本流程前的覆盖进度。`saveNavigation` 会**就地改** `partial`，
+    // 所以必须赶在它第一次被调用之前取下来 —— 否则「收缩」永远判不出来。
+    const previousCoveredTo = partial.synopsis_covered_to ?? 0
     const factsFingerprint = synopsisInputsFingerprint(sourceExpected, guidance, initial.range, template)
     const saveNavigation = async (outline: PlotOutlineProgress, complete = false) => {
       partial.synopsis_protocol = PLOT_OUTLINE_PROTOCOL
@@ -3900,7 +3950,18 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     this.assertNotCancelled(context)
     assertArchitectureProjectSessionCurrent(session, context)
     const synopsis = renderPlotOutlineRange(outline.composition?.text ?? '', outline.range, sourceExpected)
-    const committed = await ipc.invokeWithProjectSession(session, 'db:project-core-synopsis-commit', { synopsis, expected: sourceExpected, generationRunHandle: handle }, expectedProjectPath)
+    // D17：循环已退出 ⇒ `cursor.kind === 'complete'` ⇒ 本批范围全部写完，可以声称范围。
+    const writtenRange = outlineWrittenRange(
+      { range: outline.range, incomplete: false, coveredTo: outline.range.to },
+      previousCoveredTo,
+      sourceExpected.totalChapters,
+    )
+    const committed = await ipc.invokeWithProjectSession(session, 'db:project-core-synopsis-commit', {
+      synopsis,
+      expected: sourceExpected,
+      ...(writtenRange ? { writtenRange } : {}),
+      generationRunHandle: handle,
+    }, expectedProjectPath)
     requireIpcSuccess(committed, text('保存完整情节大纲', 'Save the complete plot outline'))
     await saveNavigation(outline, true)
     const { globalEventBus } = await import('../../../shared/event-bus')
@@ -3957,10 +4018,26 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     fallbackError: string,
   ): Promise<void> {
     const text = (zhCNText: string, enUSText: string) => workflowUiText(context, zhCNText, enUSText)
+    // D17：把「这次写进大纲的是哪几章」一起交出去，下游失效才能按章收窄。
+    // 算不出来（中断落盘 / 缺检查点）时不传 ⇒ 退回「空集 = 按全改算」。
+    const writtenRange = outlineWrittenRange(
+      {
+        range: writtenPartial.synopsis_range,
+        incomplete: writtenPartial.synopsis_incomplete,
+        coveredTo: writtenPartial.synopsis_covered_to,
+      },
+      previousPartial.synopsis_covered_to ?? 0,
+      expected.totalChapters,
+    )
     const result = await ipc.invokeWithProjectSession(
       projectSession,
       'db:project-core-synopsis-commit',
-      { synopsis: stripThinkingTags(synopsis), expected, ...(this.requireGenerationExecution().mainOwned ? { generationRunHandle: context.mainGenerationRunHandle } : {}) },
+      {
+        synopsis: stripThinkingTags(synopsis),
+        expected,
+        ...(writtenRange ? { writtenRange } : {}),
+        ...(this.requireGenerationExecution().mainOwned ? { generationRunHandle: context.mainGenerationRunHandle } : {}),
+      },
       expectedProjectPath,
     )
     if (!result.success) {
