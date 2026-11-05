@@ -1,6 +1,6 @@
 # D17 方案 · 生成路径给大纲提交补上「这次改了哪几章」
 
-> 状态：已实施（2026-11-05 · 单测 5 + 3 + 1 条全绿 · **已实机复验**：单元批写入第 18–19 章，流水记 `[18,19]`，同步页不再列无关章 —— 见 §7.4）
+> 状态：已结项（2026-11-05 · 单测 5 + 3 + 1 条全绿 · **已实机复验**通过 —— 见 §7.4；作者 20:39 结案）
 > 上级稿：[`live-pipeline-acceptance-defects-assessment.md`](../product/live-pipeline-acceptance-defects-assessment.md) §D17（`:761`）
 > 所属线：[`upstream-version-and-derived-invalidation-design.md`](upstream-version-and-derived-invalidation-design.md)（该稿状态「已落地」，本稿是它的收尾补丁，不重做期 1–3）
 > 触发：2026-11-02 实测「提交 1 章大纲 ⇒ 同步页列 7 项待处置，每行理由都是『改动章未知』」
@@ -281,5 +281,13 @@ function outlineWrittenRange(
 | 1 | 收缩时标脏范围 | **按已覆盖区间** `[1, max(previousCoveredTo, totalChapters)]`。比全书准、比「精确列出被删章」少一条要维护的规则；方向仍偏保守 |
 | 2 | 单元级 `outline:<unitId>` | **标注「已评估、不采纳」，不开新卡**。D17 修好后症状消失，换键没有额外收益 |
 | 3 | 中断落盘 | **保持「改动章未知」按全改**。中断时正文是「前缀 + 半截内容 + 未完成标记」，哪几章算变了没有可信答案；多标一次比漏判便宜 |
+
+---
+
+## 10. 结案（2026-11-05 20:39，作者裁定）
+
+**本条关闭，不再派生任何子项。** 关掉的依据是 §7.4 那一整组观测：写入侧交出 `[18,19]`、同步页 7 项 → 3 项、13 张蓝图全 valid。
+
+**§7.4 第 1 条操作事实不随本条关闭** —— 它是另一条独立的缺陷，已单独立案为 **D20**（[`d20-checkpoint-template-fingerprint-design.md`](d20-checkpoint-template-fingerprint-design.md)）。D17 复验时它之所以被撞上，只是因为「换数据根 ⇒ 模板解析结果不同」恰好会触发它，与大纲提交范围无关。
 
 三条都不改变本稿范围：仍然只是「请求加一个字段 + 调用方算范围」。

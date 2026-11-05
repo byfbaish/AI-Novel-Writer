@@ -1,6 +1,10 @@
 # 实机链路验收缺陷清单（2026-11-01 轮）
 
-> 状态：待裁定（**逐条状态见每个条目顶部的 `> 状态：` 行**；末次刷新 2026-11-05 —— 收口 3 条（D14 / D19 实机复验通过；D12 只到单测级）· 🟡 5 条（D1 症状已实机复验、机制待正文批量；D2 方案乙 + 甲两半代码落地、待实机复验；**D5 模板去尖括号 + 落库前接守卫 `87684f48`，待实机**；**D15 单元区间检出入接线，待实机**；**D17 大纲提交补覆盖章区间，待实机**）· 🔍 1 条（D7 已取证，不成立半句）· ⬜ 10 条未开工（其中 **D3 / D4 / D6 / D8 / D13 已于 2026-11-05 裁定「做」，按 D6+D8 → D13 排序**；D5 / D15 / D17 已完成））
+> 状态：待裁定（**逐条状态见每个条目顶部的 `> 状态：` 行**；末次刷新 2026-11-05 20:39）
+
+> **本轮回三条裁定**：**D17 结项** · **D6 = 方向 A**（并取代 2026-10-19 旧裁定）· **D8 = 语义 A** · **新立 D20，定为优先做**。当前分布：✅ 4 条收口（D12 只到单测级、D14 · D19 实机通过、D17 已复验结项）· 🟡 4 条代码落地待实机（D1 症状已实机、机制待正文批量；D2 方案乙 + 甲两半；D5 模板去尖括号 + 落库前守卫 `87684f48`；D15 单元区间检出接线）· 🟡 2 条方向已定、代码未动（**D6 / D8**）· 🔍 1 条已取证（D7 不成立半句）· ⬜ 9 条方向未定（其中 **D3 / D4 / D13 已于 2026-11-05 定「做」**）
+
+> **开工顺序（2026-11-05 作者定）**：**D20 最优先** → D6 / D8 → D13。D20 之所以插到最前，是因为它每撞一次都让使用者拿到一条**错误且无法自查**的归因，而 D6 / D8 只是「该做的改动还没做」。
 
 > 日期：2026-11-01
 > 上级稿：[`live-verification-checklist.md`](live-verification-checklist.md)（一次新项目跑批要验什么）
@@ -49,17 +53,18 @@
 | D14 | 高 | ✅ 已实施（已复验） | 卷结构三步（建卷结构 / 标卷完成 / 登记交接）全手动，生成流程从不调用、系统从不提示 → `l3-handoff-missing` 必然。**2026-11-02 已修**：建结构 + 推进进度改为自动（A 已实机复验，含历史回填），缺口提醒（B）沿用既有闸门、待第 10 章之后复验 | `VolumeHandoffRegistryPanel.tsx:269/293`（原全库唯一调用点）；`volumes` / `volume_units` / `volume_handoffs` 三表初始 0 行；`volumes.actual_last` 定稿后仍全 `null` |
 | D3 | 高 | ⬜ 待裁定 | `degraded=l3-handoff-missing` 提示过弱且不阻断（**根因见 D14**，两者同源） | `src/shared/synopsis-projection.ts:520`（push）、`:504–522`（`actual`/`plan` 回退）、`:351`（类型） |
 | D19 | 高 | ✅ 已实施（已复验） | `actual_last` 被当成卷末 ⇒ 卷边界随进度漂移，开写闸门提前一章弹、交接单漏本卷最后一章 | `src/shared/volume-structure.ts:285`（末章取 `actual_last ?? planned_last`）；`src/shared/volume-handoff-gate.ts:63`（闸门判上一卷）；`finalization-controller.ts:65`（推进在 finalize 之后） |
+| **D20** | **高** | ⬜ **待裁定（作者定为优先做）** | **生成模板一变，旧大纲检查点就续不上，而报错断言「项目源事实已变化」**——指纹是 4 元的（源事实 / 步骤指导 / 批次范围 / **模板**），比对时只剩一个布尔值，文案却只认第 1 元。换数据根 / 换机器 / 改模板都会撞上，使用者无从查起。**已逼出红线 19 + 三处渲染期 override** | `architecture.command.ts:1124-1150`（指纹含 `JSON.stringify(template)`）· `:3135` `:3242`（两处报错文案）· **对照组 `:2334` 写对了**；现场：D17 §7.4 第 1 条（`stored=13sbmpn / expected=tkj9w7`，12 个源事实字段 sha256 全一致）；方案稿 [`architecture/d20-checkpoint-template-fingerprint-design.md`](../architecture/d20-checkpoint-template-fingerprint-design.md) |
 | D4 | 中 | ⬜ 待裁定 | UI 散落「来源已变化」文案，但没有任何地方把它和批次中止关联 | `src/components/panels/AIOutputPanel.tsx:398` |
 | D5 | 中 | 🟡 已实施（2026-11-05，待实机） | 卷/单元结构输出里模板尖括号占位符原样保留 | `debug/prompt-trace/20261101-213138-718-弧光-d57a1d5d.json` → `ioCalls[0].output` |
-| D6 | 中 | ⬜ 待裁定 | 卷数由平台画像固定区间决定，与总章数解耦 | 同上 trace 的 `【节奏推荐】` 与「输出前自检」第 2 条 |
+| D6 | 中 | 🟡 已裁定（2026-11-05 · **方向 A**，未开工） | 卷数由平台画像固定区间决定，与总章数解耦。裁定：卷数 = `f(totalChapters)`、代码算，画像只给「每卷章数区间」；**且 2026-10-19「卷/单元章数由模型决定」那条旧裁定被显式取代** | 同上 trace 的 `【节奏推荐】` 与「输出前自检」第 2 条；方案稿 [`architecture/d6-volume-count-source-design.md`](../architecture/d6-volume-count-source-design.md) §8 |
 | D7 | 中 | 🔍 已取证（2026-11-03）：「不符」**不成立**（两侧同一 `computeSynopsisUnitRange`，仅显示精度差）；「偏保守」成立且属模型行为 | 单元 → 章折算偏保守，且与对话框预告不符 | 对话框 `synopsis-unit-launch.ts:298` · 生成 `architecture.command.ts:2948` · prompt 精度 `arc-position.ts:960`；`partial_arch.json` 的 `synopsis_volume_deviations` |
-| D8 | 中 | ⬜ 待裁定 | 检查点残留导致模式自动降级，提示藏在段落里；同屏两个互相矛盾的章数 | `ArchitectureConfirmDialog.tsx:707`（10 章）vs `:932`（本批 5 章） |
+| D8 | 中 | 🟡 已裁定（2026-11-05 · **语义 A「整批重来」**，未开工） | 检查点残留导致模式自动降级，提示藏在段落里；同屏两个互相矛盾的章数。裁定 A 的理由：E3 单元化后「整批」的粒度已是一个单元，重来代价可接受；**语义 B（候选即前缀）整节作废** | `ArchitectureConfirmDialog.tsx:707`（10 章）vs `:932`（本批 5 章）；方案稿 [`architecture/d8-checkpoint-degradation-design.md`](../architecture/d8-checkpoint-degradation-design.md) §9 |
 | D15 | 中 | 🟡 已实施（2026-11-05，待实机） | 第 2 卷单元区间重叠（7–9 / 8–9 / 10–10），第 8、9 章归属不唯一 | `volume_units` 落库后读出的 `planned_first` / `planned_last` |
 | D9 | 低 | ⬜ 待裁定 | 单章大纲调用可能长时间不返回，无超时/无中断 | `debug/prompt-trace/20261101-215546-106-大纲-ch10-b79a98f3.json`（`ioCalls` 为空） |
 | D10 | 低 | ⬜ 待裁定 | 「清空生成内容」未清掉历史审稿/生成记录面板 | 库内计数为 0 vs 界面卡片残留 |
 | D11 | 低 | ⬜ 待裁定 | 生成完成后「补角色卡」提示按批重复堆积 | `src/services/architecture-character-nudge.ts:112`（指纹函数）、`:130–137`（判定） |
 | D16 | 低 | ⬜ 待裁定 | 模型指示器与实际调用不一致：日志确认调 `deepseek-v4.1-flash-free`，状态栏显示 `deepseek-均衡` | 主进程 stderr `model:` 字段 vs 界面底部状态栏 |
-| D17 | 中 | ✅ 已实施（已复验 2026-11-05） | 生成路径提交大纲**不记覆盖章区间**（`changedChapters` 恒为空集）⇒ 判定退化为「整本大纲都改了」⇒ 每追加一批大纲就把此前所有已定稿章/蓝图/交接单拖进失效清单。**预演与实测一致，机制本身是成功的（作者 2026-11-02 认定）**，缺的是输入的章集 | `electron/repositories/project-core-repository.ts`（`commitSynopsis` 的 `changedChapters` 分支）vs `src/shared/upstream-revisions.ts:651`（空集 ⇒ `null` ⇒ 按全改算）；实测：同步页 7 项「改动章未知」 |
+| D17 | 中 | ✅ **已结项（2026-11-05）** | 生成路径提交大纲**不记覆盖章区间**（`changedChapters` 恒为空集）⇒ 判定退化为「整本大纲都改了」⇒ 每追加一批大纲就把此前所有已定稿章/蓝图/交接单拖进失效清单。**预演与实测一致，机制本身是成功的（作者 2026-11-02 认定）**，缺的是输入的章集。**已实机复验**：rev21 记 `[18,19]`、同步页 7 项 → 3 项、13 张蓝图全 valid；复验时撞出的另一个问题已单列为 D20 | `electron/repositories/project-core-repository.ts`（`commitSynopsis` 的 `changedChapters` 分支）vs `src/shared/upstream-revisions.ts:651`（空集 ⇒ `null` ⇒ 按全改算）；方案稿 [`architecture/d17-outline-change-range-design.md`](../architecture/d17-outline-change-range-design.md) §7.4 · §10 |
 | D18 | 中 | ⬜ 待裁定 | 蓝图结尾钩子可**无校验地**偏离大纲「收尾：」行：模板两条条款互斥（「必须落在收尾行」vs「不得是事件」）+ 钩子可自造设定 + 正文未兑现无告警。第 6 章 `suspense_hook` 写成结论句，正文里 `寿元` / `因果纹` 各 **0** 次 | `builtin-prompt-templates.ts:1165`（条款互斥）、`src/shared/blueprint-semantic-contract.ts`（「威胁/后果」给它授权）、`generate-draft.command.ts`（`withSuspenseHook` 注入）；**排除审查/改写**：`generation_artifacts` rowid 117（run `fd6f4edc`）与 `blueprint_commit_operations` `directory-f348fe27-…-1-6` 逐字一致 |
 
 共 **19 条**：阻塞 2 · 高 5 · 中 8 · 低 4。**做完的 3 条里 2 条在「高」段（D14 / D19），两条阻塞都还没真正验收** —— D1 代码已改但没跑过真实多章批次，D12 连修法都还没定。
@@ -902,6 +907,41 @@ changedChapters: request.authorRecovery ? expandChapterRange(request.authorRecov
 **残留文案（2026-11-02 22:38 补修）**：交接单面板底部那句说明当时还写着「末章优先用**实际末章**（标记完成时取该卷已定稿章的最大章号）」——与修好后的行为正好相反，作者读到会以为进度还能改边界。**这条是派给豆包做重构时它顺手报出来的**（详见 `docs/agents/doubao-channel.md` §7.1），已改成「末章用计划边界，只有老项目没有计划值时才退回实际末章兜底」。
 
 > 教训：D19 改的是**函数与测试**，但同一句话在三个地方存在——`volume-structure.ts` 注释、测试用例名、**界面文案**。前两处跟着代码走，界面文案不会。改语义类缺陷时，「库里还有谁在复述这条旧语义」要单独搜一遍（搜关键词而不是搜符号）。
+
+### D20（高）生成模板一变，旧大纲检查点就续不上，而报错断言「项目源事实已变化」
+
+> 状态：待裁定（2026-11-05 · **作者定为优先做**）
+> 方案稿：[`../architecture/d20-checkpoint-template-fingerprint-design.md`](../architecture/d20-checkpoint-template-fingerprint-design.md)
+
+**发现于 D17 实机复验（2026-11-05 20:05）**：续批被拒，报文说「项目源事实自上次生成后已变化，既有大纲不能与新的源事实拼接」。逐字段核对后发现**源事实一个都没变**。
+
+**证据链（四步，每步都可复算）**
+
+| # | 事实 | 出处 |
+|---|---|---|
+| 1 | 指纹由 4 段拼成：11 个源事实字段 · 步骤指导 · 批次范围 · **`JSON.stringify(template)`（整对象）** | `architecture.command.ts:1124-1150`，4 元组在 `:1144-1149` |
+| 2 | 两处判定都只拿到「不等」这一个布尔值——32 位哈希是单向的，**比对时已不可能知道是哪一项变了** | `:3133`（续写）/ `:3240`（续批） |
+| 3 | 但两处报文都只认第 1 元；`:3135` 还加了「（故事前提/角色/世界观/总章数等）」，把视线钉在恰恰没变的字段上 | `:3135` / `:3242` |
+| 4 | **同一文件的世界观链写对了**：把 4 项全列了出来 | `:2334`（对照 `:2326-2331`） |
+
+**实测真因**：换了数据根 ⇒ `resolvePromptTemplate('synopsis', …)`（`:3020`）解析出的模板不同（原环境有全局覆盖版 `~/.vela/prompts/synopsis.zh-CN.json`，新环境走内置）。诊断值为 `stored=13sbmpn / expected=tkj9w7`；**12 个源事实字段逐字段 sha256 与原库完全一致**（清单见方案稿 §1.1）。
+
+**这条为什么排到最前**：作者原话——「开发者倒是可以调查到真实原因，但对于使用者来说，抠破脑袋都找不到这个真实的原因，只会以为自己的写作材料变化了，但其实根本没有变化。」**换数据根 / 换机器 / 改模板都会撞上**，而作者的所有可选动作只有一个：全书大纲重写。
+
+**已经付出的代价（比报错本身贵）**：
+
+| 代价 | 出处 |
+|---|---|
+| **红线 19**：「大纲输出合同必须走 `withSystemSuffixOverride()`，否则 A/B 两个项目的检查点全部作废」 | `chapter-position-format-design.md:99` `:108` `:360` `:372` |
+| 三处实现被迫「渲染期拿字符串做手术，不改模板对象」，各自留了「因为指纹才这么写」的自述 | `prompt-builder.ts:18-25` · `synopsis-two-level-suffix.ts:21-25` · `synopsis-unit-heading.ts:21-23` |
+| 四篇设计稿把它写成硬约束 | `choice-source-and-elimination-design.md:138` · `d18-chapter-hook-contract-design.md:441` · `prompt-assembly-backlog.md:457` · `layered-generation-assessment.md:360-368` |
+| 用户可见文案已经把这句话当成唯一真相 | `ArchitectureConfirmDialog.tsx:792`（**在预告一条具体报文**）· `ProjectTree.tsx:610` · `project-clear-service.ts:166` |
+
+**修法方向**：**不是改文案，是让判定侧具备归因能力。** 新增 `synopsisInputFingerprintParts()`（与现函数并列，`combined` 必须等于现返回值），写入侧多落一份 4 项分项哈希（约 30 字节），判定侧逐项比、按 `drift` 出报文；旧检查点走诚实兜底（「无法判断是哪一项」，而不是「源事实变了」）。`world_building` 链同病同治。
+
+**唯一需裁定的地方**：**只有模板变化时允不允许续？** A 允许 / B 如实说明 + 确认后可续 / C 拦且不给旁路。A 的证据是「项目事实上早就这么判了」（红线 19 的全部存在理由就是模板变化不该作废大纲），反对证据是**模板变化可能是结构性的**——`synopsis-two-level-suffix.ts` 正是活例子，两级结构换掉 `systemSuffix` 后输出合同整段不同，会造成同一份大纲并存两套格式。
+
+**与 D4 的边界**：D4 说「没有一处把中止和文案关联」；本条说「关联起来的那一处说的是错的」。修好本条 D4 才有可信的归因数据可用，但 D4 不因此关闭。
 
 ### D8 的现场实锤（2026-11-02）
 
