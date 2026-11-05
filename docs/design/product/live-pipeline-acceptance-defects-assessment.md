@@ -1,6 +1,6 @@
 # 实机链路验收缺陷清单（2026-11-01 轮）
 
-> 状态：待裁定（**逐条状态见每个条目顶部的 `> 状态：` 行**；末次刷新 2026-11-04 —— 收口 3 条（D14 / D19 实机复验通过；D12 只到单测级）· 🟡 2 条（D1 症状已实机复验、机制待正文批量；D2 方案乙 + 甲两半代码落地、待实机复验）· 🔍 1 条（D7 已取证，不成立半句）· ⬜ 13 条未开工）
+> 状态：待裁定（**逐条状态见每个条目顶部的 `> 状态：` 行**；末次刷新 2026-11-05 —— 收口 3 条（D14 / D19 实机复验通过；D12 只到单测级）· 🟡 3 条（D1 症状已实机复验、机制待正文批量；D2 方案乙 + 甲两半代码落地、待实机复验；**D5 模板去尖括号 + 落库前接守卫 `87684f48`，待实机**）· 🔍 1 条（D7 已取证，不成立半句）· ⬜ 12 条未开工（其中 **D3 / D4 / D6 / D8 / D13 / D15 / D17 已于 2026-11-05 裁定「做」，按 D17 → D5 → D6+D8 → D13 排序**；D5 已完成））
 
 > 日期：2026-11-01
 > 上级稿：[`live-verification-checklist.md`](live-verification-checklist.md)（一次新项目跑批要验什么）
@@ -50,7 +50,7 @@
 | D3 | 高 | ⬜ 待裁定 | `degraded=l3-handoff-missing` 提示过弱且不阻断（**根因见 D14**，两者同源） | `src/shared/synopsis-projection.ts:520`（push）、`:504–522`（`actual`/`plan` 回退）、`:351`（类型） |
 | D19 | 高 | ✅ 已实施（已复验） | `actual_last` 被当成卷末 ⇒ 卷边界随进度漂移，开写闸门提前一章弹、交接单漏本卷最后一章 | `src/shared/volume-structure.ts:285`（末章取 `actual_last ?? planned_last`）；`src/shared/volume-handoff-gate.ts:63`（闸门判上一卷）；`finalization-controller.ts:65`（推进在 finalize 之后） |
 | D4 | 中 | ⬜ 待裁定 | UI 散落「来源已变化」文案，但没有任何地方把它和批次中止关联 | `src/components/panels/AIOutputPanel.tsx:398` |
-| D5 | 中 | ⬜ 待裁定 | 卷/单元结构输出里模板尖括号占位符原样保留 | `debug/prompt-trace/20261101-213138-718-弧光-d57a1d5d.json` → `ioCalls[0].output` |
+| D5 | 中 | 🟡 已实施（2026-11-05，待实机） | 卷/单元结构输出里模板尖括号占位符原样保留 | `debug/prompt-trace/20261101-213138-718-弧光-d57a1d5d.json` → `ioCalls[0].output` |
 | D6 | 中 | ⬜ 待裁定 | 卷数由平台画像固定区间决定，与总章数解耦 | 同上 trace 的 `【节奏推荐】` 与「输出前自检」第 2 条 |
 | D7 | 中 | 🔍 已取证（2026-11-03）：「不符」**不成立**（两侧同一 `computeSynopsisUnitRange`，仅显示精度差）；「偏保守」成立且属模型行为 | 单元 → 章折算偏保守，且与对话框预告不符 | 对话框 `synopsis-unit-launch.ts:298` · 生成 `architecture.command.ts:2948` · prompt 精度 `arc-position.ts:960`；`partial_arch.json` 的 `synopsis_volume_deviations` |
 | D8 | 中 | ⬜ 待裁定 | 检查点残留导致模式自动降级，提示藏在段落里；同屏两个互相矛盾的章数 | `ArchitectureConfirmDialog.tsx:707`（10 章）vs `:932`（本批 5 章） |
@@ -337,7 +337,7 @@ Tier 1 单独成立，就是本缺陷的主症状被修好的那一半：**run �
 
 ## D5（中）卷/单元结构输出里模板尖括号占位符原样保留
 
-> 状态：待裁定（2026-11-01 · 未开工）
+> 状态：已实施（2026-11-05 · `87684f48` · **只去尖括号、文字其余不动**，两侧都做了：模板去 `<…>` + `writeArchToDb` 前接 `findAngleBracketPlaceholders()` 告警（不阻断）。**未实机验证**新形态是否真的不再被抄；若模型转去整句照抄说明文字，退回「只留字段名」形态）
 
 ### 现象
 
