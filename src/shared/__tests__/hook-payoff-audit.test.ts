@@ -4,7 +4,13 @@ import {
   HOOK_COPY_RATIO_DEFAULT,
   HOOK_PLANTED_MIN_RUN,
   hookTokenCoverage,
+  longestCommonRunLength,
 } from '../hook-payoff-audit'
+import {
+  C5_CH6_CURRENT_HOOK,
+  C5_CH6_FINALIZED_BODY,
+  C5_CH6_LEGACY_HOOK,
+} from './fixtures/c5-ch6-hook-planting.fixture'
 
 const HOOK = '钩子：悬念截断 — 赵铎的尸骨停在半空｜种在：赵铎的尸骨'
 
@@ -70,8 +76,38 @@ describe('C5 未落地：钩子和正文没有 ≥3 字的连续片段', () => {
   })
 })
 
-describe('边界：不属于这两条判据的输入不报', () => {
-  it('钩子行解析不出来 ⇒ 空数组（结构问题归大纲侧 C1）', () => {
+/**
+ * ★ 真实正负对照（2026-11-05 从作者库导出）。
+ *
+ * 上面那几条用的是手写短句，能证明「判据会响」，但证明不了「对真实产物会响」。
+ * C5 原先唯一的真实正样本是第 6 章旧蓝图钩子，该章蓝图重生成后正样本消失 ——
+ * 本段把它连同定稿正文一起固定下来，同时给出**不该响的对照**。
+ */
+describe('★ 真实正负对照：第 6 章旧钩子 × 定稿正文', () => {
+  it('旧钩子与定稿正文最长公共片段 = 2 字 ⇒ 报 C5（唯一真实正样本）', () => {
+    const c5 = auditDraftHook({ hookText: C5_CH6_LEGACY_HOOK, draft: C5_CH6_FINALIZED_BODY })
+      .find(f => f.code === 'C5-unplanted')
+    expect(c5).toBeDefined()
+    expect(c5!.metric).toBe(2)
+    expect(longestCommonRunLength(C5_CH6_LEGACY_HOOK, C5_CH6_FINALIZED_BODY)).toBe(2)
+  })
+
+  it('当前钩子 × 同一份正文 = 4 字 ⇒ 不报（重生成后它不再是正样本）', () => {
+    const findings = auditDraftHook({ hookText: C5_CH6_CURRENT_HOOK, draft: C5_CH6_FINALIZED_BODY })
+    expect(findings.some(f => f.code === 'C5-unplanted')).toBe(false)
+    expect(longestCommonRunLength(C5_CH6_CURRENT_HOOK, C5_CH6_FINALIZED_BODY)).toBe(4)
+  })
+
+  it('旧钩子的机制词在正文里 0 次，那 2 字来自「皮肤」—— 自造设定的实证', () => {
+    for (const word of ['寿元', '因果纹', '灼烧', '透支']) {
+      expect(C5_CH6_FINALIZED_BODY).not.toContain(word)
+    }
+    // 「皮肤」出现 1 次：2 字片段只有这一个来源，也正是阈值定在 3 而不是 2 的理由。
+    expect(C5_CH6_FINALIZED_BODY.split('皮肤').length - 1).toBe(1)
+  })
+})
+
+describe('边界：不属于这两条判据的输入不报', () => {  it('钩子行解析不出来 ⇒ 空数组（结构问题归大纲侧 C1）', () => {
     expect(auditDraftHook({ hookLine: '选择：他人 —— 他去求了赵铎', draft: '正文' })).toHaveLength(0)
   })
 
