@@ -76,3 +76,9 @@ tailwind.config.js.bak
 # A stray npm package-lock.json is never authoritative here.
 /package-lock.json
 .tmp-*
+
+# 任务看板是各 worktree 的本地运行状态（卡、租约、报告），不随仓库分发。
+.dsh-task-board/
+
+# 临时脚本 / 样本 / 取证产物：按约定刻意不入库（见 docs/handoffs、docs/agents）。
+/scripts/.tmp/
