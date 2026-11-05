@@ -59,7 +59,7 @@
 | D10 | 低 | ⬜ 待裁定 | 「清空生成内容」未清掉历史审稿/生成记录面板 | 库内计数为 0 vs 界面卡片残留 |
 | D11 | 低 | ⬜ 待裁定 | 生成完成后「补角色卡」提示按批重复堆积 | `src/services/architecture-character-nudge.ts:112`（指纹函数）、`:130–137`（判定） |
 | D16 | 低 | ⬜ 待裁定 | 模型指示器与实际调用不一致：日志确认调 `deepseek-v4.1-flash-free`，状态栏显示 `deepseek-均衡` | 主进程 stderr `model:` 字段 vs 界面底部状态栏 |
-| D17 | 中 | 🟡 已实施（2026-11-05，待实机） | 生成路径提交大纲**不记覆盖章区间**（`changedChapters` 恒为空集）⇒ 判定退化为「整本大纲都改了」⇒ 每追加一批大纲就把此前所有已定稿章/蓝图/交接单拖进失效清单。**预演与实测一致，机制本身是成功的（作者 2026-11-02 认定）**，缺的是输入的章集 | `electron/repositories/project-core-repository.ts`（`commitSynopsis` 的 `changedChapters` 分支）vs `src/shared/upstream-revisions.ts:651`（空集 ⇒ `null` ⇒ 按全改算）；实测：同步页 7 项「改动章未知」 |
+| D17 | 中 | ✅ 已实施（已复验 2026-11-05） | 生成路径提交大纲**不记覆盖章区间**（`changedChapters` 恒为空集）⇒ 判定退化为「整本大纲都改了」⇒ 每追加一批大纲就把此前所有已定稿章/蓝图/交接单拖进失效清单。**预演与实测一致，机制本身是成功的（作者 2026-11-02 认定）**，缺的是输入的章集 | `electron/repositories/project-core-repository.ts`（`commitSynopsis` 的 `changedChapters` 分支）vs `src/shared/upstream-revisions.ts:651`（空集 ⇒ `null` ⇒ 按全改算）；实测：同步页 7 项「改动章未知」 |
 | D18 | 中 | ⬜ 待裁定 | 蓝图结尾钩子可**无校验地**偏离大纲「收尾：」行：模板两条条款互斥（「必须落在收尾行」vs「不得是事件」）+ 钩子可自造设定 + 正文未兑现无告警。第 6 章 `suspense_hook` 写成结论句，正文里 `寿元` / `因果纹` 各 **0** 次 | `builtin-prompt-templates.ts:1165`（条款互斥）、`src/shared/blueprint-semantic-contract.ts`（「威胁/后果」给它授权）、`generate-draft.command.ts`（`withSuspenseHook` 注入）；**排除审查/改写**：`generation_artifacts` rowid 117（run `fd6f4edc`）与 `blueprint_commit_operations` `directory-f348fe27-…-1-6` 逐字一致 |
 
 共 **19 条**：阻塞 2 · 高 5 · 中 8 · 低 4。**做完的 3 条里 2 条在「高」段（D14 / D19），两条阻塞都还没真正验收** —— D1 代码已改但没跑过真实多章批次，D12 连修法都还没定。
@@ -380,6 +380,8 @@ Tier 1 单独成立，就是本缺陷的主症状被修好的那一半：**run �
 ## D6（中）卷数由平台画像固定区间决定，与总章数解耦
 
 > 状态：待裁定（2026-11-01 · 未开工）
+> **方案稿（2026-11-05）**：[`../architecture/d6-volume-count-source-design.md`](../architecture/d6-volume-count-source-design.md)
+> **方案稿对本文的更正**：① 「卷数由画像单方面决定」应改成「模型在画像区间内**自己挑**，代码既不算也不校验」（`majors.length` 是消费端计数，且有 9 处各自读它，不是唯一决定点）；② 12 章缺口不是被某一环"吃掉"——`scaledBoundaries` 强制末条 = `total`，计划本身闭合，缺口来自「实写环（D7）× **终止环**（`architecture.command.ts:373` 单元用尽即判全书完成，全链无 `covered_to` 对账）」叠加 ⇒ **只修 D7 仍会在第 18 单元收尾**。
 
 ### 现象
 
@@ -477,6 +479,8 @@ Tier 1 单独成立，就是本缺陷的主症状被修好的那一半：**run �
 ## D8（中）检查点残留导致模式自动降级，且提示藏在段落里
 
 > 状态：待裁定（2026-11-01 · 未开工）
+> **方案稿（2026-11-05）**：[`../architecture/d8-checkpoint-degradation-design.md`](../architecture/d8-checkpoint-degradation-design.md)
+> **方案稿对本文的更正**：① 本文列的五处「判定入口」（`:994–997` / `:1184–1185` / `:1259` / `:1279` / `:2912`）**四处已漂移或不相干**，真正决定降级的是 `src/services/workflows/synopsis-unit-launch.ts:285–289` 一处探针；② `synopsis_incomplete` **仍活**，且 D1/D2 修完后从"偶发"变"稳定复现"（批前预写 + 回滚只在 batch 模式生效）；③ **三个出口里两个今天走不通**：转按章区间被 `:3205` 硬抛，重置检查点后下一次生成被 `:3045` 拦（见该稿 §5）。
 
 ### 现象
 
@@ -760,7 +764,7 @@ B 部分**不需要新代码**：`ChapterCreationDialog:595` 早就集成了 `Vo
 
 ### D17（中）生成路径提交大纲**不记覆盖章区间** ⇒ 下游失效退化为「整本大纲都改了」
 
-> 状态：🟡 已实施（2026-11-05 · 方案 [`d17-outline-change-range-design.md`](../architecture/d17-outline-change-range-design.md) · 待实机复验）
+> 状态：✅ 已实施（2026-11-05 · 方案 [`d17-outline-change-range-design.md`](../architecture/d17-outline-change-range-design.md) · **已实机复验**：单元批写第 18–19 章 ⇒ rev21 记 `[18,19]`，同步页不再列无关章，见该稿 §7.4）
 
 **先说结论：机制本身是成功的（作者 2026-11-02 裁定）**。这一屏做对了四件事：认出对象（蓝图 3 / 交接单 1 / 已定稿 3，分三类列）、算出跨度（每条都写 `情节大纲 6 → 7`）、点名不可回头的那条（"其中含卷末交接单：它会被拒绝读取，下一卷会开不了工"）、给退路且守约（先取消一次，`upstream_revision_log` 里一位版本号都没动，rev 仍为 6）。
 
