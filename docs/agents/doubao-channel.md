@@ -527,6 +527,8 @@ node scripts/doubao/watchdog.mjs --task <cardId>
 
 **治本仍是任务书**：写死「做完验收标准 → 写报告 → 打 `review`+`release` → 才允许停」能降频，但豆包没有工具层硬钉，watchdog 只作兜底。
 
+**队列型派活的两条实测坑（2026-11-05 23:16）**：① 任务书正文里若写死 `## [T1] DONE` / `## [QUEUE] EMPTY` 这类**字面量**，`markers` 的 body-slice 会把用户消息回显一起算进去，报出幽灵 `[T1] DONE`；`markers.mjs` 的 `isTerminalQueueMarker`（末行 + 前置真 DONE）已挡住「队列已完成」误判（实测 `queueEmpty: false`），但那个 `[T1] DONE` 是假的，**别拿它当进度**，任务书里写 `[Tn]` 占位即可。② `--task` 一次只盯一张卡：多卡队列里第一张交回后 watchdog 按设计收工，要用第二张卡号**重启一次**（判完成以看板与报告为准，不以 `markers` 为准）。
+
 **恢复顺序**：先 `probe.mjs` 看 testid 还在不在 → 再 `inspect-click.mjs` 看按钮还能不能点 → 最后才改 `SELECTORS`。
 
 ## 9. 相关文档
