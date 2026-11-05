@@ -49,7 +49,7 @@
 | D1 | 阻塞 | 🟡 已实施（部分复验） | 批内多单元/多章生成时第二次调用即抛 `GENERATION_SOURCE_CHANGED`，整批静默中止。**2026-11-02**：连写 2 单元已实机跑通（12 → 15 章）；机制层补 8 条单测，同 run 多调用路径（正文批量）仍未复验 | `electron/services/main-generation-owner.ts:931`；`electron/services/agent-generation.ts:158/190/196`；`src/services/agent/agent-generation-client.ts:33` |
 | D12 | 阻塞 | ✅ 已实施（2026-11-04 · 单测级，未实机） | 正文重演被丢弃且无重试、无回流。**真因是短细纲把上一章全文当成本章任务**，不是校验过严（见「第二轮实测」）。修法 = R6 短细纲砍全文（要点 + 结尾 ≤300 字）+ 判据改结构化对应，`ba3d4bc5` | `generate-draft.command.ts:1536`（拦截）；`chapter-materials.ts`（`previousChapterEnding(content, maxChars)`）；`draft-short-outline.ts`（`draftShortOutlinePredecessor`）；合并稿 `previous-chapter-context-assessment.md` §8/§9 |
 | D2 | 高 | 🟡 已实施（方案乙 + 甲；待实机复验） | 批次中断在 UI 上完全静默：无失败回执，进度条「假继续」。乙 = 收口统一 seal；甲 = 执行租约 + 启动 fence 判 `aborted`（`68a37585`），`aborted` 现为不可续终态 | `generation_runs` 36 条无终态、`blocked_code` 为 NULL；`generation_attempts` 却为 `settled`；设计稿 `features/d2-run-lease-abort-design.md` §10 |
-| D13 | 高 | ⬜ 待裁定 | 同一章三次失败分别挂在三个不同层，失败原因互不相关且都无恢复路径 | 短细纲层 / 重演层 / `GENERATION_COMPOSITION_NO_PROGRESS` |
+| D13 | 高 | ⬜ 待裁定（**方案稿已出，经独立复核打回五处后修订**） | 同一章三次失败分别挂在三个不同层，失败原因互不相关且都无恢复路径。**实读后定性修正**：不是三个 bug，是**一条链上没有失败契约**——正文层 10 处抛点 + 主进程 4 处 + 组装层 4 处、共约 8 个码，且码全在 message 里不带 `code` 字段 | 短细纲层 / 重演层 / `GENERATION_COMPOSITION_NO_PROGRESS`；方案稿 [`architecture/d13-chapter-failure-contract-design.md`](../architecture/d13-chapter-failure-contract-design.md) |
 | D14 | 高 | ✅ 已实施（已复验） | 卷结构三步（建卷结构 / 标卷完成 / 登记交接）全手动，生成流程从不调用、系统从不提示 → `l3-handoff-missing` 必然。**2026-11-02 已修**：建结构 + 推进进度改为自动（A 已实机复验，含历史回填），缺口提醒（B）沿用既有闸门、待第 10 章之后复验 | `VolumeHandoffRegistryPanel.tsx:269/293`（原全库唯一调用点）；`volumes` / `volume_units` / `volume_handoffs` 三表初始 0 行；`volumes.actual_last` 定稿后仍全 `null` |
 | D3 | 高 | ⬜ 待裁定 | `degraded=l3-handoff-missing` 提示过弱且不阻断（**根因见 D14**，两者同源） | `src/shared/synopsis-projection.ts:520`（push）、`:504–522`（`actual`/`plan` 回退）、`:351`（类型） |
 | D19 | 高 | ✅ 已实施（已复验） | `actual_last` 被当成卷末 ⇒ 卷边界随进度漂移，开写闸门提前一章弹、交接单漏本卷最后一章 | `src/shared/volume-structure.ts:285`（末章取 `actual_last ?? planned_last`）；`src/shared/volume-handoff-gate.ts:63`（闸门判上一卷）；`finalization-controller.ts:65`（推进在 finalize 之后） |
@@ -645,7 +645,9 @@ Tier 1 单独成立，就是本缺陷的主症状被修好的那一半：**run �
 
 ### D13（高）同一章三次失败分别挂在三个不同层，失败原因互不相关且都无恢复路径
 
-> 状态：待裁定（2026-11-01 · 未开工）
+> 状态：待裁定（2026-11-01 · 未开工）。**2026-11-05 补：方案稿已出** →
+> [`architecture/d13-chapter-failure-contract-design.md`](../architecture/d13-chapter-failure-contract-design.md)，
+> 首版经独立复核打回五处后修订，其 §11 是复核记录。**下面这三条「建议方向」已被实读推翻，勿照做**（见方案稿 §4）。
 
 实测第 2 章（同一蓝图、同一模型 `qwen3.5:9b-128k`），三次尝试三种死法：
 
@@ -661,6 +663,13 @@ Tier 1 单独成立，就是本缺陷的主症状被修好的那一半：**run �
   1. 三个失败点都要有明确的错误码出口，统一汇聚成"这一章为什么没写出来"，而不是分别落在控制台/编辑器文字/任务面板；
   2. `GENERATION_COMPOSITION_NO_PROGRESS` 至少在丢弃前把已有的 1112 字正文留下来（做草稿），让作者自己决定要不要；
   3. 续写结果必须参与 compose 的进展判定，否则续写等于白做。
+- **[第 2 条已失效 2026-11-05]** 代码在（`:1710-1756` + `db:recovery-candidate-record` + `AIOutputPanel` 有入口），
+  但**生产不可达**：条件是 `!mainOwned`，而 `mainOwned` 在生产恒为真（三个调用点都不注入 `dependencies`）。
+  问法要改成「唯一留候选的那条分支，生产不走」。→ 方案稿 §4.2
+- **[第 3 条已失效 2026-11-05]** 续写产出**早已逐字参与判定**（`:2034` 的 `mergedDelta`）。第 3 次的真实路径是
+  「续写内容被接受 → 走到 compose `:531` 才判没变长」，不是"没被消费"。→ 方案稿 §4.1
+- **[第 1 条部分失效 2026-11-05]** 方向对，但范围写小了：不止三个失败点，是**正文层 10 处 + 主进程 4 处 + 组装层 4 处**，
+  且码全在 message 里、不带 `code` 字段，跨 IPC 还会再丢一次。→ 方案稿 §2 / §2.1 / §5.4
 
 ---
 
