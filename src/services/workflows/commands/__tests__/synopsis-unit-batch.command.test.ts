@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useLLMStore } from '../../../../stores/llm-store'
 import { useProjectStore } from '../../../../stores/project-store'
 import type { StepCallbacks, WorkflowContext } from '../../../../stores/workflow-store'
-import { GeneratePlotArchitectureCommand, synopsisFactsFingerprint, synopsisInputsFingerprint } from '../architecture.command'
+import { GeneratePlotArchitectureCommand, isSynopsisSkeletonComplete, renderSynopsisDbText, renderSynopsisProgressSignal, synopsisFactsFingerprint, synopsisInputsFingerprint } from '../architecture.command'
 import { createWorkflowRuntimeDependencies } from './workflow-generation-runtime.fixture'
 import { clearProjectCustomPrompts, getBuiltinPromptTemplate } from '../../../prompt-templates'
 import type { ArchitectureUnitRange } from '../../../../shared/generation-owner-contract'
@@ -424,5 +424,91 @@ describe('GeneratePlotArchitectureCommand · 检查点不可信时 fail-closed',
     await expect(makeCommand({ from: 1, unitIndex: 1, maxChapters: 6, volumeRemaining: 30 })
       .execute({ step: {}, context, callbacks })).rejects.toThrow('已有第 1–21 章')
     expect(stream).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * D6-B（2026-11-06）算术层：三处误报完成的修正 + 偏差信号的消费点。
+ *
+ * 判据口径见 `docs/design/architecture/d6-volume-count-source-design.md` §9.4 第二条：
+ * `totalChapters` 是**开篇计划不是完成约束**（骨架走完 = 写完），
+ * 「每章字数 / 总章数」两个因子的偏差要能反馈到下一批，而不是只打进 log。
+ */
+describe('D6-B 算术层：真实章数 / 完成判读 / 偏差信号', () => {
+  // 卷二写完、骨架走完：计划 60 章，实际只写了 13 章（卷一 9、卷二 4）。
+  const skeletonDone = {
+    synopsis_incomplete: false,
+    synopsis_covered_to: 13,
+    synopsis_volume_deviations: [
+      { volumeIndex: 1, planned: 30, actual: 9 },
+      { volumeIndex: 2, planned: 30, actual: 4 },
+    ],
+  }
+
+  it('骨架走完时正文照实写**实际章数**，不再替换成计划章数', () => {
+    const text = renderSynopsisDbText('## 第1章：甲\n正文。', 'zh-CN', 60, skeletonDone)
+    expect(text).toContain('实际共 13 章')
+    expect(text).toContain('开篇计划 60 章')
+    expect(text).toContain('实际预期 13 章')
+    // 两个方向都不许误报：不说「还有后续批次」，也不把真实章数换成计划章数。
+    expect(text).not.toContain('其余章节将在后续批次继续生成')
+    expect(text).not.toContain('已覆盖至第 60 章')
+    expect(isSynopsisSkeletonComplete(60, skeletonDone)).toBe(true)
+  })
+
+  it('缺 synopsis_covered_to 按**未覆盖**读，不误报完成（原 `?? totalChapters` 的反例）', () => {
+    const text = renderSynopsisDbText('## 第1章：甲', 'zh-CN', 60, { synopsis_incomplete: false })
+    expect(text).toContain('已覆盖至第 0 章')
+    expect(text).toContain('其余章节将在后续批次继续生成')
+    expect(text).not.toContain('已写完')
+    expect(isSynopsisSkeletonComplete(60, {})).toBe(false)
+  })
+
+  it('完成判据仍以骨架 / 范围为准：游标还在、或没有卷数账，都不算写完', () => {
+    // 单元模式中途：游标还在 ⇒ 不是写完，哪怕账已经有一卷。
+    expect(isSynopsisSkeletonComplete(60, {
+      ...skeletonDone,
+      synopsis_unit_cursor: { volumeIndex: 2, unitIndex: 2, writtenInVolume: 4 },
+    })).toBe(false)
+    // 旧路径（按章区间）没有卷数账 ⇒ 不走「骨架走完」这条，完成仍看范围。
+    expect(isSynopsisSkeletonComplete(60, { synopsis_covered_to: 60 })).toBe(false)
+    expect(renderSynopsisDbText('正文。', 'zh-CN', 60, { synopsis_incomplete: false, synopsis_covered_to: 60 }))
+      .not.toContain('其余章节将在后续批次继续生成')
+  })
+
+  it('偏差信号有消费点：下一批的提示词真的读到了它（首批没有账 ⇒ 不注入）', async () => {
+    // 无卷数账 ⇒ 不注入（首批 / 旧路径不该被这条信号刷屏）。
+    expect(renderSynopsisProgressSignal({ synopsis_covered_to: 5 }, 60, 'zh-CN')).toBeNull()
+    // 有一卷的账 ⇒ 一行对账信号：实际预期 = 60 − 21 = 39。
+    expect(renderSynopsisProgressSignal(
+      { synopsis_covered_to: 9, synopsis_volume_deviations: [{ volumeIndex: 1, planned: 30, actual: 9 }] },
+      60,
+      'zh-CN',
+    )).toContain('实际预期 39 章')
+
+    // 端到端：消费点是 `executeSynopsisBatch` 组装的 taskPrompt —— 下一批生成时模型能看到这一行。
+    const stream = responseStream([chapters(6, 9)])
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream: stream })
+    const priorCheckpoint = {
+      synopsis_result: chapters(1, 5),
+      synopsis_incomplete: false,
+      synopsis_covered_to: 5,
+      synopsis_range: { from: 1, to: 5 },
+      synopsis_unit_cursor: { volumeIndex: 1, unitIndex: 2, writtenInVolume: 5 },
+      synopsis_volume_deviations: [{ volumeIndex: 1, planned: 30, actual: 9 }],
+      synopsis_step_guidance: '',
+    }
+    const dbSynopsis = renderSynopsisDbText(priorCheckpoint.synopsis_result, 'zh-CN', 60, priorCheckpoint)
+    harness(
+      { ...priorCheckpoint, synopsis_db_hash: synopsisFactsFingerprint([dbSynopsis]) },
+      dbSynopsis,
+    )
+
+    await makeCommand({ from: 6, unitIndex: 2, maxChapters: 25, volumeRemaining: 25 })
+      .execute({ step: {}, context, callbacks })
+
+    const prompt = promptText(stream)
+    expect(prompt).toContain('实际预期 39 章')
+    expect(prompt).toContain(`已写 5 章；开篇计划 60 章`)
   })
 })

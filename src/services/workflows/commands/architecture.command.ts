@@ -165,7 +165,14 @@ interface PartialArchData {
   synopsis_result?: string
   /** 上一次生成在本批范围内被输出长度中断；synopsis_result 为已完成部分。 */
   synopsis_incomplete?: boolean
-  /** 最近一次成功批次的结束章（== totalChapters 时全书大纲完成）。 */
+  /**
+   * 最近一次成功批次**实际**写到第几章（真实进度）。
+   *
+   * ⚠️ 它**不是完成判据**：`totalChapters` 是开篇计划、不是完成约束（作者 2026-10-20 口径：
+   * 开卷之后篇幅由自下而上的实际章数决定）。全书是否写完看**弧光单元骨架**
+   * （`synopsis_unit_cursor` 被删掉 = 骨架走完 = 写完），旧路径看本批范围是否写到全书末尾。
+   * 别写成「== totalChapters 时全书大纲完成」——实际章数一偏离就会误报（D6-B，2026-11-06）。
+   */
   synopsis_covered_to?: number
   /** 当前/上次生成批次的范围；断点续写恢复时沿用。 */
   synopsis_range?: { from: number; to: number }
@@ -1056,11 +1063,81 @@ export function synopsisFactsFingerprint(facts: readonly string[]): string {
   return (hash >>> 0).toString(36)
 }
 
-function renderSynopsisDbText(
+/**
+ * 弧光单元骨架是否已经走完（= 全书写完）。
+ *
+ * 作者 2026-10-20 口径：`totalChapters` 是**开篇计划，不是完成约束**，骨架走完 = 写完。
+ *
+ * ## 为什么只从检查点既有字段推（不新增状态）
+ *
+ * 渲染出来的这段正文会被 `assertCheckpointDbMirrorCurrent` 用**同一份检查点**重算一遍做镜像比对；
+ * 只要完成标志不是从检查点推出来的，重新生成后一续批就会被判成「作者手改了正文」。
+ * 所以判据只用三个已经落盘的字段：
+ *   1. `synopsis_unit_cursor` 必须在骨架走完时被删掉（`syncSynopsisUnitCursor(…, null)`）；
+ *   2. 卷数账 `synopsis_volume_deviations` 只在写完整卷时记 —— 骨架走完时各卷账齐；
+ *   3. 已写字数 ≥ **实际预期**（`计划 + 各卷偏离之和`）：账齐时 `Σactual == coveredTo == 实际预期`。
+ *
+ * 旧路径（按章区间）没有卷数账 ⇒ 恒为 `false`（它本来就用 `coveredTo >= totalChapters` 判完成，
+ * 尾部不加提示）。账算不出来（骨架不可解析 ⇒ 一条账都没有）时也返回 `false`：
+ * 宁可按「未写完」渲染，不虚报完成。
+ */
+export function isSynopsisSkeletonComplete(
+  totalChapters: number,
+  checkpoint: Pick<PartialArchData, 'synopsis_covered_to' | 'synopsis_unit_cursor' | 'synopsis_volume_deviations'>,
+): boolean {
+  if (checkpoint.synopsis_unit_cursor !== undefined) return false
+  const records = checkpoint.synopsis_volume_deviations ?? []
+  if (records.length === 0) return false
+  const coveredTo = checkpoint.synopsis_covered_to ?? 0
+  if (!Number.isSafeInteger(coveredTo) || coveredTo < 1) return false
+  return coveredTo >= expectedTotalChapters(totalChapters, accumulatedVolumeDeviation(records))
+}
+
+/**
+ * 全书规模的**对账信号**（D6-B，2026-11-06）：已写章数 + 计划 + 累计卷偏离 = 实际预期章数。
+ *
+ * 这是 `executeSynopsisBatch` 末尾那组对账数（`:4030` 一带）的**消费点**：下一批的提示词带上它，
+ * 模型照着收敛后的规模推进，而不是对着开篇计划写。没有卷数账（首批批次 / 旧路径）时返回 `null`
+ * —— 不注入、不拦、不报。
+ *
+ * ⚠️ **不是章数目标**，也不参与 `scaledBoundaries` 折算：`expectedTotalChapters` 的注释写明它
+ * 「只用于展示与对账」，永不作为规划基线。
+ */
+export function renderSynopsisProgressSignal(
+  checkpoint: Pick<PartialArchData, 'synopsis_covered_to' | 'synopsis_volume_deviations'>,
+  totalChapters: number,
+  writingLanguage: WritingLanguage,
+): string | null {
+  const records = checkpoint.synopsis_volume_deviations ?? []
+  if (records.length === 0) return null
+  const coveredTo = checkpoint.synopsis_covered_to ?? 0
+  if (!Number.isSafeInteger(coveredTo) || coveredTo < 0) return null
+  const deviation = accumulatedVolumeDeviation(records)
+  const signed = `${deviation >= 0 ? '+' : ''}${deviation}`
+  const expectedTotal = expectedTotalChapters(totalChapters, deviation)
+  return promptLanguageText(
+    writingLanguage,
+    `【全书规模（对账信号，不是本单元的章数目标）】已写 ${coveredTo} 章；开篇计划 ${totalChapters} 章，`
+      + `已结账 ${records.length} 卷累计偏离 ${signed} ⇒ 实际预期 ${expectedTotal} 章。按实际预期推进，`
+      + '不要拿计划章数当目标（每章写多少、本单元写几章仍由剧情决定）。',
+    `[Book scale (a reconciliation signal, not a chapter target for this unit)] ${coveredTo} chapters written; `
+      + `plan ${totalChapters}, ${records.length} settled volume(s) with an accumulated deviation of ${signed} `
+      + `⇒ ${expectedTotal} chapters expected. Aim at the expected scale, not the planned chapter count `
+      + '(how much each chapter or unit holds is still the story\'s call).',
+  )
+}
+
+/**
+ * 渲染落库的大纲正文。
+ *
+ * ⚠️ **导出是刻意的**：两条关键分支（缺 `synopsis_covered_to` 的 fail-closed 读数、单元骨架走完
+ * 但实际章数少于计划）只能靠构造检查点触发，走整条命令跑一遍才能测到就等于没测。
+ */
+export function renderSynopsisDbText(
   body: string,
   writingLanguage: WritingLanguage,
   totalChapters: number,
-  checkpoint: Pick<PartialArchData, 'synopsis_incomplete' | 'synopsis_covered_to'>,
+  checkpoint: Pick<PartialArchData, 'synopsis_incomplete' | 'synopsis_covered_to' | 'synopsis_unit_cursor' | 'synopsis_volume_deviations'>,
 ): string {
   const heading = promptLanguageText(writingLanguage, '情节大纲', 'Plot Outline')
   if (checkpoint.synopsis_incomplete === true) {
@@ -1071,7 +1148,25 @@ function renderSynopsisDbText(
     )
     return `# ${heading}\n\n${body}\n${marker}`.trim()
   }
-  const coveredTo = checkpoint.synopsis_covered_to ?? totalChapters
+  // D6-B（2026-11-06）：缺 `synopsis_covered_to` 按**未覆盖**读（fail-closed）。
+  // 原写法 `?? totalChapters` 把「没有记录」当成「已经写到全书末尾」——这就是 D-1「系统误报完成」。
+  const coveredTo = checkpoint.synopsis_covered_to ?? 0
+  if (isSynopsisSkeletonComplete(totalChapters, checkpoint)) {
+    // 骨架走完不能靠「把 covered_to 换成计划章数」来表达：那会把**真实章数**从正文里抹掉，
+    // 作者看到的永远是当初填的计划。这里照实写实际章数，并带上卷数账（计划 + 偏离 = 实际预期）。
+    const records = checkpoint.synopsis_volume_deviations ?? []
+    const deviation = accumulatedVolumeDeviation(records)
+    const signed = `${deviation >= 0 ? '+' : ''}${deviation}`
+    const expectedTotal = expectedTotalChapters(totalChapters, deviation)
+    const tail = promptLanguageText(
+      writingLanguage,
+      `> 本大纲已写完（弧光单元骨架走完即写完）：实际共 ${coveredTo} 章，开篇计划 ${totalChapters} 章，`
+        + `已结账 ${records.length} 卷累计偏离 ${signed}，实际预期 ${expectedTotal} 章。`,
+      `> This outline is complete (the arc-unit skeleton is done): ${coveredTo} chapters written against a ${totalChapters}-chapter plan; `
+        + `${records.length} settled volume(s) with an accumulated deviation of ${signed}, so ${expectedTotal} chapters are expected.`,
+    )
+    return `# ${heading}\n\n${body}\n\n${tail}`.trim()
+  }
   const visibleBody = coveredTo < totalChapters
     ? `${body}\n\n${promptLanguageText(
         writingLanguage,
@@ -3662,6 +3757,10 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
             ? renderUnitBudgetBlock(unitContext.stats, writingLanguage) ?? ''
             : '')
         : synopsisBatchInstruction(writingLanguage, from, to, totalChapters),
+      // D6-B（2026-11-06）：上一批结账出的「计划 vs 实际预期」偏差，作为**规模参照**带进本批提示词
+      // —— 这是 `executeSynopsisBatch` 末尾那组对账数的消费点：下一批不再对着开篇计划写，
+      // 而是按账面收敛后的规模推进。首批 / 旧路径没有卷数账 ⇒ `null`，不注入、不拦、不报。
+      renderSynopsisProgressSignal(partial, totalChapters, writingLanguage) ?? '',
       unitContext
         ? synopsisUnitInstruction(
             writingLanguage,
@@ -3962,13 +4061,17 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
      * 章数只做记录；旧路径仍以 `to >= totalChapters` 为准。
      */
     const bookComplete = unitContext ? unitNextCursor === null : to >= totalChapters
-    // 单元模式写完时 `covered_to` 仍是真实章数，但 DB 尾部**不能**再挂「其余章节将在后续批次继续生成」
-    // —— 骨架走完就没有后续批次了。渲染时按全书完成处理，检查点里保留真实进度。
+    // D6-B（2026-11-06）：**不再把 `covered_to` 换成计划章数**。原来的写法是
+    // `unitContext && bookComplete ? { ...partial, synopsis_covered_to: totalChapters } : partial`，
+    // 为了让尾部不挂「其余章节将在后续批次继续生成」，把**真实章数**改成了计划章数 ——
+    // 作者在正文里看到的永远是当初填的那个数（D6 实测：实际 30 章、计划 300 章）。
+    // 现在照实传 `partial`，由 `renderSynopsisDbText` 自己判「骨架走完」（`isSynopsisSkeletonComplete`）
+    // 并写一行「已写完 + 实际章数 + 实际预期」，完成判据仍是骨架 / 范围，与 `totalChapters` 无关。
     const dbOutlineText = renderSynopsisDbText(
       confirmedBody,
       writingLanguage,
       totalChapters,
-      unitContext && bookComplete ? { ...partial, synopsis_covered_to: totalChapters } : partial,
+      partial,
     )
     partial.synopsis_db_hash = synopsisFactsFingerprint([dbOutlineText])
     context.data.partial = partial
