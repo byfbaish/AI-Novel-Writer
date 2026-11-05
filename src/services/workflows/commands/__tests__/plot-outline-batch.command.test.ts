@@ -589,6 +589,37 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
     })
   })
 
+  it('D20c：只改记账字段（description）⇒ 分项全等放行，不再出现「从第 1 章重新生成」', async () => {
+    const partialBody = `## 第一卷\n\n第1–3章：追入废墟\n${'林舟从铁砧镇追入宗门废墟，逐步发现灵脉异变。'.repeat(5)}`
+    const addition = '\n\n第4–100章：传承试炼\n林舟完成传承试炼并承担记忆代价，后续各章连续推进至终局。\n\n' + progressLine(1, 100, 100)
+    const generateStream = responseStream([addition])
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream })
+    const dbOutline = `# 情节大纲\n\n${partialBody}\n\n> ⚠️ **本大纲未完成**：生成被输出长度中断，以上为已自动保存的已完成部分。\n> 可在「AI 输出」提示处点击「继续生成情节大纲」，从断点续写补齐本批章节。`
+    // 「上次生成后只改了 description」= 检查点记的是改之前的模板，现算的是改之后的模板：
+    // combined（整对象序列化）会不等，但 D20b 收窄过的两个分项（真正影响渲染的段）全等
+    // ⇒ D20c 判定只看分项，落 none（放行），不再归 unknown、不再拦。
+    const renamed = fingerprintPartsOf({ range: { from: 1, to: 100 }, template: { ...getBuiltinPromptTemplate('synopsis', 'zh-CN'), description: '另一个用途说明' } })
+    const harness = harnessWith({
+      synopsis_result: partialBody,
+      synopsis_incomplete: true,
+      synopsis_range: { from: 1, to: 100 },
+      synopsis_facts_fingerprint: renamed.combined,
+      synopsis_source_fingerprint: renamed.source,
+      synopsis_template_fingerprint: renamed.template,
+      synopsis_db_hash: dbHashOf(dbOutline),
+      synopsis_step_guidance: '',
+    }, dbOutline)
+
+    const result = await makeCommand({ resumeSynopsis: true }).execute({ step: {}, context, callbacks })
+
+    // 放行：真的续写了；报文里不含「从第 1 章重新生成」，也不含「源事实已变化」。
+    expect(result).toContain('第4–100章：传承试炼')
+    expect(generateStream).toHaveBeenCalled()
+    expect(harness.synopsisCommits).toHaveLength(1)
+    expect(callbacks.log).not.toHaveBeenCalledWith(expect.stringContaining('从第 1 章重新生成'))
+    expect(callbacks.log).not.toHaveBeenCalledWith(expect.stringContaining('源事实已变化'))
+  })
+
   it.each([
     ['interrupted resume', true, { from: 1, to: 100 }],
     ['next batch', false, { from: 21, to: 40 }],

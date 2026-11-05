@@ -2979,7 +2979,7 @@ describe('synopsisInputFingerprintParts / synopsisFingerprintDrift（D20 分项�
     expect(sourceChanged.combined).not.toBe(base.combined)
   })
 
-  it('归因六支：none / source / template / both / unknown / legacy', () => {
+  it('归因五支：none / source / template / both / legacy（D20c 起无 unknown）', () => {
     const range = { from: 1, to: 100 }
     const current = synopsisInputFingerprintParts(expected(), '', range, template())
     const sourceChanged = synopsisInputFingerprintParts(expected({ premise: '旧前提' }), '', range, template())
@@ -3011,12 +3011,12 @@ describe('synopsisInputFingerprintParts / synopsisFingerprintDrift（D20 分项�
       synopsis_template_fingerprint: templateChanged.template,
     }, current)).toBe('both')
 
-    // 分项全等而组合不等：不能悄悄放行，归到 unknown。
+    // D20c：分项全等而组合不等（只改记账字段 / 组合被外部改过）⇒ 判 none，不再归 unknown。
     expect(synopsisFingerprintDrift({
       synopsis_facts_fingerprint: '被外部改过的组合哈希',
       synopsis_source_fingerprint: current.source,
       synopsis_template_fingerprint: current.template,
-    }, current)).toBe('unknown')
+    }, current)).toBe('none')
 
     // 旧检查点：只有 combined，没有两个分项 ⇒ 无法归因。
     expect(synopsisFingerprintDrift({ synopsis_facts_fingerprint: '旧指纹' }, current)).toBe('legacy')

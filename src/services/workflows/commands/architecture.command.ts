@@ -1239,14 +1239,17 @@ export function synopsisInputFingerprintParts(
 /**
  * D20：判定侧归因结果。
  *
- * `none` = 相等（不需要归因）；`legacy` = 旧检查点缺两个分项字段，无法归因。
+ * `none` = 无漂移（组合相等，或分项均未变）；`legacy` = 旧检查点缺两个分项字段、
+ * 组合也不等，无法归因。
+ *
+ * D20c（§4.7 6.1）：**不再有 `unknown`**。有分项字段时 `combined` 不参与归因，
+ * 分项全等即判 `none`（放行）——「拦住 + 从第 1 章重新生成」的兜底分支已删除。
  */
 export type SynopsisFingerprintDrift =
   | 'none'
   | 'source'
   | 'template'
   | 'both'
-  | 'unknown'
   | 'legacy'
 
 /** 判定侧只看这三个字段，不要求整份检查点。 */
@@ -1260,6 +1263,11 @@ type SynopsisFingerprintCheckpoint = Pick<
  *
  * 纯函数（单测直接调）。顺序刻意是「先比 combined」：
  * 相等就什么都不用归因，也不读分项字段——所以旧检查点只要 combined 还相等就不会被当成 legacy。
+ *
+ * D20c（§4.7 6.1）：**有分项字段时 `combined` 不再参与归因**。只改
+ * `name` / `description` / `variables` / `builtinRevision` / `writingLanguage` 等记账字段
+ * 会让 combined（整对象序列化）不等而两个分项全等，此时必须判 `none`（放行）——
+ * 旧实现落到 `unknown` 拦住 + 逼全书重来，正是本卡要消灭的假警报。`unknown` 已删除。
  */
 export function synopsisFingerprintDrift(
   checkpoint: SynopsisFingerprintCheckpoint,
@@ -1276,14 +1284,15 @@ export function synopsisFingerprintDrift(
   if (sourceChanged && templateChanged) return 'both'
   if (sourceChanged) return 'source'
   if (templateChanged) return 'template'
-  // 分项全等而组合不等：组合哈希比的是四段，说明检查点被外部改过或有别的漂移，不能放行。
-  return 'unknown'
+  // 分项全等而组合不等：只可能是 combined 里的非渲染字段（记账字段等）变了，或检查点被
+  // 外部改过。前者本就该放行，后者无法与正常场景区分 —— 一律按 none 放行（D20c）。
+  return 'none'
 }
 
 /**
  * D20：把归因结果翻成「拦不拦 + 说什么」。
  *
- * 报文口径见方案稿 §4.4 的对照表；只有 `source` / `both` / `unknown` 拦，
+ * 报文口径见方案稿 §4.4 的对照表；只有 `source` / `both` 拦，
  * `template`（裁定 A）与 `legacy`（裁定 2）放行，**但都必须给一条提示**——
  * 静默放行等于又回到「什么都不说」。
  *
@@ -1325,14 +1334,6 @@ function synopsisFingerprintVerdict(
         message: text(
           '源事实与生成模板均有变化：故事前提/角色/世界观/总章数等源事实，以及大纲生成模板，都与上次不同。既有大纲不能与新的源事实拼接。请从「AI 生成故事架构」从第 1 章重新生成。',
           'Both the source facts (premise / characters / worldbuilding / chapter count, etc.) and the plot-outline generation template changed since the previous run. The existing outline cannot be joined with the new source facts. Regenerate from chapter 1 in “Generate story architecture”.',
-        ),
-      }
-    case 'unknown':
-      return {
-        blocked: true,
-        message: text(
-          '输入指纹不匹配，但源事实与生成模板均未变化（检查点可能被外部修改过）。请从「AI 生成故事架构」从第 1 章重新生成。',
-          'The input fingerprint does not match, but neither the source facts nor the generation template changed (the checkpoint may have been edited outside the app). Regenerate from chapter 1 in “Generate story architecture”.',
         ),
       }
     case 'legacy':
@@ -3460,7 +3461,8 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
 
     /**
      * **中断落盘用请求范围**（单元模式 = `boundTo`，请求期指纹就是对它算的），
-     * **完成落盘才用实际章数**（回填后重算指纹）。两者混用会让第二批被误判成"源事实已变化"。
+     * **完成落盘才用实际章数**（回填后重算指纹）。两者混用会让 combined 与实际范围不一致；
+     * D20c 起有分项的判定已不看 combined，不再误拦，但 combined 仍是旧版本读取的兼容字段。
      */
     const interruptionRange = { from, to }
 
@@ -3508,8 +3510,8 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
 
     // 两级结构（卷 / 单元）换成两级版输出合同：内置那份通篇按「大弧 / 中弧 / 小弧」讲话，
     // 缺小弧层时模型只能**自造结构位 ID**（2026-10-20 实证：覆盖：V1-U1-Start 等 5 个）。
-    // 只换渲染用的 suffix，**不动模板对象** —— 模板整体进 `synopsisInputsFingerprint`，
-    // 改内置会让所有已存在的大纲检查点判成「源事实已变化」。
+    // 只换渲染用的 suffix，**不动模板对象** —— 模板段进指纹分项（D20b 起只看影响渲染的
+    // 段，含内置 systemSuffix），改内置会让检查点报「模板已变化」；走渲染期替换不打扰存量检查点。
     const arcNaming = parseArcStructure(core?.plotStructurePlan ?? '')?.naming
     // ⚠️ `naming === 'volume'` 只是**措辞**（卷/单元 vs 大弧/中弧），**不是层数**：
     // 带单元的结构照样是 `volume` 命名（A/B 两个真实项目都是）。两者要分开处理 ——
@@ -3840,8 +3842,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       ))
       const parsedPlan = parseArcStructure(sourceExpected.plotStructurePlan ?? '')
       unitNextCursor = advanceUnitCursor(parsedPlan, totalChapters, unitContext.cursor, backfill.actualChapters)
-      // 完成落盘按**实际范围**重算指纹：下一批续接时用 `synopsis_range` 复算比对，
-      // 若沿用请求期的 boundTo，实际章数一偏离就会把第二批误判成"源事实已变化"。
+      // 完成落盘按**实际范围**重算指纹：下一批续接时用 `synopsis_range` 复算比对。
+      // 若沿用请求期的 boundTo，实际章数一偏离，combined 就会与范围不一致
+      //（D20c 起有分项的判定不看 combined，不再误拦；combined 仍是兼容字段，须保持一致）。
       completedParts = synopsisInputFingerprintParts(sourceExpected, effectiveStepGuidance, { from, to }, template)
       callbacks.log(text(
         `本单元实际写 ${backfill.actualChapters} 章（第 ${from}–${to} 章）；`

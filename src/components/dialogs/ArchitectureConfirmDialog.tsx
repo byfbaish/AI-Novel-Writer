@@ -789,9 +789,11 @@ export default function ArchitectureConfirmDialog({
                           <p className="m-0" style={{ color: 'var(--color-warning-text)' }}>
                             {text(
                               `检查点记着已写到第 ${unitPreview.coveredTo} 章，但数据库里的大纲是空的`
-                                + `（多半是刚清空了某一项故事架构）。这样生成会提示「源事实已变化」并拒绝续接。`,
+                                + `（多半是刚清空了某一项故事架构）。这样生成会被输入校验拦下并拒绝续接`
+                                + `（提示源事实或大纲已变化）。`,
                               `The checkpoint says chapter ${unitPreview.coveredTo} is done, but the stored outline is empty. `
-                                + `Generation would report that the source facts changed and refuse to continue.`,
+                                + `Generation would be stopped by the input check and refused `
+                                + `(reporting that the source facts or the outline changed).`,
                             )}
                           </p>
                           <button
