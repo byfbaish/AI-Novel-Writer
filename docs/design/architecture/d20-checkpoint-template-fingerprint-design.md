@@ -1,6 +1,6 @@
 # D20 方案 · 生成模板一变，旧检查点就续不上，而报错说成「源事实变了」
 
-> 状态：已裁定（2026-11-05 · **裁定 1 = A「只有模板变化时允许续写」** · **裁定 2 = 旧检查点放行、不逼全书重来**）· 稿子经**独立复核打回后已修订**（复核意见见 §11）；裁定 3（世界观链）待答
+> 状态：已裁定（2026-11-05 · **裁定 1 = A「只有模板变化时允许续写」** · **裁定 2 = 旧检查点放行、不逼全书重来**）· 稿子经**独立复核打回后已修订**（复核意见见 §11）；裁定 3（世界观链）与 §4.6 的模板段收窄提案待答
 > 上级登记：[`../product/live-pipeline-acceptance-defects-assessment.md`](../product/live-pipeline-acceptance-defects-assessment.md) §D20
 > 触发：D17 实机复验（2026-11-05 20:05）续批被拦，逐字段核对后发现**源事实一个都没变**，变的是模板
 > 相邻条目：D4（UI 散落「来源已变化」文案，但没有一处把它和中止关联）、D8（检查点残留导致模式降级，改的是同一段代码的相邻分支）
@@ -194,6 +194,78 @@ export function synopsisInputFingerprintParts(
 
 ---
 
+### 4.6 提案（**待裁，未采纳**）：模板段从「整对象」收窄到「影响渲染的字段」
+
+作者 2026-11-05 21:24 追问「粒度可以再精细一点吗？世界观相关联的都是有独立的 Prompt 吧」。分两条轴答。
+
+#### 轴 A：按 prompt 分 —— **今天已经是分开的，没有油水**
+
+世界观链有 **3 份独立 prompt**：`world_building`（生成）/ `world_building_self_review`（自审）/ `world_building_resource_extract`（资源抽取）。但**只有 `world_building` 那一份进指纹**：
+
+| prompt key | 调用点 | 进指纹吗 |
+|---|---|---|
+| `world_building` | `:2286` 生成 · `:2449` 候选保存后重算 | ✅ 进 |
+| `world_building_self_review` | `:2620` | ❌ 不进。它随生成一起跑，findings 引用世界观原文，失效靠**正文被清空时级联清**（`arch-step-checkpoint.ts:38-42`） |
+| `world_building_resource_extract` | `:2707` | ❌ 不进。同上（候选的 `quote`/`anchorQuote` 是落库依据，正文没了就命中不了） |
+
+⇒ 「换一份别的 prompt 会误伤世界观候选」这个问题今天不存在。这条轴不用动。
+
+#### 轴 B：按字段分 —— **这里才是真油水，而且今天是两个方向的错**
+
+一份 `PromptTemplate`（`builtin-prompt-templates.ts:20-46`）有 10 个字段，但**模型实际看到的只由 3 段决定**：
+
+| 字段 | 影响渲染吗 | 依据 |
+|---|---|---|
+| `content` | ✅ 主正文 | `render-prompt.ts:54-57` |
+| `taskGuidance` | ✅ 作者补充指导，会拼进 prompt | `render-prompt.ts:32-46` · `prompt-builder.ts:82-107` |
+| `systemRole` | ✅ system message | `builtin-prompt-templates.ts:189-203` |
+| `systemSuffix` | ⚠️ **渲染时始终取内置那份**，覆盖版上的不算 | `render-prompt.ts:62-65` 明写「始终从内置模板获取，不受用户自定义影响」 |
+| `name` / `description` | ❌ 只给人看 | 设置页显示用 |
+| `variables` | ❌ 是「变量名 → 说明」字典；渲染用的是**调用方传进去的真值** | `render-prompt.ts:55` 遍历的是参数 `variables`，不是 `template.variables` |
+| `requiredContextVariables` | ⚠️ 影响 builder 是否追加缺失上下文（半渲染） | `prompt-builder.ts` |
+| `builtinRevision` | ❌ **纯记账**：记录"这份覆盖基于哪个内置版本" | `prompt-builtin-revision.ts:1-19`；它自己的摘要算法明确排除 `key`/`writingLanguage`/`systemSuffix`/`builtinRevision`（`:25`），却**包含** `name`/`description`/`variables` |
+| `key` / `writingLanguage` | ❌ 身份与语言标记 | — |
+
+**于是今天有两个方向的错：**
+
+| 错的方向 | 具体 | 后果 |
+|---|---|---|
+| **该排除的没排除（过度失效）** | `name` / `description` / `variables` 说明串 / `builtinRevision` 全在 `JSON.stringify(template)` 里 | 改一句「用途说明」、改一个变量说明、内置版本号涨一格 ⇒ 旧检查点续不上，被告知"你的写作材料变了" |
+| **该追踪的漏了（漏判）** | 保存覆盖时 `delete template.systemSuffix`（`PromptSettings.tsx:373`/`:395`）⇒ 覆盖版 `systemSuffix` 为 `undefined` ⇒ 内置输出合同更新时，**有覆盖的项目指纹不变**（`builtinRevision` 又刻意排除了 `systemSuffix`），但渲染结果变了 | 输出合同悄悄换了，没有任何提示 |
+
+也就是说：**今天的「整对象哈希」既不精细也不完整**——它把记账字段当成了事实，又把一整段输出合同按覆盖状态漏掉了。
+
+#### 提案内容
+
+```ts
+// 模板签名 = 真正影响模型输入的 3 段 + 内置输出合同（显式取内置，不读 template.systemSuffix）
+function promptRenderSignature(template: PromptTemplate, language: WritingLanguage): string {
+  return hash([
+    template.content,
+    template.taskGuidance ?? '',
+    template.systemRole ?? '',
+    getBuiltinPromptTemplate(template.key, language)?.systemSuffix ?? '',
+  ])
+}
+```
+
+判定改为「源事实哈希 + 这个签名」，`combined` 退回为**纯兼容字段**（继续写，供旧版本读；判定不再看它）。
+
+#### 代价与前置
+
+| 项 | 说明 |
+|---|---|
+| **前置：裁定 2 必须已落** | 收窄后新检查点的模板哈希与旧的**必然不同** ⇒ 存量检查点会一次性全失效。裁定 2（旧检查点放行）正好兜住，所以**裁定 2 不只是"旧项目省事"，它是本提案能不能做的前提** |
+| 反向风险 | 将来若有人把影响渲染的东西挪进被排除字段（例如给 `variables` 塞默认值），签名就漏了。要一条测试钉住「签名覆盖全部渲染输入」：改 `content`/`taskGuidance`/`systemRole`/内置 `systemSuffix` 任一项，签名必须变 |
+| 与裁定 A 的关系 | **叠加，不互斥**：收窄 = 从源头少误报；分项哈希 + 放行 = 万一真变了能说清是哪一份。两个都做才完整（只做收窄，"作者真改了模板正文"时仍然会被说成"源事实变了"） |
+
+#### 建议
+
+**做，但排在 D20 本体之后**（同一张卡的第二段，或单开一张）。理由：它改的是「什么算模板变了」这条判据，而 D20 本体改的是「变了之后怎么说、拦不拦」。先让后者能自圆其说，再动前者；反过来会让 D20 的验收标准与实现同时对不上。
+
+
+---
+
 ## 5. 行为裁定：只有模板变化时允不允许续？
 
 **✅ 已裁定（2026-11-05 20:57，作者）：选 A —— 允许续写。**
@@ -245,6 +317,7 @@ export function synopsisInputFingerprintParts(
 | 1 | 只有模板变化时允不允许续？ | ✅ **已裁 A**（2026-11-05 20:57，§5） |
 | **2** | 旧检查点（无分项字段）遇到指纹不等时怎么办？ | ✅ **已裁：放行，不要全书重来**（2026-11-05 21:14）。作者理由：新开的项目走的全是新检查点，旧检查点只存在于已有项目和实机验证项目里，为它逼一次全书重来「没有意义」 |
 | **3** | 世界观链要不要一起改？ | ⬜ **待裁**（§8.2 把成本与收益摊开） |
+| **4** | 模板段要不要从「整对象」收窄到「影响渲染的 3 段 + 内置输出合同」？ | ⬜ **待裁**（§4.6 提案）。它修的是「什么算模板变了」这条判据，与 D20 本体叠加；**前置是裁定 2**（否则收窄会让存量检查点一次性全失效） |
 
 ### 8.1 裁定 2 的落地形态
 
