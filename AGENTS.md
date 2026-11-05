@@ -46,7 +46,7 @@ node scripts/check-doc-placement.mjs --status-of "期 2"   # 收口：把写着�
 7. **不猜根因**：先取证（代码 / 日志 / prompt trace），再改。测试失败先用 `git stash` 对照确认是否既有红。
 8. **图用 Mermaid**，每张图配一句读法；不贴截图（无法 diff）。
 9. **干完 ≠ 已完成，谁都不例外**：改完的东西**不许自己宣布完成** —— 派一个**上下文隔离**的子 agent 审（只给「要求什么 / 交付了什么 / 怎么算通过」，**不给推理过程和结论**）；协作模式**交叉审**；派出去的人**不给 `review`/`done` 权限**。复核意见**要证据**，无证据的通过与反对都不成立；**签字必须换个身份**（`review` 拒同名）。**打回只认两种**：`unmet`（卡上验收标准没兑现）/ `regression`（打坏了原来能用的）—— "还能更好"不是理由，那属新卡（质量无上限，不设边界就永远出不去）→ [`docs/agents/task-board-channel.md`](docs/agents/task-board-channel.md) §5.2 / §5.3 / §5.4
-10. **★ 向作者提请裁定，一律先用产品语言讲，别甩代码**（2026-11-06 作者定，最高优先）：材料按「作者实际操作流程 → 卡在哪一步／违背什么操作预期 → 想怎么改 → 现行方案改下去会造成什么结果」写；代码与行号只作证据，不作叙述主线。理由：甩代码时作者只能判技术合理性 ⇒ 判断与 Agent 趋同、无人从产品视角审视 ⇒ 目标漂移进死胡同；**技术服务于产品，关键时刻向需求让步**。材料里出现「非此即彼」先查是不是把「一个入口承载多个意图」压成了单选 → [`documentation-charter.md`](docs/agents/documentation-charter.md) §11（含 D8 事故复盘）。
+10. **★ 向作者提请裁定，一律先用产品语言讲，别甩代码**（2026-11-06 作者定，最高优先）：讲清流程 / 卡点 / 意图 / 后果，代码与行号只作证据；出现「非此即彼」先查单选前提。四段模板、理由与 D8 复盘 → [`documentation-charter.md`](docs/agents/documentation-charter.md) §11。
 
 ## 要做什么 → 先读什么
 
@@ -54,8 +54,6 @@ node scripts/check-doc-placement.mjs --status-of "期 2"   # 收口：把写着�
 |---|---|
 | 改 prompt 组装 / 任何模板 | `design/prompt/prompt-three-layer-inventory.md` |
 | 加/改 prompt 条款 | `design/prompt/prompt-clause-admission.md`（三问 + 反例库） |
-| 改连续性 / 世界状态 | `design/architecture/world-state-review-and-wiring-plan.md` · `design/review/p2-1-continuity-findings-design.md` |
-| 改长篇结构（卷 / 单元 / 弧） | `design/architecture/long-form-readiness-review.md`（生产链）· `long-form-craft-alignment-assessment.md`（创作侧） |
 | 放 / 改 / 归档文档 | `docs/agents/documentation-charter.md` |
 | 找接下来做什么 | `plans/prompt-assembly-backlog.md` 顶部优先级表 |
 | 把活派给外部 agent | `docs/agents/copilot-channel.md` · `docs/agents/workbuddy-channel.md` · `docs/agents/doubao-channel.md` · `docs/agents/task-board-channel.md`（建卡/认领/复核） |

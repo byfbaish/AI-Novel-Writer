@@ -239,6 +239,7 @@ docs/
 | [`volume-unit-structure-design.md`](design/architecture/volume-unit-structure-design.md) | ✅ 已落地（M19） | 卷 / 单元结构持久化：计划列从大纲物化、实际列只由定稿链写，区间外置成外键 |
 | [`w8-nested-world-handoff-design.md`](design/architecture/w8-nested-world-handoff-design.md) | 📋 方向已定 · 未开工 | 跨部切片交接（series bible handoff）：只做线性升级流，不做多图往返 |
 | [`long-form-craft-alignment-assessment.md`](design/architecture/long-form-craft-alignment-assessment.md) | ✅ 已裁定（2026-10-24）· C1/C2/C4 已收口 | **创作侧**行业对标（读者会不会追）：十维度 × 四问，锚点带 URL 与摘句；缺口 C1–C9。三条结论：**最具体的创作规则进不了正文链**（`pacing_guidance` 只到章纲，本轮只补了作用域说明）· **创作侧零测量**（审稿刻意不判文笔）· **平台画像逐层接线**（架构链 + 正文首稿已接，章纲链与续写轮未接）。**C1 黄金三章已关闭**（不删不搬，四法则逐条归属见 §4）。与 `long-form-readiness-review.md`（生产链：会不会自相矛盾）互补不互抄 |
+| [`long-form-readiness-review.md`](design/architecture/long-form-readiness-review.md) | 评估（生产链） | 长篇就绪度：跨卷失真与 300 章可行性；与上一行「创作侧」评估互补、不互抄。**本行与 `world-state-review-and-wiring-plan.md` / `p2-1-continuity-findings-design.md` 两行一起，承接 2026-11-06 从 AGENTS.md 下沉的两行任务级指针** |
 | [`blueprint-key-events-structuring-design.md`](design/architecture/blueprint-key-events-structuring-design.md) | 初稿 v2 · 待裁定 | 蓝图 `keyEvents` 结构化 |
 | [`phase2-keyevents-bprime-implementation-plan.md`](design/architecture/phase2-keyevents-bprime-implementation-plan.md) | 待过目 · 未动代码 | 阶段 2 + B′（含 R6）实施清单 |
 | [`p11-plan-validity-and-fact-registry-design.md`](design/architecture/p11-plan-validity-and-fact-registry-design.md) | 📝 待裁定 | 计划的有效期与事实登记：水位列 / `attacks` / 复核五步 / 章级「前提」 |
