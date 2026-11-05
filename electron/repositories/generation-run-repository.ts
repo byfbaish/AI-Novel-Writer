@@ -9,6 +9,7 @@ import { composeDraftVisibleContinuation, DRAFT_CONDENSE_PURPOSE, isDraftVisible
 import { DRAFT_RECONCILE_PURPOSE } from '../../src/shared/draft-reconciliation';
 import { DRAFT_SHORT_OUTLINE_PURPOSE } from '../../src/shared/draft-short-outline';
 import { countDraftUnits, draftTargetUnitRange } from '../../src/shared/draft-units';
+import { CHAPTER_FAILURE_CODES } from '../../src/shared/chapter-failure';
 import { getProjectDb } from '../database';
 import type { PortableRuntimeFreezeTable } from '../services/portable-runtime-freeze';
 import { assertReservation, assertAttemptTransition, rootActionIdempotencyKey, type RootAction, type RootBudget, type PhysicalAttempt, type VisibleArtifact, type ProviderUsagePolicy } from '../../src/shared/generation-contract';
@@ -89,7 +90,11 @@ const receiptSelect = `SELECT t.attempt_id,t.run_id,t.rowid AS ordinal,t.attempt
 export const textHash = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
 const encode = (value: unknown): string => JSON.stringify(value);
 const authorEffectPath = '$."$runEffects"';
-function fail(code: string): never { throw new Error(code); }
+/**
+ * 组装层失败出口（D13 §5.3/§5.4）：message 保持**纯码**（跨 IPC 走 B 路正则取码），
+ * 同时挂 `code` 属性（照顾同进程读取路径，与 B 路叠加不互斥）。
+ */
+function fail(code: string): never { throw Object.assign(new Error(code), { code }); }
 /**
  * D2 之后的 run 状态值域。收窄成联合类型是**编译期护栏**：新增写入点若拼错字，
  * `tsc` 直接红，不用等实机发现「库里多了个没人认得的 status」。
@@ -517,18 +522,23 @@ export class GenerationRunRepository {
             const next = condense ? sanitizeDraftText(artifact.text, draftAlgorithm) : draftAlgorithm
                 ? sources.length ? composeDraftVisibleContinuation(text, artifact.text, draftAlgorithm) : sanitizeDraftText(artifact.text, draftAlgorithm)
                 : sources.length ? composeVisibleContinuation(text, artifact.text) : artifact.text.trim();
-            if (!next.trim()) fail('GENERATION_COMPOSITION_NO_PROGRESS');
+            if (!next.trim()) fail(CHAPTER_FAILURE_CODES.GENERATION_COMPOSITION_EMPTY);
             if (condense) {
                 const target = Number((run.binding.sourceManifest.authorInputs as { id: string; text: string }[] | undefined)
                     ?.find(item => item.id === 'draft:target-units')?.text);
                 if (!Number.isSafeInteger(target) || target < 1) fail('GENERATION_COMPOSITION_SOURCE_INVALID');
-                if (receipt.result?.finishReason !== 'stop'
-                    || countDraftUnits(text) <= draftTargetUnitRange(target).maximum) fail('GENERATION_COMPOSITION_NO_PROGRESS');
+                // D13 §5.3：判的是**压缩前**正文（text 到下方 :533 才更新）。两支分开：
+                // 压缩响应非 stop（被截断）→ _CONDENSE_TRUNCATED；正文本就在上限内（不该压缩）→ _CONDENSE_UNEXPECTED。
+                if (receipt.result?.finishReason !== 'stop')
+                    fail(CHAPTER_FAILURE_CODES.GENERATION_COMPOSITION_CONDENSE_TRUNCATED);
+                if (countDraftUnits(text) <= draftTargetUnitRange(target).maximum)
+                    fail(CHAPTER_FAILURE_CODES.GENERATION_COMPOSITION_CONDENSE_UNEXPECTED);
             } else {
                 if (draftAlgorithm && sources.length && receipt.result?.finishReason === 'length'
-                    && countDraftUnits(next) - countDraftUnits(text) < 300) fail('GENERATION_COMPOSITION_NO_PROGRESS');
+                    && countDraftUnits(next) - countDraftUnits(text) < 300)
+                    fail(CHAPTER_FAILURE_CODES.GENERATION_COMPOSITION_TRUNCATED_NO_PROGRESS);
                 if (sources.length && (next.match(/[\p{L}\p{N}]/gu)?.length ?? 0) <= (text.match(/[\p{L}\p{N}]/gu)?.length ?? 0))
-                    fail('GENERATION_COMPOSITION_NO_PROGRESS');
+                    fail(CHAPTER_FAILURE_CODES.GENERATION_COMPOSITION_NO_PROGRESS);
             }
             text = next; previousOrdinal = row.ordinal;
             sources.push({ artifactId, revision: artifact.revision, textHash: artifact.textHash });

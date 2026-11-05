@@ -2415,7 +2415,7 @@ describe('main draft persistence and batch lineage', () => {
     const condense = await f.owner.execute({ handle: generated.run.handle, invocationNonce: 'draft:condense',
       task: { ...task, purpose: 'chapter-draft-condense' } })
     expect(() => f.owner.composeVisible(generated.run.handle, [generated.raw.artifactId, condense.run.artifacts.at(-1)!.artifactId],
-      textHash(shorter), DRAFT_VISIBLE_TEXT_VERSION)).toThrow('GENERATION_COMPOSITION_NO_PROGRESS')
+      textHash(shorter), DRAFT_VISIBLE_TEXT_VERSION)).toThrow('GENERATION_COMPOSITION_CONDENSE_UNEXPECTED')
     expect(f.owner.readVisibleComposition(generated.run.handle)?.text).toBe(draftText)
   })
   it.each([

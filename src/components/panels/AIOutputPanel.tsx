@@ -24,6 +24,7 @@ import {
 } from '../../shared/project-session-context'
 import type { ProjectSessionContext } from '../../shared/ipc-channels'
 import type { RecoveryCandidate } from '../../shared/recovery-candidate'
+import { chapterFailureMeta } from '../../shared/chapter-failure'
 import type { PromptBudgetReport } from '../../services/generation/generation-harness'
 import MarkdownContent from '../ui/MarkdownContent'
 import { presentWorkflowFailure } from './ai-output-failure-presentation'
@@ -51,6 +52,12 @@ export default function AIOutputPanel() {
   const currentProject = useProjectStore(s => s.currentProject)
   const activeRuns = currentProject?.path ? allActiveRuns.filter(run => sameProjectPathKey(run.projectPath, currentProject.path)) : []
   const history = currentProject?.path ? allHistory.filter(run => sameProjectPathKey(run.projectPath, currentProject.path)) : []
+  // D13 §4.3 / §5.5：候选列表原先只在 currentProject 变化时拉一次，章节失败落库后没人刷新
+  // （「存了码没人看」）。用「本项目失败 run 数」作刷新信号：命令层先 await
+  // db:recovery-candidate-record 再抛错（generate-draft.command.ts catch 顺序），run 被标记失败时
+  // 候选行必已落库，计数变化即重拉；候选卡就是「这一章为什么没写出来」的汇聚出口。
+  const failedRunCount = activeRuns.filter(run => run.status === 'failed').length
+    + history.filter(run => run.status === 'failed').length
   const activeRun = activeRuns.find(run => run.status === 'running')
     ?? activeRuns.find(run => run.status === 'waiting')
     ?? activeRuns.find(run => run.status === 'paused')
@@ -98,7 +105,7 @@ export default function AIOutputPanel() {
       setRecoveryError(error instanceof Error ? error.message : String(error))
     })
     return () => { active = false }
-  }, [currentProject])
+  }, [currentProject, failedRunCount])
 
   const continueRecoveryCandidate = async (candidate: RecoveryCandidate) => {
     const project = useProjectStore.getState().currentProject
@@ -493,7 +500,12 @@ function RecoveryCandidateSection({
         {runText(locale, '恢复候选', 'Recovery candidates')}
       </div>
       {error && <p role="alert" className="mb-2 text-xs" style={{ color: 'var(--color-error-text)' }}>{error}</p>}
-      {candidates.map(candidate => (
+      {candidates.map(candidate => {
+        // D13 §5.5：候选卡即「这一章为什么没写出来」的汇聚出口。词表内码 → 对人话版本
+        // （chapterFailureMeta.detail）+ 至少一条 suggestions；词表外码（如 GENERATION_FAILED
+        // 兜底）不渲染原因行。码本身只进 DB/日志/trace，不进正文区；不按 code 写 if-else 拼文案。
+        const failure = chapterFailureMeta(candidate.failureCode)
+        return (
         <article key={candidate.candidateId} className="mb-2 rounded-md border p-2 text-xs" style={{ borderColor: 'var(--color-border)' }}>
           <div className="font-medium" style={{ color: 'var(--color-text)' }}>
             {runText(
@@ -502,6 +514,19 @@ function RecoveryCandidateSection({
               `${candidate.replacesCandidateId ? 'Replacement candidate' : 'Original candidate'} · Chapter ${candidate.chapterNumber} ${candidate.chapterTitle}`,
             )}
           </div>
+          {failure && (
+            <p className="mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+              {runText(locale, `这一章为什么没写出来：${failure.detail}`, `Why this chapter was not written: ${failure.detail}`)}
+            </p>
+          )}
+          <p className="mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+            {runText(locale, '已保留：以下正文已留作候选，可复制或继续编辑。', 'Preserved: the text below was kept as a candidate; you can copy it or continue editing.')}
+          </p>
+          {failure && failure.suggestions[0] && (
+            <p className="mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+              {runText(locale, `可以试：${failure.suggestions[0]}`, `You can try: ${failure.suggestions[0]}`)}
+            </p>
+          )}
           {!candidate.sourceCurrent && (
             <p className="mt-1" style={{ color: 'var(--color-warning-text)' }}>
               {runText(locale, '源章节已变化；可复制或放弃，但不能直接继续。', 'The source chapter changed. You can copy or discard this candidate, but cannot continue it directly.')}
@@ -516,7 +541,8 @@ function RecoveryCandidateSection({
             <button type="button" className="icon-btn px-2" style={candidateTextButtonStyle} onClick={() => onDiscard(candidate)}><Trash2 size={12} />{runText(locale, '放弃', 'Discard')}</button>
           </div>
         </article>
-      ))}
+        )
+      })}
     </section>
   )
 }
