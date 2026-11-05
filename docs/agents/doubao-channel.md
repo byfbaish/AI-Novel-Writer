@@ -252,6 +252,7 @@ node scripts/doubao/doubao.mjs ask "问题" [--new]     # 普通对话提问并�
 node scripts/doubao/doubao.mjs read                   # 读当前对话全文
 node scripts/doubao/probe.mjs 9331 --eval "<js>"      # 任意注入（排查用）
 node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界面
+node scripts/doubao/watchdog.mjs --task <cardId>      # 常驻：探测中档收工并自动 nudge（§8）
 ```
 
 退出码：`0` 成功 / `1` 失败 / `2` 未连接（实例没起）。
@@ -506,8 +507,25 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 | `markers` 读不到任何标记，但页面上明明有 | 两个原因叠加：① 豆包渲染 markdown，`## [T1]` 到 DOM 里成了标题，`#` 没了 → 正则的 `#` 前缀必须可省；② 任务模式的执行流水（「已编辑文件…」）**不在** `data-testid="message_text_content"` 里 → 改成读「最后一条用户消息之后的页面文字」。两处均已修 |
 | `markers` 读出 `[T1] DONE` 但 note 是 `\|BLOCKED\|SKIPPED <一句话说明>` | 任务书正文里的**格式示例**被当成真标记（示例行里状态后面紧跟 `\|` 枚举）。**已修**：解析抽到 `scripts/doubao/markers.mjs`，`extractMarkers` 丢弃「状态后接竖线」与「note 只是 `<…>` 占位」的模板行 |
 | 读回时 `src/shared/__tests__/x.ts` 显示成 `src/shared/tests/x.ts` | markdown 把 `__tests__` 当粗体语法吞了下划线。**这是渲染假象**：模型看的是源文本，本轮它实际落点就是正确的 `__tests__` 目录。别据此认定任务书写错了——要验证就看 `git status` 的真实路径 |
-| **中档**派活后它只做一件就收工（回复「我先探查…」然后 turn 结束） | `--effort 中` 的 agent 循环撑不住多步任务：2026-11-04 实测首轮只发出 1 次工具调用就 `settled`（页面显示「已处理 2 分 29 秒」，无停止按钮 = 真的结束了）。**补一句话催它继续即可**（`doubao.mjs say "继续执行 Tn：直接改…，跑完测试再输出标记。不要只做说明。"`），催过之后能一路跑完 11 分 36 秒、3 项全交付。⇒ 中档**能用但需要 nudge**，不是「干不了活」 |
+| **中档**派活后它只做一件就收工（回复「我先探查…」然后 turn 结束） | `--effort 中` 的 agent 循环撑不住多步任务：2026-11-04 实测首轮只发出 1 次工具调用就 `settled`（页面显示「已处理 2 分 29 秒」，无停止按钮 = 真的结束了）。**补一句话催它继续即可**（`doubao.mjs say "继续执行 Tn：直接改…，跑完测试再输出标记。不要只做说明。"`），催过之后能一路跑完 11 分 36 秒、3 项全交付。⇒ 中档**能用但需要 nudge**，不是「干不了活」。**自动兜底见下方 watchdog 小节**（2026-11-05 起） |
 | 豆包升级后全崩 | 先记版本，再按上表逐项复测；`testid` 是**最稳的锚点**，class 全是 Tailwind 随机串，别用 |
+
+### 主动探测「中档收工」：watchdog（2026-11-05 起）
+
+人在**自己的终端**起（工具会话的后台进程会随会话回收，§2）：
+
+```bash
+node scripts/doubao/watchdog.mjs --task <cardId>
+```
+
+**三层与门，缺一不催**：① 轮次已结束 —— 最后一条 `receive_message` 内出现完整操作条（`message_action_regenerate`；2026-11-05 22:2x 空闲态实测为 true、`stopIds` 为空，而页面尾部仍留着上一轮的命令文本，所以「页面有输出」≠ 还在跑）+ 无生成指示器 + 连续 3 次快照 `turnCount`/末条回复不变 + 输入框为空；② 任务未完成 —— 看板卡仍 `running`/`external` 且无 `review` / `finishedAt` / 报告文件 / `[QUEUE] EMPTY`；③ 话题正确 —— 当前 href 与 `.runtime/doubao/last-thread.json` 一致（`say` 自己还会用 `assertSameThread` 再验一次）。
+**刹车**：冷却 3 分钟、最多 3 次、卡一交回立即退出、连续两次催办后末条回复仍不变就停并告警。每次探测与补发都写 `.runtime/doubao/watchdog.log.jsonl`。
+
+验证与排错：`--self-test`（判据矩阵，不碰窗口）· `--once --dry-run`（单轮探测，**只判不发**；单轮验证务必带 `--dry-run`）· `--calibrate`（打印当前 DOM 生成指示器）。**别在 shell 里解析 CLI 的多行 JSON / 中文 stdout**：终端折行会把 `ConvertFrom-Json` 弄坏（2026-11-05 连坏两次），脚本走 Node 子进程拿原始 stdout。
+
+**已知限制（别当已验证）**：生成中的「停止按钮」testid 尚未抓到（落地时窗口已空闲，脚本不依赖它、改用操作条这个正向信号；下次真任务生成中跑一次 `--calibrate` 可校准）；**nudge 落在仍在运行的 turn 上会不会打断，未实测** —— 靠三层与门 + 冷却把误发压到最低，`say` 自身还有「输入框未清空」校验。真遇到误发就把 `--steady` / `--interval` 调大。
+
+**治本仍是任务书**：写死「做完验收标准 → 写报告 → 打 `review`+`release` → 才允许停」能降频，但豆包没有工具层硬钉，watchdog 只作兜底。
 
 **恢复顺序**：先 `probe.mjs` 看 testid 还在不在 → 再 `inspect-click.mjs` 看按钮还能不能点 → 最后才改 `SELECTORS`。
 
@@ -538,5 +556,6 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 - 长时间连续无人值守：单实例串行，`--effort 中` 可能做一件就收工，`markers` 看到 `[Tn] DONE` 后用 `say "继续执行 Tn…"` nudge。
   **不要因为"任务长"就自己升「高」** —— 档位是钱，判据见上一行：**只有审核发现幻觉严重才升**（2026-11-05 派 D20 本体时我擅自升了「高」，
   作者当场纠正：手册写的默认就是「中」，长任务该用 nudge 而不是加档）。
+  无人值守时挂 `watchdog.mjs --task <id>`（§8）按三层与门自动补这一句；**它只发 nudge**，`done` / `review --pass|--rework` 仍归 Lead。
 
 **派活小表**：见 [WorkBuddy 通道](workbuddy-channel.md) §13（同一张表，两边同步）。
