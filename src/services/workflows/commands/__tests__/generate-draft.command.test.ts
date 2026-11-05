@@ -836,7 +836,17 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     } else await expect(f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })).resolves.toBe(text)
     expect(legacy.createRuntime).not.toHaveBeenCalled()
     expect(f.invoke.mock.calls.filter(([channel]) => channel === 'generation:execute')).toHaveLength(2)
-    expect(f.invoke.mock.calls.some(([channel]) => channel === 'db:draft-create' || channel === 'db:draft-next-version' || channel === 'db:recovery-candidate-record')).toBe(false)
+    // D13 裁定 2=A：mainOwned 失败也留候选。旧断言钉死「不落候选」，按新契约同向收紧为「断言落候选」——
+    // 不进草稿库、但候选要落盘且带得住失败码。
+    expect(f.invoke.mock.calls.some(([channel]) => channel === 'db:draft-create' || channel === 'db:draft-next-version')).toBe(false)
+    const candidates = f.invoke.mock.calls.filter(([channel]) => channel === 'db:recovery-candidate-record')
+    if (edit) {
+      expect(candidates).toHaveLength(1)
+      expect(candidates[0]?.[1]).toEqual(expect.objectContaining({
+        visibleText: text,
+        failureCode: 'DRAFT_AUTHOR_CONFIG_CHANGED',
+      }))
+    } else expect(candidates).toHaveLength(0)
   })
 
   it.each([false, true])('composes the overlength replacement through main and propagates ACK errors: %s', async ackFails => {
@@ -890,7 +900,16 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(f.invoke.mock.calls.filter(([channel]) => channel === 'generation:compose-visible').map(([, , ids]) => ids))
       .toEqual([['原片'], ['原片', '压缩片']])
     expect(f.invoke.mock.calls.filter(([channel]) => channel === 'generation:execute')).toHaveLength(3)
-    expect(f.invoke.mock.calls.some(([channel]) => channel === 'db:draft-create' || channel === 'db:recovery-candidate-record')).toBe(false)
+    // D13 裁定 2=A：ACK 失败的 mainOwned 批次也留候选，且失败码要随候选一起保住。
+    expect(f.invoke.mock.calls.some(([channel]) => channel === 'db:draft-create')).toBe(false)
+    const candidates = f.invoke.mock.calls.filter(([channel]) => channel === 'db:recovery-candidate-record')
+    if (ackFails) {
+      expect(candidates).toHaveLength(1)
+      expect(candidates[0]?.[1]).toEqual(expect.objectContaining({
+        failureCode: 'GENERATION_COMPOSITION_RECEIPT_MISMATCH',
+        visibleText: vi.mocked(f.callbacks.replaceText!).mock.calls.at(-1)?.[0],
+      }))
+    } else expect(candidates).toHaveLength(0)
   })
 
   it('still rejects previous-chapter replay in an over-limit main-owned draft', async () => {
@@ -966,7 +985,14 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(f.invoke.mock.calls.filter(([channel]) => channel === 'generation:compose-visible')).toHaveLength(2)
     expect(f.invoke.mock.calls.some(([channel]) => channel === 'generation:pause')).toBe(false)
     expect(f.invoke.mock.calls.some(([channel]) => channel === 'generation:commit-draft')).toBe(false)
-    expect(f.invoke.mock.calls.some(([channel]) => channel === 'db:recovery-candidate-record')).toBe(false)
+    // D13 裁定 2=A：mainOwned 失败也留候选。旧断言「不落候选」按新契约同向收紧为
+    // 「断言落候选」：可见正文与失败码一起落盘，草稿库仍不进。
+    const candidates = f.invoke.mock.calls.filter(([channel]) => channel === 'db:recovery-candidate-record')
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]?.[1]).toEqual(expect.objectContaining({
+      visibleText: text,
+      failureCode: 'DRAFT_PREVIOUS_ENDING_REPLAY',
+    }))
     expect(f.callbacks.replaceText).toHaveBeenLastCalledWith(text)
   })
 

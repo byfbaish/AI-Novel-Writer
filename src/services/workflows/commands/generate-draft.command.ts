@@ -1716,12 +1716,11 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       return this.publishSavedDraft({ context, callbacks, projectSession, expectedProjectPath,
         cleanDraftText, id: createResult.id, nextVersion, mergedGuidance, targetChars })
     } catch (error) {
-      // D13 裁定 2=A（§7.1：生产也留候选）经现场核对**无法在卡面红线内落地**：
-      // 放开 `!mainOwned` 会同时打破 3 条既有断言（generate-draft.command.test.ts :839/:893/:969，
-      // 全部钉死「mainOwned 失败不落 db:recovery-candidate-record」），而 §8.5 只许可改
-      // main-generation-owner.test.ts:2418 一条断言。按红线「既有断言一律不动」，
-      // 本分支保持 `!mainOwned` 原状；冲突细节与证据已写入本卡报告，请作者裁定。
-      if (!mainOwned && !draftPersisted && recoverableDraftCandidate) {
+      // D13 裁定 2=A（§7.1：让生产也留候选，2026-11-06 作者裁定 A 后落地）：
+      // 候选落库不再以 `!mainOwned` 为前提——生产里 mainOwned 恒为真，原条件让这条
+      // 分支在生产不可达。只放开本条件；落库形态沿用 db:recovery-candidate-record，
+      // 不改汇编码、不加超时/心跳/run 终态兜底（§5.6 / §6 划界照旧）。
+      if (!draftPersisted && recoverableDraftCandidate) {
         callbacks.replaceText?.(recoverableDraftCandidate)
         const failureCode = recoveryFailureCode(error, context.cancelled)
         const failureReason = error instanceof Error ? error.message : String(error)

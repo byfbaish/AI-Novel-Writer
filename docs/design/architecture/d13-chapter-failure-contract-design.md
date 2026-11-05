@@ -1,6 +1,6 @@
 # D13 方案 · 一章三种死法，而三种死法都不告诉作者「为什么没写出来」
 
-> 状态：已裁定（2026-11-05 · **作者按建议裁定：1=B / 2=A（与 D8 裁定 2 合并答）/ 3=A**；§5.4 跨 IPC 取码已由主 agent 只读验通，见 §5.4 与 §10；实施卡待开工）· 首版已于当日经**独立复核打回五处**并修订，见 §11
+> 状态：已裁定（2026-11-05 · **作者按建议裁定：1=B / 2=A（与 D8 裁定 2 合并答）/ 3=A**；§5.4 跨 IPC 取码已由主 agent 只读验通，见 §5.4 与 §10；**实施已合并 `959a3647`，T5 于 2026-11-06 按裁定 A 补齐**）· 首版已于当日经**独立复核打回五处**并修订，见 §11
 > 上级登记：[`../product/live-pipeline-acceptance-defects-assessment.md`](../product/live-pipeline-acceptance-defects-assessment.md) §D13
 > 触发：2026-11-01 第 2 章同一蓝图、同一模型 `qwen3.5:9b-128k`，三次尝试三种死法
 > 本稿**只出方案，不动代码**；所有行号为 2026-11-05 在 `develop @ 20caeab3` 实读。
@@ -25,7 +25,7 @@
 | # | 出口（层） | 实际位置 | 有没有错误码 | 上层怎么记 | 作者看到什么 |
 |---|---|---|---|---|---|
 | 1 | 调用层（无输出） | 无抛点。`run 3c8aa501` 停在 `running` 15 分钟，模型 22:31 已空闲 | **没有失败可记** | run 无终态 | 面板「第 2 章 · 自动定稿与后处理 10%」挂着不动 |
-| 2 | 正文层（内容判据） | `generate-draft.command.ts` **10 处抛点 / 8 类语义**（§2） | 只有 2 个 `finishReason` 分支会 `Object.assign({code})` | 恢复候选 `failureCode = GENERATION_FAILED`（且这条分支生产不可达，§4.2） | 编辑器一句话，面板显示**正常结束** |
+| 2 | 正文层（内容判据） | `generate-draft.command.ts` **10 处抛点 / 8 类语义**（§2） | 只有 2 个 `finishReason` 分支会 `Object.assign({code})` | 恢复候选 `failureCode = GENERATION_FAILED`（原分支生产不可达，2026-11-06 已放开，§7.1） | 编辑器一句话，面板显示**正常结束** |
 | 3 | 组装层（compose） | `generation-run-repository.ts:520/526/529/531` | 码只是 message | 有"码"，但取不到 `code` | 「工作流未完成」 |
 
 **读法**：三条路里，一条**不产生失败**，另外两条**产出了失败的字符串、但没有产出一个能被程序读的失败**。
@@ -134,6 +134,8 @@ UI 有 `RecoveryCandidateSection`（`AIOutputPanel.tsx:225-233`），browser 测
 - 三个生产调用点**都不注入 `dependencies`**：`chapter-workflow.ts:267`、`batch-chapter-workflow.ts:270`、`draft-recovery-workflow.ts:63`
 
 ⇒ **`db:recovery-candidate-record` 在生产中从不发生**，这条分支只有测试注入运行时才成立。
+
+> **2026-11-06 落地（作者裁定 A）**：`generate-draft.command.ts` catch 的条件已由 `!mainOwned && !draftPersisted && recoverableDraftCandidate` 放开为 `!draftPersisted && recoverableDraftCandidate`。生产（`mainOwned: true`）失败现在同样落 `db:recovery-candidate-record`；落库形态不变、汇编码不变、不加超时/心跳/run 终态兜底。上面「生产中从不发生」是 2026-11-05 的实读结论，保留作历史。
 
 **这改变了 D8 裁定 2 的问法**：不是"`mainOwned` 下要不要留候选"，而是"**唯一留候选的那条分支，生产不走**"。
 生产里作者能用的是另一个东西 —— `MainDraftRecoverySection`（`AIOutputPanel.tsx:224`，`:318-320` 从 run 的 artifacts 反推），
@@ -277,7 +279,7 @@ D13 只承诺：**一旦有人判它失败，失败得有身份。** 这条划�
 
 **划界照旧**：D13 只承诺「一旦有人判它失败，失败得有身份」，**不许**顺手加超时 / 心跳 / run 终态兜底（D9 与 D2 甲的地盘）。
 
-> ⚠️ **裁定 2 实施状态（2026-11-06）**：D13 实施卡 `d97ebfdd` 已按卡面 §8 九条复核通过并合并（`959a3647`），但 **T5（裁定 2=A「让生产也留候选」）未落地**。放开 `generate-draft.command.ts:1719` 的 `!mainOwned` 会打破 `generate-draft.command.test.ts:839/:893/:969` 三条既有断言（都钉死「mainOwned 失败不落 `db:recovery-candidate-record`」），而 §8.5 只许可改 `:2418` 一条 ⇒ 卡面内部硬冲突。执行者按红线保持原状、在 `:1719-1724` 留注释、报告 §4.2 请裁定。**待作者裁**：许可按「裁定 2=A 必要配套」改写那三条断言（与新契约同向收紧为「断言落候选」），或维持 2=B 并修改本表。裁定前不开实施卡。
+> ✅ **裁定 2 实施状态（2026-11-06，已收口）**：作者 00:49 选 **A** —— 许可按「裁定 2=A 必要配套」改写 `generate-draft.command.test.ts:839/:893/:969` 三条既有断言，与新契约**同向收紧为「断言落候选」**；裁定 2 本身与本表裁定不变。落地：`generate-draft.command.ts:1719-1724` 只去掉 `!mainOwned`（`else if` 清屏分支照旧）；三条断言从「不落候选」改为「不进草稿库 + 候选落盘且带得住失败码」（`DRAFT_AUTHOR_CONFIG_CHANGED` / `GENERATION_COMPOSITION_RECEIPT_MISMATCH` / `DRAFT_PREVIOUS_ENDING_REPLAY`），成功路径仍断言零候选。**证据**：改前单跑该文件 `3 failed | 242 passed`（失败恰为这三条）；改后 `245 passed`；`main-generation-owner.test.ts` 走 Electron 运行时 `185 passed`；`node scripts/check-fast.mjs` 全绿。§8.5 的「唯一许可断言」由本裁定扩为 `:2418` + 这三条。
 
 ---
 
@@ -296,6 +298,7 @@ D13 只承诺：**一旦有人判它失败，失败得有身份。** 这条划�
 > 第 1 条已于 2026-11-05 由主 agent 只读验通（证据见 §5.4）；实施卡**仍需复现一次并贴原始输出**。
 > 第 2 条的「10 处」以 §9 速查表为准；第 5 条是**唯一**被许可改动的既有断言，其余断言一律不许放宽。
 > ⚠️ **第 5 条的「唯一」是复核漏检**（豆包实施报告 §5 第 1 / 3 条，主 agent 已抽查）：实际受影响的既有断言共 **5 处** —— `:2418`（组装层码）、`:4760`（`GENERATION_FAILED` 落候选）、`:5341`（不可信失败文本不得变显示码）、`:839/:893/:969`（mainOwned 不落候选，钉死旧裁定 2=B）。其中 T3 靠「改实现细节保旧断言」绕过，T5 要改的正是旧断言钉死的行为本身、无两全中间态 ⇒ 见 §7.1 的实施状态。**同类「放条件」裁定，应先跑一遍相关测试盘点受影响断言再写验收。**
+> **2026-11-06 补**：`:839/:893/:969` 三条已按裁定 A 改写（见 §7.1），T5 不再 BLOCKED。上面「5 处」的盘点与「同类裁定先跑测试盘点」的教训保留不改 —— 这次仍是**先单跑测试确认只有 3 条红**才动笔，不是凭报告猜。
 
 ---
 
@@ -311,7 +314,7 @@ D13 只承诺：**一旦有人判它失败，失败得有身份。** 这条划�
 | 配置途中被改 | 同 `:1624` |
 | 续写合并 / 增量 / 无进展 | 同 `:2027-2042` / `:2051-2067` / 恢复失败 `:2054-2057` |
 | `finishReason` 非 stop（3 处） | 同 `:2081-2096` / `:2131` / `:2208` |
-| 恢复候选落库（生产不可达） | 同 `:1710-1756`，条件 `!mainOwned`；`mainOwned: true` 在 `src/services/workflows/workflow-main-generation.ts:208` |
+| 恢复候选落库（2026-11-06 起生产可达） | 同 `:1710-1756`，条件 `!draftPersisted && recoverableDraftCandidate`（原 `!mainOwned` 已按裁定 2=A 放开）；`mainOwned: true` 在 `src/services/workflows/workflow-main-generation.ts:208` |
 | 主进程内容闸（三成因一码） | `electron/services/generation-draft-effects.ts:139-146` |
 | 组装层四个抛点 | `electron/repositories/generation-run-repository.ts:520` / `:526` / `:529` / `:531` |
 | `fail()` 不带 `code` | 同文件 `:92` |

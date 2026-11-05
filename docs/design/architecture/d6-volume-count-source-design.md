@@ -1,6 +1,6 @@
 # D6 方案 · 卷数的事实源与「卷数 × 单元数 × 章数」乘法链
 
-> 状态：已裁定（2026-11-06 · **方向 A 与裁定 6 已撤回**；D6 重定义为「Prompt 层删硬条款 + 算术层反馈收敛」，卷数不进任何判据。**尚未开工**，模板改动点待另开卡 —— 见 §9）
+> 状态：已裁定（2026-11-06 · **方向 A 与裁定 6 已撤回**；D6 重定义为「Prompt 层删硬条款 + 算术层反馈收敛」，卷数不进任何判据。**两张实施卡已开并派发**，见 §9.7）
 > ⚠️ **§0 的病因命名、§4 方向 A、§7 六条裁定与 §8 处置已被 §9 取代；原文保留作历史记录，不得再照做。**
 > 上级登记：[`../product/live-pipeline-acceptance-defects-assessment.md`](../product/live-pipeline-acceptance-defects-assessment.md) §D6（`:380-431`）
 > 相邻条目：D7（单元→章偏保守，`:433-474`）、D15（单元区间重叠，`:729-753`）、D19（卷末章口径）
@@ -305,3 +305,14 @@ flowchart TD
 ### 9.6 同步清单（本次已同步）
 
 `arc-budget-engine-design.md:5` · 缺陷总表 §D6 状态行 / 汇总行 / 顶部进度行 · 看板卡 `a6c3e2df` · `.workbuddy/memory/MEMORY.md` 注入层红线 · `.workbuddy/memory/notes/generation-pipeline.md`「第 35 条判据」。**代码模板与画像一律未动**，改法另开卡。
+
+### 9.7 实施卡（2026-11-06 00:49，作者「3开始吧」）
+
+按 §9.4 两层各开一张顶层 `external` 卡，均落在 `wt-1`，任务书与卡面逐字一致：
+
+| 层 | 卡 ID | 范围 |
+|---|---|---|
+| Prompt 层 | `2cb4ec6e-4daa-438b-9545-ce09fd15e3b9` | 结构模板（zh / en）删个数硬约束与个数自检、画像降为方向性描述、正文模板保留兑现频率 / 钩子密度；明确许可改写 `prompt-language-contract.test.ts:465` 一条既有断言 |
+| 算术层 | `5f75acb4-d97e-4e5c-a60d-dac9bbaae307` | 修 `architecture.command.ts:3968/:168/:1074` 三处误报完成 / 真实章数被抹掉，把 `:4034-4037` 覆盖对账从「只到 log」升级为有消费点的反馈收敛闭环；不阻断、不判卷数合规、不造新机制 |
+
+派法按 `docs/agents/doubao-channel.md` §2.1.0：**`--keep` 复用「D6 卷数事实源归因审查」线程**（同主题后续活，不新开窗口、不重读章程），档位保持「自动 中」；两张卡按 A → B 顺序 `claim`，一次队列派完。边界照手册 §5：只准单元测试、禁 git 写、禁 `pnpm test:node`，报告落在 `wt-1/.dsh-task-board/reports/<卡号>.md`，执行者只交 `review`。占位卡 `a6c3e2df` 仍作留痕，不派活。
