@@ -486,8 +486,8 @@ Build five connected dimensions. The first three each need a concrete source of 
 [How to cut]
 - Volume: a period in which **both the world and he change state**.
 - Unit: one standoff situation.
-- The number of volumes and the number of units per volume **must follow the ranges in the rhythm profile above**. Do not compute them yourself and do not restate the ranges as fixed values.
-- Sibling arcs at the same level must not all have the same count (all 3 = nobody counted). A difference of 1 is normal.
+- Volumes and units are **not a quota**: how many volumes the book is cut into, and how many units each volume holds, is your call from the genre, platform and planned length — as many units as this stretch actually needs.
+- Sibling stretches do not need cutting with the same ruler: how many beats a stretch gets follows its own dramatic weight. That is a reading matter, not a count to be checked.
 - Do NOT write chapter counts, word counts or length percentages, and do not put "chapters 1-6" in a title. Conversion is the system's job.
 - Both volume names and unit names must be a **concrete image** ("one 'I'll be right there' and every door number on the street tilts"), not an abstraction ("the crisis deepens").
 
@@ -590,16 +590,15 @@ ${STORY_BEAT_CATALOG_EN}
 
 [Self-check — do this silently, **do not output this section**, never say "I checked"]
 1. No chapter counts, word counts or percentages anywhere; no "chapter N".
-2. Volume count and units per volume fall inside the rhythm profile ranges.
-3. Every volume turns over its pressure; a volume where the same cast grinds on must be rewritten.
-4. Every settlement lands on a concrete thing and names who comes looking; "options / room / quiet" must be rewritten.
-5. Every unit names why the previous trick stopped working; a mere change of opponent must be rewritten.
-6. Every volume and every unit names a beat copied from the table; adjacent units differ, nothing repeats inside a volume, adjacent volumes differ. If no other beat fits, the stretch should be merged into the previous one.
-7. The beat's span covers its stretch (kishotenketsu on a 10-chapter unit, or three-two-one on a 40-chapter volume, is wrong). Change the beat or cut the stretch shorter.
-8. Adjacent units differ in (hand:); no volume parks two consecutive units in the same (tier:).
-9. Every volume pays one specific old debt and plants one specific new debt; flag volumes that only plant.
-10. The rhythm table has all six columns, and pressure rotation never has three parties at full pressure in one volume.
-11. Every volume and every unit carries exactly two lines for the beat — "Beat: name" and "Landing: ..." — with no restatement of what each slot is for. Restated ones must be deleted and rewritten.
+2. Every volume turns over its pressure; a volume where the same cast grinds on must be rewritten.
+3. Every settlement lands on a concrete thing and names who comes looking; "options / room / quiet" must be rewritten.
+4. Every unit names why the previous trick stopped working; a mere change of opponent must be rewritten.
+5. Every volume and every unit names a beat copied from the table; adjacent units differ, nothing repeats inside a volume, adjacent volumes differ. If no other beat fits, the stretch should be merged into the previous one.
+6. The beat's span covers its stretch (kishotenketsu on a 10-chapter unit, or three-two-one on a 40-chapter volume, is wrong). Change the beat or cut the stretch shorter.
+7. Adjacent units differ in (hand:); no volume parks two consecutive units in the same (tier:).
+8. Every volume pays one specific old debt and plants one specific new debt; flag volumes that only plant.
+9. The rhythm table has all six columns, and pressure rotation never has three parties at full pressure in one volume.
+10. Every volume and every unit carries exactly two lines for the beat — "Beat: name" and "Landing: ..." — with no restatement of what each slot is for. Restated ones must be deleted and rewritten.
 
 [Reference works — if any, borrow structure density and gear-change rhythm; never borrow plot]
 {{reference_works}}

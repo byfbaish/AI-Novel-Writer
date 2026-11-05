@@ -462,7 +462,14 @@ describe('弧光 v7 契约（卷 / 单元 · 两级 · 画像驱动）', () => {
     // 改画像时两处常量不跟着变，模型同时收到两个数。
     expect(zh).not.toMatch(/全书\s*[0-9]+\s*[–-]\s*[0-9]+\s*卷/u)
     expect(zh).not.toMatch(/每卷\s*[0-9]+\s*[–-]\s*[0-9]+\s*个单元/u)
-    expect(zh).toContain('一律按上面【节奏推荐】给的区间取')
+    // D6-A（2026-11-06）：卷 / 单元个数不进任何判据（作者裁定：5 卷与 7 卷都是模型按背景材料
+    // 做出的剧情划分，都合理；卷纲重生成代价极小 ⇒ 可弃参数）。本行原钉的是「一律按上面
+    // 【节奏推荐】给的区间取」这条硬条款，条款已随 D6-A 删除 ⇒ 改钉「不再要求按区间取」，
+    // 并把两侧的区间自检一并钉死（个数来源仍然只有 {{rhythm_profile}} 一处）。
+    expect(zh).not.toContain('一律按上面【节奏推荐】给的区间取')
+    expect(zh).not.toContain('落在【节奏推荐】的区间内')
+    expect(en).not.toContain('must follow the ranges in the rhythm profile')
+    expect(en).not.toContain('fall inside the rhythm profile ranges')
   })
 
   it('节奏画像进 requiredContextVariables（红线 16：覆盖版也要拿到）', () => {
