@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { keyEventId, keyEventsText, normalizeKeyEvents } from '../blueprint-key-events'
+import { allocateEventChars, keyEventCharTargetsText, keyEventId, keyEventsText, normalizeKeyEvents } from '../blueprint-key-events'
+import { shortOutlineSegmentBudget } from '../draft-short-outline'
 
 describe('normalizeKeyEvents', () => {
   it('把单段字符串视为一条事件并逐字保留', () => {
@@ -165,5 +166,87 @@ describe('normalizeKeyEvents · attacks', () => {
     expect(events).toHaveLength(1)
     expect(events[0]).toMatchObject({ id: 'ch2:E1', event: '乙', estimatedUnits: 500 })
     expect(events[0]!.attacks).toMatchObject({ space: '望海桥' })
+  })
+})
+
+describe('allocateEventChars（861ab163：单位→字数的唯一判据）', () => {
+  it('按 estimatedUnits 比例分配，且合计严格等于目标字数', () => {
+    const allocation = allocateEventChars([
+      { event: '甲', estimatedUnits: 550 },
+      { event: '乙', estimatedUnits: 550 },
+      { event: '丙', estimatedUnits: 500 },
+      { event: '丁', estimatedUnits: 450 },
+      { event: '戊', estimatedUnits: 450 },
+    ], 1500)
+
+    expect(allocation.map(item => item.chars)).toEqual([330, 330, 300, 270, 270])
+    expect(allocation.reduce((sum, item) => sum + item.chars, 0)).toBe(1500)
+  })
+
+  it('除不尽时末段吃掉余数，合计仍严格等于目标（不让总数被四舍五入顶超）', () => {
+    const allocation = allocateEventChars([
+      { event: '甲', estimatedUnits: 1 },
+      { event: '乙', estimatedUnits: 1 },
+      { event: '丙', estimatedUnits: 1 },
+    ], 1000)
+
+    expect(allocation.reduce((sum, item) => sum + item.chars, 0)).toBe(1000)
+    expect(allocation.every(item => item.chars > 0)).toBe(true)
+  })
+
+  it('全部未声明 units 时退化成等分', () => {
+    const allocation = allocateEventChars([{ event: '甲' }, { event: '乙' }], 1000)
+    expect(allocation.map(item => item.chars)).toEqual([500, 500])
+  })
+
+  it('只有部分条目有 units 时，按有值的那些分配（0 的不占权重）', () => {
+    const allocation = allocateEventChars([
+      { event: '甲', estimatedUnits: 0 },
+      { event: '乙', estimatedUnits: 300 },
+    ], 900)
+    expect(allocation.map(item => item.chars)).toEqual([1, 899])
+  })
+
+  it('事件为空或目标字数 ≤0 时返回空数组（调用方据此整块省略）', () => {
+    expect(allocateEventChars([], 1500)).toEqual([])
+    expect(allocateEventChars([{ event: '   ', estimatedUnits: 100 }], 1500)).toEqual([])
+    expect(allocateEventChars([{ event: '甲', estimatedUnits: 100 }], 0)).toEqual([])
+    expect(allocateEventChars(undefined, 1500)).toEqual([])
+  })
+})
+
+describe('keyEventCharTargetsText（861ab163：降级路径的篇幅表）', () => {
+  it('只给场次与字数，不复述事件原文（避免同一轮内作者字段重复）', () => {
+    const text = keyEventCharTargetsText([{ event: '甲', estimatedUnits: 700 }, { event: '乙', estimatedUnits: 300 }], 1000)
+    expect(text).toContain('第 1 场：约 700 字')
+    expect(text).toContain('第 2 场：约 300 字')
+    expect(text).toContain('合计 1000 字')
+    expect(text).not.toContain('甲')
+    expect(text).not.toContain('乙')
+  })
+
+  it('英文版块标题与行格式', () => {
+    const text = keyEventCharTargetsText([{ event: 'a', estimatedUnits: 1 }], 500, 'en-US')
+    expect(text).toContain('Scene 1: ~500 characters')
+    expect(text).toContain('Total 500 characters')
+  })
+
+  it('字符串入参返回空串（拿不到分条，不猜）', () => {
+    expect(keyEventCharTargetsText('甲；乙', 1500)).toBe('')
+  })
+
+  it('事件为空或目标 ≤0 时返回空串，调用方整块省略', () => {
+    expect(keyEventCharTargetsText([], 1500)).toBe('')
+    expect(keyEventCharTargetsText([{ event: '甲', estimatedUnits: 100 }], 0)).toBe('')
+  })
+
+  it('与 shortOutlineSegmentBudget 同源：同一条事件在两处的字数相同', () => {
+    const events = [{ event: '甲', estimatedUnits: 700 }, { event: '乙', estimatedUnits: 300 }]
+    const targets = keyEventCharTargetsText(events, 2000)
+    const shortOutline = shortOutlineSegmentBudget('zh-CN', events, 2000)
+    expect(targets).toContain('第 1 场：约 1400 字')
+    expect(shortOutline).toContain('1. 约 1400 字：甲')
+    expect(targets).toContain('第 2 场：约 600 字')
+    expect(shortOutline).toContain('2. 约 600 字：乙')
   })
 })

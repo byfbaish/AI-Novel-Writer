@@ -1,3 +1,4 @@
+import { allocateEventChars } from './blueprint-key-events'
 import type { WritingLanguage } from './writing-language'
 
 export const DRAFT_SHORT_OUTLINE_PURPOSE = 'chapter-draft-short-outline' as const
@@ -125,7 +126,9 @@ export function draftShortOutlinePrompt(language: WritingLanguage, material: Dra
  * 分段预算：把蓝图每个事件的 `estimatedUnits` 按本章目标字数折算成字数。
  *
  * 为什么由代码算：单位→字数是一个比例式，模型算不稳（判据 AZ：同一 Σ 代码算必须严格
- * 相等，模型自报可 ±10%）。先按 floor 分配、末段吃掉余数，**保证合计严格等于本章目标**。
+ * 相等，模型自报可 ±10%）。折算本身在 `allocateEventChars`（`blueprint-key-events.ts`），
+ * **正文蓝图的【每场篇幅】用的是同一个函数** —— 两处各写一份会让同一条事件在两步里
+ * 显示两个字数（`861ab163` 之前正是这种形态：正文那条根本不存在）。
  *
  * 蓝图没给 units（或全为 0）时退化成等分 —— 至少让"分几段"有个确定的形状。
  * 事件为空时返回空串：材料块整块省略，短细纲退回要点模式。
@@ -135,28 +138,13 @@ export function shortOutlineSegmentBudget(
   events: readonly { event?: string; estimatedUnits?: number }[] | undefined,
   targetChars: number,
 ): string {
-  const items = (events ?? [])
-    .map(item => ({ text: String(item?.event ?? '').trim(), units: Number(item?.estimatedUnits) }))
-    .filter(item => item.text.length > 0)
-  if (items.length === 0 || !(targetChars > 0)) return ''
+  const allocations = allocateEventChars(events, targetChars)
+  if (allocations.length === 0) return ''
 
-  const weights = items.map(item => (Number.isFinite(item.units) && item.units > 0 ? item.units : 0))
-  const weightsTotal = weights.reduce((sum, value) => sum + value, 0)
-  const shares = weightsTotal > 0 ? weights : items.map(() => 1)
-  const shareTotal = shares.reduce((sum, value) => sum + value, 0)
-
-  let allocated = 0
-  const lines = items.map((item, index) => {
-    const isLast = index === items.length - 1
-    // 末段吃掉余数：既保证合计等于 targetChars，也避免四舍五入把总字数顶超。
-    const chars = isLast
-      ? Math.max(1, targetChars - allocated)
-      : Math.max(1, Math.floor((targetChars * shares[index]!) / shareTotal))
-    allocated += chars
-    return writingLanguage === 'en-US'
-      ? `${index + 1}. ~${chars} characters: ${item.text}`
-      : `${index + 1}. 约 ${chars} 字：${item.text}`
-  })
+  const lines = allocations.map((item, index) => (writingLanguage === 'en-US'
+    ? `${index + 1}. ~${item.chars} characters: ${item.text}`
+    : `${index + 1}. 约 ${item.chars} 字：${item.text}`))
+  const allocated = allocations.reduce((sum, item) => sum + item.chars, 0)
 
   return [
     ...lines,

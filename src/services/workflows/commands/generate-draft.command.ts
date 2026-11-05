@@ -1,6 +1,6 @@
 import { chapterTimeContinuity } from '../../../shared/chapter-time-continuity'
 import { formatStoryDayAnchorLine, type StoryDaySource } from '../../../shared/story-day-anchor'
-import { keyEventsText } from '../../../shared/blueprint-key-events'
+import { keyEventCharTargetsText, keyEventsText } from '../../../shared/blueprint-key-events'
 import { analyzeBlueprintVerbatimCopy } from '../../../shared/blueprint-verbatim-overlap'
 import { assertNotDegenerateVisibleText, findVisibleTextDegeneracies } from '../../../shared/visible-text-integrity'
 import { describeProseShapeViolation, measureProseShape } from '../../../shared/prose-shape'
@@ -339,10 +339,16 @@ function toWriterChapterInfo(chapterInfo: ChapterInfo): WriterChapterInfo {
  */
 function toBlueprintProjection(
   chapterInfo: WriterChapterInfo,
-  options: { dropUserGuidance?: boolean; dropSuspenseHook?: boolean } = {},
+  options: { dropUserGuidance?: boolean; dropSuspenseHook?: boolean; keyEvents?: string } = {},
 ): Record<string, unknown> {
-  if (!options.dropUserGuidance && !options.dropSuspenseHook) return { ...chapterInfo }
-  const { userGuidance, suspenseHook, ...rest } = chapterInfo
+  // `keyEvents` 覆盖只改**渲染文本**，不动 `writerChapterInfo` 本身
+  // （后者参与 `draft:chapter-info` 的恢复指纹，改了会让进行中的 resume 报
+  //  `GENERATION_DRAFT_RECOVERY_AUTHOR_INPUT_CHANGED`）。
+  const projected = options.keyEvents === undefined
+    ? chapterInfo
+    : { ...chapterInfo, keyEvents: options.keyEvents }
+  if (!options.dropUserGuidance && !options.dropSuspenseHook) return { ...projected }
+  const { userGuidance, suspenseHook, ...rest } = projected
   return {
     ...rest,
     ...(options.dropUserGuidance ? {} : { userGuidance }),
@@ -1375,8 +1381,15 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
           }
           const reconciliationBlock = [recordedReconciliation ? draftReconciliationBlock(writingLanguage, recordedReconciliation) : '',
             shortOutline ? draftShortOutlineBlock(writingLanguage, shortOutline) : ''].filter(Boolean).join('\n\n')
+          // `861ab163`：正常路径的篇幅预算由短细纲承载（短细纲指令要求「段数与字数一律
+          // 照抄【分段预算】」），但**没有短细纲时正文请求里一个字数目标都没有** ——
+          // 蓝图 `keyEvents` 走 `keyEventsText()`，它只给事件、丢掉 `estimatedUnits`。
+          // 这条降级路径（短细纲失败 / 被判复读丢弃 / 恢复句柄里没有它）因此补一张
+          // 只带场次序号的篇幅表：不复述事件原文，避免破坏「同一轮内作者字段各只出现一次」。
           const initialPrompt = shortOutline ? `${prompt}\n\n${draftShortOutlineBlock(writingLanguage, shortOutline)}`
-            : composeInitialPrompt(reconciliationBlock)
+            : [composeInitialPrompt(reconciliationBlock),
+              keyEventCharTargetsText(this.chapterInfo.keyEvents, targetChars, writingLanguage)]
+              .filter(Boolean).join('\n\n')
           const originalDraftTask = recovery?.draftShortOutline?.initialDraftTask
           if (recovery?.draftShortOutline && (recovery.draftShortOutline.promptHash !== await hashAuthorText(withSkill(outlinePrompt))
             || recovery.attemptedPurposes.includes('chapter-draft') && !originalDraftTask
