@@ -8,6 +8,7 @@ import {
   PLOT_OUTLINE_RESUME_ERROR_CODE,
   PlotOutlineResumeAvailableError,
   synopsisFactsFingerprint,
+  synopsisInputFingerprintParts,
   synopsisInputsFingerprint,
 } from '../architecture.command'
 import { createWorkflowRuntimeDependencies } from './workflow-generation-runtime.fixture'
@@ -69,20 +70,57 @@ function currentFingerprint(
   /** 弧光计划也进指纹：不传则保持既有用例的全空口径。 */
   plotStructurePlan = '',
 ): string {
-  return synopsisInputsFingerprint({
+  return synopsisInputsFingerprint(
+    expectedCore({ plotStructurePlan }),
+    stepGuidance,
+    range,
+    getBuiltinPromptTemplate('synopsis', 'zh-CN'),
+  )
+}
+
+/** 源事实输入的**唯一一份**装配（`currentFingerprint` 与分项指纹共用，不复制字面量）。 */
+function expectedCore(options: { premise?: string; plotStructurePlan?: string } = {}) {
+  return {
     synopsis: '',
-    premise,
+    premise: options.premise ?? premise,
     charactersArch,
     worldbuilding,
-    plotStructurePlan,
+    plotStructurePlan: options.plotStructurePlan ?? '',
     genre: novelConfig.genre,
     totalChapters: novelConfig.totalChapters,
     wordsPerChapter: novelConfig.wordsPerChapter,
-    writingLanguage: 'zh-CN',
+    writingLanguage: 'zh-CN' as const,
     plotStructure: novelConfig.plotStructure,
     narrativePov: novelConfig.narrativePOV,
     globalGuidance: novelConfig.globalGuidance,
-  }, stepGuidance, range, getBuiltinPromptTemplate('synopsis', 'zh-CN'))
+  }
+}
+
+/**
+ * D20：把「上次生成时」的三个指纹一起算出来（同样**复用实现**，不复写算法）。
+ *
+ * 传 `premise` 造「源事实变了」，传 `template` 造「模板变了」，
+ * 两样都传就是「两样都变」——这三种场景只能靠「拿旧输入算旧指纹」来造，
+ * 因为判定侧比的就是同一套算法在两个输入下的结果。
+ */
+function fingerprintPartsOf(options: {
+  range: { from: number; to: number }
+  stepGuidance?: string
+  premise?: string
+  template?: unknown
+}): { source: string; template: string; combined: string } {
+  return synopsisInputFingerprintParts(
+    expectedCore({ premise: options.premise }),
+    options.stepGuidance ?? '',
+    options.range,
+    options.template ?? getBuiltinPromptTemplate('synopsis', 'zh-CN'),
+  )
+}
+
+/** 内置大纲模板的一个「旧版本」副本：只改正文，用来模拟作者改过生成模板。 */
+function olderSynopsisTemplate(): unknown {
+  const builtin = getBuiltinPromptTemplate('synopsis', 'zh-CN') as unknown as { content: string }
+  return { ...builtin, content: `${builtin.content}\n\n（旧版模板多一句只属于旧版本的尾注）` }
 }
 
 const coreSeed = { premise, charactersArch, worldbuilding }
@@ -493,16 +531,20 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
     expect(harness.coreUpdates).toHaveLength(0)
   })
 
-  it('fail-closed：续写检查点的源事实指纹与当前不一致 → 拒绝续接', async () => {
+  it('fail-closed：续写检查点的源事实真的变了 → 拒绝续接', async () => {
     useLLMStore.setState({
       defaultModelId: 'model-1',
       generateStream: responseStream(['should never run']),
     })
+    // D20：检查点带上三个指纹，「上次生成时」的源事实与现在只差 premise ⇒ 归因落到 source。
+    const staleSource = fingerprintPartsOf({ range: { from: 1, to: 100 }, premise: `${premise}（作者后来改过）` })
     harnessWith({
       synopsis_result: 'some older outline body that is at least a reasonably long piece of text content'.repeat(3),
       synopsis_incomplete: true,
       synopsis_range: { from: 1, to: 100 },
-      synopsis_facts_fingerprint: 'stale-fingerprint',
+      synopsis_facts_fingerprint: staleSource.combined,
+      synopsis_source_fingerprint: staleSource.source,
+      synopsis_template_fingerprint: staleSource.template,
       synopsis_step_guidance: '',
     })
     const command = makeCommand({ resumeSynopsis: true })
@@ -510,6 +552,41 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
     await expect(command.execute({ step: {}, context, callbacks }))
       .rejects.toThrow('源事实')
     expect(useLLMStore.getState().generateStream).not.toHaveBeenCalled()
+  })
+
+  it('续写检查点只是模板变了（裁定 A）→ 放行 + 提示，不逼全书重来', async () => {
+    const partialBody = `## 第一卷\n\n第1–3章：追入废墟\n${'林舟从铁砧镇追入宗门废墟，逐步发现灵脉异变。'.repeat(5)}`
+    const addition = '\n\n第4–100章：传承试炼\n林舟完成传承试炼并承担记忆代价，后续各章连续推进至终局。\n\n' + progressLine(1, 100, 100)
+    const generateStream = responseStream([addition])
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream })
+    const dbOutline = `# 情节大纲\n\n${partialBody}\n\n> ⚠️ **本大纲未完成**：生成被输出长度中断，以上为已自动保存的已完成部分。\n> 可在「AI 输出」提示处点击「继续生成情节大纲」，从断点续写补齐本批章节。`
+    // 上次生成用的是「旧模板」，源事实 / 步骤指导 / 批次范围都没动 ⇒ 归因只能落在 template。
+    const staleTemplate = fingerprintPartsOf({ range: { from: 1, to: 100 }, template: olderSynopsisTemplate() })
+    const harness = harnessWith({
+      synopsis_result: partialBody,
+      synopsis_incomplete: true,
+      synopsis_range: { from: 1, to: 100 },
+      synopsis_facts_fingerprint: staleTemplate.combined,
+      synopsis_source_fingerprint: staleTemplate.source,
+      synopsis_template_fingerprint: staleTemplate.template,
+      synopsis_db_hash: dbHashOf(dbOutline),
+      synopsis_step_guidance: '',
+    }, dbOutline)
+
+    const result = await makeCommand({ resumeSynopsis: true }).execute({ step: {}, context, callbacks })
+
+    // 放行：真的续写了，没有退回「从第 1 章重来」。
+    expect(result).toContain('第4–100章：传承试炼')
+    expect(generateStream).toHaveBeenCalled()
+    expect(harness.synopsisCommits).toHaveLength(1)
+    // 提示：模板变了必须说出来，且不许说成「源事实已变化」。
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('大纲生成模板自上次生成后已变化'))
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('不阻断'))
+    expect(callbacks.log).not.toHaveBeenCalledWith(expect.stringContaining('源事实已变化'))
+    // 落盘的分项换成当前模板：否则下一次续写又要重新报一次「模板变了」。
+    expect(harness.partialWrites.at(-1)).toMatchObject({
+      synopsis_template_fingerprint: fingerprintPartsOf({ range: { from: 1, to: 100 } }).template,
+    })
   })
 
   it.each([
@@ -781,17 +858,107 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
     expect(harness.synopsisCommits[0]?.synopsis).toContain(prefixBody)
   })
 
-  it('主进程续批仍在请求模型前拒绝旧源指纹', async () => {
+  it('主进程续批仍在请求模型前拒绝真的变了的源事实', async () => {
     useLLMStore.setState({ defaultModelId: '合成模型' })
     const prefixBody = `第1–20章：已确认前缀\n${'林舟依据税册追查并守住家人，行动和后果按章节连续。'.repeat(5)}`
     const dbOutline = `# 情节大纲\n\n${prefixBody}\n\n> 本大纲已覆盖至第 20 章（全书 100 章），其余章节将在后续批次继续生成。`
-    const harness = harnessWith({ synopsis_result: prefixBody, synopsis_covered_to: 20, synopsis_range: { from: 1, to: 20 }, synopsis_facts_fingerprint: '旧源指纹', synopsis_db_hash: dbHashOf(dbOutline), synopsis_step_guidance: '' }, dbOutline)
+    // D20：三个指纹齐全、只有源事实变了 ⇒ 仍然必须拦（这是判定本来就该拦的那一种）。
+    const staleSource = fingerprintPartsOf({ range: { from: 1, to: 20 }, premise: `${premise}（作者后来改过）` })
+    const harness = harnessWith({ synopsis_result: prefixBody, synopsis_covered_to: 20, synopsis_range: { from: 1, to: 20 }, synopsis_facts_fingerprint: staleSource.combined, synopsis_source_fingerprint: staleSource.source, synopsis_template_fingerprint: staleSource.template, synopsis_db_hash: dbHashOf(dbOutline), synopsis_step_guidance: '' }, dbOutline)
     const generation = mainOwnedResponses(harness, '不会发送')
 
     await expect(makeCommand({ synopsisRange: { from: 21, to: 100 } }, true).execute({ step: {}, context, callbacks })).rejects.toThrow('项目源事实自上次生成后已变化')
 
     expect(generation.execute).not.toHaveBeenCalled()
     expect(harness.synopsisCommits).toHaveLength(0)
+  })
+
+  it('主进程续批只是模板变了（裁定 A）→ 放行 + 提示，并照常生成本批增量', async () => {
+    useLLMStore.setState({ defaultModelId: '合成模型' })
+    const prefixBody = `第1–20章：已确认前缀\n${'林舟依据税册追查并守住家人，行动和后果按章节连续。'.repeat(5)}`
+    const dbOutline = `# 情节大纲\n\n${prefixBody}\n\n> 本大纲已覆盖至第 20 章（全书 100 章），其余章节将在后续批次继续生成。`
+    const nextSegment = `第21–100章：终局\n${'新一批因果事件逐章推进，最终兑现传承代价。'.repeat(5)}\n\n${progressLine(21, 100, 100)}`
+    const staleTemplate = fingerprintPartsOf({ range: { from: 1, to: 20 }, template: olderSynopsisTemplate() })
+    const harness = harnessWith({
+      synopsis_result: prefixBody,
+      synopsis_covered_to: 20,
+      synopsis_range: { from: 1, to: 20 },
+      synopsis_facts_fingerprint: staleTemplate.combined,
+      synopsis_source_fingerprint: staleTemplate.source,
+      synopsis_template_fingerprint: staleTemplate.template,
+      synopsis_db_hash: dbHashOf(dbOutline),
+      synopsis_step_guidance: '',
+    }, dbOutline)
+    const generation = mainOwnedResponses(harness, nextSegment)
+
+    const result = await makeCommand({ synopsisRange: { from: 21, to: 100 } }, true).execute({ step: {}, context, callbacks })
+
+    expect(generation.execute).toHaveBeenCalledTimes(1)
+    expect(result).toContain('第21–100章：终局')
+    expect(harness.synopsisCommits).toHaveLength(1)
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('大纲生成模板自上次生成后已变化'))
+    expect(callbacks.log).not.toHaveBeenCalledWith(expect.stringContaining('源事实已变化'))
+    // 完成落盘：三份指纹一起更新到当前值。
+    const current = fingerprintPartsOf({ range: { from: 21, to: 100 } })
+    expect(harness.partialWrites.at(-1)).toMatchObject({
+      synopsis_facts_fingerprint: current.combined,
+      synopsis_source_fingerprint: current.source,
+      synopsis_template_fingerprint: current.template,
+    })
+  })
+
+  it('主进程续批源事实与模板都变了 → 拦，并在报文里逐项说明', async () => {
+    useLLMStore.setState({ defaultModelId: '合成模型' })
+    const prefixBody = `第1–20章：已确认前缀\n${'林舟依据税册追查并守住家人，行动和后果按章节连续。'.repeat(5)}`
+    const dbOutline = `# 情节大纲\n\n${prefixBody}\n\n> 本大纲已覆盖至第 20 章（全书 100 章），其余章节将在后续批次继续生成。`
+    // 源事实（premise）与模板同时与当前不同：不能只说一句「源事实已变化」把模板那半藏起来。
+    const bothChanged = fingerprintPartsOf({
+      range: { from: 1, to: 20 },
+      premise: `${premise}（作者后来改过）`,
+      template: olderSynopsisTemplate(),
+    })
+    const harness = harnessWith({
+      synopsis_result: prefixBody,
+      synopsis_covered_to: 20,
+      synopsis_range: { from: 1, to: 20 },
+      synopsis_facts_fingerprint: bothChanged.combined,
+      synopsis_source_fingerprint: bothChanged.source,
+      synopsis_template_fingerprint: bothChanged.template,
+      synopsis_db_hash: dbHashOf(dbOutline),
+      synopsis_step_guidance: '',
+    }, dbOutline)
+    const generation = mainOwnedResponses(harness, '不会发送')
+
+    await expect(makeCommand({ synopsisRange: { from: 21, to: 100 } }, true).execute({ step: {}, context, callbacks }))
+      .rejects.toThrow(/源事实与生成模板均有变化/)
+
+    expect(generation.execute).not.toHaveBeenCalled()
+    expect(harness.synopsisCommits).toHaveLength(0)
+  })
+
+  it('旧检查点（没有两个新字段）→ 放行 + 提示，且提示不说「源事实已变化」', async () => {
+    useLLMStore.setState({ defaultModelId: '合成模型' })
+    const prefixBody = `第1–20章：已确认前缀\n${'林舟依据税册追查并守住家人，行动和后果按章节连续。'.repeat(5)}`
+    const dbOutline = `# 情节大纲\n\n${prefixBody}\n\n> 本大纲已覆盖至第 20 章（全书 100 章），其余章节将在后续批次继续生成。`
+    const nextSegment = `第21–100章：终局\n${'新一批因果事件逐章推进，最终兑现传承代价。'.repeat(5)}\n\n${progressLine(21, 100, 100)}`
+    // 裁定 2：写于旧版本、只有 combined 的检查点无法逐项核对 ⇒ 不许逼全书重来。
+    const harness = harnessWith({
+      synopsis_result: prefixBody,
+      synopsis_covered_to: 20,
+      synopsis_range: { from: 1, to: 20 },
+      synopsis_facts_fingerprint: '旧版本写下的组合指纹',
+      synopsis_db_hash: dbHashOf(dbOutline),
+      synopsis_step_guidance: '',
+    }, dbOutline)
+    const generation = mainOwnedResponses(harness, nextSegment)
+
+    const result = await makeCommand({ synopsisRange: { from: 21, to: 100 } }, true).execute({ step: {}, context, callbacks })
+
+    expect(generation.execute).toHaveBeenCalledTimes(1)
+    expect(result).toContain('第21–100章：终局')
+    expect(harness.synopsisCommits).toHaveLength(1)
+    expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('这个检查点写于旧版本'))
+    expect(callbacks.log).not.toHaveBeenCalledWith(expect.stringContaining('源事实已变化'))
   })
 
   it('主进程恢复仍拒绝同 run 合成正文在读取后变化', async () => {
@@ -1036,6 +1203,49 @@ describe('GeneratePlotArchitectureCommand 批次状态机', () => {
       synopsis_incomplete: false,
       world_building_result: 'concurrent world phase',
     }))
+    expect(harness.coreUpdates).toHaveLength(0)
+  })
+
+  it('DB commit 失败回滚时，两个分项指纹与组合指纹一起回到旧值', async () => {
+    // 旧检查点的三份指纹都刻意与当前不同：这样「回滚成功」才看得出是回滚，而不是「本来就没变」。
+    const oldParts = fingerprintPartsOf({
+      range: { from: 1, to: 100 },
+      premise: `${premise}（旧一次生成时的前提）`,
+      template: olderSynopsisTemplate(),
+    })
+    const harness = harnessWith({
+      synopsis_result: '作者原有的大纲检查点正文。'.repeat(6),
+      synopsis_incomplete: false,
+      synopsis_covered_to: 100,
+      synopsis_range: { from: 1, to: 100 },
+      synopsis_facts_fingerprint: oldParts.combined,
+      synopsis_source_fingerprint: oldParts.source,
+      synopsis_template_fingerprint: oldParts.template,
+      synopsis_db_hash: 'old-db-hash',
+      synopsis_step_guidance: '',
+      world_building_result: 'old world phase',
+    }, '作者原有的数据库大纲', {
+      commitResult: { success: false, error: '项目数据已变化，已拒绝覆盖情节大纲' },
+      concurrentPartialUpdate: { world_building_result: 'concurrent world phase' },
+    })
+    const body = `第1–100章：完整终局\n${'主角遵循明确条件行动，结果逐章承接至终局。'.repeat(5)}`
+    useLLMStore.setState({
+      defaultModelId: 'model-1',
+      generateStream: responseStream([`${body}\n\n${progressLine(1, 100, 100)}`]),
+    })
+
+    const failure = await makeCommand().execute({ step: {}, context, callbacks }).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(Error)
+
+    expect(harness.synopsisCommits).toHaveLength(1)
+    // 三份指纹必须同时回到旧值：只回滚 combined 会让分项与新 combined 打架，
+    // 下一次续批的归因就会错落到「检查点可能被外部修改过」。
+    expect(harness.partialWrites.at(-1)).toMatchObject({
+      synopsis_facts_fingerprint: oldParts.combined,
+      synopsis_source_fingerprint: oldParts.source,
+      synopsis_template_fingerprint: oldParts.template,
+      world_building_result: 'concurrent world phase',
+    })
     expect(harness.coreUpdates).toHaveLength(0)
   })
 

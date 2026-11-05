@@ -181,6 +181,16 @@ interface PartialArchData {
   synopsis_volume_deviations?: VolumeDeviationRecord[]
   /** 大纲赖以生成的源事实指纹；源事实变化后禁止续写旧检查点。 */
   synopsis_facts_fingerprint?: string
+  /**
+   * D20：**源事实单独**的哈希（与 `synopsis_facts_fingerprint` 同一算法，只含 11 个源事实）。
+   * 判定侧据此把「源事实真的变了」与「只是生成模板变了」分开——组合哈希是单向的，
+   * 只比对 `synopsis_facts_fingerprint` 时只能知道「不等」，说不出是哪一项。
+   *
+   * **可选**：旧版本写下的检查点没有这两个字段；那种情况按裁定 2 放行 + 提示，不逼全书重来。
+   */
+  synopsis_source_fingerprint?: string
+  /** D20：解析出来的**生成模板**单独的哈希。只存哈希，不存模板原文。 */
+  synopsis_template_fingerprint?: string
   /** 上次写入 DB 的大纲全文指纹；用于检测大纲是否被手动编辑（防续批覆盖用户修改）。 */
   synopsis_db_hash?: string
   /** 与 synopsis_result 精确绑定；旧检查点缺失时由 DB 逐字等价校验兼容。 */
@@ -198,6 +208,11 @@ const SYNOPSIS_CHECKPOINT_FIELDS = [
   'synopsis_unit_cursor',
   'synopsis_volume_deviations',
   'synopsis_facts_fingerprint',
+  // D20 的两个分项哈希必须一起进这张名单：否则 DB commit 失败 / cancel 时
+  // `restoreSynopsisCheckpoint` 只把 combined 恢复成旧值，两个分项停在**新值**上 ⇒
+  // 下一次续批 combined 不等、分项却全等 ⇒ 归因只能落到「检查点可能被外部修改过」。
+  'synopsis_source_fingerprint',
+  'synopsis_template_fingerprint',
   'synopsis_db_hash',
   'synopsis_body_hash',
   'synopsis_step_guidance',
@@ -1127,6 +1142,39 @@ export function synopsisInputsFingerprint(
   range: PlotOutlineChapterRange,
   template: unknown,
 ): string {
+  return synopsisInputFingerprintParts(expected, stepGuidance, range, template).combined
+}
+
+/** D20：指纹的**分项**。`combined` 与 `synopsisInputsFingerprint` 的返回值逐字相等。 */
+export interface SynopsisInputFingerprintParts {
+  /** 11 个源事实字段单独的哈希（步骤指导 / 批次范围 / 模板都不在内）。 */
+  source: string
+  /** 解析出来的生成模板整对象单独的哈希。 */
+  template: string
+  /** 四段拼成的组合哈希——**存量检查点只认这一个**，语义与改造前逐字一致。 */
+  combined: string
+}
+
+/**
+ * D20：把组合指纹拆成「源事实 / 模板」两段单独哈希，供判定侧归因。
+ *
+ * ## 为什么只有两段
+ *
+ * 比对时 `stepGuidance` 与 `range` 都是**拿检查点自己存的值**重算的（见 `:3126` / `:3233`），
+ * 所以这两段恒等（方案稿 §2.2），存分项只会换来两支永不可达的报错分支。
+ *
+ * ## 最高回归风险：`combined` 必须仍是四段拼
+ *
+ * 若把它写成 `synopsisFactsFingerprint([source, template])` 之类，**全部存量检查点会一次失效**
+ * ——正是本方案要治的那种故障。测试钉死了「`combined` 与旧函数返回值逐字相等」。
+ */
+export function synopsisInputFingerprintParts(
+  expected: ProjectCoreSynopsisExpected,
+  stepGuidance: string,
+  range: PlotOutlineChapterRange,
+  template: unknown,
+): SynopsisInputFingerprintParts {
+  // ⚠️ 字段集合只能有一份：`synopsisInputsFingerprint` 委托给这里，不得再复制一份字面量。
   const sourceInputs = {
     premise: expected.premise,
     charactersArch: expected.charactersArch,
@@ -1141,12 +1189,130 @@ export function synopsisInputsFingerprint(
     narrativePov: expected.narrativePov,
     globalGuidance: expected.globalGuidance,
   }
-  return synopsisFactsFingerprint([
-    JSON.stringify(sourceInputs),
-    stepGuidance,
-    `${range.from}:${range.to}`,
-    JSON.stringify(template),
-  ])
+  const serializedSource = JSON.stringify(sourceInputs)
+  const serializedTemplate = JSON.stringify(template)
+  return {
+    source: synopsisFactsFingerprint([serializedSource]),
+    template: synopsisFactsFingerprint([serializedTemplate]),
+    combined: synopsisFactsFingerprint([
+      serializedSource,
+      stepGuidance,
+      `${range.from}:${range.to}`,
+      serializedTemplate,
+    ]),
+  }
+}
+
+/**
+ * D20：判定侧归因结果。
+ *
+ * `none` = 相等（不需要归因）；`legacy` = 旧检查点缺两个分项字段，无法归因。
+ */
+export type SynopsisFingerprintDrift =
+  | 'none'
+  | 'source'
+  | 'template'
+  | 'both'
+  | 'unknown'
+  | 'legacy'
+
+/** 判定侧只看这三个字段，不要求整份检查点。 */
+type SynopsisFingerprintCheckpoint = Pick<
+  PartialArchData,
+  'synopsis_facts_fingerprint' | 'synopsis_source_fingerprint' | 'synopsis_template_fingerprint'
+>
+
+/**
+ * D20：组合指纹不等时**到底是哪一段变了**。
+ *
+ * 纯函数（单测直接调）。顺序刻意是「先比 combined」：
+ * 相等就什么都不用归因，也不读分项字段——所以旧检查点只要 combined 还相等就不会被当成 legacy。
+ */
+export function synopsisFingerprintDrift(
+  checkpoint: SynopsisFingerprintCheckpoint,
+  expected: SynopsisInputFingerprintParts,
+): SynopsisFingerprintDrift {
+  if (checkpoint.synopsis_facts_fingerprint === expected.combined) return 'none'
+  if (checkpoint.synopsis_source_fingerprint === undefined
+    || checkpoint.synopsis_template_fingerprint === undefined) {
+    // 旧检查点（没有两个新字段）⇒ 无法逐项核对。裁定 2：放行 + 提示，不逼全书重来。
+    return 'legacy'
+  }
+  const sourceChanged = checkpoint.synopsis_source_fingerprint !== expected.source
+  const templateChanged = checkpoint.synopsis_template_fingerprint !== expected.template
+  if (sourceChanged && templateChanged) return 'both'
+  if (sourceChanged) return 'source'
+  if (templateChanged) return 'template'
+  // 分项全等而组合不等：组合哈希比的是四段，说明检查点被外部改过或有别的漂移，不能放行。
+  return 'unknown'
+}
+
+/**
+ * D20：把归因结果翻成「拦不拦 + 说什么」。
+ *
+ * 报文口径见方案稿 §4.4 的对照表；只有 `source` / `both` / `unknown` 拦，
+ * `template`（裁定 A）与 `legacy`（裁定 2）放行，**但都必须给一条提示**——
+ * 静默放行等于又回到「什么都不说」。
+ *
+ * `site` 只影响 `source` 那一支：两处判定原本的文案各自都成立（续写说「自上次中断后」，
+ * 续批说「既有大纲不能拼接」），逐字保留，不为了合并而改掉读者已经认得的话。
+ */
+function synopsisFingerprintVerdict(
+  drift: SynopsisFingerprintDrift,
+  coveredTo: number,
+  site: 'resume' | 'batch',
+  text: (zhCNText: string, enUSText: string) => string,
+): { blocked: boolean; message: string } {
+  switch (drift) {
+    case 'source':
+      return {
+        blocked: true,
+        message: site === 'resume'
+          ? text(
+            '项目源事实（故事前提/角色/世界观/总章数等）自上次中断后已变化，旧检查点不能续到新上下文。请从「AI 生成故事架构」重新生成情节大纲。',
+            'The source facts (premise / characters / worldbuilding / chapter count, etc.) changed after the interruption, so the old checkpoint cannot be continued into the new context. Regenerate the plot outline from “Generate story architecture”.',
+          )
+          : text(
+            '项目源事实自上次生成后已变化，既有大纲不能与新的源事实拼接。请从「AI 生成故事架构」从第 1 章重新生成。',
+            'The source facts changed since the previous generation, so the existing outline cannot be joined with the new facts. Regenerate from chapter 1 in “Generate story architecture”.',
+          ),
+      }
+    case 'template':
+      return {
+        blocked: false,
+        // 结构性风险必须写进提示（裁定 A 的知情接受项）：换输出合同后同一份大纲可能并存两套格式。
+        message: text(
+          `⚠️ 大纲生成模板自上次生成后已变化（源事实、步骤指导、批次范围均未变）。已写的 ${coveredTo} 章大纲仍然有效；后续章节会按新模板的格式生成。若新模板换了输出结构，同一份大纲里可能并存两套格式；发现衔接不上时可手动重来。（这是提示，不阻断。）`,
+          `The plot-outline generation template changed since the previous run (source facts, step guidance and batch range are all unchanged). The ${coveredTo} chapters already written remain valid; later chapters will be generated in the new template's format. If the new template changes the output structure, the outline may contain two formats side by side; regenerate manually if the seam does not line up. (This is a notice; generation is not blocked.)`,
+        ),
+      }
+    case 'both':
+      return {
+        blocked: true,
+        message: text(
+          '源事实与生成模板均有变化：故事前提/角色/世界观/总章数等源事实，以及大纲生成模板，都与上次不同。既有大纲不能与新的源事实拼接。请从「AI 生成故事架构」从第 1 章重新生成。',
+          'Both the source facts (premise / characters / worldbuilding / chapter count, etc.) and the plot-outline generation template changed since the previous run. The existing outline cannot be joined with the new source facts. Regenerate from chapter 1 in “Generate story architecture”.',
+        ),
+      }
+    case 'unknown':
+      return {
+        blocked: true,
+        message: text(
+          '输入指纹不匹配，但源事实与生成模板均未变化（检查点可能被外部修改过）。请从「AI 生成故事架构」从第 1 章重新生成。',
+          'The input fingerprint does not match, but neither the source facts nor the generation template changed (the checkpoint may have been edited outside the app). Regenerate from chapter 1 in “Generate story architecture”.',
+        ),
+      }
+    case 'legacy':
+      return {
+        blocked: false,
+        message: text(
+          '⚠️ 这个检查点写于旧版本，无法核对输入是否变化；已按继续处理。如果发现新生成的大纲与当前设定不符，请手动重来。（这是提示，不阻断。）',
+          '⚠️ This checkpoint was written by an older version, so the app cannot tell whether its inputs changed; it is being continued as requested. If the newly generated outline does not match the current settings, regenerate manually. (This is a notice; generation is not blocked.)',
+        ),
+      }
+    case 'none':
+      return { blocked: false, message: '' }
+  }
 }
 
 /**
@@ -3060,7 +3226,6 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
           text('迁移情节大纲单元游标', 'Migrate the plot-outline unit cursor'))
       }
     }
-    const checkpointFingerprint = partial.synopsis_facts_fingerprint
     const unitOption = this.options.synopsisUnit ?? null
     /**
      * E3：单元游标 → 本次请求。全书尚未写任何章（`covered_to = 0`）时用首单元游标；
@@ -3124,17 +3289,18 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       if (this.requireGenerationExecution().mainOwned && typeof (context.data.stepGuidance as Record<string, unknown> | undefined)?.synopsis === 'string'
         && requestedStepGuidance !== partial.synopsis_step_guidance) throw new Error(text('作者步骤指导已变化，旧候选不能自动续写。', 'The author step guidance changed; the old candidate cannot be resumed automatically.'))
       effectiveStepGuidance = partial.synopsis_step_guidance
-      const expectedCheckpointFingerprint = synopsisInputsFingerprint(
+      const expectedCheckpointFingerprint = synopsisInputFingerprintParts(
         sourceExpected,
         effectiveStepGuidance,
         { from, to },
         template,
       )
-      if (checkpointFingerprint !== expectedCheckpointFingerprint) {
-        throw new Error(text(
-          '项目源事实（故事前提/角色/世界观/总章数等）自上次中断后已变化，旧检查点不能续到新上下文。请从「AI 生成故事架构」重新生成情节大纲。',
-          'The source facts (premise / characters / worldbuilding / chapter count, etc.) changed after the interruption, so the old checkpoint cannot be continued into the new context. Regenerate the plot outline from “Generate story architecture”.',
-        ))
+      const checkpointDrift = synopsisFingerprintDrift(partial, expectedCheckpointFingerprint)
+      if (checkpointDrift !== 'none') {
+        const verdict = synopsisFingerprintVerdict(checkpointDrift, coveredTo, 'resume', text)
+        if (verdict.blocked) throw new Error(verdict.message)
+        // 裁定 A / 裁定 2：放行，但不许静默——归因必须显示出来。
+        callbacks.log(verdict.message)
       }
       if (this.requireGenerationExecution().mainOwned) {
         if (partial.synopsis_db_hash !== synopsisFactsFingerprint([sourceExpected.synopsis])) throw new Error(text('正式大纲已变化，不能采用旧候选。', 'The formal outline changed; the old candidate cannot be adopted.'))
@@ -3231,17 +3397,18 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
           ))
         }
         const checkpointStepGuidance = partial.synopsis_step_guidance
-        const expectedCheckpointFingerprint = synopsisInputsFingerprint(
+        const expectedCheckpointFingerprint = synopsisInputFingerprintParts(
           sourceExpected,
           checkpointStepGuidance,
           partial.synopsis_range,
           template,
         )
-        if (checkpointFingerprint !== expectedCheckpointFingerprint) {
-          throw new Error(text(
-            '项目源事实自上次生成后已变化，既有大纲不能与新的源事实拼接。请从「AI 生成故事架构」从第 1 章重新生成。',
-            'The source facts changed since the previous generation, so the existing outline cannot be joined with the new facts. Regenerate from chapter 1 in “Generate story architecture”.',
-          ))
+        const checkpointDrift = synopsisFingerprintDrift(partial, expectedCheckpointFingerprint)
+        if (checkpointDrift !== 'none') {
+          const verdict = synopsisFingerprintVerdict(checkpointDrift, coveredTo, 'batch', text)
+          if (verdict.blocked) throw new Error(verdict.message)
+          // 裁定 A / 裁定 2：放行，但不许静默——归因必须显示出来。
+          callbacks.log(verdict.message)
         }
         seedText = assertCheckpointDbMirrorCurrent(
           partial,
@@ -3270,7 +3437,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     // 故必须在**装配之前**声明本批范围。必须在下面 build() 之前调用。
     declareTraceScopeChapterRange(from, to)
 
-    const factsFingerprint = synopsisInputsFingerprint(
+    const fingerprintParts = synopsisInputFingerprintParts(
       sourceExpected,
       effectiveStepGuidance,
       { from, to },
@@ -3480,7 +3647,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
 
     const previousBatchPartial = mode === 'batch' && this.requireGenerationExecution().mainOwned ? { ...partial } : undefined
     if (this.requireGenerationExecution().mainOwned && !resumeRequested) {
-      await this.persistInterruptedSynopsis(projectSession, expectedProjectPath, context, '', interruptionRange, factsFingerprint, effectiveStepGuidance, sourceExpected, unitContext?.cursor)
+      await this.persistInterruptedSynopsis(projectSession, expectedProjectPath, context, '', interruptionRange, fingerprintParts, effectiveStepGuidance, sourceExpected, unitContext?.cursor)
     }
     const stagedBatchPartial = previousBatchPartial ? { ...partial } : undefined
     const generationSeedText = mode === 'batch' && confirmedPrefix ? '' : seedText
@@ -3543,7 +3710,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
         context,
         partialBody,
         interruptionRange,
-        factsFingerprint,
+        fingerprintParts,
         effectiveStepGuidance,
         sourceExpected,
         unitContext?.cursor,
@@ -3608,7 +3775,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
 
     // ===== E3 回填：请求期没有 `to`，实际章数从正文数出来（写超全书只 clamp、不阻断）=====
     let unitNextCursor: SynopsisUnitCursor | null = null
-    let completedFingerprint = factsFingerprint
+    let completedParts = fingerprintParts
     /** 写完一卷时更新的按卷账；**不在这里写 partial**（`previousPartial` 快照在下面，写早了回滚会带上它）。 */
     let nextVolumeDeviations: VolumeDeviationRecord[] | undefined
     if (unitContext) {
@@ -3642,7 +3809,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       unitNextCursor = advanceUnitCursor(parsedPlan, totalChapters, unitContext.cursor, backfill.actualChapters)
       // 完成落盘按**实际范围**重算指纹：下一批续接时用 `synopsis_range` 复算比对，
       // 若沿用请求期的 boundTo，实际章数一偏离就会把第二批误判成"源事实已变化"。
-      completedFingerprint = synopsisInputsFingerprint(sourceExpected, effectiveStepGuidance, { from, to }, template)
+      completedParts = synopsisInputFingerprintParts(sourceExpected, effectiveStepGuidance, { from, to }, template)
       callbacks.log(text(
         `本单元实际写 ${backfill.actualChapters} 章（第 ${from}–${to} 章）；`
           + `${unitNextCursor
@@ -3747,7 +3914,10 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     } else if (nextVolumeDeviations !== undefined) partial.synopsis_volume_deviations = nextVolumeDeviations
     // 单元模式：显式推进游标（`undefined` 走章号推导是旧模式的兼容路径，绝不能用于单元模式）。
     syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, totalChapters, unitContext ? unitNextCursor : undefined)
-    partial.synopsis_facts_fingerprint = completedFingerprint
+    partial.synopsis_facts_fingerprint = completedParts.combined
+    // D20：两个分项必须与 combined 同一份来源写下去（`completedParts` 已是回填后的实际范围）。
+    partial.synopsis_source_fingerprint = completedParts.source
+    partial.synopsis_template_fingerprint = completedParts.template
     partial.synopsis_body_hash = synopsisFactsFingerprint([confirmedBody])
     partial.synopsis_step_guidance = effectiveStepGuidance
     /**
@@ -3904,7 +4074,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     // D17：进入本流程前的覆盖进度。`saveNavigation` 会**就地改** `partial`，
     // 所以必须赶在它第一次被调用之前取下来 —— 否则「收缩」永远判不出来。
     const previousCoveredTo = partial.synopsis_covered_to ?? 0
-    const factsFingerprint = synopsisInputsFingerprint(sourceExpected, guidance, initial.range, template)
+    const fingerprintParts = synopsisInputFingerprintParts(sourceExpected, guidance, initial.range, template)
     const saveNavigation = async (outline: PlotOutlineProgress, complete = false) => {
       partial.synopsis_protocol = PLOT_OUTLINE_PROTOCOL
       partial.synopsis_generation_handle = handle
@@ -3913,7 +4083,10 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       partial.synopsis_covered_to = complete ? outline.range.to : outline.range.from - 1
       syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, sourceExpected.totalChapters)
       partial.synopsis_step_guidance = guidance
-      partial.synopsis_facts_fingerprint = factsFingerprint
+      partial.synopsis_facts_fingerprint = fingerprintParts.combined
+      // D20：逐章导航落盘同样三个指纹一起写，别让分项与组合来自两份算法。
+      partial.synopsis_source_fingerprint = fingerprintParts.source
+      partial.synopsis_template_fingerprint = fingerprintParts.template
       const body = joinPlotOutlineEntries(outline.confirmedPrefix, outline.composition?.text ?? '')
       partial.synopsis_body_hash = synopsisFactsFingerprint([body])
       partial.synopsis_db_hash = synopsisFactsFingerprint([complete ? renderPlotOutlineRange(outline.composition?.text ?? '', outline.range, sourceExpected) : sourceExpected.synopsis])
@@ -4077,6 +4250,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
   /**
    * 中断时落盘：先写检查点（权威：正文 + 批次范围 + 源事实指纹 + 未完成标记），
    * 再镜像 DB 正文并附加「未完成」说明。检查点写入失败时不提供续写入口。
+   *
+   * D20：指纹以 `fingerprintParts` 整份传入（调用方用**请求期范围**算好）。
+   * 只传 combined 会让两个分项停在旧值上、与刚写下去的 combined 打架。
    */
   private async persistInterruptedSynopsis(
     projectSession: ProjectSessionContext,
@@ -4084,7 +4260,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     context: WorkflowContext,
     partialText: string,
     range: PlotOutlineChapterRange,
-    factsFingerprint: string,
+    fingerprintParts: SynopsisInputFingerprintParts,
     stepGuidance: string,
     sourceExpected: ProjectCoreSynopsisExpected,
     unitCursor?: SynopsisUnitCursor | null,
@@ -4099,7 +4275,9 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
     partial.synopsis_covered_to = range.from - 1
     partial.synopsis_range = { from: range.from, to: range.to }
     syncSynopsisUnitCursor(partial, sourceExpected.plotStructurePlan, sourceExpected.totalChapters, unitCursor)
-    partial.synopsis_facts_fingerprint = factsFingerprint
+    partial.synopsis_facts_fingerprint = fingerprintParts.combined
+    partial.synopsis_source_fingerprint = fingerprintParts.source
+    partial.synopsis_template_fingerprint = fingerprintParts.template
     partial.synopsis_body_hash = synopsisFactsFingerprint([partialText])
     partial.synopsis_step_guidance = stepGuidance
     const dbOutlineText = renderSynopsisDbText(
