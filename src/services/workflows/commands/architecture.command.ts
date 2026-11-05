@@ -60,9 +60,11 @@ import {
 import { useProjectStore } from '../../../stores/project-store'
 import {
   composePromptSystemRole,
+  getBuiltinPromptTemplate,
   renderPrompt,
   renderPromptTaskGuidance,
   resolvePromptTemplate,
+  type PromptTemplate,
 } from '../../prompt-templates'
 import { ArchitecturePromptBuilder } from '../../prompts/prompt-builder'
 import { getSynopsisTwoLevelSuffix } from '../../prompts/synopsis-two-level-suffix'
@@ -1145,11 +1147,40 @@ export function synopsisInputsFingerprint(
   return synopsisInputFingerprintParts(expected, stepGuidance, range, template).combined
 }
 
+/**
+ * D20b：**模板段只认真正进模型输入的那几段**（方案稿 §4.6 轴 B）。
+ *
+ * `PromptTemplate` 有 10 个字段，但模型实际看到的只由下面几段决定：
+ * - `content`（主正文）、`taskGuidance`（作者补充指导，渲染时拼进 prompt）、
+ *   `systemRole`（system message）；
+ * - **内置同名模板的 `systemSuffix`**：渲染时始终取内置那份
+ *   （`shared/render-prompt.ts:62-65` 明写「始终从内置模板获取，不受用户自定义影响」），
+ *   覆盖版自带的那份被丢弃。
+ *
+ * 其余字段（`name` / `description` / `variables` / `builtinRevision` / `key` /
+ * `writingLanguage`）只用于记账、展示或身份识别，不进模型输入 —— 它们变了不该让旧检查点失效。
+ *
+ * ⚠️ **本函数只决定 `template` 这个分项的值**：`combined` 仍按**整对象**序列化拼接
+ * （见 `synopsisInputFingerprintParts`），一个字节都不动 —— 那是兼容字段，改了等于把存量检查点全废掉。
+ *
+ * ⚠️ 未来若把影响渲染的东西挪进被排除的字段（例如给 `variables` 塞默认正文），本签名就漏了。
+ * 测试钉住了「改 `content`/`taskGuidance`/`systemRole`/内置 `systemSuffix`，签名必变」。
+ */
+export function promptRenderSignature(template: PromptTemplate, language: WritingLanguage): string {
+  return synopsisFactsFingerprint([
+    template.content,
+    template.taskGuidance ?? '',
+    template.systemRole ?? '',
+    // 显式取内置：覆盖版上的 `systemSuffix` 不参与渲染，也就不该进签名。
+    getBuiltinPromptTemplate(template.key, language)?.systemSuffix ?? '',
+  ])
+}
+
 /** D20：指纹的**分项**。`combined` 与 `synopsisInputsFingerprint` 的返回值逐字相等。 */
 export interface SynopsisInputFingerprintParts {
   /** 11 个源事实字段单独的哈希（步骤指导 / 批次范围 / 模板都不在内）。 */
   source: string
-  /** 解析出来的生成模板整对象单独的哈希。 */
+  /** 模板段：D20b 起只覆盖「影响渲染的那几段」（见 `promptRenderSignature`），不再整对象。 */
   template: string
   /** 四段拼成的组合哈希——**存量检查点只认这一个**，语义与改造前逐字一致。 */
   combined: string
@@ -1193,7 +1224,9 @@ export function synopsisInputFingerprintParts(
   const serializedTemplate = JSON.stringify(template)
   return {
     source: synopsisFactsFingerprint([serializedSource]),
-    template: synopsisFactsFingerprint([serializedTemplate]),
+    // D20b：分项按「影响渲染的段」算（只改这一行）。`combined` 继续用整对象序列化 ——
+    // 它是兼容字段，改了就等于把全部存量检查点一次废掉（方案稿 §4.6「代价与前置」）。
+    template: promptRenderSignature(template as PromptTemplate, expected.writingLanguage),
     combined: synopsisFactsFingerprint([
       serializedSource,
       stepGuidance,
