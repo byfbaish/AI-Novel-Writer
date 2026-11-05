@@ -1,5 +1,6 @@
 import { arcWeight, parseArcStructure, scaledBoundaries } from './arc-position'
 import { parseOutlineChapterHeading } from './chapter-heading'
+import { findUnitOverlaps } from './volume-unit-overlap'
 
 /** 卷 / 单元的物化与有效区间（P1-2 期 1b）。
  *
@@ -139,6 +140,53 @@ function declaredEverywhere(chapters: readonly (number | undefined)[]): boolean 
     && chapters.every(value => Number.isSafeInteger(value) && (value ?? 0) > 0)
 }
 
+/** 章号列表压成人读区间文本：`8,9` → `8-9`，`8,9,12` → `8-9,12`。告警文本用。 */
+function chaptersText(chapters: readonly number[]): string {
+  if (chapters.length === 0) return '-'
+  const parts: string[] = []
+  let start = chapters[0]!
+  let prev = start
+  for (const chapter of chapters.slice(1)) {
+    if (chapter === prev + 1) {
+      prev = chapter
+      continue
+    }
+    parts.push(start === prev ? String(start) : `${start}-${prev}`)
+    start = chapter
+    prev = chapter
+  }
+  parts.push(start === prev ? String(start) : `${start}-${prev}`)
+  return parts.join(',')
+}
+
+/**
+ * 卷内单元区间互斥校验（D15）—— 只报，不夹紧、不阻断。
+ *
+ * **为什么不夹紧**：重叠的区间大多是 `headings` 档（作者真的按这个归属写了标题），
+ * 夹紧等于拿估算改事实 —— 与 `materializeVolumeStructure` 里
+ * 「观测与算出的区间矛盾：只记告警，不夹紧」同一条纪律。
+ *
+ * **为什么不阻断**：作者库现在就处于重叠状态（第 2 卷 7–9 / 8–9 / 10–10），
+ * 阻断会让「重新解析」直接不可用，等于把已有项目锁死。
+ *
+ * 告警格式沿用既有 `KEY:payload`：`VOLUME_UNIT_OVERLAP:<卷>:<单元>-<单元>:<章>`。
+ * 区间为 `null` 的单元（大纲没给章数）不参与 —— 它们本来就没有可比的区间。
+ */
+function unitOverlapWarnings(volumeIndex: number, units: readonly VolumePlannedUnit[]): string[] {
+  const ranges = units
+    .filter(unit => unit.plannedFirst !== null && unit.plannedLast !== null)
+    .map(unit => ({ label: String(unit.index), from: unit.plannedFirst!, to: unit.plannedLast! }))
+  if (ranges.length < 2) return []
+  return findUnitOverlaps(ranges).map(finding => {
+    const unitsText = finding.units.join('-')
+    if (finding.kind === 'inverted-range') return `VOLUME_UNIT_INVERTED:${volumeIndex}:${unitsText}`
+    const chapters = chaptersText(finding.chapters)
+    return finding.kind === 'overlap'
+      ? `VOLUME_UNIT_OVERLAP:${volumeIndex}:${unitsText}:${chapters}`
+      : `VOLUME_UNIT_AMBIGUOUS:${volumeIndex}:${unitsText}:${chapters}`
+  })
+}
+
 /**
  * 从大纲物化「卷 / 单元」骨架。
  *
@@ -205,14 +253,17 @@ export function materializeVolumeStructure(input: {
       warnings.push(`VOLUME_OBSERVED_OUT_OF_RANGE:${volumeIndex}`)
     }
 
-    volumes.push({
+    const volume: VolumePlannedNode = {
       index: volumeIndex,
       name: major.name,
       plannedFirst: start,
       plannedLast: last,
       plannedSource: source,
       units: buildUnits(major, volumeIndex, start, last, observed),
-    })
+    }
+    // D15：单元区间互斥在**建完当卷就核**，这样告警里能带卷号与单元号。
+    warnings.push(...unitOverlapWarnings(volumeIndex, volume.units))
+    volumes.push(volume)
     start = last === null ? null : last + 1
   }
 

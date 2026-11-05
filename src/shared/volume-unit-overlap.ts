@@ -3,7 +3,14 @@
  *
  * 卷内单元必须把章号区间切分成互不重叠的连续段；区间重叠会让同一章归属多个单元
  * （实测第 2 卷 7–9 / 8–9 / 10–10，第 8、9 章归属不唯一，落库前完全没有校验）。
- * 本文件是纯函数机检件，未接线到任何调用点。
+ *
+ * ## 接线（2026-11-05）
+ *
+ * 由 `volume-structure.ts` 的 `unitOverlapWarnings()` 在**每卷建完时**调用，
+ * 结果并入 `VolumePlanProjection.warnings`，走既有告警通道：
+ * 预览（`db:volumes-list`）与重建（`db:volumes-rebuild`）都会带出来，
+ * 面板按 `VOLUME_UNIT_*` 前缀单独成句（见 `VolumeHandoffRegistryPanel`）。
+ * **只报，不夹紧、不阻断** —— 理由写在 `unitOverlapWarnings` 的注释里。
  *
  * ## 判定口径
  *

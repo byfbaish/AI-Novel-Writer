@@ -8,6 +8,7 @@ import {
   type VolumeHandoffInput,
 } from '../../shared/volume-handoff'
 import { volumeEffectiveRanges, type VolumeDefinition } from '../../shared/volume-structure'
+import { summarizeVolumeWarnings } from '../../shared/volume-warning-summary'
 import { formatVolumeRangeLabel } from '../../shared/volume-range-label'
 import type { ConsistencyExemption } from '../../shared/consistency-preflight'
 import { volumeHandoffAckKey } from '../../shared/volume-handoff-gate'
@@ -227,6 +228,7 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
   const ranges = useMemo(() => volumeEffectiveRanges(volumes), [volumes])
   const rangeById = useMemo(() => new Map(ranges.map(range => [range.volumeId, range])), [ranges])
   const volumeById = useMemo(() => new Map(volumes.map(volume => [volume.volumeId, volume])), [volumes])
+  const warningSummary = useMemo(() => summarizeVolumeWarnings(volumeWarnings), [volumeWarnings])
 
   const load = useCallback(async () => {
     const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
@@ -590,11 +592,29 @@ export function VolumeHandoffRegistryPanel({ projectKey }: { projectKey: string 
       </p>
 
       {volumeWarnings.length > 0 && (
-        <p className="text-[10px]" style={{ color: 'var(--color-warning, #b45309)' }}>
-          <AlertTriangle size={11} className="inline" />{' '}
-          {text(`有 ${volumeWarnings.length} 处观测与算出的区间不一致（大纲与实际不同步）`,
-            `${volumeWarnings.length} observation(s) fall outside the computed range`)}
-        </p>
+        <div className="space-y-0.5 text-[10px]" style={{ color: 'var(--color-warning, #b45309)' }}>
+          {warningSummary.observedOutOfRange > 0 && (
+            <p>
+              <AlertTriangle size={11} className="inline" />{' '}
+              {text(`有 ${warningSummary.observedOutOfRange} 处观测与算出的区间不一致（大纲与实际不同步）`,
+                `${warningSummary.observedOutOfRange} observation(s) fall outside the computed range`)}
+            </p>
+          )}
+          {warningSummary.ambiguousCount > 0 && (
+            <p>
+              <AlertTriangle size={11} className="inline" />{' '}
+              {text(`第 ${warningSummary.ambiguousChapters} 章同时属于两个单元（卷内区间重叠），按单元续写时起点会摇摆`,
+                `Chapter(s) ${warningSummary.ambiguousChapters} belong to two units; unit-scoped continuation may start at the wrong chapter`)}
+            </p>
+          )}
+          {warningSummary.other > 0 && (
+            <p>
+              <AlertTriangle size={11} className="inline" />{' '}
+              {text(`另有 ${warningSummary.other} 条卷结构告警`,
+                `${warningSummary.other} other volume warning(s)`)}
+            </p>
+          )}
+        </div>
       )}
 
       {loadError && <p role="alert" className="text-xs" style={{ color: 'var(--color-danger)' }}>{loadError}</p>}

@@ -54,12 +54,43 @@ const SYNOPSIS_TWO_VOLUMES = `${SYNOPSIS_PARTIAL}
 正文……
 `
 
+/** 两卷各三单元 —— D15 用，单元数 ≥3 才可能出现「u1 吃进 u2」。 */
+const PLAN_THREE_UNITS = `# 卷 / 单元结构
+
+## 卷一：七日的塌方
+### 单元一：重生
+### 单元二：残简
+### 单元三：状纸
+## 卷二：配给的算盘
+### 单元一：账簿漏洞
+### 单元二：草木人情
+### 单元三：灵石月结
+## 卷三：执法殿
+### 单元一：制度的围猎
+### 单元二：赵家的人
+`
+
+/**
+ * 复现作者库第 2 卷的重叠形态：卷 2 是第 7–10 章，单元 1 的标题跨到了第 9 章
+ * （排在单元 2 的第 8 章之前被观测到）⇒ 观测区间 7–9 与单元 2 的 8–8 相交。
+ * 这不是构造出来的假数据：写成 7、9、8 这个顺序，就是作者按章回填标题时
+ * 单元归属写岔一次会留下的痕迹。
+ */
+const SYNOPSIS_UNIT_OVERLAP = `# 情节大纲
+
+## 第1卷第1单元第1章（全书第1章）：起
+## 第1卷第1单元第2章（全书第2章）：承
+## 第2卷第1单元第1章（全书第7章）：甲
+## 第2卷第1单元第3章（全书第9章）：丙
+## 第2卷第2单元第2章（全书第8章）：乙
+## 第3卷第1单元第1章（全书第11章）：新卷
+`
+
 const OLD_SYNOPSIS = `# 情节大纲
 
 ## 第1章：被裁第三天
 ## 第2章：升职第一天
 `
-
 describe('materializeVolumeStructure', () => {
   it('空 plan / 只有一级标题 ⇒ 返回 null（不返回空骨架）', () => {
     expect(materializeVolumeStructure({ plan: '', synopsis: '', totalChapters: 100 })).toBeNull()
@@ -155,6 +186,51 @@ describe('materializeVolumeStructure', () => {
       plan: PLAN_NO_COUNTS, synopsis: SYNOPSIS_PARTIAL, totalChapters: 6,
     })
     expect(projection!.warnings.some(warning => warning.startsWith('VOLUME_OBSERVED_OUT_OF_RANGE:'))).toBe(true)
+  })
+
+  // ── D15：卷内单元区间互斥 ────────────────────────────────────────────────
+  // 作者库第 2 卷的真实形态是 7–9 / 8–9 / 10–10（单元 1 与单元 2 在 8、9 章重叠）。
+  // 成因：`buildUnits` 的 headings 分支直接用观测区间、even 分支按整卷均分，两者互不扣减。
+  // 下面这条 synopsis 复现同一形态 —— 单元 1 的标题跨到了单元 2 之后（第 9 章排在
+  // 第 8 章之前被观测到），观测区间就吃进了邻居的章。
+
+  it('单元观测区间互相吃进 ⇒ 报 VOLUME_UNIT_OVERLAP + VOLUME_UNIT_AMBIGUOUS，且不抛错', () => {
+    const projection = materializeVolumeStructure({
+      plan: PLAN_THREE_UNITS, synopsis: SYNOPSIS_UNIT_OVERLAP, totalChapters: 30,
+    })
+    const overlap = projection!.warnings.filter(warning => warning.startsWith('VOLUME_UNIT_OVERLAP:'))
+    const ambiguous = projection!.warnings.filter(warning => warning.startsWith('VOLUME_UNIT_AMBIGUOUS:'))
+    expect(overlap).toContain('VOLUME_UNIT_OVERLAP:2:1-2:8')
+    expect(ambiguous).toContain('VOLUME_UNIT_AMBIGUOUS:2:1-2:8')
+  })
+
+  it('单元区间互斥时不产出 VOLUME_UNIT_* 告警（不制造假阳性）', () => {
+    // 旧格式大纲没有归属标题，单元全走 declared 均分 ⇒ 首尾相接、必然不重叠。
+    const projection = materializeVolumeStructure({
+      plan: PLAN_DECLARED, synopsis: OLD_SYNOPSIS, totalChapters: 150,
+    })
+    expect(projection!.warnings.filter(warning => warning.startsWith('VOLUME_UNIT_'))).toEqual([])
+  })
+
+  it('★ 第二条成因：单元 1 的观测吃满整卷 ⇒ 后面 even 兜底的单元必然与它重叠', () => {
+    // SYNOPSIS_PARTIAL 只写了「第 1 卷第 1 单元」的第 1、2、8 章 —— 观测按 min/max
+    // 聚合成 1–8，正好是整卷。而卷 1 有 2 个单元，单元 2 走 even ⇒ 5–8。
+    // 这不是数据脏，是**口径**问题：观测区间表达的是「这一单元已写到哪儿」，
+    // 折叠成一段连续区间就被读成「这一单元覆盖到哪儿」。告警照实报出，不夹紧。
+    const projection = materializeVolumeStructure({
+      plan: PLAN_NO_COUNTS, synopsis: SYNOPSIS_TWO_VOLUMES, totalChapters: 150,
+    })
+    expect(projection!.warnings).toContain('VOLUME_UNIT_OVERLAP:1:1-2:5-8')
+  })
+
+  it('单元区间只报不改：重叠时区间逐字保留观测值，不用估算夹紧', () => {
+    // 「夹紧等于拿估算改事实」—— 与卷级的 VOLUME_OBSERVED_OUT_OF_RANGE 同一条纪律。
+    const projection = materializeVolumeStructure({
+      plan: PLAN_THREE_UNITS, synopsis: SYNOPSIS_UNIT_OVERLAP, totalChapters: 30,
+    })
+    const units = projection!.volumes[1]!.units
+    expect([units[0]!.plannedFirst, units[0]!.plannedLast]).toEqual([7, 9])
+    expect([units[1]!.plannedFirst, units[1]!.plannedLast]).toEqual([8, 8])
   })
 
   it('signature 只看边界：synopsis 只改章正文（标题不变）时签名不变', () => {
