@@ -1,4 +1,5 @@
 import { parsePlanningTargetUnits, planningTargetInstruction, DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../../shared/plot-outline-contract'
+import { findAngleBracketPlaceholders } from '../../../shared/arc-placeholder-guard'
 import { STORY_BEAT_KEYS } from '../../../shared/story-beats'
 import { auditDispositionCitations } from '../../../shared/disposition-citation'
 import { protagonistCardFromRoster } from '../../../shared/character-card-format'
@@ -2828,6 +2829,16 @@ export class GeneratePlotStructureCommand extends BaseWorkflowCommand<string> {
     const body = stripThinkingTags(result)
     // 若模型已自带一级标题则不重复；否则补一个统一标题，与其它架构块一致。
     const content = /^\s*#\s/u.test(body) ? `${body}\n` : `# ${heading}\n\n${body}\n`
+    const placeholderHits = findAngleBracketPlaceholders(content)
+    if (placeholderHits.length > 0) {
+      const hitLines = placeholderHits
+        .map(hit => (writingLanguage === 'zh-CN' ? `第 ${hit.line} 行：${hit.raw}` : `Line ${hit.line}: ${hit.raw}`))
+        .join('\n')
+      callbacks.log(text(
+        `卷 / 单元结构包含尖括号占位符；将继续写入数据库，请按行检查：\n${hitLines}`,
+        `Angle-bracket placeholders were found in the volume/unit structure; saving continues. Review these lines:\n${hitLines}`,
+      ))
+    }
 
     this.assertNotCancelled(context)
     await writeArchToDb(

@@ -515,8 +515,8 @@ ${STORY_BEAT_CATALOG_EN}
    - For every item, ask: **who will now come looking for him because of it?** If you cannot name a person, it is not settled.
 5. Time density: how long the volume compresses the reader into, and why (magnitude + reason, never a number of days).
 6. Beat: which beat from the table this volume uses — **the name plus the landing only; never restate the skeleton**. Two lines, fixed format:
-   Beat: <name from the table>
-   Landing: <slot>->unit<n> | <slot>->unit<n> | ...
+   Beat: name from the table
+   Landing: slot->unit N | slot->unit N | ...
    - The skeleton (what each slot is for) is already fully written in the table above; repeating it here writes the same thing twice, and this line is exactly what caused the step to be truncated.
    - The landing must preserve order. When there are more slots than units, one slot may span two units (write "units 3, 4"); when there are more units than slots, one unit may carry two slots.
    - No chapter counts, no percentages.
@@ -531,10 +531,10 @@ ${STORY_BEAT_CATALOG_EN}
    - Five tiers for calibrating intensity: concern -> pricing -> case file -> debt -> showdown. Never park two consecutive units in the same tier inside one volume.
    - **Two adjacent units must not use the same confrontation type**: door-block / negotiation / evidence / trap / showdown / admission. Two negotiations in a row is filler.
    - End this line with the fixed tag (the system validates it; a malformed tag counts as missing):
-     (hand: <one of the six>; tier: <from>-><to>)
+     (hand: one of the six; tier: from->to)
 5. Beat: which beat from the table this unit uses — again **the name plus the landing only**, two lines:
-   Beat: <name from the table>
-   Landing: <slot>->scene<n> | <slot>->scene<n> | ...
+   Beat: name from the table
+   Landing: slot->scene N | slot->scene N | ...
    - "Scene" means the nth stretch inside this unit, not a chapter number (chapters are converted by the system).
    - **It must differ from the previous unit and from anything already used in this volume**; adjacent volumes must differ too.
    - This line is a **work order for the next layer down (chapter outlines)**: the outline arranges its scenes in the order you set here. If the landing cannot be ordered, the beat was not chosen at all.
@@ -554,31 +554,31 @@ ${STORY_BEAT_CATALOG_EN}
 **Volumes**: N
 **Units**: N per volume
 
-[Book question] <one sentence that can be answered yes/no>
+[Book question] one sentence that can be answered yes/no
 
-## Volume 1: <concrete image>
-- Volume task: <...>
-- Enter state: <...>
-- Leave state: <...>
-- Pressure turnover: <...>
-- Settlement: lost <the specific thing>, because <registered / became known / favour spent / place closed / identity changed>; from now on <who comes looking>
-- Time density: <magnitude>, because <reason>
-- Beat: <name from the table>
-- Landing: <slot>->unit<n> | <slot>->unit<n> | ...
+## Volume 1: concrete image
+- Volume task: ...
+- Enter state: ...
+- Leave state: ...
+- Pressure turnover: ...
+- Settlement: lost the specific thing, because registered / became known / favour spent / place closed / identity changed; from now on who comes looking
+- Time density: magnitude, because reason
+- Beat: name from the table
+- Landing: slot->unit N | slot->unit N | ...
 
-### Unit 1: <concrete image>
-- Unit task: <...>
-- Enter state: <...>
-- Leave state: <...>
-- Transition: <...>
-- Pressure method: <who wants what, how they force it> -> by the end it becomes <new method>, because his previous <trick> no longer works (hand: <...>; tier: <...>-><...>)
-- Beat: <name from the table>
-- Landing: <slot>->scene<n> | <slot>->scene<n> | ...
+### Unit 1: concrete image
+- Unit task: ...
+- Enter state: ...
+- Leave state: ...
+- Transition: ...
+- Pressure method: who wants what, how they force it -> by the end it becomes new method, because his previous trick no longer works (hand: ...; tier: ...->...)
+- Beat: name from the table
+- Landing: slot->scene N | slot->scene N | ...
 
-### Unit 2: <...>
+### Unit 2: ...
 - ...
 
-## Volume 2: <concrete image>
+## Volume 2: concrete image
 ...
 
 ## Book-level rhythm table
@@ -599,7 +599,7 @@ ${STORY_BEAT_CATALOG_EN}
 8. Adjacent units differ in (hand:); no volume parks two consecutive units in the same (tier:).
 9. Every volume pays one specific old debt and plants one specific new debt; flag volumes that only plant.
 10. The rhythm table has all six columns, and pressure rotation never has three parties at full pressure in one volume.
-11. Every volume and every unit carries exactly two lines for the beat — "Beat: <name>" and "Landing: ..." — with no restatement of what each slot is for. Restated ones must be deleted and rewritten.
+11. Every volume and every unit carries exactly two lines for the beat — "Beat: name" and "Landing: ..." — with no restatement of what each slot is for. Restated ones must be deleted and rewritten.
 
 [Reference works — if any, borrow structure density and gear-change rhythm; never borrow plot]
 {{reference_works}}

@@ -286,6 +286,75 @@ afterEach(() => {
   clearProjectCustomPrompts()
 })
 
+describe('GeneratePlotStructureCommand angle-bracket placeholder guard', () => {
+  it.each([
+    {
+      label: 'logs placeholder fragments and line numbers but still saves',
+      output: '# 卷 / 单元结构\n\n拍子：<七点>',
+      warning: '第 3 行：<七点>',
+    },
+    {
+      label: 'does not warn when there are no placeholders',
+      output: '# 卷 / 单元结构\n\n拍子：三幕',
+      warning: null,
+    },
+    {
+      label: 'does not mistake HTML tags for placeholders',
+      output: '# 卷 / 单元结构\n\n<strong>正文</strong>',
+      warning: null,
+    },
+  ])('$label', async ({ output, warning }) => {
+    const novelConfig = {
+      writingLanguage: 'zh-CN' as const,
+      genre: '玄幻',
+      totalChapters: 40,
+      wordsPerChapter: 2500,
+    }
+    useProjectStore.setState({
+      currentProject: { ...project(projectAPath), novelConfig } as never,
+    })
+    useLLMStore.setState({
+      defaultModelId: 'model-1',
+      generateStream: vi.fn(async (_messages, streamCallbacks) => {
+        streamCallbacks.onDone?.(output, undefined, 'stop')
+        return 'plot-structure-request'
+      }),
+    })
+    const invoke = vi.fn(async (channel: string) => {
+      if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
+      if (channel === 'fs:check-exists') return false
+      if (channel === 'db:project-core-get') {
+        return {
+          premise: 'A sufficiently detailed premise for volume and unit structure generation.',
+          worldbuilding: 'A sufficiently detailed world with rules that constrain the protagonist.',
+          charactersArch: 'The protagonist and opponent pursue conflicting goals.',
+        }
+      }
+      if (channel === 'db:project-core-update') return { success: true }
+      throw new Error(`Unexpected IPC channel: ${channel}`)
+    })
+    vi.stubGlobal('window', {
+      aiNovelAPI: { invoke, on: vi.fn(), once: vi.fn(), send: vi.fn(), setZoomLevel: vi.fn(), setZoomFactor: vi.fn(), getZoomLevel: vi.fn() },
+    })
+
+    const result = await new GeneratePlotStructureCommand(
+      { expectedProjectPath: projectAPath, novelConfig } as never,
+      workflowRuntimeDependencies,
+    ).execute({ step: {}, context, callbacks })
+
+    expect(result).toContain(output)
+    const logEntries = vi.mocked(callbacks.log).mock.calls.map(([message]) => String(message))
+    const warningEntry = logEntries.find(entry => entry.includes('卷 / 单元结构包含尖括号占位符'))
+    if (warning) {
+      expect(warningEntry).toContain(warning)
+    } else {
+      expect(warningEntry).toBeUndefined()
+    }
+    const persistedUpdate = invoke.mock.calls.find(([channel]) => channel === 'db:project-core-update')
+    expect(persistedUpdate).toBeDefined()
+  })
+})
+
 describe('GenerateConfigCommand error boundaries', () => {
   it('expands authored configuration text and preserves explicit author choices', async () => {
     const authorOutline = '作者设定：主角必须先救出妹妹，这一事实不可改写。'

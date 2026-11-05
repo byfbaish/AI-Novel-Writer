@@ -310,10 +310,16 @@ describe('core model prompt language contract', () => {
     const zh = getBuiltinPromptTemplate('plot_structure', 'zh-CN')!
     const en = getBuiltinPromptTemplate('plot_structure', 'en-US')!
 
-    expect(zh.content).toContain('拍子：<名字>')
+    expect(zh.content).toContain('拍子：名字')
     expect(zh.content).toContain('落位：')
-    expect(en.content).toContain('Beat: <name from the table>')
+    expect(en.content).toContain('Beat: name from the table')
     expect(en.content).toContain('Landing:')
+
+    // D5（2026-11-05）：拍子/落位格**不得**再用 `<…>` 包裹占位符。实测模型会把尖括号
+    // 原样抄进产物（`- 拍子：<七点>`）；去掉尖括号、文字其余部分不动是最小改法。
+    expect(zh.content).not.toMatch(/拍子：</u)
+    expect(zh.content).not.toMatch(/落位：</u)
+    expect(en.content).not.toMatch(/Beat: </u)
 
     // 旧写法必须彻底消失——它就是截断的直接原因
     expect(zh.content).not.toContain('一拍一句话')
