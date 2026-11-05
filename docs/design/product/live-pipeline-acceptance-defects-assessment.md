@@ -53,7 +53,7 @@
 | D14 | 高 | ✅ 已实施（已复验） | 卷结构三步（建卷结构 / 标卷完成 / 登记交接）全手动，生成流程从不调用、系统从不提示 → `l3-handoff-missing` 必然。**2026-11-02 已修**：建结构 + 推进进度改为自动（A 已实机复验，含历史回填），缺口提醒（B）沿用既有闸门、待第 10 章之后复验 | `VolumeHandoffRegistryPanel.tsx:269/293`（原全库唯一调用点）；`volumes` / `volume_units` / `volume_handoffs` 三表初始 0 行；`volumes.actual_last` 定稿后仍全 `null` |
 | D3 | 高 | ⬜ 待裁定 | `degraded=l3-handoff-missing` 提示过弱且不阻断（**根因见 D14**，两者同源） | `src/shared/synopsis-projection.ts:520`（push）、`:504–522`（`actual`/`plan` 回退）、`:351`（类型） |
 | D19 | 高 | ✅ 已实施（已复验） | `actual_last` 被当成卷末 ⇒ 卷边界随进度漂移，开写闸门提前一章弹、交接单漏本卷最后一章 | `src/shared/volume-structure.ts:285`（末章取 `actual_last ?? planned_last`）；`src/shared/volume-handoff-gate.ts:63`（闸门判上一卷）；`finalization-controller.ts:65`（推进在 finalize 之后） |
-| **D20** | **高** | 🟡 **已裁定（2026-11-05 · 裁定 1 = A：模板变化允许续）**，未开工 | **生成模板一变，旧大纲检查点就续不上，而报错断言「项目源事实已变化」**——指纹是 4 元的（源事实 / 步骤指导 / 批次范围 / **模板**），比对时只剩一个布尔值，文案却只认第 1 元。换数据根 / 换机器 / 改模板都会撞上，使用者无从查起。**已逼出红线 19 + 三处渲染期 override** | `architecture.command.ts:1124-1150`（指纹含 `JSON.stringify(template)`）· `:3135` `:3242`（两处报错文案）· **对照组 `:2334` 写对了**；现场：D17 §7.4 第 1 条（`stored=13sbmpn / expected=tkj9w7`，12 个源事实字段 sha256 全一致）；方案稿 [`architecture/d20-checkpoint-template-fingerprint-design.md`](../architecture/d20-checkpoint-template-fingerprint-design.md) |
+| **D20** | **高** | 🟡 **已裁定（2026-11-05 · 裁定 1 = A：模板变化允许续）**，未开工 | **生成模板一变，旧大纲检查点就续不上，而报错断言「项目源事实已变化」**——指纹是 4 元的（源事实 / 步骤指导 / 批次范围 / **模板**），比对时只剩一个布尔值，文案却只认第 1 元。**实测只有「源事实 / 模板」两项可能漂移**（②③ 是拿检查点自己的值重算自己）。换数据根 / 换机器 / 改模板都会撞上，使用者无从查起。**指纹让「改内置模板」变成高风险操作**，两次输出合同变更因此只能走渲染期替换（红线 19 由此而来） | `architecture.command.ts:1124-1150`（指纹含 `JSON.stringify(template)`）· `:3135` `:3242`（两处报错文案）· **对照 `:2334` 点了模板（但只列 3 项）**；现场：D17 §7.4 第 1 条（`stored=13sbmpn / expected=tkj9w7`，12 个源事实字段 sha256 全一致）；方案稿 [`architecture/d20-checkpoint-template-fingerprint-design.md`](../architecture/d20-checkpoint-template-fingerprint-design.md)（**经独立复核打回后修订**，见其 §11） |
 | D4 | 中 | ⬜ 待裁定 | UI 散落「来源已变化」文案，但没有任何地方把它和批次中止关联 | `src/components/panels/AIOutputPanel.tsx:398` |
 | D5 | 中 | 🟡 已实施（2026-11-05，待实机） | 卷/单元结构输出里模板尖括号占位符原样保留 | `debug/prompt-trace/20261101-213138-718-弧光-d57a1d5d.json` → `ioCalls[0].output` |
 | D6 | 中 | 🟡 已裁定（2026-11-05 · **方向 A**，未开工） | 卷数由平台画像固定区间决定，与总章数解耦。裁定：卷数 = `f(totalChapters)`、代码算，画像只给「每卷章数区间」；**且 2026-10-19「卷/单元章数由模型决定」那条旧裁定被显式取代** | 同上 trace 的 `【节奏推荐】` 与「输出前自检」第 2 条；方案稿 [`architecture/d6-volume-count-source-design.md`](../architecture/d6-volume-count-source-design.md) §8 |
@@ -922,26 +922,30 @@ changedChapters: request.authorRecovery ? expandChapterRange(request.authorRecov
 | 1 | 指纹由 4 段拼成：11 个源事实字段 · 步骤指导 · 批次范围 · **`JSON.stringify(template)`（整对象）** | `architecture.command.ts:1124-1150`，4 元组在 `:1144-1149` |
 | 2 | 两处判定都只拿到「不等」这一个布尔值——32 位哈希是单向的，**比对时已不可能知道是哪一项变了** | `:3133`（续写）/ `:3240`（续批） |
 | 3 | 但两处报文都只认第 1 元；`:3135` 还加了「（故事前提/角色/世界观/总章数等）」，把视线钉在恰恰没变的字段上 | `:3135` / `:3242` |
-| 4 | **同一文件的世界观链写对了**：把 4 项全列了出来 | `:2334`（对照 `:2326-2331`） |
+| 4 | **同一文件的世界观链点了「模板」这一项**（但只列 3 项，漏了步骤指导） | `:2334`（对照 `:2326-2331`） |
 
 **实测真因**：换了数据根 ⇒ `resolvePromptTemplate('synopsis', …)`（`:3020`）解析出的模板不同（原环境有全局覆盖版 `~/.vela/prompts/synopsis.zh-CN.json`，新环境走内置）。诊断值为 `stored=13sbmpn / expected=tkj9w7`；**12 个源事实字段逐字段 sha256 与原库完全一致**（清单见方案稿 §1.1）。
 
 **这条为什么排到最前**：作者原话——「开发者倒是可以调查到真实原因，但对于使用者来说，抠破脑袋都找不到这个真实的原因，只会以为自己的写作材料变化了，但其实根本没有变化。」**换数据根 / 换机器 / 改模板都会撞上**，而作者的所有可选动作只有一个：全书大纲重写。
 
-**已经付出的代价（比报错本身贵）**：
+**已经付出的代价**：
 
 | 代价 | 出处 |
 |---|---|
-| **红线 19**：「大纲输出合同必须走 `withSystemSuffixOverride()`，否则 A/B 两个项目的检查点全部作废」 | `chapter-position-format-design.md:99` `:108` `:360` `:372` |
-| 三处实现被迫「渲染期拿字符串做手术，不改模板对象」，各自留了「因为指纹才这么写」的自述 | `prompt-builder.ts:18-25` · `synopsis-two-level-suffix.ts:21-25` · `synopsis-unit-heading.ts:21-23` |
-| 四篇设计稿把它写成硬约束 | `choice-source-and-elimination-design.md:138` · `d18-chapter-hook-contract-design.md:441` · `prompt-assembly-backlog.md:457` · `layered-generation-assessment.md:360-368` |
-| 用户可见文案已经把这句话当成唯一真相 | `ArchitectureConfirmDialog.tsx:792`（**在预告一条具体报文**）· `ProjectTree.tsx:610` · `project-clear-service.ts:166` |
+| **红线 19**：「大纲输出合同必须走 `withSystemSuffixOverride()`，否则 A/B 两个项目的检查点全部作废」——这句「必须」**直接由指纹逼出** | `chapter-position-format-design.md:99` `:108` `:360` `:372` |
+| 两次输出合同变更**因此不能改内置模板**，只能走渲染期字符串手术（**注意：这两处 override 各有独立理由，不是为躲指纹才存在**；指纹决定的是它们的实现形态） | `prompt-builder.ts:18-29` · `synopsis-two-level-suffix.ts:4-19`（真实输出合同 bug）· `synopsis-unit-heading.ts:4-12`（补标题归属） |
+| 设计稿把它写成硬约束 | `choice-source-and-elimination-design.md:138` · `d18-chapter-hook-contract-design.md:441` · `prompt-assembly-backlog.md:457` · `layered-generation-assessment.md:360-368` |
+| 同一条错误结论被复述 4 处（1 处**用户可见** + 3 处代码注释） | `ArchitectureConfirmDialog.tsx:792`（**在预告一条具体报文**）· `ProjectTree.tsx:610` · `project-clear-service.ts:166` · `arch-step-checkpoint.ts:12-13` |
 
-**修法方向**：**不是改文案，是让判定侧具备归因能力。** 新增 `synopsisInputFingerprintParts()`（与现函数并列，`combined` 必须等于现返回值），写入侧多落一份 4 项分项哈希（约 30 字节），判定侧逐项比、按 `drift` 出报文；旧检查点走诚实兜底（「无法判断是哪一项」，而不是「源事实变了」）。`world_building` 链同病同治。
+**修法方向**：**不是改文案，是让判定侧具备归因能力。** 新增 `synopsisInputFingerprintParts()`（与现函数并列，`combined` 必须逐字等于现返回值），**只落两个短哈希：源事实 + 模板**（②步骤指导、③批次范围在比对时恒等，存了也是死分支），判定侧逐项比、按 `drift` 出报文；旧检查点走诚实兜底（「无法判断是哪一项」，而不是「源事实变了」）。
 
-**唯一需裁定的地方**：**只有模板变化时允不允许续？** A 允许 / B 如实说明 + 确认后可续 / C 拦且不给旁路。A 的证据是「项目事实上早就这么判了」（红线 19 的全部存在理由就是模板变化不该作废大纲），反对证据是**模板变化可能是结构性的**——`synopsis-two-level-suffix.ts` 正是活例子，两级结构换掉 `systemSuffix` 后输出合同整段不同，会造成同一份大纲并存两套格式。
+⚠️ **两个必补的名单**（漏了会打坏回滚）：`SYNOPSIS_CHECKPOINT_FIELDS`（`architecture.command.ts:192-204`，管 commit 失败后的恢复）与 `SYNOPSIS_CHECKPOINT_KEYS`（`synopsis-unit-launch.ts:179-193`，管重置与级联清空）。
+
+**裁定（2026-11-05 20:57）**：**选 A —— 只有模板变化时允许续写**（放行 + 一条不阻塞提示，不静默）。反对意见「模板变化可能是结构性的，会让同一份大纲并存两套格式」**被知情接受**，但要求写进提示文案。**遗留两问**：① 旧检查点（无新字段）遇到指纹不等时继续拦还是也放行（裁定 A 之后「新检查点放行、旧检查点要全书重来」是新矛盾）；② 世界观链要不要一起改。
 
 **与 D4 的边界**：D4 说「没有一处把中止和文案关联」；本条说「关联起来的那一处说的是错的」。修好本条 D4 才有可信的归因数据可用，但 D4 不因此关闭。
+
+> **这条的稿子被独立复核打回过一次**（写入点标签写反、4 项分项里 2 项不可达、漏两个名单、世界观链"四项全列"不成立、影响面夸大）。修订记录在方案稿 §11。**教训：这条缺陷本身是"报错误诊"，而给它的方案稿第一次也犯了同类的错——自己写的方案需要别人来核对它在引用什么。**
 
 ### D8 的现场实锤（2026-11-02）
 
