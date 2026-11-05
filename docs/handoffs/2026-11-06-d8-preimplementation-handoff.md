@@ -1,0 +1,108 @@
+# 交接：D8 开工前 —— 方案 v3 已定稿、两轮审核已过，代码未开工，两条待裁
+
+> 交接基准：2026-11-06 03:2x（Asia/Shanghai）· 分支 `exp/resource-ledger` · 主线与 `wt-1` 同点且工作区干净（**当前 HEAD 用 `git log -1 --oneline` 取**；本稿与 §11.7 / v3 修订同批提交，`8f1e194d` 是上一版 v2 的基线）
+> 本窗口边界：作者明确「这个对话窗口就不要做实施了，等这些审完改完以后直接做交接」⇒ **只改方案文档、只做审核、只写交接，零生产代码改动**。
+> 一句话：**D8 方案 v3 已落看板卡 `4b9eae6e`（`todo`），可直接读卡开工；但开工前有两件事必须作者先裁（C1 / C2）**，执行者遇到要停下报告，不许自己拍板。
+> 相关稿：[`d8-checkpoint-degradation-design.md`](../design/architecture/d8-checkpoint-degradation-design.md)（§11 / §11.7）· [`live-pipeline-acceptance-defects-assessment.md`](../design/product/live-pipeline-acceptance-defects-assessment.md) §D8 · [`industry-alignment-and-stage-goals.md`](../design/architecture/industry-alignment-and-stage-goals.md) §5 四问 · [`doubao-channel.md`](../agents/doubao-channel.md) §2.1.0 · [`task-board-channel.md`](../agents/task-board-channel.md) §5.2/§5.4 · [`worktree-parallel.md`](../agents/worktree-parallel.md) §7
+
+---
+
+## 〇、三十秒版本
+
+D8 的**实施方案不是独立文档**，是「设计稿 §9 / §11 + 看板卡 `4b9eae6e` 的任务书」。本窗口把它从 v1 修到 v3：
+
+- **v1** 被子 Agent 独立审核查出 8 个行号 6 处漂移（11-06 D13 / D6 改动所致），Lead 抽查 8/8 属实。
+- **v2** 按作者 03:05 的四问重写验收 1 / 2：**真问题存在、行业有标准名，但「枚举范围清单 / 所有默认值对象清单」没有行业定义 ⇒ 撤回，不自造需求**；同时重定位改点。提交 `8f1e194d`。
+- **v3** 按豆包 03:20 只读审查的 5 条阻塞修正（排除表误判、打错路径、§11.5 论证不成立、文案漏项、双语与 browser 断言），Lead 抽查 9 处全属实。按手册 §5.4「复核只跑一轮」**不再复审**。
+
+**结论：方案可以开工，但 C1 / C2 两条待裁必须先请作者定。** 代码一行未动。
+
+## 一、当前状态（可核对）
+
+| 项 | 值 |
+|---|---|
+| 看板卡 | `4b9eae6e-6dd2-4f37-8572-fbedf91eacef` = `todo` + `[I2]`，**prompt 为 v3**（5609 字符，旧版作废） |
+| D8 设计稿 | §11（四问查证）+ §11.7（豆包审与 v3 更正）；状态行仍「已裁定 · 代码未开工」 |
+| 缺陷总表 §D8 | 状态「已裁定 · 代码未开工」，顶部 03:0x 进度行已记本轮修订 |
+| 豆包线程 | 「**D8开工方案修订版审查任务**」`href=chrome://doubao-chat/chat/38451704372578050`，本地电脑 / 自动 中 / `AI-writer-wt-1`，队列空、未认领任何卡 |
+| 工作区 | 主线与 `wt-1` 同点、均干净；`check-fast` 全绿（typecheck / 1155 链接 / 385 份文档） |
+| 生产代码 | **零改动** |
+
+## 二、★ 开工前必须先裁的两条（最高优先级）
+
+### C1 · 设计稿 §9:256 与裁定 4 的张力（改的是作者裁定文字）
+
+- §9:256 原文：「`:3205` 的硬抛与**重置后 `:3045` 的拦截，都得改成在 A 语义下能走完的路径**」——这是作者裁定 1 的落地文字。
+- 裁定 4 只关闭「三个按钮的决策点」，**没有撤销上面这半句**。v2 曾把守卫判成「按裁定 4 必然不许动」，是 Lead 越权替作者改裁定，已在 §11.7 撤回。
+- 事实：`:3340-3349` 的 checkpoint-lost 守卫是**防静默覆盖的安全网**，且有两条现存入口会造出 `coveredTo=0 && dbCoveredTo>0 && !interrupted` —— ① 重置按钮 `ArchitectureConfirmDialog.tsx:729-739/:808` → `synopsis-unit-launch.ts:219/238-243`；② 清空上游 `arch-step-checkpoint.ts:51/63-67`（`ArchitectureConfirmDialog.tsx:724-726` 注释自认这条路径）。
+- **请作者裁**：撤回 §9:256 的 `:3045` 半句（守卫保留 + 「重置 / 级联清空后仍被拦」转 backlog 已知死胡同），或给一条不破坏防静默覆盖的最小安全路径。
+- **v3 当前处置**：守卫逐字不动、列入验收 3；执行者遇到冲突停下写报告，不自主扩展。
+
+### C2 · browser 断言与「只准单元测试」边界
+
+- 改文案会牵动 `WorldBuildingEditor.recovery.browser.tsx:76-77/101-102`（断言「断点续写」）与 `workflow-language-seam.browser.tsx:87`（把 `architecture.command.ts:469` 的英文 DB 标记当 fixture）。
+- `docs/agents/worktree-parallel.md` §7 规定**派出去的 agent 只准单元测试**；卡面边界也写「禁 browser」。
+- **v3 当前处置**：执行者**只改断言字符串、不跑 browser**；Lead 复核时补跑。若作者要求执行者自证「相关 vitest 全绿」，需先放宽边界 —— 这是结构决定，Lead 不代裁。
+
+## 三、v3 任务书要点（执行依据 = 看板卡 prompt，本节只给索引）
+
+1. **改点定位**：8 处当前位置（基于 `8f1e194d` 实读）+ **每条的英文对偶行**；行号只是定位辅助，**一律以符号名 / 文案内容为准，代码若再变按内容重新定位，不许照行号动手**（这是两次漂移的教训）。
+2. **按模式分支，不整体排除**：`architecture-workflow.ts:247`、`WorldBuildingEditor.tsx:848/:887/:897` 都是**情节大纲本批 resume** 的用户可见文案，要改 synopsis 那一支；**真排除只有两条** —— `architecture-workflow.ts:249`（世界观）与 `VolumeHandoffRegistryPanel.tsx:776`（卷末交接，另一功能）。
+3. **要做 2 已收窄**：作者点「重写本批」走 `resumeSynopsis: true` ⇒ `architecture.command.ts:3396` 的 `if (resumeRequested)` 分支；`:3500` 的 throw 在 `:3465` 的 **else** 分支，拦「检查点未完成时另起新批」，由 `plot-outline-batch.command.test.ts:1034-1052`（21–40 未完成 / 请求 41–60 / 断言抛错且模型未调用）钉住。⇒ **不许取消不变式、不许把 41–60 改写成重写 21–40**；先取证 A 路径能否走完，确需改才按「请求范围 == 检查点 `synopsis_range`」最小口径处理。
+4. **验收 1 / 2 是判据，不是清单**：① 凡描述「本批生成中断后点按钮会发生什么」的用户可见文案（中英双语）须如实反映 A 语义，逐处核对并列出实际改到的位置；② 贴 `git diff` 证明 `src/shared/plot-outline-contract.ts:8/:9` 两个定义处逐字未动 + **diff 中无任何章节数值变更**。引用处不必列举（定义不动就不变）。
+5. **边界**：不碰 D17 `changedChapters`、D20 指纹链（`:3562` / `:3570` 就在报文附近）、D13 失败契约；不新增超时 / 心跳 / 终态兜底；不改卷数 / 单元数判据；只准单元测试、禁 `pnpm test:node` / `pnpm dev` / browser / journey、禁 git 写；**遇到 C1 / C2 停下报告**。
+6. **交回**：报告写 `wt-1/.dsh-task-board/reports/4b9eae6e-...md`，只打 `tag --add review --remove external --release`，**不许 `done`、不许 `review --pass|--rework`**。
+
+## 四、查证结论（作者 03:05 四问，详见设计稿 §11 / §11.7）
+
+| 问 | 结论 | 依据 |
+|---|---|---|
+| 要解决什么问题 | **用户可见文案与实际行为不一致**：UI 说「续写 / 不会被覆盖 / 接着上次的末尾」，实际裁定 1 = 候选丢弃、`from/to` 取 `synopsis_range` 的**整批重来** | `architecture.command.ts:3853-3860`、`:462`、`:3502`；`AIOutputPanel.tsx:1123/1124/1129` 实读 |
+| 是否真实存在 | **是**，实读代码可证，不是推测 | 同上 |
+| 行业叫什么 | **ISO 9241-110:2020 §5.2 self-descriptiveness / §5.3 conformity with user expectations + NN/g #4 Consistency and Standards**；NN/g #9 只用于错误报文，**删 #1**（#1 是 timely feedback，用来解释标签撒谎属拉伸）。失败形态 = UX 状态 / 错误文案与系统行为不一致，非 continuity / craft / 算术 | NN/g《10 Usability Heuristics》《Error-Message Guidelines》；§11.7 已按豆包证据精修 |
+| 行业有无先例 | 长文本生成**有** checkpoint 恢复做法（马良写作「中断自动续跑」、`solo.xin` 的 checkpoint_id+offset+hash），但**产品间不统一、撑不起「主流」**；「整批重来」是作者基于 E3 单元化（整批 = 一个单元）的**项目特定裁定**，与行业主流相反 ⇒ 文案更必须说真话 | §11.2 / §11.7；差异属需求差异，合规 |
+| 枚举 / 对象清单有无定义 | **没有行业定义**。「启发式评估」是找问题的方法，不是「把全库 UI 文案列成清单再打勾」这种交付验收物；清单的唯一消费者是验收者自己 ⇒ 按 §5 第 2 问属 W6 式死法，**撤回，不自造需求**。「不动什么」的事实源早已存在：`plot-outline-contract.ts:8/:9` 两个定义处 + 裁定 3 点名的 4 类 | §11.3；`blueprint-batch-policy.ts:96` / `batch-chapter-workflow.ts:35/:60` 的字面 5 / 1–10 属别的功能，不是该常量消费点 |
+
+## 五、审核报告与抽查记录
+
+| 轮 | 报告 | 结论 | Lead 抽查 |
+|---|---|---|---|
+| 02:52 子 Agent（上下文隔离，只给产物 + 验收标准） | `C:/develop/tmp/d8-plan-review-2026-11-06.md`（77 行） | 阻塞开工：8 处行号 6 漂移、验收 3 不可判定、Y1 / Y2 待裁 | 8 处全属实；另补出「重置后拦截」与裁定 4 的冲突 |
+| 03:20 豆包（只读、低频串行） | `wt-1/.dsh-task-board/reports/d8-plan-review-2026-11-06.md`（127 行） | 5 阻塞 + 2 同批需改 + 5 backlog | 9 处全属实（见 §11.7 抽查证据） |
+
+豆包派法（可复用）：按 §2.1.0 **独立新主题新开线程**（当时线程是 D6 的 Ask 实测对话，上下文无关）→ 本地电脑 / 自动 中 / `AI-writer-wt-1` → **一次 `task` 派活 + 一次 nudge**（8 分钟后仍停在开场白，属已知「中档收工」）→ 严格串行、无并发、无 watchdog、无轮询轰炸。报告不采信结论，逐条抽查。
+
+豆包 5 条 backlog：行业口径精修**已并入 v3**；其余 4 条（§11.3 措辞已收窄、验收 2 补 diff 已并入、`:3502` 落点待实施确认、文档行号债）按 §11.7 转 backlog，**不在开工前处理**。
+
+## 六、下一步怎么做（给下个会话）
+
+1. 读本稿 → 看板卡 `4b9eae6e` 的 **v3 prompt** → 设计稿 §11 / §11.7。
+2. **把 C1 / C2 摆给作者裁定**，裁完按硬规则 3 同步卡 prompt、设计稿 §9 / §11.7 与缺陷总表状态行。**不要替作者裁，不要让执行者自己拍板。**
+3. 派活：按 §2.1.0 **`--keep` 复用「D8开工方案修订版审查任务」线程**（同主题后续活，不新开、不重读章程），档位保持「自动 中」、项目 `AI-writer-wt-1`；卡先加 `external` 再派。
+4. 执行者只交 `review`；Lead 用 `workbuddy:reviewer` 复核（身份分离），`--pass` 才进 Done。
+5. 复核硬约束：独立跑相关单测 + `check-fast`；逐项核 `plot-outline-contract.ts:8/:9` 定义处逐字未动、`:3340-3349` 守卫逐字未动、`:3500` 既有断言未放宽、双语对偶行同改、真排除两条未被动。**受影响的 browser 断言由 Lead 补跑**。
+6. 合并后同步缺陷稿 §D8 `> 状态：` 行、§2 状态列与方案稿状态行（硬规则 3），`--ff-only` 快进 `wt-1`，追加当日日志。
+
+## 七、红线与坑（别重犯）
+
+- **行号不是契约**：v1 全旧、v2 又被豆包挑出排除表错 —— 一律按符号名 / 文案内容定位。
+- **不造清单**：作者 03:05 明确「而不是我们自己去造一个，去创造没有的需求」；Y2 撤回是结论，不是待裁项。
+- **改作者裁定文字的权力不在 Lead / 执行者**：§9:256 的张力只能请作者裁（C1）。
+- **worktree 红线**：派出去的 agent 只准单元测试；禁 `pnpm test:node`；并发 vitest 会争 `node_modules/.vite` 缓存（见 `notes/agent-token-discipline.md` W7）。
+- **豆包低频**：不并发、不追问轰炸；`[QUEUE] EMPTY` 不当进度；判成功只看产物与看板状态，不看 `task` 的 reply。
+- **复核只跑一轮**（手册 §5.4）：v3 不再复审；额外「还能更好」进 backlog，不进本轮阻塞。
+- **上下文**：本窗口很长，细节已全部落盘（卡 prompt / §11 / §11.7 / 两份报告 / 本稿）；下个会话不要回头翻对话，直接读文件。
+
+## 八、路径索引
+
+| 文件 | 用途 |
+|---|---|
+| 看板卡 `4b9eae6e`（CLI `list --json` / `get`） | **执行依据 v3 prompt**、当前状态 |
+| `C:/develop/tmp/d8-card-prompt-v3-2026-11-06.md` | v3 任务书原文（已写入卡） |
+| `C:/develop/tmp/d8-card-prompt-v2-2026-11-06.md` / `d8-review-input-2026-11-06.md` | v2 / v1 原文，历史记录 |
+| `C:/develop/tmp/d8-doubao-review-2026-11-06.md` | 豆包审查任务书（派活输入） |
+| `C:/develop/tmp/d8-plan-review-2026-11-06.md` | 子 Agent 审核报告（77 行） |
+| `wt-1/.dsh-task-board/reports/d8-plan-review-2026-11-06.md` | 豆包审核报告（127 行） |
+| `docs/design/architecture/d8-checkpoint-degradation-design.md` §11 / §11.7 | 四问查证 + 两轮审核与更正 |
+| `docs/design/product/live-pipeline-acceptance-defects-assessment.md` §D8 | 缺陷状态与现场实锤 |
+| `.runtime/doubao/last-thread.json` | 当前豆包话题记录（派活后应指向 D8 审查线程） |
