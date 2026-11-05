@@ -126,8 +126,8 @@ node scripts/doubao/bootstrap.mjs --launch       # 例外：要求脚本自己 s
 
 ```bash
 node scripts/doubao/bootstrap.mjs --check          # 1. 只读：先用看当前线程标题与 turnCount
-node scripts/doubao/bootstrap.mjs --keep --project <项目> [--effort 高]   # 2a. 复用（默认该走这条）
-node scripts/doubao/bootstrap.mjs --project <项目> [--effort 高]          # 2b. 新开（少数情况）
+node scripts/doubao/bootstrap.mjs --keep --project <项目> [--effort 中]   # 2a. 复用（默认该走这条）
+node scripts/doubao/bootstrap.mjs --project <项目> [--effort 中]          # 2b. 新开（少数情况）
 ```
 
 **判据（一句话）**：**同一张卡、同一批活的后续追问、或只是补切项目/档位 ⇒ `--keep`**；
@@ -535,6 +535,8 @@ node scripts/doubao/inspect-click.mjs 9331 --testid <id>   # 点一下再看界�
 **不适合直接给它**
 - 需要精确复算且无交叉核对的核心数字（让它做，但必须再派一个独立复算）。
 - **结算与复核**：`done` / `task_board_done` / `review --pass|--rework` 仍归 Lead。**但「认领 → 写报告 → 打 `review` → `release`」这一侧它是可以自己做的**（§7.3 实测通过，2026-11-05 21:37 再次实跑：卡片由 `todo` 变 `running`、claim 里有它自己的 pid）。本节早先写的「看板写操作统一 Lead 代录」指的是**多人同时往一块看板写**的场景（并发下容易互相顶掉 claim），不是禁令 —— 单卡单实例时它自己交回更省事，也不需要监工。判成功永远只看**看板状态 + 报告文件**，不看对话正文。
-- 长时间连续无人值守：单实例串行，`--effort 中` 可能做一件就收工，`markers` 看到 `[Tn] DONE` 后用 `say "继续执行 Tn…"` nudge。要一次跑完多步任务就**升「高」**（2026-11-05 派 D20 本体即用高）。
+- 长时间连续无人值守：单实例串行，`--effort 中` 可能做一件就收工，`markers` 看到 `[Tn] DONE` 后用 `say "继续执行 Tn…"` nudge。
+  **不要因为"任务长"就自己升「高」** —— 档位是钱，判据见上一行：**只有审核发现幻觉严重才升**（2026-11-05 派 D20 本体时我擅自升了「高」，
+  作者当场纠正：手册写的默认就是「中」，长任务该用 nudge 而不是加档）。
 
 **派活小表**：见 [WorkBuddy 通道](workbuddy-channel.md) §13（同一张表，两边同步）。
