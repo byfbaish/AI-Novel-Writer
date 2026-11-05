@@ -2,11 +2,11 @@
 
 > 状态：待裁定（**逐条状态见每个条目顶部的 `> 状态：` 行**；末次刷新 2026-11-05 23:06）
 
-> **本轮回三条裁定**：**D17 结项** · **D6 = 方向 A**（并取代 2026-10-19 旧裁定）· **D8 = 语义 A** · **新立 D20，定为优先做**。当前分布：✅ 4 条收口（D12 只到单测级、D14 · D19 实机通过、D17 已复验结项）· 🟡 4 条代码落地待实机（D1 症状已实机、机制待正文批量；D2 方案乙 + 甲两半；D5 模板去尖括号 + 落库前守卫 `87684f48`；D15 单元区间检出接线）· 🟡 2 条方向已定、代码未动（**D6 / D8**）· 🔍 1 条已取证（D7 不成立半句）· ⬜ 9 条方向未定（其中 **D3 / D4 / D13 已于 2026-11-05 定「做」**）
+> **本轮回三条裁定**：**D17 结项** · **D6 的「方向 A」已于 2026-11-06 撤回并重定义**（卷纲层可弃；取代标注同步撤回）· **D8 = 语义 A** · **新立 D20，定为优先做**。当前分布：✅ 4 条收口（D12 只到单测级、D14 · D19 实机通过、D17 已复验结项）· 🟡 4 条代码落地待实机（D1 症状已实机、机制待正文批量；D2 方案乙 + 甲两半；D5 模板去尖括号 + 落库前守卫 `87684f48`；D15 单元区间检出接线）· 🟡 2 条方向已定、代码未动（**D6 / D8**）· 🔍 1 条已取证（D7 不成立半句）· ⬜ 9 条方向未定（其中 **D3 / D4 / D13 已于 2026-11-05 定「做」**）
 
 > **开工顺序（2026-11-05 作者定）**：**D20 最优先** → D6 / D8 → D13。D20 之所以插到最前，是因为它每撞一次都让使用者拿到一条**错误且无法自查**的归因，而 D6 / D8 只是「该做的改动还没做」。
 
-> **2026-11-05 23:06 进度**：D20 本体 + D20b 已实施并合并（`3248b967`），判定侧残留另开 D20c；D13 三条裁定已答（**1=B / 2=A 与 D8 裁定 2 合并答 / 3=A**）、§5.4 跨 IPC 取码已验通，实施卡见看板；D6 / D8 剩余裁定见各自方案稿。
+> **2026-11-05 23:06 进度**：D20 本体 + D20b 已实施并合并（`3248b967`），判定侧残留另开 D20c；D13 三条裁定已答（**1=B / 2=A 与 D8 裁定 2 合并答 / 3=A**）、§5.4 跨 IPC 取码已验通，实施卡见看板；D6 / D8 剩余裁定见各自方案稿。**2026-11-06 00:38 补**：D20c / D13 已独立复核通过并分别合并（`72b20beb` / `959a3647`）；D6 方向 A 撤回、按「卷纲层可弃」重定义为 Prompt 层 + 算术层（见方案稿 §9）。
 
 > 日期：2026-11-01
 > 上级稿：[`live-verification-checklist.md`](live-verification-checklist.md)（一次新项目跑批要验什么）
@@ -51,14 +51,14 @@
 | D1 | 阻塞 | 🟡 已实施（部分复验） | 批内多单元/多章生成时第二次调用即抛 `GENERATION_SOURCE_CHANGED`，整批静默中止。**2026-11-02**：连写 2 单元已实机跑通（12 → 15 章）；机制层补 8 条单测，同 run 多调用路径（正文批量）仍未复验 | `electron/services/main-generation-owner.ts:931`；`electron/services/agent-generation.ts:158/190/196`；`src/services/agent/agent-generation-client.ts:33` |
 | D12 | 阻塞 | ✅ 已实施（2026-11-04 · 单测级，未实机） | 正文重演被丢弃且无重试、无回流。**真因是短细纲把上一章全文当成本章任务**，不是校验过严（见「第二轮实测」）。修法 = R6 短细纲砍全文（要点 + 结尾 ≤300 字）+ 判据改结构化对应，`ba3d4bc5` | `generate-draft.command.ts:1536`（拦截）；`chapter-materials.ts`（`previousChapterEnding(content, maxChars)`）；`draft-short-outline.ts`（`draftShortOutlinePredecessor`）；合并稿 `previous-chapter-context-assessment.md` §8/§9 |
 | D2 | 高 | 🟡 已实施（方案乙 + 甲；待实机复验） | 批次中断在 UI 上完全静默：无失败回执，进度条「假继续」。乙 = 收口统一 seal；甲 = 执行租约 + 启动 fence 判 `aborted`（`68a37585`），`aborted` 现为不可续终态 | `generation_runs` 36 条无终态、`blocked_code` 为 NULL；`generation_attempts` 却为 `settled`；设计稿 `features/d2-run-lease-abort-design.md` §10 |
-| D13 | 高 | 🟡 已裁定（2026-11-05 · **1=B / 2=A（与 D8 裁定 2 合并答）/ 3=A**；§5.4 跨 IPC 取码已验通；实施卡待开工） | 同一章三次失败分别挂在三个不同层，失败原因互不相关且都无恢复路径。**实读后定性修正**：不是三个 bug，是**一条链上没有失败契约**——正文层 10 处抛点 + 主进程 4 处 + 组装层 4 处、共约 8 个码，且码全在 message 里不带 `code` 字段 | 短细纲层 / 重演层 / `GENERATION_COMPOSITION_NO_PROGRESS`；方案稿 [`architecture/d13-chapter-failure-contract-design.md`](../architecture/d13-chapter-failure-contract-design.md) |
+| D13 | 高 | 🟡 已裁定（2026-11-05 · **1=B / 2=A（与 D8 裁定 2 合并答）/ 3=A**；§5.4 跨 IPC 取码已验通；**实施已合并 `959a3647`**，其中 T5（裁定 2=A）因三条既有断言冲突标 BLOCKED 待裁） | 同一章三次失败分别挂在三个不同层，失败原因互不相关且都无恢复路径。**实读后定性修正**：不是三个 bug，是**一条链上没有失败契约**——正文层 10 处抛点 + 主进程 4 处 + 组装层 4 处、共约 8 个码，且码全在 message 里不带 `code` 字段 | 短细纲层 / 重演层 / `GENERATION_COMPOSITION_NO_PROGRESS`；方案稿 [`architecture/d13-chapter-failure-contract-design.md`](../architecture/d13-chapter-failure-contract-design.md) |
 | D14 | 高 | ✅ 已实施（已复验） | 卷结构三步（建卷结构 / 标卷完成 / 登记交接）全手动，生成流程从不调用、系统从不提示 → `l3-handoff-missing` 必然。**2026-11-02 已修**：建结构 + 推进进度改为自动（A 已实机复验，含历史回填），缺口提醒（B）沿用既有闸门、待第 10 章之后复验 | `VolumeHandoffRegistryPanel.tsx:269/293`（原全库唯一调用点）；`volumes` / `volume_units` / `volume_handoffs` 三表初始 0 行；`volumes.actual_last` 定稿后仍全 `null` |
 | D3 | 高 | ⬜ 待裁定 | `degraded=l3-handoff-missing` 提示过弱且不阻断（**根因见 D14**，两者同源） | `src/shared/synopsis-projection.ts:520`（push）、`:504–522`（`actual`/`plan` 回退）、`:351`（类型） |
 | D19 | 高 | ✅ 已实施（已复验） | `actual_last` 被当成卷末 ⇒ 卷边界随进度漂移，开写闸门提前一章弹、交接单漏本卷最后一章 | `src/shared/volume-structure.ts:285`（末章取 `actual_last ?? planned_last`）；`src/shared/volume-handoff-gate.ts:63`（闸门判上一卷）；`finalization-controller.ts:65`（推进在 finalize 之后） |
-| **D20** | **高** | 🟡 **已实施（2026-11-05 · 本体已合并 `eef01325`，待实机复验）**；**D20b（§4.6 收窄）已实施并合并（`115ff490`→`3248b967`）**；判定侧残留另开 D20c（见方案稿 §4.7） | **生成模板一变，旧大纲检查点就续不上，而报错断言「项目源事实已变化」**——指纹是 4 元的（源事实 / 步骤指导 / 批次范围 / **模板**），比对时只剩一个布尔值，文案却只认第 1 元。**实测只有「源事实 / 模板」两项可能漂移**（②③ 是拿检查点自己的值重算自己）。换数据根 / 换机器 / 改模板都会撞上，使用者无从查起。**指纹让「改内置模板」变成高风险操作**，两次输出合同变更因此只能走渲染期替换（红线 19 由此而来）。裁定 3 = **世界观链不改** | `architecture.command.ts:1124-1150`（指纹含 `JSON.stringify(template)`）· `:3135` `:3242`（两处报错文案）· **对照 `:2334` 点了模板（但只列 3 项）**；现场：D17 §7.4 第 1 条（`stored=13sbmpn / expected=tkj9w7`，12 个源事实字段 sha256 全一致）；方案稿 [`architecture/d20-checkpoint-template-fingerprint-design.md`](../architecture/d20-checkpoint-template-fingerprint-design.md)（**经独立复核打回后修订**，见其 §11）；**卡 `216dcf5b`** |
+| **D20** | **高** | 🟡 **已实施（2026-11-05 · 本体已合并 `eef01325`，待实机复验）**；**D20b（§4.6 收窄）已实施并合并（`115ff490`→`3248b967`）**；**D20c 判定侧收口已实施并合并（`4b510d2a` → `72b20beb`）**（见方案稿 §4.7） | **生成模板一变，旧大纲检查点就续不上，而报错断言「项目源事实已变化」**——指纹是 4 元的（源事实 / 步骤指导 / 批次范围 / **模板**），比对时只剩一个布尔值，文案却只认第 1 元。**实测只有「源事实 / 模板」两项可能漂移**（②③ 是拿检查点自己的值重算自己）。换数据根 / 换机器 / 改模板都会撞上，使用者无从查起。**指纹让「改内置模板」变成高风险操作**，两次输出合同变更因此只能走渲染期替换（红线 19 由此而来）。裁定 3 = **世界观链不改** | `architecture.command.ts:1124-1150`（指纹含 `JSON.stringify(template)`）· `:3135` `:3242`（两处报错文案）· **对照 `:2334` 点了模板（但只列 3 项）**；现场：D17 §7.4 第 1 条（`stored=13sbmpn / expected=tkj9w7`，12 个源事实字段 sha256 全一致）；方案稿 [`architecture/d20-checkpoint-template-fingerprint-design.md`](../architecture/d20-checkpoint-template-fingerprint-design.md)（**经独立复核打回后修订**，见其 §11）；**卡 `216dcf5b`** |
 | D4 | 中 | ⬜ 待裁定 | UI 散落「来源已变化」文案，但没有任何地方把它和批次中止关联 | `src/components/panels/AIOutputPanel.tsx:398` |
 | D5 | 中 | 🟡 已实施（2026-11-05，待实机） | 卷/单元结构输出里模板尖括号占位符原样保留 | `debug/prompt-trace/20261101-213138-718-弧光-d57a1d5d.json` → `ioCalls[0].output` |
-| D6 | 中 | 🟡 已裁定（2026-11-05 · **方向 A**，未开工） | 卷数由平台画像固定区间决定，与总章数解耦。裁定：卷数 = `f(totalChapters)`、代码算，画像只给「每卷章数区间」；**且 2026-10-19「卷/单元章数由模型决定」那条旧裁定被显式取代** | 同上 trace 的 `【节奏推荐】` 与「输出前自检」第 2 条；方案稿 [`architecture/d6-volume-count-source-design.md`](../architecture/d6-volume-count-source-design.md) §8 |
+| D6 | 中 | 🟡 已裁定（2026-11-06 · **方向 A 与裁定 6 已撤回**，重定义为 Prompt 层 + 算术层，未开工） | **卷纲层可弃**：5 卷 / 7 卷皆模型按背景材料的合理划分、重生成代价极小，卷数不进任何判据。**唯一目标 = 在该划分下完成预定字数**（每章字数由续写/重写保障 × 总章数由反馈收敛保障）。病因是 Prompt 的 `:743` / `:847` 把已知量挡在决策外（「信息在场、许可缺席」），不是「卷数没有事实源」 | 同上 trace 的 `【节奏推荐】` 与「输出前自检」第 2 条；方案稿 [`architecture/d6-volume-count-source-design.md`](../architecture/d6-volume-count-source-design.md) **§9（§0/§4/§7/§8 已被 §9 取代）** |
 | D7 | 中 | 🔍 已取证（2026-11-03）：「不符」**不成立**（两侧同一 `computeSynopsisUnitRange`，仅显示精度差）；「偏保守」成立且属模型行为 | 单元 → 章折算偏保守，且与对话框预告不符 | 对话框 `synopsis-unit-launch.ts:298` · 生成 `architecture.command.ts:2948` · prompt 精度 `arc-position.ts:960`；`partial_arch.json` 的 `synopsis_volume_deviations` |
 | D8 | 中 | 🟡 已裁定（2026-11-05 · **语义 A「整批重来」**，未开工） | 检查点残留导致模式自动降级，提示藏在段落里；同屏两个互相矛盾的章数。裁定 A 的理由：E3 单元化后「整批」的粒度已是一个单元，重来代价可接受；**语义 B（候选即前缀）整节作废**。**逐章路径保留**——单元模式有 7 种回退情形（开关关掉 / 骨架无单元划界 / incomplete / 检查点坏 / 检查点丢 / 定位失败 / 探针报错），它是这些情形的唯一出口 | `ArchitectureConfirmDialog.tsx:707`（10 章）vs `:932`（本批 5 章）；方案稿 [`architecture/d8-checkpoint-degradation-design.md`](../architecture/d8-checkpoint-degradation-design.md) §9 · §10.5 |
 | D15 | 中 | 🟡 已实施（2026-11-05，待实机） | 第 2 卷单元区间重叠（7–9 / 8–9 / 10–10），第 8、9 章归属不唯一 | `volume_units` 落库后读出的 `planned_first` / `planned_last` |
@@ -386,8 +386,9 @@ Tier 1 单独成立，就是本缺陷的主症状被修好的那一半：**run �
 
 ## D6（中）卷数由平台画像固定区间决定，与总章数解耦
 
-> 状态：待裁定（2026-11-01 · 未开工）
-> **方案稿（2026-11-05）**：[`../architecture/d6-volume-count-source-design.md`](../architecture/d6-volume-count-source-design.md)
+> 状态：已裁定（2026-11-06 · **方向 A 撤回、D6 重定义**，未开工）
+> ⚠️ **2026-11-06 口径修订**：本节「现象 / 实测」仍成立，但**结论已被方案稿 §9 取代** —— 卷数属卷纲层、重生成代价极小、不进任何判据；工程目标只有「每章字数 × 总章数」的反馈收敛。原文保留作历史记录，**别再照下面的「建议方向」做**。
+> **方案稿（2026-11-05，§9 为现行口径）**：[`../architecture/d6-volume-count-source-design.md`](../architecture/d6-volume-count-source-design.md)
 > **方案稿对本文的更正**：① 「卷数由画像单方面决定」应改成「模型在画像区间内**自己挑**，代码既不算也不校验」（`majors.length` 是消费端计数，且有 9 处各自读它，不是唯一决定点）；② 12 章缺口不是被某一环"吃掉"——`scaledBoundaries` 强制末条 = `total`，计划本身闭合，缺口来自「实写环（D7）× **终止环**（`architecture.command.ts:373` 单元用尽即判全书完成，全链无 `covered_to` 对账）」叠加 ⇒ **只修 D7 仍会在第 18 单元收尾**。
 
 ### 现象
