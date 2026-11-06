@@ -27,6 +27,20 @@
  * - `aligned` = 上一卷已整卷定稿，或作者已确认过；
  * - `ahead` = 大纲跑到了正文前面 ⇒ 调用方弹强提示（可取消）。
  *
+ * ## 判据为什么在 2026-11-06 扩成二维（D3）
+
+ * 原来只有一维：上一卷正文定稿到哪。但「正文写完没」与「本批大纲实际拿到什么材料」**不是同一件事**——
+ * L3 走「实际」还是「计划」取决于**卷末交接单在不在、能不能用**（`synopsis-projection.ts:504–522`）。
+ * 于是有两种降级被判成 `aligned`、界面零提示：
+ *
+ * | 形态 | 一维判据 | 实际 L3 |
+ * |---|---|---|
+ * | A 上一卷已整卷定稿，但作者没登记交接单 | aligned | plan |
+ * | B 有交接单但 `stale`（上游改过）⇒ 读取侧静默置 null | aligned | plan |
+ *
+ * A 是默认形态：交接单按 D14 的裁定**仍然手动登记**，作者没打开过那个面板就永远不会有。
+ * 所以二维判据的第二维是「上一卷交接单可用性」，见 `PreviousHandoffAvailability`。
+ *
  * ## 为什么定稿判据用「权威序列」而不是「最大定稿章号」
  *
  * `maxFinalized >= 上一卷末章` 在**中间有洞**时是错的（第 5 章没定稿、第 6 章定了，仍然放行），
@@ -38,8 +52,23 @@ import { volumeRangeEndingAt, type VolumeDefinition, type VolumeRange } from './
 
 export type OutlineProgressGateState = 'aligned' | 'ahead'
 
+/** 为什么会 `ahead` —— 面板据此说不同的话（三档的「该去做什么」完全不同）。 */
+export type OutlineProgressGateReason = 'prose-unfinalized' | 'handoff-missing' | 'handoff-stale'
+
+/**
+ * 上一卷卷末交接单在**本批大纲**这一步的可用性。
+ *
+ * - `usable`：有单、没过期、有内容 ⇒ L3 会用「实际」；
+ * - `missing`：没有这一卷的单，或单在但六栏全空（渲染出来是空节，投影仍走 plan）；
+ * - `stale`：有单但基于的上游已经改过。读取侧**不注入**（旧事实比没有更糟），投影走 plan；
+ * - `unknown`：判断不出（读失败 / 老库）。**fail-open：不因这一维打扰**，与一维时行为一致。
+ */
+export type PreviousHandoffAvailability = 'usable' | 'missing' | 'stale' | 'unknown'
+
 export interface OutlineProgressGate {
   state: OutlineProgressGateState
+  /** `aligned` 时为 `null`；`ahead` 时说明是哪一维没过。 */
+  reason: OutlineProgressGateReason | null
   /** 刚结束的那一卷（其有效末章 = 本批起始章 − 1）。 */
   range: VolumeRange
   /** 正文实况来源；`invalid` 表示章号账本有洞，按未定稿处理。 */
@@ -48,6 +77,8 @@ export interface OutlineProgressGate {
   draftLastChapter: number
   /** 还差几章才算整卷定稿。 */
   missingChapters: number
+  /** 第二维的事实；`reason` 为交接单两档时，面板只讲这一维，不再讲「还差几章」。 */
+  handoff: PreviousHandoffAvailability
 }
 
 /** 豁免表里的稳定键：一卷一条。撤销即「重新开始提醒」。 */
@@ -56,11 +87,14 @@ export function outlineProgressAckKey(volumeId: string): string {
 }
 
 /**
- * 从第 `chapterNumber` 章开始规划大纲时，上一卷的正文是否已经整卷定稿。
+ * 从第 `chapterNumber` 章开始规划大纲时，本批能不能拿到「上一卷实际写成了什么样」。
  *
  * 返回 `null` = **不适用**（这一章不是任何一卷的第一章）。判定「上一卷」用的是
  * `volumeRangeEndingAt(volumes, chapterNumber - 1)` —— 与定稿链的卷末章触发、开写闸门
  * 是同一个函数，三处不会各说各话。
+ *
+ * 两维依次判：**正文定稿**（拿不到实际结局）→ **交接单**（拿到了也不会被注入）。
+ * 第一维不过就不再看第二维：正文都没写完时，讲交接单是废话。
  */
 export function outlineProgressGateOf(input: {
   volumes: readonly VolumeDefinition[]
@@ -68,6 +102,8 @@ export function outlineProgressGateOf(input: {
   /** 已确认的稳定键（`outlineProgressAckKey` 的产物）。 */
   acknowledged: readonly string[]
   chapterNumber: number
+  /** 第二维。省略 = `unknown`（fail-open，等价于 2026-11-06 之前的一维行为）。 */
+  handoff?: PreviousHandoffAvailability
 }): OutlineProgressGate | null {
   if (!Number.isSafeInteger(input.chapterNumber) || input.chapterNumber < 2) return null
   const range = volumeRangeEndingAt(input.volumes, input.chapterNumber - 1)
@@ -77,11 +113,22 @@ export function outlineProgressGateOf(input: {
     ? Math.max(0, input.authority.lastChapterNumber)
     : 0
   const missingChapters = Math.max(0, range.last - draftLastChapter)
-  const base = { range, authorityStatus: input.authority.status, draftLastChapter, missingChapters }
+  const handoff = input.handoff ?? 'unknown'
+  const base = {
+    range,
+    authorityStatus: input.authority.status,
+    draftLastChapter,
+    missingChapters,
+    handoff,
+  }
   // 作者已点头 ⇒ 不再问（哪怕正文没写完：那是他自己选的「先铺大纲」）。
   if (input.acknowledged.includes(outlineProgressAckKey(range.volumeId))) {
-    return { ...base, state: 'aligned' }
+    return { ...base, state: 'aligned', reason: null }
   }
-  const aligned = input.authority.status !== 'invalid' && draftLastChapter >= range.last
-  return { ...base, state: aligned ? 'aligned' : 'ahead' }
+  const proseAligned = input.authority.status !== 'invalid' && draftLastChapter >= range.last
+  if (!proseAligned) return { ...base, state: 'ahead', reason: 'prose-unfinalized' }
+  // 正文写完了，但这一卷的交接单不可用 ⇒ L3 仍走 plan，只不过原因换了一个。
+  if (handoff === 'missing') return { ...base, state: 'ahead', reason: 'handoff-missing' }
+  if (handoff === 'stale') return { ...base, state: 'ahead', reason: 'handoff-stale' }
+  return { ...base, state: 'aligned', reason: null }
 }
