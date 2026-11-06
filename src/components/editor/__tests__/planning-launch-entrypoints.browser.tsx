@@ -13,6 +13,7 @@ import { useAgentStore } from '../../../stores/agent-store'
 import { useLLMStore } from '../../../stores/llm-store'
 import { useWorkflowStore } from '../../../stores/workflow-store'
 import { globalEventBus } from '../../../shared/event-bus'
+import { useSynopsisRouteStore } from '../../../stores/synopsis-route-store'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -249,4 +250,48 @@ it('★ D8: an interrupted candidate no longer degrades the unit route, and subm
     const intent = begin.authorInputs.find(input => input.id === 'architecture:planning-intent')!.text
     expect(intent).toContain('"synopsisRange":null')
   } finally { unsub() }
+})
+
+/**
+ * ★ D8b（2026-11-06 20:5x）：弹窗开着时把「按单元生成」切关，
+ * 显示侧必须**立刻**跟配置走 —— 不能同时出现「单元模式：…」与「未按单元生成：…」两套说明。
+ * 实机 19:5x 就是这个现象：提交侧读配置（对），显示侧还在用打开弹窗时算的探针结果。
+ */
+it('★ D8b: turning the unit-mode setting off while the dialog is open flips the dialog to the chapter range', async () => {
+  let unitModeEnabled = true
+  invoke.mockImplementation(async (channel: string) => {
+    if (channel === 'config:get') return { outlineTargetUnits: 650, synopsisUnitMode: unitModeEnabled }
+    if (channel === 'config:set') return { success: true }
+    if (channel === 'generation:list' || channel === 'skills:list-user') return []
+    if (channel === 'fs:check-exists') return false
+    if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
+    if (channel === 'db:project-core-get') {
+      return {
+        premise: '故事前提'.repeat(20), worldbuilding: '世界设定'.repeat(20), synopsis: '',
+        plotStructurePlan: UNIT_PLAN, totalChapters: 20,
+      }
+    }
+    if (channel === 'db:character-roster-read') return { status: 'ready', renderedMarkdown: '角色名单'.repeat(20), entries: [] }
+    if (channel === 'db:blueprint-get-all') return []
+    if (channel === 'fs:read-json') return { success: true, data: { synopsis_covered_to: 0 } }
+    if (channel === 'generation:begin') throw new Error('PLANNING_ENTRY_BOUNDARY_OBSERVED')
+    throw new Error(`Unexpected IPC ${channel}`)
+  })
+  try {
+    await act(async () => root.render(<ArchFileViewer tabId="planning-outline-switch" filePath="ai-novel://core/synopsis" projectKey={project.path} content="" savedContent="" />))
+    await act(async () => page.getByRole('button', { name: 'AI 生成', exact: true }).click())
+    // 弹窗走 portal 挂在 body 上，不在 container 里
+    const dialogText = () => Array.from(document.querySelectorAll('[role="dialog"]'))
+      .map(el => el.textContent ?? '').join('\n')
+    await vi.waitFor(() => expect(dialogText()).toContain('单元模式：'))
+
+    unitModeEnabled = false
+    await act(async () => { useSynopsisRouteStore.setState({ unitRouteEnabled: false }) })
+
+    await vi.waitFor(() => expect(dialogText()).not.toContain('单元模式：'))
+    // 章号起终点必须回来：配置既然关掉了单元路线，作者要能按区间生成
+    await vi.waitFor(() => expect(document.querySelector('input[aria-label="本次生成范围的结束章"]')).toBeTruthy())
+  } finally {
+    await act(async () => { useSynopsisRouteStore.setState({ unitRouteEnabled: true }) })
+  }
 })

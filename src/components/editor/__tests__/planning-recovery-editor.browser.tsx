@@ -65,6 +65,8 @@ beforeEach(() => {
   useLocaleStore.setState({ locale: 'zh-CN', initialized: true })
   setActiveProjectSessionContext(session)
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
+    // 本文件覆盖旧路线（章节起终点）下的恢复稿续写语义，显式关掉卷/单元模式。
+    if (channel === 'config:get') return { synopsisUnitMode: false }
     if (channel === 'generation:read-context') return context
     if (channel === 'db:project-core-synopsis-commit' || channel === 'db:blueprint-commit-range') {
       savedPayload = args[0]

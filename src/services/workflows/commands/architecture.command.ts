@@ -1646,6 +1646,60 @@ function assertCheckpointDbMirrorCurrent(
   return checkpointBody
 }
 
+/**
+ * D8b（2026-11-06 20:5x，作者四条订正）：**从 DB 正式大纲推导「已确认前缀」**。
+ *
+ * 用于「本批尚未开始」这一形态 —— 上一批已落稿、本批一个字都没产出。
+ * 此前这里是 `assertCheckpointDbMirrorCurrent` 的死结：它要求检查点里那份
+ * **未落稿的大纲生成物**非空且渲染后等于 DB，用候选去担保正式产物没被手改；
+ * 可候选一旦被合法作废（清场 / 取消），守卫就失去依据，把作者逼向「从第 1 章重来」。
+ * 作者 20:4x 裁定：① 那份是**大纲生成物**不是正文；② 未落稿的东西不该作为正式产物被守护。
+ * ⇒ 前缀直接取自 DB 正式大纲，防手改由调用方的 `synopsis_db_hash` 校验负责。
+ */
+function confirmedPrefixFromDbOutline(
+  dbOutlineText: string,
+  writingLanguage: WritingLanguage,
+  totalChapters: number,
+  from: number,
+  text: (zhCNText: string, enUSText: string) => string,
+): string {
+  if (from <= 1) return ''
+  const heading = `# ${promptLanguageText(writingLanguage, '情节大纲', 'Plot Outline')}\n\n`
+  const completeCheckpoint = { synopsis_incomplete: false, synopsis_covered_to: from - 1 }
+  const suffix = renderSynopsisDbText('', writingLanguage, totalChapters, completeCheckpoint).slice(heading.length)
+  if (!dbOutlineText.startsWith(heading) || !dbOutlineText.endsWith(suffix)) {
+    throw new Error(text(
+      '正式大纲格式已变化，不能按现有进度继续生成。请在「AI 生成故事架构」从第 1 章重新生成。',
+      'The formal outline format changed, so this batch cannot be continued at the current progress. Regenerate from chapter 1 in “Generate story architecture”.',
+    ))
+  }
+  const confirmedPrefix = dbOutlineText.slice(heading.length, -suffix.length)
+  if (!confirmedPrefix
+    || renderSynopsisDbText(confirmedPrefix, writingLanguage, totalChapters, completeCheckpoint) !== dbOutlineText
+  ) {
+    throw new Error(text(
+      '正式大纲与已确认的前缀不一致，不能按现有进度继续生成。请在「AI 生成故事架构」从第 1 章重新生成。',
+      'The formal outline does not match its confirmed prefix, so this batch cannot be continued at the current progress. Regenerate from chapter 1 in “Generate story architecture”.',
+    ))
+  }
+  return confirmedPrefix
+}
+
+/**
+ * 「本批尚未开始且没有候选」的判定：`covered_to` 停在 `range.from - 1`、旗标未置、生成物缺失。
+ *
+ * 这就是 D8 清场之后、以及「重写这一个单元」回退之后的干净形态 ——
+ * 本批一个字都没产出，**没有生成物是正常的**，不是损坏。
+ */
+function isPendingBatchWithoutCandidate(partial: PartialArchData, coveredTo: number): boolean {
+  if (partial.synopsis_incomplete === true) return false
+  const range = partial.synopsis_range
+  if (!range || !Number.isSafeInteger(range.from)) return false
+  if (coveredTo !== range.from - 1) return false
+  const body = typeof partial.synopsis_result === 'string' ? partial.synopsis_result.trim() : ''
+  return body === ''
+}
+
 export function hasVisibleIncompleteSynopsisMarker(dbOutlineText: string): boolean {
   return dbOutlineText.includes('本大纲未完成')
     || dbOutlineText.includes('This outline is incomplete')
@@ -3434,18 +3488,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
       if (this.requireGenerationExecution().mainOwned) {
         if (partial.synopsis_db_hash !== synopsisFactsFingerprint([sourceExpected.synopsis])) throw new Error(text('正式大纲已变化，不能采用旧候选。', 'The formal outline changed; the old candidate cannot be adopted.'))
         seedText = (await this.readMainVisibleComposition())?.text ?? ''
-        if (from > 1) {
-          const heading = `# ${promptLanguageText(writingLanguage, '情节大纲', 'Plot Outline')}\n\n`
-          const completeCheckpoint = { synopsis_incomplete: false, synopsis_covered_to: from - 1 }
-          const suffix = renderSynopsisDbText('', writingLanguage, totalChapters, completeCheckpoint).slice(heading.length)
-          if (!sourceExpected.synopsis.startsWith(heading) || !sourceExpected.synopsis.endsWith(suffix)) {
-            throw new Error(text('正式大纲格式已变化，不能恢复续批。', 'The formal outline format changed, so this batch cannot be resumed.'))
-          }
-          confirmedPrefix = sourceExpected.synopsis.slice(heading.length, -suffix.length)
-          if (!confirmedPrefix || renderSynopsisDbText(confirmedPrefix, writingLanguage, totalChapters, completeCheckpoint) !== sourceExpected.synopsis) {
-            throw new Error(text('正式大纲与已确认前缀不一致，不能恢复续批。', 'The formal outline does not match the confirmed prefix, so this batch cannot be resumed.'))
-          }
-        }
+        confirmedPrefix = confirmedPrefixFromDbOutline(sourceExpected.synopsis, writingLanguage, totalChapters, from, text)
       } else {
       seedText = assertCheckpointDbMirrorCurrent(
         partial,
@@ -3539,6 +3582,30 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
           // 裁定 A / 裁定 2：放行，但不许静默——归因必须显示出来。
           callbacks.log(verdict.message)
         }
+        if (isPendingBatchWithoutCandidate(partial, coveredTo)) {
+          /**
+           * D8b（作者 2026-11-06 20:4x 四条订正）：**本批尚未开始** —— 上一批已落稿、本批没有产出。
+           * 未落稿的候选不该被当成正式产物守护，所以这里**不要求** `synopsis_result`：
+           * 前缀取自 DB 正式大纲，防手改仍由 `synopsis_db_hash` 负责。
+           * 实机（19:56）就是在这里抛「检查点缺少正文」，把作者逼回「从第 1 章重新生成」。
+           */
+          if (partial.synopsis_db_hash === undefined) {
+            throw new Error(text(
+              '续批检查点没有数据库镜像指纹，无法确认大纲未被手动修改。请从「AI 生成故事架构」从第 1 章重新生成大纲。',
+              'The continuation checkpoint has no database-mirror fingerprint, so we cannot confirm the outline was not edited by hand. Regenerate the outline from chapter 1 in “Generate story architecture”.',
+            ))
+          }
+          if (partial.synopsis_db_hash !== synopsisFactsFingerprint([sourceExpected.synopsis])) {
+            throw new Error(text(
+              '情节大纲正文在上次生成后已被手动修改，续批会覆盖这些修改，已拒绝。'
+                + '如需保留修改，请基于修改后的正文从第 1 章重新生成；若该修改有误，请先撤销后再续批。',
+              'The outline body was manually edited after the last generation; continuing would overwrite those edits, so it was rejected. '
+                + 'To keep the edits, regenerate from chapter 1 on top of them; if the edit was a mistake, revert it before continuing.',
+            ))
+          }
+          confirmedPrefix = confirmedPrefixFromDbOutline(sourceExpected.synopsis, writingLanguage, totalChapters, from, text)
+          seedText = ''
+        } else {
         seedText = assertCheckpointDbMirrorCurrent(
           partial,
           sourceExpected.synopsis,
@@ -3547,6 +3614,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
           text,
         )
         if (this.requireGenerationExecution().mainOwned) confirmedPrefix = seedText
+        }
         mode = 'batch'
       }
     }

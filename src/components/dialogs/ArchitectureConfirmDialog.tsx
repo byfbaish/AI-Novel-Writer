@@ -243,6 +243,10 @@ export default function ArchitectureConfirmDialog({
    * 这里只是展示；真正的判定仍在确认时（父组件）与命令侧 `approveUnitContext`。
    */
   const [unitPreview, setUnitPreview] = useState<SynopsisUnitProbeResult | null>(null)
+  /** ★ D8：路线判据 = 配置开关，不是「本次探针有没有成功」。配置开着却算不出单元时，
+   * 只给人话说明，绝不把章节连选控件整套露出来（04:56 / 05:03 作者裁定）。
+   * 声明在探针 effect 之前：配置切换要触发重探，依赖数组里必须能取到它。 */
+  const unitRouteEnabled = useSynopsisRouteStore(s => s.unitRouteEnabled)
   const totalChapterCount = Number(currentProject?.novelConfig.totalChapters) || 0
   useEffect(() => {
     // T11 起这是正式行为（开关在设置里，默认开）——不再有 DEV 锁，探针自己读配置。
@@ -262,12 +266,9 @@ export default function ArchitectureConfirmDialog({
       .then(result => { if (!disposed) setUnitPreview(result) })
       .catch(() => { if (!disposed) setUnitPreview(null) })
     return () => { disposed = true }
-  }, [isOpen, currentProject, totalChapterCount])
+  }, [isOpen, currentProject, totalChapterCount, unitRouteEnabled])
   /** 本次走单元模式时，章号区间与「续写」都不再参与生成。 */
   const unitMode = unitPreview?.unit ?? null
-  /** ★ D8：路线判据 = 配置开关，不是「本次探针有没有成功」。配置开着却算不出单元时，
-   * 只给人话说明，绝不把章节连选控件整套露出来（04:56 / 05:03 作者裁定）。 */
-  const unitRouteEnabled = useSynopsisRouteStore(s => s.unitRouteEnabled)
   /** 闸门读侧与面板共用的会话；`null` = 还没有可用的项目会话（不拦）。 */
   const dialogSession = captureProjectSession(currentProject)
   /** 连写的硬上限 = 本卷还剩几个单元（v1 不跨卷）。读不到卷结构就只让写 1 个。 */
@@ -750,7 +751,7 @@ export default function ArchitectureConfirmDialog({
                     )}
                   </div>
                 )}
-                {unitMode ? (
+                {unitMode && unitRouteEnabled ? (
                   <div className="space-y-1.5">
                     <div
                       role="status"

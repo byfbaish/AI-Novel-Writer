@@ -139,6 +139,8 @@ function ArchFileViewerSession({
   const recoveryTab = useEditorStore(s => s.tabs.find(tab => tab.id === tabId && tab.planningRecovery))
   /** ★ D8：卷单元路线不保留章节连选，恢复稿 Tab 的续批入口按同一开关静默。 */
   const unitRouteEnabled = useSynopsisRouteStore(s => s.unitRouteEnabled)
+  /** 挂载时同步一次配置：store 默认 `true`，不同步会把旧路线的入口误藏。 */
+  useEffect(() => { void syncSynopsisRoute() }, [])
   /** 弧光结构内容是否由枚举模板兜底（老模板用户）。作者保存一次后自动清除。 */
   const archEnumFallback = useEditorStore(s => s.tabs.find(tab => tab.id === tabId)?.archEnumFallback ?? false)
 

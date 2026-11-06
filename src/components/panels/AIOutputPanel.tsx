@@ -17,6 +17,7 @@ import {
 } from '../../stores/workflow-store'
 import { useLayoutStore } from '../../stores/layout-store'
 import { openPlanningRecoveryDraft, useEditorStore } from '../../stores/editor-store'
+import { useSynopsisRouteStore } from '../../stores/synopsis-route-store'
 import { useProjectStore } from '../../stores/project-store'
 import {
   projectSessionContextFromProject,
@@ -279,6 +280,14 @@ const candidateTextButtonStyle = { width: 'fit-content', height: 'auto' } as con
 function MainDraftRecoverySection({ session, locale, refreshKey }: {
   session: ProjectSessionContext | null; locale: Locale; refreshKey: number
 }) {
+  /**
+   * ★ D8b（2026-11-06 20:5x，作者裁定）：卷/单元模式下**不出现**情节大纲的中断候选。
+   *
+   * 作者原话：「在卷单元模式下，右边这份残缺产物都不应该出现，因为在这个模式下去做大纲的
+   * 断点续写，会冲击反馈收敛机制。而如果在右边保留续写动作，某种形式上是在鼓励这个行为。」
+   * ⇒ 只隐藏「大纲恢复稿」这一类（`plotOutlineRecovery`）；蓝图恢复稿不属 D8，保持原样。
+   */
+  const unitRouteEnabled = useSynopsisRouteStore(s => s.unitRouteEnabled)
   const [runs, setRuns] = useState<Array<{ view: MainGenerationRunView; recovery: GenerationRecoveryContext }>>([])
   const [planningRuns, setPlanningRuns] = useState<GenerationRecoveryContext[]>([])
   const [batches, setBatches] = useState<GenerationBatchHistory[]>([])
@@ -348,7 +357,14 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
   if (!visibleRuns.length && !visibleBatches.length && !visibleReviews.length && !visibleAgents.length && !visibleEditors.length && !visiblePlanning.length && !error) return null
   return <section className="max-h-80 overflow-y-auto border-b p-3 text-xs" aria-label={runText(locale, '持久正文候选', 'Saved draft candidates')}>
     {error && <p role="alert">{error}</p>}
-    {visiblePlanning.map(recovery => <article key={recovery.handle.runId} className="mb-3">
+    {visiblePlanning.map(recovery => (unitRouteEnabled && recovery.plotOutlineRecovery
+      ? <article key={recovery.handle.runId} className="mb-3">
+        <p>{runText(locale, '大纲恢复稿', 'Outline recovery draft')}</p>
+        <p style={{ color: 'var(--color-text-muted)' }}>{runText(locale,
+          '这次大纲生成中断了。按单元生成时不保留未完成的候选，也不会从断处接着写；重新生成会从本单元开头重来。',
+          'This outline run was interrupted. Unit-by-unit generation keeps no unfinished candidate and does not continue from the break point; generating again restarts at the beginning of this unit.')}</p>
+      </article>
+      : <article key={recovery.handle.runId} className="mb-3">
       <p>{runText(locale, recovery.plotOutlineRecovery ? '大纲恢复稿' : '蓝图恢复稿', recovery.plotOutlineRecovery ? 'Outline recovery draft' : 'Blueprint recovery draft')}</p>
       <p>{runText(locale, '自动生成已保留候选。可编辑并本地保存，或明确继续缺少的章节。', 'The candidate is preserved. Edit and save it locally, or explicitly generate the remaining chapters.')}</p>
       <button type="button" className="icon-btn px-2" style={candidateTextButtonStyle} disabled={busy} onClick={() => { void act(async () => {
@@ -356,7 +372,7 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
         if (!sameProjectSessionContext(session, projectSessionContextFromProject(useProjectStore.getState().currentProject))) return
         openPlanningRecoveryDraft(fresh, session.projectPath, runText(locale, fresh.plotOutlineRecovery ? '大纲恢复稿' : '蓝图恢复稿', fresh.plotOutlineRecovery ? 'Outline recovery draft' : 'Blueprint recovery draft'))
       }) }}>{runText(locale, '编辑恢复稿', 'Edit recovery draft')}</button>
-    </article>)}
+    </article>))}
     {visibleEditors.map(recovery => <article key={recovery.view.handle.runId} className="mb-3">
       <p>{runText(locale, '编辑器选区建议', 'Editor selection suggestion')}</p>
       <p className="whitespace-pre-wrap">{recovery.context.selectedText.slice(0, 100)}</p>
@@ -1042,6 +1058,11 @@ function WorkflowFailureNotice({
   onResumeSynopsis?: () => void
 }) {
   const currentProject = useProjectStore(s => s.currentProject)
+  /**
+   * ★ D8b（2026-11-06 20:5x，作者裁定）：卷/单元模式下**不给**情节大纲的断点续写入口 ——
+   * 「在这个模式下去做大纲的断点续写，会冲击反馈收敛机制……保留续写动作某种形式上是在鼓励这个行为」。
+   */
+  const unitRouteEnabled = useSynopsisRouteStore(s => s.unitRouteEnabled)
   const presentation = presentWorkflowFailure(
     failureCode,
     error,
@@ -1117,7 +1138,17 @@ function WorkflowFailureNotice({
         )}
 
         {/* 断点续写：已完成部分已自动保存，点击后 AI 接着往下写 */}
-        {resumeSynopsisAvailable && (
+        {/* D8b：卷/单元模式下不给续写入口，只说明本次中断、重新生成即从本单元开头重来 */}
+        {resumeSynopsisAvailable && unitRouteEnabled && (
+          <p className="m-0 mt-2" style={{ color: 'var(--color-text-muted)' }}>
+            {runText(
+              locale,
+              '这次大纲生成中断了。按单元生成时不保留未完成的候选，也不会从断处接着写；重新生成会从本单元开头重来。',
+              'This outline run was interrupted. Unit-by-unit generation keeps no unfinished candidate and does not continue from the break point; generating again restarts at the beginning of this unit.',
+            )}
+          </p>
+        )}
+        {resumeSynopsisAvailable && !unitRouteEnabled && (
           <div className="mt-2">
             <button
               type="button"

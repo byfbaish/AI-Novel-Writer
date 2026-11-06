@@ -20,7 +20,7 @@ import {
   reportSynopsisUnitProbe,
 } from '../../services/workflows/synopsis-unit-launch'
 import { applySynopsisRouteSubmit } from '../../services/workflows/synopsis-candidate-discard'
-import { syncSynopsisRoute } from '../../stores/synopsis-route-store'
+import { syncSynopsisRoute, useSynopsisRouteStore } from '../../stores/synopsis-route-store'
 import type { ArchitectureUnitRange } from '../../shared/generation-owner-contract'
 import { useSynopsisUnitChainStore } from '../../stores/synopsis-unit-chain-store'
 import { globalEventBus } from '../../shared/event-bus'
@@ -138,6 +138,14 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
   const [loading, setLoading] = useState(true)
   const [showArchDialog, setShowArchDialog] = useState(false)
   const lastCompletedArchitectureRunRef = useRef<string | null>(null)
+  /**
+   * ★ D8b（2026-11-06 20:5x，作者裁定）：卷/单元模式下**不露**章节连选入口
+   * （「断点续写大纲」「续批（第 N 章起）」及候选区的「断点续写」）——
+   * 「在这个模式下去做大纲的断点续写，会冲击反馈收敛机制……保留续写动作是在鼓励这个行为」。
+   * 挂载时同步一次配置，避免 store 默认值与配置不一致把旧模式的入口误藏。
+   */
+  const unitRouteEnabled = useSynopsisRouteStore(s => s.unitRouteEnabled)
+  useEffect(() => { void syncSynopsisRoute() }, [])
   const archStatusRequestGate = useRef(new LatestRequestGate())
   const {
     snapshot: rosterSnapshot,
@@ -855,6 +863,9 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
                           <Copy size={12} />
                           {text('复制', 'Copy')}
                         </Button>
+                        {/* D8b：卷/单元模式下不给情节大纲的续写/编辑恢复稿入口（作者 20:5x 裁定）。
+                            蓝图候选不属本口径，保持原样。 */}
+                        {(!isSynopsisCandidate || !unitRouteEnabled) && (
                         <Button
                           size="sm"
                           disabled={candidateBusy || !candidateHandle || loading}
@@ -870,6 +881,7 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
                           <RefreshCw size={12} className={candidateBusy ? 'animate-spin' : ''} />
                           {isSynopsisCandidate && planningRecovery ? text('编辑恢复稿', 'Edit recovery draft') : candidateBusy ? text('续写中...', 'Resuming...') : text('断点续写', 'Resume')}
                         </Button>
+                        )}
                       </div>
                       {!candidateHandle && <span role="status" className="text-xs text-[var(--color-warning-text)]">
                         {text('此候选无法确认恢复来源，可查看或复制后重新生成。', 'Recovery source unavailable. View or copy this candidate, then generate again.')}
@@ -897,7 +909,7 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
                       <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
                         {words.toLocaleString()} {text('字符', 'characters')}
                       </span>
-                      {f.key === 'synopsis' && synopsisIncomplete && !loading && (
+                      {f.key === 'synopsis' && synopsisIncomplete && !loading && !unitRouteEnabled && (
                         <Button
                           size="sm"
                           disabled={synopsisBusy}
@@ -921,7 +933,7 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
                         </Button>
                       )}
                       {f.key === 'synopsis' && !synopsisIncomplete && !synopsisRecoveryFailed
-                        && synopsisCoveredTo > 0 && synopsisCoveredTo < synopsisTotalChapters && !loading && (
+                        && synopsisCoveredTo > 0 && synopsisCoveredTo < synopsisTotalChapters && !loading && !unitRouteEnabled && (
                         <Button
                           size="sm"
                           disabled={synopsisBusy}

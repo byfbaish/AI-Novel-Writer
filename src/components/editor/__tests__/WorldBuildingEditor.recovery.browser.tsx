@@ -18,6 +18,8 @@ let core: Record<string, unknown>
 let composition: unknown
 let readFails: boolean
 let startWorkflow: ReturnType<typeof vi.fn>
+/** 本文件覆盖的是**旧路线（章节起终点）**下的候选镜像语义，故显式关掉卷/单元模式。 */
+let unitRoute = false
 const originalStart = useWorkflowStore.getState().startWorkflow
 function button(label: string) {
   const result = [...container.querySelectorAll('button')].find(node => node.textContent?.includes(label))
@@ -30,11 +32,13 @@ beforeEach(() => {
   core = { synopsis: '', worldbuilding: '', totalChapters: 20 }
   composition = null
   readFails = false
+  unitRoute = false
   startWorkflow = vi.fn().mockResolvedValue(undefined)
   useWorkflowStore.setState({ startWorkflow: startWorkflow as typeof originalStart, activeRuns: [], history: [], currentRun: null })
   useProjectStore.setState({ currentProject: { id: session.projectId, name: '候选测试', path: session.projectPath, sessionLease: session.leaseId, novelConfig: { genre: '', targetAudience: '', coreOutline: '真实合成测试核心设定'  } } as never })
   setActiveProjectSessionContext(session)
   invoke = vi.fn(async (channel: string) => {
+    if (channel === 'config:get') return { synopsisUnitMode: unitRoute }
     if (channel === 'db:project-core-get') return core
     if (channel === 'fs:read-json') return { success: true, data: partial }
     if (channel === 'db:resources-list') return { success: true, resources: [] }
@@ -104,6 +108,20 @@ describe('首次架构候选恢复', () => {
       })
     }
   }
+
+  /**
+   * ★ D8b（2026-11-06 20:5x，作者裁定）：卷/单元模式下右边不出现情节大纲的续写入口 ——
+   * 「在这个模式下去做大纲的断点续写，会冲击反馈收敛机制……保留续写动作是在鼓励这个行为」。
+   */
+  it('卷/单元模式下 synopsis 候选不给「断点续写」入口', async () => {
+    unitRoute = true
+    partial = { synopsis_incomplete: true, synopsis_generation_handle: handle }
+    composition = { algorithm: 'visible-append-v1', text: '首轮候选\n', textHash: 'a'.repeat(64), artifactIds: ['artifact-1'], sources: [] }
+    await render()
+    await act(async () => button('查看候选').click())
+    expect(container.querySelector('pre')?.textContent).toBe('首轮候选\n')
+    expect([...container.querySelectorAll('button')].some(node => node.textContent?.includes('断点续写'))).toBe(false)
+  })
 })
 
 describe('资源登记已并入独立页面（W6a-5）', () => {

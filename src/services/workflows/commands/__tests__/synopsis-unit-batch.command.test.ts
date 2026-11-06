@@ -7,6 +7,7 @@ import { GeneratePlotArchitectureCommand, isSynopsisSkeletonComplete, renderSyno
 import { createWorkflowRuntimeDependencies } from './workflow-generation-runtime.fixture'
 import { clearProjectCustomPrompts, getBuiltinPromptTemplate } from '../../../prompt-templates'
 import type { ArchitectureUnitRange } from '../../../../shared/generation-owner-contract'
+import { discardSynopsisCandidate } from '../../synopsis-candidate-discard'
 
 /**
  * E3 T4b：逐单元批次的状态机接线。
@@ -252,6 +253,48 @@ describe('GeneratePlotArchitectureCommand 逐单元批次', () => {
     expect(saved.synopsis_facts_fingerprint).toBe(currentFingerprint({ from: 6, to: 9 }))
     // 卷一写完：计划 30 章、实际 9 章 ⇒ 累计偏离 −21（实际预期 = 60 − 21 = 39）
     expect(saved.synopsis_volume_deviations).toEqual([{ volumeIndex: 1, planned: 30, actual: 9 }])
+  })
+
+  it('★ D8b：清场后「本批尚未开始」，续批只用 DB 正式大纲作前缀，不再抛「检查点缺少正文」', async () => {
+    // 作者 2026-11-06 20:4x 四条：删掉的是**大纲生成物**不是正文；未落稿的东西不该作为正式产物被守护。
+    // 实机 19:56 在 `assertCheckpointDbMirrorCurrent` 抛「检查点缺少正文」，把作者逼回「从第 1 章重新生成」。
+    const stream = responseStream([chapters(1, 5), chapters(6, 9)])
+    useLLMStore.setState({ defaultModelId: 'model-1', generateStream: stream })
+    const ipc = harness()
+
+    await makeCommand({ from: 1, unitIndex: 1, maxChapters: 15, volumeRemaining: 30 })
+      .execute({ step: {}, context, callbacks })
+    const completed = ipc.partialWrites.at(-1)!
+    expect(completed.synopsis_result).toBeTruthy()
+    expect(completed.synopsis_db_hash).toBeTruthy()
+    expect(completed.synopsis_step_guidance).toBeDefined()
+
+    // 模拟「下一批开了个头又中断」：range 指向本批、covered_to 停在上一批末尾、生成物是残本
+    await window.aiNovelAPI!.invoke('fs:write-json', 'checkpoint.json', {
+      ...completed,
+      synopsis_incomplete: true,
+      synopsis_generation_handle: { runId: 'interrupted-run' },
+      synopsis_result: chapters(6, 7),
+      synopsis_range: { from: 6, to: 9 },
+      synopsis_covered_to: 5,
+    })
+
+    // D8 清场（与 synopsis-candidate-discard 同语义）：只作废旗标 / handle / 未落稿生成物
+    await discardSynopsisCandidate(context.projectSession)
+    const cleared = ipc.partialWrites.at(-1)!
+    expect(cleared.synopsis_result).toBeUndefined()
+    expect(cleared.synopsis_incomplete).toBeUndefined()
+    expect(cleared.synopsis_range).toEqual({ from: 6, to: 9 })
+    expect(cleared.synopsis_covered_to).toBe(5)
+    expect(cleared.synopsis_db_hash).toBe(completed.synopsis_db_hash)
+
+    // 下一单元：旧实现会在这里抛「情节大纲检查点缺少正文，无法安全续写」
+    await makeCommand({ from: 6, unitIndex: 2, maxChapters: 15, volumeRemaining: 30 })
+      .execute({ step: {}, context, callbacks })
+
+    const saved = ipc.partialWrites.at(-1)!
+    expect(saved.synopsis_covered_to).toBe(9)
+    expect(promptText(stream, 1)).toContain('单元 2')
   })
 
   it('断点续写：中断检查点（range = boundTo、游标未推进）续写后按实际章数落盘并推进游标', async () => {
