@@ -9,7 +9,8 @@
  *   点空间下的会话卡片 = 复用那条会话（spawn exe 传路径实测不可靠，已弃用）；
  * - 会话归属以本地 sqlite（~/.workbuddy/workbuddy.db）为准：派活前核对 cwd，不在 wt-2 就拒绝；
  * - 默认**复用上一轮会话**（单会话多轮，不重读章程），--new 才开新会话；
- * - 退出码：0 完成 / 1 失败 / 2 未连接（NEED_HUMAN_DEBUG） / 3 兜底 CLI 缺失 / 4 超时 / 5 高峰时段拒绝派活。
+ * - 退出码：0 完成 / 1 失败 / 2 未连接（NEED_HUMAN_DEBUG） / 4 超时 / 5 高峰时段拒绝派活。
+ * - 2026-11-07：headless 兜底通道（`codebuddy -p`）已连同 npm 包一起移除，本脚本是唯一入口。
  */
 
 import fs from 'node:fs'
@@ -18,7 +19,6 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
 
-import { createRunId, slugify, parseArgv } from './cli.mjs'
 import { listTargets, connect, createClient, sleep } from '../doubao/cdp.mjs'
 import { extractMarkers, isTerminalQueueMarker } from '../doubao/markers.mjs'
 import {
@@ -43,6 +43,9 @@ import {
   summarizeSnapshot,
   buildModelItemsExpression,
   buildModelOptionExpression,
+  parseArgv,
+  createRunId,
+  slugify,
 } from './attach.mjs'
 import {
   ALLOWED_MODELS,
@@ -62,7 +65,7 @@ const SESSION_RECORD = path.join(REPO_ROOT, '.runtime', 'workbuddy', 'last-sessi
 
 const BOOLEAN_FLAGS = ['--new', '--keep', '--json', '--force', '--no-wait', '--help', '--quiet']
 
-/** parseArgv 存的是去掉 -- 的裸名（见 cli.mjs），这里统一按裸名查，兼容带 -- 的旧写法。 */
+/** parseArgv 存的是去掉 -- 的裸名（见 attach.mjs），这里统一按裸名查，兼容带 -- 的旧写法。 */
 function matches(collection, name) {
   return collection.has(name) || collection.has('--' + name)
 }

@@ -1,9 +1,8 @@
 /**
  * WorkBuddy 桌面通道（attach / CDP）—— 纯函数层。
  *
- * 与 cli.mjs（headless codebuddy -p 兜底通道）并列：
- * - CLI 通道要一次性登录，且拿不到桌面端登录态/积分；
- * - attach 通道复用用户已登录的桌面实例，走 CDP 驱动真实 UI，单会话可多轮。
+ * attach 通道复用用户已登录的桌面实例，走 CDP 驱动真实 UI，单会话可多轮；
+ * 与 Copilot / 豆包通道「独立 CLI 进程」的形态不同（见 docs/agents/workbuddy-channel.md）。
  *
  * 本文件不碰网络、不碰文件系统：所有 DOM/字符串处理都能被单测直接调用。
  * 选择器集中在这里 —— WorkBuddy 升级后只需要改这一个文件。
@@ -405,6 +404,70 @@ export function buildTailTextExpression(selectors = SELECTORS) {
     'if(!texts.length) return "";' +
     'return texts[texts.length-1].slice(-20000);' +
     '})()'
+}
+
+/* ---------------------------------------------------------------------------
+ * 通用小工具（2026-11-07 由被移除的 headless 通道 cli.mjs 并入）
+ *
+ * 这几个函数与「起不起 CLI 进程」无关，attach 通道一直在用：运行目录名、目录 slug、
+ * 参数切分。headless（`codebuddy -p`）整条通道撤掉后，把仍然需要的部分留在这里，
+ * 避免为了三个纯函数再养一个文件。
+ * ------------------------------------------------------------------------- */
+
+/**
+ * CLI 参数切分：`--flag` 是布尔，`--name value` 成对，其余是位置参数。
+ *
+ * 早先的写法是「上一个参数不是 `--` 开头就算位置参数」——`run --dry-run "任务"`
+ * 会把任务吞掉（2026-11-05 实测踩过）。这里显式声明布尔 flag，值不会被误判。
+ */
+export function parseArgv(argv = [], booleanFlags = []) {
+  const flags = new Set()
+  const options = new Map()
+  const positionals = []
+  const booleans = new Set(booleanFlags)
+  for (let index = 0; index < argv.length; index += 1) {
+    const token = String(argv[index])
+    if (!token.startsWith('--')) {
+      positionals.push(token)
+      continue
+    }
+    const name = token.slice(2)
+    const next = argv[index + 1]
+    if (booleans.has(name) || next === undefined || String(next).startsWith('--')) {
+      flags.add(name)
+    } else {
+      options.set(name, String(next))
+      index += 1
+    }
+  }
+  return { flags, options, positionals }
+}
+
+/** 运行目录名：`20261105-001234-<随机>`，便于排序且不会撞名 */
+export function createRunId(now = new Date(), random = Math.random) {
+  const pad = value => String(value).padStart(2, '0')
+  const stamp = [
+    now.getFullYear(),
+    pad(now.getMonth() + 1),
+    pad(now.getDate()),
+    '-',
+    pad(now.getHours()),
+    pad(now.getMinutes()),
+    pad(now.getSeconds()),
+  ].join('')
+  const suffix = Math.floor(random() * 0x10000).toString(16).padStart(4, '0')
+  return `${stamp}-${suffix}`
+}
+
+/** 任务名 slug（只用于人读的目录/报告标题，不进路径关键部分） */
+export function slugify(text, maxLength = 40) {
+  const slug = String(text ?? '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/[^0-9A-Za-z\u4e00-\u9fff_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, maxLength)
+  return slug || 'task'
 }
 
 /** 写进 .runtime 的摘要，方便事后核对「那轮到底花了多久、改了什么」。 */

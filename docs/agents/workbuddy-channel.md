@@ -1,7 +1,7 @@
 # 给 WorkBuddy 派活（协作通道操作手册）
 
-> 状态：已实施（2026-11-05）· 实测版本 WorkBuddy 5.9.3（Chromium 138.0.7204.251 / Electron 37.10.3）
-> 用途：把 AI-writer 仓库里的活派给本机 WorkBuddy（腾讯 CodeBuddy 系）。两条路：**attach**（CDP 驱动桌面 UI，复用作者已登录的账号与积分，默认走这条）与 **headless**（`codebuddy -p` 独立进程，要单独登录、不用积分，§9 兜底）。
+> 状态：已实施（2026-11-05 实施；2026-11-07 移除 headless 兜底，现只保留 attach 一条路）· 实测版本 WorkBuddy 5.9.3（Chromium 138.0.7204.251 / Electron 37.10.3）
+> 用途：把 AI-writer 仓库里的活派给本机 WorkBuddy（腾讯 CodeBuddy 系）。**只有一条路：attach**——CDP 驱动桌面 UI，复用作者已登录的账号与积分。
 > 关系：与 [豆包通道](doubao-channel.md)、[Copilot 通道](copilot-channel.md) 平级；**工作目录固定 `wt-2`**（[归属表](worktree-parallel.md#31-槽位归属固定不是谁空谁用)）。
 > 社区调研：已查 `workbuddy-mcp` / `workbuddy-proxy` / `workbuddy-to-dsh` / `workbuddy-daily-credits` / `dsh-botcrew`，没有现成的「桌面已登录态 + 可编排」轮子，取舍见 §11。
 
@@ -17,10 +17,7 @@ node scripts/workbuddy/workbuddy-attach.mjs task "任务文本" --new
 
 连不上时脚本会打印 `NEED_HUMAN_DEBUG` 横幅（exit 2）：把横幅里那条命令**原样发给作者**，让他自己启动。**不要**自己 spawn WorkBuddy.exe——工具会话拉起来的 GUI 会在十秒内被回收（2026-11-05 实测）。
 
-桌面端不方便开、或只要一个跑完就退的独立进程时，改走 headless 兜底通道（要单独登录一次）：
-```bash
-node scripts/workbuddy/workbuddy.mjs run "任务文本"    # 见 §9
-```
+桌面端不方便开时**不要绕道**：headless 兜底通道（`codebuddy -p`，独立 npm 包、单独登录、拿不到桌面积分）已于 2026-11-07 连同 npm 包一起移除（§9）。这种活改派 [Copilot 通道](copilot-channel.md) 或 [豆包通道](doubao-channel.md)——它们本来就是独立进程形态。
 
 ## 1. 为什么必须由人启动 Debug 实例
 
@@ -49,7 +46,7 @@ if (n && /^\d+$/.test(n)) { electron.app.commandLine.appendSwitch('remote-debugg
 | 工作目录 | `C:\develop\workspace\AI-writer\wt-2`（固定，见 §3.1） |
 | 运行时产物 | `.runtime/workbuddy/attach/<runId>/`（prompt.md / meta.json / reply.md / snapshot-*.json）；会话指针 `.runtime/workbuddy/last-session.json` |
 | 会话台账 | `%USERPROFILE%\.workbuddy\workbuddy.db`（sqlite，`sessions` 表；只读打开，App 开着也能读） |
-| 兜底通道 | `scripts/workbuddy/workbuddy.mjs`（headless `codebuddy -p`，需要单独登录、拿不到桌面积分，**默认不用**） |
+| 兜底通道 | **无**（headless `codebuddy -p` 已于 2026-11-07 移除，见 §9）。桌面端开不了就改派 Copilot / 豆包 |
 
 ### 2.1 连不上时：把命令交给作者（`NEED_HUMAN_DEBUG`）
 
@@ -93,7 +90,7 @@ node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会�
 
 选项：`--session <id>` · `--timeout 秒`（默认 900）· `--json` · `--no-wait` · `--port` · `--model <名字>`（见 §4）· `--cwd <目录>`（默认且只允许 wt-2；指到别处 exit 1）· `--force`（越过归属护栏，排障用，报告里写明）。
 
-退出码：**0** 成功 · **1** 失败 · **2** 未连接（`NEED_HUMAN_DEBUG`）· **3** CLI 缺失（兜底通道）· **4** 等回复超时 · **5** 高峰时段拒绝派活。
+退出码：**0** 成功 · **1** 失败 · **2** 未连接（`NEED_HUMAN_DEBUG`）· **4** 等回复超时 · **5** 高峰时段拒绝派活。（原 **3**「兜底 CLI 缺失」随 headless 通道一起作废，见 §9）
 和豆包一样：**exit 0 只代表「拿到了稳定回复」，不代表任务做对了**——对错看任务书里的验收条件和 `## [Tn] DONE/BLOCKED` 标记。
 
 ### 3.1 固定归属：WorkBuddy 只用 wt-2
@@ -193,100 +190,21 @@ node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会�
 | 回复里混进 `WorkBuddy/已完成/共消耗` | `.cr-markdown` 选择器变了：改 `attach.mjs` 的 `SELECTORS.agentMarkdown`，补一条单测 |
 | 点击全都不生效 | WorkBuddy 升级后 CSS Modules hash 变了：全站没有 `data-testid`，只能靠 aria-label / 语义前缀；先跑 `status` 核对 `buttonLabels` |
 
-## 9. 兜底通道：官方 headless CLI（`codebuddy -p`，独立进程）
+## 9. headless 兜底通道：已移除（2026-11-07）
 
-适用场景：不想让作者开着 GUI、或要一个「跑完就退、不碰桌面」的一次性进程。代价：**要单独登录一次**，而且账号态与桌面端不互通 ⇒ 用不到桌面端积分。两条路的关系见 §0。
+作者只用 WorkBuddy 桌面端。那条「另装一套 CLI、单独登录、拿不到桌面积分」的兜底路已于 2026-11-07 撤销：
 
-### 9.1 落点与安装
+- **删掉的**：npm 全局包 `@tencent-ai/codebuddy-code`（2.179.3，333MB）与 5 个命令外壳（`codebuddy` / `codebuddy-code` / `cbc` / `cbc-prewarm` / `codebuddy-lowmem`）；仓库内 `scripts/workbuddy/workbuddy.mjs`、`cli.mjs`、`__tests__/cli.test.mjs`。其中运行目录名 / slug / 参数切分三个纯函数 attach 一直在用，已并入 `attach.mjs`。
+- **没删也不能删**：`~/.codebuddy/`（名字像 CodeBuddy，实际是 WorkBuddy 运行时自己的配置目录，`settings.json` / `models.json` 一直在写）、`%LOCALAPPDATA%\CodeBuddyExtension\`（桌面端登录态）、以及桌面端自带的 `…\WorkBuddy\resources\app.asar.unpacked\cli\bin\codebuddy`（WorkBuddy 本体）。
+- 桌面端开不了时**改派 Copilot / 豆包**，不要再装第二套 CLI。
 
-| 项 | 值 |
-|---|---|
-| npm 包 | `@tencent-ai/codebuddy-code`（bin：`codebuddy` / `cbc` / `codebuddy-code`） |
-| CLI 本体（脚本用这个绝对路径） | `%APPDATA%\npm\node_modules\@tencent-ai\codebuddy-code\bin\codebuddy`（**无扩展名的 Node 脚本**） |
-| 用户目录 | `~/.codebuddy/`（sessions / settings.json / logs / projects / plugins） |
-| 桌面端自带 CLI | `%LOCALAPPDATA%\Programs\WorkBuddy\resources\app.asar.unpacked\cli\bin\codebuddy`（2.165.0，**与 npm 版账号态不互通**，别混用） |
-| 运行产物 | `<repo>/.runtime/workbuddy/runs/<runId>/` |
+### 9.1 仍然成立的两条教训（别重犯）
 
-```bash
-npm install -g @tencent-ai/codebuddy-code
-node "$APPDATA/npm/node_modules/@tencent-ai/codebuddy-code/bin/codebuddy" --version   # → 2.179.3
-```
+1. **别打桌面端 GUI sidecar 的 HTTP 口子**：桌面端会拉起 `codebuddy --serve`（随机端口 + 随机密码 + `/api/v1/*`），密码只在进程环境里；`POST /api/v1/jobs` 会继承父进程 `--port` 撞端口（实测把 GUI sidecar 搞挂）。要任务面走 §1–§8 的 CDP 路。
+2. **桌面端登录态不能复用**：token 在 `%LOCALAPPDATA%\CodeBuddyExtension\Data\Public\auth\workbuddy-desktop.info`，值是 `$wbEncrypted` 信封（AES-256-GCM），解它要借 `WorkBuddy.exe` 的 Electron binding；把 `CODEBUDDY_CONFIG_DIR` 指到 `~/.workbuddy` 也解不开。**不要为了「免登录」去解它**——版本一升就碎，等于绕过人家账号体系。
 
-`codebuddy` **不在 PATH**，npm 的 `codebuddy` shim 在 Git Bash 里还是坏的（陷阱 2）⇒ 脚本自己解析绝对路径、用当前 `node` 当解释器，调用方不需要配 PATH。
+> 编号说明：原 §10（headless 一次性登录）已并入本节，编号 10 不再使用——保留 §11–§13 的原号，避免全库「§11 社区方案」「§13 能力画像」的引用失效。
 
-### 9.2 命令速查（`scripts/workbuddy/workbuddy.mjs`）
-
-| 命令 | 作用 |
-|---|---|
-| `probe` | 报 CLI 路径 / 版本 / 工作目录 / **是否已登录**（未登录退出码 2） |
-| `run "任务"` | 跑一次；`--cwd <dir>`、`--timeout <分钟>`（默认 15）、`--json` |
-| `run --file 任务书.md` | 长任务书从文件读（不经 shell 转义，推荐） |
-| `login` | 起 `--serve` → 打印并打开 Web UI 登录页 → 轮询登录成功；`--port`（默认 8099）、`--wait`（默认 600s）、`--no-open` |
-| `run --dry-run` | 只打印将执行的命令与参数 |
-
-透传 CLI 选项：`--model` / `--fallback-model` / `--permission-mode` / `--max-turns` / `--append-system-prompt` / `--resume <sessionId>` / `--continue` / `--format text|json|stream-json`；逃生阀 `--no-skip-permissions`、`--allow-git`。
-
-### 9.3 权限模型
-
-1. **`-y / --dangerously-skip-permissions`**：非交互必需，否则每个要授权操作都会卡住等人点；脚本默认带。
-2. **`--permission-mode`**：`default | acceptEdits | plan | dontAsk | auto | bypassPermissions`。
-3. **`--allowedTools` / `--disallowedTools`**：语法同 Claude Code（`"Bash(git:*)" Edit`）。**脚本默认注入 `--disallowedTools "Bash(git:*)"`**：提交权归主 agent（与 Copilot 通道同一条铁律）。
-4. **`CODEBUDDY_IS_SANDBOX=1`**：连 HIGH/CRITICAL 都不问、全放行。**高危，本通道不用**，只考虑一次性容器。
-
-注意：`-y` 下高危工具仍可能弹确认；非交互时表现为「任务卡住 / 提前结束」，不是 CLI 坏了。
-
-### 9.4 工具名与副作用口径
-
-`--output-format stream-json` 的 init 事件里的真实名单：`Agent` `Read` `Write` `Edit` `Bash` `PowerShell` `Glob` `Grep` `EnterPlanMode` `ExitPlanMode` `TaskCreate` `TaskGet` `TaskUpdate` `TaskList` `TaskStop` `TaskOutput` `WebFetch` `WebSearch` `Skill` `SkillManage` `Component` `Mods` `AskUserQuestion` `AskUserForStructuredInput` 等。
-
-| 工具 | kind | 取路径字段 |
-|---|---|---|
-| `Write` | `create` | `file_path` |
-| `Edit` / `MultiEdit` | `edit` | `file_path` |
-| `NotebookEdit` | `edit` | `notebook_path` |
-| `apply_patch` | `patch` | `path` |
-
-**不要信 agent 的自述**：改了什么看 `tool_use` / `tool_result`，`result.json` 的 `fileEdits` 是脚本折算的。
-
-### 9.5 事件结构
-
-每行一个 JSON：
-
-| 事件 | 关键字段 | 用途 |
-|---|---|---|
-| `system/init` | `session_id` `model` `cwd` `tools[]` `apiKeySource` | 谁、在哪、有哪些工具 |
-| `system/status` | `status` | 心跳（可忽略） |
-| `assistant` | `message.content[]`：`text` / `tool_use{id,name,input}` | 工具调用来源 |
-| `user` | `message.content[]`：`tool_result{tool_use_id,is_error,content}` | 成败、权限拒绝 |
-| `result` | `subtype` `is_error` `result` `num_turns` `duration_ms` `total_cost_usd` `permission_denials` | 终局 |
-
-产物：`stdout.log` / `events.jsonl` / `result.json`（含 `fileEdits` / `deniedTools` / `outcome`）。**`result.json` 才是可核对凭证**，stdout 只当证据。
-
-### 9.6 已知陷阱（都是本机实测撞出来的）
-
-1. **未登录时退出码仍是 0** ★：stdout 只有 `Authentication required. Please use /login command to sign in`，CLI 当正常结束。判未登录**只能看文案**（`cli.mjs#detectAuthRequired`），`run` 因此返回 2。
-2. **npm 的 `codebuddy` shim 在 Git Bash 里是坏的**：exec 到 `…/npm/node_modules/node/bin/node` 后报 `This: command not found`。必须 `node <pkg>/bin/codebuddy`。
-3. **prompt 不能进 argv**：Windows 上 `shell:true` 会把换行 / `&` / `|` / `%` 交给 cmd.exe 解释 ⇒ prompt 走 stdin，长任务书用 `--file`。
-4. **别 attach 桌面端的 GUI sidecar**：桌面端会拉起 `codebuddy --serve`（随机端口 + 随机密码 + `/api/v1/*`），密码只在进程环境里；`POST /api/v1/jobs` 会继承父进程 `--port` 撞端口（实测把 GUI sidecar 搞挂）。要做任务面请走 attach 的 CDP 路（§1–§8），不要打这个 HTTP 口子。
-5. **桌面端登录态不能复用**：token 在 `%LOCALAPPDATA%\CodeBuddyExtension\Data\Public\auth\workbuddy-desktop.info`，值是 `$wbEncrypted` 信封（AES-256-GCM），解它要借 `WorkBuddy.exe` 的 Electron binding；把 `CODEBUDDY_CONFIG_DIR` 指到 `~/.workbuddy` 也解不开认证。**不偷 token，走一次性登录**（§10）。
-6. **`--output-format json` 实际仍按事件流输出**：拿到的是多行事件（`system/init` → `assistant` → `result`），解析器按「逐行 JSON、非 JSON 行进 invalidLines」处理。
-
-### 9.7 已验证 / 未验证（headless）
-
-已验证（2026-11-05，有输出为证）：npm 装包 2.179.3；`probe` 解析路径/版本/`cwd=wt-2`，未登录时退出码 2；`run` 未登录路径产物完整落盘、事件含 `system/init`（`apiKeySource: copilot.tencent.com`、`model: hy4-preview`）与 `result{subtype:error_during_execution}`；`login` 能起 `--serve`、从 stdout 抓到 `Web UI http://127.0.0.1:<port>/?password=…`、超时后杀树且端口释放；`--serve` 密码落 `~/.codebuddy/settings.json`；单测 38 条全绿。
-
-未验证（要用先测）：登录后的端到端真跑（期望 exit 0 + `result.subtype=success`）、Web UI SSO 是否把凭据写回 `~/.codebuddy`、`--resume`/`--continue`/`--max-turns`/`--model`、并发两个 `run` 是否互相干扰。
-
-## 10. 认证：一次性人工登录（headless 专用）
-
-```bash
-node scripts/workbuddy/workbuddy.mjs login     # 打印并打开 Web UI，登录后自动返回
-# 备选：直接跑 codebuddy 进 TUI，输入 /login，登录完退出
-```
-
-- 未登录时 `run` 返回 **2 + `NEED_HUMAN_LOGIN`**（与豆包 `NEED_HUMAN_LAUNCH` 同构）：**不要自动重试**，等人。
-- CLI 取凭据顺序（bundle 里读出来的）：`CODEBUDDY_AUTH_TOKEN` 环境变量 → `ACC_PRODUCT_CONFIG` 的 `custom-token` → settings 文件 `env.CODEBUDDY_AUTH_TOKEN`。**只登录一次**，之后非交互调用直接可用。
-- 不要为了「免登录」去解 `$wbEncrypted`（陷阱 5）：复刻 Electron binding，版本一升就碎，还等于绕过人家账号体系。
 
 ## 11. 社区已有方案与取舍（「优先社区」的调研结论）
 
@@ -298,9 +216,9 @@ node scripts/workbuddy/workbuddy.mjs login     # 打印并打开 Web UI，登录
 | `Ianzhyh/workbuddy-to-dsh`（MIT） | DSH 插件，解桌面端加密凭据后复用账号 | 解 `$wbEncrypted` 脆（陷阱 5）；我们改走官方 attach / 官方登录 |
 | `XQ-zheng/workbuddy-daily-credits` | 自动领积分 / 打卡，长效令牌自续期 | 跟「派活」无关；只借它证明「令牌可长期续期」，本通道仍走人工 |
 | `hankniu77/dsh-botcrew` | DSH 群聊里接 WorkBuddy/QwenWork 的成员面板 | 是聊天编排层，不是进程级通道；可作上层编排参考 |
-| 官方 `workbuddy.ai/docs/cli/headless` · `codebuddy.ai/docs/cli/http-api` | headless 模式与 HTTP API 规范 | **headless `-p` 就是正路**（§9）；HTTP API 只用于 `login` 的 Web UI，不做任务面 |
+| 官方 `workbuddy.ai/docs/cli/headless` · `codebuddy.ai/docs/cli/http-api` | headless 模式与 HTTP API 规范 | headless 那条已随通道一起撤（§9）；HTTP API 只服务过 `login` 的 Web UI，不做任务面 |
 
-结论：**没有现成的「桌面 GUI + 已登录态 + 可编排 CLI」项目**，所以分两条自研薄层——attach（复用桌面登录态与积分，§1–§8）与 headless（独立进程，§9）——而不是继续找轮子。
+结论：**没有现成的「桌面 GUI + 已登录态 + 可编排 CLI」项目**，所以自研了一层 attach 薄层（复用桌面登录态与积分，§1–§8）。曾经并行过的 headless 薄层已于 2026-11-07 撤除（§9）。
 
 ## 12. 相关文档
 
@@ -308,7 +226,7 @@ node scripts/workbuddy/workbuddy.mjs login     # 打印并打开 Web UI，登录
 - [Copilot 通道](copilot-channel.md) —— 另一条外部 agent 通道（独立 CLI 进程）
 - [worktree 并行开发](worktree-parallel.md) —— 槽位归属表、占用探测、并行红线
 - [任务看板通道](task-board-channel.md) —— 建卡 / 认领 / 复核
-- 官方文档：<https://www.workbuddy.ai/docs/cli/headless> · <https://www.codebuddy.ai/docs/cli/http-api>
+- 官方文档：<https://www.workbuddy.ai/docs/cli/headless>
 
 ## 13. 能力画像与派活分工（2026-11-05 实测，Hy4 夜间档）
 
