@@ -6,6 +6,8 @@ vi.mock('../ipc-client', () => ({
 }))
 
 import { readOutlineProgressGate } from '../outline-progress-gate'
+import type { VolumeHandoffDefinition } from '../../shared/volume-handoff'
+import { renderVolumeHandoffSection, VOLUME_HANDOFF_MAX_CHARS } from '../../shared/volume-handoff'
 import type { VolumeDefinition } from '../../shared/volume-structure'
 
 /**
@@ -24,7 +26,7 @@ const volume = (index: number, first: number, last: number): VolumeDefinition =>
 
 const volumes = [volume(1, 1, 20), volume(2, 21, 40)]
 
-const handoff = (over: Record<string, unknown> = {}) => ({
+const handoff = (over: Record<string, unknown> = {}): VolumeHandoffDefinition => ({
   handoffId: 'handoff:1', volumeId: 'volume:1', volumeIndex: 1,
   firstChapter: 1, lastChapter: 20, boundaryBasis: 'actual',
   worldState: '围城', heroState: '重伤', events: [], items: [], debts: [], openThread: '',
@@ -40,7 +42,7 @@ function mockChannels(input: {
   exemptions?: unknown
   authority?: unknown
 }) {
-  mocks.invoke.mockImplementation((_session: unknown, channel: string) => {
+  mocks.invoke.mockImplementation(async (_session: unknown, channel: string) => {
     if (channel === 'db:volumes-list') return { success: true, volumes }
     if (channel === 'db:volume-handoffs-list') {
       return input.handoffs === undefined ? { success: true, entries: [] } : input.handoffs
@@ -97,6 +99,31 @@ describe('readOutlineProgressGate — 第二维（交接单可用性）', () => 
     expect(gate?.reason).toBe('handoff-missing')
   })
 
+  it('交接单有内容但装不进篇幅预算 ⇒ unusable，不是 usable（复核抓的缝隙）', async () => {
+    // 单条 1,600 字：六栏非空 ⇒ 旧实现会判 usable，但 renderVolumeHandoffSection 会整条丢、
+    // 渲染成空节，投影仍走 plan。这一档就是为它存在的。
+    mockChannels({ handoffs: { success: true, entries: [handoff({ worldState: '灰'.repeat(1600) })] } })
+    const { gate } = await readOutlineProgressGate(input)
+    expect(gate?.reason).toBe('handoff-unusable')
+    expect(gate?.handoff).toBe('unusable')
+  })
+
+  it('「usable ⟺ 投影能渲染出内容」这条等价式本身也要钉住', async () => {
+    // 闸门与投影必须同一个真值：投影的判据是 renderVolumeHandoffSection(...) !== ''，
+    // 这里反过来验证「判决 usable 的那张单，渲染一定非空」。
+    const usable = handoff()
+    mockChannels({ handoffs: { success: true, entries: [usable] } })
+    const ok = await readOutlineProgressGate(input)
+    expect(ok.gate?.handoff).toBe('usable')
+    expect(renderVolumeHandoffSection(usable, 'zh-CN', 21, VOLUME_HANDOFF_MAX_CHARS)).not.toBe('')
+
+    const tooLong = handoff({ worldState: '灰'.repeat(1600) })
+    mockChannels({ handoffs: { success: true, entries: [tooLong] } })
+    const bad = await readOutlineProgressGate(input)
+    expect(bad.gate?.handoff).toBe('unusable')
+    expect(renderVolumeHandoffSection(tooLong, 'zh-CN', 21, VOLUME_HANDOFF_MAX_CHARS)).toBe('')
+  })
+
   it('只有别的卷的交接单 ⇒ missing，绝不回退到更早的卷', async () => {
     mockChannels({ handoffs: { success: true, entries: [handoff({ volumeId: 'volume:2', volumeIndex: 2 })] } })
     const { gate } = await readOutlineProgressGate(input)
@@ -108,6 +135,45 @@ describe('readOutlineProgressGate — 第二维（交接单可用性）', () => 
     const { gate } = await readOutlineProgressGate(input)
     expect(gate?.state).toBe('aligned')
     expect(gate?.handoff).toBe('unknown')
+  })
+
+  it('交接单通道抛异常 ⇒ 也不能把第一维一起吞掉（复核抓的回归面）', async () => {
+    // 第四路读单独 catch：否则 Promise.all 整体 reject，连「正文没写完」都报不出来。
+    mocks.invoke.mockImplementation(async (_session: unknown, channel: string) => {
+      if (channel === 'db:volumes-list') return { success: true, volumes }
+      if (channel === 'db:volume-handoffs-list') throw new Error('handler 未注册')
+      if (channel === 'db:draft-authority-sequence') return authority(12)
+      if (channel === 'db:consistency-exemption-list') return []
+      return null
+    })
+    const { gate } = await readOutlineProgressGate(input)
+    expect(gate?.reason).toBe('prose-unfinalized')
+    expect(gate?.missingChapters).toBe(8)
+  })
+
+  it('卷表状态不是 ready ⇒ 判不出就不拦（边界本身不可信）', async () => {
+    mocks.invoke.mockImplementation(async (_session: unknown, channel: string) => {
+      if (channel === 'db:volumes-list') return { success: true, state: 'stale', volumes }
+      if (channel === 'db:volume-handoffs-list') return { success: true, entries: [] }
+      if (channel === 'db:draft-authority-sequence') return authority(20)
+      if (channel === 'db:consistency-exemption-list') return []
+      return null
+    })
+    const result = await readOutlineProgressGate(input)
+    expect(result.gate).toBeNull()
+    expect(result.warning).toContain('stale')
+  })
+
+  it('过期 + 已确认 ⇒ 仍然放行（确认管住两维，也管住第四档）', async () => {
+    mockChannels({
+      handoffs: {
+        success: true,
+        entries: [handoff({ validity: { state: 'stale', behind: [{ key: 'outline:book', have: 1, need: 2 }] } })],
+      },
+      exemptions: [{ stableFactKey: 'outline-progress:volume:1', revoked: false }],
+    })
+    const { gate } = await readOutlineProgressGate(input)
+    expect(gate?.state).toBe('aligned')
   })
 
   it('正文未定稿时第二维不改变结论：仍报 prose-unfinalized', async () => {

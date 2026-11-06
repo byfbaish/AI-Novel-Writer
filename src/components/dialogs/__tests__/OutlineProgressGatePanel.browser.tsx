@@ -13,9 +13,12 @@ import OutlineProgressGatePanel from '../OutlineProgressGatePanel'
  * - **取消**：一个字都不写库，也不放行；
  * - **仍按计划继续**：写一条带理由的豁免（键 `outline-progress:<volumeId>`），然后才放行；
  * - 理由空 ⇒ 确认键禁用且零写入；写库失败 ⇒ 错误可见且不放行；
- * - **三档各说各的话**（D3，2026-11-06）：`prose-unfinalized` 讲还差几章、出口是「去补正文」；
+ * - **四档各说各的话**（D3，2026-11-06）：`prose-unfinalized` 讲还差几章、出口是「去补正文」；
  *   `handoff-missing` 讲「已定稿但没登记交接单」、出口是「去登记」；`handoff-stale` 讲
- *   「单过期、本次不用它」、出口是「去更新」。三档共用同一套确认/豁免机制，不新增交互范式。
+ *   「单过期、本次不用它」、出口是「去更新」；`handoff-unusable` 讲「单超预算、渲染成空节」、
+ *   出口是「去精简」。四档共用同一套确认/豁免机制，不新增交互范式。
+ * - **第一档内部还要分岔**：`handoff === 'usable'` 时投影用的是实际（只是部分定稿），
+ *   不能说「只能基于计划」——`invalid` 组合同理（2026-11-06 独立复核抓出的自相矛盾）。
  */
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -35,7 +38,8 @@ const GATE: OutlineProgressGate = {
   authorityStatus: 'continuous',
   draftLastChapter: 12,
   missingChapters: 8,
-  handoff: 'usable',
+  // 未定稿 + 没有交接单 = 第一档的常态形态（正文都没写完，交接单自然也谈不上可用）
+  handoff: 'missing',
 }
 
 let root: Root
@@ -146,10 +150,29 @@ describe('大纲领先正文的闸门面板', () => {
     expect(container.querySelector('[role="alert"]')?.textContent).toContain('数据库只读')
   })
 
-  it('账本有断章时额外说一句「按未定稿处理」，不让作者以为是还差几章', async () => {
-    await renderPanel({ ...GATE, authorityStatus: 'invalid', missingChapters: 0 })
-    expect(container.querySelector('[data-testid="outline-progress-gate-invalid"]')?.textContent)
-      .toContain('断章或重复')
+  it('账本有断章时说「按未定稿处理」，且**不许**同时说「还差 0 章」', async () => {
+    await renderPanel({ ...GATE, authorityStatus: 'invalid', missingChapters: 0, draftLastChapter: 20 })
+    const body = container.querySelector('[data-testid="outline-progress-gate-reason"]')?.textContent ?? ''
+    expect(body).toContain('断章或重复')
+    expect(body).toContain('按「未定稿」处理')
+    // 复核对出来的自相矛盾：标题说「还没定稿」、正文却说「还差 0 章」
+    expect(body).not.toContain('还差 0 章')
+  })
+
+  it('未定稿但交接单可用 ⇒ 说清「会用它，但只覆盖部分定稿」（不能再说只能基于计划）', async () => {
+    await renderPanel({ ...GATE, handoff: 'usable' })
+    const body = container.querySelector('[data-testid="outline-progress-gate-reason"]')?.textContent ?? ''
+    expect(body).toContain('卷末交接单已经登记好了')
+    expect(body).toContain('部分定稿')
+    expect(body).not.toContain('只能基于计划')
+  })
+
+  it('账本有洞 + 交接单可用 ⇒ 也要承认「会用交接单」，不能只说拿不到结局', async () => {
+    await renderPanel({ ...GATE, authorityStatus: 'invalid', handoff: 'usable', draftLastChapter: 20, missingChapters: 0 })
+    const body = container.querySelector('[data-testid="outline-progress-gate-reason"]')?.textContent ?? ''
+    expect(body).toContain('断章或重复')
+    expect(body).toContain('卷末交接单已经登记好了')
+    expect(body).not.toContain('拿不到这一卷的实际结局')
   })
 
   // ---- D3（2026-11-06）：正文写完了、但交接单不可用的两档 ----
@@ -168,13 +191,13 @@ describe('大纲领先正文的闸门面板', () => {
     expect(body).toContain('只能基于卷纲计划')
     // 这一档不该再讲「还差几章」，也不该讲账本断章
     expect(body).not.toContain('还差')
-    expect(container.querySelector('[data-testid="outline-progress-gate-invalid"]')).toBeNull()
+    expect(body).not.toContain('断章或重复')
     await click(button('取消，我先去登记交接单'))
     expect(onDismiss).toHaveBeenCalledOnce()
     expect(saves).toEqual([])
   })
 
-  it('交接单过期 ⇒ 说清「不会使用它」，出口是「去更新交接单」', async () => {
+  it('交接单过期 ⇒ 标题与正文都说清「过期、不会使用它」，出口是「去更新交接单」', async () => {
     await renderPanel({
       ...GATE,
       reason: 'handoff-stale',
@@ -182,10 +205,26 @@ describe('大纲领先正文的闸门面板', () => {
       missingChapters: 0,
       handoff: 'stale',
     })
+    expect(container.textContent).toContain('卷末交接单过期了')
     const body = container.querySelector('[data-testid="outline-progress-gate-reason"]')?.textContent ?? ''
     expect(body).toContain('更早写的')
     expect(body).toContain('不会使用它')
     expect(container.textContent).toContain('取消，我先去更新交接单')
+  })
+
+  it('交接单装不进预算 ⇒ 说「超过篇幅预算、渲染出来只剩空节」，出口是「去精简」', async () => {
+    await renderPanel({
+      ...GATE,
+      reason: 'handoff-unusable',
+      draftLastChapter: 20,
+      missingChapters: 0,
+      handoff: 'unusable',
+    })
+    expect(container.textContent).toContain('卷末交接单装不进去')
+    const body = container.querySelector('[data-testid="outline-progress-gate-reason"]')?.textContent ?? ''
+    expect(body).toContain('超过单份篇幅预算')
+    expect(body).toContain('空节')
+    expect(container.textContent).toContain('取消，我先去精简交接单')
   })
 
   it('这一档的确认理由默认值也不提「定稿至第N章」', async () => {
@@ -196,5 +235,7 @@ describe('大纲领先正文的闸门面板', () => {
     expect(saves).toHaveLength(1)
     expect(saves[0]![0]).toBe('outline-progress:volume:1')
     expect(saves[0]![1]).toContain('未登记卷末交接单')
+    // 负断言：串档就会红（原版只断言了正向，实现若拼上「定稿至第20章」照样绿）
+    expect(saves[0]![1]).not.toContain('定稿至第')
   })
 })

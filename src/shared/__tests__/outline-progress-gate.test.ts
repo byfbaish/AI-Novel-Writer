@@ -72,6 +72,14 @@ describe('outlineProgressGateOf — 大纲领先正文的闸门', () => {
     expect(gate?.reason).toBe('handoff-stale')
   })
 
+  it('交接单装不进篇幅预算 ⇒ ahead / handoff-unusable（复核 2026-11-06 补的档）', () => {
+    const gate = outlineProgressGateOf({
+      volumes, authority: authority(20), acknowledged: [], chapterNumber: 21, handoff: 'unusable',
+    })
+    expect(gate?.state).toBe('ahead')
+    expect(gate?.reason).toBe('handoff-unusable')
+  })
+
   it('两维同时不过 ⇒ 只报第一维（正文都没写完时讲交接单是废话）', () => {
     const gate = outlineProgressGateOf({
       volumes, authority: authority(12), acknowledged: [], chapterNumber: 21, handoff: 'missing',

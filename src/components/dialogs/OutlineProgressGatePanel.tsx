@@ -50,15 +50,23 @@ export default function OutlineProgressGatePanel({
   const rangeLabel = range.first === null || range.last === null
     ? text('起止未定', 'range unresolved')
     : text(`第${range.first}–${range.last}章`, `chapters ${range.first}–${range.last}`)
-  // 三档各自的「事实」与「该去做什么」。`reason` 为空（老调用/理论态）按第一档处理，
-  // 不新造第四种说法。
+  // 四档各自的「事实」与「该去做什么」。`reason` 为空（老调用/理论态）按第一档处理，
+  // 不新造第五种说法。
   const gateReason = gate.reason ?? 'prose-unfinalized'
-  const isHandoff = gateReason === 'handoff-missing' || gateReason === 'handoff-stale'
+  const isHandoff = gateReason === 'handoff-missing'
+    || gateReason === 'handoff-stale'
+    || gateReason === 'handoff-unusable'
+  /** 第一档内部还要分：账本有没有洞 / 交接单可用吗（后者的投影用的是实际，不是计划）。 */
+  const invalidLedger = !isHandoff && gate.authorityStatus === 'invalid'
+  /** 投影真会用上一卷交接单 —— 这时候说「只能基于计划」就是撒谎。 */
+  const actualInUse = !isHandoff && gate.handoff === 'usable'
   const title = gateReason === 'handoff-missing'
     ? text('上一卷的卷末交接单还没登记', 'The previous volume has no handoff note')
     : gateReason === 'handoff-stale'
       ? text('上一卷的卷末交接单过期了', 'The previous volume\'s handoff note is out of date')
-      : text('上一卷正文还没整卷定稿', 'The previous volume\'s prose is not finalized')
+      : gateReason === 'handoff-unusable'
+        ? text('上一卷的卷末交接单装不进去', 'The previous volume\'s handoff note does not fit')
+        : text('上一卷正文还没整卷定稿', 'The previous volume\'s prose is not finalized')
   const body = gateReason === 'handoff-missing'
     ? text(
         `${volumeLabel}（${rangeLabel}）正文已经整卷定稿，但没有登记卷末交接单。`
@@ -73,17 +81,47 @@ export default function OutlineProgressGatePanel({
           `${volumeLabel} (${rangeLabel}) has a handoff note written earlier, and its upstream has changed since. `
           + `It will not be used, so this volume's outline can only follow the plan.`,
         )
-      : text(
-          `${volumeLabel}（${rangeLabel}）正文只定稿到第${gate.draftLastChapter}章，还差 ${gate.missingChapters} 章。`
-          + `继续规划下一卷大纲时，它只能基于计划，不是实际结局 —— 微小的差异会顺着卷快照传导回大纲。`,
-          `${volumeLabel} (${rangeLabel}) prose is finalized through chapter ${gate.draftLastChapter} only; `
-          + `${gate.missingChapters} chapter(s) remain. The next volume's outline can only follow the plan, not the actual outcome.`,
-        )
+      : gateReason === 'handoff-unusable'
+        ? text(
+            `${volumeLabel}（${rangeLabel}）的卷末交接单有内容，超过单份篇幅预算，渲染出来只剩空节。`
+            + `为了不注入一份空材料，本次不会使用它 —— 本卷大纲仍只能基于卷纲计划。建议先精简那张单。`,
+            `${volumeLabel} (${rangeLabel}) has a handoff note, but its content exceeds the section budget and renders empty. `
+            + `It will not be used, so this volume's outline can only follow the plan. Trim the note first.`,
+          )
+        : invalidLedger
+          ? actualInUse
+            ? text(
+                `${volumeLabel}（${rangeLabel}）的定稿章号账本有断章或重复，已按「未定稿」处理；`
+                + `但这一卷的卷末交接单已经登记好了，本卷大纲会用它 —— 它记的是账本最后可信的那个时点，断章之后写出来的变化进不来。建议先到定稿列表核对。`,
+                `${volumeLabel} (${rangeLabel}) has a gap or duplicate in its finalized-chapter ledger (treated as not finalized), `
+                + `but its handoff note exists and will be used — it reflects the last trustworthy point, so later changes are not in it.`,
+              )
+            : text(
+                `${volumeLabel}（${rangeLabel}）的定稿章号账本有断章或重复，已按「未定稿」处理。`
+                + `所以本卷大纲拿不到这一卷的实际结局 —— 建议先到定稿列表核对。`,
+                `${volumeLabel} (${rangeLabel}) has a gap or duplicate in its finalized-chapter ledger, so it is treated as not finalized. `
+                + `This volume's outline cannot use the actual outcome. Check the finalization list first.`,
+              )
+          : actualInUse
+            ? text(
+                `${volumeLabel}（${rangeLabel}）正文只定稿到第${gate.draftLastChapter}章，还差 ${gate.missingChapters} 章，`
+                + `但这一卷的卷末交接单已经登记好了，本卷大纲会用它 —— 它记的是**部分定稿**时的样子，后面几章写出来的变化进不来。`,
+                `${volumeLabel} (${rangeLabel}) prose is finalized through chapter ${gate.draftLastChapter} only (${gate.missingChapters} remaining), `
+                + `but its handoff note exists and will be used — it reflects a partially finalized volume, so later chapters are not in it.`,
+              )
+            : text(
+                `${volumeLabel}（${rangeLabel}）正文只定稿到第${gate.draftLastChapter}章，还差 ${gate.missingChapters} 章。`
+                + `继续规划下一卷大纲时，它只能基于计划，不是实际结局 —— 微小的差异会顺着卷快照传导回大纲。`,
+                `${volumeLabel} (${rangeLabel}) prose is finalized through chapter ${gate.draftLastChapter} only; `
+                + `${gate.missingChapters} chapter(s) remain. The next volume's outline can only follow the plan, not the actual outcome.`,
+              )
   const dismissLabel = gateReason === 'handoff-missing'
     ? text('取消，我先去登记交接单', 'Cancel, I will record the handoff note first')
     : gateReason === 'handoff-stale'
       ? text('取消，我先去更新交接单', 'Cancel, I will update the handoff note first')
-      : text('取消，我先去补正文', 'Cancel, I will write the prose first')
+      : gateReason === 'handoff-unusable'
+        ? text('取消，我先去精简交接单', 'Cancel, I will trim the handoff note first')
+        : text('取消，我先去补正文', 'Cancel, I will write the prose first')
   const defaultReason = gateReason === 'handoff-missing'
     ? text(
         `作者已知${volumeLabel}（${rangeLabel}）未登记卷末交接单，仍继续规划下一卷大纲`,
@@ -94,10 +132,24 @@ export default function OutlineProgressGatePanel({
           `作者已知${volumeLabel}（${rangeLabel}）的卷末交接单已过期，仍继续规划下一卷大纲`,
           `Author knows ${volumeLabel} (${rangeLabel})'s handoff note is out of date and continues planning the next volume's outline`,
         )
-      : text(
-          `作者已知${volumeLabel}（${rangeLabel}）正文仅定稿至第${gate.draftLastChapter}章，仍继续规划下一卷大纲`,
-          `Author knows ${volumeLabel} (${rangeLabel}) prose is finalized through chapter ${gate.draftLastChapter} only, and continues planning the next volume's outline`,
-        )
+      : gateReason === 'handoff-unusable'
+        ? text(
+            `作者已知${volumeLabel}（${rangeLabel}）的卷末交接单超出篇幅预算、本次不会被使用，仍继续规划下一卷大纲`,
+            `Author knows ${volumeLabel} (${rangeLabel})'s handoff note exceeds the budget and will not be used, and continues planning the next volume's outline`,
+          )
+        : invalidLedger
+          ? text(
+              `作者已知${volumeLabel}（${rangeLabel}）定稿章号账本有断章或重复、按未定稿处理`
+              + `${actualInUse ? '、本卷将使用已登记的卷末交接单' : ''}，仍继续规划下一卷大纲`,
+              `Author knows ${volumeLabel} (${rangeLabel})'s finalized ledger has a gap or duplicates (treated as not finalized)`
+              + `${actualInUse ? ' and the recorded handoff note will be used' : ''}, and continues planning the next volume's outline`,
+            )
+          : text(
+              `作者已知${volumeLabel}（${rangeLabel}）正文仅定稿至第${gate.draftLastChapter}章`
+              + `${actualInUse ? '、卷末交接单只覆盖部分定稿' : ''}，仍继续规划下一卷大纲`,
+              `Author knows ${volumeLabel} (${rangeLabel}) prose is finalized through chapter ${gate.draftLastChapter} only`
+              + `${actualInUse ? ' and its handoff note covers a partial volume' : ''}, and continues planning the next volume's outline`,
+            )
   const [reason, setReason] = useState(defaultReason)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -141,17 +193,13 @@ export default function OutlineProgressGatePanel({
           <p className="text-sm font-medium">
             {title}
           </p>
-          <p data-testid="outline-progress-gate-reason" className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+          <p
+            data-testid="outline-progress-gate-reason"
+            className="text-xs"
+            style={{ color: 'var(--color-text-muted)' }}
+          >
             {body}
           </p>
-          {!isHandoff && gate.authorityStatus === 'invalid' && (
-            <p data-testid="outline-progress-gate-invalid" className="text-xs" style={{ color: 'var(--color-danger)' }}>
-              {text(
-                '另外：定稿章号账本有断章或重复，已按「未定稿」处理。建议先到定稿列表核对。',
-                'Note: the finalized chapter ledger has a gap or duplicates, so this is treated as not finalized. Check the finalization list first.',
-              )}
-            </p>
-          )}
         </div>
       </div>
 

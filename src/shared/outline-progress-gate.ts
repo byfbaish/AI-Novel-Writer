@@ -52,18 +52,29 @@ import { volumeRangeEndingAt, type VolumeDefinition, type VolumeRange } from './
 
 export type OutlineProgressGateState = 'aligned' | 'ahead'
 
-/** 为什么会 `ahead` —— 面板据此说不同的话（三档的「该去做什么」完全不同）。 */
-export type OutlineProgressGateReason = 'prose-unfinalized' | 'handoff-missing' | 'handoff-stale'
+/** 为什么会 `ahead` —— 面板据此说不同的话（四档的「该去做什么」完全不同）。 */
+export type OutlineProgressGateReason =
+  | 'prose-unfinalized'
+  | 'handoff-missing'
+  | 'handoff-stale'
+  | 'handoff-unusable'
 
 /**
  * 上一卷卷末交接单在**本批大纲**这一步的可用性。
  *
- * - `usable`：有单、没过期、有内容 ⇒ L3 会用「实际」；
- * - `missing`：没有这一卷的单，或单在但六栏全空（渲染出来是空节，投影仍走 plan）；
+ * - `usable`：有单、没过期、**而且真能渲染出一节内容** ⇒ L3 会用「实际」；
+ * - `missing`：没有这一卷的单，或单在但六栏全空；
  * - `stale`：有单但基于的上游已经改过。读取侧**不注入**（旧事实比没有更糟），投影走 plan；
+ * - `unusable`：单在、不空、没过期，但按篇幅预算渲染出来是空节（单条超 1500 字等）⇒ 投影仍走 plan。
+ *   这一档是 2026-11-06 复核抓出来的：只判「六栏空不空」会漏掉预算路径，正是 D3 原缺陷换个原因复发；
  * - `unknown`：判断不出（读失败 / 老库）。**fail-open：不因这一维打扰**，与一维时行为一致。
  */
-export type PreviousHandoffAvailability = 'usable' | 'missing' | 'stale' | 'unknown'
+export type PreviousHandoffAvailability =
+  | 'usable'
+  | 'missing'
+  | 'stale'
+  | 'unusable'
+  | 'unknown'
 
 export interface OutlineProgressGate {
   state: OutlineProgressGateState
@@ -130,5 +141,6 @@ export function outlineProgressGateOf(input: {
   // 正文写完了，但这一卷的交接单不可用 ⇒ L3 仍走 plan，只不过原因换了一个。
   if (handoff === 'missing') return { ...base, state: 'ahead', reason: 'handoff-missing' }
   if (handoff === 'stale') return { ...base, state: 'ahead', reason: 'handoff-stale' }
+  if (handoff === 'unusable') return { ...base, state: 'ahead', reason: 'handoff-unusable' }
   return { ...base, state: 'aligned', reason: null }
 }

@@ -26,6 +26,7 @@ import {
   type PreviousHandoffAvailability,
 } from '../shared/outline-progress-gate'
 import type { VolumeHandoffDefinition } from '../shared/volume-handoff'
+import { isVolumeHandoffEmpty, renderVolumeHandoffSection, VOLUME_HANDOFF_MAX_CHARS } from '../shared/volume-handoff'
 import { volumeRangeEndingAt, type VolumeDefinition } from '../shared/volume-structure'
 import { ipc } from './ipc-client'
 
@@ -39,28 +40,30 @@ export interface OutlineProgressGateReadResult {
 /**
  * 第二维：上一卷的交接单能不能用。
  *
- * **判定口径必须与 `outline-prefix-context.ts` 一致**，否则闸门说「会用实际」而投影用的是计划，
- * 比不说更糟：
+ * **判定口径必须与 `outline-prefix-context.ts` + `projectSynopsisForOutline` 一致**，否则闸门说
+ * 「会用实际」而投影用的是计划，比不说更糟：
  * - 按**卷号精确匹配**，绝不回退到更早的卷（回退会把第 n−2 卷的交接当成第 n−1 卷）；
- * - `validity.state === 'stale'` ⇒ 读取侧不注入 ⇒ 这里也必须算 `stale`，不能算 `usable`。
- *
- * 六栏全空按 `missing` 算：那种单渲染出来是空节，投影照样走 `plan`。
+ * - `validity.state === 'stale'` ⇒ 读取侧不注入 ⇒ 这里也必须算 `stale`；
+ * - 六栏全空 ⇒ `missing`；
+ * - **能过前面几关还不够**：投影真正的判据是 `renderVolumeHandoffSection(...) !== ''`
+ *   （`synopsis-projection.ts:497`）。单条内容超过 1500 字预算时渲染结果为空节，投影走 plan。
+ *   2026-11-06 独立复核抓到的正是这条：只判「空不空」会让「单在但太长」重演 D3 原缺陷。
+ *   两种语言都渲染、任一为空即算不可用 —— 取严，因为读侧拿不到项目语言，
+ *   少报一次可用最多让作者多点一次确认，多报一次可用就是界面撒谎。
  */
 function handoffAvailabilityOf(
   handoffs: readonly VolumeHandoffDefinition[],
   previousVolumeIndex: number | null,
+  chapterNumber: number,
 ): PreviousHandoffAvailability {
   if (previousVolumeIndex === null) return 'unknown'
   const entry = handoffs.find(candidate => candidate.volumeIndex === previousVolumeIndex)
   if (!entry) return 'missing'
   if (entry.validity?.state === 'stale') return 'stale'
-  const blank = entry.worldState.trim() === ''
-    && entry.heroState.trim() === ''
-    && entry.openThread.trim() === ''
-    && entry.events.length === 0
-    && entry.items.length === 0
-    && entry.debts.length === 0
-  return blank ? 'missing' : 'usable'
+  if (isVolumeHandoffEmpty(entry)) return 'missing'
+  const renders = (language: 'zh-CN' | 'en-US') =>
+    renderVolumeHandoffSection(entry, language, chapterNumber, VOLUME_HANDOFF_MAX_CHARS) !== ''
+  return renders('zh-CN') && renders('en-US') ? 'usable' : 'unusable'
 }
 
 export async function readOutlineProgressGate(input: {
@@ -77,11 +80,19 @@ export async function readOutlineProgressGate(input: {
       ipc.invokeWithProjectSession(input.projectSession, 'db:volumes-list', projectPath),
       ipc.invokeWithProjectSession(input.projectSession, 'db:draft-authority-sequence', projectPath),
       ipc.invokeWithProjectSession(input.projectSession, 'db:consistency-exemption-list', projectPath),
-      // D3（2026-11-06）：第二维。读失败不算失败 —— `unknown` 会让这一维不打扰，
-      // 与扩维之前的行为一致（fail-open）。
-      ipc.invokeWithProjectSession(input.projectSession, 'db:volume-handoffs-list', projectPath),
+      // D3（2026-11-06）：第二维。**单独 catch** —— 读失败不算失败（`unknown` 会让这一维不打扰，
+      // 与扩维之前一致），但也不能让它把整条 `Promise.all` 拖进 catch：那会把原本会报的
+      // `prose-unfinalized` 一起吞掉（复核抓到的回归面）。
+      ipc.invokeWithProjectSession(input.projectSession, 'db:volume-handoffs-list', projectPath)
+        .catch(() => null),
     ])
     if (!volumesResult?.success) return { gate: null, warning: volumesResult?.error }
+    // 卷表本身陈旧/没解析完时边界不可信 ⇒ 判不出就不拦（与「读失败」同一口径）。
+    // 判据只用 `state === 'ready'`：`empty` 是老项目没建卷，走下面的 `volumeRangeEndingAt` 自然返回 null。
+    const volumeState = (volumesResult as { state?: string }).state
+    if (volumeState && volumeState !== 'ready' && volumeState !== 'empty') {
+      return { gate: null, warning: `卷结构状态为 ${volumeState}，本次不判` }
+    }
     if (!authority || typeof authority !== 'object' || typeof authority.status !== 'string') {
       return { gate: null, warning: '正文权威序列不可读' }
     }
@@ -102,7 +113,7 @@ export async function readOutlineProgressGate(input: {
         acknowledged,
         chapterNumber: input.chapterNumber,
         handoff: handoffs
-          ? handoffAvailabilityOf(handoffs, previousRange?.volumeIndex ?? null)
+          ? handoffAvailabilityOf(handoffs, previousRange?.volumeIndex ?? null, input.chapterNumber)
           : 'unknown',
       }),
     }
