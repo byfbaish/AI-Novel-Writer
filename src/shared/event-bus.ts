@@ -24,6 +24,8 @@ export type GlobalEventType =
   | 'FINALIZE_COMPLETE'
   // --- 章节删除收据变化（包括待人工确认和部分清理失败） ---
   | 'CHAPTER_DELETION_UPDATED'
+  // --- D8：卷/单元路线提交或上游级联清空后，界面上的情节大纲残本派生视图失效 ---
+  | 'SYNOPSIS_CANDIDATE_DISCARDED'
   // --- 项目级事件 ---
   | 'PROJECT_CHANGED'
   // --- 系统通知 ---
@@ -91,6 +93,12 @@ export interface EventPayloadMap {
   'CHAPTER_DELETION_UPDATED': {
     projectPath: string
     projectSession: ProjectSessionContext
+  }
+  'SYNOPSIS_CANDIDATE_DISCARDED': {
+    projectPath: string
+    projectSession: ProjectSessionContext
+    /** 触发来源：提交执行 / 上游级联清空，只作诊断，界面不据此分流。 */
+    reason?: 'submit' | 'upstream-clear'
   }
   'PROJECT_CHANGED': {
     projectPath: string

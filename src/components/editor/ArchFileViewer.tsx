@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { Save, RefreshCw, Sparkles, Loader2, AlertTriangle, FileText, ListTree, X } from 'lucide-react'
 import { renderIcon } from '../panels/sidebar/sidebar-icons'
 
-import { registerEditorExitSaveHandler, useEditorStore, type PlanningRecoverySaveSnapshot } from '../../stores/editor-store'
+import { markPlanningRecoveryDraftsInvalidated, registerEditorExitSaveHandler, useEditorStore, type PlanningRecoverySaveSnapshot } from '../../stores/editor-store'
 import ArchitectureConfirmDialog from '../dialogs/ArchitectureConfirmDialog'
 import InvalidationPlanGatePanel from '../dialogs/InvalidationPlanGatePanel'
 import type { InvalidationPlan } from '../../shared/invalidation-plan'
@@ -36,6 +36,8 @@ import {
 import type { ArchitectureUnitRange } from '../../shared/generation-owner-contract'
 import { formatChapterPosition } from '../../shared/chapter-position'
 import { createArchitectureWorkflow } from '../../services/workflows/architecture-workflow'
+import { applySynopsisRouteSubmit } from '../../services/workflows/synopsis-candidate-discard'
+import { syncSynopsisRoute, useSynopsisRouteStore } from '../../stores/synopsis-route-store'
 import { renderPlotOutlineSynopsis, validPlotOutlineAuthorPrefix, plotOutlineCoveredTo } from '../../shared/plot-outline-contract'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { useSynopsisUnitChainStore } from '../../stores/synopsis-unit-chain-store'
@@ -135,6 +137,8 @@ function ArchFileViewerSession({
   const currentProject = useProjectStore(s => s.currentProject)
   const text = useLocaleStore(s => s.text)
   const recoveryTab = useEditorStore(s => s.tabs.find(tab => tab.id === tabId && tab.planningRecovery))
+  /** ★ D8：卷单元路线不保留章节连选，恢复稿 Tab 的续批入口按同一开关静默。 */
+  const unitRouteEnabled = useSynopsisRouteStore(s => s.unitRouteEnabled)
   /** 弧光结构内容是否由枚举模板兜底（老模板用户）。作者保存一次后自动清除。 */
   const archEnumFallback = useEditorStore(s => s.tabs.find(tab => tab.id === tabId)?.archEnumFallback ?? false)
 
@@ -441,6 +445,13 @@ function ArchFileViewerSession({
     let submittedSnapshot = { content: md, contentRevision: savedSnapshot?.contentRevision ?? 0 }
     try {
       if (!resourceWriteAllowed(filePath)) throw new Error('资源只读或无效')
+      // ★ D8（§12.7.4）：清场后恢复稿仍可读可复制，但绝不许写回旧批次。
+      if (useEditorStore.getState().tabs.find(tab => tab.id === tabId)?.planningInvalidated) {
+        throw new Error(text(
+          '这份恢复稿已作废（候选区残本已被清场），只能阅读和复制，不能保存回写。',
+          'This recovery draft was invalidated (the candidate draft was discarded). It is read-only for review and copying only.',
+        ))
+      }
       if (recoveryRef.current) {
         const original = recoveryRef.current
         const session = recoverySession.current
@@ -671,7 +682,7 @@ function ArchFileViewerSession({
 
   // 监听架构生成完成事件，自动刷新当前页面
   useEffect(() => {
-    return globalEventBus.on('WORKFLOW_COMPLETE', (payload) => {
+    const unsubComplete = globalEventBus.on('WORKFLOW_COMPLETE', (payload) => {
       const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
       if (!projectSession || !isProjectSessionCurrent(projectSession)) return
       if (!shouldRefreshArchOnWorkflowComplete(
@@ -683,6 +694,13 @@ function ArchFileViewerSession({
       void handleReload()
       void loadCharacterRosterStatus()
     })
+    // ★ D8：提交清场 / 上游级联清空 ⇒ 已打开的恢复稿 Tab 标「已作废 · 只读」。
+    // 内容不丢，只禁回写与续写；这是界面层连坐失效，不碰数据层语义。
+    const unsubDiscard = globalEventBus.on('SYNOPSIS_CANDIDATE_DISCARDED', (payload) => {
+      if (!isProjectSessionPath(payload.projectSession, projectKey)) return
+      markPlanningRecoveryDraftsInvalidated(projectKey)
+    })
+    return () => { unsubComplete(); unsubDiscard() }
   }, [handleReload, loadCharacterRosterStatus, projectKey])
 
   /** 确认后启动架构生成工作流 */
@@ -698,32 +716,41 @@ function ArchFileViewerSession({
       throw new Error('项目会话已切换，未启动架构生成')
     }
     if (!isProjectSessionCurrent(projectSession)) throw new Error('项目会话已切换，未启动架构生成')
-    // E3 探针（T10）：开关打开且本次勾了情节大纲 ⇒ 「点一次 = 一个单元」，范围由落库游标决定，
-    // 对话框里的章号区间不再生效。开关关掉 / 算不出单元（旧骨架、无检查点）一律原样退回按章区间。
+    // E3 探针（T10）：配置开着且本次勾了情节大纲 ⇒ 「点一次 = 一个单元」，范围由落库游标决定。
     // ⚠️ 探针**必须把结论说出来**（控制台 + toast + window.__e3UnitProbe）：否则现场只看到「点了没反应」。
+    // ★ D8（§12.10）：判据是**配置开关**，与弹窗显示同源；配置开着却算不出单元时
+    // 只给人话说明并停下，**绝不退回按章区间**（那是一次模式交替，会冲击反馈收敛闭环）。
+    const unitRouteEnabled = await syncSynopsisRoute()
     let synopsisUnit: ArchitectureUnitRange | null = null
     // 连写用：卷号 + 本卷还剩几个单元（探针给不出就按「1 个单元、不判卷界」处理）。
     let synopsisUnitVolume: number | null = null
     let synopsisUnitCapacity = 1
     // T11 起这是正式行为（开关在设置里，默认开）：不再有 DEV 锁，探针自己读配置。
-    if (selectedSteps.includes('synopsis')) {
+    if (unitRouteEnabled && selectedSteps.includes('synopsis')) {
       const probe = await probeSynopsisUnitLaunchForProject({
         projectSession,
         totalChapters: Number(currentProject?.novelConfig?.totalChapters),
       })
       reportSynopsisUnitProbe(probe)
+      if (!probe.unit) {
+        const reason = describeSynopsisUnitProbe(probe)
+        toast.info(`这次没能按单元生成：${reason}`)
+        throw new Error(`本次未能按单元生成，未启动工作流：${reason}`)
+      }
       synopsisUnit = probe.unit
       synopsisUnitVolume = probe.volume?.index ?? null
       synopsisUnitCapacity = Math.max(1, probe.volume?.remainingUnits ?? 1)
-      if (probe.unit) {
-        toast.info(`[E3] 单元批次：${formatChapterPosition({
-          chapter: probe.unit.from,
-          volumeIndex: probe.volume?.index,
-          unitIndex: probe.unit.unitIndex,
-        }, 'zh-CN')}（上界 ${probe.unit.maxChapters} 章）`)
-      } else {
-        toast.info(`本次按章区间生成：${describeSynopsisUnitProbe(probe)}`)
-      }
+      // ★ 提交被接受之后、生成启动之前：无条件清候选区（只作废残本与界面派生视图）。
+      // 清掉 incomplete 旗标后，命令侧 :3500 的「请先完成该批次」不再触发。
+      await applySynopsisRouteSubmit(projectSession)
+      toast.info(`[E3] 单元批次：${formatChapterPosition({
+        chapter: probe.unit.from,
+        volumeIndex: probe.volume?.index,
+        unitIndex: probe.unit.unitIndex,
+      }, 'zh-CN')}（上界 ${probe.unit.maxChapters} 章）`)
+    } else if (selectedSteps.includes('synopsis')) {
+      // 配置关掉 = 旧路线：保留候选区续写语义，不清场、不改请求形态。
+      toast.info('本次按章节起终点生成')
     }
     // 启动前后各留一条：现场「点了没反应」时能立刻分辨是「没走到这里」「启动抛错」还是「启动了但没回执」。
     if (import.meta.env.DEV) console.warn('[E3] 提交工作流…', synopsisUnit ? '单元模式' : '按章区间')
@@ -826,6 +853,12 @@ function ArchFileViewerSession({
 
   const runContinuePlanning = async () => {
     if (continuing || saving) return
+    // ★ D8（§12.2.4 第 5 项）：这颗按钮会发 `synopsisRange` 请求，属于章节连选入口。
+    // 卷单元路线不保留它 —— 即使组件被旧状态渲染出来，也绝不许把请求发出去。
+    if (useSynopsisRouteStore.getState().unitRouteEnabled) {
+      setRecoveryError(text('当前按单元生成，不使用章节范围续批。', 'Unit-by-unit generation is active; chapter-range continuation is unavailable.'))
+      return
+    }
     setContinuing(true)
     try {
       const next = await refreshRecovery()
@@ -1027,7 +1060,12 @@ function ArchFileViewerSession({
           ? text(`待完成第 ${recovery.planningContinuation.remainingRange.from} 至 ${recovery.planningContinuation.remainingRange.to} 章，每章目标 ${recovery.planningContinuation.targetUnits} ${planningTargetUnit}。`, `Chapters ${recovery.planningContinuation.remainingRange.from} to ${recovery.planningContinuation.remainingRange.to} remain. Target ${recovery.planningContinuation.targetUnits} ${planningTargetUnit} per chapter.`)
           : text('本次所选章节已保存。', 'The selected chapters are saved.')}</p>
         {recovery.plotOutlineRecovery?.writeState.kind === 'blocked' && <p>{text('生成尚在进行、来源已变化或本稿已保存时，不能覆盖正式内容。草稿仍可编辑和复制。', 'Active generation, changed sources or an already saved draft prevent replacing saved content. You can still edit and copy this draft.')}</p>}
-        <button type="button" className="btn-secondary" disabled={continuing || saving || !projectMatches || !recovery.planningContinuation?.remainingRange || !['ready', 'continued'].includes(recovery.planningContinuation.state)} onClick={() => { void continuePlanning() }}>{text('继续生成缺少的章节', 'Generate remaining chapters')}</button>
+        {recoveryTab?.planningInvalidated && <p role="status" style={{ color: 'var(--color-warning-text)' }}>{text(
+          '已作废 · 只读：候选区残本已被清场，这里的内容仍可阅读和复制，但不能保存回写、也不能再触发续写。',
+          'Invalidated · read-only: the candidate draft was discarded. You can still read and copy this text, but it cannot be saved back or used to resume generation.',
+        )}</p>}
+        {/* ★ D8：卷单元路线静默掉章节连选入口（JSX 保留 = 隐藏，不是删除按钮）。 */}
+        {!unitRouteEnabled && <button type="button" className="btn-secondary" disabled={continuing || saving || !projectMatches || Boolean(recoveryTab?.planningInvalidated) || !recovery.planningContinuation?.remainingRange || !['ready', 'continued'].includes(recovery.planningContinuation.state)} onClick={() => { void continuePlanning() }}>{text('继续生成缺少的章节', 'Generate remaining chapters')}</button>}
         {/* 期 3a：确认前把 blast radius 摆出来。取消了就什么都不做（plan 阶段没写过库）。 */}
         {invalidationPlan && (
           <InvalidationPlanGatePanel

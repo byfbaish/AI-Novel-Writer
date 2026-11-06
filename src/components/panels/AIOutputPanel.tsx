@@ -1,5 +1,6 @@
 import { canCommitRecoveredReview } from '../../services/workflows/commands/review-chapter.command'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { globalEventBus } from '../../shared/event-bus'
 import GenerationBudgetDiagnostics from './GenerationBudgetDiagnostics'
 import type { GenerationBatchHistory, GenerationRecoveryContext } from '../../shared/generation-owner-contract'
 import type { ReviewRevisionRecovery } from '../../shared/review-revision-generation'
@@ -588,8 +589,19 @@ function ActiveRunView({
   const resumeSynopsisAvailable = run.errorCode === PLOT_OUTLINE_RESUME_ERROR_CODE
     || failedStep?.errorCode === PLOT_OUTLINE_RESUME_ERROR_CODE
   const [resumingSynopsis, setResumingSynopsis] = useState(false)
+  // ★ D8（§12.7.2 第 3 处）：清场后旧失败结果卡的「断点续写」必须失效。
+  // 只按本项目会话失效；新一轮工作流完成时恢复（新失败批次本来就该能续写）。
+  const [synopsisResumeInvalidated, setSynopsisResumeInvalidated] = useState(false)
+  useEffect(() => {
+    const unsubDiscard = globalEventBus.on('SYNOPSIS_CANDIDATE_DISCARDED', (payload) => {
+      if (!run.projectSession || payload.projectSession.projectPath !== run.projectSession.projectPath) return
+      setSynopsisResumeInvalidated(true)
+    })
+    const unsubComplete = globalEventBus.on('WORKFLOW_COMPLETE', () => setSynopsisResumeInvalidated(false))
+    return () => { unsubDiscard(); unsubComplete() }
+  }, [run.projectSession])
   const resumePlotOutline = async () => {
-    if (resumingSynopsis || !resumeSynopsisAvailable || !run.projectSession) return
+    if (resumingSynopsis || synopsisResumeInvalidated || !resumeSynopsisAvailable || !run.projectSession) return
     const project = useProjectStore.getState().currentProject
     if (
       !project
@@ -726,6 +738,7 @@ function ActiveRunView({
               }
               locale={locale}
               resumeSynopsisAvailable={resumeSynopsisAvailable}
+              resumeSynopsisInvalidated={synopsisResumeInvalidated}
               resumingSynopsis={resumingSynopsis}
               onResumeSynopsis={() => { void resumePlotOutline() }}
             />
@@ -1007,6 +1020,7 @@ function WorkflowFailureNotice({
   isUnpersistedChapterDraft,
   locale,
   resumeSynopsisAvailable = false,
+  resumeSynopsisInvalidated = false,
   resumingSynopsis = false,
   onResumeSynopsis,
 }: {
@@ -1022,6 +1036,8 @@ function WorkflowFailureNotice({
   locale: 'zh-CN' | 'en-US'
   /** 情节大纲生成被截断且已完成部分已保存 → 可断点续写。 */
   resumeSynopsisAvailable?: boolean
+  /** ★ D8：候选区残本已被清场 ⇒ 这份旧结果卡的续写入口作废（仍可见，但不可点）。 */
+  resumeSynopsisInvalidated?: boolean
   resumingSynopsis?: boolean
   onResumeSynopsis?: () => void
 }) {
@@ -1106,7 +1122,7 @@ function WorkflowFailureNotice({
             <button
               type="button"
               onClick={onResumeSynopsis}
-              disabled={!matchesCurrentProject || resumingSynopsis}
+              disabled={!matchesCurrentProject || resumingSynopsis || resumeSynopsisInvalidated}
               className="inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-medium shadow-sm transition-colors"
               style={{
                 color: '#fff',
@@ -1119,16 +1135,24 @@ function WorkflowFailureNotice({
               {resumingSynopsis
                 ? <Loader2 size={12} className="animate-spin" aria-hidden="true" />
                 : <Sparkles size={12} aria-hidden="true" />}
-              {resumingSynopsis
-                ? runText(locale, '正在从断点续写...', 'Resuming from the break point...')
-                : runText(locale, '继续生成情节大纲（断点续写）', 'Continue plot outline (resume)')}
+              {resumeSynopsisInvalidated
+                ? runText(locale, '候选已作废，不能断点续写', 'Candidate discarded; resume unavailable')
+                : resumingSynopsis
+                  ? runText(locale, '正在从断点续写...', 'Resuming from the break point...')
+                  : runText(locale, '继续生成情节大纲（断点续写）', 'Continue plot outline (resume)')}
             </button>
             <p className="m-0 mt-1.5" style={{ color: 'var(--color-text-muted)' }}>
-              {runText(
-                locale,
-                '已完成的部分已保存为不完整大纲，不会被覆盖；本次将让 AI 接着上次的末尾继续写。',
-                'The completed part is already saved as an incomplete outline and will not be lost; the AI will continue from where it stopped.',
-              )}
+              {resumeSynopsisInvalidated
+                ? runText(
+                  locale,
+                  '这份候选已在点「生成 / 执行」时被清场作废，基于它的断点续写已失效；请按单元重新生成。',
+                  'This candidate was discarded when generation was submitted, so resume is no longer available. Generate the unit again instead.',
+                )
+                : runText(
+                  locale,
+                  '已完成的部分已保存为不完整大纲，不会被覆盖；本次将让 AI 接着上次的末尾继续写。',
+                  'The completed part is already saved as an incomplete outline and will not be lost; the AI will continue from where it stopped.',
+                )}
             </p>
             {!matchesCurrentProject && (
               <p className="m-0 mt-1" style={{ color: 'var(--color-text-muted)' }}>

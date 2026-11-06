@@ -79,6 +79,11 @@ export interface EditorTab {
   planningSaveEnd?: string
   planningSaveSnapshot?: PlanningRecoverySaveSnapshot
   /**
+   * D8（§12.7.4 第三种）：候选区残本已被清场作废 ⇒ 这份恢复稿仍可读可复制，
+   * 但不再能保存回写、也不再能触发续写。内容不丢，只是标成「已作废 · 只读」。
+   */
+  planningInvalidated?: boolean
+  /**
    * 弧光结构（plot_structure）Tab 的内容是否由枚举模板（老模板）派生。
    *
    * 老模板用户的自由弧正文为空，打开时用 `getPlotStructureGuide()` 预填展示。
@@ -106,6 +111,23 @@ export function openPlanningRecoveryDraft(context: GenerationRecoveryContext, pr
     planningSaveEnd: String(context.plotOutlineRecovery?.completeChapters.at(-1)
       ?? context.plotOutline?.range.from ?? context.blueprintRecovery?.editRange?.from ?? ''),
   })
+}
+
+/**
+ * D8：把当前项目已经打开的「大纲恢复稿」Tab 标为已作废（只读）。
+ *
+ * 事件 `SYNOPSIS_CANDIDATE_DISCARDED` 的界面侧落地动作之一：清场只作废本批残本，
+ * **不删 Tab、不丢作者手改过的字**；但保存回写与「继续生成缺少的章节」必须失效，
+ * 否则同屏留着一份能写回旧批次的真相（§12.7.1 ②）。幂等，可重复调用。
+ */
+export function markPlanningRecoveryDraftsInvalidated(projectKey: string): void {
+  useEditorStore.setState(state => ({
+    tabs: state.tabs.map(tab => (
+      tab.id.startsWith('planning-recovery:') && tab.projectKey === projectKey && !tab.planningInvalidated
+        ? { ...tab, planningInvalidated: true }
+        : tab
+    )),
+  }))
 }
 
 interface EditorState {

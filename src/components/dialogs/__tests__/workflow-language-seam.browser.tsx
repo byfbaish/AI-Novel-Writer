@@ -124,6 +124,8 @@ describe('workflow launch language seams', () => {
               ? { success: true, data: checkpointState.current }
               : { success: false, error: 'not found' }
           }
+          // 本用例验的是旧模式「续批（第 21 章起）」弹窗 ⇒ 显式关掉卷单元开关。
+          if (channel === 'config:get') return { synopsisUnitMode: false }
           throw new Error(`Unexpected IPC channel: ${channel}`)
         }),
         on: vi.fn(() => () => {}),

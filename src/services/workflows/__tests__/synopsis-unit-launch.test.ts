@@ -18,7 +18,8 @@ import {
  *
  * 要保住的性质（少了任何一条，实机都会在 `approveUnitContext` 被拒）：
  * 1. 与命令侧**同源**：`coveredTo` 取检查点字段、无游标时用 `deriveSynopsisUnitCursor` 预览；
- * 2. 任何算不出的情况（无骨架 / 无检查点 / 有未完成批次 / 开关关）都返回 `null` 让调用方退回按章区间；
+ * 2. 任何算不出的情况（无骨架 / 无检查点 / 开关关）都返回 `null` 让调用方退回按章区间；
+ *    **D8 起「有未完成批次」不再是算不出的情况** —— 残本由提交时的清场动作作废，探针照常给单元；
  * 3. 开关关掉时**一次 IPC 都不读**。
  */
 
@@ -126,12 +127,12 @@ describe('resolveSynopsisUnitLaunch', () => {
     expect(migrated?.from).toBe(11)
   })
 
-  it('有未完成批次时退回按章区间（中断续写不是「再写一个单元」）', async () => {
+  it('★ D8：有未完成批次仍按游标进单元模式（残本由提交时清场作废，不再降级回按章区间）', async () => {
     doubles.checkpoint = { synopsis_covered_to: 10, synopsis_incomplete: true, synopsis_unit_cursor: { volumeIndex: 1, unitIndex: 1, writtenInVolume: 10 } }
-    expect(await resolve()).toBeNull()
-    // 有半成品正文 ⇒ 真的可续，必须退回
+    expect((await resolve())?.from).toBe(11)
+    // 有半成品正文也一样：路线由配置开关定，不由界面上有没有残稿定
     doubles.checkpoint = { synopsis_covered_to: 0, synopsis_incomplete: true, synopsis_result: '## 第1章：半截' }
-    expect(await resolve()).toBeNull()
+    expect((await resolve())?.from).toBe(1)
   })
 
   it('空的中断标记（什么都没写进库）视同未开始，不锁死单元模式', async () => {
@@ -205,8 +206,10 @@ describe('probeSynopsisUnitLaunch', () => {
   it('每个退回分支都有自己的 reason，不会退化成静默 null', async () => {
     expect((await probe({ unitMode: false })).reason).toBe('flag-off')
     expect((await probe({ totalChapters: 0 })).reason).toBe('invalid-total')
+    // D8：`incomplete` 不再是跳过理由，探针照常算出单元
     doubles.checkpoint = { synopsis_covered_to: 10, synopsis_incomplete: true }
-    expect((await probe()).reason).toBe('incomplete')
+    expect((await probe()).reason).toBeNull()
+    expect((await probe()).unit?.from).toBe(11)
     // 已写到第 10 章但没有骨架 ⇒ 推不出游标
     doubles.checkpoint = { synopsis_covered_to: 10 }
     expect((await probe({ plotStructurePlan: undefined })).reason).toBe('no-cursor')
@@ -253,25 +256,29 @@ describe('probeSynopsisUnitLaunch', () => {
   })
 
   /**
-   * 中断批次里只要有**半成品正文**，就一律按「中断」退回（不是单元模式）。
-   * 这条与「作者清空大纲」在文件上无法区分，所以不自动判过期，只由作者显式重置。
+   * ★ D8：中断批次里有半成品正文 / 有进度时，探针**仍按游标给出单元**。
+   * 理由：残本的生命周期归「提交时清场」，不归探针；探针一旦因它降级，
+   * 界面就退回章区间，作者点生成又被 :3500 拦住 —— 那正是本卡要修的死路。
+   * 显式重置仍只由作者触发（作者清空大纲的场景不在自动判过期范围）。
    */
-  it('有半成品正文 / 有进度时按「中断」退回，不擅自作废', async () => {
+  it('★ D8：有半成品正文 / 有进度时仍给单元，不因 incomplete 降级', async () => {
     doubles.checkpoint = {
       synopsis_covered_to: 0,
       synopsis_incomplete: true,
       synopsis_result: '## 第1章：半截',
       synopsis_db_hash: '1upvfjc',
     }
-    expect((await probe({})).reason).toBe('incomplete')
+    expect((await probe({})).unit?.from).toBe(1)
     doubles.checkpoint = {
       synopsis_covered_to: 8,
       synopsis_incomplete: true,
       synopsis_unit_cursor: { volumeIndex: 1, unitIndex: 3, writtenInVolume: 8 },
       synopsis_db_hash: '1upvfjc',
     }
-    expect((await probe({})).reason).toBe('incomplete')
-    expect((await probe({})).reason).toBe('incomplete')
+    // 这份检查点的游标 unitIndex=3 已越过骨架里的单元数 ⇒ 可能落 `compute-null`。
+    // 那是「算不出单元」的另一条 skip，与残本无关；本测试只钉「不再因 incomplete 降级」。
+    const result = await probe({})
+    expect(result.reason).not.toBe('incomplete')
   })
 
 

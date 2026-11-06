@@ -9,6 +9,7 @@ import SkillSettings from './SkillSettings'
 import DeveloperSettings from './DeveloperSettings'
 import AppearanceSettings from './AppearanceSettings'
 import { useLLMStore } from '../../stores/llm-store'
+import { useSynopsisRouteStore } from '../../stores/synopsis-route-store'
 import { useThemeStore, FONT_OPTIONS, type FontId } from '../../stores/theme-store'
 import type {
   DiscoveredModel,
@@ -1396,8 +1397,12 @@ function EditorSection() {
     try {
       const result = await ipc.invoke('config:set', { synopsisUnitMode: checked })
       if (!result.success) throw new Error(result.error || text('未知错误', 'Unknown error'))
+      // ★ D8：开关是「卷/单元路线」的单一事实源，切了就要让弹窗显示与提交立刻同源
+      // （否则开着弹窗切配置，界面还按旧路线渲染，提交却按新路线发请求）。
+      useSynopsisRouteStore.getState().setUnitRouteEnabled(checked)
     } catch (error) {
       setSynopsisUnitModeState(previous)
+      useSynopsisRouteStore.getState().setUnitRouteEnabled(previous)
       setSynopsisUnitError(text(
         `按单元生成设置保存失败：${error instanceof Error ? error.message : String(error)}`,
         `Could not save the unit-by-unit setting: ${error instanceof Error ? error.message : String(error)}`,

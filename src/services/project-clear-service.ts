@@ -170,6 +170,11 @@ export async function clearProjectData(
     if (!clearedProgress.ok) {
       console.warn('[clearProjectData] 故事架构已清除，但检查点进度未能作废:', clearedProgress.error)
     }
+    // ★ D8（§12.2.5）：数据层 14 键整表删照既有语义，本轮不改；这里只补
+    // 「界面派生视图连坐清」—— 候选卡 / 恢复稿 / 旧结果卡的续写入口必须一起失效，
+    // 否则上游都作废了，屏幕上还挂着基于旧设定的残本。这是读侧失效，不是第二次删除。
+    const { notifySynopsisCandidateDiscarded } = await import('./workflows/synopsis-candidate-discard')
+    notifySynopsisCandidateDiscarded(projectSession)
     await useCharacterStore.getState().load(projectPath, projectSession)
   }
 

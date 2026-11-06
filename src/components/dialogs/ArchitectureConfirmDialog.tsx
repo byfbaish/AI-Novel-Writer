@@ -36,6 +36,7 @@ import OutlineProgressGatePanel from './OutlineProgressGatePanel'
 import { readOutlineProgressGate } from '../../services/outline-progress-gate'
 import type { OutlineProgressGate } from '../../shared/outline-progress-gate'
 import { alertError } from '../ui/AlertDialog'
+import { useSynopsisRouteStore, syncSynopsisRoute } from '../../stores/synopsis-route-store'
 
 type ArchStepKey = 'premise' | 'characters' | 'worldbuilding' | 'plotStructure' | 'synopsis'
 
@@ -198,6 +199,8 @@ export default function ArchitectureConfirmDialog({
   useEffect(() => {
     if (!isOpen) return
     let disposed = false
+    // D8：路线判据与两个提交入口同源（配置开关），不再各探一次探针。
+    void syncSynopsisRoute()
     void ipc.invoke('config:get').then(config => {
       if (!disposed) setTargetUnits(String(parsePlanningTargetUnits(config.outlineTargetUnits)))
     }).catch(error => {
@@ -262,6 +265,9 @@ export default function ArchitectureConfirmDialog({
   }, [isOpen, currentProject, totalChapterCount])
   /** 本次走单元模式时，章号区间与「续写」都不再参与生成。 */
   const unitMode = unitPreview?.unit ?? null
+  /** ★ D8：路线判据 = 配置开关，不是「本次探针有没有成功」。配置开着却算不出单元时，
+   * 只给人话说明，绝不把章节连选控件整套露出来（04:56 / 05:03 作者裁定）。 */
+  const unitRouteEnabled = useSynopsisRouteStore(s => s.unitRouteEnabled)
   /** 闸门读侧与面板共用的会话；`null` = 还没有可用的项目会话（不拦）。 */
   const dialogSession = captureProjectSession(currentProject)
   /** 连写的硬上限 = 本卷还剩几个单元（v1 不跨卷）。读不到卷结构就只让写 1 个。 */
@@ -669,7 +675,7 @@ export default function ArchitectureConfirmDialog({
                   <AlertTriangle size={13} />
                   {text('情节大纲 · 本次生成范围', 'Plot outline · batch scope')}
                 </div>
-                {coveredTo > 0 && !unitMode && (
+                {coveredTo > 0 && !unitRouteEnabled && (
                   <label
                     className="flex items-center gap-1.5 text-xs cursor-pointer select-none"
                     title={canContinue
@@ -695,7 +701,7 @@ export default function ArchitectureConfirmDialog({
               >
                   {text(`全书共 ${totalChapters} 章，每次最多生成 ${PLANNING_ACTION_CHAPTER_LIMIT} 章。完成后可继续下一批。`, `The book has ${totalChapters} chapters. Generate up to ${PLANNING_ACTION_CHAPTER_LIMIT} chapters per action, then continue with the next batch.`)}
                 </p>
-                {coveredTo > 0 && !unitMode && (
+                {coveredTo > 0 && !unitRouteEnabled && (
                   <p role="status" className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>
                     {canContinue
                       ? continuing
@@ -710,7 +716,7 @@ export default function ArchitectureConfirmDialog({
                       : text(`已覆盖至第 ${coveredTo} 章，全书章节均已覆盖。`, `Covered through chapter ${coveredTo}; every chapter is covered.`)}
                   </p>
                 )}
-                {unitPreview && !unitMode && (
+                {unitPreview && !unitRouteEnabled && (
                   <div role="status" className="space-y-1">
                     <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>
                       {text(
@@ -777,8 +783,8 @@ export default function ArchitectureConfirmDialog({
                       </p>
                       <p className="m-0" style={{ color: 'var(--color-text-muted)' }}>
                         {text(
-                          '章号区间与「续写」在此模式下不生效；要按章生成请到「设置 → 编辑器」关掉「按单元生成情节大纲」。',
-                          'The chapter range and “Continue” do not apply in unit mode. Turn off “Generate the plot outline unit by unit” in Settings → Editor to generate by chapter range.',
+                          '每次生成都是一个完整单元；上一次未完成的半成品不保留，也不会从断处接着写。',
+                          'Each run generates one complete unit. An unfinished draft from the previous run is discarded and never continued from its break point.',
                         )}
                       </p>
                       {/* 库里一个字都没有、检查点却记着写过 N 章 = 矛盾态。
@@ -889,6 +895,15 @@ export default function ArchitectureConfirmDialog({
                       <p className="text-xs m-0" style={{ color: 'var(--color-text-muted)' }}>
                         {text(`无法整单元重写：${rewindError}`, `Cannot rewrite the unit: ${rewindError}`)}
                       </p>
+                    )}
+                  </div>
+                ) : unitRouteEnabled ? (
+                  // ★ D8：配置开着却算不出单元 ⇒ 只给「这次为什么没能进单元模式」的人话，
+                  // 绝不退回章号区间控件（那是一次模式交替，会冲击反馈收敛闭环）。
+                  <div role="status" className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                    {text(
+                      `这次没能按单元生成：${unitPreview ? describeSynopsisUnitProbe(unitPreview) : '正在读取进度'}。请稍后重试。`,
+                      `Could not resolve a unit this time: ${unitPreview ? describeSynopsisUnitProbe(unitPreview) : 'reading progress'}. Please try again shortly.`,
                     )}
                   </div>
                 ) : (

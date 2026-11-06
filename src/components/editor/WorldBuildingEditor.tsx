@@ -15,9 +15,12 @@ import { ipc } from '../../services/ipc-client'
 
 import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
 import {
+  describeSynopsisUnitProbe,
   probeSynopsisUnitLaunchForProject,
   reportSynopsisUnitProbe,
 } from '../../services/workflows/synopsis-unit-launch'
+import { applySynopsisRouteSubmit } from '../../services/workflows/synopsis-candidate-discard'
+import { syncSynopsisRoute } from '../../stores/synopsis-route-store'
 import type { ArchitectureUnitRange } from '../../shared/generation-owner-contract'
 import { useSynopsisUnitChainStore } from '../../stores/synopsis-unit-chain-store'
 import { globalEventBus } from '../../shared/event-bus'
@@ -44,7 +47,7 @@ import { architectureRecoveryHandle } from '../../shared/architecture-recovery-n
 import { DEFAULT_PLANNING_ACTION_CHAPTERS } from '../../shared/plot-outline-contract'
 import { hasArchContent } from '../../services/architecture-service'
 import type { GenerationRecoveryContext } from '../../shared/generation-owner-contract'
-import { openPlanningRecoveryDraft } from '../../stores/editor-store'
+import { markPlanningRecoveryDraftsInvalidated, openPlanningRecoveryDraft } from '../../stores/editor-store'
 import {
   hasVisiblePartialSynopsisMarker,
   isUsableSynopsisCheckpoint,
@@ -332,7 +335,18 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
       loadStatus()
       loadCharacterRosterStatus()
     })
-    return () => { unsub3(); unsub4() }
+    // ★ D8：提交清场 / 上游级联清空后，界面上的残本派生视图**连坐失效**。
+    // 这是读侧失效：数据层已经作废旗标，这里只清组件 state；不删按钮、不碰世界观候选。
+    const unsub5 = globalEventBus.on('SYNOPSIS_CANDIDATE_DISCARDED', (payload) => {
+      const session = captureProjectSession(currentProject)
+      if (!session || !isProjectSessionCurrent(session)
+        || !sameProjectSessionContext(session, payload.projectSession)) return
+      setSynopsisCandidate('')
+      setShowSynopsisCandidate(false)
+      setPlanningRecovery(null)
+      markPlanningRecoveryDraftsInvalidated(projectKey)
+    })
+    return () => { unsub3(); unsub4(); unsub5() }
   }, [currentProject, loadCharacterRosterStatus, loadStatus, projectKey])
 
   /** 打开单个架构文件（arch-file 类型；若 tab 已存在则刷新磁盘内容） */
@@ -415,19 +429,28 @@ const DB_FIELD_BY_STEP: Record<ArchStepKey, string> = {
     if (!projectMatches || !projectSession || !isProjectSessionPath(projectSession, projectKey)) throw new Error(text('项目会话已切换，未启动架构生成', 'The project session changed, so architecture generation was not started.'))
     if (!isProjectSessionCurrent(projectSession)) throw new Error(text('项目会话已切换，未启动架构生成', 'The project session changed, so architecture generation was not started.'))
     // E3 探针（T10）：**第二个入口**（架构总览面板）。与 ArchFileViewer 走同一份探针，
-    // 免得「从哪个入口点」决定行为。开关关掉 / 算不出单元一律原样退回按章区间。
+    // 免得「从哪个入口点」决定行为。
+    // ★ D8（§12.10）：原先这里带 `import.meta.env.DEV` 门，打包后恒走章区间 —— 同一个
+    // 配置两个入口行为不一致。本轮去掉 DEV 门，并改用与弹窗同源的配置开关判据。
+    const unitRouteEnabled = await syncSynopsisRoute()
     let synopsisUnit: ArchitectureUnitRange | null = null
     let synopsisUnitVolume: number | null = null
     let synopsisUnitCapacity = 1
-    if (import.meta.env.DEV && selectedSteps.includes('synopsis')) {
+    if (unitRouteEnabled && selectedSteps.includes('synopsis')) {
       const probe = await probeSynopsisUnitLaunchForProject({
         projectSession,
         totalChapters: Number(currentProject?.novelConfig?.totalChapters),
       })
       reportSynopsisUnitProbe(probe)
+      if (!probe.unit) {
+        // 配置开着却算不出单元 ⇒ 停下，不退回章区间请求（禁止模式交替）。
+        throw new Error(`本次未能按单元生成，未启动工作流：${describeSynopsisUnitProbe(probe)}`)
+      }
       synopsisUnit = probe.unit
       synopsisUnitVolume = probe.volume?.index ?? null
       synopsisUnitCapacity = Math.max(1, probe.volume?.remainingUnits ?? 1)
+      // ★ 提交被接受之后、生成启动之前：无条件清候选区（只作废残本与界面派生视图）。
+      await applySynopsisRouteSubmit(projectSession)
     }
     const receipt = await launchCreativeWorkflow({
       workflow: 'generate_architecture',

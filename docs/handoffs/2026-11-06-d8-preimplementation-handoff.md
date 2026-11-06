@@ -1,4 +1,4 @@
-# 交接：D8 开工前 —— 方案 v3 已定稿、两轮审核已过，代码未开工，两条待裁
+# 交接：D8 开工前 —— 方案 v3 已定稿、两轮审核已过，代码未开工，两条待裁【历史稿 · C1/C2 已作废】
 
 > ## ⚠️ 本稿第二节 C1 / C2 与第六节「下一步」已于 2026-11-06 03:5x **作废**（作者裁定，见本稿第九节）
 > **不要按本稿派活开工，也不要再请作者裁 C1 / C2。** 两条都不是真裁定项：C1 本属「续写 / 重写两条流程线并存」，C2 本属「按钮按 type 解耦」。v3 任务书回炉，代码仍零改动。第九节另记**优先级最高**的一件事：提请裁定的材料口径已入章程 §11。
@@ -9,7 +9,7 @@
 >
 > 交接基准：2026-11-06 03:2x（Asia/Shanghai）· 分支 `exp/resource-ledger` · 主线与 `wt-1` 同点且工作区干净（**当前 HEAD 用 `git log -1 --oneline` 取**；本稿与 §11.7 / v3 修订同批提交，`8f1e194d` 是上一版 v2 的基线）
 > 本窗口边界：作者明确「这个对话窗口就不要做实施了，等这些审完改完以后直接做交接」⇒ **只改方案文档、只做审核、只写交接，零生产代码改动**。
-> 一句话：**D8 方案 v3 已落看板卡 `4b9eae6e`（`todo`），可直接读卡开工；但开工前有两件事必须作者先裁（C1 / C2）**，执行者遇到要停下报告，不许自己拍板。
+> 一句话（**⚠️ 03:2x 快照，已作废**）：D8 方案 v3 已落看板卡 `4b9eae6e`（`todo`），可直接读卡开工；但开工前有两件事必须作者先裁（C1 / C2）。**现值（当日收口）**：v3 与 C1 / C2 全部作废，§12 已第八轮补正，作者裁定「不用复审、直接施工、做实际验证」；执行依据只认 [`d8-checkpoint-degradation-design.md`](../design/architecture/d8-checkpoint-degradation-design.md) §12.10。**本稿第 6 / 8 / 11 行的「代码仍零改动 / 本窗口零生产代码改动」都是 03:2x–05:38 的历史快照，不是现值**：生产代码已在主工作区落地并验证全绿（单测 2203/2203、browser 54/54、check-fast 三项全过），看板卡 `4b9eae6e` 已改为留痕卡；**仅「作者实机复验」仍待办**（§12.10.4 第三层）。
 > 相关稿：[`d8-checkpoint-degradation-design.md`](../design/architecture/d8-checkpoint-degradation-design.md)（§11 / §11.7）· [`live-pipeline-acceptance-defects-assessment.md`](../design/product/live-pipeline-acceptance-defects-assessment.md) §D8 · [`industry-alignment-and-stage-goals.md`](../design/architecture/industry-alignment-and-stage-goals.md) §5 四问 · [`doubao-channel.md`](../agents/doubao-channel.md) §2.1.0 · [`task-board-channel.md`](../agents/task-board-channel.md) §5.2/§5.4 · [`worktree-parallel.md`](../agents/worktree-parallel.md) §7
 
 ---
@@ -22,7 +22,7 @@ D8 的**实施方案不是独立文档**，是「设计稿 §9 / §11 + 看板�
 - **v2** 按作者 03:05 的四问重写验收 1 / 2：**真问题存在、行业有标准名，但「枚举范围清单 / 所有默认值对象清单」没有行业定义 ⇒ 撤回，不自造需求**；同时重定位改点。提交 `8f1e194d`。
 - **v3** 按豆包 03:20 只读审查的 5 条阻塞修正（排除表误判、打错路径、§11.5 论证不成立、文案漏项、双语与 browser 断言），Lead 抽查 9 处全属实。按 `task-board-channel.md` §5.2「复核要收敛，只跑一轮」**不再复审**（原文误记为手册 §5.4，04:1x 订正）。
 
-**结论：方案可以开工，但 C1 / C2 两条待裁必须先请作者定。** 代码一行未动。
+~~**结论：方案可以开工，但 C1 / C2 两条待裁必须先请作者定。代码一行未动。**~~ ⇒ **⚠️ 已作废**：C1 本属「续写 / 重写两条流程线并存」，C2 本属「按钮按 type 解耦」，都不是裁定项；05:38 后问题定义回到「候选区残本阻塞生成」，18:5x 第八轮补正后直接施工。
 
 ## 一、当前状态（**03:2x 快照**；05:38 现值写在各行括号里）
 

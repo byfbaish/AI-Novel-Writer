@@ -49,7 +49,9 @@ beforeEach(() => {
   document.body.append(container)
   root = createRoot(container)
   invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
-    if (channel === 'config:get') return planningPreferences
+    // 本文件全是「按章区间」旧模式用例：卷单元开关未配置时默认开，这里显式关掉，
+    // 否则弹窗按 §12.2.4 静默章号输入，这些断言整体失效。
+    if (channel === 'config:get') return { synopsisUnitMode: false, ...planningPreferences }
     if (channel === 'config:set') {
       const patch = args[0]
       if (typeof patch !== 'object' || patch === null) throw new Error('Invalid preference patch')

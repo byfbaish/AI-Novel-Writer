@@ -280,17 +280,14 @@ export async function probeSynopsisUnitLaunch(
   // 第二份进度事实：库里的正文。检查点说「一章没有」而库里有大纲，只能是检查点丢了。
   const outlineCoveredTo = Number.isSafeInteger(input.outlineCoveredTo) ? Number(input.outlineCoveredTo) : 0
   if (coveredTo === 0 && outlineCoveredTo >= 1) return skip('checkpoint-lost', 0, found)
-  // 有未完成批次时单元模式语义未定（中断续写走 resumeSynopsis，不是「再写一个单元」），
-  // 探针阶段直接退回按章区间，避免重复生成同一单元。
-  // ⚠️ 例外一：批前预写的空标记（`covered_to=0` 且没有半成品正文）背后没有任何可续内容
-  //    ——那是「刚才那批一个字都没落库」留下的，视同未开始，否则一次失败就会把单元模式锁死。
-  // ⚠️ 例外二：检查点已被作者显式重置（`resetSynopsisCheckpoint` 会把进度写回 0
-  //    并清掉 incomplete），所以这里读到的 incomplete 一定还是真的。
-  if (checkpoint.synopsis_incomplete === true) {
-    const resumable = (typeof checkpoint.synopsis_result === 'string' && checkpoint.synopsis_result.trim().length > 0)
-      || coveredTo > 0
-    if (resumable) return skip('incomplete', coveredTo, found)
-  }
+  // D8（2026-11-06 第八轮，§12.10）：卷/单元路线**不再因「有未完成批次」退回按章区间**。
+  // 旧行为是 `skip('incomplete')` ⇒ 弹窗 unitMode=null ⇒ 整套章号控件露出，作者点
+  // 「生成」却被命令侧 :3500 硬抛，正是「残本把下一次生成堵住」的现场。
+  // 现在路线由配置开关定（本函数开头的 flag-off 分支），残本交给提交时那个只作废
+  // 旗标的新动作（synopsis-candidate-discard.ts）处理；清掉 incomplete 后命令侧
+  // `interrupted` 也为 false，续批按游标照常跑，`synopsis_range` 等记账一个键不动。
+  // ⚠️ `incomplete` 仍留在 SynopsisUnitSkipReason 词表里供历史文案/外部诊断使用，
+  //    但探针不再返回它；配置开着却算不出单元时，其余 skip 原因各自给「人话说明」。
   const { computeSynopsisUnitRange, deriveSynopsisUnitCursor, INITIAL_SYNOPSIS_UNIT_CURSOR } =
     await import('./commands/architecture.command')
   const explicitCursor = checkpoint.synopsis_unit_cursor ?? null

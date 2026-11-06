@@ -177,11 +177,16 @@ describe('清空架构项时级联作废检查点进度（2026-10-21 实机）',
     expect(keys).toContain('world_building_resource_candidates')
   })
 
-  it('清情节大纲 ⇒ 只清大纲自己的 12 个进度键', () => {
+  it('清情节大纲 ⇒ 只清大纲自己的 14 个进度键', () => {
     const keys = archStepCheckpointKeys('synopsis')
-    expect(keys.length).toBe(12)
+    // D8 第八轮复核：`SYNOPSIS_CHECKPOINT_KEYS` 现为 14 键（含 covered_to /
+    // unit_cursor / volume_deviations）。这份整表属于「重置 / 级联清空」，
+    // **绝不是** D8 的清场动作 —— 清场只作废未完成批次的旗标与残本正文。
+    expect(keys.length).toBe(14)
     expect(keys).toContain('synopsis_result')
     expect(keys).toContain('synopsis_db_hash')
+    expect(keys).toContain('synopsis_unit_cursor')
+    expect(keys).toContain('synopsis_volume_deviations')
     expect(keys).not.toContain('premise_result')
   })
 
