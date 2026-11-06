@@ -99,6 +99,10 @@ function resolveInvalidationDomains(steps: readonly ArchStepKey[]): UpstreamDoma
  * 设计意图（作者 2026-10-11）：原生 number 输入自带的上下箭头只能 ±1，且要悬停才出现；
  * 分批生成时最常用的动作却是"再挪一点"——所以做成**常显的 ±1 / ±5 四键**。
  * 语义：起点上的步进 = 平移整批；终点上的步进 = 增删本批章数（上限由 PLANNING_ACTION_CHAPTER_LIMIT 约束）。
+ *
+ * 布局（2026-11-06 作者指出）：四键原先各自带框、又与「第 / 章」同处一行，读起来像
+ * 「第 -5 -1 +1 +5 章」这样一串算式。改成**连体分段控件**（一个外框、内部分隔线），
+ * 让它一眼是「一个控件」而不是四个散字。
  */
 function ChapterStepper({
   onStep, disabled, label,
@@ -108,8 +112,13 @@ function ChapterStepper({
   label: string
 }) {
   return (
-    <span className="inline-flex items-center gap-0.5" role="group" aria-label={label}>
-      {[-5, -1, 1, 5].map(delta => (
+    <span
+      className="inline-flex items-stretch overflow-hidden rounded-md shrink-0"
+      role="group"
+      aria-label={label}
+      style={{ border: '1px solid var(--color-border)' }}
+    >
+      {[-5, -1, 1, 5].map((delta, index) => (
         <button
           key={delta}
           type="button"
@@ -117,9 +126,9 @@ function ChapterStepper({
           onClick={() => onStep(delta)}
           aria-label={label + (delta > 0 ? ' +' : ' ') + delta}
           title={delta > 0 ? `加 ${delta} 章` : `减 ${-delta} 章`}
-          className="h-6 min-w-[1.5rem] rounded border text-[0.68rem] tabular-nums outline-none transition-colors disabled:opacity-40 hover:bg-[var(--color-hover)]"
+          className="h-7 min-w-[1.75rem] px-1 text-[0.7rem] tabular-nums outline-none transition-colors disabled:opacity-40 hover:bg-[var(--color-hover)]"
           style={{
-            borderColor: 'var(--color-border)',
+            borderLeft: index > 0 ? '1px solid var(--color-border)' : undefined,
             color: 'var(--color-text-secondary)',
             backgroundColor: 'var(--color-bg)',
           }}
@@ -908,47 +917,55 @@ export default function ArchitectureConfirmDialog({
                     )}
                   </div>
                 ) : (
-                <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                  <span style={{ color: 'var(--color-text-muted)' }}>{text('第', 'From ch.')}</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={totalChapters}
-                    value={effectiveSynopsisFrom}
-                    disabled={continuing}
-                    onChange={e => setSynopsisFrom(e.target.value)}
-                    placeholder="1"
-                    aria-label={text('本次生成范围的起始章', 'First chapter of this batch')}
-                    className="w-16 rounded-md px-2 py-1.5 text-xs outline-none transition-colors disabled:opacity-60"
-                    style={{
-                      color: 'var(--color-text)',
-                      backgroundColor: 'var(--color-bg)',
-                      border: '1px solid var(--color-border)',
-                    }}
-                  />
-                  <ChapterStepper onStep={stepSynopsisFrom} disabled={continuing} label={text('起始章微调', 'Adjust first chapter')} />
-                  <span style={{ color: 'var(--color-text-muted)' }}>{text('章 到第', 'to ch.')}</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={totalChapters}
-                    value={effectiveSynopsisTo}
-                    disabled={continuing}
-                    onChange={e => setSynopsisTo(e.target.value)}
-                    placeholder={String(totalChapters)}
-                    aria-label={text('本次生成范围的结束章', 'Last chapter of this batch')}
-                    className="w-16 rounded-md px-2 py-1.5 text-xs outline-none transition-colors disabled:opacity-60"
-                    style={{
-                      color: 'var(--color-text)',
-                      backgroundColor: 'var(--color-bg)',
-                      border: '1px solid var(--color-border)',
-                    }}
-                  />
-                  <ChapterStepper onStep={stepSynopsisTo} disabled={continuing} label={text('结束章微调', 'Adjust last chapter')} />
-                  <span className="text-xs" style={{ color: synopsisLength > PLANNING_ACTION_CHAPTER_LIMIT ? 'var(--color-error-text)' : 'var(--color-text-muted)' }}>
-                    {synopsisLength > 0
-                      ? text(`章（本批 ${synopsisLength} 章）`, `chapter(s) · ${synopsisLength} in this batch`)
-                      : text('章', 'chapter')}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+                  {/* 每个「章号 + 步进器 + 单位」自成一组、组内不换行：
+                      否则窄容器下输入框留在上一行、四个微调键被折到下一行，
+                      读起来就成了一句「第 -5 -1 +1 +5 章」。 */}
+                  <span className="inline-flex items-center gap-1.5">
+                    <span style={{ color: 'var(--color-text-muted)' }}>{text('第', 'From ch.')}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={totalChapters}
+                      value={effectiveSynopsisFrom}
+                      disabled={continuing}
+                      onChange={e => setSynopsisFrom(e.target.value)}
+                      placeholder="1"
+                      aria-label={text('本次生成范围的起始章', 'First chapter of this batch')}
+                      className="w-16 rounded-md px-2 py-1.5 text-xs outline-none transition-colors disabled:opacity-60"
+                      style={{
+                        color: 'var(--color-text)',
+                        backgroundColor: 'var(--color-bg)',
+                        border: '1px solid var(--color-border)',
+                      }}
+                    />
+                    <ChapterStepper onStep={stepSynopsisFrom} disabled={continuing} label={text('起始章微调', 'Adjust first chapter')} />
+                    <span style={{ color: 'var(--color-text-muted)' }}>{text('章', '')}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span style={{ color: 'var(--color-text-muted)' }}>{text('到第', 'to ch.')}</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={totalChapters}
+                      value={effectiveSynopsisTo}
+                      disabled={continuing}
+                      onChange={e => setSynopsisTo(e.target.value)}
+                      placeholder={String(totalChapters)}
+                      aria-label={text('本次生成范围的结束章', 'Last chapter of this batch')}
+                      className="w-16 rounded-md px-2 py-1.5 text-xs outline-none transition-colors disabled:opacity-60"
+                      style={{
+                        color: 'var(--color-text)',
+                        backgroundColor: 'var(--color-bg)',
+                        border: '1px solid var(--color-border)',
+                      }}
+                    />
+                    <ChapterStepper onStep={stepSynopsisTo} disabled={continuing} label={text('结束章微调', 'Adjust last chapter')} />
+                    <span className="text-xs" style={{ color: synopsisLength > PLANNING_ACTION_CHAPTER_LIMIT ? 'var(--color-error-text)' : 'var(--color-text-muted)' }}>
+                      {synopsisLength > 0
+                        ? text(`章（本批 ${synopsisLength} 章）`, `chapter(s) · ${synopsisLength} in this batch`)
+                        : text('章', 'chapter')}
+                    </span>
                   </span>
                 </div>
                 )}

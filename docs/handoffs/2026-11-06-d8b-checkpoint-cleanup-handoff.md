@@ -2,7 +2,7 @@
 
 > 交接基准：2026-11-06 21:15（Asia/Shanghai）· 分支 `exp/resource-ledger` · HEAD `566ca5d6` · 工作区干净
 > 最后一班：18:5x–21:1x（作者裁定 → 施工 → 单测 / browser → **Agent 用 CDP 真点 APP** → 按作者四条订正 → 实机复验）
-> 一句话：**D8 的三项阻塞已全部落地并实机通过，本班在此收口；剩余四条都是「已登记、未授权动」的边界，不阻塞本卡。**
+> 一句话：**D8 的三项阻塞已全部落地并实机通过，四条遗留已由作者 21:2x 逐条答复（改的不改的都定了），本卡无待办；已 push。**
 > 相关稿：[`d8-checkpoint-degradation-design.md`](../design/architecture/d8-checkpoint-degradation-design.md) §12.10（现值只认这一节）· 上一份 [`2026-11-06-d8-preimplementation-handoff.md`](2026-11-06-d8-preimplementation-handoff.md)（开工前状态 + 事故复盘）· 缺陷总表 [`live-pipeline-acceptance-defects-assessment.md`](../design/product/live-pipeline-acceptance-defects-assessment.md) §D8
 
 ---
@@ -40,7 +40,7 @@ D8 原本要修「候选区的大纲残本把下一次生成堵住」。**表面
 | `src/components/panels/AIOutputPanel.tsx` | 大纲恢复稿候选不渲染正文与「编辑恢复稿」；失败卡不渲染「继续生成情节大纲（断点续写）」 | 各留一行中性说明。**蓝图恢复稿不属本口径**，原样保留 |
 | `src/components/editor/WorldBuildingEditor.tsx` | 挂载时 `syncSynopsisRoute()`；三处入口加 `!unitRouteEnabled`：「断点续写大纲」「续批（第 N 章起）」「候选区断点续写」 | 判据 = **配置开关**（`useSynopsisRouteStore().unitRouteEnabled`），不是探针结果（作者 04:56） |
 | `src/components/editor/ArchFileViewer.tsx` | 挂载时同步配置并订阅 store | 少了这一步，store 默认 `true` 会把旧模式的合法入口误藏（`planning-recovery-editor.browser.tsx` 曾因此红 5 条） |
-| `src/components/dialogs/ArchitectureConfirmDialog.tsx` | 单元说明块判据改为 `unitMode && unitRouteEnabled`；`unitRouteEnabled` 声明上移到探针 effect 之前并加入依赖 | 修「弹窗开着时切配置，两套模式说明并存」（§12.10.6-2） |
+| `src/components/dialogs/ArchitectureConfirmDialog.tsx` | 单元说明块判据改为 `unitMode && unitRouteEnabled`；`unitRouteEnabled` 声明上移到探针 effect 之前并加入依赖；`ChapterStepper` 四键改**连体分段控件**、章号区间改「输入框 + 步进器 + 单位」成组不换行 | 修「弹窗开着时切配置，两套模式说明并存」（§12.10.6-2）；修章号区看起来像「第 -5 -1 +1 +5 章」的布局问题（作者 21:2x 指出本质是四个按钮） |
 
 测试：`synopsis-unit-batch.command.test.ts`（清场后本批尚未开始仍能续批；断点续写用例改断言清场只删旗标 / handle / 生成物）· `WorldBuildingEditor.recovery.browser.tsx`（静默用例 + 夹具显式 `synopsisUnitMode: false`）· `planning-launch-entrypoints.browser.tsx`（新增 `★ D8b: turning the unit-mode setting off while the dialog is open…`）· `planning-recovery-editor.browser.tsx`（补 `config:get` 夹具）。
 
@@ -58,6 +58,8 @@ D8 原本要修「候选区的大纲残本把下一次生成堵住」。**表面
 | **实机（CDP 真点 APP）** | §12.10.4 四条判据 | 通过，见下 |
 | 提交前闸门 | `node scripts/check-fast.mjs` | typecheck ✓ · doc links / doc placement 0 违规 |
 
+**章号步进器布局（21:2x 补验）**：`workflow-launch-dialogs` + `workflow-language-seam` **39/39**、`planning-launch-entrypoints` **7/7**；CDP 实机截图确认两行成组（「第 [1] [-5 -1 +1 +5] 章」/「到第 [5] [-5 -1 +1 +5] 章（本批 5 章）」）。
+
 **实机关键证据（21:05）**：造中断态（range 18–27 / `covered_to=17` / 残本）→「AI 生成架构」→ 勾情节大纲 → 确认 → 过失效清单闸门 → 日志依次出现「**正在续接第 18–19 章（保留已确认的第 1–17 章，不会覆盖）**」「正在写【单元 2…】起点 第4卷第2单元第1章（全书第18章）」，**没有再抛「检查点缺少正文」**。架构页 `断点续写大纲` / `续批（第 N 章起）` / `断点续写` 三个入口 **flag 全 false**。弹窗切关 → 单元块消失、章号起终点回来、不并存 → 切回开恢复。现场已复原（检查点逐字等于备份、`project.db` mtime 未变、配置回 `true`）。
 
 **既有失败，不是本轮引入**：`batch-chapter-completion-mode` / `CodeMirrorEditor-generation` / `ReviewReport.confirmation` / `VolumeHandoffRegistryPanel` 四条 browser 红，已用 `git stash` 基线对照确认。
@@ -66,10 +68,16 @@ D8 原本要修「候选区的大纲残本把下一次生成堵住」。**表面
 
 ## 四、剩余未处理（如实登记，**四条都不阻塞本卡**）
 
-1. **章号文案算式没求值**（旧路线显示 bug）：关掉卷单元后，弹窗里渲染成「**第 -5 -1 +1 +5 章**」。属旧路线的文案 bug，与 D8 无关，**已登记待另开**。未修。
-2. **状态徽标「已覆盖至第 N 章 · 待续批」仍在**（`WorldBuildingEditor.tsx:900-903`）：卷单元模式下续批按钮已被静默，徽标却还说「待续批」⇒ 又是一种「两种说法并存」。**是否改中性措辞或隐藏，等作者定**；本卡未动。（§12.10.6-6-3 已按此更正）
-3. **§12.10.5 四条已知边界，D8 有意不修**，别在下一班误当回归：① 「重置检查点后仍被拦」是另一条路径；② 旧模式「保留」≠「完好」（`:3500` 在有未完成批次时硬抛）；③ 检查点先写、DB 后 commit 的进程崩溃窗口；④ 级联清空整表删键与守卫的冲突。
-4. **未 push**：本轮 5 个提交（`9420908f` → `566ca5d6`）只在本地。分支相对 `origin/exp/resource-ledger` ahead 255 是历史累积，与本轮无关；推不推请作者定。
+> **2026-11-06 21:2x 作者已逐条答复，四条全部有了结论**，下表最后一行写结果。
+
+| # | 事项 | 作者答复 / 现状 |
+|---|---|---|
+| ① | 章号区域读起来像「第 -5 -1 +1 +5 章」 | **不是算式 bug** —— 作者指出那是 `ChapterStepper` 的四个微调按钮（`[-5,-1,1,5]`），只是布局没调好。**已修**：四键改连体分段控件、每个「输入框 + 步进器 + 单位」包成不换行的组。实机截图 21:26 确认成组两行 |
+| ② | 状态徽标「已覆盖至第 N 章 · 待续批」在卷单元模式下仍显示 | 作者：**「无伤大雅，只当是个提醒」⇒ 不改**。留痕备查，不再列为待办 |
+| ③ | §12.10.5 四条已知边界（重置检查点仍被拦 / 旧模式 `:3500` 硬抛 / 检查点先写 DB 后 commit 的崩溃窗口 / 级联清空整表删与守卫冲突） | 作者：**「旧模式先不管」** ⇒ 本轮不动，D8 有意不修的范围继续有效 |
+| ④ | 本轮提交未 push | 作者：**需要 push** ⇒ 已推 `origin/exp/resource-ledger` |
+
+**下一班不需要再碰的四件事**：别把 ① 当「算式求值 bug」重查（那是布局，已修）；别去改 ② 的徽标文案；别动 ③ 的旧模式路径（作者明确「先不管」）；别复活「给右侧中断产物加取消按钮」。
 
 ---
 
@@ -83,15 +91,11 @@ D8 原本要修「候选区的大纲残本把下一次生成堵住」。**表面
 
 ---
 
-## 六、下一步（等作者指令，不自行开工）
+## 六、下一步（本卡已无待办）
 
-三个候选，按作者意愿挑：
+21:2x 作者逐条答复后，四条遗留全部有了结论（见第四节表格），**本卡没有需要下一班继续的事项**。若将来要往下走，只剩 §12.10.5 那批旧模式边界 —— 而作者已明确「旧模式先不管」，所以不要主动开工。
 
-- **A · 收掉第 2 条**：卷单元模式下把「待续批」徽标改中性措辞（纯文案，1 行判据）。
-- **B · 另开卡修章号文案**（第 1 条）：旧模式「第 -5 -1 +1 +5 章」算式求值。
-- **C · 处理 §12.10.5 的边界**（尤其 ② 旧模式重写路径与 ③ 崩溃原子性），这两个都是设计级改动，需要先讨论再落地。
-
-**别做的事**：不要复活「给右侧中断产物加取消按钮」；不要在卷单元模式下恢复任何断点续写入口；不要把「已实施」理解成「作者已认可最终产品形态」。
+**别做的事**：不要复活「给右侧中断产物加取消按钮」；不要在卷单元模式下恢复任何断点续写入口；不要把「已实施」理解成「作者已认可最终产品形态」；不要把章号区域的四个微调键误判成「算式没求值」的显示 bug。
 
 ---
 
