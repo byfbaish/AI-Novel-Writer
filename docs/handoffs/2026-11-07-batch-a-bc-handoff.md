@@ -5,7 +5,7 @@
 
 ## 0 裁决与口径
 
-- 作者 2026-11-07 04:08：「**按照建议来吧，明天星期六，不受免费窗口的限制**」⇒ **甲方案获批**（E0 + A + B + C）。
+- 作者 2026-11-07 04:08：「**按照建议来吧，明天星期六，不受免费窗口的限制**」⇒ **甲方案获批**（E0 + A + B + C）。**04:3x 更正**：C 组经核实为「上一轮已实施」而撤销派单，本批实际执行 E0 + A + B，详见 §5。
 - **时间口径**：**墙钟 5~8 小时**，A 与 B/C **并行、工时不相加**（原提案分项相加 6.5~9.5h 不自洽，豆包审查指出后已改）。
 - **A2 真生成不再抢 08:00 免费窗**：作者明确不受窗口限制 ⇒ 可跨窗、可等模型，不为赶时间跳过实机步骤。
 - 现值基准：缺陷稿 **✅7 / 🟡7 / 🔍1 / ⬜5**（20 条）；看板 26 张 `todo`（含留痕卡 / 占位卡 / 真待办三类，见 §2）。
@@ -21,7 +21,7 @@
 |---|---|
 | A 组实机 | **走 `AI-writer/wt-1` 的 worktree 槽位 1**（`AI_NOVEL_WORKTREE_SLOT=1` ⇒ dev `5181` + CDP `9223` + 独立 profile `.runtime/worktree/slot-1/user-data`）。三个 worktree 已 fast-forward 到主区 HEAD `2d5888c7` 且干净；代码等价、物理隔离，不碰作者 dev |
 | 数据安全 | 真生成一律在**项目副本**上跑：`C:\develop\workspace\AI-writer\.batch-a\proj`（391 文件，从真实项目复制，`projectId` 改成独立的 `11111111-…`）。真实项目零改动 |
-| B/C 派单 | 落 `AI-writer/wt-2`、`wt-3`（各自 `node_modules`），**只准单元测试** |
+| B 组派单 | 落 `AI-writer/wt-2`（各自 `node_modules`），**只准单元测试**；`wt-3` 在 C 组撤销后保持干净、无改动（见 §5） |
 | 起 dev 硬规则 | `node node_modules/vite/bin/vite.js`，**不用 `pnpm dev`**；先摘 `CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR` / `CODEBUDDY_TOOL_CALL_ID`（笔记 `notes/env-and-conventions.md` §493）；起前跑 `scripts/prepare-native-for-electron.mjs` |
 
 > **试过但失败的路（别再走一次）**：想「复用现有 5180 vite + 另起一个带 `--remote-debugging-port=9222` 和独立 `--user-data-dir` 的 Electron 实例」——该实例 **1 秒即退出、9222 无监听、user-data 目录根本没创建**。`electron/main.ts:100` 的 `configureSingleInstanceRuntime` 拿不到锁直接 `quit()`。⇒ 同目录第二实例这条路不通，必须用项目自带的 worktree 槽位隔离。
@@ -85,15 +85,30 @@
 
 **B 组不做**：不新增交互范式、不改生成判定逻辑、不动 prompt 模板（若确需碰模板，先读三层承载物并过条款三问）。
 
-## 5 C 组（收紧后只派一项）
+## 5 C 组（本批撤销派单 —— 该卡上一轮已实施）
 
-| 卡 | 处置 | 理由 |
-|---|---|---|
-| `861ab163` **keyEventsText 丢弃 estimatedUnits** | **派**（`wt-3`） | 任务书已完备：新增显式带预算格式化函数、默认输出逐字不变、只切正文生成侧调用点、4 条单测、`tsc` + `check:fast`、列明调用点、不改作者项目数据。直接引用原卡，不重写 |
-| `744f13a8` C1 剩余两项 | **砍出本批** | 卡自己要求「先确认 C1 原始设计定义」（判据未定）+「补浏览器测试」（**撞 worktree 禁 browser 红线**）。派出去必返工 |
-| `4027dbef` AC2 · `bb3f0d83` 扩大 preflight | **不进本批** | 判据未定（AC2 的具名实体边界、preflight 规则集范围），上一轮已按作者甲方案砍掉 |
+> **2026-11-07 04:3x 更正**：C 组执行者探查时发现判据层面实质冲突并停下，主 agent 核实后**撤销本批 C 组派单**。这不是「怎么改」的分歧，而是**派单前漏查历史实施**：只看卡的 prompt 文本就认定它没做，没查这张卡已有实施 commit 及其裁定原文。
 
-> **据实修正原提案**：C 组原写 2~3h / 4 项，实际只剩 1 项可派（约 1~1.5h）。这不是缩水，是「判据未定的活不派」这条硬约束生效。空出的时间优先给 A 组实机。
+**决定性证据**：commit `4767e9dc`「没有短细纲时正文补一张场次篇幅表（861ab163）」的 message 明确裁定：
+
+- 「本卡**不能**按原描述『让正文看到 units』直接改 `keyEventsText`」（它有 8 个调用点，含审查路径，审查材料刻意不带账目）；
+- 「真正缺的是**降级路径**，本提交只修这条」；
+- 新增 `keyEventCharTargetsText()` 只给「第 N 场：约 X 字」，**不复述事件原文**（蓝图 JSON 里已有 keyEvents，再拼一遍会破坏「同一轮内作者字段各只出现一次」）；
+- **没做**：正常路径不动（短细纲已承载）、`toWriterChapterInfo` 不动（参与 resume 指纹，改了会让恢复句柄报 `AUTHOR_INPUT_CHANGED`）。
+
+**两条消费路径都在生产代码里**：`generate-draft.command.ts:1175` 正常路径 `shortOutlineSegmentBudget(...)`；`:1398` 降级路径 `keyEventCharTargetsText(...)`；定义在 `src/shared/blueprint-key-events.ts:254`。⇒ **卡 `861ab163` 的实质问题已解决，卡还挂 `todo` 是台账没跟上，不是代码没做。**
+
+| 卡 | 本批处置 |
+|---|---|
+| `861ab163` keyEventsText 丢弃 estimatedUnits | **撤销派单、代码零改动**；看板对齐为「已实施」（主 agent 统一改） |
+| `744f13a8` C1 剩余两项 | 不进本批：卡要求「补浏览器测试」撞 worktree 红线 + 判据未定 |
+| `4027dbef` AC2 · `bb3f0d83` 扩大 preflight | 不进本批：判据未定 |
+
+**为何不采纳「按原任务书重做」**：那要推翻上一轮已裁定的设计方向，且没有新的产品理由；会动 `toWriterChapterInfo` 的 resume 指纹（正在续写时恢复句柄报 `AUTHOR_INPUT_CHANGED`）、破坏 `{{chapter_info}}` 的逐字断言与作者原文保留承诺。按「结构设计先讨论再落地」，不能因为本批要凑活就重开。
+**也停掉了执行者原计划的「零争议 shared 增量」**：`keyEventsText(events, { withBudget: true })` 不加 —— 已有 `keyEventCharTargetsText()` 承担，再加一个默认不变、无人调用的选项是死代码，还会造成两个功能重叠的格式化函数（多源真相）。
+
+> **批次影响**：C 组实际**无可派实施项**，空出的时间给 A 组实机；`wt-3` 保持干净、无提交。
+> **教训（派单前检查表新增一条）**：**派单前必须查这张卡有没有历史实施 commit 及其裁定原文，不能只读卡上的 prompt 文本。** 本轮 E0 发现的是「卡状态没跟主线」，这里是同一类漏项的更深一层 —— 连实施方向都被上一轮明确否决过。
 
 ## 6 不进本批（需作者先裁定，不得擅自开工）
 
