@@ -229,7 +229,7 @@ $ env -u CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR -u CODEBUDDY_TOOL_CALL_ID \
 | 注册（`registry` / `desktop-registry` / `MigrationId` / 两个版本号 → 30） | `electron/migrations/registry.ts`、`desktop-registry.ts`、`src/shared/project-storage.ts` | 已实现 |
 | `open()` 写 owner / epoch / 租约 | `generation-run-repository.ts` | 已实现。**顺带修掉一处隐患**：原 `INSERT INTO generation_runs VALUES(?,?,?,?,?,?)` 靠位置对齐，加列后会在运行时才炸 |
 | `renewLease(runId)` | 同上 | 已实现，尚未接 IPC |
-| 启动 fence（`recoverInterrupted` 内，pause 之前） | 同上 | 已实现 |
+| ~~启动 fence~~ **owner 构建时 fence**（`recoverInterrupted` 内，pause 之前） | 同上 | 已实现。**措辞更正（2026-11-06 实机）**：「启动」不准确 —— 实际触发点是 `main-generation-owner.ts:257` 在**构建 owner 的函数体顶层**调 `service.recoverInterrupted()`，而 owner 由 `generation-controller.ts:127` 在「本进程还没有该项目条目」时构建。所以 app 启动 / 打开项目 / 关窗退出 / 切项目都**不判**，**本进程第一次走 generation IPC**（打开 AI 输出面板、起批、读恢复列表）那一刻才判。这样反而更省，但残留一个已知情况：崩溃后再也不碰生成功能，库里那条 run 会一直是 `running`（界面不受影响，渲染层已失忆） |
 | `aborted` 进入 `RUN_STATUS` 值域 | 同上 | 已实现 |
 
 **实测**（每条都带 `env -u CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR -u CODEBUDDY_TOOL_CALL_ID`）：
