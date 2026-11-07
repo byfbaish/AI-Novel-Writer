@@ -7,12 +7,19 @@ import { useEditorStore } from '../../stores/editor-store'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { setActiveProjectSessionContext } from '../../shared/project-session-context'
-import type { ProjectSessionContext } from '../../shared/ipc-channels'
+import { globalEventBus } from '../../shared/event-bus'
+import type { ProjectClearCounts, ProjectSessionContext } from '../../shared/ipc-channels'
 
 vi.mock('../ipc-client', () => ({
   ipc: {
     invoke: vi.fn(),
     invokeWithProjectSession: vi.fn(),
+  },
+}))
+
+vi.mock('../../stores/locale-store', () => ({
+  useLocaleStore: {
+    getState: vi.fn(() => ({ locale: 'zh-CN', text: (zh: string) => zh })),
   },
 }))
 
@@ -117,6 +124,62 @@ afterEach(() => {
 })
 
 describe('clearProjectData', () => {
+  it('emits the renderer reset hook with a receipt whose counts match the DB delete counts', async () => {
+    const dbCounts: ProjectClearCounts = {
+      creativeFields: { categories: 2, rows: 5 },
+      blueprints: { categories: 1, rows: 3 },
+      generatedText: { categories: 3, rows: 12 },
+    }
+    vi.mocked(ipc.invokeWithProjectSession).mockResolvedValueOnce({
+      success: true,
+      cleared: ['creativeFields', 'blueprints', 'generatedText'],
+      counts: dbCounts,
+    } as never)
+
+    const hook = vi.fn()
+    const notices = vi.fn()
+    const offHook = globalEventBus.on('PROJECT_DATA_CLEARED', hook)
+    const offNotice = globalEventBus.on('SYSTEM_NOTICE', notices)
+    try {
+      await clearProjectData({ generatedText: true }, projectSession)
+
+      // 渲染侧重置钩子被调用（单测断言，不需要 browser 测试）。
+      expect(hook).toHaveBeenCalledOnce()
+      const receipt = hook.mock.calls[0][0]
+      // 回执计数与 DB 删除计数一致：同源透传，不在渲染侧另算/硬编码。
+      expect(receipt.counts).toEqual(dbCounts)
+      // 三档各清了几类、各多少条，按定稿文案渲染成三行。
+      expect(receipt.lines).toHaveLength(3)
+      expect(receipt.lines.join(' ')).toContain('故事架构')
+      expect(receipt.lines.join(' ')).toContain('章节规划')
+      expect(receipt.lines.join(' ')).toContain('正文与审稿')
+      expect(receipt.lines.join(' ')).toContain('清了 3 类，共 12 条')
+      // 回执同时通过既有 SYSTEM_NOTICE 范式展示给作者（不新增交互范式）。
+      expect(notices).toHaveBeenCalledOnce()
+      expect(notices.mock.calls[0][0].message).toContain('正文与审稿')
+    } finally {
+      offHook()
+      offNotice()
+    }
+  })
+
+  it('still emits the reset hook with empty counts when IPC omits counts', async () => {
+    const hook = vi.fn()
+    const offHook = globalEventBus.on('PROJECT_DATA_CLEARED', hook)
+    try {
+      await clearProjectData({ generatedText: true }, projectSession)
+
+      expect(hook).toHaveBeenCalledOnce()
+      expect(hook.mock.calls[0][0].counts).toEqual({
+        creativeFields: { categories: 0, rows: 0 },
+        blueprints: { categories: 0, rows: 0 },
+        generatedText: { categories: 0, rows: 0 },
+      })
+    } finally {
+      offHook()
+    }
+  })
+
   it('clears through the caller-frozen lease and refreshes only that session', async () => {
     await clearProjectData({
       creativeFields: true,

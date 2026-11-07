@@ -47,6 +47,7 @@ import { globalEventBus } from '../../shared/event-bus'
 import {
   OUTLINE_CHARACTER_NUDGE_COPY,
   dismissOutlineCharacterNudge,
+  outlineNudgeVolumeIdentity,
   publishOutlineCharacterNudgeConfig,
   readOutlineCharacterNudgeDismissedVersion,
   shouldNudgeOutlineCharacterSupplement,
@@ -339,6 +340,11 @@ function ArchFileViewerSession({
   const [outlineNudgeGloballyDisabled, setOutlineNudgeGloballyDisabled] = useState(false)
   /** E3 T12：连续生成的进度（调度在 App，这里只读来显示）。 */
   const unitChain = useSynopsisUnitChainStore(s => s.chain)
+  /** D11：去重键按卷 —— 连写链当前卷号 + 该卷大纲是否仍在逐批生成（未定稿）。 */
+  const nudgeVolume = useMemo(() => outlineNudgeVolumeIdentity({
+    volumeIndex: unitChain?.volumeIndex ?? null,
+    synopsisIncomplete: unitChain?.status === 'running',
+  }), [unitChain])
   useEffect(() => {
     let cancelled = false
     void ipc.invoke('config:get')
@@ -356,11 +362,12 @@ function ArchFileViewerSession({
       synopsis: editorContent,
       dismissedVersion: readOutlineCharacterNudgeDismissedVersion(projectKey),
       globallyDisabled: outlineNudgeGloballyDisabled,
+      volume: nudgeVolume,
     }))
-  }, [stepKey, projectMatches, editorContent, projectKey, outlineNudgeGloballyDisabled])
-  /** 只处理「这一稿」：大纲更新后自动重新提示。 */
+  }, [stepKey, projectMatches, editorContent, projectKey, outlineNudgeGloballyDisabled, nudgeVolume])
+  /** 只处理「这一卷」：跨卷或该卷重新定稿后自动重新提示。 */
   const settleOutlineNudge = () => {
-    dismissOutlineCharacterNudge(projectKey, editorContent)
+    dismissOutlineCharacterNudge(projectKey, nudgeVolume)
     setOutlineCharacterNudge(false)
   }
   /** 真的不再显示：关全局开关，并告诉作者去哪儿打开回来。 */

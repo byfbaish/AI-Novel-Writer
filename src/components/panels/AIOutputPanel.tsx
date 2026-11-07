@@ -36,6 +36,7 @@ import { ipc } from '../../services/ipc-client'
 import { launchCreativeWorkflow } from '../../services/workflows/creative-workflow-launcher'
 import { PLOT_OUTLINE_RESUME_ERROR_CODE } from '../../services/workflows/commands/architecture.command'
 import { toast } from '../ui/Toast'
+import SourceConflictNotice from '../ui/SourceConflictNotice'
 import { withoutDraftReconciliationArtifacts } from '../../shared/draft-reconciliation'
 
 function runText(locale: Locale, zhCNText: string, enUSText: string): string {
@@ -378,7 +379,7 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
       <p className="whitespace-pre-wrap">{recovery.context.selectedText.slice(0, 100)}</p>
       <GenerationBudgetDiagnostics diagnostics={recovery.view.budgetDiagnostics} locale={locale} />
       {recovery.view.ledger && <p>{runText(locale, `已用 ${recovery.view.ledger.physicalRequests} 次请求`, `${recovery.view.ledger.physicalRequests} requests used`)}</p>}
-      {recovery.sourceStatus === 'conflict' && <p>{runText(locale, '来源已变化；原建议仍可复制。', 'Sources changed; the original suggestion can still be copied.')}</p>}
+      <SourceConflictNotice sourceStatus={recovery.sourceStatus} />
       {(recovery.view.candidates ?? recovery.view.artifacts).map(artifact => <div key={artifact.artifactId}>
         <p className="whitespace-pre-wrap">{artifact.text.slice(0, 180)}</p>
         {artifact.status !== 'completed' && <p>{runText(locale, '生成未完整完成，保留的文字仅供参考。', 'Generation is incomplete; the saved text is for reference.')}</p>}
@@ -403,7 +404,7 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
       <p className="whitespace-pre-wrap">{recovery.rounds.map(round => round.visibleText).join('\n').slice(0, 180)}</p>
       {recovery.rounds.some(round => round.status === 'unknown' || round.actions.some(action => ['unknown', 'running'].includes(action.status)))
         && <p>{runText(locale, '部分操作结果待确认，恢复时不会自动重做。', 'Some operation results are unknown and will not be repeated automatically.')}</p>}
-      {recovery.sourceStatus === 'conflict' && <p>{runText(locale, '来源已变化；保留的回复仍可复制。', 'Sources changed; the saved reply can still be copied.')}</p>}
+      <SourceConflictNotice sourceStatus={recovery.sourceStatus} />
       {recovery.run.status === 'cancelled' && <p>{runText(locale, '此助手任务已取消；保留的回复仍可复制。', 'This assistant task was cancelled; the saved reply can still be copied.')}</p>}
       <button type="button" className="icon-btn px-2" style={candidateTextButtonStyle} onClick={() => { void act(() => navigator.clipboard.writeText(recovery.rounds.map(round => round.visibleText).join('\n'))) }}>{runText(locale, '复制回复', 'Copy reply')}</button>
       <button type="button" className="icon-btn px-2" style={candidateTextButtonStyle} disabled={busy || recovery.sourceStatus !== 'current' || recovery.run.status === 'cancelled'} onClick={() => { void act(async () => {
@@ -419,7 +420,7 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
         `Chapter ${recovery.context.source.chapterNumber} ${recovery.context.operation === 'review-chapter' ? 'review' : 'revision'} candidate`)}</p>
       <GenerationBudgetDiagnostics diagnostics={view.budgetDiagnostics} locale={locale} />
       {view.ledger && <p>{runText(locale, `已用 ${view.ledger.physicalRequests} 次请求`, `${view.ledger.physicalRequests} requests used`)}</p>}
-      {recovery.sourceStatus === 'conflict' && !recovery.saved && <p>{runText(locale, '来源已变化；候选仍可复制，不能直接保存。', 'Sources changed; copy the candidate to preserve it. Direct saving is unavailable.')}</p>}
+      {!recovery.saved && <SourceConflictNotice sourceStatus={recovery.sourceStatus} />}
       {recovery.sourceStatus === 'current' && !recovery.saved && !recovery.canResume && recovery.context.operation !== 'review-chapter' && <p>{runText(locale,
         '候选未通过保存校验；可复制保留，请从原稿重新发起任务。',
         'The candidate failed save validation. Copy it if needed, then start a new action from the source draft.')}</p>}

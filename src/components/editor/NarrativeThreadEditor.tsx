@@ -39,6 +39,7 @@ import {
 } from '../../services/plot-tree-generator'
 import { useLLMStore } from '../../stores/llm-store'
 import { useLocaleStore } from '../../stores/locale-store'
+import SourceConflictNotice from '../ui/SourceConflictNotice'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { captureProjectSession, isProjectSessionCurrent, isProjectSessionPath } from '../project-session-gate'
@@ -838,7 +839,7 @@ export default function NarrativeThreadEditor({
           {graphError && <p role="alert">{graphError}</p>}
           {graphRecovery && <div className="space-y-2">
             <p>{text('原模型', 'Original model')}: {graphRecovery.modelId} · {text('已确认', 'Confirmed')}: {graphRecovery.effects.length}</p>
-            {graphRecovery.sourceStatus === 'conflict' && <p role="status">{text('来源已变化，仅可查看和复制。', 'Sources changed. Viewing and copying remain available.')}</p>}
+            <SourceConflictNotice sourceStatus={graphRecovery.sourceStatus} />
             <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(graphRecovery.result ? JSON.stringify(graphRecovery.result, null, 2) : (graphRecovery.view.candidates ?? graphRecovery.view.artifacts).map(item => item.text).join('\n'))}>{text('复制原结果', 'Copy original result')}</Button>
             <Button size="sm" disabled={!canExecuteGraph(graphRecovery)} onClick={() => { const client = graphClient.current; if (client) void client.execute().then(value => { if (graphClient.current === client) showGraphRecovery(value) }).catch(() => setGraphError(text('原运行未完成，结果已保留。', 'The original run did not complete; its output is preserved.'))) }}>{text('继续原运行', 'Continue original run')}</Button>
             <Button size="sm" variant="outline" onClick={() => { const client = graphClient.current; if (client) void client.cancel().then(() => client.read()).then(value => { if (graphClient.current === client) showGraphRecovery(value) }).catch(() => setGraphError(text('取消状态尚未确认。', 'Cancellation is not confirmed.'))) }}>{text('取消原运行', 'Cancel original run')}</Button>
@@ -1025,7 +1026,7 @@ export default function NarrativeThreadEditor({
           </DialogHeader>
           <div className="px-6 py-4 space-y-4 max-h-[60vh] overflow-y-auto">
             {!candidateGenerator && graphRecovery && <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{text('原运行模型', 'Original run model')}: {graphRecovery.modelId} · {text('已确认', 'Confirmed')}: {graphRecovery.effects.length}</p>}
-            {!candidateGenerator && graphRecovery?.sourceStatus === 'conflict' && <p role="status">{text('来源已变化，仅可查看和复制。', 'Sources changed. Viewing and copying remain available.')}</p>}
+            {!candidateGenerator && <SourceConflictNotice sourceStatus={graphRecovery?.sourceStatus ?? 'current'} />}
             {!candidateGenerator && graphRecovery?.result && <Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(JSON.stringify(graphRecovery.result, null, 2)).catch(() => setAiError(text('无法复制结果。', 'Could not copy the result.')))}>{text('复制原结果', 'Copy original result')}</Button>}
             <label className="block">
               <Label htmlFor="narrative-thread-ai-model">{text('本次识别模型', 'Model for this analysis')}</Label>

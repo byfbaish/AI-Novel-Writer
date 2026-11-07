@@ -6,6 +6,7 @@
  */
 
 import type { ProjectSessionContext } from './ipc-channels'
+import type { ProjectClearReceipt } from './project-clear-receipt'
 
 // ===== 事件类型定义 =====
 
@@ -28,6 +29,8 @@ export type GlobalEventType =
   | 'SYNOPSIS_CANDIDATE_DISCARDED'
   // --- 项目级事件 ---
   | 'PROJECT_CHANGED'
+  // --- D10：清空完成后的渲染侧重置钩子 + 三档回执 ---
+  | 'PROJECT_DATA_CLEARED'
   // --- 系统通知 ---
   | 'SYSTEM_NOTICE'
 
@@ -104,6 +107,7 @@ export interface EventPayloadMap {
     projectPath: string
     projectSession: ProjectSessionContext
   }
+  'PROJECT_DATA_CLEARED': ProjectClearReceipt
   'SYSTEM_NOTICE': {
     level: 'info' | 'success' | 'warn' | 'error'
     message: string

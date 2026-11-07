@@ -275,7 +275,10 @@ it.each([false, true])('明确 handle 恢复原候选；文件改变=%s 时只�
   await act(async () => page.getByRole('button', { name: '替换' }).click())
   const view = EditorView.findFromDOM(container.querySelector('.cm-editor')!)!
   expect(view.state.doc.toString()).toBe(changedFile ? documentText : '甲替换表情乙')
-  if (changedFile) await expect.element(page.getByText('正文或原目标已变化，结果未应用；你仍可复制预览内容')).toBeVisible()
+  // 恢复路径（CodeMirrorEditor 的 EDITOR_INLINE_SOURCE_CHANGED）走 D4 统一事实源。
+  // 注：本用例在合并 D4 之前的 HEAD 上同样是红的（stash 对照：同一处 Matcher 超时、
+  // 页面不渲染任何提示），属既有红、与 D4 无关，已登记；此处按 D4 后的正确文案书写。
+  if (changedFile) await expect.element(page.getByText('来源已变化：这一稿不能保存，仍可复制。')).toBeVisible()
   expect(invoke).toHaveBeenCalledTimes(2)
 })
 
@@ -328,7 +331,9 @@ it('点击接受前原候选已丢弃，保留预览但不写入正文', async (
   await act(async () => root.render(<CodeMirrorEditor content={documentText} recoveryHandle={handle} />))
   await expect.element(page.getByText('候选')).toBeVisible()
   await act(async () => page.getByRole('button', { name: '替换' }).click())
-  await expect.element(page.getByText('来源已变化，结果仅可复制')).toBeVisible()
+  // D4：冲突态走 sourceConflictNoticeText —— 产物层与批次层两条并列文案拼成同一串。
+  await expect.element(page.getByText('来源已变化：这一稿不能保存，仍可复制。')).toBeVisible()
+  await expect.element(page.getByText('来源已变化：后续单元不再执行，需重新发起。')).toBeVisible()
   expect(EditorView.findFromDOM(container.querySelector('.cm-editor')!)!.state.doc.toString()).toBe(documentText)
   await expect.element(page.getByText('候选')).toBeVisible()
 })

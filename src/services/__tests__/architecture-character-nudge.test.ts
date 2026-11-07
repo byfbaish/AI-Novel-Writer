@@ -6,6 +6,7 @@ import {
   hasOutlineContent,
   outlineCharacterNudgeKey,
   outlineNudgeDraftVersion,
+  outlineNudgeVolumeIdentity,
   readOutlineCharacterNudgeDismissedVersion,
   rearmAllOutlineCharacterNudges,
   rearmOutlineCharacterNudge,
@@ -25,8 +26,12 @@ function memoryStorage(): CharacterNudgeStorage & { dump(): Record<string, strin
   }
 }
 
-const OUTLINE_A = '## 第1章：无声公寓\n沈舟在规则里找漏洞……'.repeat(6)
-const OUTLINE_B = `${OUTLINE_A}\n## 第7章：新的门\n他又数了一遍。`
+// 每批正文都在增长（旧 `c<覆盖数>:l<正文长度>` 指纹会逐批失效 ⇒ 每批都重弹）。
+// D11 的去重键按卷，正文怎么长都不该让同一卷再弹第二次。
+const OUTLINE = '## 第1章：无声公寓\n沈舟在规则里找漏洞，反复核对每一条说明……'.repeat(6)
+const VOLUME_1 = outlineNudgeVolumeIdentity({ volumeIndex: 1, synopsisIncomplete: true })
+const VOLUME_1_FINAL = outlineNudgeVolumeIdentity({ volumeIndex: 1, synopsisIncomplete: false })
+const VOLUME_2 = outlineNudgeVolumeIdentity({ volumeIndex: 2, synopsisIncomplete: true })
 
 describe('hasOutlineContent', () => {
   it('requires more than the minimum number of non-whitespace characters', () => {
@@ -39,62 +44,117 @@ describe('hasOutlineContent', () => {
     expect(hasOutlineContent('x'.repeat(OUTLINE_CHARACTER_NUDGE_MIN_CHARACTERS + 1))).toBe(true)
     // 空白不计入有效字数
     expect(hasOutlineContent(`${'\n'.repeat(500)}${'x'.repeat(OUTLINE_CHARACTER_NUDGE_MIN_CHARACTERS + 1)}`)).toBe(true)
+    expect(hasOutlineContent(OUTLINE)).toBe(true)
   })
 })
 
-describe('outlineNudgeDraftVersion', () => {
-  it('changes when the outline really moves, and stays put for the same draft', () => {
-    expect(outlineNudgeDraftVersion('')).toBe('empty')
-    // 同一份内容始终同一个指纹
-    expect(outlineNudgeDraftVersion(OUTLINE_A)).toBe(outlineNudgeDraftVersion(OUTLINE_A))
-    // 多了第 7 章 → 覆盖数变了，必须重新提示
-    expect(outlineNudgeDraftVersion(OUTLINE_A)).not.toBe(outlineNudgeDraftVersion(OUTLINE_B))
+describe('outlineNudgeVolumeIdentity', () => {
+  it('normalizes missing / invalid volume numbers and the final-draft flag', () => {
+    expect(outlineNudgeVolumeIdentity({})).toEqual({ volumeIndex: null, synopsisIncomplete: false })
+    expect(outlineNudgeVolumeIdentity({ volumeIndex: null })).toEqual({ volumeIndex: null, synopsisIncomplete: false })
+    expect(outlineNudgeVolumeIdentity({ volumeIndex: 3, synopsisIncomplete: true })).toEqual({ volumeIndex: 3, synopsisIncomplete: true })
+    // 非法卷号（NaN/Infinity）按无卷处理，不落进指纹
+    expect(outlineNudgeVolumeIdentity({ volumeIndex: Number.NaN }).volumeIndex).toBeNull()
+  })
+})
+
+// 指纹函数单独断言（任务书 D11 要求）
+describe('outlineNudgeDraftVersion (卷级指纹)', () => {
+  it('is keyed by volume + outline final-draft state, never by length/coverage', () => {
+    expect(outlineNudgeDraftVersion(VOLUME_1)).toBe('v1:wip')
+    expect(outlineNudgeDraftVersion(VOLUME_1_FINAL)).toBe('v1:final')
+    expect(outlineNudgeDraftVersion(VOLUME_2)).toBe('v2:wip')
+    // 明确不再返回旧的 c<覆盖数>:l<正文长度> 形式
+    expect(outlineNudgeDraftVersion(VOLUME_1)).not.toMatch(/^c\d+:l\d+$/u)
   })
 
-  it('accepts spaced chapter headings, same as the outline backfill', () => {
-    // 「第 9 章」（章号两侧带空格）必须认得出，否则修好的回填与提醒会两套口径。
-    expect(outlineNudgeDraftVersion('## 第 1 章：甲\n## 第 9 章：乙').startsWith('c9:')).toBe(true)
-    expect(outlineNudgeDraftVersion('## 第1章：甲\n## 第9章：乙').startsWith('c9:')).toBe(true)
+  it('stays identical for the same volume + same final-draft state', () => {
+    expect(outlineNudgeDraftVersion(outlineNudgeVolumeIdentity({ volumeIndex: 1, synopsisIncomplete: true })))
+      .toBe(outlineNudgeDraftVersion(VOLUME_1))
+  })
+
+  it('changes when crossing volumes', () => {
+    expect(outlineNudgeDraftVersion(VOLUME_1)).not.toBe(outlineNudgeDraftVersion(VOLUME_2))
+  })
+
+  it('changes when the volume outline goes from in-progress to final', () => {
+    expect(outlineNudgeDraftVersion(VOLUME_1)).not.toBe(outlineNudgeDraftVersion(VOLUME_1_FINAL))
+  })
+
+  it('normalizes a missing volume index to "n"', () => {
+    expect(outlineNudgeDraftVersion(outlineNudgeVolumeIdentity({}))).toBe('vn:final')
   })
 })
 
 describe('shouldNudgeOutlineCharacterSupplement', () => {
-  it('prompts only when an outline exists and this draft was not handled yet', () => {
-    expect(shouldNudgeOutlineCharacterSupplement({ synopsis: OUTLINE_A, dismissedVersion: null })).toBe(true)
-    expect(shouldNudgeOutlineCharacterSupplement({
-      synopsis: OUTLINE_A,
-      dismissedVersion: outlineNudgeDraftVersion(OUTLINE_A),
-    })).toBe(false)
-    // 大纲更新过 → 上一稿的处理记录不算数
-    expect(shouldNudgeOutlineCharacterSupplement({
-      synopsis: OUTLINE_B,
-      dismissedVersion: outlineNudgeDraftVersion(OUTLINE_A),
-    })).toBe(true)
-    expect(shouldNudgeOutlineCharacterSupplement({ synopsis: '', dismissedVersion: null })).toBe(false)
+  it('同卷连续 3 批只提示 1 次（正文逐批增长也不再重弹）', () => {
+    const storage = memoryStorage()
+    const project = 'C:/books/vol'
+    let prompts = 0
+    // 模拟连写 3 批：每批都重新读 dismissedVersion、正文都比上一批长
+    for (let batch = 0; batch < 3; batch += 1) {
+      const longerOutline = `${OUTLINE}\n## 第${batch + 7}章：新单元\n又多了一批内容。`
+      if (shouldNudgeOutlineCharacterSupplement({
+        synopsis: longerOutline,
+        dismissedVersion: readOutlineCharacterNudgeDismissedVersion(project, storage),
+        volume: VOLUME_1,
+      })) {
+        prompts += 1
+        dismissOutlineCharacterNudge(project, VOLUME_1, storage)
+      }
+    }
+    expect(prompts).toBe(1)
   })
 
-  it('stays silent when the global switch is off, even for a fresh draft', () => {
+  it('跨卷提示第 2 次', () => {
+    const storage = memoryStorage()
+    const project = 'C:/books/vol'
+    const should = (volume: typeof VOLUME_1) => shouldNudgeOutlineCharacterSupplement({
+      synopsis: OUTLINE,
+      dismissedVersion: readOutlineCharacterNudgeDismissedVersion(project, storage),
+      volume,
+    })
+    // 卷 1：第一次提示，处理后本卷静音
+    expect(should(VOLUME_1)).toBe(true)
+    dismissOutlineCharacterNudge(project, VOLUME_1, storage)
+    expect(should(VOLUME_1)).toBe(false)
+    // 卷 2：跨卷 ⇒ 第 2 次提示
+    expect(should(VOLUME_2)).toBe(true)
+  })
+
+  it('prompts only when an outline exists and this volume was not handled yet', () => {
+    expect(shouldNudgeOutlineCharacterSupplement({ synopsis: OUTLINE, dismissedVersion: null, volume: VOLUME_1 })).toBe(true)
     expect(shouldNudgeOutlineCharacterSupplement({
-      synopsis: OUTLINE_A,
+      synopsis: OUTLINE,
+      dismissedVersion: outlineNudgeDraftVersion(VOLUME_1),
+      volume: VOLUME_1,
+    })).toBe(false)
+    expect(shouldNudgeOutlineCharacterSupplement({ synopsis: '', dismissedVersion: null, volume: VOLUME_1 })).toBe(false)
+  })
+
+  it('stays silent when the global switch is off, even for a fresh volume', () => {
+    expect(shouldNudgeOutlineCharacterSupplement({
+      synopsis: OUTLINE,
       dismissedVersion: null,
+      volume: VOLUME_1,
       globallyDisabled: true,
     })).toBe(false)
   })
 })
 
 describe('outline character nudge state', () => {
-  it('remembers the handled draft per project and re-arms on demand', () => {
+  it('remembers the handled volume per project and re-arms on demand', () => {
     const storage = memoryStorage()
     const projectA = 'C:/books/a'
     const projectB = 'C:/books/b'
 
     expect(readOutlineCharacterNudgeDismissedVersion(projectA, storage)).toBeNull()
-    dismissOutlineCharacterNudge(projectA, OUTLINE_A, storage)
-    expect(readOutlineCharacterNudgeDismissedVersion(projectA, storage)).toBe(outlineNudgeDraftVersion(OUTLINE_A))
+    dismissOutlineCharacterNudge(projectA, VOLUME_1, storage)
+    expect(readOutlineCharacterNudgeDismissedVersion(projectA, storage)).toBe(outlineNudgeDraftVersion(VOLUME_1))
     // 逐项目隔离：不能因为 A 关过就静音 B
     expect(readOutlineCharacterNudgeDismissedVersion(projectB, storage)).toBeNull()
 
-    // 新的大纲生成 → 重新武装
+    // 跨卷/新大纲生成 → 重新武装
     rearmOutlineCharacterNudge(projectA, storage)
     expect(readOutlineCharacterNudgeDismissedVersion(projectA, storage)).toBeNull()
     expect(storage.dump()[outlineCharacterNudgeKey(projectA)]).toBeUndefined()
@@ -107,15 +167,16 @@ describe('outline character nudge state', () => {
     storage.setItem(outlineCharacterNudgeKey(project), 'dismissed')
     expect(readOutlineCharacterNudgeDismissedVersion(project, storage)).toBeNull()
     expect(shouldNudgeOutlineCharacterSupplement({
-      synopsis: OUTLINE_A,
+      synopsis: OUTLINE,
       dismissedVersion: readOutlineCharacterNudgeDismissedVersion(project, storage),
+      volume: VOLUME_1,
     })).toBe(true)
   })
 
   it('clears every project when the global switch is turned back on', () => {
     const storage = memoryStorage()
-    dismissOutlineCharacterNudge('C:/books/a', OUTLINE_A, storage)
-    dismissOutlineCharacterNudge('C:/books/b', OUTLINE_A, storage)
+    dismissOutlineCharacterNudge('C:/books/a', VOLUME_1, storage)
+    dismissOutlineCharacterNudge('C:/books/b', VOLUME_1, storage)
     storage.setItem('unrelated-key', 'keep me')
 
     rearmAllOutlineCharacterNudges(storage)
@@ -129,7 +190,7 @@ describe('outline character nudge state', () => {
   it('degrades quietly without storage or a project path', () => {
     expect(readOutlineCharacterNudgeDismissedVersion(null, memoryStorage())).toBeNull()
     expect(readOutlineCharacterNudgeDismissedVersion('C:/books/a', null)).toBeNull()
-    expect(() => dismissOutlineCharacterNudge('C:/books/a', OUTLINE_A, null)).not.toThrow()
+    expect(() => dismissOutlineCharacterNudge('C:/books/a', VOLUME_1, null)).not.toThrow()
     expect(() => rearmOutlineCharacterNudge(undefined, memoryStorage())).not.toThrow()
     expect(() => rearmAllOutlineCharacterNudges(null)).not.toThrow()
     // 不可枚举的存储：没有 length/key，直接跳过，不抛错

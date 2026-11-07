@@ -2,9 +2,12 @@ import { ipc } from './ipc-client'
 import { useCharacterStore } from '../stores/character-store'
 import { useDraftStore } from '../stores/draft-store'
 import { useEditorStore, type EditorTab } from '../stores/editor-store'
+import { useLocaleStore } from '../stores/locale-store'
 import { useProjectStore } from '../stores/project-store'
 import { useWorkflowStore } from '../stores/workflow-store'
+import { AppLogger, globalEventBus } from '../shared/event-bus'
 import type { ProjectClearScope, ProjectSessionContext } from '../shared/ipc-channels'
+import { emptyClearCounts, formatClearReceipt } from '../shared/project-clear-receipt'
 import {
   getActiveProjectSessionContext,
   sameProjectSessionContext,
@@ -150,6 +153,12 @@ export async function clearProjectData(
     return { cleared: result.cleared ?? scopes }
   }
   assertResult(result, '清除项目生成内容')
+
+  // D10：清空完成后的渲染侧重置钩子 + 三档回执。counts 直接来自主进程 DB 删除计数，
+  // 不在渲染侧另算；会话已切走时上面的 early return 会先返回，不会广播到新项目。
+  const receipt = formatClearReceipt(useLocaleStore.getState().locale, result.counts ?? emptyClearCounts())
+  globalEventBus.emit('PROJECT_DATA_CLEARED', receipt)
+  AppLogger.info(receipt.lines.join(' '))
 
   for (const tab of tabsToClose) {
     editorState.closeTab(tab.id)

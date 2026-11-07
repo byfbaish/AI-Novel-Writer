@@ -916,6 +916,13 @@ export interface ProjectClearOptions {
 
 export type ProjectClearScope = 'creativeFields' | 'blueprints' | 'generatedText'
 
+/** D10 清空回执：每档「清了几类（清理语句/表）」与「多少条（DB 语句实际影响行数）」。 */
+export interface ProjectClearScopeCounts {
+  categories: number
+  rows: number
+}
+export type ProjectClearCounts = Record<ProjectClearScope, ProjectClearScopeCounts>
+
 // ===== 引入 DB 类型 =====
 import type {
   ProjectCoreData,
@@ -983,7 +990,7 @@ export interface DatabaseChannels {
     args: [request: ImportGlobalFactsRequest, expectedProjectPath: string]
     return: { success: boolean; receipt?: ImportGlobalFactsReceipt; error?: string }
   }
-  'db:project-clear-generated-data': { args: [options: ProjectClearOptions, expectedProjectPath: string]; return: { success: boolean; cleared?: ProjectClearScope[]; physicalFilesDeleted?: number; error?: string } }
+  'db:project-clear-generated-data': { args: [options: ProjectClearOptions, expectedProjectPath: string]; return: { success: boolean; cleared?: ProjectClearScope[]; physicalFilesDeleted?: number; counts?: ProjectClearCounts; error?: string } }
   'db:import-run-prepare-inspection': {
     args: [request: ImportRunPrepareFromInspectionRequest, expectedProjectPath: string]
     return: ImportRunPrepareFromInspectionResult

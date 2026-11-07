@@ -37,6 +37,7 @@ import { pendingBlueprintCandidates } from './services/character-card-generation
 import {
   OUTLINE_CHARACTER_NUDGE_COPY,
   dismissOutlineCharacterNudge,
+  outlineNudgeVolumeIdentity,
   publishOutlineCharacterNudgeConfig,
   readOutlineCharacterNudgeDismissedVersion,
   shouldNudgeOutlineCharacterSupplement,
@@ -308,13 +309,20 @@ export default function App() {
           if (!isCurrentProjectSession()) return
           const projectPath = projectSession.projectPath
           const synopsis = core?.synopsis
+          // D11：去重键按卷 —— 连写链当前卷号 + 该卷大纲是否仍在逐批生成（未定稿）。
+          const activeChain = useSynopsisUnitChainStore.getState().chain
+          const volume = outlineNudgeVolumeIdentity({
+            volumeIndex: activeChain?.volumeIndex ?? null,
+            synopsisIncomplete: activeChain?.status === 'running',
+          })
           if (!shouldNudgeOutlineCharacterSupplement({
             synopsis,
             dismissedVersion: readOutlineCharacterNudgeDismissedVersion(projectPath),
+            volume,
           })) return
           const text = useLocaleStore.getState().text
-          /** 只处理「这一稿」：大纲更新后自动重新提示。 */
-          const settleThisDraft = () => dismissOutlineCharacterNudge(projectPath, synopsis)
+          /** 只处理「这一卷」：跨卷或该卷重新定稿后自动重新提示。 */
+          const settleThisDraft = () => dismissOutlineCharacterNudge(projectPath, volume)
           /** 真的不再显示：关全局开关 + 告诉作者去哪儿打开回来。 */
           const turnOffEverywhere = async () => {
             settleThisDraft()

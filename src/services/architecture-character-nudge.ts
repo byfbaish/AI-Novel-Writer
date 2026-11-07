@@ -102,35 +102,52 @@ export function hasOutlineContent(synopsis: string | null | undefined): boolean 
 }
 
 /**
- * 大纲的「稿本指纹」：章级覆盖数 + 正文长度。
+ * D11：补角色卡提示的「去重键」改为**卷**，不再是 `c<覆盖数>:l<正文长度>`。
  *
- * 用途单一：区分「同一次大纲」和「改过的大纲」。任何一次真实更新（新批次、增删章节、
- * 大段改写）都会改变它；重复打开/保存同一份内容不会。章号规则与大纲回填同一套宽松口径
- * （`第 1 章` / `第1章` 都认）。
+ * 旧指纹由「章级覆盖数 + 正文长度」构成，按单元逐批生成时每一批都让两项同时变化，
+ * 于是「已处理过」的记录立刻失效、每一批都重新弹一次。作者心中的「一稿」是**整卷**，
+ * 所以去重键 = `volumeIndex`（哪一卷）+ `synopsisIncomplete`（该卷大纲是否未定稿，
+ * 对应检查点 `partial_arch.json` 的 `synopsis_incomplete`）。同一卷连续多批只要卷与
+ * 定稿态不变，指纹就不变 ⇒ 只提示一次；跨卷（卷号变化）才重新提示。
  */
-export function outlineNudgeDraftVersion(synopsis: string | null | undefined): string {
-  const text = synopsis ?? ''
-  if (!text) return 'empty'
-  let covered = 0
-  const pattern = /^[\t ]*(?:#{1,6}[\t ]+|[-*+][\t ]+)?第[\t ]*(\d{1,5})(?:[\t ]*[–—-][\t ]*(\d{1,5}))?[\t ]*章/gmu
-  for (const match of text.matchAll(pattern)) {
-    const to = Number(match[2] ?? match[1])
-    if (Number.isSafeInteger(to) && to > covered) covered = to
-  }
-  return `c${covered}:l${text.length}`
+export interface OutlineNudgeVolumeIdentity {
+  /** 当前情节大纲所属的卷（`null` = 无卷/非连写模式）。 */
+  volumeIndex: number | null
+  /** 该卷大纲是否仍未定稿（`synopsis_incomplete === true`）。 */
+  synopsisIncomplete: boolean
 }
 
-/** 大纲已有正文、且**这一稿**还没被处理过、且全局开关没关时才提示。 */
+/** 归一卷 identity，供调用点把「连写链卷号 + 检查点定稿态」组装成去重键输入。 */
+export function outlineNudgeVolumeIdentity(input: {
+  volumeIndex?: number | null
+  synopsisIncomplete?: boolean
+}): OutlineNudgeVolumeIdentity {
+  return {
+    volumeIndex: typeof input.volumeIndex === 'number' && Number.isFinite(input.volumeIndex)
+      ? input.volumeIndex
+      : null,
+    synopsisIncomplete: input.synopsisIncomplete === true,
+  }
+}
+
+/** 卷级「稿本指纹」：卷号 + 该卷大纲定稿态。不再随正文长度/章级覆盖数逐批变化。 */
+export function outlineNudgeDraftVersion(volume: OutlineNudgeVolumeIdentity): string {
+  return `v${volume.volumeIndex ?? 'n'}:${volume.synopsisIncomplete ? 'wip' : 'final'}`
+}
+
+/** 大纲已有正文、且**这一卷**还没被处理过、且全局开关没关时才提示。 */
 export function shouldNudgeOutlineCharacterSupplement(input: {
   synopsis: string | null | undefined
-  /** 已关闭的稿本指纹（`null` = 从没关过）。只对同一个指纹生效。 */
+  /** 已关闭的卷级指纹（`null` = 从没关过）。只对同一个卷级指纹生效。 */
   dismissedVersion: string | null
+  /** D11：当前卷 identity（卷号 + 该卷大纲定稿态）。 */
+  volume: OutlineNudgeVolumeIdentity
   /** 全局开关（`autoPromptOutlineCharacterSupplement === false` 时整条提醒不出现）。 */
   globallyDisabled?: boolean
 }): boolean {
   if (input.globallyDisabled === true) return false
   if (!hasOutlineContent(input.synopsis)) return false
-  return input.dismissedVersion !== outlineNudgeDraftVersion(input.synopsis)
+  return input.dismissedVersion !== outlineNudgeDraftVersion(input.volume)
 }
 
 function defaultStorage(): CharacterNudgeStorage | null {
@@ -161,15 +178,15 @@ export function readOutlineCharacterNudgeDismissedVersion(
   }
 }
 
-/** 把「这一稿已处理」记下来（关闭 / 去补角色卡都走这里）。 */
+/** 把「这一卷已处理」记下来（关闭 / 去补角色卡都走这里）。 */
 export function dismissOutlineCharacterNudge(
   projectPath: string | null | undefined,
-  synopsis: string | null | undefined,
+  volume: OutlineNudgeVolumeIdentity,
   storage: CharacterNudgeStorage | null = defaultStorage(),
 ): void {
   if (!projectPath || !storage) return
   try {
-    storage.setItem(outlineCharacterNudgeKey(projectPath), outlineNudgeDraftVersion(synopsis))
+    storage.setItem(outlineCharacterNudgeKey(projectPath), outlineNudgeDraftVersion(volume))
   } catch {
     // 存储不可用（隐私模式等）时静默降级：最多是下次启动再提示一次，不影响功能。
   }

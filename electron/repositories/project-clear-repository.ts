@@ -12,6 +12,7 @@ import { hasCharacterIdentitySchema } from './character-repository'
 import { CharacterRosterRepository, clearLegacyCharacterArchitecture } from './character-roster-repository'
 import { hasColumn } from './derived-source-ref'
 import { CHARACTER_ROSTER_SCHEMA_VERSION } from '../../src/shared/character-roster'
+import type { ProjectClearCounts } from '../../src/shared/ipc-channels'
 
 /**
  * P1-2 期 1b 的三张卷表可能不存在（v20 之前 / 未建过）。
@@ -32,6 +33,62 @@ export interface ProjectClearOptions {
 export interface ProjectClearResult {
     cleared: ProjectClearScope[]
     physicalFilesDeleted: number
+    /** D10：三档各清了几类、多少条（与 DB 删除计数同源）。 */
+    counts: ProjectClearCounts
+}
+
+/**
+ * D10 回执按档归属的表（**不重叠**：同一张表只归一档，避免重复计数）。
+ * `volume_handoffs` 归正文层（缺陷稿/注释：交接单属于正文层），`volumes` 归架构层
+ * （正文层只 UPDATE `actual_last`，不清行）。
+ */
+const CLEAR_COUNT_TABLES: Record<ProjectClearScope, readonly string[]> = {
+    generatedText: ['finalized_draft_import_operations', 'post_process_steps', 'post_process_runs', 'reviews', 'revisions', 'drafts', 'contents', 'summary_snapshots', 'volume_handoffs'],
+    blueprints: ['blueprint_character_sync_operations', 'blueprint_commit_operations', 'blueprints'],
+    creativeFields: ['characters', 'upstream_revisions', 'upstream_revision_log', 'volume_units', 'volumes'],
+}
+
+type ClearCountSnapshot = Record<string, number>
+
+function emptyCounts(): ProjectClearCounts {
+    return {
+        creativeFields: { categories: 0, rows: 0 },
+        blueprints: { categories: 0, rows: 0 },
+        generatedText: { categories: 0, rows: 0 },
+    }
+}
+
+/**
+ * 逐表 COUNT(*) 快照。用 `.get()` 取 `AS count`（而非 `.pluck()`），
+ * 字段缺失 / 老库读不到数字时按 0 —— 既有 mock db 的 `prepare()` 只实现
+ * `get`，这样不会打坏原来的 repository 测试。
+ */
+function snapshotClearCounts(db: BetterSqlite3.Database): ClearCountSnapshot {
+    const snapshot: ClearCountSnapshot = {}
+    for (const tables of Object.values(CLEAR_COUNT_TABLES)) {
+        for (const table of tables) {
+            if (!hasTable(db, table)) continue
+            const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count?: unknown } | undefined
+            const raw = row?.count
+            snapshot[table] = typeof raw === 'number' ? raw : 0
+        }
+    }
+    return snapshot
+}
+
+/** 事务前后行数差 = 实际删除条数；有记录被清掉的表算一「类」。 */
+function diffClearCounts(before: ClearCountSnapshot, after: ClearCountSnapshot): ProjectClearCounts {
+    const counts = emptyCounts()
+    for (const scope of Object.keys(CLEAR_COUNT_TABLES) as ProjectClearScope[]) {
+        for (const table of CLEAR_COUNT_TABLES[scope]) {
+            const delta = (before[table] ?? 0) - (after[table] ?? 0)
+            if (delta > 0) {
+                counts[scope].rows += delta
+                counts[scope].categories += 1
+            }
+        }
+    }
+    return counts
 }
 
 interface MovedFile {
@@ -105,9 +162,12 @@ export class ProjectClearRepository {
             ? moveGeneratedFilesToTrash(projectPath)
             : []
         const cleared: ProjectClearScope[] = []
+        // D10：回执计数在事务回调内取「删除前后逐表行数差」，与 DB 删除计数同源。
+        let counts: ProjectClearCounts = emptyCounts()
 
         try {
             const tx = db.transaction(() => {
+                const before = snapshotClearCounts(db)
                 if (options.generatedText) {
                     db.prepare('DELETE FROM finalized_draft_import_operations').run()
                     db.prepare('DELETE FROM post_process_steps').run()
@@ -203,6 +263,8 @@ export class ProjectClearRepository {
                     if (hasTable(db, 'volumes')) db.prepare('DELETE FROM volumes').run()
                     cleared.push('creativeFields')
                 }
+                const after = snapshotClearCounts(db)
+                counts = diffClearCounts(before, after)
             })
 
             tx()
@@ -218,6 +280,6 @@ export class ProjectClearRepository {
             // The database is committed; restoring files or reporting failure would misstate the project state.
             console.warn('[ProjectClear] 已清除项目数据，但废纸篓文件未能完全删除:', error)
         }
-        return { cleared, physicalFilesDeleted }
+        return { cleared, physicalFilesDeleted, counts }
     }
 }

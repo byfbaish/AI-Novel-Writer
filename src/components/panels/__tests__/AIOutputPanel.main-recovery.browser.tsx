@@ -141,7 +141,9 @@ it.each(['review-chapter', 'refine-draft', 'refine-from-review'] as const)('中�
   useLocaleStore.setState({ locale: 'zh-CN' })
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container)
   await act(async () => root!.render(<AIOutputPanel />))
-  await vi.waitFor(() => expect(container!.textContent).toContain('来源已变化；候选仍可复制'))
+  await vi.waitFor(() => expect(container!.textContent).toContain('来源已变化：这一稿不能保存，仍可复制。'))
+  // D4：同一份 sourceStatus 必须同时驱动两层文案。
+  expect(container!.textContent).toContain('来源已变化：后续单元不再执行，需重新发起。')
   const recoverButton = () => [...container!.querySelectorAll('button')].find(item => item.textContent === (operation === 'review-chapter' ? '重新审稿' : '恢复此审修任务'))!
   expect(recoverButton().disabled).toBe(true)
   if (operation === 'review-chapter') {
@@ -371,7 +373,7 @@ it.each(['unknown', 'conflict', 'cancelled'] as const)('助手恢复卡只显示
     expect(container.textContent).toContain('已用 2 次请求')
     const button = [...container.querySelectorAll('button')].find(item => item.textContent === '恢复此助手任务')!
     expect(button.disabled).toBe(state !== 'unknown')
-    if (state === 'conflict') expect(container.textContent).toContain('来源已变化；保留的回复仍可复制。')
+    if (state === 'conflict') expect(container.textContent).toContain('来源已变化：这一稿不能保存，仍可复制。')
     if (state === 'cancelled') expect(container.textContent).toContain('已取消')
     await act(async () => button.click())
     if (state === 'unknown') {

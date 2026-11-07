@@ -13,6 +13,7 @@ import { useLLMStore } from '../../stores/llm-store'
 import type { GenerationReasoningStage } from '../../shared/reasoning-types'
 import { countDraftUnits } from '../../shared/draft-units'
 import { useLocaleStore } from '../../stores/locale-store'
+import { sourceConflictNoticeText } from '../../shared/source-conflict-copy'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import { livePreview, paperHeadFacet, type PaperHead } from './live-preview'
 import { readEditorScrollMemory, rememberEditorScroll, scrollPosToTop, scrollPosToTopConverge, scrollPosToTopRemaining, startScrollRestore } from './editor-scroll-memory'
@@ -675,7 +676,7 @@ export default function CodeMirrorEditor({
       const proof = (receipt.run.candidates ?? receipt.run.artifacts).find(candidate => candidate.text === receipt.outcome.content && candidate.status === 'completed' && candidate.compositionEligible === true)
       aiCandidateRef.current = proof ? { artifactId: proof.artifactId, textHash: proof.textHash } : null
       setAiResult(receipt.outcome.content)
-      if (receipt.sourceStatus !== 'current') setAiError(uiText('来源已变化，结果仅可复制', 'Sources changed; the result can only be copied.'))
+      if (receipt.sourceStatus !== 'current') setAiError(sourceConflictNoticeText(uiLocale, 'conflict') ?? '')
     } catch {
       if (requestSequence !== aiRequestSequenceRef.current) return
       setAiResult(''); setAiError(uiText('生成失败，结果不可应用', 'Generation failed; the result cannot be applied.'))
@@ -691,7 +692,7 @@ export default function CodeMirrorEditor({
       if (!receipt || receipt.outcome.status !== 'completed' || receipt.outcome.finishReason !== 'stop') throw new Error('EDITOR_INLINE_INCOMPLETE')
       const proof = (receipt.run.candidates ?? receipt.run.artifacts).find(candidate => candidate.text === receipt.outcome.content && candidate.status === 'completed' && candidate.compositionEligible === true)
       aiCandidateRef.current = proof ? { artifactId: proof.artifactId, textHash: proof.textHash } : null
-      setAiResult(receipt.outcome.content); setAiError(receipt.sourceStatus === 'current' ? null : uiText('来源已变化，结果仅可复制', 'Sources changed; the result can only be copied.'))
+      setAiResult(receipt.outcome.content); setAiError(receipt.sourceStatus === 'current' ? null : sourceConflictNoticeText(uiLocale, 'conflict'))
     } catch { if (sequence === aiRequestSequenceRef.current) setAiError(uiText('原运行未完整完成，结果不可应用', 'The original run did not complete; its result cannot be applied.')) }
   }
 
@@ -713,7 +714,7 @@ export default function CodeMirrorEditor({
         if (!proof || !recovery || recovery.sourceStatus !== 'current' || recovery.view.status === 'cancelled') throw new Error('EDITOR_INLINE_SOURCE_CHANGED')
       } catch {
         if (target.requestSequence !== aiRequestSequenceRef.current) return
-        setAiError(uiText('来源已变化，结果仅可复制', 'Sources changed; the result can only be copied.'))
+        setAiError(sourceConflictNoticeText(uiLocale, 'conflict') ?? '')
         return
       }
       const targetStillCurrent = (
