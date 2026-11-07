@@ -154,7 +154,7 @@ B 组换身份独立复核（`agent-r1`，报告 `wt-2/.batch/b-review.md` 332 �
 
 | # | 判据（写死，不许「先取证再定」） | 复核方法 | 执行方自报 + 换身份复核结果（**均非第三方结论**） | 第三方结论 |
 |---|---|---|---|---|
-| **B1 D4** | 同一份 `sourceStatus='conflict'` 同时驱动**产物层**（这一稿不能保存、仍可复制）与**批次层**（后续单元不再执行、需重新发起）两条并列文案；6 处文案定位见交接稿 §4；组件单测断言两条**同时出现**且「仅可复制」语义不丢。**判据待澄清**：判据写 6 处、自报写 8 处接线、本节补注②又写 6 处里 2 处并非 `sourceStatus` 驱动；按 §0 第 3 条，判据未澄清前第三方可填 `无法判定（证据缺失）` | `git -C wt-2 diff` + 跑对应单测 | **自报兑现**：8 处 `sourceStatus` 接线全覆盖、单一事实源产出两条并列文案、`SourceConflictNotice.test.tsx:12-22` 断言同现且「仍可复制」不丢。**20:3x 已合并主区 `e0704a07`，4 处 browser 旧断言同步完成**（原清单 3 处 + `:278` 恢复路径 1 处） | — |
+| **B1 D4** | 同一份 `sourceStatus='conflict'` 同时驱动**产物层**（这一稿不能保存、仍可复制）与**批次层**（后续单元不再执行、需重新发起）两条并列文案；判据按 **`sourceStatus` 驱动的接线点**计（实际 8 处），组件单测断言两条**同时出现**且「仅可复制」语义不丢。**判据已于 20:4x 自我订正**：原写「6 处文案定位见交接稿 §4」，而交接稿 §4 实际列 **8 个位置**（「6 处」是计数笔误），其中 2 处 —— `VersionHistory.tsx:281`（`ver.dependencies_stale`，历史版本依赖过期徽标）与 `ArchFileViewer.tsx:1071`（`writeState.kind==='blocked'`，写盘被阻塞）——原因不同、原文案已分别含「草稿会保留／仍可编辑和复制」语义，**不属本缺陷、也不应硬套 `sourceStatus`**（会让用户看到错误原因）。判据按「`sourceStatus` 驱动的接线点」计（8 处）成立，不需提请裁定 | `git -C wt-2 diff` + 跑对应单测 | **自报兑现**：8 处 `sourceStatus` 接线全覆盖、单一事实源产出两条并列文案、`SourceConflictNotice.test.tsx:12-22` 断言同现且「仍可复制」不丢。**20:3x 已合并主区 `e0704a07`，4 处 browser 旧断言同步完成**（原清单 3 处 + `:278` 恢复路径 1 处） | — |
 | **B2 D9** | 超时上限**默认 10 分钟且可配置**；假时钟单测三态 `生成中→超时已中止→调用失败`；超时中止复用 D2 失败终态落库，`generation_runs` 不留 `running`/`paused` | 同上 | **未兑现（打回）**：`createSingleCallWatchdog` / `finalizeFailedGeneration` 生产零调用点（孤立死代码），真实超时不可达；单测三态是测试手工拼的 `onTimeout→finalizeFailedGeneration`，不能替代真实链路。**已结转下一批（丙）** | — |
 | **B3 D10** | 清空补渲染侧重置钩子（单测断言被调用）+ 回执报三档各清了几类各多少条；回执计数与 DB 删除计数一致；**不要求 browser 测试** | 同上 | **兑现（机制级）**：钩子被单测断言、三档回执、内存 SQLite `rows===before-after`、`clearProjectData` 返回值保持 `{cleared}`；但 `PROJECT_DATA_CLEARED` 生产订阅方为零、残留卡片宿主未定位 ⇒ 现象未闭环，登记为遗留 | — |
 | **B4 D11** | 去重键改为**卷**（`volumeIndex` + 该卷大纲定稿态），不再用 `architecture-character-nudge.ts:112` 的 `c<覆盖数>:l<正文长度>`；单测同卷连续 3 批只弹 1 次、跨卷弹第 2 次 | 同上 | **自报基本兑现**：卷级 `v<卷>:<wip\|final>` 替换旧 `c…:l…`、两处调用点全改、同卷 3 批 / 跨卷第 2 次 / 指纹单测齐；偏差 = 定稿态用 `chain.status` 投影、未直读 `synopsis_incomplete`，**已登记为待裁定项** | — |
@@ -163,9 +163,9 @@ B 组换身份独立复核（`agent-r1`，报告 `wt-2/.batch/b-review.md` 332 �
 
 > **独立复核**：`wt-2/.batch/b-review.md`（332 行，`agent-r1` 与执行方 `agent-b1` 不同身份）。打回只认两条理由 —— 本次是 D9/D16「验收没兑现」，**没有「打坏原来能用的」**（无新增 throw/拦截、prompt 模板零改动、既有回归全绿）。`check:fast` 在 wt-2 报 EXIT=1 经复核取证为 HEAD 既有的 worktree 断链（`p11-plan-validity-and-fact-registry-design.md:163` 指向主区私有 `.workbuddy`），主区同口径全绿，非本批引入。
 >
-> **合并时已同步（2026-11-07 20:3x，随 `e0704a07`）**：① **4 处** browser 旧文案断言（`CodeMirrorEditor-generation.browser.tsx:331` / `:278`、`AIOutputPanel.main-recovery.browser.tsx:144/:374`）；② D4 §4 判据列的 6 处里 2 处（`VersionHistory.tsx:281` 是 `dependencies_stale`、`ArchFileViewer.tsx:1071` 是 `writeState.kind==='blocked'`）经取证**不是** `sourceStatus` 驱动，**判据仍未澄清**，严格按「6 处都要两条」卡需先澄清（与 B1 行「判据待澄清」同源）。**③ 已于 19:2x 落地**：缺陷稿现值行与 §2 表格已按 3 兑现 / 2 打回写成 `✅7 / 🟡10 / 🔍1 / ⬜2`，没有 5 条全标 ✅；此条仅留作核对点，不再列为待办。
+> **合并时已同步（2026-11-07 20:3x，随 `e0704a07`）**：① **4 处** browser 旧文案断言（`CodeMirrorEditor-generation.browser.tsx:331` / `:278`、`AIOutputPanel.main-recovery.browser.tsx:144/:374`）；② **D4 判据已自我订正（20:4x）**：原「6 处」是把「提到过来源变化的位置」混算进来 —— `VersionHistory.tsx:281`（`ver.dependencies_stale`，历史版本依赖过期徽标，原文案已含「草稿会保留」）与 `ArchFileViewer.tsx:1071`（`writeState.kind==='blocked'`，写盘被阻塞，原文案已含「仍可编辑和复制」）**原因不同、不属本缺陷**，不应硬套 `sourceStatus`。判据按「`sourceStatus` 驱动的接线点」计（实际 8 处），**成立、无需裁定**。**③ 已于 19:2x 落地**：缺陷稿现值行与 §2 表格已按 3 兑现 / 2 打回写成 `✅7 / 🟡10 / 🔍1 / ⬜2`，没有 5 条全标 ✅；此条仅留作核对点，不再列为待办。
 >
-> **看板 5 张卡保持 `todo`**：代码仍在 `wt-2` 未合并主区，台账不领先于代码；下一批合并时同步。
+> **看板 5 张卡仍为 `todo`（20:4x 现状，待第三方签核后同步）**：代码已于 20:3x 合并主区 `e0704a07`，**台账现已落后于代码**（此前是「台账不领先于代码」）。D4/D10/D11 三张卡签核后应转 `review`，D9/D16 维持 `todo`。此处如实登记落差，不自行改卡 —— 看板写入按通道规则由主控在签核后统一录。
 
 > **worktree 固有基线（别误判为执行方打坏）**：`pnpm check:fast` 在 wt-2/wt-3 会因 `docs/design/architecture/p11-plan-validity-and-fact-registry-design.md:163` 指向 `../../../.workbuddy/memory/notes/data-and-schema.md` 报 **broken 1 / EXIT=1**；worktree 未同步本地私有目录 ⇒ 必断，主区可过。执行方已用 `git stash` 做纯 HEAD 同口径对照证明与改动无关，stash 均已 pop。**复核者应在主区跑 `check:fast`，或接受该基线说明。**
 
@@ -311,7 +311,7 @@ env -u CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR -u CODEBUDDY_TOOL_CALL_ID \
 | **A2-6** | 四条候选已列、未验证 | 在 CDP 调 `readOutlineProgressGate({projectSession, chapterNumber: 7})` 看返回，并核对生成请求里的 `chapterNumber`，逐条排除 §4.2 四条候选 | 同 A1 环境；这是 D3 能否转 ✅ 的前置 |
 | **A2-1 / A2-2** | 闸门为 `null`、豁免键未出现 | 随 A2-6 结论决定：若属判据 / 配置问题，先澄清判据再补跑「点继续」路径 | 原因没查清就补跑，只会再得一次同样的 `null`，不算验收 |
 | **D9 / D16** | 换身份复核判「未兑现」，作者裁丙结转 | 下一批专做结构设计：先定挂点 / 事实源，再动代码 | [`2026-11-07-d9-d16-structural-design-handoff.md`](../../handoffs/2026-11-07-d9-d16-structural-design-handoff.md) §2；**本批不补做** |
-| **B 组 4 处 browser 断言 + D4 判据澄清** | **已同步（20:3x 随合并完成）**；D4 判据仍待澄清 | 判据：`VersionHistory.tsx:281` / `ArchFileViewer.tsx:1071` 经取证非 `sourceStatus` 驱动，需作者确认「6 处」是新判据还是清单笔误 | 断言已改并跑过；判据不澄清就只能记「8 处接线」而非「6 处全覆盖」 |
+| **B 组 4 处 browser 断言 + D4 判据** | **均已收口**（断言 20:3x 随合并完成；判据 20:4x 自我订正） | 无需下一批：判据按「`sourceStatus` 驱动的接线点」（8 处）成立；`VersionHistory.tsx:281` / `ArchFileViewer.tsx:1071` 经取证非本因、不属本缺陷 | 断言已改并跑过；判据已订正 |
 | **D10 现象未闭环 / D11 定稿态取法** | 已登记，未定 | 按作者裁定决定补做 / 结转 | 下一批立项稿 §4 明写「不在下一批默认夹带」 |
 
 **本批到此为止**：以上六类**都没有**在本批执行，也没有因为「登记为遗留」被判兑现。第三方签核时请逐条核「现状属实 + 下一批动作可执行」。
