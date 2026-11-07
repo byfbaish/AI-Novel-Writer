@@ -1,9 +1,22 @@
 import { useState, useEffect } from 'react'
 import { Wifi, CheckCircle2, Zap, ScrollText, Cpu } from 'lucide-react'
+import type { Locale } from '../../i18n/types'
 import { useLLMStore } from '../../stores/llm-store'
 import { useLayoutStore, type BottomTab } from '../../stores/layout-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { useLocaleStore } from '../../stores/locale-store'
+import { useActualModelStore } from '../../stores/actual-model-store'
+import { resolveStatusbarModel, statusbarModelCopy, type ActualCallModel } from '../../shared/statusbar-model'
+
+/** 仅测试注入用：生产下全部走各自 store。 */
+export interface StatusBarProps {
+  /** 实际调用模型（配置 A / 实际 B 场景）；缺省走 `useActualModelStore`。 */
+  actualModel?: ActualCallModel | null
+  /** 配置选中模型名（空态兜底）；缺省走 `useLLMStore`。 */
+  configuredModelName?: string | null
+  /** 语种（zh/en 文案不串）；缺省走 `useLocaleStore`。 */
+  locale?: Locale
+}
 
 /** 底部工具窗的三个 Tab 在状态栏左下角的入口配置 */
 const bottomEntries: Array<{ id: BottomTab; icon: typeof Zap; zh: string; en: string }> = [
@@ -26,7 +39,11 @@ const bottomEntries: Array<{ id: BottomTab; icon: typeof Zap; zh: string; en: st
  * - 「重载提示词」：提示词在设置里改完在设置里刷新才成闭环，已移除。
  * 右侧仍是「AI 任务胶囊 + 当前模型」。
  */
-export default function StatusBar() {
+export default function StatusBar({
+  actualModel,
+  configuredModelName,
+  locale: localeProp,
+}: StatusBarProps = {}) {
   const models = useLLMStore(s => s.models)
   const defaultModelId = useLLMStore(s => s.defaultModelId)
   const openSettings = useLayoutStore(s => s.openSettings)
@@ -38,7 +55,14 @@ export default function StatusBar() {
   const defaultModel = models.find(
     (m) => m.id === defaultModelId && m.purposes?.some((p) => p !== 'embedding')
   )
+  const actualFromStore = useActualModelStore(s => s.actual)
+  const storeLocale = useLocaleStore(s => s.locale)
   const text = useLocaleStore(s => s.text)
+  // D16：优先显示实际调用模型；只有尚无实际调用记录时才退回配置选中值作空态兜底。
+  const effectiveActual = actualModel === undefined ? actualFromStore : actualModel
+  const effectiveConfigured = configuredModelName === undefined ? (defaultModel?.name ?? null) : configuredModelName
+  const shownModelName = resolveStatusbarModel(effectiveActual, effectiveConfigured)
+  const modelCopy = shownModelName ? statusbarModelCopy(localeProp ?? storeLocale, shownModelName) : null
 
   return (
     <div
@@ -87,13 +111,13 @@ export default function StatusBar() {
         {/* AI 任务胶囊指示器（右下角） */}
         <AITaskCapsule />
 
-        {defaultModel ? (
+        {modelCopy ? (
           <StatusBarSegment
-            title={text(`当前模型：${defaultModel.name}`, `Current model: ${defaultModel.name}`)}
+            title={modelCopy.title}
             onClick={() => openSettings()}
           >
             <Wifi size={11} />
-            <span className="opacity-80 max-w-[120px] truncate">{defaultModel.name}</span>
+            <span className="opacity-80 max-w-[120px] truncate">{modelCopy.label}</span>
           </StatusBarSegment>
         ) : (
           <StatusBarSegment

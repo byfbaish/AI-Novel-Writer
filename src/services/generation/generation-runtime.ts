@@ -11,6 +11,7 @@ import { hashAuthorText, isContentHash } from '../../shared/source-ref'
 import { ipc } from '../ipc-client'
 import { useLLMStore } from '../../stores/llm-store'
 import { useProjectStore } from '../../stores/project-store'
+import { useActualModelStore } from '../../stores/actual-model-store'
 import {
   assertGenerationHarnessPolicy,
   createGenerationHarness,
@@ -403,6 +404,12 @@ function createDefaultEnvironment(): GenerationRuntimeEnvironment {
         )
       }
       leaseModels.set(result.lease.leaseId, result.lease.modelId)
+      // D16：本次调用真正冻结的模型（lease 回执 = 报告 §0 写死的渲染期事实源投影）。
+      // 状态栏据此显示「实际调用模型」，而不是配置里的当前选中值。
+      useActualModelStore.getState().recordActualModel({
+        modelId: result.lease.modelId,
+        modelName: result.lease.modelName,
+      })
       return result.lease
     },
     completeWithLease(request) {
