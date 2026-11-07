@@ -318,7 +318,7 @@ docs/
 | [`live-verification-checklist.md`](design/product/live-verification-checklist.md) | 待执行 | **一次新项目跑批要验什么**：按世界观→架构→第一章→修稿四阶段排好，标零成本/人工判读；P17-3 明确不在本轮 |
 | [`config-registry-write-paths-assessment.md`](design/product/config-registry-write-paths-assessment.md) | 待裁定 | 配置与登记格**五条写入路径只有两条带确认面**；手填的真负担是「护锚」不是建账；「抽卡变追加」与「输入框看不清」是同一个缺口（缺显式替换动作），diff 面板正好补它 |
 | [`live-pipeline-acceptance-defects-assessment.md`](design/product/live-pipeline-acceptance-defects-assessment.md) | 📝 待裁定（2026-11-01） | **2026-11-01 实机链路验收的 11 条缺陷**（D1–D11，均带证据）。最重要结论：**界面上无法区分「在跑」和「已死」**——批内第二次调用即被判 `GENERATION_SOURCE_CHANGED`（D1），而中止后既无失败回执也无终态落库（D2）；另有 L3 降级静默（D3）、卷数脱离总章数（D6）、模板尖括号占位符原样落库（D5）等 |
-| [`2026-11-07-batch-acceptance-plan.md`](design/product/2026-11-07-batch-acceptance-plan.md) | ✅ 已裁定（2026-11-07） | **第三方独立复核验收清单**（甲方案：E0 台账卫生 + A 实机 + B 界面小缺陷 + C 撤销）：开工基准快照、§3 逐项可判验收矩阵（「第三方结论」列留空、不替复核者下判断）、实测读数、红线检查表、签核表；明确列出 A1 未跑 / A2-1·2·6 未兑现 / B 组未交付，证据保留至签核后 |
+| [`2026-11-07-batch-acceptance-plan.md`](design/product/2026-11-07-batch-acceptance-plan.md) | ✅ 已裁定（2026-11-07） | **第三方独立复核验收清单**（甲方案：E0 台账卫生 + A 实机 + B 界面小缺陷 + C 撤销）：开工基准快照、§3 逐项可判验收矩阵（「第三方结论」列留空、不替复核者下判断）、实测读数、红线检查表、签核表；**2026-11-07 作者裁「丙」拆批**：B 组独立复核 3 兑现 / 2 打回，D9/D16 结转下一批结构设计；明确列出 A1 未跑 / A2-1·2·6 未兑现，证据保留至签核后 |
 
 ### 4.7 Harness 与文档治理 · [`design/harness/`](design/harness/)（2 篇）
 

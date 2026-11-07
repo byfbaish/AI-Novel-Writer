@@ -1,6 +1,8 @@
 # 实机链路验收缺陷清单（2026-11-01 轮）
 
-> 状态：待裁定（**逐条状态见每个条目顶部的 `> 状态：` 行**；末次刷新 2026-11-06）
+> 状态：待裁定（**逐条状态见每个条目顶部的 `> 状态：` 行**；末次刷新 2026-11-07 · **现值见下一行**）
+
+> **2026-11-07 现值（作者裁「丙」后；本节以下各段均为历史快照，以本行为准）**：实测分布（**20 条**）＝ **✅ 7**（D2 · D6 · D8 · D12 · D14 · D17 · D19）· **🟡 10**（D1 · D3 · D5 · D13 · D15 · D18 · D20 · **D4 · D10 · D11**）· **🔍 1**（D7）· **⬜ 2**（**D9 · D16**）。相对开工基准 `✅7 / 🟡7 / 🔍1 / ⬜5` 的变化：B 组换身份独立复核判 **D4/D10/D11 兑现**（⬜→🟡，仅单测级、改动在 `wt-2` 未合并主区），**D9/D16 判「未兑现」打回**、按作者裁定丙结转下一批专做结构设计 ⇒ **保持 ⬜、不销账**。**订正**：上一轮口头把 D9/D16 说成「保持 🟡」不准确 —— 图标定义 🟡 = 已实施但验证不完整，而这两条连产品行为都没变，标 🟡 属误导，故按定义保持 ⬜。逐条证据见 §2 表格后的「2026-11-07 B 组实施与独立复核记录」；裁决与验收口径见 [`2026-11-07-batch-acceptance-plan.md`](./2026-11-07-batch-acceptance-plan.md) §1.4 / §3.3。
 
 > **本轮回三条裁定**：**D17 结项** · **D6 的「方向 A」已于 2026-11-06 撤回并重定义**（卷纲层可弃；取代标注同步撤回）· **D8 = 语义 A** · **新立 D20，定为优先做**。当前分布：✅ 5 条收口（**D6 两层已实施** · D12 只到单测级、D14 · D19 实机通过、D17 已复验结项）· 🟡 4 条代码落地待实机（D1 症状已实机、机制待正文批量；D2 方案乙 + 甲两半；D5 模板去尖括号 + 落库前守卫 `87684f48`；D15 单元区间检出接线）· 🟡 1 条方向已定、代码未动（**D8**）· 🔍 1 条已取证（D7 不成立半句）· ⬜ 9 条方向未定（其中 **D3 / D4 / D13 已于 2026-11-05 定「做」**）
 > **2026-11-06 00:49 作者三句**：① D13 T5 选 A（许可改写三条断言）⇒ 已落地 ② D8 裁定 3=Z / 4 随裁定 1 关闭 ⇒ 已同步 ③ D6 两张实施卡开工 ⇒ 已建卡并派发（方案稿 §9.7）。
@@ -62,16 +64,16 @@
 | D19 | 高 | ✅ 已实施（已复验） | `actual_last` 被当成卷末 ⇒ 卷边界随进度漂移，开写闸门提前一章弹、交接单漏本卷最后一章 | `src/shared/volume-structure.ts:285`（末章取 `actual_last ?? planned_last`）；`src/shared/volume-handoff-gate.ts:63`（闸门判上一卷）；`finalization-controller.ts:65`（推进在 finalize 之后） |
 | **D20** | **高** | 🟡 **已实施（2026-11-05 · 本体已合并 `eef01325`）**；**D20b（§4.6 收窄）已实施并合并（`115ff490`→`3248b967`）**；**D20c 判定侧收口已实施并合并（`4b510d2a` → `72b20beb`）**（见方案稿 §4.7）；**实机验证：作者 2026-11-06 裁「选项③」不验**（要推大纲 5→21 版、拖 2 章定稿进处置清单），改为方案稿 §8.3 留「真撞上时怎么定位」的路径 + 现场采集清单 | **生成模板一变，旧大纲检查点就续不上，而报错断言「项目源事实已变化」**——指纹是 4 元的（源事实 / 步骤指导 / 批次范围 / **模板**），比对时只剩一个布尔值，文案却只认第 1 元。**读码证明只有「源事实 / 模板」两项可能漂移**（②③ 是拿检查点自己的值重算自己）。换数据根 / 换机器 / 改模板都会撞上，使用者无从查起。**指纹让「改内置模板」变成高风险操作**，两次输出合同变更因此只能走渲染期替换（红线 19 由此而来）。裁定 3 = **世界观链不改** | `architecture.command.ts:1124-1150`（指纹含 `JSON.stringify(template)`）· `:3135` `:3242`（两处报错文案）· **对照 `:2334` 点了模板（但只列 3 项）**；现场：D17 §7.4 第 1 条（`stored=13sbmpn / expected=tkj9w7`，12 个源事实字段 sha256 全一致）；方案稿 [`architecture/d20-checkpoint-template-fingerprint-design.md`](../architecture/d20-checkpoint-template-fingerprint-design.md)（**经独立复核打回后修订**，见其 §11）；**卡 `216dcf5b`** |
 | D3 | 中 | 🟡 **已实施（2026-11-06 23:2x 甲方案 → 23:4x 复核后补正；两档实机弹窗验过，「确认继续」后的真生成未跑，见 D3 段）** | `degraded=l3-handoff-missing` 提示过弱且不阻断（**根因见 D14**）。**已核实**：卷界已有 `OutlineProgressGatePanel`（2026-10-25，一卷一次 + 两个出口 + 可撤销确认），但它只判「上一卷正文未定稿」。**2026-11-06 扩成二维**：上一卷已定稿却**没登记交接单**、或**交接单过期被静默丢弃**，这两种同样走 `plan` 的降级现在各成一档，卷首会说清「本卷只能用卷纲计划」并给出对应出口 | `src/shared/synopsis-projection.ts:520`（push）、`:504–522`（`actual`/`plan` 回退）；`src/shared/outline-progress-gate.ts`（`handoff` 维度 + `reason` 四档：`prose-unfinalized` / `handoff-missing` / `handoff-stale` / `handoff-unusable`）；`src/services/outline-progress-gate.ts`（`handoffAvailabilityOf` 与 `outline-prefix-context.ts:70` 同口径，判据复用 `renderVolumeHandoffSection` 真值）；`OutlineProgressGatePanel.tsx`（四档文案） |
-| D4 | 中 | ⬜ 待裁定 | UI 散落「来源已变化」文案，但没有任何地方把它和批次中止关联 | `src/components/panels/AIOutputPanel.tsx:398` |
+| D4 | 中 | 🟡 已实施，待实机（2026-11-07 · 独立复核兑现，**仅单测级**；改动在 `wt-2` 未合并主区；合并前需同步 3 处 browser 旧断言） | UI 散落「来源已变化」文案，但没有任何地方把它和批次中止关联 | `src/components/panels/AIOutputPanel.tsx:398` |
 | D5 | 中 | 🟡 已实施（2026-11-05，待实机） | 卷/单元结构输出里模板尖括号占位符原样保留 | `debug/prompt-trace/20261101-213138-718-弧光-d57a1d5d.json` → `ioCalls[0].output` |
 | D6 | 中 | ✅ 已实施（2026-11-06 · **方向 A 与裁定 6 已撤回**，重定义为 Prompt 层 + 算术层；两卡复核通过并合并 `cb2ede1c` / `57290b20`，见 §9.8） | **卷纲层可弃**：5 卷 / 7 卷皆模型按背景材料的合理划分、重生成代价极小，卷数不进任何判据。**唯一目标 = 在该划分下完成预定字数**（每章字数由续写/重写保障 × 总章数由反馈收敛保障）。病因是 Prompt 的 `:743` / `:847` 把已知量挡在决策外（「信息在场、许可缺席」），不是「卷数没有事实源」 | 同上 trace 的 `【节奏推荐】` 与「输出前自检」第 2 条；方案稿 [`architecture/d6-volume-count-source-design.md`](../architecture/d6-volume-count-source-design.md) **§9（§0/§4/§7/§8 已被 §9 取代）** |
 | D7 | 中 | 🔍 已取证（2026-11-03）：「不符」**不成立**（两侧同一 `computeSynopsisUnitRange`，仅显示精度差）；「偏保守」成立且属模型行为 | 单元 → 章折算偏保守，且与对话框预告不符 | 对话框 `synopsis-unit-launch.ts:298` · 生成 `architecture.command.ts:2948` · prompt 精度 `arc-position.ts:960`；`partial_arch.json` 的 `synopsis_volume_deviations` |
 | D8 | 中 | ✅ 已实施（2026-11-06 · 第八轮补正后直接施工，单测 2203/2203、browser 54/54 —— 21:0x 轮次为 **113/113**，两档是不同批次不是矛盾 —— `check-fast` 全绿。**实机两轮不是同一结论**：19:5x 首轮**部分通过并暴露三项阻塞** ⇒ 作者 20:5x 四条订正 ⇒ 修复后 21:0x **复验通过** · `c37a268f` 起、末次 `0209753e`。**未单独实机覆盖**：§12.9 单元连选只丢最后残缺单元） | **候选区残本阻塞大纲生成**：卷/单元路线每次点「生成 / 执行」**无条件清候选区**、上游级联清空时界面连坐清；清场只作废残本、不碰进度 / 游标 / 偏差账 / DB 正文、不复用 `resetSynopsisCheckpoint`。按生成路线分流（配置二选一走到底、禁止模式交替）、旧模式语义不改、反馈收敛链零改动、**不新增 / 删除按钮**；单元连选只丢最后残缺单元（§12.9）。v1–v3 与 C1 / C2 / 05:20 两条提请裁定作废，原文保留 | 方案稿 [`architecture/d8-checkpoint-degradation-design.md`](../architecture/d8-checkpoint-degradation-design.md) §12（§12.1.1 问题定义 / §12.7 清场 / §12.8 取证 / §12.9 连选） |
 | D15 | 中 | 🟡 已实施（2026-11-05）。**2026-11-06 22:2x 现场核对，口径比原表述弱一档**：实现是「**检出告警、不夹紧、不阻断**」，不是「落库前校验拦下」—— `src/shared/volume-structure.ts:165-175` 逐字写了为什么不夹紧（重叠多是 `headings` 档，夹紧等于拿估算改事实）、为什么不阻断（作者库本就处于重叠状态，阻断会让「重新解析」直接不可用）。**实测本库 `volume:2` 仍是 7–9 / 8–9，存量不修**；告警格式 `VOLUME_UNIT_OVERLAP:<卷>:<单元>-<单元>:<章>`。UI 是否消费这条告警未验 | 第 2 卷单元区间重叠（7–9 / 8–9 / 10–10），第 8、9 章归属不唯一 | `volume_units` 落库后读出的 `planned_first` / `planned_last` |
-| D9 | 低 | ⬜ 待裁定 | 单章大纲调用可能长时间不返回，无超时/无中断 | `debug/prompt-trace/20261101-215546-106-大纲-ch10-b79a98f3.json`（`ioCalls` 为空） |
-| D10 | 低 | ⬜ 待裁定 | 「清空生成内容」未清掉历史审稿/生成记录面板 | 库内计数为 0 vs 界面卡片残留 |
-| D11 | 低 | ⬜ 待裁定 | 生成完成后「补角色卡」提示按批重复堆积 | `src/services/architecture-character-nudge.ts:112`（指纹函数）、`:130–137`（判定） |
-| D16 | 低 | ⬜ 待裁定 | 模型指示器与实际调用不一致：日志确认调 `deepseek-v4.1-flash-free`，状态栏显示 `deepseek-均衡` | 主进程 stderr `model:` 字段 vs 界面底部状态栏 |
+| D9 | 低 | ⬜ **本批打回、不得销账**（2026-11-07 · 超时模块生产零调用点、真实链路不可达；作者裁丙 ⇒ 结转下一批结构设计） | 单章大纲调用可能长时间不返回，无超时/无中断 | `debug/prompt-trace/20261101-215546-106-大纲-ch10-b79a98f3.json`（`ioCalls` 为空） |
+| D10 | 低 | 🟡 已实施，待实机（2026-11-07 · 独立复核**机制级兑现**、仅单测；回执事件生产订阅方为零、残留宿主未定位 ⇒ **现象未闭环**，登记为遗留） | 「清空生成内容」未清掉历史审稿/生成记录面板 | 库内计数为 0 vs 界面卡片残留 |
+| D11 | 低 | 🟡 已实施，待实机（2026-11-07 · 独立复核基本兑现、仅单测；定稿态用 `chain.status` 投影未直读 `synopsis_incomplete`，**取法待裁定**） | 生成完成后「补角色卡」提示按批重复堆积 | `src/services/architecture-character-nudge.ts:112`（指纹函数）、`:130–137`（判定） |
+| D16 | 低 | ⬜ **本批打回、不得销账**（2026-11-07 · 主链路不写快照、重启回退配置；作者裁丙 ⇒ 结转下一批结构设计） | 模型指示器与实际调用不一致：日志确认调 `deepseek-v4.1-flash-free`，状态栏显示 `deepseek-均衡` | 主进程 stderr `model:` 字段 vs 界面底部状态栏 |
 | D17 | 中 | ✅ **已结项（2026-11-05）** | 生成路径提交大纲**不记覆盖章区间**（`changedChapters` 恒为空集）⇒ 判定退化为「整本大纲都改了」⇒ 每追加一批大纲就把此前所有已定稿章/蓝图/交接单拖进失效清单。**预演与实测一致，机制本身是成功的（作者 2026-11-02 认定）**，缺的是输入的章集。**已实机复验**：rev21 记 `[18,19]`、同步页 7 项 → 3 项、13 张蓝图全 valid；复验时撞出的另一个问题已单列为 D20 | `electron/repositories/project-core-repository.ts`（`commitSynopsis` 的 `changedChapters` 分支）vs `src/shared/upstream-revisions.ts:651`（空集 ⇒ `null` ⇒ 按全改算）；方案稿 [`architecture/d17-outline-change-range-design.md`](../architecture/d17-outline-change-range-design.md) §7.4 · §10 |
 | D18 | 中 | 🟡 已实施（2026-11-04 · 合同文案进模板 zh/en 与两级副本、解析器、六个校验纯函数已接线：C1/C1b/C2/C4 进单元批、C3/C5 进正文落盘与定稿，只报不拦；**C1 重跑权限未开放**，作者 2026-11-05 裁定继续只报，见设计稿 §11.15） | 蓝图结尾钩子可**无校验地**偏离大纲「收尾：」行：模板两条条款互斥（「必须落在收尾行」vs「不得是事件」）+ 钩子可自造设定 + 正文未兑现无告警。第 6 章 `suspense_hook` 写成结论句，正文里 `寿元` / `因果纹` 各 **0** 次 | `builtin-prompt-templates.ts:1165`（条款互斥）、`src/shared/blueprint-semantic-contract.ts`（「威胁/后果」给它授权）、`generate-draft.command.ts`（`withSuspenseHook` 注入）；**排除审查/改写**：`generation_artifacts` rowid 117（run `fd6f4edc`）与 `blueprint_commit_operations` `directory-f348fe27-…-1-6` 逐字一致 |
 
@@ -82,6 +84,24 @@
 > ✅ = 已实施且实机复验过 · 🟡 = 已实施，但验证还不完整（只有单测，或只复验了症状没复验机制）· ⬜ = 待裁定（未开工）。
 > 每条正文顶部有对应的 `> 状态：` 行，括号里写**验证到什么程度 + 提交号**；
 > 两处若冲突，以正文那行为准（表格是索引，正文是记录）。
+
+### 2026-11-07 B 组实施与独立复核记录（丙裁定后）
+
+> 本节是这 5 条**唯一**的实施记录落点；各条目 `> 状态：` 行只写指针，不复制证据。执行方 `agent-b1`（`wt-2/.batch/b-report.md` 371 行）＋独立复核 `agent-r1`（`wt-2/.batch/b-review.md` 332 行，不同身份）；HEAD 仍 `2d5888c7`，改动全留 `wt-2`、未提交未合并，证据保留至第三方签核后。
+
+| 条 | 改了什么 | 复核结论 | 产品上还剩什么 |
+|---|---|---|---|
+| **D4** | 新建 `src/shared/source-conflict-copy.ts`（zh/en 单一事实源：产物层「不能保存仍可复制」＋批次层「后续单元不再执行需重新发起」）与 `src/components/ui/SourceConflictNotice.tsx`；8 处 `sourceStatus='conflict'` 接线（`AIOutputPanel` 3 / `CodeMirrorEditor` 3 / `NarrativeThreadEditor` 2）；7 例单测 | **兑现**：`SourceConflictNotice.test.tsx:12-22` 断言两条同现且「仍可复制」不丢 | 3 处 `.browser.tsx` 旧文案断言待合并前同步；`VersionHistory.tsx:281` 与 `ArchFileViewer.tsx:1071` 经取证不是 `sourceStatus` 驱动，判据列的「6 处」需澄清 |
+| **D9** | 新建 `src/shared/generation-call-timeout.ts`（默认 600000ms 可配置、三态）与 `electron/services/generation-run-timeout.ts`（复用 D2 `seal(...,'failed')`）；8 例单测 | **未兑现（打回）**：两个入口生产零调用点，是孤立死代码；单测三态是测试手工拼的 `onTimeout→finalizeFailedGeneration`，**不能替代真实链路** | 12 分钟挂起现象一点没解决；作者裁丙结转下一批做挂点结构设计 |
+| **D10** | `ipc-channels` 加 `ProjectClearCounts`；新建 `src/shared/project-clear-receipt.ts`；`event-bus` 加 `PROJECT_DATA_CLEARED`；主进程用事务前后逐表 `COUNT(*)` 差统计三档；`clearProjectData` 返回值保持 `{cleared}`；28 例全绿 | **机制级兑现**：钩子被断言、三档回执、内存 SQLite `rows===before-after` | `PROJECT_DATA_CLEARED` 生产订阅方为零（空钩子）、残留卡片宿主未逐个定位 ⇒ **现象未闭环**，登记遗留 |
+| **D11** | 指纹改卷级 `v<卷号>:<wip|final>`，删 `c<覆盖数>:l<正文长度>`；`shouldNudge` / `dismiss` 加卷号，两处调用点（`App.tsx` / `ArchFileViewer.tsx`）从 `useSynopsisUnitChainStore` 取卷号与批次态；15 例单测 | **基本兑现**：同卷连续 3 批只弹 1 次、跨卷弹第 2 次、指纹函数单独断言 | 该卷定稿态用 `chain.status==='running'` 同步投影、未直读 `partial_arch.json` 的 `synopsis_incomplete`；取法另需裁定，不单独打回 |
+| **D16** | 新建 `src/shared/statusbar-model.ts` 与 `src/stores/actual-model-store.ts`；`generation-runtime.ts` 的 `beginModelExecution` 记 lease 回执；`StatusBar` 优先显示实际模型；10 例单测 | **未兑现（打回）**：字面「配置 A / 实际 B ⇒ 显示 B」兑现，但事实源是渲染期 lease＋内存 store（不落库）、重启回退配置、正文生成主链路（main-owned）不写快照、删掉 `generation-runtime.ts:409` 单测仍全绿 | 重启后状态栏仍显示配置值，缺陷现象复现；作者裁丙结转下一批做持久化事实源结构设计 |
+
+**取证口径订正（D16）**：`generation_runs` / `generation_attempts` **没有独立 `model` 列**；实际模型在 `binding_json.sourceManifest.modelReceipt.{modelId,modelName}`（主进程 `modelProjection()`）与渲染期 `lease.{modelId,modelName}`。B 组任务书括号里的「`model` 字段」是提示性口径，按取证写死、**不改判据**（判据是「读实际调用事实源，不读配置当前选中值」）。
+
+**红线与打坏核对**：无新增 throw / 拦截、prompt 模板零改动、既有回归（`project-clear-repositories` 11 / `project-clear-service` 15 / `StatusBar` 5 / D2 seal 12 / nudge 15）全绿 ⇒ **未打坏原来能用的**。`check:fast` 在 wt-2 报 EXIT=1 仅因 `p11-plan-validity-and-fact-registry-design.md:163` 指向主区私有 `.workbuddy`（worktree 未同步），HEAD 既有、非本批引入；主区同口径全绿。
+
+**作者裁定丙（2026-11-07 19:19「那就丙」）**：本批只收 D4/D10/D11，D9/D16 结转下一批专做结构设计；缺陷稿按 3 兑现 / 2 打回写，**不 5 条全标 ✅**。裁决与逐项验收见 [`2026-11-07-batch-acceptance-plan.md`](./2026-11-07-batch-acceptance-plan.md)，下一批立项见 [`2026-11-07-d9-d16-structural-design-handoff.md`](../../handoffs/2026-11-07-d9-d16-structural-design-handoff.md)。
 
 ---
 
@@ -419,7 +439,7 @@ A 不是边角情况：D14 已裁定「交接单**仍然手动登记**」（自�
 
 ## D4（中）UI 里散落「来源已变化」文案，但没有任何地方把它和批次中止关联起来
 
-> 状态：待裁定（2026-11-01 · 未开工）
+> 状态：🟡 已实施（2026-11-07 · 独立复核兑现；**只到单测级、未实机**，改动在 `wt-2` 未合并主区 · 实施记录见 §2 后「2026-11-07 B 组」节）
 
 ### 现象
 
@@ -618,7 +638,7 @@ A 不是边角情况：D14 已裁定「交接单**仍然手动登记**」（自�
 
 ## D9（低）单章大纲调用可能长时间不返回，无超时/无中断
 
-> 状态：待裁定（2026-11-01 · 未开工）
+> 状态：⬜ 待裁定（2026-11-07 · **本批打回、已结转下一批**，不得按现有孤立模块销账 · 实施记录见 §2 后「2026-11-07 B 组」节）
 
 ### 现象
 
@@ -643,7 +663,7 @@ A 不是边角情况：D14 已裁定「交接单**仍然手动登记**」（自�
 
 ## D10（低）「清空生成内容」未清掉历史审稿/生成记录面板
 
-> 状态：待裁定（2026-11-01 · 未开工）
+> 状态：🟡 已实施（2026-11-07 · 独立复核**机制级兑现**、仅单测；回执事件生产订阅方为零、残留宿主未定位 ⇒ 现象未闭环 · 实施记录见 §2 后「2026-11-07 B 组」节）
 
 ### 现象
 
@@ -669,7 +689,7 @@ A 不是边角情况：D14 已裁定「交接单**仍然手动登记**」（自�
 
 ## D11（低）生成完成后「补角色卡」提示按批重复堆积
 
-> 状态：待裁定（2026-11-01 · 未开工）
+> 状态：🟡 已实施（2026-11-07 · 独立复核基本兑现、仅单测；该卷定稿态取法另需裁定 · 实施记录见 §2 后「2026-11-07 B 组」节）
 
 ### 现象
 
@@ -876,7 +896,7 @@ B 部分**不需要新代码**：`ChapterCreationDialog:595` 早就集成了 `Vo
 
 ### D16（低）模型指示器与实际调用不一致
 
-> 状态：待裁定（2026-11-01 · 未开工）
+> 状态：⬜ 待裁定（2026-11-07 · **本批打回、已结转下一批**，生产主链路不写实际模型快照 · 实施记录见 §2 后「2026-11-07 B 组」节）
 
 把创作对话框的模型切到 `our-free-model/deepseek-v4.1-flash-free` 后，主进程日志确认实际调用的正是该模型（`model: 'our-free-model/deepseek-v4.1-flash-free'`），但界面底部状态栏仍显示 `deepseek-均衡`。作者无法从界面判断这一章到底用了哪个模型。
 
