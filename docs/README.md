@@ -2,7 +2,7 @@
 
 > **找文档只看这一页。** 本页给出「想干什么 → 打开哪个文件」的完整索引、每个目录的职责边界，以及**新文档该放哪里**的硬规则。
 > 更新：2026-10-24 · 分支 `exp/resource-ledger`
-> **开工前先读**（新会话 / 新任务）：根目录 `AGENTS.md`（常驻宪法，≤60 行）→ [`agents/documentation-charter.md`](agents/documentation-charter.md)（文档纪律、四层模型、完成定义）。本页只做**索引**，不复述纪律。
+> **开工前先读**（新会话 / 新任务）：根目录 `AGENTS.md`（常驻宪法，**≤60 行 且 ≤4,500 字符**）→ [`agents/documentation-charter.md`](agents/documentation-charter.md)（文档纪律、四层模型、完成定义、**§12 规则分档**）。本页只做**索引**，不复述纪律。
 > 上一版入口是 [`plans/00-OVERVIEW.md`](plans/00-OVERVIEW.md)（2026-10-11 历史看板，已冻结，只作存档）。
 
 ---
@@ -58,7 +58,8 @@ docs/
 | **把活派给豆包电脑版**（桌面 UI，只能 CDP 驱动；用它的客户端积分） | [`agents/doubao-channel.md`](agents/doubao-channel.md) —— Launcher 吞参数真相 · 独立 profile 起法 · `doubao.mjs` 命令速查 · §5 跨 Agent 红线 |
 | **让外部 agent 自己来认领看板任务**（同机、拉取式、干完交 review 不自结算） | [`agents/task-board-channel.md`](agents/task-board-channel.md) —— `dsh-task-board` CLI/MCP · 发布约定 · 各 harness 接入片段 · 退出码与让位规则 · **§5.1 禁自结算** |
 | **多 agent 并行改代码**（worktree 隔离 / 端口写死 / Master 合并） | [`agents/worktree-parallel.md`](agents/worktree-parallel.md) —— 槽位表（5180/9222 · 5181/9223 · 5182/9224 · 5183/9225）· **§3.1 固定归属**（develop=主控 · wt-1=豆包 · wt-2=WorkBuddy · wt-3=DSH）· 三条隔离机制 · 禁 `test:node` 等红线 |
-| **放文档 / 归档文档 / 判断该不该新建一份** | [`agents/documentation-charter.md`](agents/documentation-charter.md) —— 四层模型 + 单一事实源 + 完成定义 + 反例库 |
+| **放文档 / 归档文档 / 判断该不该新建一份** | [`agents/documentation-charter.md`](agents/documentation-charter.md) —— 四层模型 + 单一事实源 + 完成定义 + 反例库 + **§12 规则分档** |
+| **查某条规则还失效吗 / 它凭什么占注意力** | [`agents/rule-registry.md`](agents/rule-registry.md) —— 40 余条规则逐条登记档位（T0/T1/T2/T3）· 失败形态 · 触发时机 · 闸门有无 · 5 条闸门缺口 |
 | **要跑某个构建/验收/运维脚本，或想知道「改完这个该跑什么」** | [`../scripts/README.md`](../scripts/README.md) —— 按用途分类 + 「何时跑」+ 谁调用（npm script / CI / 手工） |
 | 产品术语 / 事实源边界 | [`product-domain.md`](product-domain.md) |
 | **这工具该为谁做、什么算写得好**（定位空白 + 五份评估稿导航） | [`design/product/writing-capability-assessment.md`](design/product/writing-capability-assessment.md) —— 定位只写了形态没写价值；`目标用户`/`用户画像` 全库 0 命中；「写得好」缺位是 C8 与 A1 降级的共同根因 |

@@ -1,59 +1,60 @@
-<!-- charter-version: 2026-11-06 -->
+<!-- charter-version: 2026-11-07 -->
 # AGENTS.md · 常驻上下文（新会话开工先读这一份）
 
-> 只放「不读就一定会悄悄犯错」的内容，**上限 60 行**，超出必须下沉。细则 → [`documentation-charter.md`](docs/agents/documentation-charter.md) · 索引 → [`docs/README.md`](docs/README.md) · 待办 → [`plans/prompt-assembly-backlog.md`](docs/plans/prompt-assembly-backlog.md)。**本文件入库**（[ADR-0025](docs/adr/0025-track-agents-md-and-copilot-channel.md)），换机克隆即可用；权威副本仍是 charter，改动两边同步 `charter-version`。
+> 只放三样：**分档尺子（§0）** · **T0 不变量（§2）** · **路由表（§3）**。**硬顶 ≤ 60 行 且 ≤ 4,500 字符**——只卡行数会被「压成一行长段」绕过。加任何东西前先从别处减一行。全量规则台账 → [`rule-registry.md`](docs/agents/rule-registry.md) · 分档判据 → [`documentation-charter.md`](docs/agents/documentation-charter.md) §12 · 索引 → [`docs/README.md`](docs/README.md)。**本文件入库**（[ADR-0025](docs/adr/0025-track-agents-md-and-copilot-channel.md)）；权威副本是 charter，改规则两边同步 `charter-version`。
 
-## 项目地图
+## 0. 分档尺子（元规则：它本身是 T0，不许删减；量失败形态，不量主题）
 
-| 目录 | 职责 | 边界 |
-|---|---|---|
-| `src/` | 渲染层（React + TS）：工作流命令、Prompt 组装、界面 | 改非组件模块后热更新不生效，**必须重启 `pnpm dev`** |
-| `electron/` | 主进程：DB、IPC、文件、生成归属仲裁、提示词全局资产 | 主进程与渲染层各拼一半 prompt，改 prompt 前读 inventory §2 |
-| `src/shared/` | 跨进程契约与纯函数（校验器都在这里） | 新校验优先放这里，不要塞进 command |
-| `docs/design/` | 现行设计稿（按主题分子目录） | 新设计一律进这里 |
-| `docs/plans/` | **唯一** TODO 台账 + 冻结子树 | 不新增设计稿 |
-| `docs/adr/` | 架构决定，只增不改 | 不修改既有条目 |
+| 档 | 准入（两条同时成立） | 形态 | 落点 | 容量 |
+|---|---|---|---|---|
+| **T0 不变量** | ① 后果**不可逆或静默**（数据丢失 / 错提交 / 越权 / 方向漂移）② **每次会话都可能触发** | 一句祈使句，不写原因、日期、编号 | §2 | ≤ 8 条 |
+| **T1 触发型** | 有明确触发条件（「动 X 前」），但不是每次会话都该占注意力 | 条件 + 一句动作 + 指针 | 记忆注入层 | 受 8,000 字符 |
+| **T2 判据型** | 要用它得先有判断力（边界、反例、为什么） | 全文 | `notes/*.md` | 无 |
+| **T3 证据型** | 一次复盘、一次交接 | 全文 | `docs/handoffs/`、ADR | 无 |
 
-**禁动区**：`docs/plans/novel-quality-*`、`docs/research/novel-quality-modernization/`（被脚本按字面路径引用）；`docs/adr/` 的既有条目。
+**降档三问**（任一答否 ⇒ 进不了 T0）：① 违反了作者当天能自己看出来吗（报错 / 测试红 / 界面不对）——能，就是闸门的事，不占 T0；② 每次会话都有机会被违反吗——只在加列 / 改模板 / 收口时才有机会 ⇒ T1；③ 删掉原因只留一句就执行不了吗——是 ⇒ 它是知识点，不是规则 ⇒ T2。
 
-## 命令
+**两条附加**：**T0 必须配闸门**（脚本或强制读入点；都没有 ⇒ 台账标 🕳，没有闸门的 T0 只是愿望）· **T0 上限 8 条**，要加第 9 条先证明某条已不成立。**「这次特殊、先加一行」就是破线。**
+
+## 1. 项目地图与禁动区
+
+目录职责见 [`docs/README.md`](docs/README.md) §1。两条查表查不出的边界：**主进程与渲染层各拼一半 prompt**（改 prompt 先读 inventory §2）· **改 `src/` 非组件模块热更新不生效，必须重启 `pnpm dev`**。**禁动区**：`docs/plans/novel-quality-*`、`docs/research/novel-quality-modernization/`（脚本按字面路径引用）、`docs/adr/` 既有条目。
+
+## 2. T0 不变量（8 条 · 唯一清单，别处只写指针）
+
+1. **授权边界**：开工先写一句 `本轮授权：<只读 / 只计划 / 可改码 / 可提交 / 可推送>`；**未明说不做善意推断，按最窄执行**；越界先问一句（细则 → charter §7 第 0 步）。
+2. **先讨论再落地**：规则、层级、契约、格式的改动先给方案等点头——一次成型必偏。
+3. **不猜根因**：先取证（代码 / 日志 / trace）再改；测试失败先 `git stash` 对照确认是否既有红。
+4. **干完 ≠ 完成**：不自己宣布完成，交**上下文隔离**的子 agent 审（只给要求 / 交付 / 判定线）；签字必须换身份。
+5. **同提交同步文档**：改代码那次提交里同步设计稿 / ADR / 台账；提交前 `pnpm check:fast`。
+6. **提请裁定用产品语言**：讲流程 / 卡点 / 意图 / 后果，代码只作证据；见「非此即彼」先查单选前提。
+7. **规划不是数学**：完本字数 × 单章字数是一等目标，章数是派生落点——只报偏差，不拦截。
+8. **并行隔离**：worktree 只准单元测试（禁全量 / `test:browser` / `test:node`，切 ABI 打断所有槽位）；派出去的 agent 不给 `review` / `done`。
+
+## 3. 命令
 
 ```bash
-pnpm install
-pnpm dev            # predev 会先探测 better-sqlite3 是否匹配 Electron ABI，不匹配才重建；无需手动 rebuild
+pnpm dev            # predev 自动探测 better-sqlite3 ABI，不匹配才重建；无需手动 rebuild
 
-# 测试：统一走 Electron 运行时（一份 ABI，可与 pnpm dev 同时跑）
+# 测试统一走 Electron 运行时（全工程一份 ABI，可与 pnpm dev 并存）
 pnpm test <paths>
-node scripts/run-tests-electron.mjs <paths>                                                                      # pnpm shim 坏掉时直调
-node ./node_modules/vitest/vitest.mjs run --config vitest.browser.config.ts <paths>                               # *.browser.tsx
+node ./node_modules/vitest/vitest.mjs run --config vitest.browser.config.ts <paths>   # *.browser.tsx
 
-npx tsc --noEmit
-pnpm check:fast                                 # 闸门：typecheck + 文档检查（pre-commit 自动跑，~30s）
-pnpm check:full                                 # 再加 lint + 全量测试（慢，手动跑）
+pnpm check:fast                                  # 闸门：typecheck + 文档检查（pre-commit 自动跑）
+pnpm check:full                                  # 再加 lint + 全量测试（慢，手动）
 node scripts/check-doc-placement.mjs --status-of "期 2"   # 收口：把写着该期的位置列全
 ```
 
-**为什么测试不再走裸 Node**（2026-10-25 改）：`better-sqlite3` 是原生模块，Node 22 的 ABI 是 127、Electron 41 是 145，二者不能共存于同一个编译产物。原先靠 `prepare:native-*` 来回切，代价是 **`pnpm dev` 开着时切不动**（Electron 持有 `.node`，`prebuild-install` 报 `EBUSY`），以及每次切错都表现为一条跟业务无关的 ABI 报错，极易被误读成「刚改的代码弄坏了库」。现在 `pnpm test` 固定用 `ELECTRON_RUN_AS_NODE=1` 跑（此时 Electron 是纯 Node，不启动 Chromium），**全工程只有一份 ABI**。真需要纯 Node 时用 `pnpm test:node`（它会先切 ABI，因此必须关掉 `pnpm dev`）。
+## 4. 要做什么 → 先读什么
 
-## 硬规则（10 条）
-
-1. **新文档放哪里**：会改代码或行为 → `docs/design/<主题>/`；只是一条待办 → 追加 `docs/plans/prompt-assembly-backlog.md`；不可逆决定 → `docs/adr/`；跨会话交接 → `docs/handoffs/YYYY-MM-DD-主题.md`。**不新建台账，不往 `plans/` 放设计稿。**
-2. **每份设计稿头部必须有 `> 状态：` 行**（日期必填），取值只能取 charter §5.2 受控词表里的一个：`待裁定` / `已裁定` / `已实施`（`已落地`）/ `已搁置（原因）` / `已结项`。状态变化只改这一行，不新建文件。**脚本 C1b 校验，别自创写法。**
-3. **收口一期要改「所有」写着该期状态的位置** —— 顶部状态行、分期表、台账、路线图表。只改顶部 = 读者以为没做完。**别靠记忆，跑 `--status-of "<期名>"` 把位置列全**（2026-10-30 就漏过：提交说期 2 完成，两份稿子还写着未开工/未改代码）。
-4. **改代码在同一提交内同步文档**；提交前 `pnpm check:fast`（pre-commit 已自动执行）。
-5. **提交前跑受影响的测试文件**，不只是改动所在模块的测试。`tsc` 通过 ≠ 测试通过。**在 worktree 里并行干活时只准单元测试**：禁全量、禁 `test:browser`/验收脚本、禁 `pnpm test:node`（切 ABI 会打断所有槽位的 dev）→ [`docs/agents/worktree-parallel.md`](docs/agents/worktree-parallel.md)。
-6. **改 prompt 文案前**先读 `docs/design/prompt/prompt-three-layer-inventory.md`（三层承载物 + 16 条装配链路）与 `prompt-clause-admission.md`（条款三问）。作者事实与红线不得删除（ADR 0020）。
-7. **不猜根因**：先取证（代码 / 日志 / prompt trace），再改。测试失败先用 `git stash` 对照确认是否既有红。
-8. **图用 Mermaid**，每张图配一句读法；不贴截图（无法 diff）。
-9. **干完 ≠ 已完成，谁都不例外**：改完的东西**不许自己宣布完成** —— 派一个**上下文隔离**的子 agent 审（只给「要求什么 / 交付了什么 / 怎么算通过」，**不给推理过程和结论**）；协作模式**交叉审**；派出去的人**不给 `review`/`done` 权限**。复核意见**要证据**，无证据的通过与反对都不成立；**签字必须换个身份**（`review` 拒同名）。**打回只认两种**：`unmet`（卡上验收标准没兑现）/ `regression`（打坏了原来能用的）—— "还能更好"不是理由，那属新卡（质量无上限，不设边界就永远出不去）→ [`docs/agents/task-board-channel.md`](docs/agents/task-board-channel.md) §5.2 / §5.3 / §5.4
-10. **★ 向作者提请裁定，一律先用产品语言讲，别甩代码**（2026-11-06 作者定，最高优先）：讲清流程 / 卡点 / 意图 / 后果，代码与行号只作证据；出现「非此即彼」先查单选前提。四段模板、理由与 D8 复盘 → [`documentation-charter.md`](docs/agents/documentation-charter.md) §11。
-
-## 要做什么 → 先读什么
+> 本机工作记忆在 `.workbuddy/memory/`（**不入库，换机不跟随**）：注入层 `MEMORY.md` + 主题卷 `notes/*.md` + 日志 `YYYY-MM-DD.md`。
 
 | 你要做 | 先读 |
 |---|---|
-| 改 prompt 组装 / 任何模板 | `design/prompt/prompt-three-layer-inventory.md` |
-| 加/改 prompt 条款 | `design/prompt/prompt-clause-admission.md`（三问 + 反例库） |
-| 放 / 改 / 归档文档 | `docs/agents/documentation-charter.md` |
-| 找接下来做什么 | `plans/prompt-assembly-backlog.md` 顶部优先级表 |
-| 把活派给外部 agent | `docs/agents/copilot-channel.md` · `docs/agents/workbuddy-channel.md` · `docs/agents/doubao-channel.md` · `docs/agents/task-board-channel.md`（建卡/认领/复核） |
+| 放 / 改 / 归档文档 | [`documentation-charter.md`](docs/agents/documentation-charter.md) §4 · [`README.md`](docs/README.md) §3 |
+| 改 prompt 组装 / 加改条款 | `design/prompt/prompt-three-layer-inventory.md` · `prompt-clause-admission.md`（三问 + 反例库） |
+| 起环境 / 构建报错 / 实机验证 | `notes/env-and-conventions.md`（含 CDP 9222 通道） |
+| 动蓝图 / 正文 / 字数 / 弧光 | `notes/generation-pipeline.md` · `notes/prompt-engineering.md` |
+| 加列 / 迁移 / 查库 | `notes/data-and-schema.md` · `notes/upstream-invalidation.md` §5（两处黑名单） |
+| 找接下来做什么 | [`plans/prompt-assembly-backlog.md`](docs/plans/prompt-assembly-backlog.md) 顶部优先级表 |
+| 把活派给外部 agent | [`worktree-parallel.md`](docs/agents/worktree-parallel.md) + `docs/agents/{copilot,workbuddy,doubao,task-board}-channel.md` |
