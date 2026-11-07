@@ -77,3 +77,20 @@
 - **缺陷现值与原始判据** → [`live-pipeline-acceptance-defects-assessment.md`](../design/product/live-pipeline-acceptance-defects-assessment.md)
 - **本批执行过程、环境踩坑** → [`2026-11-07-batch-a-bc-handoff.md`](./2026-11-07-batch-a-bc-handoff.md)
 - **D2 租约与失败终态** → [`d2-run-lease-abort-design.md`](../design/features/d2-run-lease-abort-design.md)
+
+---
+
+## 7 落地记录：代码已入库 agent/wt-2，但未接主链路（2026-11-07 21:3x）
+
+作者 2026-11-07 指示「wt-2 属于 WorkBuddy，必须在这边收尾（成果确认 + 提交）」。收尾时逐文件核对，结论如下，**缺陷状态不变**（仍 ⬜ 未销账）：
+
+| 项 | 提交 | 实际情况（核对所得） |
+|---|---|---|
+| **D16** | `19163d7c` | 只接在 `createDefaultEnvironment().beginModelExecution` 一条路径（`generation-runtime.ts:409` 的 `recordActualModel`）。**正文生成不走这里** —— `generate-draft.command.ts:285` 走 `createWorkflowMainGenerationRuntime(mainRequest)` ⇒ **主路径不触发**，且快照不落库（重启回退配置值）。§2.2 的第四条待裁全部仍然成立 |
+| **D9** | `2b621593` | `createSingleCallWatchdog` / `finalizeFailedGeneration` **生产调用点为零**（只被自己的单测引用）⇒ 缺陷症状（长调用无超时、UI 分不清「在算」与「已死」）**未消除**。§2.1 的挂点问题未裁，代码停在「机制就绪」 |
+
+**为什么仍提交**：作者要求把 wt-2 收尾，这 10 个文件是上一窗口已产出的工作成果，留在工作区会丢；提交写在 `agent/wt-2` 分支、**未合并主区**，与丙裁定「本批不合并」一致。
+
+**给下一批的三句话**：① 不许把这两条按「已实施」计读；② D16 的事实源与写入时机见 §2.2，正文链路才是主路径；③ D9 的挂点必须先在 §2.1 裁完再接线，接错层会产生两套失败路径。
+
+**验证证据**：`pnpm test` 4 文件 18 例全过（D16 侧 statusbar 3 例 + StatusBar 5 例；D9 侧 watchdog 2 例 + 内存库终态 2 例 + 其余既有断言）；`tsc --noEmit` 干净；`check:fast` 全绿。**单测绿不等于缺陷兑现** —— 见本稿末尾红线第 3 条。
