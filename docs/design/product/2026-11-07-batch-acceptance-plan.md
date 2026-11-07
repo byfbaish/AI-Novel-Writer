@@ -205,6 +205,8 @@ upstream_revision_log 最新仍 rev=21（2026-11-06 20:33:42），本次未 bump
 
 **闸门未弹的四条候选（未验证，不许先定结论）**：① 实际提交的 `chapterNumber` 不是 7；② `readOutlineProgressGate` 在副本读失败 ⇒ `gate=null` fail-open；③ `volumeRangeEndingAt(volumes, 6)` 的 `range.last` 为 null ⇒ 不判；④ 已有确认 `outline-progress:volume:3` 命中了另一个卷。已知调用点 `ArchitectureConfirmDialog.tsx:505–512`（`checked.synopsis && !bypassProgressGate.current` 时才跑，入参 `resolution.range?.from`）。
 
+**代码静态取证（19:5x，只读； narrowing 范围，不等于 A2-6 已验证）**：闸门 1（`progressGate`）在代码里**排在闸门 2（D20 失效清单）之前**，且只在 `gate?.state === 'ahead'` 时 `setProgressGate(gate); return`。现场却走到了闸门 2 并直接起 run ⇒ 当次 `readOutlineProgressGate` 返回的是 `gate=null`（fail-open）或 `state='aligned'`，**不是 `ahead`**；候选 ②③④ 都落在「算出 aligned」这一支，① 另多一种 `chapterNumber === undefined` 导致整段闸门被跳过。**新排除一条**：`bypassProgressGate.current = true` 只出现在 D3 面板自己的「仍按计划继续」回调（`:1033`），两个闸门都过后 `:541` 重置为 false，取消勾选时 `:406` 也重置 ⇒ **不是上一次确认残留的 bypass 把闸门跳过了**。以上只是代码级定位，四条候选仍须按 §7.1 在 CDP 里逐条验证才能定论，**D3 仍不得转 ✅**。
+
 ### 4.3 A3 / E0 / C 组
 见 §3.1 / §3.2 / §3.4 的「执行方自报」列，均为只读核对或看板写入，无代码改动。
 
