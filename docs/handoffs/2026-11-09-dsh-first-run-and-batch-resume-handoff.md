@@ -115,3 +115,72 @@ A1 卡死的现场（4 次复现）：第 12 章成功、第 13 章被重演守�
 2. 用存量 10 章标定 0.15 / 0.35（`scripts/measure-ai-flavor-baseline.mjs` 同源的读文方式可复用），出误报读数再谈接线。
 3. 实机复现 §四 的机制，坐实后再动 UI。
 4. DSH 额度恢复后，用它做**只读审计**类任务（成本低、验得出真假），代码活暂不给它。
+
+---
+
+## 八、执行回填（2026-11-09 01:5x · DSH 中控接手后同轮执行）
+
+> 本节记录 §五–§七 的实际落实结果。中控已换 DSH，外部工人换成 WorkBuddy（wt-2）与豆包（wt-1）；DSH 不再当无头工人（通道手册已标退役）。
+
+### 8.1 §五 的脏状态已清（4 个提交，均过 `check:fast`）
+
+| commit | 内容 |
+|---|---|
+| `63fbb02d` | `feat(d12)` §五 的两个源文件（`chapter-reuse-coverage.ts` + 单测）从 wt-3 取回入库；单测实测 `Test Files 1 passed · Tests 8 passed (8)`。同步两处登记（backlog D 段、缺陷稿 §D12） |
+| `4be4a548` | `docs(handoff)` 本稿 + 批量续跑设计稿 + 两张派单留档（`scripts/doubao/task-d-status-audit-20261109.md`、`scripts/dsh/task-reuse-coverage-20261109.md`）+ README 索引 |
+| `09791033` | `docs(channels)` DSH 通道退役（升为中控）；`worktree-parallel.md` 槽位表 / mermaid / 坑表把 wt-3 置「空闲」；`docs/README.md` 路由行同步 |
+| `3b77b4af` | `feat(experiments)` 8-gram 阈值标定脚本与报告（见 §8.3） |
+| `c4f3dc48` | `docs(ledger)` D 段台账降级为快照索引（D1–D21，历史格值零删改） |
+| `9241dc5a` | `docs(product)` D21 闸门短路取证归档（见 §8.4） |
+
+**wt-3 收尾状态**：`git reset --hard d2a2a5df` ⇒ 工作区只剩 `?? .batch/`；`.batch/c-report.md`（24KB）按批验收稿 §5.3 **保留至第三方签核后**，未删。863MB `node_modules` 与 worktree 目录暂留（回收走 `worktree-parallel.md` §9，签核后一次做）。
+
+**§六 待裁定的处置**：① DSH 模型 → 不再需要（DSH 升中控，`scripts/dsh/` 留作历史）；③ 8-gram 闸门 → **维持零接线 + 先 advisory**，且已标定（§8.3）；② 批量续跑 → 作者选**甲**，WorkBuddy 在 wt-2 实现（§8.5）；④ backlog D 段 → 已降级为快照 + 现值索引，8 项裁定留作者。
+
+### 8.2 队友与看板：换成 WorkBuddy（wt-2）+ 豆包（wt-1）
+
+两个 DSH 队友席位只做「写任务书 → 走既有 CDP 通道投递 → 轮询回执 → 按证据首次验收」；产品代码 / git / 看板签核全留 Lead。通道各自串行、彼此并行。
+
+| 卡 | 谁做 | 结果 |
+|---|---|---|
+| `cd24e30c` I2 D 段台账重写提案 | 豆包 | 交付 279 行提案 → Lead 落最小方案（`c4f3dc48`），提案全文归档 `plans/2026-11-09-d-segment-ledger-rewrite-proposal.md`；**8 项裁定仍待作者** |
+| `46746a52` I3 D21 取证 | 豆包 | 断言成立 + 三处口径更正，归档 `design/product/d21-gate-shortcircuit-evidence-20261109.md` |
+| `caf3f90a` I2 8-gram 阈值标定 | WorkBuddy | 脚本 + 278 行报告，Lead 独立重跑复现全部数字 |
+| `a67a79a1` I1 批量续跑甲方案 | WorkBuddy | 见 §8.5 |
+
+三张已交付卡均由**换身份**（`--agent lead-reviewer`）复核后 pass；验收结论 = 交付物可用，**不等于**其中的产品裁定已定。
+
+### 8.3 8-gram 阈值标定结论：0.15 / 0.35 未被标定
+
+存量 1 个项目 11 章 10 对真实相邻章 + 3 组构造样例：
+
+- 真实相邻章 `ratio` **全 0**（10/10 未触发）；同题材同人物剧情不同 3 例也全 0；真实改写 4 对全 0。
+- 人工构造「整章复写只换开头」3 例 = 0.8578 / 0.8361 / 0.8357，全 `blocking`。
+- 中间带 `(0, 0.8357)` **零样本** ⇒ 把 advisory 改成 0.01、blocking 改成 0.60，判定结果都不变。**这轮给不出数据驱动的更优值**，只给了保守档 0.20/0.50 与激进档 0.05/0.25 的成本权衡（待作者拍板，代码里没写）。
+- **反直觉读数**：d12 生产守卫在构造样例上 3/3 命中，但那是**假命中** —— 1,647–1,972 字的短章里「上一章结尾 1,000 字」实际覆盖其后 51%–61%，与只换开头的样本窗口重叠。真正漏报在「复写落在窗口之外」。缺陷稿 §D12 补记的表述已按此修正（原文「拦不住整章重写」→「窗口内拦得住、窗口外零命中」）。
+- **指标层问题**：判定器只认 16 字连续逐字重合，对「同剧情换措辞的改写式复用」无感（`ratio=0`）——要守那种形态需另立指标，不是调阈值能解决。
+
+### 8.4 D21 取证结论：断言成立，且后果比原描述更重
+
+真实短路段在 **`src/services/outline-progress-gate.ts:92-95`**（不在 `shared/` 的纯判定函数里）：卷结构 `stale`/`unparsed` 时直接 `return { gate: null, warning }`，`:116` 的第二维取值入口永不执行；调用方 `ArchitectureConfirmDialog.tsx:509-512` 拿到 null 只 `console.warn`，随后一路发射 ⇒ **静默放行、界面零提示**。三点口径更正：短路段层级 · 交接单其实已读回只是被丢弃 · 实际后果是放行不是「跳过展示」。
+
+**落地前置**：`src/services/__tests__/outline-progress-gate.test.ts:154-165` 把短路固化成「判不出就不拦」的断言，删短路 / 只放宽 stale 两案都会撞红 ⇒ 作者须先裁定改不改测试。D21 是否收编进缺陷稿仍是 §六 裁定 ③。
+
+### 8.5 批量续跑甲方案已落地（wt-2 · WorkBuddy，提交 `20ed7a2d`）
+
+- **新增** `src/services/batch-interrupt-resume.ts`（79 行，纯函数 + 一个取数薄封装）：`evaluateBatchRecoveryGate` 判终止（`failed`/`cancelled`/`aborted`；`paused` 仍可续），`firstChapterWithoutDraft` 从权威下一章连续顺延到第一张没草稿的章（遇空章即停，不用 `max+1`）。
+- **不新增 IPC 字段**：`generation:list-batches` 的 `rootHandle.runId` 与 `generation:list` 的 `view.handle.runId` 同源，渲染层同一个 effect 里本来就有两个返回值 ⇒ 只需把 status 按 runId 存进 state。
+- **改动边界**：`AIOutputPanel.tsx`（+21/−4，批次卡片 gate + 中英双写出路文案）、`BatchChapterCreationDialog.tsx`（+4/−3，显示与真正启动共用 `readBatchStartChapter`）；**未碰** run 状态机 / DB schema / `generation_batches` 语义 / `aborted` 终态 / `batch-chapter-workflow.ts`。
+- **验收（Lead 自己做，不采信自述）**：在 wt-2 跑 `pnpm test src/services/__tests__/batch-interrupt-resume.test.ts` ⇒ `12 passed`；`pnpm typecheck` 通过；`git diff HEAD` 逐行看过；合并用 `git apply`（patch 7,930 B，`--check` 通过），合入后在 develop 再跑一次同类 ⇒ `12 passed`，`pnpm check:fast` 绿。
+- **有意未做**：`draft-recovery-workflow.ts` 的新错误码（按钮已禁用，主路径走不到；再加等于两份判定真相）· 乙 / 丙方案 · 「自动跳过必然失败的章」（会变静默跳章，留作者裁定）· 实机复现（红线禁 `pnpm dev`）。
+- **一处口径修正**：WorkBuddy 报告 §4.0 记「本会话所有单测既有红，需 `--pool=vmThreads`」，Lead 在 wt-2 与 develop 用不带该参数的 `pnpm test` 均通过 ⇒ 那是它那个会话的环境现象，不是仓库既有红。
+
+### 8.6 §七 下一步的落实与剩余
+
+- ✅ 1. §五 四条脏改动：已提交（§8.1）。
+- ✅ 2. 用存量 10 章标定 0.15/0.35：已做，结论是「未被标定」（§8.3）。
+- ✅ 3. 实机复现 §四 机制：已由「按读码定位 + 落甲方案 UI 止血」替代——甲方案不改 run 机制，**不需要实机复现即可落地**；若将来走乙，仍需实机复现。
+- ⬜ 4. DSH 额度恢复后做只读审计：**不再执行**（DSH 已升中控，无需外部工人额度）。
+- ⬜ 5. 8 项台账裁定（`plans/prompt-assembly-backlog.md` §本节遗留 8 项裁定）：待作者。
+- ⬜ 6. 阈值档位 + 「改写式复用是否另立指标」：待作者。
+
