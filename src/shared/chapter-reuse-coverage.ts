@@ -14,13 +14,15 @@ export const CHAPTER_REUSE_MIN_RUN_CJK = BLUEPRINT_COPY_MIN_RUN_CJK
 export const CHAPTER_REUSE_MIN_RUN_ENT = BLUEPRINT_COPY_MIN_RUN_ENT
 
 /** 阻断线：正文里复用上一章的比例或绝对量超过它就判定为「阻断」。 */
-export const REUSE_RATIO_BLOCKING = 0.35
+export const REUSE_RATIO_BLOCKING = 0.45
 // 覆盖比例超过此值但未达阻断线，给出 advisory 建议
 export const REUSE_RATIO_ADVISORY = 0.15
 // ratio > REUSE_RATIO_BLOCKING → 'blocking'
 // ratio > REUSE_RATIO_ADVISORY 且 <= BLOCKING → 'advisory'
 // 否则 → 'ok'
-// 待用存量样本标定
+// 2026-11-09 作者裁定（按标定建议）：advisory 保持 0.15，blocking 0.35 → 0.45（宁可少打断，
+// 不靠这条闸门兜「同剧情换措辞」——那种形态它本来就看不见）。标定读数见
+// docs/experiments/reuse-coverage-threshold-calibration-20261109.md。**仍零接线。**
 
 /** 正文里被上一章覆盖的码元数 / 正文总码元数 */
 export interface ChapterReuseReport {

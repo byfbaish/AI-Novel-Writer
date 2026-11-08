@@ -856,7 +856,9 @@ A 不是边角情况：D14 已裁定「交接单**仍然手动登记**」（自�
 
 `src/shared/chapter-reuse-coverage.ts`（257 行）+ `src/shared/__tests__/chapter-reuse-coverage.test.ts`（8 例，全过）已入库：输入「本次正文 + 上一章全文」，输出 `ratio` / `coveredUnits` / `runs` / `longestRun` / `severity`。补的是本条的**剩余真洞** —— 现存守卫 `hasSubstantialPreviousChapterReuse` 只比对上一章结尾 1,000 字与新章开头 1,200 字：窗口内的「开头照抄」它拦得住，复写若落在该窗口**之外**（章节更长，或新章前半有足量新增内容把原文挤出窗口）就零命中（第二轮实测首章即 8-gram 重合 98.2%）。**注意别把它的读数当无漏报证据**：2026-11-09 标定发现 1,600–2,000 字的短章里，上一章「结尾 1,000 字」实际覆盖其后 51%–61%，于是「整章复写、只换开头」的构造样例 3/3 命中——那是窗口重叠的**假命中**，不是设计要防的形态（[标定报告](../../experiments/reuse-coverage-threshold-calibration-20261109.md) §4.4）。
 
-阈值 `REUSE_RATIO_ADVISORY = 0.15` / `REUSE_RATIO_BLOCKING = 0.35` 为暂定值；**未接任何调用点**，接线方式待裁定（建议先 advisory 只报不改）。派单与首仗记录见 `docs/handoffs/2026-11-09-dsh-first-run-and-batch-resume-handoff.md`。
+阈值**已于 2026-11-09 按标定结论裁定**：`REUSE_RATIO_ADVISORY = 0.15`（保持）/ `REUSE_RATIO_BLOCKING = 0.45`（原 0.35，抬到 0.45 = 少打断优先）；**仍零接线**，接线方式待裁定（建议先 advisory 只报不改）。派单与首仗记录见 `docs/handoffs/2026-11-09-dsh-first-run-and-batch-resume-handoff.md`。
+
+**产品规则（作者 2026-11-09 裁定）**：**连续两章绝对不能出现剧情相同**。若出现，只有两种根因 —— ① 大纲生成有误（两章事件设计本就重复）② 正文重复（同剧情换措辞重写）。本条判定器只覆盖 ② 的**逐字复写**形态；对 ① 和 ② 的改写式复用它 `ratio = 0`，**不能拿它当这条规则的执行闸门**，需要另立判据（大纲层事件去重 + 正文层语义级比较，待设计）。
 
 **标定结果（2026-11-09，存量 11 章 / 10 对真实相邻章，[报告](../../experiments/reuse-coverage-threshold-calibration-20261109.md)）**：真实相邻章 `ratio` 全 0（10/10 未触发），人工构造的整章复写 3/3 落在 0.8357–0.8578 全部 `blocking`；中间带 `(0, 0.8357)` **零样本** ⇒ 0.15 / 0.35 落在一段没有样本的空档里，无法证明合理也无法证伪，「先 advisory」的判断维持。另：判定器只认 16 字连续逐字重合，**对「同剧情换措辞」的改写式复用无感**（同章两版改写实测 `ratio=0`）——要守这种形态得另起指标，不是调阈值能解决的。
 
