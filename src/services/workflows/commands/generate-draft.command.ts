@@ -500,6 +500,36 @@ function chapterLengthContractText(writingLanguage: WritingLanguage, targetUnits
 }
 
 /**
+ * 正文请求末尾的显式任务锚点（2026-11-08 补）：把「本次写哪一章」放到最靠近生成点的位置。
+ *
+ * 背景（实测）：第 2 章的正文请求里「第2章」出现 0 次、「第一章」6 次，章号只存在于蓝图 JSON
+ * 的 `"chapterNumber": 2`；9B 因此把上一章整章重写了一遍（8-gram 重合 98.2%、开头逐字相同）。
+ * 这里只写一句请求，不是规则清单；且**不用「续写」**—— 那是 continuation 分支的专有名词
+ *（【操作边界】「续写及无进展恢复只接续已有正文，不重写旧文」）。
+ */
+export function chapterTaskAnchorText(
+  writingLanguage: WritingLanguage,
+  chapterNumber: number,
+  chapterTitle: string,
+): string {
+  const named = promptLanguageText(
+    writingLanguage,
+    chapterTitle ? `第 ${chapterNumber} 章《${chapterTitle}》` : `第 ${chapterNumber} 章`,
+    chapterTitle ? `Chapter ${chapterNumber} "${chapterTitle}"` : `Chapter ${chapterNumber}`,
+  )
+  const hasPreviousChapter = chapterNumber > 1
+  return promptLanguageText(
+    writingLanguage,
+    hasPreviousChapter
+      ? `【本次任务】\n本次只写${named}：上一章正文只作事实依据，不得复述、摘要或重写其中已写的内容，从上一章最终状态之后开始本章的新事件。`
+      : `【本次任务】\n本次只写${named}：按本章蓝图的事件写完整的一章，不要提前写后续章节的事件。`,
+    hasPreviousChapter
+      ? `[This task]\nWrite only ${named} this time: the previous chapter's prose is reference for facts only — do not restate, summarize, or rewrite anything already written there; begin after the previous chapter's final state with this chapter's new events.`
+      : `[This task]\nWrite only ${named} this time: complete one chapter from this chapter's brief and do not advance later chapters' events.`,
+  )
+}
+
+/**
  * P1 Phase 1 · 判断生效模板是否会把「本章信息」渲染进请求。
  *
  * `chapterExecutionContractText().authorItems`（作者原文重列）是**兜底**：
@@ -911,6 +941,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       knowledgeReferences = [{ text: unavailableContext, rendered: unavailableContext }]
     }
     const chapterLengthContract = chapterLengthContractText(writingLanguage, targetChars)
+    // 2026-11-08：末尾再补一条显式任务锚点（章号+标题）。B1 之后的六项顺序不动，只追加在最后。
+    const chapterTaskAnchor = chapterTaskAnchorText(
+      writingLanguage,
+      this.chapterInfo.chapterNumber,
+      this.chapterInfo.title?.trim() || '',
+    )
     const promptBuilder = new ChapterPromptBuilder(template, writingLanguage)
       // ---- 缓存命中区（跨章稳定，前缀对齐）----
       .withArchitecture(architecture)
@@ -924,6 +960,10 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       // 注：`composeInitialPrompt` 把逐章变化的材料块拼在模板之前，真实缓存前缀断在那里，
       // 所以这里只是"模板内部稳定"，不是整体缓存优化。
       .withRhythmProfile(rhythmProfile)
+      // 章号 / 标题逐章变化 —— 放章节公共区（不进上面的跨章稳定前缀）。
+      // 模板正文用它们点名「本次写哪一章」；见 chapterTaskAnchorText。
+      .withChapterNumber(this.chapterInfo.chapterNumber)
+      .withChapterTitle(this.chapterInfo.title?.trim() || '')
       // ---- 章节公共区（首章与后续章都必须完整注入）----
       // P1 Phase 2：初始请求的 ★额外指导★ 块（build() 追加的 systemSuffix）已承载 user_guidance，
       // 故蓝图 JSON 投影里不再重复携带，避免同一轮内逐字出现 2 次（Phase 0 实测 D6）。
@@ -1146,8 +1186,13 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     // 不再追加 authorItems 兜底，避免同一份作者原文在同一轮请求里装两遍。
     const templateCoversAuthorFields = templateRendersChapterInfo(template)
     const authorItemsFallback = templateCoversAuthorFields ? '' : chapterExecutionContract.authorItems
-    const composeInitialPrompt = (reconciliationBlock: string) => [chapterMaterials.text, promptBuilder.build(),
-      reconciliationBlock, authorItemsFallback, chapterLengthContract]
+    // B1：上一章正文全文从材料区中段挪到末尾 recency 区，紧跟【本章篇幅合同】之前；
+    // 材料内容一字不改，续写 / 压缩仍走 `chapterMaterials.text`（整包，含该块）。
+    // 依据与改动范围见 docs/design/prompt/chapter-prompt-block-ordering-design.md 第 3 节 B1。
+    // 2026-11-08：六项顺序不动，只在末尾（篇幅合同之后）追加显式任务锚点。
+    const composeInitialPrompt = (reconciliationBlock: string) => [chapterMaterials.textWithoutPredecessor,
+      promptBuilder.build(), reconciliationBlock, authorItemsFallback, chapterMaterials.predecessorBlock,
+      chapterLengthContract, chapterTaskAnchor]
       .filter(Boolean)
       .join('\n\n')
     const prompt = composeInitialPrompt('')

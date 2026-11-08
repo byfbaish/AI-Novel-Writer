@@ -213,6 +213,20 @@ export class ChapterPromptBuilder extends BasePromptBuilder {
     return this;
   }
 
+  /**
+   * 本章章号 / 标题：模板正文用它们点名「本次写哪一章」，避免模型把末尾的上一章全文
+   * 当成「接着写」的对象（实测第 2 章请求里「第2章」出现 0 次）。
+   */
+  withChapterNumber(num: number | string) {
+    this.variables.chapter_number = String(num);
+    return this;
+  }
+
+  withChapterTitle(title: string) {
+    this.variables.chapter_title = title;
+    return this;
+  }
+
   withDraftContent(draftContent: string) {
     this.variables.draft_content = draftContent;
     return this;

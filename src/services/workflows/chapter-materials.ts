@@ -66,6 +66,18 @@ export interface ChapterMaterialReference {
 
 export interface ChapterMaterialBundle {
   text: string
+  /**
+   * 上一章正文那一块（含块头）的完整渲染原文。首章没有上一章时为空串。
+   *
+   * 装配层据此把该块从材料区挪到提示词末尾的 recency 区，而正文一字不改 ——
+   * 见 docs/design/prompt/chapter-prompt-block-ordering-design.md 第 3 节 B1。
+   */
+  predecessorBlock: string
+  /**
+   * 与 `text` 逐字节相同，只把 `predecessorBlock` 连同它与相邻块之间的分隔符去掉。
+   * 没有上一章时与 `text` 完全相等。
+   */
+  textWithoutPredecessor: string
   previousEnding: string
   includedFinalizedFacts: number
   consumedFinalizedSources: FinalizedMaterialSource[]
@@ -611,6 +623,9 @@ export async function assembleChapterMaterials(input: {
 
   // ---- 定稿来源 ----
   // 摘取顺序仍是新章在前，这样摘取层的省略清单保持稳定；**渲染顺序由合同决定**。
+  // 前驱那一份的 ref 单独留一个句柄：渲染层要按 `sourceId + contentHash` 回查它的块，
+  // 供装配层把它挪到提示词末尾（B1），而不是靠标题字符串猜哪一块是上一章。
+  let predecessorMaterial: MaterialCandidate | undefined
   for (const source of [...input.finalized].sort((left, right) => right.chapterNumber - left.chapterNumber)) {
     if (source.sourceStatus === 'invalid') {
       omissions.push({
@@ -656,6 +671,7 @@ export async function assembleChapterMaterials(input: {
       passages,
       source,
     }, finalizedMaterial(source, passages, isRequired))
+    if (isRequired) predecessorMaterial = selected
     if (hasUnlocatedEvidence && selected) {
       await recordDecisionOmission({
         sourceId: selected.ref.sourceId,
@@ -800,9 +816,22 @@ export async function assembleChapterMaterials(input: {
   const requiredBlock = requiredCandidate
     ? selection.included.find(item => item.ref.contentHash === requiredCandidate.ref.contentHash)?.text ?? ''
     : ''
-  const sourcedBlocks = selection.included
+  // 上一章那一块按 **ref** 定位，不按标题猜：候选前驱取 `requiredPredecessorMaterial.ref`，
+  // 定稿前驱取刚推入的 `predecessorMaterial.ref`，再用 `sourceId + contentHash` 回查
+  // `selection.included` 里实际进入提示词的那一份。装配层据此把它挪到末尾 recency 区
+  //（与【本章篇幅合同】相邻），材料内容一字不改 ——
+  // 见 docs/design/prompt/chapter-prompt-block-ordering-design.md 第 3 节 B1。
+  const predecessorRef = requiredPredecessorMaterial?.ref ?? predecessorMaterial?.ref
+  const sourcedEntries = selection.included
     .filter(item => item.ref.sourceId !== REQUIRED_SOURCE_ID)
-    .map(item => item.text)
+    .map(item => ({ text: item.text, ref: item.ref }))
+  const predecessorEntry = predecessorRef
+    ? sourcedEntries.find(item => (
+        item.ref.sourceId === predecessorRef.sourceId
+        && item.ref.contentHash === predecessorRef.contentHash
+      ))
+    : undefined
+  const sourcedBlocks = sourcedEntries.filter(entry => entry !== predecessorEntry).map(entry => entry.text)
 
   const selectedOmissions = selection.omissions
     .map(omission => describeSelectionOmission(omission, familyBySourceId))
@@ -825,10 +854,17 @@ export async function assembleChapterMaterials(input: {
     includedFinalizedFacts += family.locatedEvidence
   }
 
+  // 两版拼接共用同一批块、同一个分隔符：`text` 逐字节不变（续写 / 压缩轮仍用它），
+  // `textWithoutPredecessor` 只是少了上一章那一块。
+  const blocks = [requiredBlock, sourced, ...sourcedEntries.map(entry => entry.text), gap].filter(Boolean)
+  const blocksWithoutPredecessor = [requiredBlock, sourced, ...sourcedBlocks, gap].filter(Boolean)
+
   return {
     selection,
     decision: buildMaterialDecisionReceipt(selection, capacity, decisionOmissions),
-    text: [requiredBlock, sourced, ...sourcedBlocks, gap].filter(Boolean).join('\n\n'),
+    text: blocks.join('\n\n'),
+    predecessorBlock: predecessorEntry?.text ?? '',
+    textWithoutPredecessor: blocksWithoutPredecessor.join('\n\n'),
     previousEnding: requiredPredecessor
       ? previousChapterEnding(requiredPredecessor.content)
       : previousChapterEnding(input.finalized.find(source => source.includeEnding)?.content ?? ''),

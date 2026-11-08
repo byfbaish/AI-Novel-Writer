@@ -408,6 +408,8 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     writingLanguage?: 'zh-CN' | 'en-US'
     uiLocale?: 'zh-CN' | 'en-US'
     chapterNumber?: number
+    /** 本章标题；缺省按章号取固定值。传空串 = 无标题章节（用于锁「不渲染空书名号」）。 */
+    chapterTitle?: string
     /**
      * 章节定位（`blueprints.role` 的自由文本）。
      * 默认保持 '开端'（不在七档内）⇒ 既有用例全部走「认不出 → 零字节」路径，
@@ -671,7 +673,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     const command = new GenerateDraftCommand({
       projectPath,
       chapterNumber: options.chapterNumber ?? 1,
-      title: options.chapterNumber === 2 ? 'Chapter Two' : '第一章',
+      title: options.chapterTitle ?? (options.chapterNumber === 2 ? 'Chapter Two' : '第一章'),
       role: options.role ?? '开端',
       purpose: '建立冲突',
       keyEvents: normalizeKeyEvents(options.keyEvents ?? '开端', { chapterNumber: options.chapterNumber ?? 1 }),
@@ -1498,7 +1500,10 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(runtime.complete).toHaveBeenCalledOnce()
   })
 
-  it('orders sourced history before the current author task and length contract in the final provider request', async () => {
+  // B1 之后这条断言的比较方向整体反转：上一章那一块不再排在「当前章作者任务」之前，
+  // 而是挪到末尾 recency 区（篇幅合同之前）。**不是放宽**——三条先后关系仍逐条断言，
+  // 只是历史块从「材料区中段」换到了「作者任务之后」。依据见设计稿第 3 节 B1。
+  it('keeps the current author task before the previous-chapter block and the length contract last in the final provider request', async () => {
     let observedTask: GenerationTask | undefined
     const runtime = fakeRuntime((_attempt, task) => {
       observedTask = task
@@ -1523,11 +1528,52 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     const authorTaskIndex = user.indexOf(authorTask)
     const lengthContractIndex = user.indexOf('【本章篇幅合同】')
     expect(historyIndex).toBeGreaterThanOrEqual(0)
-    expect(authorTaskIndex).toBeGreaterThan(historyIndex)
-    expect(lengthContractIndex).toBeGreaterThan(authorTaskIndex)
+    expect(authorTaskIndex).toBeGreaterThanOrEqual(0)
+    expect(historyIndex).toBeGreaterThan(authorTaskIndex)
+    expect(lengthContractIndex).toBeGreaterThan(historyIndex)
     expect(user).toContain('【后续计划边界（只约束当前章，不是当前章任务）】')
     expect(user).toContain(futurePlan)
     expect(user).toContain('目标 900 字（按汉字计，不含标点）；请写到约 765–900 字。1170 字是参考上限')
+    expect(runtime.complete).toHaveBeenCalledOnce()
+  })
+
+  // B1：上一章正文全文从材料区中段挪到末尾 recency 区，紧跟【本章篇幅合同】之前。
+  // 只比 indexOf 的先后，不写死字符下标或固定字数。
+  // 依据见 docs/design/prompt/chapter-prompt-block-ordering-design.md 第 3 节 B1。
+  it('moves the previous-chapter block to the recency slot immediately before the length contract', async () => {
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask = task
+      return outcome('正'.repeat(900), 'stop')
+    })
+    const historyMarker = '上一章唯一历史哨兵'
+    const authorTask = '当前章唯一作者任务哨兵'
+    const { context, callbacks, command } = setup({
+      runtime,
+      chapterNumber: 2,
+      wordsTarget: 900,
+      keyEvents: authorTask,
+      previousFinalizedContent: `${historyMarker}。`.repeat(100),
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const user = observedTask?.messages.find(message => message.role === 'user')?.content ?? ''
+    const predecessorIndex = user.indexOf('【定稿原文 · 第1章')
+    const historySectionIndex = user.indexOf('【有来源的历史与候选】')
+    const authorTaskIndex = user.indexOf(authorTask)
+    const lengthContractIndex = user.indexOf('【本章篇幅合同】')
+
+    expect(predecessorIndex).toBeGreaterThanOrEqual(0)
+    expect(historySectionIndex).toBeGreaterThanOrEqual(0)
+    // 在材料区内容之后，也在正文写作材料之后 …
+    expect(predecessorIndex).toBeGreaterThan(historySectionIndex)
+    expect(predecessorIndex).toBeGreaterThan(authorTaskIndex)
+    // … 但仍在本章篇幅合同之前，且材料区里不再留第二份。
+    expect(lengthContractIndex).toBeGreaterThan(predecessorIndex)
+    expect(user.split('【定稿原文 · 第1章').length).toBe(2)
+    // 紧跟：该块起点之后的下一个块头就是【本章篇幅合同】，中间没有别的块。
+    expect(user.indexOf('【', predecessorIndex + 1)).toBe(lengthContractIndex)
     expect(runtime.complete).toHaveBeenCalledOnce()
   })
 
@@ -1741,7 +1787,7 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     await command.execute({ step: {}, context, callbacks })
 
     const requestText = observedTask?.messages.map(message => message.content).join('\n') ?? ''
-    expect(requestText).toContain('You are serializing the latest chapter.')
+    expect(requestText).toContain('You are serializing this novel. What you are writing now is chapter 2')
     expect(requestText).not.toContain('你正在连载写作最新章节')
   })
 
@@ -3008,8 +3054,30 @@ ${headingPrefix}第3章：潮门
     const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
     expect(completePrompt).not.toContain('【节奏推荐')
     expect(completePrompt).not.toContain('{{rhythm_profile}}')
-    // 空画像时整块连标题一起裁掉，开场句直接接本章任务 —— 老项目升级后一个字都不变
-    expect(completePrompt).toContain('你正在连载写作最新章节。\n\n【本章写作方向与核心任务】')
+    // 空画像时整块连标题一起裁掉，开场句直接接本章任务。
+    // 2026-11-08 补显式任务锚点：开场句改成点名本章（比较仍是逐字相等，只换了被钉的那一句）。
+    // 标题不再进模板首句（无标题章会渲染出空书名号），改由末尾 chapterTaskAnchorText 承载。
+    expect(completePrompt).toContain('你正在连载写作这部小说，本次要完成的是第 2 章 —— 这是新的一章，不是接着上一章往下写。\n\n【本章写作方向与核心任务】')
+  })
+
+  it('names the chapter without empty title brackets when the chapter has no title', async () => {
+    let observedTask: GenerationTask | undefined
+    const runtime = fakeRuntime((_attempt, task) => {
+      observedTask = task
+      return outcome('新事件继续发生。'.repeat(70), 'stop')
+    })
+    const { context, callbacks, command } = setup({
+      runtime, chapterNumber: 2, wordsTarget: 500, chapterTitle: '',
+      previousFinalizedContent: '上一章已完成的结尾状态。',
+    })
+
+    await command.execute({ step: {}, context, callbacks })
+
+    const completePrompt = observedTask?.messages.map(message => message.content).join('\n') ?? ''
+    // 章号在自然语言里明确出现；无标题时模板首句与末尾锚点都不得出现空书名号。
+    expect(completePrompt).toContain('本次要完成的是第 2 章')
+    expect(completePrompt).not.toContain('《》')
+    expect(completePrompt).toContain('【本次任务】\n本次只写第 2 章：')
   })
 
   it('does not inject the rhythm profile into the opening-chapter prompt', async () => {

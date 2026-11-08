@@ -100,6 +100,8 @@ const expectedPromptVariables: Record<string, string[]> = {
     'character_states',
     'short_summary',
     'previous_ending',
+    'chapter_number',
+    'chapter_title',
     'chapter_info',
     'future_blueprints',
     'user_guidance',
@@ -618,12 +620,13 @@ describe('built-in model-neutral prompt contract', () => {
   it.each([
     { language: 'zh-CN' as const,
       pruned: ['【节奏推荐（如有', '【剧情记忆库与前置断点上下文】', '[全局剧情进展]', '上一章已完成的结尾状态', '【后续章节大纲预告】', '【知识库资料'],
-      kept: ['你正在连载写作最新章节。\n\n【本章写作方向与核心任务】\n本章蓝图', '【网文连载更新核心法则】'] },
+      kept: ['你正在连载写作这部小说，本次要完成的是第 2 章 —— 这是新的一章，不是接着上一章往下写。\n\n【本章写作方向与核心任务】\n本章蓝图', '【网文连载更新核心法则】'] },
     { language: 'en-US' as const,
       pruned: ['[Rhythm profile', '[Story memory and previous stopping point]', 'Overall progress:', 'Completed ending state', '[Upcoming chapter blueprints', '[Knowledge-base context]'],
-      kept: ['You are serializing the latest chapter.\n\n[Chapter brief]\n本章蓝图', '[Serialization requirements]'] },
+      kept: ['You are serializing this novel. What you are writing now is chapter 2 — a new chapter, not a rewrite or extension of the previous one.\n\n[Chapter brief]\n本章蓝图', '[Serialization requirements]'] },
   ])('prunes runtime-empty next-chapter context sections with their headings in $language', ({ language, pruned, kept }) => {
     const build = (filled: boolean) => new ChapterPromptBuilder(getBuiltinPromptTemplate('next_chapter_draft', language)!, language)
+      .withChapterNumber(2)
       .withArchitecture('架构')
       .withNovelConfig({ genre: '类型' })
       .withGlobalSummary(filled ? '前文进展' : '')

@@ -1381,4 +1381,58 @@ describe('pre-writing consultation block', () => {
     expect(bundle.text.indexOf('【本书规则（')).toBeLessThan(bundle.text.indexOf('【后续计划边界'))
     expect(bundle.prewrite).toEqual({ handoffCount: 0, factCount: 0, itemCount: 0, cadenceCount: 0, knowledgeCount: 0, abilityCount: 1, ruleCount: 1 })
   })
+
+  // B1：装配层要把上一章那一块挪到提示词末尾的 recency 区，所以材料包必须能按 ref
+  // 单独交出这一块；`text` 与其余字段一律不变（续写 / 压缩仍用 `text`）。
+  // 见 docs/design/prompt/chapter-prompt-block-ordering-design.md 第 3 节 B1。
+  describe('the previous-chapter block is addressable for recency reordering', () => {
+    /** 从 `text` 里去掉块本身与它前面的那个分隔符（块恰在开头时去掉后面的）。 */
+    const removeBlock = (text: string, block: string): string => {
+      const at = text.indexOf(block)
+      if (at < 0) throw new Error('predecessor block missing from text')
+      return at === 0
+        ? text.slice(block.length + 2)
+        : text.slice(0, at - 2) + text.slice(at + block.length)
+    }
+
+    it.each(['finalized', 'candidate'] as const)(
+      'exposes the %s predecessor block and keeps text minus that block byte-identical',
+      async source => {
+        const content = ['开场交代。', '林岚把钥匙收进口袋。', '两人沉默地离开。'].join('\n\n')
+        const bundle = await assemble({
+          writingLanguage: 'zh-CN', authorProjectFacts: [], characterProfiles: '', futurePlans: '（无）',
+          references: [], relevanceTerms: [],
+          finalized: source === 'finalized'
+            ? [{ chapterNumber: 1, draftId: 11, title: '上一章', content, evidence: [], includeEnding: true }]
+            : [],
+          candidates: source === 'candidate'
+            ? [{ chapterNumber: 1, draftId: 11, version: 1, content, required: true }]
+            : [],
+        })
+        const header = source === 'finalized'
+          ? '【定稿原文 · 第1章 · draft 11】'
+          : '【未定稿候选 · 第1章 · draft 11 · v1】'
+
+        expect(bundle.predecessorBlock).not.toBe('')
+        expect(bundle.predecessorBlock).toBe(`${header}\n${content}`)
+        // 同一块在 `text` 里只出现一次；去掉它就得到 `textWithoutPredecessor`。
+        expect(bundle.text.split(bundle.predecessorBlock)).toHaveLength(2)
+        expect(removeBlock(bundle.text, bundle.predecessorBlock)).toBe(bundle.textWithoutPredecessor)
+        // 被去掉的正好是块本身 + 一个两换行分隔符，没有别的字符被顺手带走。
+        expect(bundle.text.length - bundle.textWithoutPredecessor.length)
+          .toBe(bundle.predecessorBlock.length + 2)
+      },
+    )
+
+    it('keeps textWithoutPredecessor byte-identical to text when there is no previous chapter', async () => {
+      const bundle = await assemble({
+        writingLanguage: 'zh-CN', authorProjectFacts: ['设定一', '设定二'], characterProfiles: '', futurePlans: '（无）',
+        references: [], relevanceTerms: [], finalized: [], candidates: [],
+      })
+
+      expect(bundle.predecessorBlock).toBe('')
+      expect(bundle.textWithoutPredecessor).toBe(bundle.text)
+      expect(bundle.text).toContain('【作者资料（保留原文；人物状态具有时点，不是永久约束）】')
+    })
+  })
 })

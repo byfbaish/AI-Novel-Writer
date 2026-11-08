@@ -1275,6 +1275,8 @@ ${STORY_BEAT_CATALOG_ZH}
       character_states: '角色状态',
       short_summary: '近期三章简要',
       previous_ending: '上章结尾800字',
+      chapter_number: '本章章号（纯数字，如 2；本次请求要写的第几章）',
+      chapter_title: '本章标题（无标题时为空串）',
       chapter_info: '本章蓝图信息（JSON）',
       future_blueprints: '后续章节蓝图（防止剧情提前）',
       user_guidance: '作者本章微操指导（可选）',
@@ -1287,7 +1289,7 @@ ${STORY_BEAT_CATALOG_ZH}
       suspense_hook: '本章结尾钩子（可选）',
     },
     requiredContextVariables: ['architecture', 'novel_config', 'global_guidance', 'writing_style', 'suspense_hook'],
-    content: `你正在连载写作最新章节。
+    content: `你正在连载写作这部小说，本次要完成的是第 {{chapter_number}} 章 —— 这是新的一章，不是接着上一章往下写。
 
 【节奏推荐（如有，由平台画像注入；只约束节奏与兑现频率，不改变本章任务）】
 {{rhythm_profile}}

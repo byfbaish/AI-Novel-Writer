@@ -1167,7 +1167,7 @@ Output JSON only, with no Markdown, explanation, or reasoning.`,
   },
   next_chapter_draft: {
     systemRole: 'You are an experienced fiction writer. Maintain long-form continuity and advance this chapter through motivated choices, resistance, and consequences. Never reveal reasoning or meta commentary.',
-    content: `You are serializing the latest chapter.
+    content: `You are serializing this novel. What you are writing now is chapter {{chapter_number}} — a new chapter, not a rewrite or extension of the previous one.
 
 [Rhythm profile (if any) — injected from the platform; constrains pacing and payoff frequency only, never the chapter brief]
 {{rhythm_profile}}
