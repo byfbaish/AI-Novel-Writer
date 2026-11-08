@@ -560,8 +560,14 @@ async function commandSend(args, prompt, { forceNewSession, modelTarget }) {
 
     if (args.noWait) {
       if (!sessionId && afterSend?.currentSessionId) sessionId = afterSend.currentSessionId
-      const dir = writeArtifacts(runId, { prompt, meta: summarizeSnapshot(afterSend, { timeoutMs: 0 }), snapshotBefore, snapshotFinal: afterSend })
-      log('[ok] 已发送（--no-wait），未等待回复。产物：' + dir)
+      // 消息已经发出去了：产物落盘失败（例如沙箱对 .runtime 没有写权限）不能让整条命令以失败退出，
+      // 否则调用方会重试，同一条任务书就会被投递两次。
+      try {
+        const dir = writeArtifacts(runId, { prompt, meta: summarizeSnapshot(afterSend, { timeoutMs: 0 }), snapshotBefore, snapshotFinal: afterSend })
+        log('[ok] 已发送（--no-wait），未等待回复。产物：' + dir)
+      } catch (error) {
+        log('[warn] 已发送（--no-wait），但产物目录写入失败（不影响投递）：' + (error?.message ?? error))
+      }
       return EXIT.ok
     }
 

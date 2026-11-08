@@ -567,7 +567,13 @@ const main = async () => {
       if (!focus?.ok) throw new Error(`输入框聚焦失败: ${focus?.reason ?? 'unknown'}`)
       const inputPath = await typeText(client, body)
       const submitted = await submit(client)
-      writeDispatchRecord((await readConversationId(client)).href, `task: ${text.slice(0, 40)}`)
+      // 任务已经提交出去了：话题记录落盘失败（例如沙箱对 .runtime 没有写权限）不能让它抛错退出，
+      // 否则调用方会重试，同一份任务书就被投递两次。
+      try {
+        writeDispatchRecord((await readConversationId(client)).href, `task: ${text.slice(0, 40)}`)
+      } catch (error) {
+        console.error('[warn] 已提交，但话题记录写入失败（不影响投递）：' + (error?.message ?? error))
+      }
       const startedAt = Date.now()
       console.log(JSON.stringify({
         port,
