@@ -3,7 +3,7 @@
 > 状态：已实施（2026-11-02）
 > 更新：2026-11-04 扩到 3 个 worktree，并改为**按外部平台固定归属**（WT1 = 豆包 · WT2 = WorkBuddy · WT3 = DeepSeek Harness，见 §3.1）。
 > 用途：让**最多 3 个 agent 同时改代码**而不互相覆盖、不抢端口、不抢 Electron 单实例锁。
-> 关系：与 [`copilot-channel.md`](./copilot-channel.md)、[`doubao-channel.md`](./doubao-channel.md) 并列——那两份讲「把活派出去」，这份讲**派出之后各自在哪个目录里干活**。
+> 关系：与 [`copilot-channel.md`](./copilot-channel.md)、[`doubao-channel.md`](./doubao-channel.md)、[`workbuddy-channel.md`](./workbuddy-channel.md)、[`dsh-channel.md`](./dsh-channel.md) 并列——那些讲「把活派出去」，这份讲**派出之后各自在哪个目录里干活**。
 > 缘起：2026-11-02 作者问「同一个工作区跑多个 Harness 级 agent 会不会资源竞争，要不要用 worktree 隔离、由 Master 合并」。答：会，而且**最危险那层不报错**。遂把槽位写死落地。
 
 ## 0. 一句话读法
@@ -66,7 +66,7 @@ flowchart LR
 | `develop`（slot 0） | **主控平台** | 人在这里跟 Lead 对话、合并、跑实例级测试；主控平台换成 WorkBuddy / DSH 也不动目录 |
 | `wt-1`（slot 1） | **豆包** | 豆包项目名固定为 `AI-writer-wt-1`，路径 `C:\develop\workspace\AI-writer\wt-1`（`doubao-channel.md` 派活示例） |
 | `wt-2`（slot 2） | **WorkBuddy** | WorkBuddy 通道的固定工作目录，见 `workbuddy-channel.md` |
-| `wt-3`（slot 3） | **DeepSeek Harness** | DSH 作为外部 agent 被别的平台调用时，固定在这里干活 |
+| `wt-3`（slot 3） | **DeepSeek Harness** | DSH 作为外部 agent 被别的平台调用时，固定在这里干活；派活方式见 [`dsh-channel.md`](./dsh-channel.md)（`dsh-task.mjs` 的 `cwd` 钉死本格，越界 exit 3） |
 
 四条铁律：
 

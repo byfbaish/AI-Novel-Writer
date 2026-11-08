@@ -1,0 +1,22 @@
+# DSH 通道的模型覆盖层（`dsh --patch` 专用）
+#
+# 为什么不改 profile 里的 cordis.patch.yml：
+#   `~/.dsh/profiles/*/cordis.patch.yml` 是作者自己的补丁层，改它等于改全局配置；
+#   而 `dsh --patch <path>` 是「在 profile 层之后追加的一份临时覆盖」，
+#   只对本次进程生效，不落盘任何用户配置。这正是本通道要的形态。
+#
+# 为什么必须显式钉死模型：
+#   headless profile 的 agent-default-model 是 `deepseek/deepseek-flash`，
+#   与本通道要求的 Kilo Nemotron 3.5 Lightning 不一致。
+#   若靠 profile 默认值派活 = 在错模型上派活，属于红线（见 dsh-channel.md §4）。
+#
+# 生效方式是「id 定向覆盖」，与 `dsh --dump-config` 的输出对齐：
+#   - id: agent-default-model  → 覆盖该 loader 条目的 config。
+#
+# 校验：改完跑 `node scripts/dsh/dsh-task.mjs status`，它会把
+#   `dsh --profile headless --patch <this> --dump-config` 的组合结果读回来比对。
+
+- id: agent-default-model
+  config:
+    provider: magpie
+    model: "our-free-model/our-free-model/nvidia/nemotron-3.5-lightning:free"
