@@ -8,6 +8,7 @@ import type { EditorInlineRecovery } from '../../shared/editor-inline-generation
 import { createReviewRevisionRecoveryWorkflow } from '../../services/workflows/review-revision-recovery-workflow'
 import type { MainGenerationRunView } from '../../services/generation/generation-runtime'
 import { createDraftRecoveryWorkflow, createBatchRecoveryWorkflow } from '../../services/workflows/draft-recovery-workflow'
+import { evaluateBatchRecoveryGate } from '../../services/batch-interrupt-resume'
 import { CheckCircle2, Loader2, Circle, Sparkles, X, ChevronRight, StopCircle, AlertTriangle, SlidersHorizontal, Copy, Pencil, Trash2 } from 'lucide-react'
 import {
   useWorkflowStore,
@@ -292,6 +293,8 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
   const [runs, setRuns] = useState<Array<{ view: MainGenerationRunView; recovery: GenerationRecoveryContext }>>([])
   const [planningRuns, setPlanningRuns] = useState<GenerationRecoveryContext[]>([])
   const [batches, setBatches] = useState<GenerationBatchHistory[]>([])
+  /** `generation:list` 的 root run 状态，按 runId 对齐 `generation:list-batches` 的批次。 */
+  const [rootRunStatuses, setRootRunStatuses] = useState<Record<string, MainGenerationRunView['status']>>({})
   const [reviewRuns, setReviewRuns] = useState<Array<{ view: MainGenerationRunView; recovery: ReviewRevisionRecovery }>>([])
   const [agentRuns, setAgentRuns] = useState<import('../../shared/agent-generation').AgentGenerationRecovery[]>([])
   const [editorRuns, setEditorRuns] = useState<EditorInlineRecovery[]>([])
@@ -327,6 +330,7 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
       const editorContexts = await Promise.allSettled(contexts.filter(item => item.recovery.operation === 'editor-inline')
         .map(({ view }) => ipc.invokeWithProjectSession(session, 'editor-inline:read-recovery', { handle: view.handle })))
       if (!active) return
+      setRootRunStatuses(Object.fromEntries(views.map(view => [view.handle.runId, view.status])))
       setPlanningRuns(contexts.flatMap(item => (item.recovery.plotOutlineRecovery || item.recovery.blueprintRecovery)
         && item.recovery.planningContinuation?.state !== 'complete' ? [item.recovery] : []))
       setReviewRuns(reviewContexts.flatMap(result => result.status === 'fulfilled' && result.value.recovery
@@ -442,16 +446,25 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
           await useWorkflowStore.getState().startWorkflow(workflow)
         }) }}>{recovery.saved ? runText(locale, '打开已保存结果', 'Open saved result') : requestsReview ? runText(locale, '重新审稿', 'Review again') : runText(locale, '恢复此审修任务', 'Recover this review or revision')}</button>
     </article>})}
-    {visibleBatches.map(batch => <article key={batch.batchId} className="mb-3">
+    {visibleBatches.map(batch => {
+      const gate = evaluateBatchRecoveryGate({ batch, rootRunStatus: rootRunStatuses[batch.rootHandle.runId] })
+      return <article key={batch.batchId} className="mb-3">
       <p>{runText(locale, `批量正文：已保存 ${batch.completedChapters.length} 章，下一章 ${batch.nextChapterNumber}`,
         `Batch drafts: ${batch.completedChapters.length} saved; next chapter ${batch.nextChapterNumber}`)}</p>
-      {!batch.sourceCurrent && <p>{runText(locale, '批次来源已变化，不能继续此批次。请从当前正文发起新任务。',
+      {gate.sourceChanged && <p>{runText(locale, '批次来源已变化，不能继续此批次。请从当前正文发起新任务。',
         'The batch source changed. This batch cannot continue. Start a new task from the current text.')}</p>}
-      <button type="button" className="icon-btn px-2" style={candidateTextButtonStyle} disabled={busy || !batch.sourceCurrent} onClick={() => { void act(async () => {
+      {gate.terminated && <p>{runText(locale,
+        gate.wayOut?.chapterNumber == null
+          ? '本批次已终止，请重新开一批（会生成新的批次编号）。'
+          : `本批次已终止，请从第${gate.wayOut.chapterNumber}章重新开一批（会生成新的批次编号）。`,
+        gate.wayOut?.chapterNumber == null
+          ? 'This batch has stopped. Start a new batch (it will have a new batch number).'
+          : `This batch has stopped. Start a new batch from Chapter ${gate.wayOut.chapterNumber} (it will have a new batch number).`)}</p>}
+      <button type="button" className="icon-btn px-2" style={candidateTextButtonStyle} disabled={busy || !gate.canContinue} onClick={() => { void act(async () => {
         const workflow = await createBatchRecoveryWorkflow(session, batch.batchId)
         await useWorkflowStore.getState().startWorkflow(workflow)
       }) }}>{runText(locale, '继续此批次', 'Continue this batch')}</button>
-    </article>)}
+    </article>})}
     {visibleRuns.map(({ view, recovery }) => {
       const artifacts = withoutDraftReconciliationArtifacts([...new Map([...view.artifacts, ...(view.candidates ?? [])].map(item => [item.artifactId, item])).values()], recovery)
       const picked = selection[view.handle.runId] ?? []

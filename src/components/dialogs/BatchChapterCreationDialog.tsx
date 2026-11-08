@@ -24,7 +24,7 @@ import {
   isProjectSessionCurrent,
 } from '../project-session-gate'
 import type { ModelProfile } from '../../shared/ipc-channels'
-import { readAuthoritativeNextChapter } from '../../services/authoritative-chapter-sequence'
+import { readBatchStartChapter } from '../../services/batch-interrupt-resume'
 import { readConsistencyPreflight, describeSpaceTimeCoverage, type ConsistencyPreflightResult } from '../../services/consistency-preflight'
 import { requireIpcSuccess } from '../../services/ipc-result'
 import ConsistencyPreflightPanel from './ConsistencyPreflightPanel'
@@ -92,6 +92,7 @@ function BatchChapterCreationDialogSession({ isOpen, startChapterNumber, onClose
   const [starting, setStarting] = useState(false)
   const [completionMode, setCompletionMode] = useState<BatchChapterCompletionMode>('draft_review')
   const [confirmingAutoFinalize, setConfirmingAutoFinalize] = useState(false)
+  /** 甲方案：这里现在存的是「第一张没有草稿的章」，不再只是权威定稿的下一章。 */
   const [authoritativeStart, setAuthoritativeStart] = useState<number | null>(null)
   const [authorityError, setAuthorityError] = useState<string | null>(null)
   const [authorityLoading, setAuthorityLoading] = useState(false)
@@ -129,7 +130,7 @@ function BatchChapterCreationDialogSession({ isOpen, startChapterNumber, onClose
     const loadAuthority = async () => {
       setAuthorityLoading(true)
       try {
-        const nextChapter = await readAuthoritativeNextChapter(projectSession, locale)
+        const nextChapter = await readBatchStartChapter(projectSession, locale)
         if (disposed || !isProjectSessionCurrent(projectSession)) return
         setAuthoritativeStart(nextChapter)
         setAuthorityError(null)
@@ -175,7 +176,7 @@ function BatchChapterCreationDialogSession({ isOpen, startChapterNumber, onClose
     }
     setStarting(true)
     try {
-      const frozenStart = await readAuthoritativeNextChapter(projectSession, locale)
+      const frozenStart = await readBatchStartChapter(projectSession, locale)
       if (!isProjectSessionCurrent(projectSession)) return
       setAuthoritativeStart(frozenStart)
       setAuthorityError(null)

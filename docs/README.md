@@ -313,7 +313,7 @@ docs/
 | [`p16b-prompt-config-and-trace-guide.md`](design/features/p16b-prompt-config-and-trace-guide.md) | ✅ 已实施 | 作者操作手册：三条配置边界、口味/数字之辨、三类打架、Prompt 追踪五步归因 |
 | [`d2-run-lease-abort-design.md`](design/features/d2-run-lease-abort-design.md) | 已裁定 · 部分实施 | D2 方案甲：`generation_runs` 加执行租约三列（M29），启动时把「主人已死」判成 `aborted`。已落地迁移/仓储/12 条单测 + **A4（`aborted` 不可续）**；**心跳未接（§10.6 / §11 写了要动哪几处）** |
 | [`idle-guards-wiring-inventory.md`](design/features/idle-guards-wiring-inventory.md) | 待裁定（2026-11-04） | 三个「写完但零调用方」的守卫（D5 / D15 / D18）各自该在哪一行被调用；含「接线前必须先定的三件事」 |
-| [`batch-interrupt-resume-design.md`](design/features/batch-interrupt-resume-design.md) | 📝 待裁定（2026-11-09） | **批量写到一半失败后无路可走**（A1 验收的卡点）：点「继续此批次」→ 去续一条已 terminated 的 run ⇒ `GENERATION_RESUME_REFUSED`；重新开一批 → 起始章仍是已完成的那章 ⇒ 撞「已有草稿不覆盖」。定位到 `batch-chapter-workflow.ts:272` 与 `generation-run-repository.ts:789-791`；三条修法（甲补文案+默认起点 / 乙终止批次改走新开 / 丙批次跨运行存活），建议先走甲。**机制为读码定位，尚未实机复现** |
+| [`batch-interrupt-resume-design.md`](design/features/batch-interrupt-resume-design.md) | ✅ 已实施（2026-11-09 · 甲方案；乙/丙待裁定） | **批量写到一半失败后无路可走**（A1 验收的卡点）：点「继续此批次」→ 去续一条已 terminated 的 run ⇒ `GENERATION_RESUME_REFUSED`；重新开一批 → 起始章仍是已完成的那章 ⇒ 撞「已有草稿不覆盖」。定位到 `batch-chapter-workflow.ts:272` 与 `generation-run-repository.ts:789-791`；三条修法（甲补文案+默认起点 / 乙终止批次改走新开 / 丙批次跨运行存活），建议先走甲。**机制为读码定位，尚未实机复现** |
 
 ### 4.6 产品与方法论 · [`design/product/`](design/product/)（6 篇）
 

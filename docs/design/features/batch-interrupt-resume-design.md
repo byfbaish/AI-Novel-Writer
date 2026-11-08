@@ -1,4 +1,4 @@
-> 状态：待裁定 · 2026-11-09 · 起草：Lead（本轮只出方案，未改代码）
+> 状态：已实施（2026-11-09 · 甲方案落地；乙方案、丙方案与 §8 其余项仍未定）
 > 上级稿：缺陷来源 [`live-pipeline-acceptance-defects-assessment.md`](../product/live-pipeline-acceptance-defects-assessment.md)（D2 批次静默的同族问题）· [`2026-11-07-batch-acceptance-plan.md`](../product/2026-11-07-batch-acceptance-plan.md) §7.1.2（A1 实机读数）
 > 关系：与 [`d2-run-lease-abort-design.md`](./d2-run-lease-abort-design.md) 相邻但不重叠 —— D2 管「主进程判死后状态怎么落」，本稿管「落完之后作者还能不能接着干」。
 
@@ -106,3 +106,17 @@ flowchart TD
 
 - **未实机复现**（见 §4 末的定位结论）：`currentChapterRunHandle` 在失败后到底还指不指向那条 run，需一次探针确认。
 - **不做**：不加重试按钮（重跑同一章会再撞同一守卫，等于让作者空转）、不改重演守卫的判据（D12 已结案，判定为模型弱点）、不动 `aborted` 的终态语义。
+
+## 10 甲方案落地回填（2026-11-09）
+
+作者 2026-11-09 裁**甲**，WorkBuddy 在 `wt-2` 实现、DSH 中控验收后合入主线。交付报告：[实验记录](../../experiments/batch-resume-plan-a-delivery-20261109.md)。
+
+| 稿 §7 计划 | 实际落地 |
+|---|---|
+| 1. 批次卡片「已终止」判定 + 按钮禁用 + 出路文案 | ✅ `src/services/batch-interrupt-resume.ts:48` `evaluateBatchRecoveryGate`（终态 = `failed`/`cancelled`/`aborted`，`paused` 仍可续）+ `AIOutputPanel.tsx:449-467` 中英双写出路文案。**不新增 IPC 字段**：`generation:list-batches` 的 `rootHandle.runId` 与 `generation:list` 的 `view.handle.runId` 同源，同一 effect 里已有两个返回值 |
+| 2. `draft-recovery-workflow.ts` 给可区分的新错误码 | ⏸ **未做**（有意）：按钮已禁用，主路径不再走到 `GENERATION_RESUME_REFUSED`；再加错误码要多读一次 run 状态，等于两份判定真相。留给「绕过 UI 的调用方」出现时再补 |
+| 3. 起始章默认取「第一张没有草稿的章」 | ✅ `firstChapterWithoutDraft`（`batch-interrupt-resume.ts:18`，按占用集合连续顺延、遇空章即停，不用 `max+1`）+ `readBatchStartChapter`（`:70`）；`BatchChapterCreationDialog.tsx:133`（显示）与 `:179`（真正启动的 `frozenStart`）共用，避免「显示第 13 章、实际从第 12 章开跑」 |
+| 4. 单测三处 | ✅ `src/services/__tests__/batch-interrupt-resume.test.ts` 12 例（首章顺延 5 例 + 终止判定 7 例）；`pnpm test` 在 develop 实测 `12 passed` |
+| `pnpm check:fast` | ✅ typecheck 通过（合并后 main 分支实测） |
+
+**甲方案已知缺点（界面已说明）**：重开一批会生成**新的批次编号**，文案中英双写写明。**§8 三项待裁定仍然有效**（尤其第 3 项「要不要自动跳过必然失败的章」——本批有意不做，避免静默跳章）。**未实机复现**（红线禁 `pnpm dev`），机制结论来自读码 + 主进程返回结构，与 §9 一致。
