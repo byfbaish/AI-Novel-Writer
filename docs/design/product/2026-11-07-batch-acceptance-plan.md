@@ -135,7 +135,7 @@ B 组换身份独立复核（`agent-r1`，报告 `wt-2/.batch/b-review.md` 332 �
 
 | # | 判据（可判） | 证据路径 | 复核方法 | 执行方自报 | 第三方结论 |
 |---|---|---|---|---|---|
-| **A1** | 正文批量「同 run 连续 3 次生成」全成功；任务日志里 `*_SOURCE_CHANGED` **0 次**（出处 `agent-generation-client.ts:33`、`generate-draft.command.ts:1018`、`finalization-generation.ts:41`） | 任务日志 + `generation_runs` | 贴原始日志片段并逐次数 | **未跑**（排在 A2 之后） | — |
+| **A1** | 正文批量「同 run 连续 3 次生成」全成功；任务日志里 `*_SOURCE_CHANGED` **0 次**（出处 `agent-generation-client.ts:33`、`generate-draft.command.ts:1018`、`finalization-generation.ts:41`） | 任务日志 + `generation_runs` | 贴原始日志片段并逐次数 | **🟡 已推进到「任务已发起、被上游失效保护拦下」**（2026-11-07 23:0x）。前置障碍两只：① **中间章蓝图不可补**（`frozenAppendStart = max(最高蓝图+1, 权威下一章)`，副本最高蓝图是孤立的 17 章 ⇒ 起点被推到 18，13–16 章永久不可生成；清掉第 17 章后 13/14 章蓝图一次生成成功）；② 生成 13/14 章蓝图把情节大纲推到第 22 版 ⇒ 第 12 章章节卡被判「基于旧大纲」，批量创作**在准备阶段即失败**（`64920a1a`，`attempts=0`、无候选，界面原文「已经改过了，请先核对这张卡再批量创作」）⇒ **不是 `SOURCE_CHANGED`**。下一步走「同步」清点页核对后才能重跑。详见 §7.1.1。**23:00–23:37 补做后仍未兑现**：stale 已按「同步页 → 去处置 → 保存」清干净（情节大纲 v24），批量真正跑起来了 —— 第 12 章一次成功（1583 字入库），第 13 章被 `DRAFT_PREVIOUS_ENDING_REPLAY` 挡下，止步 `1/3`；`*_SOURCE_CHANGED` 四次 run 全部 **0 次**但链条没跑完，**不判通过**。详见 §7.1.2 |
 | **A2-1** | 卷首 `handoff-missing` 档弹出（`[data-testid="outline-progress-gate"]` 非空且文案为「没登记交接单」） | DOM 文本 / 截图 | 见 §5.2 复现步骤 | **未兑现**：闸门为 `null` | — |
 | **A2-2** | 点「我知道，仍按计划继续」写入豁免 `outline-progress:volume:1` | 副本 `consistency_exemptions` | 查库 | **未兑现**：未出现该键（现有 `outline-progress:volume:3` 是历史值） | — |
 | **A2-3** | **真起 run 并产出情节大纲，产物落库** | `generation_runs` + `generation_artifacts` | 查库（§0.1 P3） | **兑现**：`f85becbd…` `running`→`completed`；6 条产物（第 7–12 章，text 744/847/1034/1121/850/889 字） | — |
@@ -206,6 +206,42 @@ upstream_revision_log 最新仍 rev=21（2026-11-06 20:33:42），本次未 bump
 **闸门未弹的四条候选（未验证，不许先定结论）**：① 实际提交的 `chapterNumber` 不是 7；② `readOutlineProgressGate` 在副本读失败 ⇒ `gate=null` fail-open；③ `volumeRangeEndingAt(volumes, 6)` 的 `range.last` 为 null ⇒ 不判；④ 已有确认 `outline-progress:volume:3` 命中了另一个卷。已知调用点 `ArchitectureConfirmDialog.tsx:505–512`（`checked.synopsis && !bypassProgressGate.current` 时才跑，入参 `resolution.range?.from`）。
 
 **代码静态取证（19:5x，只读； narrowing 范围，不等于 A2-6 已验证）**：闸门 1（`progressGate`）在代码里**排在闸门 2（D20 失效清单）之前**，且只在 `gate?.state === 'ahead'` 时 `setProgressGate(gate); return`。现场却走到了闸门 2 并直接起 run ⇒ 当次 `readOutlineProgressGate` 返回的是 `gate=null`（fail-open）或 `state='aligned'`，**不是 `ahead`**；候选 ②③④ 都落在「算出 aligned」这一支，① 另多一种 `chapterNumber === undefined` 导致整段闸门被跳过。**新排除一条**：`bypassProgressGate.current = true` 只出现在 D3 面板自己的「仍按计划继续」回调（`:1033`），两个闸门都过后 `:541` 重置为 false，取消勾选时 `:406` 也重置 ⇒ **不是上一次确认残留的 bypass 把闸门跳过了**。以上只是代码级定位，四条候选仍须按 §7.1 在 CDP 里逐条验证才能定论，**D3 仍不得转 ✅**。
+
+#### 4.2.1 A2-6 实测读数（2026-11-07 21:5x，已执行）
+
+环境：主工作区 `develop` 起 dev（5180 / CDP 9222），进入副本 `.batch-a/proj`；闸门函数原本未挂 `window`，本轮新增 dev-only 探针 `window.__outlineProgressGateProbe(chapterNumber)`（`src/services/outline-progress-gate-probe.ts`，内部**只转发**真实 `readOutlineProgressGate`，不复制判定逻辑）。
+
+```
+chapterNumber= 7 → gate=null  warning="卷结构状态为 stale，本次不判"
+chapterNumber=11 → gate=null  同上
+chapterNumber=12 → gate=null  同上
+chapterNumber=16 → gate=null  同上
+chapterNumber=21 → gate=null  同上
+chapterNumber=26 → gate=null  同上
+debug: volumesState='stale'
+       authority={ status:'continuous', lastChapterNumber:11 }
+       acknowledgedKeys=['outline-progress:volume:3','volume-handoff:volume:2']
+       handoffEntries=1 · 6 卷全部 source='outline' / outlineHash=93bf2ce8…
+```
+
+| 候选 | 结论 | 依据 |
+|---|---|---|
+| ① 提交的 `chapterNumber` 不是 7 | **不能排除，但已不再是关键** | 即便按 7 传，返回仍是 `null`（见下行） |
+| ② 读失败 / 降级 ⇒ fail-open | **✅ 成立，而且是恒久状态、不是偶发** | `volumesState='stale'` ⇒ `outline-progress-gate.ts:92-95` 在 `volumeState !== 'ready' && volumeState !== 'empty'` 处直接 `return { gate: null }` ⇒ **两维判据一行都没执行** |
+| ③ `volumeRangeEndingAt` 的 `range.last` 为 null | 不成立（未走到） | 没进 `outlineProgressGateOf` |
+| ④ 已有确认 `outline-progress:volume:3` 命中 | 不成立（未走到） | 同上；且第 7 章对应 `volume:2`，键也不同 |
+
+**stale 是怎么来的**（`electron/repositories/volume-structure-repository.ts:151`）：
+
+```ts
+const stale = volumes.some(volume => volume.source === 'outline' && volume.outlineHash !== outlineHash)
+```
+
+本副本 6 卷全部 `source='outline'`、`outlineHash` 同为 `93bf2ce8…`，与当前大纲 hash 不符 ⇒ **作者只要改过一次大纲，卷表就变 `stale`，闸门就从那一刻起永久放行，直到手动点「重建卷结构」**。
+
+**因此这是一条独立缺陷，不能记成「D3 复验失败」**：D3 的第二维修正（`handoffAvailabilityOf` 五态）确实写对了，但它住在一个「stale 即短路」的入口后面，等于从未被触发过。建议单独立项（暂记 **D21 · 闸门被卷结构 stale 短路**），并保持 **D3 不得转 ✅**。
+
+> 时序如实说明：本副本 19:5x 刚跑过 A2 批量生成（大纲被重写），`stale` 可能正是那次造成的。但「改大纲 ⇒ 卷表 stale ⇒ 闸门失效」这条因果与时序无关 —— 它每次改大纲都会成立。要区分「本来 stale」与「A2 之后 stale」，需要在未跑生成的新副本上再取一次读数（未做）。
 
 ### 4.3 A3 / E0 / C 组
 见 §3.1 / §3.2 / §3.4 的「执行方自报」列，均为只读核对或看板写入，无代码改动。
@@ -307,14 +343,90 @@ env -u CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR -u CODEBUDDY_TOOL_CALL_ID \
 
 | 遗留项 | 现状（属实） | 下一批动作 | 前置 / 本批不做的理由 |
 |---|---|---|---|
-| **A1** | 未跑（排在 A2 之后） | 副本上跑「正文批量同 run 连续 3 次生成」，贴原始日志逐次数 `*_SOURCE_CHANGED` 是否 0 次 | 需起 5181 dev + CDP 9223 + 副本；属实机，由 Agent 自己做、不派 |
-| **A2-6** | 四条候选已列、未验证 | 在 CDP 调 `readOutlineProgressGate({projectSession, chapterNumber: 7})` 看返回，并核对生成请求里的 `chapterNumber`，逐条排除 §4.2 四条候选 | 同 A1 环境；这是 D3 能否转 ✅ 的前置 |
+| **A1** | 🟡 **已跑起来但未兑现（2026-11-07 23:00–23:37）**：stale 已按「同步 → 去处置 → 保存」清干净（情节大纲 v24），卷末交接单也已重存；批量四次尝试中，第 12 章一次成功（`drafts` ch12 v1 / 1583 字），第 13 章被 `DRAFT_PREVIOUS_ENDING_REPLAY` 挡下，止步 `1/3`；`*_SOURCE_CHANGED` **0 次** | 待 D12 处置后重跑；并先解决「第 1 章成功 + 第 2 章失败后无续跑路径」（见 §7.1.2 结论 2）：`继续此批次` 抛 `GENERATION_RESUME_REFUSED`、重新开一批撞「已有草稿」 | 卡点已换：① 中间章蓝图不可补（已绕过，§7.1.1）；② 章节卡 / 交接单 stale（已用保存清掉，**保存确实有效**，22:5x 的「保存无效」是打错卡，已在 §7.1.1 订正）；③ **D12 判据拦批量第 2 章**（第 5 次复现）；④ 失败后无续跑入口 |
+| **A2-6** | **✅ 已执行（2026-11-07 21:5x）**，结论见 §4.2.1 | 在 CDP 调 `readOutlineProgressGate({projectSession, chapterNumber: 7})` 看返回，并核对生成请求里的 `chapterNumber`，逐条排除 §4.2 四条候选 | 已排除 ③④、确认 ② 成立且恒久（`volumesState='stale'` ⇒ 入口短路）；① 因未走到判定而不影响结论。**新增 dev-only 探针** `window.__outlineProgressGateProbe(n)`（`src/services/outline-progress-gate-probe.ts`）供后续复用 |
 | **A2-1 / A2-2** | 闸门为 `null`、豁免键未出现 | 随 A2-6 结论决定：若属判据 / 配置问题，先澄清判据再补跑「点继续」路径 | 原因没查清就补跑，只会再得一次同样的 `null`，不算验收 |
 | **D9 / D16** | 换身份复核判「未兑现」，作者裁丙结转 | 下一批专做结构设计：先定挂点 / 事实源，再动代码 | [`2026-11-07-d9-d16-structural-design-handoff.md`](../../handoffs/2026-11-07-d9-d16-structural-design-handoff.md) §2；**本批不补做** |
 | **B 组 4 处 browser 断言 + D4 判据** | **均已收口**（断言 20:3x 随合并完成；判据 20:4x 自我订正） | 无需下一批：判据按「`sourceStatus` 驱动的接线点」（8 处）成立；`VersionHistory.tsx:281` / `ArchFileViewer.tsx:1071` 经取证非本因、不属本缺陷 | 断言已改并跑过；判据已订正 |
 | **D10 现象未闭环 / D11 定稿态取法** | 已登记，未定 | 按作者裁定决定补做 / 结转 | 下一批立项稿 §4 明写「不在下一批默认夹带」 |
 
 **本批到此为止**：以上六类**都没有**在本批执行，也没有因为「登记为遗留」被判兑现。第三方签核时请逐条核「现状属实 + 下一批动作可执行」。
+
+### 7.1.1 A1 实机过程与两个新发现（2026-11-07 22:1x–23:0x）
+
+**已查明并绕过：中间章蓝图不可补。**
+
+`DirectoryConfigDialog` 的「指定生成」模式要求 `start ≥ frozenAppendStart`，而
+`frozenAppendStart = Math.max(最高蓝图章 + 1, 权威下一章)`。副本的蓝图是 `1–12 + 17`（第 17 章是
+历史遗留的孤立章），于是 `frozenAppendStart = 18`，**13–16 章永久不可生成**，界面只给一句
+「请选择有效的连续 1–10 章」（`DirectoryConfigDialog.tsx:304-318`），不说为什么、也不指出是
+哪一章把起点推走了。
+
+这不是本次实验制造的问题：任何「蓝图跳过若干章」的项目都会卡在这里。**建议单独立项**（与
+D21「卷结构 stale 短路闸门」并列），候选修法：把「最高蓝图」换成「连续前缀的最后一张」，
+或在报错里点名「第 N 章把追加起点推到了 N+1」。
+
+**本轮实测：删掉孤立第 17 章蓝图后，「指定生成 13–14」一次成功**（约 50 秒，`2/2`），
+说明阻塞点就是它。
+
+**新卡点：补齐蓝图反而触发了上游失效保护。**
+
+13/14 章蓝图落库 ⇒ 情节大纲从第 21 版推到**第 22 版**（「改过第13、14章」）⇒ 第 12 章章节卡
+被判「基于旧大纲」⇒ 批量创作在准备阶段直接失败：
+
+```
+run 64920a1a failed | attempts = 0 | recovery_candidates 不变
+界面：批量草稿待审 · 第 12 至 14 章 — 工作流未完成
+      第12章的章节卡基于的情节大纲 第10版→第22版（…第22版 11-07 22:49 重新生成，改过第13、14章）
+      已经改过了，请先核对这张卡再批量创作
+```
+
+**这条拦得对**（P2-3 失效线的工作形态），但它顺带说明：**「补蓝图」和「批量创作」在同一个
+会话里连续做，必然要经过一次清点核对**。⇒ A1 的下一步固定为：同步页核对 → 重跑批量。
+
+> **自我订正（2026-11-07 23:1x）**：22:5x 记的「在卡片上点保存并不能清掉 stale」**测错了对象**。
+> 那一次保存落在**第 1 章**卡上（产生了「第23版 作者手改，改过第1章」），不是第 12 章。23:11 在
+> 「同步 → 第12章 → 去处置 → 保存」重做一次，**stale 当场清掉**（同步页 23 → 22 项，第 12 章从
+> 「章节蓝图」组消失，情节大纲推到第 24 版「改过第12章」）。**「保存就能清 stale」是成立的**，
+> 错的只是打到了别的卡。详见 §7.1.2。
+
+### 7.1.2 A1 实机补做读数（2026-11-07 23:00–23:37，副本 `.batch-a/proj`）
+
+环境：主区 `pnpm dev` + CDP 9222，项目＝副本；模型 `Ollama/qwen3.5:9b-128k`（界面默认）；
+真实项目复核未动（391 文件 / `project.db` 13,754,368 字节）。
+
+**清 stale 的两步（都是必须的，都会推高上游版本）**
+
+| 动作 | 结果 |
+|---|---|
+| 同步页「第12章 → 去处置 → 保存」 | 情节大纲 **v23 → v24**（`作者手改，改过第12章`）；第 12 章从「章节蓝图」组消失，23 → 22 项 |
+| 再点「继续此批次」 | 被**卷末交接单**拦住：`上一卷交接单基于的情节大纲 第19版→第24版…请先按当前内容核对并保存这份交接单` |
+| 卷末交接 tab → 编辑 → 保存 | 22 → 21 项；交接单保存**只重取版本快照、不 bump**（`upsertVolumeHandoff` 无 `bumpOutline`），所以不会把刚清干净的卡再打回 stale |
+
+**四次批量尝试的逐次读数（同一副本、同一模型）**
+
+| # | 时刻 | 区间 | 结果 |
+|---|---|---|---|
+| 1 | 23:12→23:19 | 12–14 | 第 12 章失败：`DRAFT_DEGENERATE_VERBATIM_REPEAT`（正文整段复读同一组对白，未保存）。`0/3` |
+| 2 | 23:19 | — | 点「继续此批次」→ `Error invoking remote method 'generation:resume': Error: GENERATION_RESUME_REFUSED`（库里 `root.status=active`、`run.status=failed`；`resume()` 只在 root 为 `paused` 时放行） |
+| 3 | 23:20→23:30 | 12–14 | 第 12 章**成功**，`drafts` ch12 v1 / 1583 字 / `status=draft`（23:26:02）；第 13 章失败：`DRAFT_PREVIOUS_ENDING_REPLAY`（开头大段重演上一章结尾）。`1/3` |
+| 4 | 23:37 | 12–13 | 立即失败：`第12章已有草稿，批量创作不会覆盖既有内容`。`0/2` |
+
+**`*_SOURCE_CHANGED` 计数：四次 run 的任务日志里 0 次**（全量界面文本 14,757 字符内检索，
+只出现 `DRAFT_DEGENERATE_VERBATIM_REPEAT` 与 `DRAFT_PREVIOUS_ENDING_REPLAY` 两个错误码）。
+**但这不能判 A1 通过** —— 判据要求「同 run 连续 3 次生成全成功」，本次一章成功、第二章就被另一条
+判据挡死，链条没跑完。
+
+**结论（两条，都是产品层）**
+
+1. **A1 在 D12 未修的前提下不可验收**：批量第 2 章（本例第 13 章）开头必然复述上一章结尾 ⇒
+   `DRAFT_PREVIOUS_ENDING_REPLAY` ⇒ 批量停在 `1/3`。这与 D12 单独实测（4/4 复述）一致，是第 5 次。
+2. **新缺陷候选（建议立项）：草稿待审模式下「第 1 章成功、第 2 章失败」之后无任何续跑路径。**
+   - 「继续此批次」→ `GENERATION_RESUME_REFUSED`（且把原始 IPC 错误直接抛到界面）；
+   - 重新开一批 → 起始章节仍算「第 12 章」（草稿未定稿不算权威下一章）⇒ 撞「已有草稿不会覆盖」；
+   - 界面没有「从失败那一章重来」的入口 ⇒ 作者只能手动把第 12 章定稿，才可能推进到 13。
+   「起始章节」在对话框里是只读派生值（无输入框，见 `#batch-chapter-count` 旁边无对应控件），
+   与「本次章节数」并列却不可选，容易被读成「可以从任意章起跑」。
 
 ---
 

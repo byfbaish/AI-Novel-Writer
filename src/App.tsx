@@ -167,6 +167,13 @@ export default function App() {
     import('./services/system-notify/notify-hub').then(({ initSystemNotifyHub }) => {
       initSystemNotifyHub()
     }).catch(e => console.warn('[SystemNotify] 初始化失败:', e))
+    // 实机取证探针（A2-6）：**仅 dev**。闸门函数没挂 window，验收要在 CDP 里直调看返回值；
+    // 生产包不装，避免留调试入口。
+    if (import.meta.env.DEV) {
+      import('./services/outline-progress-gate-probe').then(({ installOutlineProgressGateProbe }) => {
+        installOutlineProgressGateProbe()
+      }).catch(e => console.warn('[OutlineProgressGateProbe] 安装失败:', e))
+    }
 
     // C) 工作流完成时弹出 ActionToast 通知（不依赖任何面板状态）
     const unsubActionToast = globalEventBus.on('WORKFLOW_COMPLETE', ({ projectSession, runId }) => {
