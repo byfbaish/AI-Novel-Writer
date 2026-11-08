@@ -171,7 +171,7 @@ A1 卡死的现场（4 次复现）：第 12 章成功、第 13 章被重演守�
 - **新增** `src/services/batch-interrupt-resume.ts`（79 行，纯函数 + 一个取数薄封装）：`evaluateBatchRecoveryGate` 判终止（`failed`/`cancelled`/`aborted`；`paused` 仍可续），`firstChapterWithoutDraft` 从权威下一章连续顺延到第一张没草稿的章（遇空章即停，不用 `max+1`）。
 - **不新增 IPC 字段**：`generation:list-batches` 的 `rootHandle.runId` 与 `generation:list` 的 `view.handle.runId` 同源，渲染层同一个 effect 里本来就有两个返回值 ⇒ 只需把 status 按 runId 存进 state。
 - **改动边界**：`AIOutputPanel.tsx`（+21/−4，批次卡片 gate + 中英双写出路文案）、`BatchChapterCreationDialog.tsx`（+4/−3，显示与真正启动共用 `readBatchStartChapter`）；**未碰** run 状态机 / DB schema / `generation_batches` 语义 / `aborted` 终态 / `batch-chapter-workflow.ts`。
-- **验收（Lead 自己做，不采信自述）**：在 wt-2 跑 `pnpm test src/services/__tests__/batch-interrupt-resume.test.ts` ⇒ `12 passed`；`pnpm typecheck` 通过；`git diff HEAD` 逐行看过；合并用 `git apply`（patch 7,930 B，`--check` 通过），合入后在 develop 再跑一次同类 ⇒ `12 passed`，`pnpm check:fast` 绿。
+- **验收（Lead 自己做，不采信自述）**：在 wt-2 跑 `pnpm test src/services/__tests__/batch-interrupt-resume.test.ts` ⇒ `15 passed`（首轮 12 例，交付后补了 3 例：出路章号不写死 / `nextChapterNumber=null` 走通用文案 / `completed` 不判终止，已一并合入）；`pnpm typecheck` 通过；`git diff HEAD` 逐行看过；合并用 `git apply`（patch 7,930 B，`--check` 通过），合入后在 develop 再跑一次同类 ⇒ `12 passed`，`pnpm check:fast` 绿。
 - **有意未做**：`draft-recovery-workflow.ts` 的新错误码（按钮已禁用，主路径走不到；再加等于两份判定真相）· 乙 / 丙方案 · 「自动跳过必然失败的章」（会变静默跳章，留作者裁定）· 实机复现（红线禁 `pnpm dev`）。
 - **一处口径修正**：WorkBuddy 报告 §4.0 记「本会话所有单测既有红，需 `--pool=vmThreads`」，Lead 在 wt-2 与 develop 用不带该参数的 `pnpm test` 均通过 ⇒ 那是它那个会话的环境现象，不是仓库既有红。
 

@@ -49,11 +49,30 @@ describe('evaluateBatchRecoveryGate（继续此批次）', () => {
     }
   })
 
-  it.each(['failed', 'cancelled', 'aborted'] as const)('② root run = %s → 阻断且给出路文案键与章号', status => {
-    const gate = evaluateBatchRecoveryGate({ batch: makeBatch({ nextChapterNumber: 13 }), rootRunStatus: status })
+  it.each(['failed', 'cancelled', 'aborted'] as const)('② root run = %s → 阻断且给出路文案键与真实下一章号', status => {
+    const gate = evaluateBatchRecoveryGate({ batch: makeBatch({ nextChapterNumber: 21 }), rootRunStatus: status })
     expect(gate.canContinue).toBe(false)
     expect(gate.terminated).toBe(true)
-    expect(gate.wayOut).toEqual({ noticeKey: 'batch-terminated-reopen', chapterNumber: 13 })
+    expect(gate.wayOut).toEqual({ noticeKey: 'batch-terminated-reopen', chapterNumber: 21 })
+  })
+
+  it('② 出路章号随批次 nextChapterNumber 变化，不是写死值', () => {
+    const first = evaluateBatchRecoveryGate({ batch: makeBatch({ nextChapterNumber: 13 }), rootRunStatus: 'failed' })
+    const second = evaluateBatchRecoveryGate({ batch: makeBatch({ nextChapterNumber: 21 }), rootRunStatus: 'failed' })
+    expect(first.wayOut?.chapterNumber).toBe(13)
+    expect(second.wayOut?.chapterNumber).toBe(21)
+  })
+
+  it('批次已终止但 nextChapterNumber 为 null → 出路不带章号（UI 走通用文案分支）', () => {
+    const gate = evaluateBatchRecoveryGate({ batch: makeBatch({ nextChapterNumber: null }), rootRunStatus: 'failed' })
+    expect(gate.terminated).toBe(true)
+    expect(gate.wayOut).toEqual({ noticeKey: 'batch-terminated-reopen', chapterNumber: null })
+  })
+
+  it('root run = completed 不判终止（当前取舍，异常组合见报告 §5）', () => {
+    const gate = evaluateBatchRecoveryGate({ batch: makeBatch(), rootRunStatus: 'completed' })
+    expect(gate.terminated).toBe(false)
+    expect(gate.canContinue).toBe(true)
   })
 
   it('③ 两条理由同时成立时各判各的，原提示不被终止判定覆盖', () => {

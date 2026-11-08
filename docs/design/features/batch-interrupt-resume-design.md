@@ -116,7 +116,7 @@ flowchart TD
 | 1. 批次卡片「已终止」判定 + 按钮禁用 + 出路文案 | ✅ `src/services/batch-interrupt-resume.ts:48` `evaluateBatchRecoveryGate`（终态 = `failed`/`cancelled`/`aborted`，`paused` 仍可续）+ `AIOutputPanel.tsx:449-467` 中英双写出路文案。**不新增 IPC 字段**：`generation:list-batches` 的 `rootHandle.runId` 与 `generation:list` 的 `view.handle.runId` 同源，同一 effect 里已有两个返回值 |
 | 2. `draft-recovery-workflow.ts` 给可区分的新错误码 | ⏸ **未做**（有意）：按钮已禁用，主路径不再走到 `GENERATION_RESUME_REFUSED`；再加错误码要多读一次 run 状态，等于两份判定真相。留给「绕过 UI 的调用方」出现时再补 |
 | 3. 起始章默认取「第一张没有草稿的章」 | ✅ `firstChapterWithoutDraft`（`batch-interrupt-resume.ts:18`，按占用集合连续顺延、遇空章即停，不用 `max+1`）+ `readBatchStartChapter`（`:70`）；`BatchChapterCreationDialog.tsx:133`（显示）与 `:179`（真正启动的 `frozenStart`）共用，避免「显示第 13 章、实际从第 12 章开跑」 |
-| 4. 单测三处 | ✅ `src/services/__tests__/batch-interrupt-resume.test.ts` 12 例（首章顺延 5 例 + 终止判定 7 例）；`pnpm test` 在 develop 实测 `12 passed` |
+| 4. 单测三处 | ✅ `src/services/__tests__/batch-interrupt-resume.test.ts` **15 例**（首章顺延 5 例 + 终止判定 10 例，含「出路章号不写死」「`nextChapterNumber=null` 走通用文案」「`completed` 不判终止」三条补强）；`pnpm test` 在 wt-2 与 develop 均实测 `15 passed` |
 | `pnpm check:fast` | ✅ typecheck 通过（合并后 main 分支实测） |
 
 **甲方案已知缺点（界面已说明）**：重开一批会生成**新的批次编号**，文案中英双写写明。**§8 三项待裁定仍然有效**（尤其第 3 项「要不要自动跳过必然失败的章」——本批有意不做，避免静默跳章）。**未实机复现**（红线禁 `pnpm dev`），机制结论来自读码 + 主进程返回结构，与 §9 一致。

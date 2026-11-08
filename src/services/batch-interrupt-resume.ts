@@ -14,6 +14,8 @@ import { readAuthoritativeNextChapter } from './authoritative-chapter-sequence'
 /**
  * 从「权威下一章」起连续顺延，返回第一张没有草稿的章。
  * 只按占用集合逐章走，不用 max(chapter)+1 —— 中间的空章必须停住，不能跳过还没写的章。
+ * `authoritativeNextChapter` 由上游 `readAuthoritativeNextChapter` 保证为 ≥1 的安全整数
+ * （`authoritative-chapter-sequence.ts:45-51`），这里不重复校验。
  */
 export function firstChapterWithoutDraft(
   authoritativeNextChapter: number,
@@ -27,7 +29,11 @@ export function firstChapterWithoutDraft(
   return start
 }
 
-/** root run 落到这三个终态即「这一批已终止」：`paused` 仍属可续，`completed` 不进候选列表。 */
+/**
+ * root run 落到这三个终态即「这一批已终止」：`paused` 仍属可续。
+ * `completed` 不算终止：正常完成批次的 `nextChapterNumber` 为 null，不会出现在候选里；
+ * 若出现 completed 且 nextChapterNumber 非 null 的异常组合，按未终止处理（见报告 §5）。
+ */
 const TERMINATED_ROOT_RUN_STATUSES: ReadonlySet<string> = new Set(['failed', 'cancelled', 'aborted'])
 
 export interface BatchRecoveryGate {
