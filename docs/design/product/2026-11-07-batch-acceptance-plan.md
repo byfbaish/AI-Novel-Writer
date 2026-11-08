@@ -241,6 +241,8 @@ const stale = volumes.some(volume => volume.source === 'outline' && volume.outli
 
 **因此这是一条独立缺陷，不能记成「D3 复验失败」**：D3 的第二维修正（`handoffAvailabilityOf` 五态）确实写对了，但它住在一个「stale 即短路」的入口后面，等于从未被触发过。建议单独立项（暂记 **D21 · 闸门被卷结构 stale 短路**），并保持 **D3 不得转 ✅**。
 
+> **2026-11-09 取证回填**：本条已由只读取证坐实，见 [`d21-gate-shortcircuit-evidence-20261109.md`](d21-gate-shortcircuit-evidence-20261109.md)。三点口径更正：短路段在 `src/services/outline-progress-gate.ts:92-95`（不在 `shared/` 的纯判定函数里）· 交接单确实已读回、只是被短路丢弃 · 实际后果是**静默放行**（`ArchitectureConfirmDialog.tsx:509-512` 只 `console.warn`，界面零提示）。落地卡在单测 `src/services/__tests__/outline-progress-gate.test.ts:154-165`（把短路固化成「判不出就不拦」的断言）。
+
 > 时序如实说明：本副本 19:5x 刚跑过 A2 批量生成（大纲被重写），`stale` 可能正是那次造成的。但「改大纲 ⇒ 卷表 stale ⇒ 闸门失效」这条因果与时序无关 —— 它每次改大纲都会成立。要区分「本来 stale」与「A2 之后 stale」，需要在未跑生成的新副本上再取一次读数（未做）。
 
 ### 4.3 A3 / E0 / C 组
