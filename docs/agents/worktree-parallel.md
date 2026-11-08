@@ -40,7 +40,7 @@ flowchart LR
   M[主工作区 develop<br/>slot 0 · 5180/9222] -->|merge --no-ff| R[(origin)]
   A1[wt-1 · slot 1 · 豆包<br/>5181/9223] -->|commit| M
   A2[wt-2 · slot 2 · WorkBuddy<br/>5182/9224] -->|commit| M
-  A3[wt-3 · slot 3 · DeepSeek Harness<br/>5183/9225] -->|commit| M
+  A3[wt-3 · slot 3 · 空闲（DSH 已升中控）<br/>5183/9225] -.->|暂无归属| M
   M -.->|实例级测试 / dev / 原生重建<br/>只在这里串行跑| M
 ```
 
@@ -50,10 +50,10 @@ flowchart LR
 
 | slot | 目录 | 分支 | 归属（见 §3.1） | renderer 端口 | CDP 端口 | Chromium profile |
 |---|---|---|---|---|---|---|
-| 0（不设 slot） | `AI-writer/develop` | `exp/resource-ledger` | **主控平台**（人 + Lead harness；主控本身可以是 WorkBuddy 或 DSH） | 5180 | 9222 | Electron 默认 `userData` |
+| 0（不设 slot） | `AI-writer/develop` | `exp/resource-ledger` | **中控**（人 + Lead harness；2026-11-09 起中控平台 = **DSH**，此前是 WorkBuddy） | 5180 | 9222 | Electron 默认 `userData` |
 | 1 | `AI-writer/wt-1` | `agent/wt-1` | **豆包**（`doubao-channel.md`，项目名 `AI-writer-wt-1`） | 5181 | 9223 | `<repo>/.runtime/worktree/slot-1/user-data` |
 | 2 | `AI-writer/wt-2` | `agent/wt-2` | **WorkBuddy**（`workbuddy-channel.md`） | 5182 | 9224 | `<repo>/.runtime/worktree/slot-2/user-data` |
-| 3 | `AI-writer/wt-3` | `agent/wt-3` | **DeepSeek Harness**（DSH 被当外部 agent 调用时） | 5183 | 9225 | `<repo>/.runtime/worktree/slot-3/user-data` |
+| 3 | `AI-writer/wt-3` | `agent/wt-3` | **空闲**（DSH 2026-11-09 升为中控、无头通道退役；`.batch/c-report.md` 作证据暂存至复核签核） | 5183 | 9225 | `<repo>/.runtime/worktree/slot-3/user-data` |
 
 - worktree 与主目录**平级**（`C:\develop\workspace\AI-writer\`），**必须同盘** —— 跨盘时 pnpm 会从硬链接退化成复制，磁盘 ×N。
 - 并行上限 **3**（每个 worktree 一份 checkout + node_modules，实测约 1 GB/槽，3 GB 可接受）。加槽位只改 `WORKTREE_SLOTS` 一处（外加本表与 `worktree-dev.mjs` 的槽号白名单），别在别处再写一份端口。
@@ -66,7 +66,7 @@ flowchart LR
 | `develop`（slot 0） | **主控平台** | 人在这里跟 Lead 对话、合并、跑实例级测试；主控平台换成 WorkBuddy / DSH 也不动目录 |
 | `wt-1`（slot 1） | **豆包** | 豆包项目名固定为 `AI-writer-wt-1`，路径 `C:\develop\workspace\AI-writer\wt-1`（`doubao-channel.md` 派活示例） |
 | `wt-2`（slot 2） | **WorkBuddy** | WorkBuddy 通道的固定工作目录，见 `workbuddy-channel.md` |
-| `wt-3`（slot 3） | **DeepSeek Harness** | DSH 作为外部 agent 被别的平台调用时，固定在这里干活；派活方式见 [`dsh-channel.md`](./dsh-channel.md)（`dsh-task.mjs` 的 `cwd` 钉死本格，越界 exit 3） |
+| `wt-3`（slot 3） | **空闲**（原 DSH） | DSH 2026-11-09 升为中控（人直接在 `develop` 对话），无头派活通道退役 → 见 [`dsh-channel.md`](./dsh-channel.md) §11；格内只留 `.batch/c-report.md` 证据，复核签核后回收 |
 
 四条铁律：
 
@@ -154,7 +154,7 @@ git branch -d agent/wt-1 agent/wt-2 agent/wt-3
 | 「查不到端口」 | 沙箱代理劫持 `127.0.0.1` 回 502；加 `-NoProxy` |
 | 「从工具会话起的 dev 几秒后消失」 | 命令结束会连带回收子进程树；长跑 dev 请在独立终端里起 |
 | 「worktree 里 `pnpm` 报 `This: command not found`」 | 本机 sh 里的 npm shim 坏了；用 `node scripts/worktree-dev.mjs <slot>` 或 PowerShell |
-| **「worktree 全灭但还是不能动」** | 归属固定（§3.1）：wt-1 归豆包、wt-2 归 WorkBuddy、wt-3 归 DSH；空着也不许抢，主控只在 `develop` |
+| **「worktree 全灭但还是不能动」** | 归属固定（§3.1）：wt-1 归豆包、wt-2 归 WorkBuddy、wt-3 已闲置（原 DSH，2026-11-09 起 DSH 是中控）；空着也不许抢，中控只在 `develop` |
 | **「slot-N dev 起来几秒后崩，报 `EBUSY ... watch '<repo>/.runtime/worktree/slot-N/user-data/Network/Cookies'`」** | vite 的 chokidar 把仓库内 `.runtime/` 也 watch 了，而 Chromium 正锁着 Cookies。`vite.config.ts` 的 `server.watch.ignored` 已加 `'**/.runtime/**'`；新槽位若仍崩，先确认 worktree 里的 `vite.config.ts` 是**含该行**的版本（worktree 从 commit 开，老提交里没有） |
 | **「worktree 里 `check-fast` 报 doc-links 断链，主工作区却是绿的」** | `.workbuddy/` 是 gitignore 的，worktree 里**不存在**。只要有一份入库文档链接到 `.workbuddy/memory/...`（现状：`docs/design/architecture/p11-plan-validity-and-fact-registry-design.md`），新 worktree 就必然断链 ⇒ 从主工作区把那几个文件 `cp` 过去（它们不会进提交），再去掉 `--no-verify` 的诱惑。**根因是「入库文档链到未入库目录」，属于文档债，不是 worktree 债** |
 

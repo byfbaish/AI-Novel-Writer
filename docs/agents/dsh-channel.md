@@ -1,8 +1,8 @@
 # 给 DeepSeek Harness 派活（协作通道操作手册）
 
-> 状态：已实施（2026-11-08）· 实测 DSH `0.1.1-rc.2`，模型 `Kilo Nemotron 3.5 Lightning · Our Free Model`
-> 用途：把 AI-writer 仓库里的活派给本机 DeepSeek Harness（DSH）。**只有一条路：一次性 headless 任务**。
-> 关系：与 [豆包通道](doubao-channel.md)、[WorkBuddy 通道](workbuddy-channel.md)、[Copilot 通道](copilot-channel.md)、[任务看板通道](task-board-channel.md) 平级；**工作目录固定 `wt-3`**（[归属表](worktree-parallel.md#31-槽位归属固定不是谁空谁用)）。
+> **状态：已退役（2026-11-09）· DSH 升为「中控」**。人现在在主工作区 `develop` 里直接跟 DSH 对话，不再把活派给无头 DSH；`wt-3` 已清空待回收。本文只作历史记录保留（2026-11-08 实测 DSH `0.1.1-rc.2`，模型 `Kilo Nemotron 3.5 Lightning · Our Free Model`），退役原因与三条首仗教训见 §11。
+> 用途（历史）：把 AI-writer 仓库里的活派给本机 DSH。**只有一条路：一次性 headless 任务**。
+> 关系（历史）：与 [豆包通道](doubao-channel.md)、[WorkBuddy 通道](workbuddy-channel.md)、[Copilot 通道](copilot-channel.md)、[任务看板通道](task-board-channel.md) 平级；`wt-3` 曾是 DSH 的固定格（[归属表](worktree-parallel.md#31-槽位归属固定不是谁空谁用)）。
 > 社区调研：已验证 `dsh-as-mcp` 被版本闸门卡死、`ds-bot` 内置连接器机制不适用，取舍见 §9。
 
 ## 0. 一句话读法
@@ -197,3 +197,20 @@ contextWindow 1,000,000 / maxTokens 65,536 / 推理等级保持 Default（不额
 - [豆包通道](doubao-channel.md) / [WorkBuddy 通道](workbuddy-channel.md) / [Copilot 通道](copilot-channel.md) —— 另三条外部 agent 通道（范式来源）
 - [任务看板通道](task-board-channel.md) —— 认领 / 交 review / 复核；DSH 作为宿主自带原生工具，不需要接 MCP 壳
 - [worktree 并行开发](worktree-parallel.md) —— 槽位归属表、占用探测、并行红线
+
+## 11. 退役记录：DSH 升为「中控」（2026-11-09）
+
+> 背景：2026-11-09 起**中控从 WorkBuddy 换成 DSH** —— 人直接在 `develop` 里跟 DSH 对话，DSH 会话自带 `task_board_*` 原生工具与全部 MCP 通道。于是「把活派给无头 DSH」这条通道失去存在理由：中控自己不需要被当外部 agent 调用；外部工人回到 [豆包](doubao-channel.md)（`wt-1`）与 [WorkBuddy](workbuddy-channel.md)（`wt-2`）。
+
+### 三条首仗教训（写进任何无头 agent 任务书的硬约束）
+
+1. **无头 agent 的完成声明一律不可采信，必须由派单方自己跑验收**。首仗任务书要求「单测通过后回执 DONE」，回执确实写了 DONE，实际 `vitest` 输出是 `Test Files 1 failed · Tests no tests`：测试文件缺 `import { expect, it } from 'vitest'`，且 4 段相邻字符串用了 C 风格隐式拼接（TypeScript 静默拼成一段）。Lead 修 6 处后 8/8 通过。
+2. **任务书必须显式禁止 `SUMMARY` / `VERIFICATION` / `*_DONE.md` 之类自证文件**。首仗越界自建 6 个：`FINAL_SUMMARY.md`、`TASK_SUMMARY.md`、`DELIVERY_VERIFICATION.md`、`##_T1_DONE.md`、`run-test.ps1`、`test-run.mjs`；任务书里点名的文件应是**唯一**白名单。
+3. **免费模型有额度墙，且是静默失败**。首仗跑到一半出现 `dsh: SERVER: Sign up for free…`；00:37 复测「只回复两个字」同样失败 —— 额度耗尽时整条通道不可用。任务书要写「连续两次空回复/服务端错误立即 BLOCKED 退出，别重试」。
+
+### 处置
+
+- `wt-3` 已 `reset --hard d2a2a5df`（2026-11-09），工作区只剩 `.batch/c-report.md`；该报告是**证据**，按批验收稿 §5.3 硬约束保留至第三方复核签核后再删，槽位与 `node_modules` 也等签核后再回收。槽位表与 `docs/README.md` 路由行已同步为「空闲」。
+- 判定器 `src/shared/chapter-reuse-coverage.ts` + 单测已由 Lead 取回主区、随本批提交入库（**零接线**，阈值待标定）。
+- 脚本 `scripts/dsh/dsh-task.mjs`、`scripts/dsh/model.patch.yml`、`scripts/dsh/task-*.md` **保留**，仅作历史用途（`wt-3` 将来若重新启用可直接复用）。
+- 交接稿 `docs/handoffs/2026-11-09-dsh-first-run-and-batch-resume-handoff.md` §六「待裁定① DSH 模型怎么办」随退役消解，不再需要改 `model.patch.yml`。
