@@ -158,6 +158,8 @@
 
 **其中一条改变修复方向**：续写轮模板第 1 条原文早已写着「第一段必须从上一章的最终状态之后推进本章新事件；**不得引用、摘要、回放或重演上一章结尾中的句子、动作和意象**」（`builtin-prompt-templates.ts:1303`）——比缺陷清单 D12 里记的还硬。9B 照样重演、DeepSeek 则遵守 ⇒ **D12 不能靠「再加一条禁令」修**，必须动注入形态或动失败处理。
 
+**2026-11-09 补记（整章复用判定器，零接线）**：`src/shared/chapter-reuse-coverage.ts`（257 行）+ 单测（8 例）已入库，给「本次正文 + 上一章全文」报 `ratio` / `coveredUnits` / `longestRun` / `severity`；连续重合口径直接复用 `blueprint-verbatim-overlap.ts` 的 `BLUEPRINT_COPY_MIN_RUN_CJK/_ENT`（中文 16 字、英文 40 字母），不另立一套。补的是本条的剩余真洞：现存的 `hasSubstantialPreviousChapterReuse` 只比上一章结尾 1,000 字与新章头 1,200 字，拦不住「整章重写、只换开头」。阈值 `REUSE_RATIO_ADVISORY = 0.15` / `REUSE_RATIO_BLOCKING = 0.35` 是暂定值，**待存量样本标定**；**未接任何调用点**，接线方式待裁定（建议先 advisory 只报不改）。
+
 ---
 
 ## ★ 2026-10-25 路线裁决（Q1–Q4 已定；**只改排序，不改任何项的状态**）

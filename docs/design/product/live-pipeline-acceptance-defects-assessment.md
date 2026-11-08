@@ -852,6 +852,12 @@ A 不是边角情况：D14 已裁定「交接单**仍然手动登记**」（自�
 
 处置：第 2–9 章改用 `deepseek-均衡`、清空指导，8 章连续一次通过（首次触发即通过，无需重试）。**代码未改**。
 
+#### 2026-11-09 补记：整章复用判定器已入库（零接线）
+
+`src/shared/chapter-reuse-coverage.ts`（257 行）+ `src/shared/__tests__/chapter-reuse-coverage.test.ts`（8 例，全过）已入库：输入「本次正文 + 上一章全文」，输出 `ratio` / `coveredUnits` / `runs` / `longestRun` / `severity`。补的是本条的**剩余真洞** —— 现存守卫 `hasSubstantialPreviousChapterReuse` 只比对上一章结尾 1,000 字与新章开头 1,200 字，拦得住「开头照抄」，拦不住「整章重写上一章、只换个开头」（第二轮实测首章即 8-gram 重合 98.2%）。
+
+阈值 `REUSE_RATIO_ADVISORY = 0.15` / `REUSE_RATIO_BLOCKING = 0.35` 为暂定值，**待用存量样本标定**；**未接任何调用点**，接线方式待裁定（建议先 advisory 只报不改）。派单与首仗记录见 `docs/handoffs/2026-11-09-dsh-first-run-and-batch-resume-handoff.md`。
+
 ### D14（高）卷结构三步全手动，无自动触发、无提醒 → `l3-handoff-missing` 是必然结果
 
 > 状态：已实施（2026-11-02 · A+B 均已实机复验 · `00bac89e`）
