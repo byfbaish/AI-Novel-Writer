@@ -16,7 +16,7 @@
  *   node scripts/doubao/doubao.mjs threads               # 列出侧栏话题（标题 + 位置）
  *   node scripts/doubao/doubao.mjs thread "标题片段"      # 切到那个话题（真实鼠标点击）
  *   node scripts/doubao/doubao.mjs projects              # 列出任务模式可选项目
- *   node scripts/doubao/doubao.mjs task "任务" [--project 名称] [--timeout 600] [--file 路径] [--no-charter]
+ *   node scripts/doubao/doubao.mjs task "任务" [--project 名称] [--timeout 600] [--file 路径] [--no-charter] [--no-wait]
  *
  * `--file` reads the task body from a file (long queue text, no shell escaping).
  * `--charter` is ON by default and prepends the "read AGENTS.md first" preamble,
@@ -25,6 +25,9 @@
  *
  * `task` uses 新工作任务 (agent mode with local file/terminal rights), which is
  * what you want for real work - plain 新对话 has no local access.
+ *
+ * `--no-wait` sends the task and returns immediately (fire-and-forget): use it when
+ * the 豆包 agent is busy with an earlier task and you only need the message queued.
  *
  * Exit codes: 0 ok / 1 failure / 2 not connected
  */
@@ -547,7 +550,7 @@ const main = async () => {
       if (!text) throw new Error(`任务文件是空的: ${fromFile}`)
     }
     if (!text) {
-      throw new Error('用法: node scripts/doubao/doubao.mjs task "任务描述" | --file 路径 [--project 项目名] [--timeout 600] [--no-charter]')
+      throw new Error('用法: node scripts/doubao/doubao.mjs task "任务描述" | --file 路径 [--project 项目名] [--timeout 600] [--no-charter] [--no-wait]')
     }
     // Preamble is four lines now, so it is always worth injecting: task books
     // no longer carry a 必读 section of their own (2026-11-03). Opt out with
@@ -578,6 +581,10 @@ const main = async () => {
         textLength: body.length,
         preview: text.slice(0, 120).replace(/\s+/g, ' '),
       }, null, 2))
+      if (flag('no-wait')) {
+        console.log('\n[ok] 已发送（--no-wait）：不等待回复，任务已排进豆包的队列。')
+        return
+      }
       const result = await waitForReply(client, timeoutMs)
       const markers = extractMarkers(await client.evaluate(LATEST_OUTPUT_JS))
       console.log('\n--- reply ---')
