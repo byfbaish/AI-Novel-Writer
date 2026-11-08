@@ -53,7 +53,7 @@ flowchart LR
 | 0（不设 slot） | `AI-writer/develop` | `exp/resource-ledger` | **中控**（人 + Lead harness；2026-11-09 起中控平台 = **DSH**，此前是 WorkBuddy） | 5180 | 9222 | Electron 默认 `userData` |
 | 1 | `AI-writer/wt-1` | `agent/wt-1` | **豆包**（`doubao-channel.md`，项目名 `AI-writer-wt-1`） | 5181 | 9223 | `<repo>/.runtime/worktree/slot-1/user-data` |
 | 2 | `AI-writer/wt-2` | `agent/wt-2` | **WorkBuddy**（`workbuddy-channel.md`） | 5182 | 9224 | `<repo>/.runtime/worktree/slot-2/user-data` |
-| 3 | `AI-writer/wt-3` | `agent/wt-3` | **空闲**（DSH 2026-11-09 升为中控、无头通道退役；`.batch/c-report.md` 作证据暂存至复核签核） | 5183 | 9225 | `<repo>/.runtime/worktree/slot-3/user-data` |
+| 3 | `AI-writer/wt-3` | `agent/wt-3` | **空闲**（DSH 2026-11-09 升为中控、无头通道退役；`.batch/c-report.md` 作证据暂存至复核签核；node_modules 已于 2026-11-09 删除省 863 MB，需要时 `pnpm install` 重建） | 5183 | 9225 | `<repo>/.runtime/worktree/slot-3/user-data` |
 
 - worktree 与主目录**平级**（`C:\develop\workspace\AI-writer\`），**必须同盘** —— 跨盘时 pnpm 会从硬链接退化成复制，磁盘 ×N。
 - 并行上限 **3**（每个 worktree 一份 checkout + node_modules，实测约 1 GB/槽，3 GB 可接受）。加槽位只改 `WORKTREE_SLOTS` 一处（外加本表与 `worktree-dev.mjs` 的槽号白名单），别在别处再写一份端口。
@@ -66,7 +66,7 @@ flowchart LR
 | `develop`（slot 0） | **主控平台** | 人在这里跟 Lead 对话、合并、跑实例级测试；主控平台换成 WorkBuddy / DSH 也不动目录 |
 | `wt-1`（slot 1） | **豆包** | 豆包项目名固定为 `AI-writer-wt-1`，路径 `C:\develop\workspace\AI-writer\wt-1`（`doubao-channel.md` 派活示例） |
 | `wt-2`（slot 2） | **WorkBuddy** | WorkBuddy 通道的固定工作目录，见 `workbuddy-channel.md` |
-| `wt-3`（slot 3） | **空闲**（原 DSH） | DSH 2026-11-09 升为中控（人直接在 `develop` 对话），无头派活通道退役 → 见 [`dsh-channel.md`](./dsh-channel.md) §11；格内只留 `.batch/c-report.md` 证据，复核签核后回收 |
+| `wt-3`（slot 3） | **空闲**（原 DSH） | DSH 2026-11-09 升为中控（人直接在 `develop` 对话），无头派活通道退役 → 见 [`dsh-channel.md`](./dsh-channel.md) §11；格内只留 `.batch/c-report.md` 证据，复核签核后回收；node_modules 已删（省 863 MB），需要时 `pnpm install` 重建 |
 
 四条铁律：
 

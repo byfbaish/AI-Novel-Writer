@@ -302,3 +302,13 @@ export type VolumeStructureState = 'ready' | 'stale' | 'empty' | 'unparsed'
 14. `git -C wt-1 status --short` ⇒ 仅 `?? .batch/`。
 
 **未做的事**：未跑任何测试、未起应用、未改任何源码或既有文档、未做 git 写操作。
+
+## ⑦ 作者质疑（2026-11-09 02:47）与修法 C：闸门不依赖派生缓存
+
+**作者原话**：「大纲改过以后，为什么卷结构要重建？卷在大纲的上游，什么时候下游还能影响上游了？」
+
+**回答（两词一物两义）**：作者定的「卷」是上游 —— 蓝图里的卷数/总章数，喂给大纲生成，是权威。库里 `volumes` 表**不是**这份设定，而是把架构文本（`project_core.plot_structure_plan` + `synopsis` + `totalChapters`）**解析成的结构化投影**：`electron/services/volume-structure-sync.ts` 头注写明「输入是作者已有的架构文本，产物是同一份文本的结构化投影，不新增任何信息」，纯函数是 `src/shared/volume-structure.ts:197` 的 `materializeVolumeStructure`。架构/大纲文本一改，解析出的卷/单元/章号边界**可能变**，所以这张缓存会过期（`volume-structure-repository.ts:149` `outlineHash = sha256(projection.signature)`、`:151` 不一致即 `stale`）。**不存在下游改上游**；重建只是把同一份上游文本重新投影，不是让缓存去影响上游。
+
+**真缺陷因此更清楚**：过期时闸门不是「重建后再判」，而是 **`src/services/outline-progress-gate.ts:92-95` 直接不判、`ArchitectureConfirmDialog.tsx:509-512` 静默放行**，作者在界面上看不到任何提示。既然卷的权威在上游，修法方向应是**让闸门不依赖这张缓存的新鲜度**，而不是要求作者先点重建。
+
+**修法 C（候选，待裁定）**：闸门旁路 `db:volumes-list` 的 `state`，用同一个纯函数 `materializeVolumeStructure` 按核心数据（`project_core` 的 `plot_structure_plan` / `synopsis` / `totalChapters`）**现算**卷边界与「上一卷区间」；`volumes` 表只提供 actual_last / 进度这类无法从文本投影得到的运行时数据。代价：闸门要多读一次 `project-core`，并让取区间逻辑下沉到 `src/shared/` 两处共用。仍需处理 `outline-progress-gate.test.ts:154-165` 那条把「短路」写成断言的既有单测。A / B / C 三案待作者拍板。
