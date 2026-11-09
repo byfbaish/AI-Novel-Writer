@@ -19,6 +19,7 @@ import {
   outlineWrittenRange,
   promptRenderSignature,
   synopsisFingerprintDrift,
+  synopsisFingerprintVerdict,
   synopsisInputFingerprintParts,
   synopsisInputsFingerprint,
 } from '../architecture.command'
@@ -3105,5 +3106,73 @@ describe('promptRenderSignature（D20b 模板段收窄）', () => {
     )
     expect(renamed.template).toBe(base.template)
     expect(renamed.combined).not.toBe(base.combined)
+  })
+})
+
+/**
+ * W4（2026-11-09）验收锚点：检查点失配时，作者要能分清「该改模板」还是「该改源事实」。
+ *
+ * 既有集成用例各自断过单侧关键词，但没有一处把三类归因报文并列核对互斥性，也没并排
+ * 核过 `site` 两处（续写 / 续批）的文案差异。这里直接调判定出口（仅为此把它导出），
+ * 钉住完整 `{ blocked, message }`；判定与文案逻辑一字未动，生产调用点不变。
+ */
+describe('synopsisFingerprintVerdict · 失配归因报文互斥对照', () => {
+  const zh = (zhCNText: string, _enUSText: string): string => zhCNText
+  const verdictFor = (
+    drift: Parameters<typeof synopsisFingerprintVerdict>[0],
+    site: 'resume' | 'batch' = 'batch',
+  ) => synopsisFingerprintVerdict(drift, 20, site, zh)
+
+  it('模板变 / 源事实变 / 两者都变 ⇒ 三条报文两两不等，各自指向正确的修改对象', () => {
+    const template = verdictFor('template')
+    const source = verdictFor('source')
+    const both = verdictFor('both')
+
+    expect(new Set([template.message, source.message, both.message]).size).toBe(3)
+    expect(template.message).toContain('大纲生成模板自上次生成后已变化')
+    expect(source.message).toContain('项目源事实自上次生成后已变化')
+    expect(both.message).toContain('源事实与生成模板均有变化')
+  })
+
+  it('模板变：放行，只说模板 + 已写章数与格式并存风险，不说「源事实已变化」', () => {
+    const { blocked, message } = verdictFor('template')
+    expect(blocked).toBe(false)
+    expect(message).toContain('已写的 20 章大纲仍然有效')
+    expect(message).toContain('不阻断')
+    expect(message).not.toContain('源事实已变化')
+    expect(message).not.toContain('均有变化')
+  })
+
+  it('源事实变：阻断，只说源事实，不说模板', () => {
+    const { blocked, message } = verdictFor('source')
+    expect(blocked).toBe(true)
+    expect(message).toContain('既有大纲不能与新的源事实拼接')
+    expect(message).not.toContain('大纲生成模板自上次生成后已变化')
+    expect(message).not.toContain('均有变化')
+  })
+
+  it('两者都变：阻断，且源事实与模板两侧都点名', () => {
+    const { blocked, message } = verdictFor('both')
+    expect(blocked).toBe(true)
+    expect(message).toContain('源事实与生成模板均有变化')
+    expect(message).toContain('以及大纲生成模板，都与上次不同')
+  })
+
+  it('同一个「源事实变」在续写 / 续批两处文案各自成立且不同', () => {
+    const resume = verdictFor('source', 'resume')
+    const batch = verdictFor('source', 'batch')
+    expect(resume.blocked).toBe(true)
+    expect(batch.blocked).toBe(true)
+    expect(resume.message).toContain('自上次中断后已变化')
+    expect(batch.message).toContain('既有大纲不能与新的源事实拼接')
+    expect(resume.message).not.toBe(batch.message)
+  })
+
+  it('旧检查点 / 无漂移：放行，且不说「源事实已变化」', () => {
+    const legacy = verdictFor('legacy')
+    expect(legacy.blocked).toBe(false)
+    expect(legacy.message).toContain('不阻断')
+    expect(legacy.message).not.toContain('源事实已变化')
+    expect(verdictFor('none')).toEqual({ blocked: false, message: '' })
   })
 })

@@ -1394,7 +1394,7 @@ export function synopsisFingerprintDrift(
  * `site` 只影响 `source` 那一支：两处判定原本的文案各自都成立（续写说「自上次中断后」，
  * 续批说「既有大纲不能拼接」），逐字保留，不为了合并而改掉读者已经认得的话。
  */
-function synopsisFingerprintVerdict(
+export function synopsisFingerprintVerdict(
   drift: SynopsisFingerprintDrift,
   coveredTo: number,
   site: 'resume' | 'batch',
