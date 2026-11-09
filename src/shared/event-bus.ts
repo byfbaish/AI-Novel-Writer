@@ -8,7 +8,8 @@
 import type { ProjectSessionContext } from './ipc-channels'
 // W5（2026-11-09）：原 'PROJECT_DATA_CLEARED' 事件生产订阅方为零，已随发射点一并移除。
 // 清空后的渲染侧重置由 clearProjectData 直接调用完成；三档回执按既有 AppLogger.info
-// 范式 emit 到 SYSTEM_NOTICE（注意：该通道目前同样零生产订阅，属本轮取证新发现的既有遗留）。
+// 范式 emit 到 SYSTEM_NOTICE。该通道自 2026-11-10 起由 services/system-notice-toast.ts
+// 在 App 顶层订阅并转成应用内 toast（D10 清空回执落地）。
 
 // ===== 事件类型定义 =====
 

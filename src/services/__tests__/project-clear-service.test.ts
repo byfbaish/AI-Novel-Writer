@@ -142,7 +142,8 @@ describe('clearProjectData', () => {
       await clearProjectData({ generatedText: true }, projectSession)
 
       // W5：回执仍按既有 AppLogger.info 范式 emit 到 SYSTEM_NOTICE（不新增交互范式）。
-      // 注意该通道目前同样零生产订阅 —— 这里断言的是「发射未丢」，不是「已呈现给作者」。
+      // 这里断言的是「发射未丢」；「已呈现给作者」由 services/system-notice-toast.test.ts
+      // 那组用例覆盖（App 顶层订阅把该通道转成应用内 toast，2026-11-10）。
       // 原 PROJECT_DATA_CLEARED 广播订阅方为零、payload 又无项目身份，发射点与类型已移除。
       expect(notices).toHaveBeenCalledOnce()
       const message: string = notices.mock.calls[0][0].message

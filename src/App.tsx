@@ -26,6 +26,7 @@ import SettingsModal from './components/settings/SettingsModal'
 import { ANIME_SKIN_URL } from './components/settings/AppearanceSettings'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { actionToast } from './components/ui/ActionToast'
+import { initSystemNoticeToast } from './services/system-notice-toast'
 import { UpdateNotifier } from './components/updates/UpdateNotifier'
 import { globalEventBus } from './shared/event-bus'
 import {
@@ -167,6 +168,10 @@ export default function App() {
     import('./services/system-notify/notify-hub').then(({ initSystemNotifyHub }) => {
       initSystemNotifyHub()
     }).catch(e => console.warn('[SystemNotify] 初始化失败:', e))
+    // D10：SYSTEM_NOTICE（清空回执等）→ 应用内 toast。必须挂在 App 级：
+    // 清空入口有侧栏对话框与编辑器恢复两处，而侧栏是视图切换式挂载，页面级订阅会随
+    // 视图卸载失效（Sidebar.tsx 的 `sidebarView === 'project'` 分支）。
+    const unsubSystemNoticeToast = initSystemNoticeToast()
     // 实机取证探针（A2-6）：**仅 dev**。闸门函数没挂 window，验收要在 CDP 里直调看返回值；
     // 生产包不装，避免留调试入口。
     if (import.meta.env.DEV) {
@@ -471,6 +476,7 @@ export default function App() {
       unsubOutlineCharacterNudge()
       unsubUnitChainStep()
       unsubUnitChainFailure()
+      unsubSystemNoticeToast()
     }
   }, [initLocale, initTheme, initLLM, loadRecentProjects])
 

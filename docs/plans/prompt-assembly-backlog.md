@@ -130,7 +130,7 @@
 | D7 | 待裁定（2026-11-03 取证：不符不成立、偏保守成立） | `:70` | 「未开工」仍成立，方向待裁 |
 | D8 | 已实施（2026-11-06 · 实机复验通过） | `:71` | 单元连选只丢最后残缺单元未单独实机 |
 | D9 | 待裁定（2026-11-07 本批打回、结转下一批结构设计；**2026-11-09 机制已合入主线 `e8e22971`，零接线**） | `:73` | **裁定（⑤）：维持现值索引现有写法**（换「已搁置」会把「主链路已合入」读成「不做了」）；已由 `keep/d9-d16` cherry-pick 入主线，仍是「机制就绪、没有调用点」，**不等于验收兑现** |
-| D10 | 已实施（2026-11-07 · 仅单测）；**2026-11-09 夜班 W5：唯一 emit 与事件类型已删（契约缩减，**作者 2026-11-09 22:0x 已追认**，3 个文件已合入主区）** | `:74` | **裁定（⑥）：可带「未闭环」备注记已实施，但不得 ✅、不得销账**；W5 在修复与「删掉空钩子」之间选了后者：`project-clear-service.ts:160` emit + `event-bus.ts` 的 `ProjectClearReceipt` 类型/union/payload 一并删（回退 3 处即可复原），用户可见行为不变；**D10 残留卡片现象未修**，且 `SYSTEM_NOTICE` 同样零生产订阅（W5 披露、复核复验） |
+| D10 | 已实施（2026-11-07 · 仅单测）；**2026-11-09 夜班 W5：唯一 emit 与事件类型已删（契约缩减，**作者 2026-11-09 22:0x 已追认**，3 个文件已合入主区）** | `:74` | **裁定（⑥）：可带「未闭环」备注记已实施，但不得 ✅、不得销账**；W5 在修复与「删掉空钩子」之间选了后者：`project-clear-service.ts:160` emit + `event-bus.ts` 的 `ProjectClearReceipt` 类型/union/payload 一并删（回退 3 处即可复原），用户可见行为不变；**D10 残留卡片现象未修**，且 `SYSTEM_NOTICE` 同样零生产订阅（W5 披露、复核复验）—— 后者已于 **2026-11-10 接上应用内 toast**（`services/system-notice-toast.ts`，App 级订阅），**本行仍不得 ✅**（残留卡片未修） |
 | D11 | 已实施（2026-11-07 · 仅单测） | `:75` | 定稿态取法（`chain.status` 投影）待裁定。**2026-11-09 夜班 W2 取证 BLOCKED**：唯一「没有卡片…将不注入」文案在 `generate-draft.command.ts:838-848` 且只落 `callbacks.log`，与 prompt 注入点 `:1115 characterProfiles` 无通路 ⇒ **裁定（③）：按「现状已达标」结项，不改码**；「定稿态取法」单列待裁备注。现象来源无 trace 可指认，不为不存在的注入点改生成链路 |
 | D12 | 已结项（2026-11-08 · 判定为 9B 模型弱点，非 App 缺陷）；**2026-11-09 判定器入库 + 阈值裁定，仍零接线** | `:60` | **裁定（①）：记已结项，不改 `:764`** —— 该行已被 `:748`「本节以下均为历史沿革」罩住，机械套 `:86` 会把已结的案重开。2026-11-09：`chapter-reuse-coverage.ts` 入库（8 例）、存量 11 章标定完成、作者裁定 advisory `0.15` / blocking `0.45`；**未接任何调用点**，同剧情规则另立判据（见缺陷稿 §D12 补记） |
 | D13 | 已实施（2026-11-06 · 未实机） | `:62` | — |
@@ -177,11 +177,11 @@
 
 | 项 | 内容 |
 |---|---|
-| 现状 | `src/shared/event-bus.ts:141/142/148` 与 `project-service.ts:42` 按 info / warn / error 三档把清空回执发到 `SYSTEM_NOTICE`，但 `src/` 下**没有任何生产订阅方**（develop 主区仅 1 处测试探针）；`system-notify/notify-hub.ts:171-173` 只订 `WORKFLOW_COMPLETE` / `FINALIZE_COMPLETE` / `WORKFLOW_ERROR` ⇒ 三档回执**从未到达作者眼前** |
+| 现状 | ~~`src/shared/event-bus.ts:141/142/148` 与 `project-service.ts:42` 按 info / warn / error 三档把清空回执发到 `SYSTEM_NOTICE`，但 `src/` 下**没有任何生产订阅方**（develop 主区仅 1 处测试探针）；`system-notify/notify-hub.ts:171-173` 只订 `WORKFLOW_COMPLETE` / `FINALIZE_COMPLETE` / `WORKFLOW_ERROR` ⇒ 三档回执**从未到达作者眼前**~~ ⇒ **2026-11-10 已接**：新增 `src/services/system-notice-toast.ts`，在 `App.tsx` 顶层 effect 订阅 `SYSTEM_NOTICE` 并转成右下角应用内 toast（四档全映射，info 停留 6s）；清空回执因此一条 info toast 落在作者眼前 |
 | 裁定范围 | **单独立项，先只做「清空回执」一档**，复用现有 toast 范式；不顺手把所有 `AppLogger` 日志推到界面（会变成噪音），不换通道改所有 emit 点 |
 | 已知边界 | `SYSTEM_NOTICE` 不带 `projectSession`，多项目并行时可能串项目 ⇒ 本档**不按项目隔离**，写成已知限制，不新造隔离机制 |
-| toast 方案 | 沿用项目已有 toast（`ArchitectureConfirmDialog.tsx:559` 已用、import 现成）：一次清空成功后一条、不聚合不重复；**订阅方落主进程还是 renderer、跨进程通道怎么走**属实施设计，另案定 |
-| 验收 | 需起应用点一次「清空项目数据」看提示 ⇒ **`pnpm dev` 红线未解除，实机验收另开一轮**；本轮只立项与定方案 |
+| toast 方案 | 沿用项目已有 toast（`ArchitectureConfirmDialog.tsx:559` 已用、import 现成）：一次清空成功后一条、不聚合不重复。**2026-11-10 定**：订阅方在 renderer —— `globalEventBus` 本就是渲染进程内 `EventTarget` 单例，emit 点全在渲染层，**不需要跨进程通道**；桥接文件 `services/system-notice-toast.ts` 由 `App.tsx` 顶层 effect 初始化（不挂页面组件：清空有两处入口，侧栏是视图切换式挂载） |
+| 验收 | 2026-11-10 已实机（CDP 9222）：点「清除所选」→ 右下角一条 info toast、6s 自动消失、三段计数与 DB 前后差一致；见缺陷稿 D10 注 |
 | 关联 | D10「回执已实施」只是机制级兑现、残留卡片现象未修（见现值索引 `:133`）；**本项不销 D10 的账** |
 
 ### 落地记录
