@@ -376,7 +376,7 @@ describe('卷末交接登记面板', () => {
     await vi.waitFor(() => expect(channels()).toContain('db:volumes-rebuild'))
   })
 
-  it('标记本卷已完成：调通道后区间变「实际」', async () => {
+  it('标记本卷已完成：区间仍是计划边界，实际末章只作「已写」附注', async () => {
     stored = [definition()]
     await renderPanel()
     await click(button('编辑', summaryRows()[0]!))
@@ -384,10 +384,28 @@ describe('卷末交接登记面板', () => {
     await vi.waitFor(() => expect(channels()).toContain('db:volumes-mark-done'))
     // 只 patch 本地 volumes，不重载交接单（作者未保存的正文不丢）。
     expect(channels().filter(channel => channel === 'db:volume-handoffs-list')).toHaveLength(1)
+    // 区间唯一实现 `volumeEffectiveRanges` 的口径：有 plannedLast 就显示计划边界，
+    // actualLast（进度）只作附注 ——「边界不是进度」（D19）。只有老项目没有计划值时才退回
+    // 实际末章兜底，那条路径由下一条用例钉住。别把这里改回「第1–18章 · 实际」：那会让
+    // 卷末章与触发条件各说一套，表现是「某一卷的交接单永远不生成」。
     await vi.waitFor(() => expect(
       summaryRows()[0]!.querySelector('[data-field="range-cell"]')?.textContent,
-    ).toBe('第1–18章 · 实际'))
+    ).toBe('第1–20章 · 精确（已写 18）'))
     expect(container.textContent).toContain('实际到第18章')
+  })
+
+  it('老项目没有计划边界：退回实际末章兜底，标「实际」', async () => {
+    // M19 之前建的项目只有 actualLast，没有 plannedLast / plannedSource。
+    volumes = [volumeDef({
+      plannedFirst: 1,
+      plannedLast: null,
+      plannedSource: 'even',
+      actualLast: 18,
+      actualSource: 'finalized',
+    })]
+    stored = [definition({ lastChapter: 18, boundaryBasis: 'actual' })]
+    await renderPanel()
+    expect(summaryRows()[0]!.querySelector('[data-field="range-cell"]')?.textContent).toBe('第1–18章 · 实际')
   })
 
   it('标记失败：行内报错，已填正文不清空', async () => {
