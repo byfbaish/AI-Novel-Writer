@@ -513,7 +513,7 @@ HEAD 仍 `c6268e33`，**无新提交、未推送**；`git mv` 的重命名已进
 |---|---|
 | 本批提交 | **30 files / 418+ / 28−**，路径全部落在 `docs/`；提交信息前缀 `docs(handoffs)`，父节点 `c6268e33`（**不写死本节点 SHA**，理由见 §13.2） |
 | 提交时闸门 | pre-commit hook 自动跑 `check-fast.mjs`：typecheck ✓ 18.3s · 链接 **1356 条 / 断链 0** · 放置 **410 份 md / 新增违规 0** |
-| 提交后 | 工作区 `git status --porcelain` **0 行**；`exp/resource-ledger` **ahead 50 / 未推送**；根目录 10 月稿 **7** / archive 10 月稿 **22** / archive md **26** |
+| 提交后 | 工作区 `git status --porcelain` **0 行**；`exp/resource-ledger` **未推送**（`git status -sb` 的 ahead 数会随后续提交递增，**不写死数值**，理由同 §13.2）；根目录 10 月稿 **7** / archive 10 月稿 **22** / archive md **26** |
 | 未入库 / 未动 | `.workbuddy/memory/`（已被 `.gitignore` 忽略）· `wt-2` 的 8 个 `M` · `scripts/dsh/model.patch.yml` · 禁动区 `donor-delta.json` / `inventory.json` |
 
 > **一句读法**：§13.1 是那一处路径怎么修、§13.2 是这批提交了什么、§13.3 是前面「未提交」为何仍留在纸上、本节是提交完的实测读数；四节合起来才是本批的完整审计链。
