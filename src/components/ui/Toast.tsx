@@ -33,6 +33,14 @@ interface ToastItem {
 
 let _toastCounter = 0
 let _addToast: ((item: ToastItem) => void) | null = null
+/**
+ * 投递重试上限（每帧一次）。容器由 `ensureContainer()` 里的 `createRoot().render()` 建，
+ * React 要等到 commit + effect 才把 `_addToast` 挂上，而 `show()` 只等一个 rAF ——
+ * **会话内第一次弹 toast 时 rAF 常早于 React commit**，那一拍 `_addToast` 还是 null。
+ * 2026-11-10 实机复现：清空回执正是作者当次会话的第一条 toast，直接被静默丢掉。
+ * 所以拿不到投递函数就下一帧再试（上限约 2s），而不是一次性 `?.()` 放过。
+ */
+const DELIVER_RETRY_LIMIT = 120
 
 /** 挂载 Toast 容器到 DOM */
 function ensureContainer() {
@@ -159,8 +167,20 @@ function ToastItemView({ item, onRemove }: { item: ToastItem; onRemove: (id: num
 function show(message: string, type: ToastType = 'info', duration = 4000) {
   ensureContainer()
   const item: ToastItem = { id: ++_toastCounter, type, message, duration }
-  // 等待下一帧确保容器已挂载
-  requestAnimationFrame(() => _addToast?.(item))
+  // 等待下一帧确保容器已挂载；容器还没 commit 就继续等（见 DELIVER_RETRY_LIMIT 注释）
+  let attempts = 0
+  const deliver = () => {
+    if (_addToast) {
+      _addToast(item)
+      return
+    }
+    if (++attempts > DELIVER_RETRY_LIMIT) {
+      console.warn('[Toast] 容器未就绪，丢弃一条提示:', item.message)
+      return
+    }
+    setTimeout(deliver, 16)
+  }
+  requestAnimationFrame(deliver)
 }
 
 export const toast = {
