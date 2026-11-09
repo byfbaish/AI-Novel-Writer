@@ -2,8 +2,8 @@
 
 【只出方案 · 不许改产品代码 · 不许 git 写 · 不许跑实机】
 
-工作区：`C:\develop\workspace\AI-writer\develop`（develop 主区；派活前由 Lead 把豆包「项目」指到这里）。
-基线核对（只读）：分支 `exp/resource-ledger`，HEAD `6d52ace9`。开工先跑 `git -C <repo> rev-parse --short HEAD` 与 `git -C <repo> status -sb`，把输出贴进报告，不要写任何文件。
+工作区：`C:\develop\workspace\AI-writer\wt-1`（豆包「项目」已指向 wt-1；该 worktree 已 fast-forward 到与主区同一 HEAD，代码一致）。
+基线核对（只读）：分支 `agent/wt-1`，HEAD `5d2baca9`（= 主区 `exp/resource-ledger` 当前 HEAD）。开工先跑 `git -C <repo> rev-parse --short HEAD` 与 `git -C <repo> status -sb`，把输出贴进报告，不要写任何文件。
 
 ## 背景一句话
 

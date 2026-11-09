@@ -76,7 +76,7 @@
 | D16 | 低 | ⬜ **本批打回、不得销账**（2026-11-07 · 主链路不写快照、重启回退配置；作者裁丙 ⇒ 结转下一批结构设计） | 模型指示器与实际调用不一致：日志确认调 `deepseek-v4.1-flash-free`，状态栏显示 `deepseek-均衡` | 主进程 stderr `model:` 字段 vs 界面底部状态栏 |
 | D17 | 中 | ✅ **已结项（2026-11-05）** | 生成路径提交大纲**不记覆盖章区间**（`changedChapters` 恒为空集）⇒ 判定退化为「整本大纲都改了」⇒ 每追加一批大纲就把此前所有已定稿章/蓝图/交接单拖进失效清单。**预演与实测一致，机制本身是成功的（作者 2026-11-02 认定）**，缺的是输入的章集。**已实机复验**：rev21 记 `[18,19]`、同步页 7 项 → 3 项、13 张蓝图全 valid；复验时撞出的另一个问题已单列为 D20 | `electron/repositories/project-core-repository.ts`（`commitSynopsis` 的 `changedChapters` 分支）vs `src/shared/upstream-revisions.ts:651`（空集 ⇒ `null` ⇒ 按全改算）；方案稿 [`architecture/d17-outline-change-range-design.md`](../architecture/d17-outline-change-range-design.md) §7.4 · §10 |
 | D18 | 中 | 🟡 已实施（2026-11-04 · 合同文案进模板 zh/en 与两级副本、解析器、六个校验纯函数已接线：C1/C1b/C2/C4 进单元批、C3/C5 进正文落盘与定稿，只报不拦；**C1 重跑权限未开放**，作者 2026-11-05 裁定继续只报，见设计稿 §11.15） | 蓝图结尾钩子可**无校验地**偏离大纲「收尾：」行：模板两条条款互斥（「必须落在收尾行」vs「不得是事件」）+ 钩子可自造设定 + 正文未兑现无告警。第 6 章 `suspense_hook` 写成结论句，正文里 `寿元` / `因果纹` 各 **0** 次 | `builtin-prompt-templates.ts:1165`（条款互斥）、`src/shared/blueprint-semantic-contract.ts`（「威胁/后果」给它授权）、`generate-draft.command.ts`（`withSuspenseHook` 注入）；**排除审查/改写**：`generation_artifacts` rowid 117（run `fd6f4edc`）与 `blueprint_commit_operations` `directory-f348fe27-…-1-6` 逐字一致 |
-| D21 | 中 | 🟡 已实施（2026-11-09 · 修法 C 落地，单测同批改；**实机未复验**） | 卷结构 `stale` 时 `src/services/outline-progress-gate.ts:92-95` 整体短路 ⇒ `ArchitectureConfirmDialog.tsx:509-512` 静默放行、界面零提示；`acknowledged` 判在 `handoff-stale` 之前 ⇒ 一次确认永久压住过期提醒 | [`d21-gate-shortcircuit-evidence-20261109.md`](./d21-gate-shortcircuit-evidence-20261109.md) §①/§⑦ · [`d21-fix-c-implementation-plan-20261109.md`](./d21-fix-c-implementation-plan-20261109.md) |
+| D21 | 中 | ✅ **已实施并实机复验通过**（2026-11-09 修法 C 落地、单测同批；2026-11-10 01:4x 在项目副本上验完 `stale` 下闸门照判 + 两种边界来源的附注，见本文 D21 段「实机复验」） | 卷结构 `stale` 时 `src/services/outline-progress-gate.ts:92-95` 整体短路 ⇒ `ArchitectureConfirmDialog.tsx:509-512` 静默放行、界面零提示；`acknowledged` 判在 `handoff-stale` 之前 ⇒ 一次确认永久压住过期提醒 | [`d21-gate-shortcircuit-evidence-20261109.md`](./d21-gate-shortcircuit-evidence-20261109.md) §①/§⑦ · [`d21-fix-c-implementation-plan-20261109.md`](./d21-fix-c-implementation-plan-20261109.md) |
 
 共 **20 条**（原写 19，2026-11-06 复核时按 §2 表格行数订正）：阻塞 2（D1 / D12）· 高 5（D2 / D13 / D14 / D19 / D20）· 中 9（D3 / D4 / D5 / D6 / D7 / D8 / D15 / D17 / D18）· 低 4（D9 / D10 / D11 / D16），合计 20，合计对得上。**2026-11-06 23:4x 按作者裁定把 D3 由「高」降为「中」**（原为 高 6 / 中 8）。**两条阻塞都还没有真正验收** —— D1 代码已改但没跑过真实多章批次；D12 已修（`ba3d4bc5`，短细纲砍全文 + 判据改结构化对应）但**只到单测级、未实机**（此处原写「连修法都还没定」，已过时）。
 
@@ -1159,7 +1159,7 @@ changedChapters: request.authorRecovery ? expandChapterRange(request.authorRecov
 
 ## D21（中）卷结构过期时大纲领先正文闸门静默放行
 
-> 状态：已实施（2026-11-09 · 修法 C 与单测同批落地；**实机复验待 `pnpm dev` 红线解除**）
+> 状态：✅ 已实施并实机复验通过（2026-11-09 修法 C 与单测同批落地；2026-11-10 01:4x 项目副本实机复验，见下方「实机复验」）
 > 收编依据：作者裁定（台账 8 项 ③）；真源与本稿 §2 表 D21 行、台账现值索引 `:144` 一致。
 > 取证：[`d21-gate-shortcircuit-evidence-20261109.md`](./d21-gate-shortcircuit-evidence-20261109.md) · 文案 [`d21-gate-ui-guide-20261109.md`](./d21-gate-ui-guide-20261109.md) · 实施 [`d21-fix-c-implementation-plan-20261109.md`](./d21-fix-c-implementation-plan-20261109.md)
 
@@ -1195,4 +1195,22 @@ changedChapters: request.authorRecovery ? expandChapterRange(request.authorRecov
 
 **一处口径分歧（按最小面取，已告知作者）**：实施稿 §3.4 正文写「`acknowledged` 移到 `handoff` **三档**之后」，但同稿 §3.5 的单测表只列了 `handoff-stale` 一档要改，且 UI 指南 §三.4 明写「交接单 `stale` 的判定要挪到 `acknowledged` 之前」。若三档全提前，作者确认过 `handoff-missing` 的卷会**每次卷首都重新弹**，`AGENTS.md` 记录的「先铺多卷大纲再写正文」这条合法流程会被反复打断。⇒ 取「**只有 stale 提前**」，并补一条用例把 `missing` / `unusable` 仍被确认压住钉住（`shared/__tests__/outline-progress-gate.test.ts`）。
 
-**未做**：未跑实机（`pnpm dev` 红线未解除）· 未动 D3 状态行 · 未改 `finalize-chapter.command.ts`（写侧仍用表边界推进 `actual_last`，表的进度语义不变）。
+**当时未做（2026-11-10 已补）**：实机复验已做，见下节 · 未动 D3 状态行 · 未改 `finalize-chapter.command.ts`（写侧仍用表边界推进 `actual_last`，表的进度语义不变）。
+
+### 实机复验（2026-11-10 01:3x–01:5x · 项目副本 + CDP 9222）
+
+**做法**：把 `.batch-a/proj`（30 章 6 卷，卷表 `outline_hash` 与当前大纲已不一致 ⇒ **真 `stale`**）复制成实验副本，用 CDP 驱动开发态应用；走「AI 生成架构 → 勾情节大纲 → 设起批范围 → 确认生成」，只读探针与 DOM，**不点「我知道，仍按计划继续」**（不起 run）。
+
+| 验什么 | 读数 |
+|---|---|
+| `stale` 不再短路 | 探针 6 档：ch7 / ch11 / ch21 都返回 gate（修复前全为 `null`）；ch12 返回 `null` 且 `warning` 写明「第 11 章不是任何一卷的卷末」—— 本批起点本来就不是卷首，不是短路 |
+| 现算命中（`boundarySource='live'`） | ch21 → `range=第4卷（16–20）`、`reason=prose-unfinalized`；面板弹出，附注写「**已按当前大纲现算**…不重建也能继续」，主按钮仍是「我知道，仍按计划继续」，与「取消，我先去补正文」的**顺序未对调** |
+| 现算不命中、退回表边界（`boundarySource='table'`） | ch7 / ch11 → 面板照弹，附注改口「**这次没能按当前大纲现算**…用的是旧表边界，判断可能落后」并建议重建 |
+| 确认压住 `missing` | ch16 判 `aligned` 而 `draftLast=1`：不是漏判 —— 副本里本就有 A2 现场留下的 `outline-progress:volume:3` 豁免（`consistency_exemptions` 实测 2 条） |
+| 闸门真能拦住 | 两次点「确认生成」都没起 run：副本 `generation_runs` 164 / `generation_attempts` 290 / `consistency_exemptions` 2 / `project_core.updated_at` 与原件**逐项一致** |
+
+**副产物（供 D3 前置③）**：本批试了「只勾情节大纲」与「卷单元结构＋情节大纲」两种组合，**失效清单闸门（D20）都没有出现**，卷首闸门独立弹出 ⇒ 当日 A2 现场「卷首闸门没弹」的原因是它**自己短路**，不是被前一个闸门遮蔽；但「两个闸门同时命中时谁先谁后」仍未验（副本没有可触发 D20 的上游失效事实，需另造）。
+
+**未覆盖**：点「仍按计划继续」之后的真生成与产物落库 —— 属 D3 前置② 的 A2 复跑范围，不由本条承担。
+
+**现场清理**：实验副本、临时登记进「最近项目」的条目、起的 dev 实例均已清理；原件全程只读。

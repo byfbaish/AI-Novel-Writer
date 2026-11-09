@@ -93,6 +93,10 @@ env -u CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR -u CODEBUDDY_TOOL_CALL_ID AI_NOVEL_U
 #    解法：路径在 node 脚本里用 String.fromCharCode(92) 拼，别走 shell 传参（scripts/.tmp/d12-open.mjs 就是干这个的）
 
 # 3. 改 src/ 下非组件模块必须重启 dev —— 热重载会跑旧模块，症状是 process is not defined
+
+# 4. 验活别只用 curl：本会话会注入 http_proxy，curl 直连 127.0.0.1:5180 会走代理返回 502（CDP 9222 报
+#    "upstream connect failed"），看起来像 dev 挂了，其实是测量工具被拦。用 node 的 http.get 直连最可靠：
+#    node -e "require('http').get({host:'127.0.0.1',port:5180},r=>console.log(r.statusCode))"
 ```
 
 跑一次的量级：App 内单章 60–180 秒；直连单次 36–182 秒（失控样本最慢）。要跑几十次，建议给直连脚本加一个 8,000 字的流式中断闸门，否则那两次失控样本会拖 2–3 分钟一次。

@@ -38,7 +38,7 @@
 
 ### 2.1 前置① 修法 C 落地（D21）
 
-- **现在卡在哪**：[`d21-fix-c-implementation-plan-20261109.md`](../design/product/d21-fix-c-implementation-plan-20261109.md) 五个决策点（3.1 数据来源与读取 / 3.2 现算与合并 / 3.3 取区间下沉 `shared` / 3.4 确认顺序「过期优先」/ 3.5 单测）与两处 UI 建议值**尚未点头**；生产代码与断言一行未改。`src/services/outline-progress-gate.ts:92-95` 的 `state` 短路仍在。
+- **现在卡在哪（2026-11-10 更新：已不卡这里，改为「已落地 + 机制层实机验过」）**：[`d21-fix-c-implementation-plan-20261109.md`](../design/product/d21-fix-c-implementation-plan-20261109.md) 五个决策点（3.1 数据来源与读取 / 3.2 现算与合并 / 3.3 取区间下沉 `shared` / 3.4 确认顺序「过期优先」/ 3.5 单测）与两处 UI 建议值**尚未点头**；生产代码与断言一行未改。`src/services/outline-progress-gate.ts:92-95` 的 `state` 短路仍在。
 - **下一轮做什么**：先让作者对五个决策点点头 → 豆包任务书 [`task-d21-fix-c-plan-20261109.md`](../../scripts/doubao/task-d21-fix-c-plan-20261109.md) 只出方案与可粘贴 diff → Lead 换身份复核 → **生产代码 + 断言同一次提交**（作者 22:0x 已批准「单测跟着实际需求走」）。
 - **什么算过**：按实施稿 §四清单改完（`volume-structure.ts` 纯函数 / `services` 第五路读与旁路 `state` / `shared` 顺序对调 / 两个 tsx 四槽位文案 / `outline-progress-gate.test.ts:154-165`、`:167-177` 断言同批改）；`pnpm check:fast` 全绿；受影响单测贴原始输出。
 - **红线**：**只删短路仍用旧表边界 = 修法 A**（作者 02:47 已否），别贴着 C 的标签落地 A 的语义；`project-core` 读失败要退回表边界 + `warning`，**绝不退回 `gate: null`**。
@@ -57,6 +57,11 @@
 - **现在卡在哪**：[`batch-a-bc-handoff.md:68`](./2026-11-07-batch-a-bc-handoff.md) 现场是**先弹上游失效清单闸门（D20）**，勾确认 + 点「继续」后**直接起 run**，卷首 `[data-testid="outline-progress-gate"]` 为 `null`。[`d21-gate-shortcircuit-evidence-20261109.md`](../design/product/d21-gate-shortcircuit-evidence-20261109.md) 又查出 `ArchitectureConfirmDialog.tsx:509-512` 拿到 `null` 只 `console.warn` **静默放行**、界面零提示。⇒ 修法 C 让卷首闸门在 `stale` 时也判之后，**两道闸门会不会都弹、谁先谁后、前一个确认会不会吞掉后一个**，目前没有结论。
 - **下一轮做什么**：实机跑一次「失效清单闸门 → 点继续 → 卷首闸门 → 点继续 → 真生成」全链，记录两面板的先后顺序、豁免键写入情况、是否有互相遮蔽；`workflow-launch-dialogs.browser.tsx` 是否断言过「闸门不弹」取证稿 §④ 标「不确定」，**先搜再定，不猜**。
 - **什么算过**：给出一句可写进台账的结论（顺序 + 是否互相遮蔽 + 确认是否叠加），并附实机读数；若结论是「必须产品裁定」，另开一轮，不要自行默认。
+
+> **2026-11-10 01:4x 部分读数（前置③ 尚未过，只解决了一半）**：在项目副本上试了两种勾选组合（只勾「情节大纲」；「卷单元结构＋情节大纲」一起勾），**失效清单闸门（D20）都没有出现**，卷首闸门独立弹出并正确给出 `prose-unfinalized` 档。
+> ⇒ **当日 A2「卷首闸门没弹」的原因确认是它自己短路，不是被前一个闸门遮蔽**（这一半可以写进台账了）。
+> ⇒ **仍缺的是「两闸门同时命中时的先后」**：副本里没有能触发 D20 的上游失效事实，要验就得先造一个「上游域已被改动」的副本，属下一轮的事。别把本行当"§2.3 已过"。
+> 读数与截图路径见缺陷稿 D21 段「实机复验」。
 
 ### 2.4 汇合判据
 
