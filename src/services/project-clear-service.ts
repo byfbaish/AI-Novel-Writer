@@ -5,7 +5,7 @@ import { useEditorStore, type EditorTab } from '../stores/editor-store'
 import { useLocaleStore } from '../stores/locale-store'
 import { useProjectStore } from '../stores/project-store'
 import { useWorkflowStore } from '../stores/workflow-store'
-import { AppLogger, globalEventBus } from '../shared/event-bus'
+import { AppLogger } from '../shared/event-bus'
 import type { ProjectClearScope, ProjectSessionContext } from '../shared/ipc-channels'
 import { emptyClearCounts, formatClearReceipt } from '../shared/project-clear-receipt'
 import {
@@ -154,10 +154,17 @@ export async function clearProjectData(
   }
   assertResult(result, '清除项目生成内容')
 
-  // D10：清空完成后的渲染侧重置钩子 + 三档回执。counts 直接来自主进程 DB 删除计数，
-  // 不在渲染侧另算；会话已切走时上面的 early return 会先返回，不会广播到新项目。
+  // D10：清空完成后的三档回执。counts 直接来自主进程 DB 删除计数，不在渲染侧另算；
+  // 会话已切走时上面的 early return 会先返回，不会把回执发到新项目。
+  //
+  // 渲染侧重置不走事件总线：本函数下方直接关 Tab / 重置草稿 / 作废检查点 / 失效候选卡 /
+  // 重载角色卡 / 刷新文件树，对话框的 onCleared 还会再跑一次 refreshAll；回执按既有
+  // AppLogger.info 范式 emit 到 SYSTEM_NOTICE（不新增交互范式；该通道目前同样零生产订阅，
+  // 属既有遗留，本轮不动）。2026-11-09 W5：原 PROJECT_DATA_CLEARED 事件生产订阅方为零、
+  // payload 只有 counts/lines 且无项目身份，支撑不了「按项目隔离」的订阅，属冗余广播，
+  // 现已移除发射与事件类型。若后续要修「清空后残留卡片」，应先定位宿主、再重新设计带
+  // projectSession 的事件，而不是让一个没人听的事件继续挂在总线上。
   const receipt = formatClearReceipt(useLocaleStore.getState().locale, result.counts ?? emptyClearCounts())
-  globalEventBus.emit('PROJECT_DATA_CLEARED', receipt)
   AppLogger.info(receipt.lines.join(' '))
 
   for (const tab of tabsToClose) {

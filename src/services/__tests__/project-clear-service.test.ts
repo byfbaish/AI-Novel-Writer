@@ -124,7 +124,7 @@ afterEach(() => {
 })
 
 describe('clearProjectData', () => {
-  it('emits the renderer reset hook with a receipt whose counts match the DB delete counts', async () => {
+  it('emits the three-scope receipt through the existing SYSTEM_NOTICE channel with DB-sourced counts', async () => {
     const dbCounts: ProjectClearCounts = {
       creativeFields: { categories: 2, rows: 5 },
       blueprints: { categories: 1, rows: 3 },
@@ -136,47 +136,70 @@ describe('clearProjectData', () => {
       counts: dbCounts,
     } as never)
 
-    const hook = vi.fn()
     const notices = vi.fn()
-    const offHook = globalEventBus.on('PROJECT_DATA_CLEARED', hook)
     const offNotice = globalEventBus.on('SYSTEM_NOTICE', notices)
     try {
       await clearProjectData({ generatedText: true }, projectSession)
 
-      // 渲染侧重置钩子被调用（单测断言，不需要 browser 测试）。
-      expect(hook).toHaveBeenCalledOnce()
-      const receipt = hook.mock.calls[0][0]
-      // 回执计数与 DB 删除计数一致：同源透传，不在渲染侧另算/硬编码。
-      expect(receipt.counts).toEqual(dbCounts)
-      // 三档各清了几类、各多少条，按定稿文案渲染成三行。
-      expect(receipt.lines).toHaveLength(3)
-      expect(receipt.lines.join(' ')).toContain('故事架构')
-      expect(receipt.lines.join(' ')).toContain('章节规划')
-      expect(receipt.lines.join(' ')).toContain('正文与审稿')
-      expect(receipt.lines.join(' ')).toContain('清了 3 类，共 12 条')
-      // 回执同时通过既有 SYSTEM_NOTICE 范式展示给作者（不新增交互范式）。
+      // W5：回执仍按既有 AppLogger.info 范式 emit 到 SYSTEM_NOTICE（不新增交互范式）。
+      // 注意该通道目前同样零生产订阅 —— 这里断言的是「发射未丢」，不是「已呈现给作者」。
+      // 原 PROJECT_DATA_CLEARED 广播订阅方为零、payload 又无项目身份，发射点与类型已移除。
       expect(notices).toHaveBeenCalledOnce()
-      expect(notices.mock.calls[0][0].message).toContain('正文与审稿')
+      const message: string = notices.mock.calls[0][0].message
+      expect(message).toContain('故事架构')
+      expect(message).toContain('章节规划')
+      expect(message).toContain('正文与审稿')
+      // 计数与主进程 DB 删除计数同源透传，不在渲染侧另算/硬编码。
+      expect(message).toContain('清了 2 类，共 5 条')
+      expect(message).toContain('清了 1 类，共 3 条')
+      expect(message).toContain('清了 3 类，共 12 条')
+      // 渲染侧重置不依赖任何事件总线广播：仍是本函数内的直接调用。
+      expect(draftReset).toHaveBeenCalledOnce()
+      expect(refreshFileTree).toHaveBeenCalledWith(projectPath, undefined, projectSession)
     } finally {
-      offHook()
       offNotice()
     }
   })
 
-  it('still emits the reset hook with empty counts when IPC omits counts', async () => {
-    const hook = vi.fn()
-    const offHook = globalEventBus.on('PROJECT_DATA_CLEARED', hook)
+  it('still emits a zeroed receipt through SYSTEM_NOTICE when IPC omits counts', async () => {
+    const notices = vi.fn()
+    const offNotice = globalEventBus.on('SYSTEM_NOTICE', notices)
     try {
       await clearProjectData({ generatedText: true }, projectSession)
 
-      expect(hook).toHaveBeenCalledOnce()
-      expect(hook.mock.calls[0][0].counts).toEqual({
-        creativeFields: { categories: 0, rows: 0 },
-        blueprints: { categories: 0, rows: 0 },
-        generatedText: { categories: 0, rows: 0 },
-      })
+      expect(notices).toHaveBeenCalledOnce()
+      const message: string = notices.mock.calls[0][0].message
+      // 三档都以 0 类 / 0 条渲染，不因 IPC 缺 counts 而漏行或写死非零数。
+      expect(message.match(/清了 0 类，共 0 条/g)).toHaveLength(3)
     } finally {
-      offHook()
+      offNotice()
+    }
+  })
+
+  it('does not emit the receipt for a stale same-path lease when clear completes late', async () => {
+    let resolveClear: ((value: { success: boolean; cleared: string[] }) => void) | undefined
+    vi.mocked(ipc.invokeWithProjectSession).mockImplementationOnce(() =>
+      new Promise((resolve) => { resolveClear = resolve as typeof resolveClear }),
+    )
+    const notices = vi.fn()
+    const offNotice = globalEventBus.on('SYSTEM_NOTICE', notices)
+    try {
+      const clearing = clearProjectData({ generatedText: true }, projectSession)
+      await vi.waitFor(() => expect(resolveClear).toBeTypeOf('function'))
+      setActiveProjectSessionContext({ ...projectSession, leaseId: 'lease-b' })
+      vi.mocked(useProjectStore.getState).mockReturnValue({
+        currentProject: project('lease-b'),
+        openProject,
+        refreshFileTree,
+      } as never)
+      resolveClear!({ success: true, cleared: ['generatedText'] })
+      await clearing
+
+      // 本例只补既有用例没覆盖的一点：early return 在 emit 之前，
+      // 旧会话的清空结果不会往 SYSTEM_NOTICE 上多发一条回执。
+      expect(notices).not.toHaveBeenCalled()
+    } finally {
+      offNotice()
     }
   })
 
