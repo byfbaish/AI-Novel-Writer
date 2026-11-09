@@ -95,7 +95,7 @@
 
 ## 8. 验收要点
 
-见 `docs/handoffs/2026-10-20-t10-unit-batch-acceptance.md` C 组：
+见 `docs/handoffs/archive/2026-10-20-t10-unit-batch-acceptance.md` C 组：
 
 1. 弹窗能看到「连写」选择，上限 = 本卷剩余单元数（第 1 卷 4 个单元 ⇒ 最多选 4）；
 2. 选 2 → 跑完第 1 个单元**自动**开始第 2 个，日志能看到 `from = covered_to + 1`；

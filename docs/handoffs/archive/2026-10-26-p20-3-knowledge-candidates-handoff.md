@@ -121,7 +121,7 @@ env -u CODEBUDDY_SAFE_DELETE_BULK_STATE_DIR -u CODEBUDDY_TOOL_CALL_ID \
 
 ## 9. 下一步（不在本期）
 
-- **实机验证**仍是主线，交接见 `docs/handoffs/2026-10-26-live-verification-handoff.md`，
+- **实机验证**仍是主线，交接见 `docs/handoffs/archive/2026-10-26-live-verification-handoff.md`，
   核对表 `docs/design/product/live-verification-checklist.md`。P20-3 的提议条可以在那份表里顺手看一眼。
 - P20-3 有意留下的口子：**只看本章事实**（前文事实不提议）。要扩就把 `readChapterContinuityFacts`
   的范围从单章放到「本章及之前」，但那等于让模型在几百条事实里挑 —— 先想清楚再动。

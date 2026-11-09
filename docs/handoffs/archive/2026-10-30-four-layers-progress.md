@@ -1,7 +1,7 @@
 # 角色行为四层 · 落地进度（2026-10-29 06:58）
 
 > 状态：**已完成**（期 1 · 期 2 · 期 4 · 期 3 全部做完）。硬停时间 07:50，实际停于 **06:58**（未触发硬停）。
-> 分支 `exp/resource-ledger` · 计划源：`docs/handoffs/2026-10-29-four-layers-unattended-plan.md`（未入库，本地）
+> 分支 `exp/resource-ledger` · 计划源：`docs/handoffs/archive/2026-10-29-four-layers-unattended-plan.md`（未入库，本地）
 > 前置 P1/P2/P3 均通过；收尾四项校验全过。
 
 ---
@@ -23,7 +23,7 @@
 
 ```
 P1 branch: exp/resource-ledger                                   ✓
-P2 git status --short → 仅 ?? docs/handoffs/2026-10-29-four-layers-unattended-plan.md   ✓
+P2 git status --short → 仅 ?? docs/handoffs/archive/2026-10-29-four-layers-unattended-plan.md   ✓
 P3 基线（自己重跑，摘 safe-delete 环境变量）：
    Test Files  3 failed | 231 passed (234)
    Tests  7 failed | 3688 passed | 1 skipped (3696)

@@ -1,7 +1,7 @@
 # 交接：P20-1a 能力候选 —— 实施完成报告
 
 > 状态：**已交付**（2026-10-26 05:46）。分支 `exp/resource-ledger`，起点 `ab0bf97c`。
-> 计划稿：`docs/handoffs/2026-10-26-p20-1a-ability-candidates-plan.md`（本文是它的**交付报告**，不是第二份规格）。
+> 计划稿：`docs/handoffs/archive/2026-10-26-p20-1a-ability-candidates-plan.md`（本文是它的**交付报告**，不是第二份规格）。
 > 执行者：主 agent（原计划交 hy4 无人值守；本次由主 agent 直接执行，因上下文已就绪，无需再传递）。
 
 ---

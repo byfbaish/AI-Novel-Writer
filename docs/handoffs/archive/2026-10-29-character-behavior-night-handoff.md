@@ -2,7 +2,7 @@
 
 > 状态：**阶段完成，待落地**（2026-10-29 05:45）
 > 分支 `exp/resource-ledger` · 夜间六次提交 `74914765` → `d925324a`
-> 下一轮入口：`docs/handoffs/2026-10-29-four-layers-unattended-plan.md`（**该文件不入库，只在本地**）
+> 下一轮入口：`docs/handoffs/archive/2026-10-29-four-layers-unattended-plan.md`（**该文件不入库，只在本地**）
 
 ---
 
@@ -77,7 +77,7 @@
 
 ## 6 下一轮从哪接
 
-1. 读本地计划 `docs/handoffs/2026-10-29-four-layers-unattended-plan.md`（四期 + 时间盒，含每期验收命令）。
+1. 读本地计划 `docs/handoffs/archive/2026-10-29-four-layers-unattended-plan.md`（四期 + 时间盒，含每期验收命令）。
 2. 期 1 已在计划里给出**可直接照抄的中文段全文**，不需要重新设计措辞。
 3. 设计稿 `docs/design/prompt/character-behavior-four-layers.md` 是判据的源头，**不许在执行中改它的判据**（改了就等于既当运动员又当裁判）。
 

@@ -397,7 +397,7 @@ ALTER TABLE project_core    ADD COLUMN plot_tree_source_ref TEXT NOT NULL DEFAUL
 
 **两条被 A/B 排除的"假回归"（勿当成本期问题）**：
 
-- `electron/services/__tests__/project-peek-readonly.test.ts` 9 例 —— 既有红（`docs/handoffs/2026-10-25-next-steps-handoff.md:135` 已登记 8 例，第 9 例随 schema 版本涨到 26 也翻红；夹具只迁到 v7）。
+- `electron/services/__tests__/project-peek-readonly.test.ts` 9 例 —— 既有红（`docs/handoffs/archive/2026-10-25-next-steps-handoff.md:135` 已登记 8 例，第 9 例随 schema 版本涨到 26 也翻红；夹具只迁到 v7）。
 - `project-restore-service` / `project-archive-service` 的 `ENOTEMPTY` —— `afterEach` 里 `fs.rmSync` 撞上未释放的 sqlite 句柄，**断言本身全过**（单跑 29/29）。
 
 **剧情树读取契约已改**：`db:plot-tree-read` 返回 `PlotTreeReadBundle`（`PlotTreeSourceBundle` + 外层 `validity`）。**不进 `snapshot`** —— 理由同 R9。全库只有 `NarrativeThreadEditor.tsx` 一个消费者，改造成本为零。

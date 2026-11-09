@@ -2,7 +2,7 @@
 
 > **两个项目各走一张表，别混着做**。混着做的后果：在旧项目上验「连续两单元」时，你会以为单元 1 是从第 1 章起，其实它从 `covered_to + 1` 起，判据全对不上。  
 > 分支 `exp/arc-tree-v2` · 阶段 A 提交 `6c067dda`  
-> 设计稿 [`e3-unit-batch-implementation-plan.md`](../design/architecture/e3-unit-batch-implementation-plan.md) · 交接 [`2026-10-20-e3-unit-batch-handoff.md`](2026-10-20-e3-unit-batch-handoff.md)
+> 设计稿 [`e3-unit-batch-implementation-plan.md`](../../design/architecture/e3-unit-batch-implementation-plan.md) · 交接 [`2026-10-20-e3-unit-batch-handoff.md`](../2026-10-20-e3-unit-batch-handoff.md)
 
 ---
 
@@ -285,7 +285,7 @@ t10-evidence/
    - 例外（2026-10-20 修）：`incomplete=true` 但 `synopsis_result` 为空、`covered_to=0` —— 这是批前预写留下的空标记，背后没有可续内容，**视同未开始**，照常进单元模式。
    - **想强行进单元模式**：确认弹窗里那句「未按单元生成：…」旁边有「重置情节大纲检查点」。
      它只删 `.ai-novel/partial_arch.json` 里的 `synopsis_*` 字段，**数据库正文一个字不动**。
-     为什么不自动判过期见 [`chapter-position-format-design.md`](../design/architecture/chapter-position-format-design.md) §4.6
+     为什么不自动判过期见 [`chapter-position-format-design.md`](../../design/architecture/chapter-position-format-design.md) §4.6
      —— 真正中断的批次和「作者清空了大纲」在文件上完全同形，只能由作者拍板。
 4. **章标题里章号两侧可能带空格**（`## 第 6 章：xxx`）。2026-10-20 实机整批因为这个被判「没写出章节条目标题」而丢弃（解析只认紧排的「第6章」）。现已修：所有解析点统一走 `chapter-heading.parseOutlineChapterHeading`；**若再看到该报错，报错里会带上「能认出的最大章号」**，先看这个数：
    - `0` ⇒ 一个标题都没认出来（格式又漂了，把那段原文发我）
@@ -298,7 +298,7 @@ t10-evidence/
    `## 第4章：…`，而 `assertPlotOutlineTitleCoverage` 用的那份正则不认归属前缀。
    已收编 4 处（`findPlotOutlineTitleRanges` / `validPlotOutlineEntry` /
    `synopsis-projection` / `listOutlineChapterLengths`），详见
-   [`chapter-position-format-design.md`](../design/architecture/chapter-position-format-design.md) §10。
+   [`chapter-position-format-design.md`](../../design/architecture/chapter-position-format-design.md) §10。
    **以后再有人写「`^## 第N章`」这种正则，一律先问它属于这张表里的哪一处。**
 
 ---
@@ -314,4 +314,4 @@ t10-evidence/
       （不得用 `arcSpanForChapters` 反查），没有归属标题就 fail-closed 拒绝。→ 设计稿 §4.5.1
 - [ ] 剩**卷回滚**（作者明确"后续还有"）：见设计稿 §4.5 动作面
 - [ ] 有阻塞 ⇒ 先修阻塞再开关，**不要带着红项接 T11**
-- [ ] 结论回写到 [`2026-10-20-e3-unit-batch-handoff.md`](2026-10-20-e3-unit-batch-handoff.md) §5 与当日日志
+- [ ] 结论回写到 [`2026-10-20-e3-unit-batch-handoff.md`](../2026-10-20-e3-unit-batch-handoff.md) §5 与当日日志

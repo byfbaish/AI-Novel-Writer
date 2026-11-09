@@ -3,7 +3,7 @@
 > 状态：**待执行 —— 由作者本人在 GUI 里跑，不是 agent 能代劳的**
 > 基准：`exp/resource-ledger` @ `20801f53`（本文件所在提交），工作区干净，无未跟踪文件
 > 上一份：[`2026-10-25-next-steps-handoff.md`](2026-10-25-next-steps-handoff.md)
-> 核对照表：[`../design/product/live-verification-checklist.md`](../design/product/live-verification-checklist.md)（24 项，按流水线四阶段排列）
+> 核对照表：[`../design/product/live-verification-checklist.md`](../../design/product/live-verification-checklist.md)（24 项，按流水线四阶段排列）
 
 **一句话**：**代码侧到 C1 就到头了。下一个动作不是写代码，是跑一次实机；在读数出来之前，P17-3 开工就是凭空造需求。**
 
@@ -115,7 +115,7 @@
 
 ⇒ **预期**：本轮验证**不要用单项生成去"重抽"**，会把配置写长。C1/C2 的重生成走**整章重生成**，与这条无关。
 
-> 这两条都属「行为与预期不符」，但**不在本轮修**（要改就是结构变更：抽共享字段要求常量 / 重新定义两个入口的合并语义，都得上设计）。评估与方案对比已出 → [`../design/product/config-registry-write-paths-assessment.md`](../design/product/config-registry-write-paths-assessment.md)（含手填工作量分档、冲突风险三类、diff 组件能复用多少）。
+> 这两条都属「行为与预期不符」，但**不在本轮修**（要改就是结构变更：抽共享字段要求常量 / 重新定义两个入口的合并语义，都得上设计）。评估与方案对比已出 → [`../design/product/config-registry-write-paths-assessment.md`](../../design/product/config-registry-write-paths-assessment.md)（含手填工作量分档、冲突风险三类、diff 组件能复用多少）。
 >
 > 其中一条值得记住：**「抽卡变成追加」的根因不是追加规则错，是缺一个显式的「这次我就要替换」动作**；diff 预览正好是这个动作的载体。所以「输入框看不清」和「越抽越长」是同一个缺口。
 

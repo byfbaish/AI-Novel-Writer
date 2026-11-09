@@ -10,8 +10,8 @@
 
 | 线 | 产出 | 完成度 | 性质 |
 |---|---|---|---|
-| L1 市场边界估算 | [`docs/research/2026-10-28-platform-genre-coverage-bounds.md`](../research/2026-10-28-platform-genre-coverage-bounds.md) | **机制层结论已成立，商业层为零** | 取证 |
-| L2 作者人格（persona） | [`docs/design/prompt/author-persona-mode-design.md`](../design/prompt/author-persona-mode-design.md) | **提案，未编码，归因未验证** | 设计 |
+| L1 市场边界估算 | [`docs/research/2026-10-28-platform-genre-coverage-bounds.md`](../../research/2026-10-28-platform-genre-coverage-bounds.md) | **机制层结论已成立，商业层为零** | 取证 |
+| L2 作者人格（persona） | [`docs/design/prompt/author-persona-mode-design.md`](../../design/prompt/author-persona-mode-design.md) | **提案，未编码，归因未验证** | 设计 |
 
 两条线**互不依赖**，可以分开单独恢复。
 

@@ -504,7 +504,7 @@ Tversky 1972 **Elimination by Aspects**（淘汰而非打分、非补偿）；Si
 
 ## ★ 2026-10-28 市场边界与作者人格（P22 · ⏸ **已挂起，不进当前排序**）
 
-> 交接稿：[`handoffs/2026-10-28-platform-bounds-and-persona-handoff.md`](../handoffs/2026-10-28-platform-bounds-and-persona-handoff.md)
+> 交接稿：[`handoffs/archive/2026-10-28-platform-bounds-and-persona-handoff.md`](../handoffs/archive/2026-10-28-platform-bounds-and-persona-handoff.md)
 > 产出：[`research/2026-10-28-platform-genre-coverage-bounds.md`](../research/2026-10-28-platform-genre-coverage-bounds.md) ·
 > [`design/prompt/author-persona-mode-design.md`](../design/prompt/author-persona-mode-design.md)
 
@@ -607,7 +607,7 @@ W6 的教训正是反过来的：先做了"查错"（账本），而"能用"和"
 | 编号 | 裁定 | 去向 / 依据 |
 |---|---|---|
 | **A3 + A4** | ✅ **已实施** | `src/shared/visible-text-integrity.ts` 新增退化判据 · 新建 `src/shared/blueprint-verbatim-overlap.ts` · `generate-draft.command.ts` 五处挂载。回归：正文链 240/240、退化 20/20、照搬 13/13、`tsc` 通过。实施记录见评估稿 §9 |
-| **A2** | ✅ **已实施（M20，schema 20→21）** | **轴纳入 `canonicalM03FindingSetHash`**（作者裁定：同性质必须进）；无发行版 ⇒ 迁移里直接重算存量 `finding_set_hash`，不留兼容分支；存量轴填 NULL 不猜。实测推翻原计划的顺位：外溢不在测试数量，而在**便携格式字段策略**（`assertPortableSourceSchema` 未知字段 fail-closed ⇒ 不改就导出不了 .vela-pack）与 **M03 `proveArtifact` 的 `[2,3]` 版本白名单**（不改则每份新审稿被自己的校验判死）；M03 的 v20 指纹同理不能带新列，否则旧项目 `UNRECOGNIZED_SCHEMA`。实施记录 → 评估稿 §9b；执行过程与六处偏离 → [`handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md`](../handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md) |
+| **A2** | ✅ **已实施（M20，schema 20→21）** | **轴纳入 `canonicalM03FindingSetHash`**（作者裁定：同性质必须进）；无发行版 ⇒ 迁移里直接重算存量 `finding_set_hash`，不留兼容分支；存量轴填 NULL 不猜。实测推翻原计划的顺位：外溢不在测试数量，而在**便携格式字段策略**（`assertPortableSourceSchema` 未知字段 fail-closed ⇒ 不改就导出不了 .vela-pack）与 **M03 `proveArtifact` 的 `[2,3]` 版本白名单**（不改则每份新审稿被自己的校验判死）；M03 的 v20 指纹同理不能带新列，否则旧项目 `UNRECOGNIZED_SCHEMA`。实施记录 → 评估稿 §9b；执行过程与六处偏离 → [`handoffs/archive/2026-10-25-a2-a5-shelf-unattended-plan.md`](../handoffs/archive/2026-10-25-a2-a5-shelf-unattended-plan.md) |
 | **A1** | ⏸ **降级为「平台扩展参考材料」** | 成本过高：已定稿量少、外部完结书的校准标准难定、可能把污染语料带进语料库。前置调研已落盘 → [`research/2026-10-25-threshold-calibration-corpus/`](../research/2026-10-25-threshold-calibration-corpus/)（起点 3 条合法来源全限非商业、**番茄零**、公开世界无「AI 句式频次/误报率」可对标数据） |
 | **A5** | ✅ **已实施（mainOwned 派发前断言）** | 不是新建机制，而是把已有断言接进生产路径：`workflow-main-generation.ts` 的 `complete` 在派发前用 `createPromptBudgetReport` 算字节总量，超 `limitUtf8Bytes` 抛 `PromptBudgetExceededError`（复用既有类与文案）。渲染层拿不到模型上下文与输出预留 ⇒ 只做字节硬顶，边界写进注释。新增 2 例（超限时 `import-generation:execute` 零调用 / 不带 policy 照常派发）|
 
@@ -684,7 +684,7 @@ W6 的教训正是反过来的：先做了"查错"（账本），而"能用"和"
 
 **路径是否存在不需要新通道**：主进程只在项目清单可读时才签发 `previewCapabilityId`，签不出来即代表目录不存在或不可读，据此打 `data-missing` + 显示「路径不存在」。
 
-**回归**：`writer-project-overview.browser.tsx` 9/9（原 7 例 + 新增 2 例）· `v3-shell` + `writer-shell` 20/20 · `tsc` 通过。偏离细节见 [`handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md`](../handoffs/2026-10-25-a2-a5-shelf-unattended-plan.md) 文末。
+**回归**：`writer-project-overview.browser.tsx` 9/9（原 7 例 + 新增 2 例）· `v3-shell` + `writer-shell` 20/20 · `tsc` 通过。偏离细节见 [`handoffs/archive/2026-10-25-a2-a5-shelf-unattended-plan.md`](../handoffs/archive/2026-10-25-a2-a5-shelf-unattended-plan.md) 文末。
 
 ---
 

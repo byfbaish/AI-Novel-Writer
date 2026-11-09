@@ -1,6 +1,6 @@
 # 交接 · A2/A3/A4/A5 + 书架收口之后（2026-10-25）
 
-> 状态：**待接手** · 基准：`exp/resource-ledger`，本文件所在提交（`git log -1 --format=%h -- docs/handoffs/2026-10-25-next-steps-handoff.md`）
+> 状态：**待接手** · 基准：`exp/resource-ledger`，本文件所在提交（`git log -1 --format=%h -- docs/handoffs/archive/2026-10-25-next-steps-handoff.md`）
 > 工作区应干净。**唯一未跟踪文件**：`scripts/zz-agent-capability-probe.mjs` —— 2026-10-25 上午的本地模型能力探针（自述「临时实验，可删」），**不要提交、不要删**。
 > 上一份交接：[`2026-10-25-a2-a5-shelf-unattended-plan.md`](2026-10-25-a2-a5-shelf-unattended-plan.md)（计划稿 + 本组执行的六处偏离，文末）
 
@@ -115,7 +115,7 @@
 
 | 项 | 结论 | 出处 |
 |---|---|---|
-| 让 `golden_finger` 进材料块 | **判不做**：金手指自由文本已由 P1-1 能力格三态承担；再注入 = 同一件事登记成第二套账，冲突时无仲裁规则 | `handoffs/2026-10-24-p1-1-three-cells-handoff.md` §9 |
+| 让 `golden_finger` 进材料块 | **判不做**：金手指自由文本已由 P1-1 能力格三态承担；再注入 = 同一件事登记成第二套账，冲突时无仲裁规则 | [`2026-10-24-p1-1-three-cells-handoff.md`](../2026-10-24-p1-1-three-cells-handoff.md) §9 |
 | 「本书规则排不到第 5 维」 | **2026-10-24 已修**（轮转取条，两个上限常量没动） | `p1-1-power-system-shape-proposal.md` §39 |
 | 书架新增"删非当前项目目录"的 IPC | **判不做**（2026-10-25 作者）：移除记录就够 | 台账 §书架 |
 | P2-2 W8 跨部 / P3 多图拓扑 | ⏸ 暂停，不讨论不评估 | 台账顶部表 |

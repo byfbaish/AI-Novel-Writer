@@ -1,7 +1,7 @@
 # 交接：上游失效期 3a 无人值守作业手册（2026-10-31）
 
 > 状态：已裁定 · 2026-10-31 · 执行方为无人值守 agent，**照本手册做，不要自己加判断**
-> 上一班交接：[`2026-10-30-baseline-failures-cleanup.md`](2026-10-30-baseline-failures-cleanup.md)（基线红已清完）
+> 上一班交接：[`2026-10-30-baseline-failures-cleanup.md`](archive/2026-10-30-baseline-failures-cleanup.md)（基线红已清完）
 > 施工图：[`docs/design/architecture/upstream-invalidation-phase3-plan-and-ui.md`](../design/architecture/upstream-invalidation-phase3-plan-and-ui.md)
 
 ---

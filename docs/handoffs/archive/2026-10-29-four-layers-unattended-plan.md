@@ -22,7 +22,7 @@
 | # | 事项 | 怎么确认 |
 |---|---|---|
 | P1 | 分支是 `exp/resource-ledger` | `git branch --show-current` |
-| P2 | 工作区干净 | `git status --short` **只应剩本文件一行**（`?? docs/handoffs/2026-10-29-four-layers-unattended-plan.md`） |
+| P2 | 工作区干净 | `git status --short` **只应剩本文件一行**（`?? docs/handoffs/archive/2026-10-29-four-layers-unattended-plan.md`） |
 | P3 | 基线自己重跑一遍 | 见 §8。**不许照抄 §8 的数字**，那是 05:40 的读数 |
 
 > P2 不符 → 立刻停手汇报。有别的未提交改动说明前置没做，后面所有 diff 都不可信。
@@ -249,7 +249,7 @@ readonly values: readonly GoldenTraitValue[]
 
 **照写交接，不要"再给我十分钟"。** 已完成的期是干净的（每期单独提交）；未开始的期原样留给下一轮。
 
-### 7.3 交接稿模板（写到 `docs/handoffs/2026-10-30-four-layers-progress.md`）
+### 7.3 交接稿模板（写到 `docs/handoffs/archive/2026-10-30-four-layers-progress.md`）
 
 ```
 # 角色行为四层 · 落地进度（YYYY-MM-DD HH:MM）
