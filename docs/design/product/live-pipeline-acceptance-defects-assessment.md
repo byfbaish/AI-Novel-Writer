@@ -442,6 +442,25 @@ A 不是边角情况：D14 已裁定「交接单**仍然手动登记**」（自�
 - 闸门用卷表反推上一卷卷号、投影用 `cursor/arc-span` 的 `volumeIndex − 1`，两者在卷数变化后可能漂移。要修得把已解析的 position 传进读侧，属数据流改造，本轮不做；已加 `state` 守卫兜住最坏情况。
 - `authority.status` 只校验 `typeof === 'string'`、不校验枚举值。脏值概率极低，不动。
 
+### 实机复跑（2026-11-10 02:0x–02:11 · A2 五条 + 两闸门顺序）
+
+**这是「确认继续之后的真生成」那条路径的首次跑通**（此前一直缺这一条，故本段状态未转 ✅）。环境：主工作区 dev（5180 / CDP 9222）+ 副本 `.tmp-ui/d3-a2/proj`（取自 `.batch-a/proj`，未跑过本轮生成）。范围 7–12、只勾「情节大纲」、模型 Ollama `qwen3.5:9b-128k`。
+
+| # | 判据 | 实测 |
+|---|---|---|
+| ① | 卷首闸门弹出 | ✅ 弹「上一卷正文还没整卷定稿」（`prose-unfinalized`）。**档位与 11-07 现场不同**：该副本正文只定稿第 1 章，两维依次判落在正文维度；`handoff='missing'` 已算出但未成为 `reason`（`handoff-missing` 需卷 1 整卷定稿，副本无此前提）。两档共用同一面板与同一 bypass 链路 |
+| ② | 写豁免 | ✅ `consistency_exemptions` 2 → 3，新增 `outline-progress:volume:1` |
+| ③ | 真起 run + 产物落库 | ✅ `run c55e79d9…` `status=completed`（耗时 6 分 45 秒）；`project_core.synopsis` 11,175 字、`partial_arch.json` 的 `synopsis_range={7,12}` / `synopsis_covered_to=12` / `synopsis_incomplete=false`；页面「情节大纲 · 已生成」 |
+| ④ | 来源字段与当前稿一致 | ✅ `synopsis_source_ref={"worldbuilding:book":3,"arc:book":1}` 与 `upstream_revisions` 现值逐项相同 |
+| ⑤ | 前后计数 | ✅ `generation_runs` 164 → 165 · `generation_attempts` 290 → 296 · `consistency_exemptions` 2 → 3 · `upstream_revisions.outline` rev 24 → 25 |
+
+**顺带拿到两道闸门的顺序结论**（前置③）：
+- 闸门探针第 7 章返回 `gate.state='ahead'`、`structureStale=true`、`boundarySource='table'`、warning「卷结构表为 stale，且按当前大纲第 6 章不是任何一卷的卷末，本次按旧表边界判定」⇒ **与 2026-11-07 A2-6 的「六档全 `gate=null`」形成对照，修法 C 生效**（这也是 D21 的第二次实机旁证）。
+- 提交后 **D3 卷首闸门先弹 → 点「仍按计划继续」→ 自动重提 → D20 失效清单闸门后弹（12 项章节蓝图 + 1 项卷末交接单）→ 点「继续」→ 起 run**。两闸门会同时命中，确认**不互相吞掉但会叠加**（1 条豁免 + 1 次失效确认 + 1 个 run）。
+- 11-07 现场「先弹 D20、卷首没弹」不是顺序问题，是当时的 `stale` 短路让卷首闸门返回 `null`。
+
+**边界如实**：本条状态行仍未改（转 ✅ 需作者单独授权）；`handoff-missing` 档的实机弹窗仍是 11-06 那次两档验证里的旧读数，本次未复现（条件不具备）。现场已清：副本删除、`recent-projects.json` 还原、实例停止；证据截图与日志在 `.tmp-ui/d3-a2/`。
+
 ---
 
 ## D4（中）UI 里散落「来源已变化」文案，但没有任何地方把它和批次中止关联起来
