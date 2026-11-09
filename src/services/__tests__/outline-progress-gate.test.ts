@@ -41,14 +41,20 @@ function mockChannels(input: {
   handoffs?: unknown
   exemptions?: unknown
   authority?: unknown
+  /** `db:project-core-get` 的返回；`undefined` ⇒ 返回 `null`（模拟读失败/老库）。 */
+  core?: unknown
+  volumesState?: string
 }) {
   mocks.invoke.mockImplementation(async (_session: unknown, channel: string) => {
-    if (channel === 'db:volumes-list') return { success: true, volumes }
+    if (channel === 'db:volumes-list') {
+      return { success: true, state: input.volumesState, volumes }
+    }
     if (channel === 'db:volume-handoffs-list') {
       return input.handoffs === undefined ? { success: true, entries: [] } : input.handoffs
     }
     if (channel === 'db:draft-authority-sequence') return input.authority ?? authority(20)
     if (channel === 'db:consistency-exemption-list') return input.exemptions ?? []
+    if (channel === 'db:project-core-get') return input.core ?? null
     return null
   })
 }
@@ -151,20 +157,71 @@ describe('readOutlineProgressGate — 第二维（交接单可用性）', () => 
     expect(gate?.missingChapters).toBe(8)
   })
 
-  it('卷表状态不是 ready ⇒ 判不出就不拦（边界本身不可信）', async () => {
-    mocks.invoke.mockImplementation(async (_session: unknown, channel: string) => {
-      if (channel === 'db:volumes-list') return { success: true, state: 'stale', volumes }
-      if (channel === 'db:volume-handoffs-list') return { success: true, entries: [] }
-      if (channel === 'db:draft-authority-sequence') return authority(20)
-      if (channel === 'db:consistency-exemption-list') return []
-      return null
+  it('卷表 stale ⇒ 照判，不再整体短路（修法 C，D21）', async () => {
+    // 原来这里断言 `gate === null`（「判不出就不拦」）—— 那正是 D21 的静默放行：
+    // 改过大纲没重建卷结构是**正常状态**，闸门在最常见的状态下闭嘴。
+    mockChannels({
+      volumesState: 'stale',
+      handoffs: {
+        success: true,
+        entries: [handoff({ validity: { state: 'stale', behind: [{ key: 'outline:book', have: 1, need: 2 }] } })],
+      },
     })
     const result = await readOutlineProgressGate(input)
-    expect(result.gate).toBeNull()
+    expect(result.gate?.state).toBe('ahead')
+    expect(result.gate?.reason).toBe('handoff-stale')
+    expect(result.gate?.structureStale).toBe(true)
+    // 拿不到 project_core（老库 / 读失败）⇒ 退回表边界，但必须如实标注来源
+    expect(result.gate?.boundarySource).toBe('table')
     expect(result.warning).toContain('stale')
   })
 
-  it('过期 + 已确认 ⇒ 仍然放行（确认管住两维，也管住第四档）', async () => {
+  it('卷表 unparsed ⇒ 仍判不出（连卷行都没有，判也无从判）', async () => {
+    mockChannels({ volumesState: 'unparsed' })
+    const result = await readOutlineProgressGate(input)
+    expect(result.gate).toBeNull()
+    expect(result.warning).toContain('unparsed')
+  })
+
+  it('卷表 stale + 当前大纲能物化 ⇒ 用现算边界，不用旧表边界', async () => {
+    // 表说第 1 卷 1–20（旧），当前大纲说第 1 卷只到第 8 章 ⇒ 本批起点应是第 9 章。
+    mockChannels({
+      volumesState: 'stale',
+      core: {
+        plotStructurePlan: '# 卷 / 单元结构\n\n## 卷一：杂役处\n### 单元一：挨一脚\n## 卷二：百草园\n### 单元一：进园\n',
+        synopsis: '## 第1卷第1单元第1章（全书第1章）：起\n\n## 第1卷第1单元第8章（全书第8章）：止\n\n'
+          + '## 第2卷第1单元第1章（全书第9章）：进园\n\n## 第2卷第1单元第7章（全书第15章）：出园\n',
+        totalChapters: 0,
+      },
+      authority: authority(20),
+    })
+    const result = await readOutlineProgressGate({ ...input, chapterNumber: 9 })
+    expect(result.gate?.boundarySource).toBe('live')
+    expect(result.gate?.structureStale).toBe(true)
+    // 现算：第 1 卷 = 1–8；正文定稿到 20 ⇒ 这一维过了，交接单缺失才是原因
+    expect(result.gate?.range.last).toBe(8)
+    expect(result.gate?.reason).toBe('handoff-missing')
+    expect(result.warning).toBeUndefined()
+  })
+
+  it('project_core 通道抛异常 ⇒ 退回表边界，且不吞掉其它结论', async () => {
+    mocks.invoke.mockImplementation(async (_session: unknown, channel: string) => {
+      if (channel === 'db:volumes-list') return { success: true, state: 'stale', volumes }
+      if (channel === 'db:volume-handoffs-list') return { success: true, entries: [] }
+      if (channel === 'db:draft-authority-sequence') return authority(12)
+      if (channel === 'db:consistency-exemption-list') return []
+      if (channel === 'db:project-core-get') throw new Error('handler 未注册')
+      return null
+    })
+    const result = await readOutlineProgressGate(input)
+    expect(result.gate?.reason).toBe('prose-unfinalized')
+    expect(result.gate?.missingChapters).toBe(8)
+    expect(result.gate?.boundarySource).toBe('table')
+    expect(result.warning).toContain('旧表边界')
+  })
+
+  it('旧确认压不住过期提醒（过期优先于已确认）', async () => {
+    // 确认是对某一版上游的确认；上游改了以后那次确认描述的现实已经不在。
     mockChannels({
       handoffs: {
         success: true,
@@ -173,7 +230,8 @@ describe('readOutlineProgressGate — 第二维（交接单可用性）', () => 
       exemptions: [{ stableFactKey: 'outline-progress:volume:1', revoked: false }],
     })
     const { gate } = await readOutlineProgressGate(input)
-    expect(gate?.state).toBe('aligned')
+    expect(gate?.state).toBe('ahead')
+    expect(gate?.reason).toBe('handoff-stale')
   })
 
   it('正文未定稿时第二维不改变结论：仍报 prose-unfinalized', async () => {

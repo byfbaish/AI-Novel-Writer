@@ -98,12 +98,67 @@ describe('outlineProgressGateOf — 大纲领先正文的闸门', () => {
     expect(gate?.missingChapters).toBe(0)
   })
 
+  it('过期优先于已确认：交接单 stale 压不住（修法 C，D21）', () => {
+    const acknowledged = [outlineProgressAckKey('volume:1')]
+    const gate = outlineProgressGateOf({
+      volumes, authority: authority(20), acknowledged, chapterNumber: 21, handoff: 'stale',
+    })
+    expect(gate?.state).toBe('ahead')
+    expect(gate?.reason).toBe('handoff-stale')
+  })
+
+  it('正文没写完时仍报第一维：过期优先不越过「两维依次判」', () => {
+    // 正文都没写完时讲交接单是废话；单过期不该把「去写正文」这条可执行结论顶掉。
+    expect(outlineProgressGateOf({
+      volumes, authority: authority(12), acknowledged: [], chapterNumber: 21, handoff: 'stale',
+    })?.reason).toBe('prose-unfinalized')
+    // 这一档里确认仍然有效：作者确认的是「先铺大纲」，与单有没有过期无关。
+    expect(outlineProgressGateOf({
+      volumes, authority: authority(12), acknowledged: [outlineProgressAckKey('volume:1')], chapterNumber: 21, handoff: 'stale',
+    })?.state).toBe('aligned')
+  })
+
+  it('只有 stale 提前：missing / unusable 仍被确认压住（否则每次卷首都弹）', () => {
+    const acknowledged = [outlineProgressAckKey('volume:1')]
+    for (const handoff of ['missing', 'unusable'] as const) {
+      const gate = outlineProgressGateOf({
+        volumes, authority: authority(20), acknowledged, chapterNumber: 21, handoff,
+      })
+      expect(gate?.state).toBe('aligned')
+    }
+  })
+
+  it('传入现算区间时按注入的区间判，且如实报来源与表新鲜度', () => {
+    const liveRanges = [{ volumeId: 'volume:1', volumeIndex: 1, name: '第1卷', first: 1, last: 12, basis: 'headings' as const, actualLast: null }]
+    const gate = outlineProgressGateOf({
+      volumes,
+      ranges: liveRanges,
+      structureStale: true,
+      authority: authority(12),
+      acknowledged: [],
+      chapterNumber: 13,
+      handoff: 'usable',
+    })
+    expect(gate?.range.last).toBe(12)
+    expect(gate?.boundarySource).toBe('live')
+    expect(gate?.structureStale).toBe(true)
+    // 正文定稿到 12 = 现算卷末 ⇒ 不该报还差 8 章（那是旧表边界 20 才会得出的结论）
+    expect(gate?.state).toBe('aligned')
+    expect(gate?.missingChapters).toBe(0)
+  })
+
+  it('不传现算区间 ⇒ 来源如实报 table（老调用方行为不变）', () => {
+    const gate = outlineProgressGateOf({ volumes, authority: authority(20), acknowledged: [], chapterNumber: 21, handoff: 'usable' })
+    expect(gate?.boundarySource).toBe('table')
+    expect(gate?.structureStale).toBe(false)
+  })
+
   it('作者已确认 ⇒ aligned，撤销后重新提醒', () => {
     const acknowledged = [outlineProgressAckKey('volume:1')]
     expect(outlineProgressGateOf({
       volumes, authority: authority(0), acknowledged, chapterNumber: 21,
     })?.state).toBe('aligned')
-    // 确认一次管住两维：交接单缺失不该在作者点头后再弹第二次
+    // 确认一次管住两维：交接单缺失（**不是**过期）不该在作者点头后再弹第二次
     expect(outlineProgressGateOf({
       volumes, authority: authority(20), acknowledged, chapterNumber: 21, handoff: 'missing',
     })?.state).toBe('aligned')

@@ -76,7 +76,7 @@
 | D16 | 低 | ⬜ **本批打回、不得销账**（2026-11-07 · 主链路不写快照、重启回退配置；作者裁丙 ⇒ 结转下一批结构设计） | 模型指示器与实际调用不一致：日志确认调 `deepseek-v4.1-flash-free`，状态栏显示 `deepseek-均衡` | 主进程 stderr `model:` 字段 vs 界面底部状态栏 |
 | D17 | 中 | ✅ **已结项（2026-11-05）** | 生成路径提交大纲**不记覆盖章区间**（`changedChapters` 恒为空集）⇒ 判定退化为「整本大纲都改了」⇒ 每追加一批大纲就把此前所有已定稿章/蓝图/交接单拖进失效清单。**预演与实测一致，机制本身是成功的（作者 2026-11-02 认定）**，缺的是输入的章集。**已实机复验**：rev21 记 `[18,19]`、同步页 7 项 → 3 项、13 张蓝图全 valid；复验时撞出的另一个问题已单列为 D20 | `electron/repositories/project-core-repository.ts`（`commitSynopsis` 的 `changedChapters` 分支）vs `src/shared/upstream-revisions.ts:651`（空集 ⇒ `null` ⇒ 按全改算）；方案稿 [`architecture/d17-outline-change-range-design.md`](../architecture/d17-outline-change-range-design.md) §7.4 · §10 |
 | D18 | 中 | 🟡 已实施（2026-11-04 · 合同文案进模板 zh/en 与两级副本、解析器、六个校验纯函数已接线：C1/C1b/C2/C4 进单元批、C3/C5 进正文落盘与定稿，只报不拦；**C1 重跑权限未开放**，作者 2026-11-05 裁定继续只报，见设计稿 §11.15） | 蓝图结尾钩子可**无校验地**偏离大纲「收尾：」行：模板两条条款互斥（「必须落在收尾行」vs「不得是事件」）+ 钩子可自造设定 + 正文未兑现无告警。第 6 章 `suspense_hook` 写成结论句，正文里 `寿元` / `因果纹` 各 **0** 次 | `builtin-prompt-templates.ts:1165`（条款互斥）、`src/shared/blueprint-semantic-contract.ts`（「威胁/后果」给它授权）、`generate-draft.command.ts`（`withSuspenseHook` 注入）；**排除审查/改写**：`generation_artifacts` rowid 117（run `fd6f4edc`）与 `blueprint_commit_operations` `directory-f348fe27-…-1-6` 逐字一致 |
-| D21 | 中 | ⬜ 待裁定（2026-11-09 · 修法 C 方向已定、单测跟着需求改；实施设计稿待点头，生产代码与断言均未动） | 卷结构 `stale` 时 `src/services/outline-progress-gate.ts:92-95` 整体短路 ⇒ `ArchitectureConfirmDialog.tsx:509-512` 静默放行、界面零提示；`acknowledged` 判在 `handoff-stale` 之前 ⇒ 一次确认永久压住过期提醒 | [`d21-gate-shortcircuit-evidence-20261109.md`](./d21-gate-shortcircuit-evidence-20261109.md) §①/§⑦ · [`d21-fix-c-implementation-plan-20261109.md`](./d21-fix-c-implementation-plan-20261109.md) |
+| D21 | 中 | 🟡 已实施（2026-11-09 · 修法 C 落地，单测同批改；**实机未复验**） | 卷结构 `stale` 时 `src/services/outline-progress-gate.ts:92-95` 整体短路 ⇒ `ArchitectureConfirmDialog.tsx:509-512` 静默放行、界面零提示；`acknowledged` 判在 `handoff-stale` 之前 ⇒ 一次确认永久压住过期提醒 | [`d21-gate-shortcircuit-evidence-20261109.md`](./d21-gate-shortcircuit-evidence-20261109.md) §①/§⑦ · [`d21-fix-c-implementation-plan-20261109.md`](./d21-fix-c-implementation-plan-20261109.md) |
 
 共 **20 条**（原写 19，2026-11-06 复核时按 §2 表格行数订正）：阻塞 2（D1 / D12）· 高 5（D2 / D13 / D14 / D19 / D20）· 中 9（D3 / D4 / D5 / D6 / D7 / D8 / D15 / D17 / D18）· 低 4（D9 / D10 / D11 / D16），合计 20，合计对得上。**2026-11-06 23:4x 按作者裁定把 D3 由「高」降为「中」**（原为 高 6 / 中 8）。**两条阻塞都还没有真正验收** —— D1 代码已改但没跑过真实多章批次；D12 已修（`ba3d4bc5`，短细纲砍全文 + 判据改结构化对应）但**只到单测级、未实机**（此处原写「连修法都还没定」，已过时）。
 
@@ -1159,7 +1159,7 @@ changedChapters: request.authorRecovery ? expandChapterRange(request.authorRecov
 
 ## D21（中）卷结构过期时大纲领先正文闸门静默放行
 
-> 状态：待裁定（2026-11-09 · 作者裁定走**修法 C**、实施设计稿待点头；生产代码与断言均未动）
+> 状态：已实施（2026-11-09 · 修法 C 与单测同批落地；**实机复验待 `pnpm dev` 红线解除**）
 > 收编依据：作者裁定（台账 8 项 ③）；真源与本稿 §2 表 D21 行、台账现值索引 `:144` 一致。
 > 取证：[`d21-gate-shortcircuit-evidence-20261109.md`](./d21-gate-shortcircuit-evidence-20261109.md) · 文案 [`d21-gate-ui-guide-20261109.md`](./d21-gate-ui-guide-20261109.md) · 实施 [`d21-fix-c-implementation-plan-20261109.md`](./d21-fix-c-implementation-plan-20261109.md)
 
@@ -1179,4 +1179,20 @@ changedChapters: request.authorRecovery ? expandChapterRange(request.authorRecov
 
 归档取证稿 §⑦ 只给方向、没有可粘贴 diff；且交接稿 §12.3.3 的「若采纳，下一步」清单漏了「现算 / 多读 `project-core` / 区间下沉」这一核心 —— **只删短路而不现算等于修法 A（用旧快照边界撒谎），作者已否**。⇒ 本轮先出实施设计稿，五个决策点（降级策略 / 现算合并 / 取区间下沉 / 确认顺序 / 断言改法）与两处 UI 建议值待点头，之后**生产代码 + 断言同一次提交**，避免红着提交。
 
-与 D3 绑定：D3 不得转 ✅；修法 C 落地后 D3 能否转 ✅ **另裁**，本条不动状态行。
+与 D3 绑定：D3 不得转 ✅；修法 C 落地后 D3 能否转 ✅ **另裁**，本条不动 D3 的状态行。
+
+### 实施记录（2026-11-09）
+
+五个决策点与两处 UI 建议值作者点头后一次落完，**生产代码 + 断言同批**：
+
+| 落点 | 改了什么 |
+|---|---|
+| `src/shared/volume-structure.ts` | 新增 `liveVolumeRanges(rows, projection)`：按 `volumeIndex` 用现算的 `plannedFirst/plannedLast/plannedSource` 覆盖表值，`volumeId / actualLast / actualSource` 原样保留，区间仍由 `volumeEffectiveRanges` 算（**不新增第二份区间算法**）。对不上（卷数不等 / 卷号不匹配 / 非 `retained` 卷行在现算里找不到）返回 `null` |
+| `src/services/outline-progress-gate.ts` | 加第五路读 `db:project-core-get`（单独 `.catch`）；`stale` **不再短路**，只有 `unparsed` 仍按「判不出」；现算区间通过 `ranges` 注入判据，现算不可用或本批起点在现算结果里不是卷末 ⇒ 退回表边界 + `warning` + `boundarySource='table'`，**绝不退回 `gate: null`** |
+| `src/shared/outline-progress-gate.ts` | 判据接受注入的 `ranges`；新增 `structureStale` / `boundarySource` 两位（只影响面板附注，不影响判据）；`handoff === 'stale'` 判在 `acknowledged` **之前**（过期优先） |
+| `OutlineProgressGatePanel.tsx` | 新增附注 `data-testid="outline-progress-gate-stale-note"`：现算时写「已按当前大纲现算、实际末章仍取自旧表」，退回旧表时写「用的是旧表边界，可能落后」。**不做第五档、主次按钮不对调、不加帮助链接**（实施稿 §3.6 两处建议值） |
+| 单测 | `services/__tests__/outline-progress-gate.test.ts` 把「stale ⇒ 判不出就不拦」改为「stale ⇒ 照判」，并把「过期 + 已确认 ⇒ 放行」改为「旧确认压不住过期提醒」；新增 unparsed / 现算命中 / `project-core` 抛错三例。`shared/__tests__/{outline-progress-gate,volume-structure}.test.ts` 补过期优先正反两例、ranges 注入、`liveVolumeRanges` 三例；`OutlineProgressGatePanel.browser.tsx` 补附注三例 |
+
+**一处口径分歧（按最小面取，已告知作者）**：实施稿 §3.4 正文写「`acknowledged` 移到 `handoff` **三档**之后」，但同稿 §3.5 的单测表只列了 `handoff-stale` 一档要改，且 UI 指南 §三.4 明写「交接单 `stale` 的判定要挪到 `acknowledged` 之前」。若三档全提前，作者确认过 `handoff-missing` 的卷会**每次卷首都重新弹**，`AGENTS.md` 记录的「先铺多卷大纲再写正文」这条合法流程会被反复打断。⇒ 取「**只有 stale 提前**」，并补一条用例把 `missing` / `unusable` 仍被确认压住钉住（`shared/__tests__/outline-progress-gate.test.ts`）。
+
+**未做**：未跑实机（`pnpm dev` 红线未解除）· 未动 D3 状态行 · 未改 `finalize-chapter.command.ts`（写侧仍用表边界推进 `actual_last`，表的进度语义不变）。

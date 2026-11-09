@@ -46,6 +46,15 @@
  * `maxFinalized >= 上一卷末章` 在**中间有洞**时是错的（第 5 章没定稿、第 6 章定了，仍然放行），
  * 而洞正是「卷没写完」的典型形态。`db:draft-authority-sequence` 自带断章检测，`invalid`
  * 一律按未定稿处理 —— 不把坏账当完成。
+ *
+ * ## 修法 C（2026-11-09，D21）：判据不再依赖卷表新鲜度
+ *
+ * 以前卷结构表 `stale` 时读侧整体 `return { gate: null }`，这道闸在**正常状态**下直接闭嘴，
+ * 界面零提示。现在改由调用方按当前大纲现算区间、通过 `ranges` 传进来（`liveVolumeRanges`），
+ * 本函数只管判。两条纪律：
+ *
+ * - **区间算法仍然只有一份**（`volumeEffectiveRanges`），`ranges` 只是注入，不是第二份实现；
+ * - **过期优先于已确认**：`handoff === 'stale'` 判在 `acknowledged` 之前（见函数内注释）。
  */
 import type { AuthoritativeChapterSequence, AuthoritativeChapterSequenceStatus } from './author-manuscript-import'
 import { volumeRangeEndingAt, type VolumeDefinition, type VolumeRange } from './volume-structure'
@@ -90,6 +99,21 @@ export interface OutlineProgressGate {
   missingChapters: number
   /** 第二维的事实；`reason` 为交接单两档时，面板只讲这一维，不再讲「还差几章」。 */
   handoff: PreviousHandoffAvailability
+  /**
+   * 卷结构表比大纲旧（`db:volumes-list` 的 `state === 'stale'`）。
+   *
+   * **只影响面板附注，不影响判据**（修法 C，D21）：判据早就按当前大纲现算了，这一位是让作者
+   * 知道「表旧、但已经按新大纲判过」，免得把「提示说上一卷没写完」当成表没重建的错。
+   */
+  structureStale: boolean
+  /**
+   * 本次判定用的卷边界来自哪里：
+   * - `live` = 按 `project_core` 的当前大纲现算（`liveVolumeRanges`）；
+   * - `table` = 现算不可用（读失败 / 物化失败 / 对不上），退回表边界 —— **可能过期**。
+   *
+   * 两种都必须如实告知作者：说「已按当前大纲」而实际用了旧表，就是 D21 那类静默撒谎。
+   */
+  boundarySource: 'live' | 'table'
 }
 
 /** 豁免表里的稳定键：一卷一条。撤销即「重新开始提醒」。 */
@@ -115,9 +139,21 @@ export function outlineProgressGateOf(input: {
   chapterNumber: number
   /** 第二维。省略 = `unknown`（fail-open，等价于 2026-11-06 之前的一维行为）。 */
   handoff?: PreviousHandoffAvailability
+  /**
+   * 判定用的区间（修法 C）：调用方按当前大纲现算后传进来。
+   * 省略 ⇒ 走 `volumeRangeEndingAt(input.volumes)` —— **区间算法只有一份**，这里不另算。
+   */
+  ranges?: readonly VolumeRange[]
+  /** 卷结构表是否比大纲旧。省略 = `false`（老调用方 / 判据不关心）。 */
+  structureStale?: boolean
+  /** 区间来源；省略时按「传了 `ranges` 就是现算」推断。 */
+  boundarySource?: 'live' | 'table'
 }): OutlineProgressGate | null {
   if (!Number.isSafeInteger(input.chapterNumber) || input.chapterNumber < 2) return null
-  const range = volumeRangeEndingAt(input.volumes, input.chapterNumber - 1)
+  const target = input.chapterNumber - 1
+  const range = input.ranges
+    ? input.ranges.find(candidate => candidate.last === target) ?? null
+    : volumeRangeEndingAt(input.volumes, target)
   // 上一卷末章未定（`planned_*` 与 `actual_*` 都是 NULL）⇒ 没有可比对的边界，不猜。
   if (!range || range.last === null) return null
   const draftLastChapter = Number.isSafeInteger(input.authority.lastChapterNumber)
@@ -131,16 +167,31 @@ export function outlineProgressGateOf(input: {
     draftLastChapter,
     missingChapters,
     handoff,
+    structureStale: input.structureStale ?? false,
+    boundarySource: input.boundarySource ?? (input.ranges ? 'live' as const : 'table' as const),
   }
+  // 两维依次判：正文都没写完时，讲交接单是废话（第一维不过就不看第二维）。
+  // 这一维里「确认」仍然有效 —— 作者确认的是「我知道正文没写完，先铺大纲」，与单有没有过期无关。
+  const proseAligned = input.authority.status !== 'invalid' && draftLastChapter >= range.last
+  const acknowledged = input.acknowledged.includes(outlineProgressAckKey(range.volumeId))
+  if (!proseAligned) {
+    return acknowledged
+      ? { ...base, state: 'aligned', reason: null }
+      : { ...base, state: 'ahead', reason: 'prose-unfinalized' }
+  }
+  // 过期优先（2026-11-09 修法 C，D21）：交接单 `stale` 是对**某一版上游**的确认，上游改了以后
+  // 那次确认描述的现实已经不在 —— 它不能继续被「确认一次永久放行」压住。与
+  // `volume-handoff-gate.ts` 的既有纪律一致（那里本来就是这个顺序）。
+  //
+  // 只把 `stale` 提到确认之前：`missing` / `unusable` 不是「现实变了」，而是「材料一直缺」，
+  // 确认它们仍然是作者的真实意图（先铺大纲、后面再补单），提上去会让每次卷首都弹。
+  if (handoff === 'stale') return { ...base, state: 'ahead', reason: 'handoff-stale' }
   // 作者已点头 ⇒ 不再问（哪怕正文没写完：那是他自己选的「先铺大纲」）。
-  if (input.acknowledged.includes(outlineProgressAckKey(range.volumeId))) {
+  if (acknowledged) {
     return { ...base, state: 'aligned', reason: null }
   }
-  const proseAligned = input.authority.status !== 'invalid' && draftLastChapter >= range.last
-  if (!proseAligned) return { ...base, state: 'ahead', reason: 'prose-unfinalized' }
   // 正文写完了，但这一卷的交接单不可用 ⇒ L3 仍走 plan，只不过原因换了一个。
   if (handoff === 'missing') return { ...base, state: 'ahead', reason: 'handoff-missing' }
-  if (handoff === 'stale') return { ...base, state: 'ahead', reason: 'handoff-stale' }
   if (handoff === 'unusable') return { ...base, state: 'ahead', reason: 'handoff-unusable' }
   return { ...base, state: 'aligned', reason: null }
 }

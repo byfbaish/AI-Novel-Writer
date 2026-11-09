@@ -13,6 +13,16 @@
  * 卷表（`db:volumes-list` 返回 `state: 'empty'`），都不该让作者规划不了下一卷大纲。
  * 判定不出 ⇒ `gate: null`（= 本次不拦），并把原因放进 `warning` 供调用方打日志。
  *
+ * **修法 C（2026-11-09，D21）**：卷结构表 `stale`（改过大纲、没重建）**不再短路**。
+ * 表只是「计划边界的缓存」，它过期不代表判不出：区间改由 `project_core` 的
+ * `plotStructurePlan / synopsis / totalChapters` 现算（`materializeVolumeStructure` →
+ * `liveVolumeRanges`），表只剩两个用途 —— 提供 `actualLast`（进度，大纲里投影不出来）
+ * 与 `volumeId`（确认键宿主）。只有 `unparsed`（连卷行都没有）仍按「判不出」处理。
+ *
+ * 现算不可用（读失败 / 物化失败 / 与表对不上 / 本批起点在现算结果里不是卷末）⇒ 退回表边界，
+ * 但必须把这件事写进 `warning` 与 `gate.boundarySource = 'table'`，由面板如实告知。
+ * **绝不退回 `gate: null`** —— 那等于把 D21 的静默放行又请回来。
+ *
  * 确认键前缀 `outline-progress:` 与开写闸门的 `volume-handoff:` **分开**：同表共存、
  * 互不串扰，撤销一条不影响另一条。
  */
@@ -27,8 +37,20 @@ import {
 } from '../shared/outline-progress-gate'
 import type { VolumeHandoffDefinition } from '../shared/volume-handoff'
 import { isVolumeHandoffEmpty, renderVolumeHandoffSection, VOLUME_HANDOFF_MAX_CHARS } from '../shared/volume-handoff'
-import { volumeRangeEndingAt, type VolumeDefinition } from '../shared/volume-structure'
+import { liveVolumeRanges, materializeVolumeStructure, volumeRangeEndingAt, type VolumeDefinition } from '../shared/volume-structure'
 import { ipc } from './ipc-client'
+
+/**
+ * `db:project-core-get` 里本闸门要用的三个字段。
+ *
+ * 刻意只取切片、不 import `ProjectCoreData`：后者住在 `electron/repositories/`，渲染层只为三个
+ * 字符串去拉整个主进程仓库类型，等于把两层耦合在一根不要紧的线上。
+ */
+type ProjectCoreSlice = {
+  plotStructurePlan?: string | null
+  synopsis?: string | null
+  totalChapters?: number | null
+}
 
 export interface OutlineProgressGateReadResult {
   /** `null` = 这一章不是任何一卷的第一章（不适用），或读取失败（见 `warning`）。 */
@@ -76,7 +98,7 @@ export async function readOutlineProgressGate(input: {
   }
   const projectPath = input.projectSession.projectPath
   try {
-    const [volumesResult, authority, exemptions, handoffsResult] = await Promise.all([
+    const [volumesResult, authority, exemptions, handoffsResult, coreResult] = await Promise.all([
       ipc.invokeWithProjectSession(input.projectSession, 'db:volumes-list', projectPath),
       ipc.invokeWithProjectSession(input.projectSession, 'db:draft-authority-sequence', projectPath),
       ipc.invokeWithProjectSession(input.projectSession, 'db:consistency-exemption-list', projectPath),
@@ -85,30 +107,69 @@ export async function readOutlineProgressGate(input: {
       // `prose-unfinalized` 一起吞掉（复核抓到的回归面）。
       ipc.invokeWithProjectSession(input.projectSession, 'db:volume-handoffs-list', projectPath)
         .catch(() => null),
+      // 修法 C（2026-11-09）：第五路读。同样单独 catch —— 现算只是「让边界更准」，
+      // 它失败不该把本来能报的结论一起吞掉（与第四路同一条教训）。
+      ipc.invokeWithProjectSession(input.projectSession, 'db:project-core-get', projectPath)
+        .catch(() => null),
     ])
     if (!volumesResult?.success) return { gate: null, warning: volumesResult?.error }
-    // 卷表本身陈旧/没解析完时边界不可信 ⇒ 判不出就不拦（与「读失败」同一口径）。
-    // 判据只用 `state === 'ready'`：`empty` 是老项目没建卷，走下面的 `volumeRangeEndingAt` 自然返回 null。
+    // `unparsed` = 连卷行都没有（解析没跑过 / 解析失败）：没有可判的对象，仍按「判不出」处理。
+    // `stale` 不再短路 —— 那是修法 C 的核心，见文件头。
+    // 判据用白名单而不是黑名单：将来多一档状态时默认「不判」，不会默认「照判」。
     const volumeState = (volumesResult as { state?: string }).state
-    if (volumeState && volumeState !== 'ready' && volumeState !== 'empty') {
+    if (volumeState === 'unparsed') {
+      return { gate: null, warning: '卷结构尚未解析（unparsed），本次不判' }
+    }
+    if (volumeState && volumeState !== 'ready' && volumeState !== 'empty' && volumeState !== 'stale') {
       return { gate: null, warning: `卷结构状态为 ${volumeState}，本次不判` }
     }
     if (!authority || typeof authority !== 'object' || typeof authority.status !== 'string') {
       return { gate: null, warning: '正文权威序列不可读' }
     }
+    const structureStale = volumeState === 'stale'
     const volumes = (volumesResult.volumes ?? []) as VolumeDefinition[]
     // mock / 老库可能返回非数组：直接 .filter 会 TypeError，而外层 catch 会把它变成
     // 「静默不拦」—— 于是这道闸看起来时灵时不灵。判类型，不判真值。
     const acknowledged = (Array.isArray(exemptions) ? exemptions as ConsistencyExemption[] : [])
       .filter(entry => !entry.revoked)
       .map(entry => entry.stableFactKey)
-    const previousRange = volumeRangeEndingAt(volumes, input.chapterNumber - 1)
     const handoffs = handoffsResult?.success && Array.isArray(handoffsResult.entries)
       ? handoffsResult.entries as VolumeHandoffDefinition[]
       : null
+
+    // ---- 修法 C：边界优先按当前大纲现算 ----
+    const core = coreResult as ProjectCoreSlice | null | undefined
+    const totalChapters = typeof core?.totalChapters === 'number' && Number.isSafeInteger(core.totalChapters)
+      ? core.totalChapters
+      : 0
+    const projection = core
+      ? materializeVolumeStructure({
+          plan: core.plotStructurePlan,
+          synopsis: core.synopsis,
+          totalChapters,
+        })
+      : null
+    const liveRanges = liveVolumeRanges(volumes, projection)
+    // 现算给出的卷末**必须**正好是「本批起点 − 1」，否则按现算就判不出这一批是哪一卷的卷首
+    // （常见于大纲改过之后、本批起点其实落在卷中间）。这种情况退回表边界并如实标注来源：
+    // 宁可带着「可能落后」的标注提醒一次，也不要因为边界搬了家而静默放行。
+    const useLive = liveRanges?.some(range => range.last === input.chapterNumber - 1) ?? false
+    const boundarySource: 'live' | 'table' = useLive ? 'live' : 'table'
+    const warning = structureStale && !useLive
+      ? (liveRanges
+          ? `卷结构表为 stale，且按当前大纲第 ${input.chapterNumber - 1} 章不是任何一卷的卷末，本次按旧表边界判定`
+          : '卷结构表为 stale，且当前大纲未能物化卷结构，本次按旧表边界判定')
+      : undefined
+    const ranges = useLive ? liveRanges! : undefined
+    const previousRange = ranges
+      ? ranges.find(range => range.last === input.chapterNumber - 1) ?? null
+      : volumeRangeEndingAt(volumes, input.chapterNumber - 1)
     return {
       gate: outlineProgressGateOf({
         volumes,
+        ranges,
+        structureStale,
+        boundarySource,
         authority: authority as Pick<AuthoritativeChapterSequence, 'status' | 'lastChapterNumber'>,
         acknowledged,
         chapterNumber: input.chapterNumber,
@@ -116,6 +177,7 @@ export async function readOutlineProgressGate(input: {
           ? handoffAvailabilityOf(handoffs, previousRange?.volumeIndex ?? null, input.chapterNumber)
           : 'unknown',
       }),
+      warning,
     }
   } catch (error) {
     return { gate: null, warning: error instanceof Error ? error.message : String(error) }

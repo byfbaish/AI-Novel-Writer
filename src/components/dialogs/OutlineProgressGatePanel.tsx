@@ -27,6 +27,13 @@ import { Button } from '../ui/Button'
  * 后两档是 2026-11-06 补的：原来只判第一档，于是「已定稿但没登记单」「单过期」两种同样
  * 走计划摘要的降级被判成 `aligned`、界面零提示（详见 `shared/outline-progress-gate.ts` 文件头）。
  *
+ * ## 修法 C（2026-11-09，D21）加了一条附注，不是第五档
+ *
+ * 卷结构表 `stale` 时判据已按当前大纲现算（`liveVolumeRanges`），所以四档说法一个字不用改；
+ * 但要补一句**来源差**（`data-testid="outline-progress-gate-stale-note"`）：计划区间是现算的、
+ * 实际末章仍取自旧表。退回旧表边界时这句改成「用的是旧表边界，可能落后」。
+ * 不做成独立档的理由：`stale` 可能长期存在，每次卷首都多一档会退化成「狼来了」。
+ *
  * ## 两个出口，没有「静默跳过」
  *
  * - **我知道，仍按计划继续**：写一条带理由的确认（`consistency_exemptions`，可撤销）；
@@ -202,6 +209,32 @@ export default function OutlineProgressGatePanel({
           </p>
         </div>
       </div>
+
+      {/* 修法 C（D21）：表旧不影响判据，但必须说出来 —— 否则作者会以为「提示说上一卷没写完」
+          是表没重建导致的误报，分不清该信谁。两种来源分开写：现算 / 退回旧表。 */}
+      {gate.structureStale && (
+        <p
+          data-testid="outline-progress-gate-stale-note"
+          className="text-[0.7rem]"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          {gate.boundarySource === 'live'
+            ? text(
+                '卷结构表比大纲旧：本批的计划区间已按当前大纲现算，「上一卷实际写到第几章」仍取自那张旧表、可能落后。'
+                + '不重建也能继续；重建只刷新计划区间，不会清空实际末章。',
+                'The volume table is older than your outline: this batch recomputes the planned ranges from your '
+                + 'current outline, while "how far the previous volume actually got" still comes from that older '
+                + 'table and may lag behind. You can continue without rebuilding; rebuilding only refreshes planned ranges.',
+              )
+            : text(
+                '卷结构表比大纲旧，而且这次没能按当前大纲现算（读不到大纲，或本批起点不是现算出的卷末），'
+                + '本次用的是旧表边界，判断可能落后。建议先到「卷末交接」页重建卷结构。',
+                'The volume table is older than your outline, and this time the ranges could not be recomputed '
+                + '(the outline was unreadable, or this batch does not start at a recomputed volume end). '
+                + 'The older table boundaries were used, so this judgement may lag behind. Rebuild the volume structure first.',
+              )}
+        </p>
+      )}
 
       <label className="block space-y-1">
         <span className="text-[0.7rem]" style={{ color: 'var(--color-text-muted)' }}>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  liveVolumeRanges,
   materializeVolumeStructure,
   volumeEffectiveRanges,
   volumeRangeEndingAt,
@@ -366,5 +367,54 @@ describe('volumeRangeEndingAt（P1-2 期 2 的「卷末章」判定）', () => {
   it('起止未定的卷（计划与实际都为空）不会被误判成「末章 = null」的命中', () => {
     const volumes = [volume({ plannedFirst: null, plannedLast: null, plannedSource: 'even' })]
     expect(volumeRangeEndingAt(volumes, 1)).toBeNull()
+  })
+})
+
+describe('liveVolumeRanges（修法 C，D21）', () => {
+  /** 表里是旧的计划边界（第 1 卷 1–20），进度 12。 */
+  const tableRows = [
+    volume({
+      volumeId: 'volume:1', volumeIndex: 1, plannedFirst: 1, plannedLast: 20, plannedSource: 'even',
+      actualLast: 12, actualSource: 'finalized',
+    }),
+    volume({ volumeId: 'volume:2', volumeIndex: 2, plannedFirst: 21, plannedLast: 40, plannedSource: 'even' }),
+  ]
+  /** 当前大纲：第 1 卷只到第 8 章（第 2 卷首个归属章是 9）⇒ 现算边界应与表不同。 */
+  const projection = materializeVolumeStructure({
+    // 物化要求每卷至少有一个单元（`parseArcStructure` 只收「有中弧」的卷）
+    plan: '# 卷 / 单元结构\n\n## 卷一：杂役处\n### 单元一：挨一脚\n## 卷二：百草园\n### 单元一：进园\n',
+    synopsis: '## 第1卷第1单元第8章（全书第8章）：止\n\n## 第2卷第1单元第1章（全书第9章）：起\n',
+    totalChapters: 0,
+  })
+
+  it('用现算的计划边界覆盖表值，进度与 volumeId 原样保留', () => {
+    const ranges = liveVolumeRanges(tableRows, projection)
+    expect(ranges).not.toBeNull()
+    expect(ranges![0]!.last).toBe(8)
+    expect(ranges![0]!.volumeId).toBe('volume:1')
+    // 进度是大纲里投影不出来的运行时事实，必须留着（D19：边界不是进度）
+    expect(ranges![0]!.actualLast).toBe(12)
+    expect(ranges![0]!.basis).toBe('headings')
+  })
+
+  it('对不上就返回 null，绝不混用两套边界', () => {
+    expect(liveVolumeRanges(tableRows, null)).toBeNull()
+    // 现算有两卷、表只有一行 ⇒ 表缺卷，拼不出完整骨架
+    expect(liveVolumeRanges(tableRows.slice(0, 1), projection)).toBeNull()
+    // 表里有、现算里没有，且不是 retained ⇒ 卷号对不上
+    expect(liveVolumeRanges([volume({ volumeIndex: 9 })], projection)).toBeNull()
+  })
+
+  it('retained 卷行原样保留，不算对不上', () => {
+    const rows = [
+      ...tableRows,
+      volume({
+        volumeId: 'volume:9', volumeIndex: 9, plannedFirst: 41, plannedLast: 50, source: 'retained',
+      }),
+    ]
+    const ranges = liveVolumeRanges(rows, projection)
+    expect(ranges).not.toBeNull()
+    expect(ranges![ranges!.length - 1]!.volumeId).toBe('volume:9')
+    expect(ranges![ranges!.length - 1]!.last).toBe(50)
   })
 })

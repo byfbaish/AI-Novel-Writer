@@ -40,6 +40,8 @@ const GATE: OutlineProgressGate = {
   missingChapters: 8,
   // 未定稿 + 没有交接单 = 第一档的常态形态（正文都没写完，交接单自然也谈不上可用）
   handoff: 'missing',
+  structureStale: false,
+  boundarySource: 'table',
 }
 
 let root: Root
@@ -237,5 +239,28 @@ describe('大纲领先正文的闸门面板', () => {
     expect(saves[0]![1]).toContain('未登记卷末交接单')
     // 负断言：串档就会红（原版只断言了正向，实现若拼上「定稿至第20章」照样绿）
     expect(saves[0]![1]).not.toContain('定稿至第')
+  })
+
+  it('表比大纲旧且已现算 ⇒ 补一句来源差，四档说法不变（修法 C，D21）', async () => {
+    await renderPanel({ ...GATE, structureStale: true, boundarySource: 'live' })
+    const note = container.querySelector('[data-testid="outline-progress-gate-stale-note"]')?.textContent ?? ''
+    expect(note).toContain('卷结构表比大纲旧')
+    expect(note).toContain('已按当前大纲现算')
+    expect(note).toContain('不会清空实际末章')
+    // 附注不是第五档：标题仍是第一档的说法，出口也不变
+    expect(container.textContent).toContain('上一卷正文还没整卷定稿')
+    expect(container.textContent).toContain('取消，我先去补正文')
+  })
+
+  it('表旧但没能现算 ⇒ 明说用的是旧表边界，不冒充现算', async () => {
+    await renderPanel({ ...GATE, structureStale: true, boundarySource: 'table' })
+    const note = container.querySelector('[data-testid="outline-progress-gate-stale-note"]')?.textContent ?? ''
+    expect(note).toContain('用的是旧表边界')
+    expect(note).not.toContain('已按当前大纲现算')
+  })
+
+  it('表不旧 ⇒ 不出现这条附注', async () => {
+    await renderPanel()
+    expect(container.querySelector('[data-testid="outline-progress-gate-stale-note"]')).toBeNull()
   })
 })

@@ -364,6 +364,57 @@ export function volumeEffectiveRanges(volumes: readonly VolumeDefinition[]): Vol
 }
 
 /**
+ * 用**当前大纲现算**的计划边界替换表里的计划三字段，再走同一套 `volumeEffectiveRanges`（修法 C，D21）。
+ *
+ * ## 为什么不另写一份取区间
+ *
+ * `volumeRangeEndingAt` 的注释明令「不在这里重算区间」：一旦有两份区间算法，面板显示的卷末章
+ * 与触发条件就会不一致，而这类不一致不报错、只表现为「某一卷的交接单永远不生成」。所以本函数
+ * 只做**字段合并**，区间仍由 `volumeEffectiveRanges` 算。
+ *
+ * ## 谁被换、谁被留
+ *
+ * - 换：`plannedFirst / plannedLast / plannedSource`（计划边界，本来就是大纲的投影）；
+ * - 留：`volumeId / actualLast / actualSource / name / source…` —— 进度（`actualLast`）是运行时
+ *   事实，大纲里投影不出来；`volumeId` 是确认键（`outline-progress:<volumeId>`）的宿主，换掉等于
+ *   让已有确认失效（D19 的口径：边界不是进度）。
+ *
+ * ## 对不上就返回 `null`，绝不「尽力而为」
+ *
+ * 卷数不等 / 有卷缺节点 / 非 `retained` 的卷行在现算结果里找不到 ⇒ `null`。调用方收到 `null`
+ * 必须退回表边界并**如实告知**边界来自旧表；悄悄混用两套边界比不判更糟。
+ *
+ * 例外：`source === 'retained'`（大纲里已无此卷、被交接单引用而保留）本来就没有节点，
+ * 原样保留自己的计划值，不算对不上。
+ */
+export function liveVolumeRanges(
+  rows: readonly VolumeDefinition[],
+  projection: VolumePlanProjection | null | undefined,
+): VolumeRange[] | null {
+  if (!projection || projection.volumes.length === 0 || rows.length === 0) return null
+  const byIndex = new Map(projection.volumes.map(node => [node.index, node]))
+  // 现算里有、表里没有 ⇒ 表缺卷，拼不出完整骨架。
+  if (projection.volumes.some(node => !rows.some(row => row.volumeIndex === node.index))) return null
+
+  const merged: VolumeDefinition[] = []
+  for (const row of rows) {
+    const node = byIndex.get(row.volumeIndex)
+    if (!node) {
+      if (row.source !== 'retained') return null
+      merged.push(row)
+      continue
+    }
+    merged.push({
+      ...row,
+      plannedFirst: node.plannedFirst,
+      plannedLast: node.plannedLast,
+      plannedSource: node.plannedSource,
+    })
+  }
+  return volumeEffectiveRanges(merged)
+}
+
+/**
  * 有效末章正好是 `chapterNumber` 的那一卷（P1-2 期 2 的「卷末章」判定）。
  *
  * 判定完全走 `volumeEffectiveRanges()`：末章 = `planned_last ?? actual_last`（**边界不是进度**，D19），

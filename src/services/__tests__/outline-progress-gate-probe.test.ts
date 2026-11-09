@@ -15,6 +15,8 @@ const fakeGate: OutlineProgressGate = {
   draftLastChapter: 6,
   missingChapters: 0,
   handoff: 'missing',
+  structureStale: false,
+  boundarySource: 'table',
 }
 
 const session = { projectPath: '/tmp/proj', sessionId: 's1' } as never
