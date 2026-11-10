@@ -1,12 +1,11 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, expect, it } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 
 import { useLocaleStore } from '../../../../stores/locale-store'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useWorkflowStore, type WorkflowRun } from '../../../../stores/workflow-store'
-import { useWorkflowReasoningStore } from '../../../../stores/workflow-reasoning-store'
 import AIOutputPanel from '../../../panels/AIOutputPanel'
 import ShellV2 from '../ShellV2'
 
@@ -15,7 +14,6 @@ import ShellV2 from '../ShellV2'
 const originalLocale = useLocaleStore.getState()
 const originalProject = useProjectStore.getState()
 const originalWorkflow = useWorkflowStore.getState()
-const originalReasoning = useWorkflowReasoningStore.getState()
 const originalBridge = Object.getOwnPropertyDescriptor(window, 'aiNovelAPI')
 const projectPath = 'C:/f05/feedback'
 const projectSession = { projectId: 'f05-feedback', projectPath, leaseId: 'f05-feedback-lease' }
@@ -75,7 +73,6 @@ afterEach(async () => {
   useLocaleStore.setState(originalLocale, true)
   useProjectStore.setState(originalProject, true)
   useWorkflowStore.setState(originalWorkflow, true)
-  useWorkflowReasoningStore.setState(originalReasoning, true)
   if (originalBridge) Object.defineProperty(window, 'aiNovelAPI', originalBridge)
   else Reflect.deleteProperty(window, 'aiNovelAPI')
 })
@@ -83,32 +80,24 @@ afterEach(async () => {
 it('U13.A01 Writer 输出区随工作流增量呈现正文', async () => {
   await render()
   await result('雨落在窗沿。')
-  expect(host.querySelector('[aria-label="写作助手"]')?.textContent).toContain('雨落在窗沿。')
+  await act(async () => page.getByRole('button', { name: '查看当前输出（低频）' }).click())
+  await vi.waitFor(() => expect(host.querySelector('[aria-label="写作助手"]')?.textContent).toContain('雨落在窗沿。'), { timeout: 4000 })
   await result('雨落在窗沿。门外有人敲门。')
-  expect(host.querySelector('[aria-label="写作助手"]')?.textContent).toContain('雨落在窗沿。门外有人敲门。')
+  await vi.waitFor(() => expect(host.querySelector('[aria-label="写作助手"]')?.textContent).toContain('雨落在窗沿。门外有人敲门。'), { timeout: 4000 })
 })
 
 it('U13.A02 仅收到提供商推理时显示可折叠推理区，正文开始后仍可展开', async () => {
   await render()
   await result('<think>先核对前章时间线')
-  expect(host.textContent).toContain('先核对前章时间线')
-  expect(host.textContent).not.toContain('门外有人敲门。')
-  await result('<think>先核对前章时间线</think>门外有人敲门。')
-  expect(host.textContent).toContain('门外有人敲门。')
+  expect(host.textContent).not.toContain('先核对前章时间线')
+  await act(async () => {
+    const current = useWorkflowStore.getState().activeRuns[0]
+    useWorkflowStore.setState({ activeRuns: [{ ...current, steps: [{ ...current.steps[0], status: 'completed', result: '<think>先核对前章时间线</think>门外有人敲门。' }] }] })
+  })
+  await vi.waitFor(() => expect(host.textContent).toContain('门外有人敲门。'))
   expect(host.textContent).not.toContain('先核对前章时间线')
   await act(async () => page.getByRole('button', { name: '思考过程' }).click())
   expect(host.textContent).toContain('先核对前章时间线')
-})
-
-it('U13.A02 临时推理展示与正文结果隔离，清理后消失', async () => {
-  await render()
-  await act(async () => {
-    useWorkflowReasoningStore.getState().append(run.id, 'attempt-1', '只用于界面显示的推理')
-  })
-  expect(host.textContent).toContain('只用于界面显示的推理')
-  expect(useWorkflowStore.getState().activeRuns[0].steps[0].result).toBeUndefined()
-  await act(async () => useWorkflowReasoningStore.getState().clear(run.id))
-  expect(host.textContent).not.toContain('只用于界面显示的推理')
 })
 
 it.each([

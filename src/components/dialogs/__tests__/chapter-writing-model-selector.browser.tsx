@@ -141,6 +141,7 @@ function installIpc() {
               },
             }
         if (channel === 'fs:write-json') return { success: true }
+        if (channel === 'db:draft-list-all') return []
         throw new Error(`Unexpected IPC channel: ${channel}`)
       }),
       on: vi.fn(() => () => {}),

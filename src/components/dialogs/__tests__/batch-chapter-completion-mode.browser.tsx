@@ -445,13 +445,15 @@ function installIpc() {
       expect(args[1]).toEqual(PROJECT_SESSION)
       expect(slot.source).toEqual({ draftId: 101, finalizationId: FINALIZATION_ID,
         chapterNumber: 1, contentHash: FINALIZED_CONTENT_HASH })
-      expect(['chapter_notes', 'character_cards']).toContain(slot.stepKey)
+      expect(['chapter_notes', 'knowledge_candidates', 'character_cards']).toContain(slot.stepKey)
       return { attemptCount: 0, view: { handle: { projectId: PROJECT_SESSION.projectId,
         epoch: PROJECT_SESSION.leaseId, rootActionId: 'browser-finalization', runId: `browser-${slot.stepKey}` },
       status: 'completed', artifacts: [] }, modelId: 'grok-browser', context: { slot }, sourceStatus: 'current',
       effect: slot.stepKey === 'chapter_notes'
         ? { success: true, stepKey: 'chapter_notes', chapterNotes: '匿名信引发调查。', factCount: 1, blueprintUpdated: true }
-        : { success: true, stepKey: 'character_cards', applied: 0, unchanged: 0, candidates: [], unresolved: [] } }
+        : slot.stepKey === 'knowledge_candidates'
+          ? { success: true, stepKey: 'knowledge_candidates', candidateCount: 0, dropped: [], factCount: 1 }
+          : { success: true, stepKey: 'character_cards', applied: 0, unchanged: 0, candidates: [], unresolved: [] } }
     }
     if (channel === 'kb:import-text') {
       return { success: true, chunkCount: 1, docId: 'knowledge-browser-1' }
@@ -930,6 +932,6 @@ describe('batch chapter completion mode browser flow', () => {
     )
     expect(invoke.mock.calls.filter(([channel]) => channel === 'finalization-generation:read')
       .map(([, request]) => (request as { slot: { stepKey: string } }).slot.stepKey))
-      .toEqual(['chapter_notes', 'character_cards'])
+      .toEqual(['chapter_notes', 'knowledge_candidates', 'character_cards'])
   })
 })

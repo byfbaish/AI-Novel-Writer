@@ -6,6 +6,7 @@ import ShellV2 from '../ShellV2'
 import TitleBar from '../../TitleBar'
 import LeftToolWindowBar from '../../LeftToolWindowBar'
 import RightToolWindowBar from '../../RightToolWindowBar'
+import StatusBar from '../../StatusBar'
 import EditorArea from '../../../panels/EditorArea'
 import AIPanel from '../../../panels/AIPanel'
 import { useAppearanceStore } from '../../../../stores/appearance-bootstrap'
@@ -37,7 +38,7 @@ function WriterFixture() {
     rail={<LeftToolWindowBar />} rightRail={<RightToolWindowBar />}
     sidebar={<p>作品资料</p>} editor={<EditorArea onNewProject={vi.fn()} />}
     aiPanel={<AIPanel />}
-    bottom={<p>任务与日志</p>} statusBar={<p>状态</p>}
+    bottom={<p>任务与日志</p>} statusBar={<StatusBar />}
     sidebarOpen={layout.sidebarOpen} aiPanelOpen={layout.aiPanelOpen}
     bottomOpen={layout.bottomPanelOpen} immersive={layout.immersive} home={layout.sidebarView === 'home'} />
 }
@@ -124,7 +125,7 @@ it('reveals explicitly opened panels from the bookshelf', async () => {
   await act(async () => root.render(<WriterFixture />))
   for (const tab of ['tasks', 'log', 'models'] as const) {
     await act(async () => useLayoutStore.getState().setSidebarView('home'))
-    await click(`button[title="${{ tasks: '任务', log: '日志', models: '模型' }[tab]}"]`)
+    await click(`button[title="${{ tasks: '打开任务', log: '打开日志', models: '打开模型' }[tab]}"]`)
     expect(host.querySelector('#writer-bottom')?.hasAttribute('hidden')).toBe(false)
     expect(useLayoutStore.getState()).toMatchObject({ sidebarView: 'project', bottomTab: tab, bottomPanelOpen: true })
   }
