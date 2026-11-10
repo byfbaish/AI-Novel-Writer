@@ -83,12 +83,16 @@ beforeEach(async () => {
   translate = vi.fn()
   scale = vi.fn()
   openCharacter = vi.fn()
-  invoke = vi.fn(async (channel: string, ids: string[]) => ({
-    success: channel === 'character-avatar:read-batch',
-    avatars: channel === 'character-avatar:read-batch' && ids.includes('stable-0')
-      ? [{ characterId: 'stable-0', assetRevision: 1, mime: 'image/png', base64: btoa('avatar') }]
-      : [],
-  }))
+  invoke = vi.fn(async (channel: string, ids: string[]) => {
+    if (channel === 'finalized-character:list-state-candidates') return []
+    if (channel === 'finalized-character:list-card-deltas') return { pending: [], hits: [] }
+    return {
+      success: channel === 'character-avatar:read-batch',
+      avatars: channel === 'character-avatar:read-batch' && ids.includes('stable-0')
+        ? [{ characterId: 'stable-0', assetRevision: 1, mime: 'image/png', base64: btoa('avatar') }]
+        : [],
+    }
+  })
   originalApiDescriptor = Object.getOwnPropertyDescriptor(window, 'aiNovelAPI')
   window.aiNovelAPI = { invoke } as unknown as typeof window.aiNovelAPI
   setActiveProjectSessionContext({ projectId: project.id, leaseId: project.sessionLease!, projectPath: path })
@@ -263,6 +267,7 @@ it('U11.A03/A04/A05/A06: Writer 图谱拖动、平移、缩放、适应和复位
   expect(new Set(invoke.mock.calls.map(([channel]) => channel))).toEqual(new Set([
     'character-avatar:read-batch', 'character-cast:list', 'character-proposal:list-history',
     'character-proposal:list-pending-finalized', 'finalized-character:list-state-candidates',
+    'finalized-character:list-card-deltas',
   ]))
 })
 
@@ -288,5 +293,6 @@ it('U11.A13: Writer 的 1000 人图谱全部页面和搜索可达，绘制与头
   expect(new Set(invoke.mock.calls.map(([channel]) => channel))).toEqual(new Set([
     'character-avatar:read-batch', 'character-cast:list', 'character-proposal:list-history',
     'character-proposal:list-pending-finalized', 'finalized-character:list-state-candidates',
+    'finalized-character:list-card-deltas',
   ]))
 })

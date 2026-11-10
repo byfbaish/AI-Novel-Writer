@@ -86,12 +86,16 @@ describe('character list search', () => {
     setActiveProjectSessionContext({
       projectId: 'character-search', leaseId: 'character-search-lease', projectPath: PROJECT_PATH,
     })
-    const invoke = vi.fn(async (channel: string, ids: string[]) => ({
-      success: true,
-      avatars: channel === 'character-avatar:read-batch'
-        ? ids.map((characterId, index) => ({ characterId, assetRevision: 1, mime: 'image/png', base64: btoa(`avatar-${index}`) }))
-        : [],
-    }))
+    const invoke = vi.fn(async (channel: string, ids: string[]) => {
+      if (channel === 'finalized-character:list-state-candidates') return []
+      if (channel === 'finalized-character:list-card-deltas') return { pending: [], hits: [] }
+      return {
+        success: true,
+        avatars: channel === 'character-avatar:read-batch'
+          ? ids.map((characterId, index) => ({ characterId, assetRevision: 1, mime: 'image/png', base64: btoa(`avatar-${index}`) }))
+          : [],
+      }
+    })
     window.aiNovelAPI = { invoke } as unknown as typeof window.aiNovelAPI
     useCharacterStore.setState({
       characters: [

@@ -40,7 +40,9 @@ function SessionPanel({ session }: { session: ProjectSessionContext }) {
       ])
       if (!isProjectSessionCurrent(session)) return
       // 两个 channel 都可能返回 null（旧主进程不认新通道），必须兜住 —— 否则整块面板白屏。
-      setSummaries(pending ?? []); setBoard(deltas ?? EMPTY_BOARD); setError(failure)
+      setSummaries(Array.isArray(pending) ? pending : [])
+      setBoard(deltas && Array.isArray(deltas.pending) && Array.isArray(deltas.hits) ? deltas : EMPTY_BOARD)
+      setError(failure)
     } catch (cause) {
       if (isProjectSessionCurrent(session)) setError(cause instanceof Error ? cause.message : String(cause))
     }

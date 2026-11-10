@@ -51,6 +51,8 @@ it('V3 role rail opens a stable-ID profile, avatar and graph without changing th
     if (channel === 'character-avatar:read-batch') return { success: true, avatars: [
       { characterId: 'stable-a', assetRevision: 1, mime: 'image/png', base64: avatarBase64 },
     ] }
+    if (channel === 'finalized-character:list-state-candidates') return []
+    if (channel === 'finalized-character:list-card-deltas') return { pending: [], hits: [] }
     return []
   })
   Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: vi.fn(() => () => {}) } })
