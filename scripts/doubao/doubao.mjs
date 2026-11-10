@@ -32,11 +32,50 @@
  * Exit codes: 0 ok / 1 failure / 2 not connected
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_PORT, withChat, sleep } from './cdp.mjs'
 import { extractMarkers } from './markers.mjs'
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
+
+/**
+ * 派活记录（本进程会写盘）的落点：先试 `develop/.runtime`，不可写就退到委托槽位自己的 `.batch/`。
+ *
+ * 为什么要有兜底：夜间定时卡的会话跑在受限沙箱里（受限令牌 + Low 完整性），写 `develop/.runtime`
+ * 会 EPERM 并弹提权申请；没人守夜时这一下就卡住投递。而各槽位的 `.batch/` 从工作区根继承写权限，
+ * 11-09 夜跑实测可写。所以「探测一次、失败换第二落点」，绝不反复尝试、绝不重复申请提权。
+ */
+const PRIMARY_RUNTIME = join(REPO_ROOT, '.runtime', 'doubao')
+/** 委托槽位槽位表见 docs/agents/worktree-parallel.md §3.1：豆包固定 wt-1。 */
+const FALLBACK_RUNTIME = join(REPO_ROOT, '..', 'wt-1', '.batch', 'doubao')
+const RUNTIME_CANDIDATES = [PRIMARY_RUNTIME, FALLBACK_RUNTIME]
+
+let runtimeDir = null
+const resolveRuntimeDir = () => {
+  if (runtimeDir) return runtimeDir
+  for (const dir of RUNTIME_CANDIDATES) {
+    try {
+      mkdirSync(dir, { recursive: true })
+      const probe = join(dir, '.write-probe')
+      writeFileSync(probe, 'ok', 'utf8')
+      rmSync(probe, { force: true })
+      runtimeDir = dir
+      if (dir !== PRIMARY_RUNTIME) console.warn('[warn] .runtime 不可写，派活记录改落 ' + dir)
+      return runtimeDir
+    } catch { /* 试下一个落点 */ }
+  }
+  runtimeDir = ''
+  return runtimeDir
+}
+const dispatchRecordPath = () => {
+  const dir = resolveRuntimeDir()
+  return dir ? join(dir, 'last-thread.json') : join(PRIMARY_RUNTIME, 'last-thread.json')
+}
+const readDispatchRecordFrom = path => {
+  try { return JSON.parse(readFileSync(path, 'utf8')) } catch { return null }
+}
 
 const SELECTORS = {
   /** ProseMirror rich-text editor - the only contenteditable on the chat page. */
@@ -89,17 +128,20 @@ const js = snippet => `(() => { ${snippet} })()`
  * 它从没收到过的任务书，白烧了三分钟。
  * 记录放在 `.runtime/`（已 gitignore），拿不到记录时**不拦**，只提示。
  */
-const DISPATCH_RECORD = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.runtime', 'doubao', 'last-thread.json')
-
 const readDispatchRecord = () => {
-  try { return JSON.parse(readFileSync(DISPATCH_RECORD, 'utf8')) } catch { return null }
+  for (const path of [dispatchRecordPath(), join(PRIMARY_RUNTIME, 'last-thread.json'), join(FALLBACK_RUNTIME, 'last-thread.json')]) {
+    const record = readDispatchRecordFrom(path)
+    if (record) return record
+  }
+  return null
 }
 
 const writeDispatchRecord = (href, note) => {
+  const dir = resolveRuntimeDir()
+  if (!dir) return /* 两个落点都不可写：记录只是护栏，写不进去不该拦住派活 */
   try {
-    mkdirSync(dirname(DISPATCH_RECORD), { recursive: true })
-    writeFileSync(DISPATCH_RECORD, JSON.stringify({ href, note, at: new Date().toISOString() }, null, 2))
-  } catch { /* 记录只是护栏，写不进去不该拦住派活 */ }
+    writeFileSync(join(dir, 'last-thread.json'), JSON.stringify({ href, note, at: new Date().toISOString() }, null, 2))
+  } catch { /* 同上 */ }
 }
 
 /** 当前话题和记录不一致时抛错（`--force` 放行）。 */

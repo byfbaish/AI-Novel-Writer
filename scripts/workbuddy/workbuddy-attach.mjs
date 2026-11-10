@@ -60,8 +60,36 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(HERE, '..', '..')
 /** WorkBuddy 的固定工作目录（归属表见 docs/agents/worktree-parallel.md §3.1） */
 const DEFAULT_CWD = path.resolve(REPO_ROOT, '..', 'wt-2')
-const RUNTIME_ROOT = path.join(REPO_ROOT, '.runtime', 'workbuddy', 'attach')
-const SESSION_RECORD = path.join(REPO_ROOT, '.runtime', 'workbuddy', 'last-session.json')
+/** 产物与会话记录的落点：先试 `develop/.runtime`，不可写就退到委托槽位自己的 `.batch/`。
+ *  夜间定时卡的会话跑在受限沙箱里，写 `develop/.runtime` 会 EPERM 并弹提权申请；各槽位的 `.batch/`
+ *  从工作区根继承写权限（11-09 夜跑实测可写），所以失败后换第二落点，绝不反复尝试。 */
+const RUNTIME_CANDIDATES = [
+  path.join(REPO_ROOT, '.runtime', 'workbuddy'),
+  path.join(REPO_ROOT, '..', 'wt-2', '.batch', 'workbuddy'),
+]
+/** 产物目录可写性探测结果：null=未探测，true=可写，false=两个落点都不可写（产物与会话记录都跳过）。 */
+let RUNTIME_DIR = null
+function resolveRuntimeDir() {
+  if (RUNTIME_DIR !== null) return RUNTIME_DIR
+  for (const dir of RUNTIME_CANDIDATES) {
+    try {
+      fs.mkdirSync(dir, { recursive: true })
+      const probe = path.join(dir, '.write-probe')
+      fs.writeFileSync(probe, 'ok', 'utf8')
+      fs.rmSync(probe, { force: true })
+      RUNTIME_DIR = dir
+      if (dir !== RUNTIME_CANDIDATES[0]) log('[warn] .runtime 不可写，产物与会话记录改落 ' + dir)
+      return RUNTIME_DIR
+    } catch {
+      /* 试下一个落点 */
+    }
+  }
+  RUNTIME_DIR = ''
+  return RUNTIME_DIR
+}
+function artifactsDisabled() {
+  return resolveRuntimeDir() === ''
+}
 
 const BOOLEAN_FLAGS = ['--new', '--keep', '--json', '--force', '--no-wait', '--help', '--quiet']
 
@@ -251,20 +279,28 @@ function recentSessions({ cwd, limit = 12 } = {}) {
   }) ?? []
 }
 
+function sessionRecordPath() {
+  return path.join(resolveRuntimeDir() || RUNTIME_CANDIDATES[0], 'last-session.json')
+}
+
 function readSessionRecord() {
-  try {
-    const raw = fs.readFileSync(SESSION_RECORD, 'utf8')
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed.sessionId === 'string' ? parsed : null
-  } catch {
-    return null
+  for (const path_ of RUNTIME_CANDIDATES.map(dir => path.join(dir, 'last-session.json'))) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(path_, 'utf8'))
+      if (parsed && typeof parsed.sessionId === 'string') return parsed
+    } catch {
+      /* 试下一个落点 */
+    }
   }
+  return null
 }
 
 function writeSessionRecord(payload) {
+  // 会话记录是「复用哪张卡」的护栏，不是投递的必要条件。两个落点都写不了就静默跳过，
+  // 不要为了落一个提示文件去申请提权——夜间无人值守时没人点确认。
+  if (artifactsDisabled()) return
   try {
-    fs.mkdirSync(path.dirname(SESSION_RECORD), { recursive: true })
-    fs.writeFileSync(SESSION_RECORD, JSON.stringify(payload, null, 2) + '\n', 'utf8')
+    fs.writeFileSync(sessionRecordPath(), JSON.stringify(payload, null, 2) + '\n', 'utf8')
   } catch {
     /* 护栏不该挡住正经派活 */
   }
@@ -399,15 +435,22 @@ async function waitForSettled({ client, baselineCount, baselineMessageCount, bas
 }
 
 function writeArtifacts(runId, payload) {
-  const dir = path.join(RUNTIME_ROOT, runId)
-  fs.mkdirSync(dir, { recursive: true })
-  const write = (name, value) => fs.writeFileSync(path.join(dir, name), typeof value === 'string' ? value : JSON.stringify(value, null, 2), 'utf8')
-  write('prompt.md', payload.prompt ?? '')
-  write('meta.json', payload.meta ?? {})
-  if (payload.reply) write('reply.md', payload.reply)
-  if (payload.snapshotBefore) write('snapshot-before.json', payload.snapshotBefore)
-  if (payload.snapshotFinal) write('snapshot-final.json', payload.snapshotFinal)
-  return dir
+  // 产物只是旁路记录：落点由 resolveRuntimeDir() 一次性探测（先 .runtime，不可写退 wt-2/.batch），
+  // 两个落点都不可写就整体跳过，**一次都不再尝试**——夜间沙箱下每次写入都可能弹一次提权申请。
+  const dir = path.join(resolveRuntimeDir() || RUNTIME_CANDIDATES[0], 'attach', runId)
+  if (artifactsDisabled()) return { skipped: true, reason: 'runtime-not-writable(probe)', dir }
+  try {
+    fs.mkdirSync(dir, { recursive: true })
+    const write = (name, value) => fs.writeFileSync(path.join(dir, name), typeof value === 'string' ? value : JSON.stringify(value, null, 2), 'utf8')
+    write('prompt.md', payload.prompt ?? '')
+    write('meta.json', payload.meta ?? {})
+    if (payload.reply) write('reply.md', payload.reply)
+    if (payload.snapshotBefore) write('snapshot-before.json', payload.snapshotBefore)
+    if (payload.snapshotFinal) write('snapshot-final.json', payload.snapshotFinal)
+    return dir
+  } catch (error) {
+    return { skipped: true, reason: error?.code ?? error?.message ?? String(error), dir }
+  }
 }
 
 function printMarkers(tailText) {
@@ -494,6 +537,13 @@ async function commandSessions(args) {
 async function commandSend(args, prompt, { forceNewSession, modelTarget }) {
   const runId = createRunId() + '-' + slugify(prompt.split('\n')[0] ?? '')
   const startedAt = Date.now()
+  // 前提探测：产物与会话记录的落点在一开始就定下来（先 .runtime，不可写退 wt-2/.batch）。
+  // 夜间定时卡跑在受限沙箱里，任何一次写入都可能弹一次提权申请；无人值守时这等于卡死投递链。
+  // 探测只做一次、结果缓存，后续同进程内的写入不再触发新的申请。
+  resolveRuntimeDir()
+  if (artifactsDisabled()) {
+    log('[warn] .runtime 与 wt-2/.batch 都不可写，本次跳过产物与会话记录落盘（不影响投递）')
+  }
   const { client, meta } = await openPage({ port: args.port })
   try {
     const snapshotBefore = await client.evaluate(buildSnapshotExpression())
@@ -564,7 +614,7 @@ async function commandSend(args, prompt, { forceNewSession, modelTarget }) {
       // 否则调用方会重试，同一条任务书就会被投递两次。
       try {
         const dir = writeArtifacts(runId, { prompt, meta: summarizeSnapshot(afterSend, { timeoutMs: 0 }), snapshotBefore, snapshotFinal: afterSend })
-        log('[ok] 已发送（--no-wait），未等待回复。产物：' + dir)
+        log(dir?.skipped ? '[warn] 已发送（--no-wait），未等待回复。产物跳过：' + dir.reason : '[ok] 已发送（--no-wait），未等待回复。产物：' + dir)
       } catch (error) {
         log('[warn] 已发送（--no-wait），但产物目录写入失败（不影响投递）：' + (error?.message ?? error))
       }
@@ -616,12 +666,12 @@ async function commandSend(args, prompt, { forceNewSession, modelTarget }) {
     }
 
     if (!result.settled) {
-      log('[fail] 等不到稳定的完成信号（' + elapsed + 's）；产物：' + dir)
+      log('[fail] 等不到稳定的完成信号（' + elapsed + 's）；产物：' + (dir?.skipped ? '跳过（' + dir.reason + '）' : dir))
       if (result.reply?.text) log(result.reply.text.slice(0, 1500))
       return EXIT.timeout
     }
 
-    log('[ok] 完成，用时 ' + elapsed + 's；会话 ' + (sessionId ?? '?') + '；产物：' + dir)
+    log('[ok] 完成，用时 ' + elapsed + 's；会话 ' + (sessionId ?? '?') + '；产物：' + (dir?.skipped ? '跳过（' + dir.reason + '）' : dir))
     if (args.json) log(JSON.stringify({ settled: true, sessionId: sessionId ?? null, elapsedSeconds: elapsed, reply: result.reply?.text ?? '' }, null, 2))
     else log('--- reply ---\n' + (result.reply?.text ?? ''))
 
