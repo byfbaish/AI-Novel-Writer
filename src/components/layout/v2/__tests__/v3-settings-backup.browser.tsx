@@ -72,7 +72,7 @@ it('V3 rail and masthead open the sibling settings sheet with the same paper and
         aiPanel={<span>助手</span>} bottom={<span>任务</span>} statusBar={<span>本地写作</span>} />
       <Settings />
     </>))
-    await act(async () => host.querySelector<HTMLButtonElement>('.writer-left-rail button[title="设置"]')!.click())
+    await act(async () => host.querySelector<HTMLButtonElement>('.writer-topbar button[title="设置"]')!.click())
     expect(host.querySelector('h2')?.textContent).toBe('AI 生成模型')
     const shell = host.querySelector<HTMLElement>('.v3-magazine-shell')!
     const dialog = host.querySelector<HTMLElement>('.skin-solid-surface > div')!

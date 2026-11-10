@@ -271,7 +271,7 @@ it('V3 magazine masthead, real App rail and shelf retain navigation callbacks', 
 
   expect(host.querySelector('.v3-masthead-band')).toBeTruthy()
   expect(host.querySelectorAll('.v3-masthead-band span')).toHaveLength(7)
-  expect(host.querySelectorAll('.v3-magazine-shell .writer-left-rail > div:first-child .left-nav-button:not([title="版本历史"])')).toHaveLength(8)
+  expect(host.querySelectorAll('.v3-magazine-shell .writer-left-rail > div:first-child .left-nav-button:not([title="版本历史"])')).toHaveLength(9)
   expect(host.querySelectorAll('.v3-magazine-shell .writer-left-rail > div:first-child .left-nav-button[title="版本历史"]')).toHaveLength(1)
   expect(host.querySelector('.writer-left-rail .left-nav-button.is-active')?.textContent).toContain('首页')
   expect(host.querySelector('.writer-shelf .v3-bookcase')).toBeTruthy()
