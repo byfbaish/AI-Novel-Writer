@@ -1,5 +1,7 @@
 import type { Locale } from '../../i18n/types'
 import type { PromptBudgetReport } from '../../services/generation/generation-harness'
+import type { GenerationTransportDiagnostics } from '../../shared/generation-contract'
+import { GENERATION_CALL_TIMEOUT_FAILURE_CODE } from '../../shared/generation-call-timeout'
 import type { WorkflowFailureCode, WorkflowStep } from '../../stores/workflow-store'
 
 export interface WorkflowFailurePresentation {
@@ -101,6 +103,38 @@ function promptBudgetAdjustment(
   }
 }
 
+/**
+ * 传输 / 流式诊断 → 用户可见原因。**审稿、正文、大纲共用这一份映射**（文案只许一份）。
+ * 返回 undefined 时由调用方决定自己的兜底句，避免把审稿专用措辞带进正文。
+ */
+function transportDiagnosticReason(
+  diagnostic: GenerationTransportDiagnostics | undefined,
+  locale: Locale,
+): string | undefined {
+  if (!diagnostic || diagnostic.endReason !== 'failed') return undefined
+  const code = diagnostic.causeCode ?? diagnostic.errorCode
+  const zh = locale === 'zh-CN'
+  if (code === 'UND_ERR_BODY_TIMEOUT') {
+    return zh ? '读取响应流超时。上游为何停止响应尚未确认。' : 'Reading the response stream timed out. Why the upstream stopped responding is not confirmed.'
+  }
+  if (['UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_CONNECT_TIMEOUT', 'ETIMEDOUT'].includes(code ?? '')) {
+    return zh ? '等待服务响应超时。具体原因尚未确认。' : 'Waiting for the service timed out. The underlying cause is not confirmed.'
+  }
+  if (code === 'STREAM_INCOMPLETE') {
+    return zh ? '响应流在完整报告返回前结束。具体原因尚未确认。' : 'The response stream ended before a complete report arrived. The underlying cause is not confirmed.'
+  }
+  if (code === 'STREAM_INVALID' || code === 'RESPONSE_BODY_MISSING') {
+    return zh ? '服务响应缺少有效的生成数据。' : 'The service response did not contain valid generation data.'
+  }
+  if (['UND_ERR_SOCKET', 'ECONNRESET', 'ERR_STREAM_PREMATURE_CLOSE'].includes(code ?? '')) {
+    return zh ? '响应连接中断。具体原因尚未确认。' : 'The response connection was interrupted. The underlying cause is not confirmed.'
+  }
+  if (diagnostic.httpStatus && diagnostic.httpStatus >= 400) {
+    return zh ? `服务返回 HTTP ${diagnostic.httpStatus}，请求未完成。` : `The service returned HTTP ${diagnostic.httpStatus}; the request did not complete.`
+  }
+  return undefined
+}
+
 export function presentWorkflowFailure(
   failureCode: WorkflowFailureCode | undefined,
   error: string | undefined,
@@ -128,24 +162,10 @@ export function presentWorkflowFailure(
 
   if (activity?.operation === 'review-chapter') {
     const diagnostic = activity.diagnostics
-    const code = diagnostic?.causeCode ?? diagnostic?.errorCode
-    let reason = error?.trim() || (locale === 'zh-CN' ? '审稿未完成，原因未知。' : 'The review did not finish; the cause is unknown.')
-    if (diagnostic?.endReason === 'failed') {
-      const zh = locale === 'zh-CN'
-      reason = code === 'UND_ERR_BODY_TIMEOUT'
-        ? (zh ? '读取响应流超时。上游为何停止响应尚未确认。' : 'Reading the response stream timed out. Why the upstream stopped responding is not confirmed.')
-        : ['UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_CONNECT_TIMEOUT', 'ETIMEDOUT'].includes(code ?? '')
-          ? (zh ? '等待服务响应超时。具体原因尚未确认。' : 'Waiting for the service timed out. The underlying cause is not confirmed.')
-        : code === 'STREAM_INCOMPLETE'
-          ? (zh ? '响应流在完整报告返回前结束。具体原因尚未确认。' : 'The response stream ended before a complete report arrived. The underlying cause is not confirmed.')
-        : code === 'STREAM_INVALID' || code === 'RESPONSE_BODY_MISSING'
-          ? (zh ? '服务响应缺少有效的生成数据。' : 'The service response did not contain valid generation data.')
-        : ['UND_ERR_SOCKET', 'ECONNRESET', 'ERR_STREAM_PREMATURE_CLOSE'].includes(code ?? '')
-          ? (zh ? '响应连接中断。具体原因尚未确认。' : 'The response connection was interrupted. The underlying cause is not confirmed.')
-          : diagnostic.httpStatus && diagnostic.httpStatus >= 400
-            ? (zh ? `服务返回 HTTP ${diagnostic.httpStatus}，请求未完成。` : `The service returned HTTP ${diagnostic.httpStatus}; the request did not complete.`)
-            : (zh ? '审稿请求未完成，具体原因未知。' : 'The review request did not complete; the specific cause is unknown.')
-    }
+    const reason = diagnostic?.endReason === 'failed'
+      ? transportDiagnosticReason(diagnostic, locale)
+        ?? (locale === 'zh-CN' ? '审稿请求未完成，具体原因未知。' : 'The review request did not complete; the specific cause is unknown.')
+      : error?.trim() || (locale === 'zh-CN' ? '审稿未完成，原因未知。' : 'The review did not finish; the cause is unknown.')
     return {
       heading: locale === 'zh-CN' ? '审稿未完成' : 'Review did not finish',
       reason,
@@ -154,6 +174,40 @@ export function presentWorkflowFailure(
         : (locale === 'zh-CN' ? '尚未确认完整审稿报告已保存；原稿保留。' : 'A saved complete review report has not been confirmed; the source draft is preserved.'),
       guidance: locale === 'zh-CN' ? '请查看恢复入口。已有保存结果可直接打开；重新审稿会重新调用模型。' : 'Check recovery actions. Saved results open directly; reviewing again sends a new model request.',
     }
+  }
+
+  // D9：调用超时（判据是**时长**）与传输超时（判据是**底层/网络**）在界面上分两档。
+  // 主进程在 diagnostics 上带 failureCode；正文 / 大纲没有审稿那套分支，因此这里独立成档。
+  const activityDiagnostics = activity?.diagnostics
+  if (failureCode === GENERATION_CALL_TIMEOUT_FAILURE_CODE
+    || activityDiagnostics?.failureCode === GENERATION_CALL_TIMEOUT_FAILURE_CODE) {
+    return locale === 'zh-CN'
+      ? {
+          heading: '调用超时已中止',
+          reason: '本次调用超过 10 分钟未完成，已中止。',
+          persistence: isUnpersistedChapterDraft ? '本次未保存草稿或正文章节。请调整章节要求后重试。' : undefined,
+        }
+      : {
+          heading: 'Call stopped after timeout',
+          reason: 'This call did not finish within 10 minutes and was stopped.',
+          persistence: isUnpersistedChapterDraft ? 'This attempt did not save a draft or manuscript chapter. Adjust the chapter request and try again.' : undefined,
+        }
+  }
+
+  // 传输 / 流式超时：与审稿分支同一份映射，正文与大纲不再落「工作流未完成」。
+  const transportReason = transportDiagnosticReason(activityDiagnostics, locale)
+  if (transportReason) {
+    return locale === 'zh-CN'
+      ? {
+          heading: '工作流未完成',
+          reason: transportReason,
+          persistence: isUnpersistedChapterDraft ? '本次未保存草稿或正文章节。请调整章节要求后重试。' : undefined,
+        }
+      : {
+          heading: 'Workflow did not finish',
+          reason: transportReason,
+          persistence: isUnpersistedChapterDraft ? 'This attempt did not save a draft or manuscript chapter. Adjust the chapter request and try again.' : undefined,
+        }
   }
 
   if (failureCode === 'content_filter') {

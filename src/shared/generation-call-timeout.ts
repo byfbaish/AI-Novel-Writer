@@ -11,6 +11,48 @@
  */
 export const DEFAULT_SINGLE_CALL_TIMEOUT_MS = 10 * 60 * 1000
 
+/** D9 单次调用超时的稳定失败码：判据是**时长**，与传输层超时（NETWORK_ERROR）分档。 */
+export const GENERATION_CALL_TIMEOUT_FAILURE_CODE = 'GENERATION_CALL_TIMEOUT' as const
+
+export type GenerationCallTimeoutFailureCode = typeof GENERATION_CALL_TIMEOUT_FAILURE_CODE
+
+/**
+ * D9：同一条 deadline 的时长 = min(root 剩余预算, 单次调用上限)。
+ * 纯函数，便于在不依赖 native sqlite 的单测里固定两个取值方向。
+ */
+export function resolveCallDeadlineMs(budgetRemainingMs: number, capMs: number = DEFAULT_SINGLE_CALL_TIMEOUT_MS): number {
+  const remaining = Number.isFinite(budgetRemainingMs) ? budgetRemainingMs : 0
+  return Math.max(0, Math.min(remaining, capMs))
+}
+
+export type DeadlineTimeoutFailureCode = GenerationCallTimeoutFailureCode | 'ROOT_BUDGET_EXHAUSTED'
+
+/** 同一条 deadline 的「时长 + 超时归属」：预算比上限大 ⇒ 这次是单次调用超时；否则是 root 预算耗尽。 */
+export function resolveCallDeadline(budgetRemainingMs: number, capMs: number = DEFAULT_SINGLE_CALL_TIMEOUT_MS): {
+  deadlineMs: number
+  failureCode: DeadlineTimeoutFailureCode
+} {
+  return {
+    deadlineMs: resolveCallDeadlineMs(budgetRemainingMs, capMs),
+    failureCode: budgetRemainingMs > capMs ? GENERATION_CALL_TIMEOUT_FAILURE_CODE : 'ROOT_BUDGET_EXHAUSTED',
+  }
+}
+
+/**
+ * D9 顺序不变量：先置超时标记，再写 root 的失败码，最后才 abort。
+ * 抽成纯函数是为了能在不依赖 native sqlite 的层断言调用顺序（生产调用点唯一）。
+ */
+export function runDeadlineTimeout(input: {
+  failureCode: DeadlineTimeoutFailureCode
+  markTimedOut: () => void
+  block: (code: DeadlineTimeoutFailureCode) => void
+  abort: () => void
+}): void {
+  input.markTimedOut()
+  input.block(input.failureCode)
+  input.abort()
+}
+
 /** 可配置上限：传入有效正整数则覆盖，否则回默认 10 分钟。 */
 export function resolveSingleCallTimeoutMs(configured?: number | null): number {
   return typeof configured === 'number' && Number.isSafeInteger(configured) && configured > 0

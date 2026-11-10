@@ -1,4 +1,5 @@
 import type { GenerationTransportDiagnostics } from '../shared/generation-contract'
+import type { GenerationCallTimeoutFailureCode } from '../shared/generation-call-timeout'
 import type { CharacterProposalBatch } from '../shared/character-proposal'
 import { createCharacterProposalChoices, type CharacterProposalChoices } from '../services/character-proposal-choices'
 import { create } from 'zustand'
@@ -51,7 +52,7 @@ export type WorkflowStatus =
   | 'waiting'
 
 /** Stable non-success terminal state supplied by a bounded model completion. */
-export type WorkflowFailureCode = BoundedCompletionFailureCode | PromptBudgetFailureCode
+export type WorkflowFailureCode = BoundedCompletionFailureCode | PromptBudgetFailureCode | GenerationCallTimeoutFailureCode
 
 /** 工作流步骤 */
 export interface WorkflowStep {

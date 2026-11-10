@@ -99,3 +99,32 @@ it.each([
   expect(presentation.persistence).toBe('本次未保存完整审稿报告，原稿保留。')
   expect(presentation.guidance).toContain('重新审稿会重新调用模型')
 })
+
+it.each([
+  ['zh-CN', '本次调用超过 10 分钟未完成，已中止。', '调用超时已中止'],
+  ['en-US', 'This call did not finish within 10 minutes and was stopped.', 'Call stopped after timeout'],
+] as const)('separates the call-timeout wording (%s) from transport timeouts', (locale, reason, heading) => {
+  const presentation = presentWorkflowFailure('GENERATION_CALL_TIMEOUT', undefined, locale, false)
+  expect(presentation.reason).toBe(reason)
+  expect(presentation.heading).toBe(heading)
+})
+
+it('reaches the same call-timeout wording from diagnostics even when the provider already marked the abort as cancelled', () => {
+  const presentation = presentWorkflowFailure(undefined, 'provider failed', 'zh-CN', false, undefined, {
+    operation: 'chapter-draft',
+    diagnostics: { startedAt: 0, elapsedMs: 600000, firstResponseMs: 3000, lastResponseMs: 120000,
+      lastOutputMs: 580000, phase: 'stream', endReason: 'cancelled', failureCode: 'GENERATION_CALL_TIMEOUT', visibleEvents: 0, reasoningEvents: 0 },
+  })
+  expect(presentation.reason).toBe('本次调用超过 10 分钟未完成，已中止。')
+  expect(presentation.heading).toBe('调用超时已中止')
+})
+
+it('uses the shared transport table on the manuscript path instead of the generic workflow text', () => {
+  const presentation = presentWorkflowFailure(undefined, 'transport failed', 'zh-CN', false, undefined, {
+    operation: 'chapter-draft',
+    diagnostics: { startedAt: 0, elapsedMs: 900000, firstResponseMs: 5000, lastResponseMs: 120000,
+      lastOutputMs: null, phase: 'response', endReason: 'failed', causeCode: 'UND_ERR_HEADERS_TIMEOUT', visibleEvents: 0, reasoningEvents: 0 },
+  })
+  expect(presentation.heading).toBe('工作流未完成')
+  expect(presentation.reason).toContain('等待服务响应超时')
+})

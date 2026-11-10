@@ -3,7 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   createSingleCallWatchdog,
   DEFAULT_SINGLE_CALL_TIMEOUT_MS,
+  resolveCallDeadline,
+  resolveCallDeadlineMs,
   resolveSingleCallTimeoutMs,
+  runDeadlineTimeout,
 } from '../generation-call-timeout'
 
 afterEach(() => { vi.useRealTimers() })
@@ -22,6 +25,36 @@ describe('单次调用超时上限（D9 配置）', () => {
     expect(resolveSingleCallTimeoutMs(-1)).toBe(600_000)
     expect(resolveSingleCallTimeoutMs(1.5)).toBe(600_000)
     expect(resolveSingleCallTimeoutMs(Number.NaN)).toBe(600_000)
+  })
+})
+
+describe('单次调用 deadline 取 min（D9 阶段 1）', () => {
+  it('预算充裕时取 10 分钟上限', () => {
+    expect(resolveCallDeadlineMs(3_600_000)).toBe(DEFAULT_SINGLE_CALL_TIMEOUT_MS)
+    expect(resolveCallDeadlineMs(DEFAULT_SINGLE_CALL_TIMEOUT_MS + 1)).toBe(DEFAULT_SINGLE_CALL_TIMEOUT_MS)
+  })
+
+  it('预算紧张时取 root 剩余，而不是上限', () => {
+    expect(resolveCallDeadlineMs(300_000)).toBe(300_000)
+    expect(resolveCallDeadlineMs(0)).toBe(0)
+    expect(resolveCallDeadlineMs(-5)).toBe(0)
+  })
+
+  it('超时归属跟着取谁走：预算更大记单次调用超时，否则记 root 预算耗尽', () => {
+    expect(resolveCallDeadline(3_600_000)).toEqual({ deadlineMs: DEFAULT_SINGLE_CALL_TIMEOUT_MS, failureCode: 'GENERATION_CALL_TIMEOUT' })
+    expect(resolveCallDeadline(300_000)).toEqual({ deadlineMs: 300_000, failureCode: 'ROOT_BUDGET_EXHAUSTED' })
+    expect(resolveCallDeadline(DEFAULT_SINGLE_CALL_TIMEOUT_MS)).toEqual({ deadlineMs: DEFAULT_SINGLE_CALL_TIMEOUT_MS, failureCode: 'ROOT_BUDGET_EXHAUSTED' })
+  })
+
+  it('顺序不变量：先置超时标记，再 block，最后 abort', () => {
+    const calls: string[] = []
+    runDeadlineTimeout({
+      failureCode: 'GENERATION_CALL_TIMEOUT',
+      markTimedOut: () => calls.push('mark'),
+      block: code => calls.push(`block:${code}`),
+      abort: () => calls.push('abort'),
+    })
+    expect(calls).toEqual(['mark', 'block:GENERATION_CALL_TIMEOUT', 'abort'])
   })
 })
 

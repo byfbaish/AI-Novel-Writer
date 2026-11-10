@@ -13,6 +13,8 @@ export interface GenerationTransportDiagnostics {
   errorName?: string
   errorCode?: string
   causeCode?: string
+  /** 应用层判定的失败码（如 D9 的 GENERATION_CALL_TIMEOUT）；传输层不预置。 */
+  failureCode?: string
   visibleEvents: number
   reasoningEvents: number
 }

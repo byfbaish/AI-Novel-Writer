@@ -3,6 +3,7 @@ import { safeTransportError, type GenerationTransportDiagnostics } from '../../s
 import { GenerationRunRepository, type OpenGenerationRunRequest, type RunBinding, type GenerationExecutionReceipt, type GenerationUsageReceipt } from '../repositories/generation-run-repository';
 import type { ProviderUsagePolicy } from '../../src/shared/generation-contract';
 import { parseAgentResponseProtocol, projectInterruptedAgentVisibleText } from '../../src/shared/agent-response-protocol';
+import { resolveCallDeadline, runDeadlineTimeout, type DeadlineTimeoutFailureCode } from '../../src/shared/generation-call-timeout';
 export type { OpenGenerationRunRequest, RunBinding, DurableGenerationRun, GenerationExecutionReceipt, GenerationBudgetReceipt } from '../repositories/generation-run-repository';
 export interface VisibleGenerationEvent {
     kind: 'delta' | 'cumulative';
@@ -183,6 +184,8 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
             let deadline: ReturnType<typeof setTimeout> | undefined;
             let removeAbortListener = () => { };
             let timedOut = false;
+            /** 超时的归属：固定 per-call 上限还是 root 剩余预算。只由那一条 deadline 计时器写入。 */
+            let timeoutFailureCode: DeadlineTimeoutFailureCode | null = null;
             try {
                 try {
                     deps.repository.markDispatched(attemptId);
@@ -197,14 +200,24 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                     throw error;
                 }
                 timer = setInterval(flush, 1000);
-                const remaining = Math.max(0, receipt.budget.policy.maxActiveElapsedMs - deps.repository.budget(run.rootActionId).activeElapsedMs);
-                deadline = setTimeout(() => { timedOut = true; try {
-                    deps.repository.block(run.rootActionId, 'ROOT_BUDGET_EXHAUSTED');
-                }
-                catch {
-                    storageFailed = true;
-                    failedRoots.add(run.rootActionId);
-                } controller.abort(); }, remaining);
+                // D9：单次调用固定上限（10 分钟）与 root 剩余预算取更早者，**复用同一条 deadline**。
+                // 预算充裕时由上限定值；预算紧张时由剩余定值。另起计时器会造出第三条判定来源。
+                const budgetRemainingMs = Math.max(0, receipt.budget.policy.maxActiveElapsedMs - deps.repository.budget(run.rootActionId).activeElapsedMs);
+                const callDeadline = resolveCallDeadline(budgetRemainingMs);
+                deadline = setTimeout(() => runDeadlineTimeout({
+                    failureCode: callDeadline.failureCode,
+                    markTimedOut: () => { timeoutFailureCode = callDeadline.failureCode; timedOut = true; },
+                    block: code => {
+                        try {
+                            deps.repository.block(run.rootActionId, code);
+                        }
+                        catch {
+                            storageFailed = true;
+                            failedRoots.add(run.rootActionId);
+                        }
+                    },
+                    abort: () => controller.abort(),
+                }), callDeadline.deadlineMs);
                 const cancelled = new Promise<never>((_resolve, reject) => { const abort = () => reject(new Error('GENERATION_CANCELLED')); controller.signal.addEventListener('abort', abort, { once: true }); removeAbortListener = () => controller.signal.removeEventListener('abort', abort); });
                 const provider = deps.dispatch(request.providerRequest, { signal: controller.signal, onDiagnostics: value => {
                         if (terminal || storageFailed || controller.signal.aborted) return;
@@ -268,9 +281,15 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                 receipt = deps.repository.settle(attemptId, usage, storageFailed ? 'error' : result.finishReason, undefined, diagnostics);
             }
             catch (error) {
-                if (diagnostics && !diagnostics.endReason) diagnostics = { ...diagnostics, ...safeTransportError(error),
-                    elapsedMs: diagnostics.elapsedMs + Math.max(0, Math.round(performance.now() - diagnosticsAt)),
-                    endReason: controller.signal.aborted ? 'cancelled' : 'failed' };
+                if (diagnostics) {
+                    // 超时归属必须压过 provider 在 abort 路径上先写下的 endReason='cancelled'
+                    // （openai-provider.ts:477-481 → notify :184-189），否则 failureCode 永不落、UI 分档是死分支。
+                    if (timedOut) diagnostics = { ...diagnostics, endReason: 'failed',
+                        ...(timeoutFailureCode ? { failureCode: timeoutFailureCode } : {}) };
+                    else if (!diagnostics.endReason) diagnostics = { ...diagnostics, ...safeTransportError(error),
+                        elapsedMs: diagnostics.elapsedMs + Math.max(0, Math.round(performance.now() - diagnosticsAt)),
+                        endReason: controller.signal.aborted ? 'cancelled' : 'failed' };
+                }
                 retainInterruptedAgentText();
                 flush();
                 try {
@@ -281,7 +300,7 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                         const networkCode = diagnostics?.causeCode ?? diagnostics?.errorCode;
                         const known = networkCode && /^(UND_ERR_|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ERR_STREAM_PREMATURE_CLOSE)/.test(networkCode)
                             || error instanceof Error && /^(NETWORK_ERROR|ECONNRESET|ETIMEDOUT|FETCH_FAILED)$/.test(error.message) ? 'NETWORK_ERROR' : 'GENERATION_PROVIDER_FAILED';
-                        const failureCode = storageFailed ? 'GENERATION_STORAGE_FAILED' : timedOut ? 'ROOT_BUDGET_EXHAUSTED'
+                        const failureCode = storageFailed ? 'GENERATION_STORAGE_FAILED' : timedOut ? (timeoutFailureCode ?? 'ROOT_BUDGET_EXHAUSTED')
                             : streamFailed ? 'GENERATION_STREAM_INVALID' : controller.signal.aborted ? 'GENERATION_CANCELLED' : known;
                         receipt = deps.repository.settle(attemptId, null, null, failureCode, diagnostics);
                     }
@@ -306,7 +325,7 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                 return { ...receipt, unsavedTail: text.slice(durable.length), failureCode: 'GENERATION_STORAGE_FAILED' };
             const finalReceipt = deps.repository.receipt(attemptId);
             if (controller.signal.aborted)
-                return { ...finalReceipt, failureCode: finalReceipt.failureCode ?? (timedOut ? 'ROOT_BUDGET_EXHAUSTED' : 'GENERATION_CANCELLED') };
+                return { ...finalReceipt, failureCode: finalReceipt.failureCode ?? (timedOut ? (timeoutFailureCode ?? 'ROOT_BUDGET_EXHAUSTED') : 'GENERATION_CANCELLED') };
             return finalReceipt;
         })();
         pending.set(key, operation);
