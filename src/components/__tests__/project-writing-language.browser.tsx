@@ -152,8 +152,8 @@ describe('project writing language', () => {
   )
 
   it.each([
-    { uiLocale: 'zh-CN', labels: ['请选择类型', '请选择目标受众'] },
-    { uiLocale: 'en-US', labels: ['Select a genre', 'Select an audience'] },
+    { uiLocale: 'zh-CN', labels: ['请选择类型', '请选择目标受众', '不指定（按内容定）'] },
+    { uiLocale: 'en-US', labels: ['Select a genre', 'Select an audience', 'Unspecified'] },
   ] as const)('shows empty configuration placeholders in a $uiLocale interface', async ({ uiLocale, labels }) => {
     const currentProject = project(`empty-config-${uiLocale}`, 'en-US')
     currentProject.novelConfig.genre = ''
