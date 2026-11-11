@@ -212,7 +212,8 @@
 ### 9.1 B11 实机计数探针（方案 B：模块层包装）
 
 - 结论：三时刻（启动后 / 打开项目后 / 外观损坏恢复路径）`window:close-requested` 活跃订阅数**稳定 = 1**，不增长。
-- 判定：**A —— 测试夹具缺陷（合成 Workspace 多订），非真泄漏、非 TitleBar 未卸载**。
+- 判定（**2026-11-11 复核后收敛**）：计数成立，但**「A」只是推定、未坐实，不足以为 A 支结案**。理由是两处订阅点结构性互斥（`RendererStartup.tsx:41` 的 `if (Workspace || !ipc.isElectron) return` 让位），稳态 1 本就是预期值，既证明不了泄漏、也证明不了夹具多订；真正待解释的是「生产 1 / 测试 2」的差异，本轮没有解释。
+- 探针瑕疵（复核发现）：`b11-probe-v2.mjs:54` 用 `querySelector('header, [data-testid="titlebar"]')` 判 `hasTitleBar`，而 `TitleBar.tsx:216` 根元素是 `div.writer-topbar`，该字段**恒 false、属无效诊断量**；T2/T3 的 `false` 与同份 `bodyHead` 里的 TitleBar 文案自相矛盾。不影响 `live` 计数。
 - 关键排障：`window.aiNovelAPI` 是 frozen + sealed，`api.on` 与整体都不可写；CDP 各 execution context 里 `require`/`ipcRenderer`/`process` 全不可用。可行路径是包装 Vite dev 模块 `src/services/ipc-client.ts` 的 `ipc.on`（普通 `export const` 对象）。
 - 产物：[`b11-probe-result.md`](2026-11-11-night-evidence/b11-probe-result.md)，截图为 T1（T2/T3 截图超时跳过，报告已如实标注）。
 - 卡 `86418ba9` 已由 Lead 交回并复核结项（`tag --add review` → `review --pass`）。
@@ -228,11 +229,13 @@
 
 **根因（代码链路，非推断）**：`base-command.ts:154` 在带 main handle 时走 `createWorkflowMainGenerationRuntime` → `createMainOwnedGenerationRuntime`；`MainGenerationSnapshot`（`generation-runtime.ts:82-93`）**没有任何模型字段**，而 `recordActualModel` 唯一调用点在 `generation-runtime.ts:409`（`beginModelExecution` 内部，主进程路径不经过）⇒ store 永远为 `null`，状态栏走配置兜底。
 
-**性质**：展示层缺口，数据侧事实源正确，无数据错写。修法最小点是让主进程在首帧快照带出 `modelReceipt`。**未改，待裁。**
+**性质（复核后改口）**：展示层缺口、数据侧事实源正确、无数据错写；但按 D16 原始判据 **N3**（`2026-11-07-d9-d16-structural-design-handoff.md:53`「配置 A / 实际 B ⇒ 显示 B」）这**是验收失败，不是设计边界**，D16 缺陷稿保持 **⬜ 不销账**。修法有两条：快照补 `modelId` 由渲染层反查显示名（改动最小），或补 `modelId + modelName`（要改契约）。**未改，待裁。**
 
 产物：[`a2-d16-recheck.md`](2026-11-11-night-evidence/a2-d16-recheck.md)
 
-### 9.3 B16 来源冲突文案 —— **判定「测试写法问题」，并发现实机走的是另一条文案**
+### 9.3 B16 来源冲突文案 —— 判定「**测试期望与该用例场景不匹配**」，并发现实机走的是另一条文案
+
+> ⚠️ **本节已于 2026-11-11 复核后修正**：原判「精确匹配撞上拼接串」**不成立**，已撤回。
 
 实机逐字采集（DOM `outerHTML` 直接取，未改写）：
 
@@ -243,17 +246,20 @@
 </div>
 ```
 
-- `SourceConflictNotice` 组件路径是**两条独立 `<p>`**，精确 `getByText` 可用。
-- 编辑器内联路径 `setAiError(sourceConflictNoticeText(...))`（`CodeMirrorEditor.tsx:695`、`:717`）塞的是**一条拼接串**，精确匹配前半句必失败 ⇒ 这就是 `CodeMirrorEditor-generation.browser.tsx:281 / :335` 的成因。
-- **实机新发现**：作者最可能的操作（改正文后点「替换」）命中的是 `:730` 的 **「正文或原目标已变化，结果未应用；你仍可复制预览内容」**，不是「来源已变化」。两条文案语义不同但用户难分辨，列入待裁。
+- `SourceConflictNotice` 组件路径是**两条独立 `<p>`**（这条成立）。
+- 但「`getByText` 精确匹配失败」不成立：`:281 / :335 / :336` 三处**都没有 `exact: true`**，Playwright 的 `getByText(string)` 默认子串匹配；且 `:335 / :336` 断言的正是同一拼接串并**通过**（基线只 1 条 B16 失败）。拼接致败则三条必同红。
+- `:281` 真实路径：用例 `sourceStatus: 'current'`（`:269`）先过 `CodeMirrorEditor.tsx:714` 的门，随后 `:720-728` 的 `targetStillCurrent` 因 `filePath` 从 `draft/1` 变 `draft/2` 而为 false ⇒ 落 `:730`「正文或原目标已变化…」，`:717` 的拼接分支**根本没进入**。
+- **实机新发现（升级为真正的待裁项）**：作者最可能的操作（改正文后点「替换」）命中的也是 `:730` 这条，不是「来源已变化」。两条文案语义不同（正文/目标变了 vs 上游来源变了）但用户难分辨；切文件也落同一条。原判把这块当「测试写法」放过，等于把产品线索引错方向。
 - **第三条文案**（本卡要求单列）：`批次来源已变化，不能继续此批次。请从当前正文发起新任务。` 出自 `AIOutputPanel.tsx:454` 的 `gate.sourceChanged`，与 `source-conflict-copy.ts` 无关。
+- 修法：改 `:281` 的期望为该分支真实文案（与 `:311` 同一条），或把用例改成返回 `sourceStatus: 'conflict'`；**「改正则 / `toHaveTextContent`」是错的，改完仍红**。
 
 产物：[`b16-conflict-copy.md`](2026-11-11-night-evidence/b16-conflict-copy.md) + [`b16-conflict.png`](2026-11-11-night-evidence/b16-conflict.png)
 
 ### 9.4 D9 降静态（**未实机**，首行已标注）
 
 - 单测真跑：`pnpm test` 两个文件 **12/12 全绿**（`generation-call-timeout` 10 例 + `generation-run-service.call-timeout` 2 例）。
-- 静态判读三点：①`DEFAULT_SINGLE_CALL_TIMEOUT_MS = 10 * 60 * 1000` 写死；②`generation-run-service.ts:206` 调 `resolveCallDeadline(budgetRemainingMs)` **没传 `capMs`** ⇒ 生产路径上「可配置 watchdog」只是函数签名上的能力；③超时把 `endReason` 覆盖成 `'cancelled'`，只保留 `failureCode: GENERATION_CALL_TIMEOUT`，下游若按 `endReason` 判定会把超时读成用户取消（**未追消费方**）。
+- 静态判读三点：①`DEFAULT_SINGLE_CALL_TIMEOUT_MS = 10 * 60 * 1000` 写死；②`generation-run-service.ts:206` 调 `resolveCallDeadline(budgetRemainingMs)` **没传 `capMs`** ⇒ 生产路径上「可配置 watchdog」只是函数签名上的能力；③**（修正）**超时路径把 `endReason` 覆盖为 **`'failed'`**（`generation-run-service.ts:287-288`，注释明写要压过 provider 先写的 `'cancelled'`），`failureCode` 同时落 `GENERATION_CALL_TIMEOUT` —— 这一层是**对的**，原稿写「覆盖成 cancelled」与代码相反。
+- 补充：接通 `capMs` **不是一行**——`RootBudget`（`main-generation-plan.ts:22-23`）无 per-call 上限字段，需先扩契约。
 - 产物：[`d9-static-judgement.md`](2026-11-11-night-evidence/d9-static-judgement.md)
 
 ### 9.5 收尾线（交给豆包，只出材料与判读）

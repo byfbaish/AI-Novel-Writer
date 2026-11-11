@@ -5,19 +5,53 @@
 
 ---
 
-## 1. 结论
+## 1. 结论（2026-11-11 复核后**收敛**）
 
-**落到 A 支：稳定 1 ⇒ 测试夹具缺陷（合成 Workspace 多订一次），不动产品。**
+**计数结论成立：三时刻 `live` 稳定 = 1。但「判 A」只是推定，本轮未坐实，不足以结案。**
 
-三时刻 `live` 均为 **1**（`on=4, off=3, live=1`），无抖动、无增长：
+三时刻读数（`on=4, off=3, live=1`），无抖动、无增长：
 
 | 候选 | 实机证据是否支持 | 说明 |
 |---|---|---|
-| **A** 测试自写合成 Workspace（`:121-126`）与 `RendererStartup.tsx:44` 让位 effect 订同一 channel | **支持（按任务书判据推定）** | 生产 renderer 全程恰 1 个订阅；browser 测试里的 2 由夹具自身额外订阅造成 |
+| **A** 测试自写合成 Workspace 与 `RendererStartup.tsx:44` 让位 effect 订同一 channel | **仅推定，未证实** | 生产恰 1 个订阅是观测事实；「测试里那 2 个来自夹具」没有在夹具内打点，属按任务书判据的反推 |
 | **B** `TitleBar.tsx:75` 启动期未卸载、让位 effect 又订一次 | **否定** | 若成立，启动后应稳定 2；实测 T1 即 1，且开项目后仍 1 |
-| **C** `ipc.on` unsubscribe 真泄漏（⇒ 关窗丢未保存正文） | **否定（实机路径）** | 三时刻 `off=3` 与 `on=4` 配对，`live` 未累积；打开项目后让位 effect 的订阅被正常退订 |
+| **C** `ipc.on` unsubscribe 真泄漏（⇒ 关窗丢未保存正文） | **实机路径否定，但不能全否** | 三时刻 `off=3` 与 `on=4` 配对、`live` 未累积；但只覆盖生产路径，测试路径的 2 未解释 |
 
-按任务书 `:35`「稳定 1 ⇒ 测试夹具缺陷（合成 Workspace 多订一次），改测试、不动产品」，**本轮只记录、不改断言**（「可改码」授权未启用，B16 断言同理）。
+### 1.1 为什么「稳定 1」不能直接推出「夹具缺陷」
+
+两处生产订阅点是**结构性互斥**的，不是「都该挂上」：
+
+```ts
+// RendererStartup.tsx:41
+if (Workspace || !ipc.isElectron) return   // Workspace 一挂载就让位
+```
+
+`TitleBar` 以 `[]` 依赖常驻订阅，`RendererStartup` 在 `Workspace` 未挂载时订阅、挂载后 cleanup。
+所以**稳态 1 是预期值**——它既不能证明「泄漏不存在」，也不能证明「夹具多订」；
+它只能说明生产此刻恰好是那一个。
+
+真正需要解释的是**差异本身**：生产稳定 1，browser 测试实测 2。这个 2 至今没有解释，
+而它正是任务书 A 支要解释的东西。本轮把「1」当成了对 A 的确认，逻辑上不成立。
+
+事件序列也留了个线索：T1 的 `1885ms off → 1886ms on` 说明 React 里父 cleanup 先于子 mount，
+若测试夹具的挂载顺序不同（合成 Workspace 先 mount），就可能短暂出现 2 且不回落——**未验证**。
+
+### 1.2 探针自身有一处失效字段（本轮未察觉，复核发现）
+
+`b11-probe-v2.mjs:54` 判定写的是：
+
+```js
+hasTitleBar: !!document.querySelector('header, [data-testid="titlebar"]')
+```
+
+而 `TitleBar` 根元素是 `<div className="writer-topbar no-select ...">`（`TitleBar.tsx:216`），
+**既不是 `header` 也没有 `data-testid`** ⇒ 该字段恒为 `false`，是无效诊断量。
+T2/T3 输出 `hasTitleBar:false`，但同一份 `bodyHead` 里就有「AI小说作家 AI Novel Writer 当前项目…」的 TitleBar 文案，自相矛盾。
+T1 的 `true` 命中的是别处某个 `<header>`，同样不代表 TitleBar 存在。
+
+⇒ 这不影响 `live` 计数（计数走 `ipc.on` 包装，与选择器无关），但报告里不该把 `hasTitleBar` 当证据用。
+
+按任务书 `:35` 的口径，A 支要求「改测试、不动产品」；**本轮未改任何断言与产品码**（「可改码」授权未启用）。
 
 ⚠️ 判据边界：本探针只能证明**生产运行时**的 `window:close-requested` 订阅数为 1；「browser 测试中的第 2 个订阅一定来自合成 Workspace」是按任务书 A 支做的**推定**，不是本次实机直接观测。要直接坐实，需在 vitest browser 夹具里对同一 channel 打点（本轮未做，见 §4）。
 
