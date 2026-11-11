@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { M01_GENERATION_SQL } from '../../migrations/m01-generation-runs';
+import { applyM29GenerationRunLease } from '../../migrations/m29-generation-run-lease';
 import { GenerationRunRepository, textHash, type OpenGenerationRunRequest } from '../../repositories/generation-run-repository';
 import { createGenerationRunService, settleProviderUsage, type ExecuteGenerationRequest, type GenerationProviderUsage } from '../generation-run-service';
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3');
@@ -10,11 +11,16 @@ const handles: import('better-sqlite3').Database[] = [];
 afterEach(() => { for (const db of handles.splice(0))
     if (db.open)
         db.close(); vi.useRealTimers(); });
+/** M01 的 DDL 没有 M29 补的租约三列，而 repository 的 INSERT 显式写入它们；夹具必须与当前 schema 一致。 */
+function buildGenerationSchema(db: import('better-sqlite3').Database) {
+    db.exec(M01_GENERATION_SQL);
+    applyM29GenerationRunLease(db);
+}
 function fixture() {
     const db = new Database(':memory:');
     handles.push(db);
     db.pragma('foreign_keys=ON');
-    db.exec(M01_GENERATION_SQL);
+    buildGenerationSchema(db);
     let now = 1000;
     const repository = new GenerationRunRepository(() => db, () => now);
     const h = textHash('frozen'), fingerprint = { chapterBriefHash: h, authorGuidanceHash: h, dependencyHash: h, contextSnapshotHash: h, templateHash: h, skillSnapshotHash: h, modelLeaseRevision: h, policyHash: h, outputContractHash: h };
@@ -170,7 +176,7 @@ it('reopens a real SQLite file and retains nonce, unknown liability, elapsed tim
     const root = fs.mkdtempSync(path.join(base, 'restart-')), file = path.join(root, 'ledger.db');
     let db = new Database(file);
     try {
-        db.exec(M01_GENERATION_SQL);
+        buildGenerationSchema(db);
         let repository = new GenerationRunRepository(() => db, () => 1000);
         const run = repository.open(f.open), request = f.request(run.runId), a = repository.reserve(run.runId, request.invocationNonce, request.requestHash, 200, 100);
         repository.markDispatched(a.attempt.attemptId);
@@ -224,7 +230,7 @@ it('times out an uncooperative provider and ignores its late success', async () 
     expect(f.repository.receipt(result.attempt.attemptId).attempt.status).toBe('unknown');
 });
 it('never redirects an old repository into a newly active project database', () => {
-    const f = fixture(), other = new Database(':memory:'); handles.push(other); other.exec(M01_GENERATION_SQL);
+    const f = fixture(), other = new Database(':memory:'); handles.push(other); buildGenerationSchema(other);
     let active = f.db;
     const repository = new GenerationRunRepository(() => active);
     const run = repository.open(f.open);
@@ -265,7 +271,7 @@ it('synchronously saves the visible prefix before the project DB closes', async 
     const f=fixture(),base=path.resolve('.runtime/.cache/novel-quality-modernization/s05-ledger');fs.mkdirSync(base,{recursive:true});
     const root=fs.mkdtempSync(path.join(base,'close-')),file=path.join(root,'ledger.db');let db=new Database(file);
     try {
-        db.exec(M01_GENERATION_SQL);const repository=new GenerationRunRepository(()=>db);
+        buildGenerationSchema(db);const repository=new GenerationRunRepository(()=>db);
         const service=createGenerationRunService({repository,dispatch:async(_r,o)=>{o.onVisible({kind:'delta',text:'visible unsaved prefix'});return new Promise(()=>{})}}),run=service.open(f.open);
         const operation=service.execute(f.request(run.runId));service.suspendForProjectClose();db.close();
         const result=await operation;expect(result.failureCode).toBe('GENERATION_PROJECT_CLOSED');expect(result.artifact?.text).toBe('visible unsaved prefix');
@@ -289,7 +295,7 @@ it('refuses project close until an explicitly discarded unsaved tail is acknowle
 it('never persists stop completion for a prefix whose terminal flush failed, including file reopen', async () => {
     const f=fixture(),base=path.resolve('.runtime/.cache/novel-quality-modernization/s05-ledger');fs.mkdirSync(base,{recursive:true});const root=fs.mkdtempSync(path.join(base,'disk-')),file=path.join(root,'ledger.db');let db=new Database(file);
     try {
-        db.exec(M01_GENERATION_SQL);const repository=new GenerationRunRepository(()=>db);vi.spyOn(repository,'snapshot').mockImplementation(()=>{throw new Error('disk full')});
+        buildGenerationSchema(db);const repository=new GenerationRunRepository(()=>db);vi.spyOn(repository,'snapshot').mockImplementation(()=>{throw new Error('disk full')});
         const service=createGenerationRunService({repository,dispatch:async(_r,o)=>{o.onVisible({kind:'delta',text:'unsaved terminal text'});return {usage,finishReason:'stop'}}}),run=service.open(f.open),result=await service.execute(f.request(run.runId));
         expect(result.failureCode).toBe('GENERATION_STORAGE_FAILED');expect(service.readUnsavedTails()[0].text).toBe('unsaved terminal text');db.close();db=new Database(file);
         const reopened=new GenerationRunRepository(()=>db),receipt=reopened.receipt(result.attempt.attemptId);expect(receipt.result?.finishReason).toBe('error');expect(receipt.budget.blockedCode).toBe('GENERATION_STORAGE_FAILED');expect(receipt.artifact?.text).toBe('');
