@@ -33,8 +33,23 @@ if (Workspace || !ipc.isElectron) return   // Workspace 一挂载就让位
 真正需要解释的是**差异本身**：生产稳定 1，browser 测试实测 2。这个 2 至今没有解释，
 而它正是任务书 A 支要解释的东西。本轮把「1」当成了对 A 的确认，逻辑上不成立。
 
-事件序列也留了个线索：T1 的 `1885ms off → 1886ms on` 说明 React 里父 cleanup 先于子 mount，
-若测试夹具的挂载顺序不同（合成 Workspace 先 mount），就可能短暂出现 2 且不回落——**未验证**。
+事件序列本身**是可解释的**：T1 的 `4 on / 3 off / live=1` 与「StrictMode 双跑 effect + `Workspace` 挂载时父 effect 先 cleanup」完全吻合
+（`1885ms off → 1886ms on` 即父 cleanup 早于子 mount）。所以生产侧的计数与顺序都自洽。
+
+不可解释的是**另一件事**：同一 React 语义下，`RendererStartup.browser.tsx` 里该 channel 实测到 **2**。
+夹具的 `on` mock 返回的是 `listeners.delete`（`RendererStartup.browser.tsx:114-115`），cleanup 路径本身看不出缺陷
+⇒ 这个 2 至今没有机制能解释，而它正是任务书要求 A 支去解释的对象。本轮把「生产 = 1」当成了对 A 的确认，逻辑上不成立。
+
+### 1.3 已排除的一个假设（省下一轮试错）
+
+最容易想到的解释是「夹具走 `loadWorkspace` 异步加载，生产走 `Workspace` prop，所以让位 effect 没退订」。**这个假设不成立**：
+`Workspace` 是 `RendererStartup` 的**内部 `useState`**（`RendererStartup.tsx:31`），由 `loadWorkspace()` 返回值设置；
+生产入口 `src/main.tsx:23` 用的是 `<RendererStartup />`（默认 `loadApp`），**与测试走同一条加载路径**。
+所以两者在「让位」这件事上代码完全一致，差异只能出在夹具里那个 fake Workspace 自己又订了一次、以及订阅数统计的口径上。
+要坐实，必须在该夹具内对 `ipc.on` 打点（本轮未做，且会触碰测试文件，需「可改码」授权）。
+
+断言位置更正（digest 曾写 `:138`）：该用例两处 `expect(listeners.size).toBe(1)` 分别在 `:130` 与 **`:137`**；
+`:138` 是 `invoke.mockClear()`。
 
 ### 1.2 探针自身有一处失效字段（本轮未察觉，复核发现）
 

@@ -94,7 +94,7 @@
 | `pnpm test src/shared/__tests__/batch-completion.test.ts` | ✅ **17 passed / 17** |
 | `pnpm test electron/services/__tests__/generation-run-service.test.ts` | ✅ **43 passed / 43**（此前「43/43 全绿」无人复跑） |
 | `pnpm test:browser …/RendererStartup.browser.tsx` | ❌ **1 failed / 6 passed**（B11 既有红；带方案 A 与不带完全相同） |
-| `pnpm test:browser`（全量，106 文件） | ❌ **`2 failed / 835 passed / 837`**，99.3s —— 失败恰为 B11（`RendererStartup.browser.tsx:138`）与 B16（`CodeMirrorEditor-generation.browser.tsx:281`） |
+| `pnpm test:browser`（全量，106 文件） | ❌ **`2 failed / 835 passed / 837`**，99.3s —— 失败恰为 B11（`RendererStartup.browser.tsx:130 / :137`，digest 原写 `:138` 系行漂移）与 B16（`CodeMirrorEditor-generation.browser.tsx:281`） |
 
 ⇒ 由此定死两条口径：
 1. **「43/43 全绿」在 `pnpm test`（Electron 运行时）下真实成立**，DB-8 §4 第 10 条说的「裸 node 因 ABI 145 vs 127 恒红」是入口选错，不是夹具没修好。
