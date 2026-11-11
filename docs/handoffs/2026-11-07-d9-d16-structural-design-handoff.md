@@ -149,13 +149,16 @@
 
 ### 9.5 验收状态
 
-| N3 判据 | 单测 | 实机 |
+| N3 判据 | 单测 | 实机（2026-11-11 晚） |
 |---|---|---|
-| 重启后仍显示实际调用模型 | ✅ `main-generation-owner.test.ts` 两条（含 `reopen()` 后读回同一 model） | ⬜ 未做 |
-| 「配置 A / 实际 B」⇒ 显示 B | ✅ `workflow-main-reasoning.test.ts` 新增用例（删写入行必红） | ⬜ 未做 |
+| 重启后仍显示实际调用模型 | ✅ `main-generation-owner.test.ts` 两条（含 `reopen()` 后读回同一 model） | ✅ `location.reload()` 后 `actual` 重新非空且值不变，只能说来自持久化回执 |
+| 「配置 A / 实际 B」⇒ 显示 B | ✅ `workflow-main-reasoning.test.ts` 新增用例（删写入行必红） | ⚠️ **未直接观察到**：该项目最近一条 run 恰好是 A，显示 A 是正确行为、与配置值相同，区分不出「读实际」与「读配置」。构造副本被「项目未获授权」闸门拦住，未绕过 |
 | 删掉快照写入行单测会红 | ✅ 同上 | — |
+| 启动期回填通路 | — | ✅ 无生成、纯内存 store 却从 `null` 变为非空 ⇒ 只能来自 `generation:last-model` |
+| tooltip 分档 | ✅ `statusbar-model.test.ts` | ✅ 「（配置）」↔「（实际调用）」两态实测切换，可见文本不变 |
+| 显示名昵称反查 | — | ✅ DB 内 `qwen3.5:9b-128k`，状态栏显示 `Ollama/qwen3.5:9b-128k` |
 
-**未做的就是计划 §4 那 1 轮 dev**（选 B → 显示 B → 重启 → 仍显示 B → 内联制造冲突看单句）。在它做完之前，本稿**不宣称 D16 实机兑现**。
+完整读数与未验项理由见 [`2026-11-11-night-evidence/d16-impl-verify.md`](2026-11-11-night-evidence/d16-impl-verify.md)。
 
 ### 9.6 D9 本轮登记（不改代码）
 
