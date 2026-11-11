@@ -165,8 +165,14 @@
 
 `b20c9393`（WB-3 · D17 大纲覆盖章区间）**撤卡**：D17 已于 2026-11-05 结项，卡面前提失效、授权不足，三方（WB-3 自判 / DB-7 / DB-14 第二意见）结论一致。
 
-### 8.4 第 2、5 条：挂给夜间
+### 8.4 第 2、5 条：已挂夜间卡（19:1x 建卡，待 Lead 释放）
 
-- **B11 实机计数探针**：方案 A 实测无效后真泄漏未排除，需在实机数 `window:close-requested` 的 `listeners.size`，判「测试合成 Workspace 多订一次」还是「产品真泄漏」。
-- **提权失败手册修复**：根因已在计划稿 §10 记全（WorkBuddy `chips.workspace` 恒 null → `spaceLabelForCwd` 校验位失效；DSH 是进程权限档问题，两者不同根）。落点 `docs/agents/workbuddy-channel.md`、`task-board-channel.md`、doc-placement 命名对照表。**按 T0#2 属规则/手册改动，留作者在场的夜间做，本轮只登记不动手。**
+| 卡 | 卡 ID | 内容 |
+|---|---|---|
+| B11 实机计数探针 | `86418ba9-f08c-4859-95c5-4384a1cd7aa3` | 数 `window:close-requested` 实际订阅数（启动后 / 开项目后 / 外观损坏恢复路径 三时刻分开取），判 A 合成 Workspace 多订 / B TitleBar 未卸载 / C 真泄漏 |
+| 派发手册校验缺口修复 | `377045e2-1492-4422-8724-cd389f13a95c` | 依计划稿 §10 出**可直接粘贴的 diff**（`workbuddy-channel.md` / `task-board-channel.md` / 命名对照表），**不直接落盘** —— 手册改动属 T0#2，作者逐条点头后才执行 |
+
+两张卡均带 `night-1111-late` 标签、在 todo 列，**未挂 `external`**（等 Lead 显式释放，避免被抢）。
+
+- **提权失败根因（已有证据，本稿不重复）**：WorkBuddy `chips.workspace` 恒 null ⇒ `:355-358` 的守卫从未真正拦过，修法方向是按 `recentSessions[].cwd` 回查；DSH 是进程权限档（受限令牌 + Low 完整性）问题，两者不同根，共同结论只有一条 —— 会话落地根目录必须 = 卡面所有绝对路径的父目录。
 
