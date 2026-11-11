@@ -420,6 +420,8 @@ export interface GenerationOwnerChannels {
   'generation:execute': { args: [ExecuteGenerationRequest]; return: MainGenerationExecuteReceipt }
   'generation:read': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
   'generation:list': { args: []; return: MainGenerationRunView[] }
+  /** D16：只回最近一次实际调用用过的模型；不回产物全文（启动期轻量回填用）。 */
+  'generation:last-model': { args: []; return: { modelId: string; modelName: string } | null }
   'generation:cancel': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
   'generation:pause': { args: [MainGenerationRunHandle]; return: MainGenerationRunView }
   'generation:seal': { args: [SealGenerationRequest]; return: GenerationSealReceipt }

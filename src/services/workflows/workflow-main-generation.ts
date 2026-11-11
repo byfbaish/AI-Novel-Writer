@@ -8,6 +8,7 @@ import { requireWorkflowProjectSession } from './workflow-project-session'
 import { ipc } from '../ipc-client'
 import { projectSessionContextFromProject, sameProjectSessionContext } from '../../shared/project-session-context'
 import { useProjectStore } from '../../stores/project-store'
+import { useActualModelStore } from '../../stores/actual-model-store'
 import { useWorkflowReasoningStore } from '../../stores/workflow-reasoning-store'
 import { PLOT_OUTLINE_PROTOCOL } from '../../shared/plot-outline-contract'
 
@@ -113,6 +114,10 @@ export async function createWorkflowMainGenerationRuntime(request: WorkflowMainG
       readOnlyOutline = view.nonReplayable && view.plotOutline?.protocol === PLOT_OUTLINE_PROTOCOL && view.plotOutline.cursor.kind === 'complete'
       context.mainGenerationRootHandle = Object.freeze({ ...view.handle })
       context.mainGenerationRunHandle = Object.freeze({ ...view.handle })
+      // D16：状态栏显示**实际调用**的模型。这里写的是主进程视图带回来的事实
+      // （源自持久化 binding 的 modelReceipt），不是本地这次请求选的 modelId——
+      // 主进程可能改写模型，只有回执作准。删掉这一行，D16 的验收单测会红。
+      if (view.model) useActualModelStore.getState().recordActualModel(view.model)
       if (intent.importSlot && !importRecovery) {
         const stored = await ipc.invokeWithProjectSession(projectSession, 'import-generation:read', { slot: intent.importSlot })
         if (!stored || stored.view.handle.runId !== view.handle.runId) throw new Error('GENERATION_IMPORT_CONTEXT_REQUIRED')

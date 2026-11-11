@@ -4,6 +4,7 @@ import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import type { StepCallbacks, WorkflowContext } from '../../../stores/workflow-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { useWorkflowReasoningStore } from '../../../stores/workflow-reasoning-store'
+import { useActualModelStore } from '../../../stores/actual-model-store'
 import { createWorkflowMainGenerationRuntime } from '../workflow-main-generation'
 import type { createMainGenerationTransport } from '../../generation/main-generation-transport'
 
@@ -12,11 +13,13 @@ const handle = { projectId: session.projectId, epoch: session.leaseId, rootActio
 const view: MainGenerationRunView = { handle, budget: { maxAttempts: 1, maxRequestedOutputTokens: 100, maxRequestedOutputTokensPerAttempt: 100, deadlineAt: 1000 }, status: 'running', nonReplayable: false, artifacts: [] }
 const originalProject = useProjectStore.getState()
 const originalReasoning = useWorkflowReasoningStore.getState()
+const originalActualModel = useActualModelStore.getState()
 
 afterEach(() => {
   vi.unstubAllGlobals()
   useProjectStore.setState(originalProject, true)
   useWorkflowReasoningStore.setState(originalReasoning, true)
+  useActualModelStore.setState(originalActualModel, true)
 })
 
 it.each(['navigation', 'snapshot'] as const)('pauses the opened run and restores context after %s setup failure', async failure => {
@@ -95,4 +98,24 @@ it('shows only current run reasoning in volatile memory and clears it on project
   expect(useWorkflowReasoningStore.getState().entries.workflow).toBeUndefined()
   await runtime.close()
   expect(unsubscribeReasoning).toHaveBeenCalledOnce()
+})
+
+it('D16：状态栏读主进程视图带回的实际模型，而不是本地请求的模型', async () => {
+  // 验收：配置/请求 A，主进程实际跑 B ⇒ store 记 B。删掉 open() 里那一行写入，本用例必红。
+  const actual = { modelId: 'model-b', modelName: 'deepseek-flash' }
+  const transport = {
+    begin: vi.fn(async () => ({ ...view, model: actual })),
+    read: vi.fn(async () => ({ ...view, model: actual })),
+    pause: vi.fn(async () => ({ ...view, status: 'paused' as const })),
+    cancel: vi.fn(async () => ({ ...view, status: 'cancelled' as const })),
+    subscribe: vi.fn(() => () => {}),
+    subscribeReasoning: vi.fn(() => () => {}),
+  } as unknown as ReturnType<typeof createMainGenerationTransport>
+  const context: WorkflowContext = { runId: 'workflow', projectPath: session.projectPath, projectSession: session,
+    generationModelId: 'model-a', writingLanguage: 'zh-CN', uiLocale: 'zh-CN', data: {}, cancelled: false }
+  const runtime = await createWorkflowMainGenerationRuntime({ context,
+    callbacks: { log: vi.fn(), setProgress: vi.fn(), appendText: vi.fn() },
+    selection: { operation: 'review-chapter', promptKeys: [], skillStages: [], output: 'visible-text' } }, transport)
+  expect(useActualModelStore.getState().actual).toEqual(actual)
+  await runtime.execute(async () => undefined)
 })

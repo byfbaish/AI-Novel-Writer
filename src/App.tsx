@@ -35,6 +35,7 @@ import {
 } from './shared/project-session-context'
 import { getAutoNextChapterPrefill, type NextChapterBlueprint } from './services/auto-next-chapter'
 import { pendingBlueprintCandidates } from './services/character-card-generation-sources'
+import { hydrateActualModel } from './services/generation/actual-model-hydration'
 import {
   OUTLINE_CHARACTER_NUDGE_COPY,
   dismissOutlineCharacterNudge,
@@ -151,6 +152,13 @@ export default function App() {
   const initSkin = useSkinStore((s) => s.init)
   const disposeSkin = useSkinStore((s) => s.dispose)
   const recoverFromImageFailure = useSkinStore((s) => s.recoverFromImageFailure)
+
+  // D16：项目一开就把「最近一次实际调用用过的模型」回填给状态栏。
+  // 渲染层 actual store 是纯内存的，重启必然归零；不回填就会退回配置值——那正是 D16 原现象。
+  // 回填走轻量通道（只回 {modelId, modelName}），不拉 generation:list（那份带全部产物全文）。
+  useEffect(() => {
+    void hydrateActualModel(projectSessionContextFromProject(currentProject))
+  }, [currentProject])
 
   // 初始化：主题 + LLM 模型 + 最近项目 + 缩放级别
   useEffect(() => {

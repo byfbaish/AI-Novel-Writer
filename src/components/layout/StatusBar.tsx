@@ -61,8 +61,15 @@ export default function StatusBar({
   // D16：优先显示实际调用模型；只有尚无实际调用记录时才退回配置选中值作空态兜底。
   const effectiveActual = actualModel === undefined ? actualFromStore : actualModel
   const effectiveConfigured = configuredModelName === undefined ? (defaultModel?.name ?? null) : configuredModelName
-  const shownModelName = resolveStatusbarModel(effectiveActual, effectiveConfigured)
-  const modelCopy = shownModelName ? statusbarModelCopy(localeProp ?? storeLocale, shownModelName) : null
+  // 显示名：作者认的是自己起的昵称（与对话框、设置页一致）；昵称缺失才退回 provider 名。
+  // 昵称在渲染期反查，不冻进 store——作者改名后要立刻生效。
+  const actualLabel = effectiveActual?.modelName?.trim()
+    ? (models.find(m => m.id === effectiveActual.modelId)?.name ?? effectiveActual.modelName.trim())
+    : null
+  const resolvedActual = actualLabel && effectiveActual ? { ...effectiveActual, modelName: actualLabel } : effectiveActual
+  const shownModelName = resolveStatusbarModel(resolvedActual, effectiveConfigured)
+  const modelSource = actualLabel ? 'actual' : 'configured'
+  const modelCopy = shownModelName ? statusbarModelCopy(localeProp ?? storeLocale, shownModelName, modelSource) : null
 
   return (
     <div

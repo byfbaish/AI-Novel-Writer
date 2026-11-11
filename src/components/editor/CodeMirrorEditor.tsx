@@ -13,7 +13,7 @@ import { useLLMStore } from '../../stores/llm-store'
 import type { GenerationReasoningStage } from '../../shared/reasoning-types'
 import { countDraftUnits } from '../../shared/draft-units'
 import { useLocaleStore } from '../../stores/locale-store'
-import { sourceConflictNoticeText } from '../../shared/source-conflict-copy'
+import { sourceConflictCopy } from '../../shared/source-conflict-copy'
 import { getActiveProjectSessionContext } from '../../shared/project-session-context'
 import { livePreview, paperHeadFacet, type PaperHead } from './live-preview'
 import { readEditorScrollMemory, rememberEditorScroll, scrollPosToTop, scrollPosToTopConverge, scrollPosToTopRemaining, startScrollRestore } from './editor-scroll-memory'
@@ -676,7 +676,7 @@ export default function CodeMirrorEditor({
       const proof = (receipt.run.candidates ?? receipt.run.artifacts).find(candidate => candidate.text === receipt.outcome.content && candidate.status === 'completed' && candidate.compositionEligible === true)
       aiCandidateRef.current = proof ? { artifactId: proof.artifactId, textHash: proof.textHash } : null
       setAiResult(receipt.outcome.content)
-      if (receipt.sourceStatus !== 'current') setAiError(sourceConflictNoticeText(uiLocale, 'conflict') ?? '')
+      if (receipt.sourceStatus !== 'current') setAiError(sourceConflictCopy(uiLocale, 'conflict')?.outputInline ?? '')
     } catch {
       if (requestSequence !== aiRequestSequenceRef.current) return
       setAiResult(''); setAiError(uiText('生成失败，结果不可应用', 'Generation failed; the result cannot be applied.'))
@@ -692,18 +692,28 @@ export default function CodeMirrorEditor({
       if (!receipt || receipt.outcome.status !== 'completed' || receipt.outcome.finishReason !== 'stop') throw new Error('EDITOR_INLINE_INCOMPLETE')
       const proof = (receipt.run.candidates ?? receipt.run.artifacts).find(candidate => candidate.text === receipt.outcome.content && candidate.status === 'completed' && candidate.compositionEligible === true)
       aiCandidateRef.current = proof ? { artifactId: proof.artifactId, textHash: proof.textHash } : null
-      setAiResult(receipt.outcome.content); setAiError(receipt.sourceStatus === 'current' ? null : sourceConflictNoticeText(uiLocale, 'conflict'))
+      setAiResult(receipt.outcome.content); setAiError(receipt.sourceStatus === 'current' ? null : (sourceConflictCopy(uiLocale, 'conflict')?.outputInline ?? null))
     } catch { if (sequence === aiRequestSequenceRef.current) setAiError(uiText('原运行未完整完成，结果不可应用', 'The original run did not complete; its result cannot be applied.')) }
   }
 
   const handleAcceptAI = async () => {
     const target = aiTargetRef.current
+    // B16：切文件 / 切会话会让 `scrollMemoryKey` 变化，其 cleanup 把 aiTargetRef 置空，
+    // 但气泡里恢复出来的候选还在。此状态下点「替换」原本既不应用也不报错——静默无操作。
+    // 这里补一句可见提示：候选作废要说得出来，不能靠作者自己发现没反应。
+    if (!target && aiResult) {
+      setAiError(uiText(
+        '正文或原目标已变化，结果未应用；请重新选中后再试',
+        'The document or original target changed. The result was not applied; select the text again and retry.',
+      ))
+      return
+    }
     if (target && aiResult && editorRef.current?.view) {
       const view = editorRef.current.view
       if (!editable) {
         setAiError(uiText(
-          '正文已变为只读，结果未应用；你仍可复制预览内容',
-          'The document is now read-only. The result was not applied; you can still copy the preview.',
+          '正文已变为只读，结果未应用；请重新选中后再试',
+          'The document is now read-only. The result was not applied; select the text again and retry.',
         ))
         return
       }
@@ -714,7 +724,7 @@ export default function CodeMirrorEditor({
         if (!proof || !recovery || recovery.sourceStatus !== 'current' || recovery.view.status === 'cancelled') throw new Error('EDITOR_INLINE_SOURCE_CHANGED')
       } catch {
         if (target.requestSequence !== aiRequestSequenceRef.current) return
-        setAiError(sourceConflictNoticeText(uiLocale, 'conflict') ?? '')
+        setAiError(sourceConflictCopy(uiLocale, 'conflict')?.outputInline ?? '')
         return
       }
       const targetStillCurrent = (
@@ -728,8 +738,8 @@ export default function CodeMirrorEditor({
       )
       if (!targetStillCurrent) {
         setAiError(uiText(
-          '正文或原目标已变化，结果未应用；你仍可复制预览内容',
-          'The document or original target changed. The result was not applied; you can still copy the preview.',
+          '正文或原目标已变化，结果未应用；请重新选中后再试',
+          'The document or original target changed. The result was not applied; select the text again and retry.',
         ))
         return
       }

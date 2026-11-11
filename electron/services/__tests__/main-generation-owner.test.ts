@@ -2617,3 +2617,33 @@ it('keeps the next plot-outline recovery chapter empty instead of duplicating th
  expect(recovery.draft.split(outlineEntry(1))).toHaveLength(2)
  expect(recovery.draft).toContain('## 第2章：')
 })
+
+it('D16：运行视图从持久化 binding 带出实际模型，重启后仍可读', async () => {
+  // 验收（N3）：状态栏要读「实际调用」事实源，且重启后仍能读到。
+  // 事实源是 binding.sourceManifest.modelReceipt —— viewOf 从持久化 binding 投影，故 reopen 后仍在。
+  const f = fixture()
+  const expected = { modelId: f.model.id, modelName: f.model.modelName }
+  const run = f.owner.begin(outlineSelection(f, 1))
+  expect(run.model).toEqual(expected)
+  expect(f.owner.lastModel()).toEqual(expected)
+  const reopened = f.reopen()
+  expect(reopened.list()[0]?.model).toEqual(expected)
+  expect(reopened.lastModel()).toEqual(expected)
+})
+
+it('D16：历史 run 的 binding 缺合法 modelRevision 时，列表不抛错、仍按已知字段投影', async () => {
+  const f = fixture()
+  const run = f.owner.begin(outlineSelection(f, 1))
+  // 模拟旧版落库：在**真实** binding 上摘掉 modelRevision（modelReceipt() 会抛，viewModel 不会）。
+  const raw = f.db.prepare('SELECT binding_json FROM generation_runs WHERE run_id = ?').pluck().get(run.handle.runId) as string
+  const binding = JSON.parse(raw) as { sourceManifest: { modelReceipt?: { modelRevision?: string } } }
+  delete binding.sourceManifest.modelReceipt!.modelRevision
+  f.db.prepare('UPDATE generation_runs SET binding_json = ? WHERE run_id = ?').run(JSON.stringify(binding), run.handle.runId)
+  // owner 有内存 run 缓存，必须重开一次才会从库里读到改过的 binding。
+  const reopened = f.reopen()
+  // 关键：严格版 modelReceipt() 在这里会抛 GENERATION_MODEL_BINDING_INVALID，
+  // 而视图用宽容读，只要 modelId 在就投影 —— 一条旧 run 不能拖垮整个 generation:list。
+  expect(() => reopened.list()).not.toThrow()
+  expect(reopened.list()[0]?.model).toEqual({ modelId: f.model.id, modelName: f.model.modelName })
+  expect(reopened.lastModel()).toEqual({ modelId: f.model.id, modelName: f.model.modelName })
+})

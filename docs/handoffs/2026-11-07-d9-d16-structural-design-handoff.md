@@ -105,3 +105,69 @@
 - 回归条件：§2.1（D9 挂点）与 §2.2（D16 事实源 + 写入时机）四个问题裁完 ⇒ 回来接线 ⇒ **实机复验**。接线与单测都不算兑现。
 - 台账位置：`.workbuddy/memory/notes/current-status.md`「★★ wt-2 这批产物：挂起，不许遗忘」，开工读进行中会看到，不依赖本稿被翻到。
 - **风险提示**：wt-2 槽位转给外部 agent 时，`agent/wt-2` 分支若被 reset / 重建，这批产物就没了 ⇒ 转交前先确认分支仍在（`git -C ../wt-2 log --oneline -1` 应见 `2b621593`）。
+
+---
+
+## 9 实施记录：D16 展示层接上事实源（2026-11-11）
+
+> 状态：**已实施**（2026-11-11）。D9 本轮**不动代码**，只补登记（见 §9.4）。
+
+### 9.1 动因：§2.2 裁完、代码合了，但现象还在
+
+2026-11-09 的 `155efe4d` 只覆盖渲染层路径。2026-11-11 首轮实机（`.runtime/night/20261111/a2-d16-recheck.md`）确认：DB 回执已经是实际模型（`deepseek-flash` / `88cd3187…`、`status: completed`、默认模型 A 未改），**状态栏恒显示配置值 A**，`useActualModelStore.actual === null`。
+
+真因两条：
+
+1. `MainGenerationSnapshot` 里**没有任何模型字段**；
+2. `recordActualModel` 的唯一调用点（`generation-runtime.ts:409`）在**渲染层路径**上，而正文写稿走 `base-command.ts:154` → `createMainOwnedGenerationRuntime`，主进程持租约这条路不经过它。
+
+### 9.2 方案选择：不动 snapshot，改从 binding 投影
+
+§2.2 当时倾向「快照补 `modelId`」。本轮**不采用**，理由是 `MainGenerationSnapshot` 被 5 类 owner run（正文 / 审阅 / 编辑器内联 / 导入 / 定稿）共用，加字段要扩散到全部 fixture，收益却为零——真正需要的「重启后仍显示」本来就不靠快照：
+
+- `generation_runs.binding_json` 是**持久化**的，`viewOf()` 就是**从它投影**的 ⇒ 把模型挂在运行视图上，重启后读到的还是同一份数据，**N3「重启后仍显示」自动成立**；
+- `list()` 与单个 `read()` 走同一个 `viewOf`，不需要第二条通路。
+
+### 9.3 落地清单
+
+| 位置 | 改动 |
+|---|---|
+| `src/services/generation/generation-runtime.ts` | `MainGenerationRunView` 增**可选** `model?: { modelId; modelName }`（可选 ⇒ 不打破既有 fixture 与 mock） |
+| `electron/services/main-generation-owner.ts` | 新增 `viewModel(binding)` **宽容读**；`viewOf` 投影进去；新增 `lastModel()`（按 `created_at_ms` 倒序扫最近 50 条，取本项目第一条带回执的） |
+| `electron/controllers/generation-controller.ts` | 注册 `generation:list` 同级的 `generation:last-model` |
+| `src/shared/generation-owner-contract.ts` | 补通道类型声明 |
+| `src/services/generation/actual-model-hydration.ts` | **新增**：开项目 / 切项目时回填；无会话则 `clearActualModel()` |
+| `src/App.tsx` | `useEffect` 依赖 `currentProject` 调 `hydrateActualModel` |
+| `src/services/workflows/workflow-main-generation.ts` | `open()` 后 `if (view.model) recordActualModel(view.model)` |
+| `src/shared/statusbar-model.ts` | `statusbarModelCopy` 增 `source: 'actual' | 'configured'`，tooltip 分档 |
+| `src/components/layout/StatusBar.tsx` | 显示名按 `modelId` 反查 `useLLMStore.models` 昵称 → 兜底回执 `modelName` → 兜底 `modelId` |
+
+### 9.4 与原计划的两处偏差（都已实测确认）
+
+1. **hydration 不走 `transport.list()`。** 计划 §2.2 原写「`main-generation-transport.ts:49` 的 `list()` 返回后取首个带 model 的 view」。实测 `list()` 返回**每个 run 的全部产物全文**，启动期拉不可接受，且生产代码对 `list()` 是**零调用**（走它等于把一条没用过的路径变成启动关键路径）。改为新增轻量通道 `generation:last-model`，只回 `{modelId, modelName}`。
+2. **切项目清理不走 `useProjectStore.subscribe`。** 改为 `App.tsx` 里依赖 `currentProject` 的 `useEffect`，与既有 `recoverFromImageFailure` 同一挂法，少一个订阅生命周期要管。
+
+### 9.5 验收状态
+
+| N3 判据 | 单测 | 实机 |
+|---|---|---|
+| 重启后仍显示实际调用模型 | ✅ `main-generation-owner.test.ts` 两条（含 `reopen()` 后读回同一 model） | ⬜ 未做 |
+| 「配置 A / 实际 B」⇒ 显示 B | ✅ `workflow-main-reasoning.test.ts` 新增用例（删写入行必红） | ⬜ 未做 |
+| 删掉快照写入行单测会红 | ✅ 同上 | — |
+
+**未做的就是计划 §4 那 1 轮 dev**（选 B → 显示 B → 重启 → 仍显示 B → 内联制造冲突看单句）。在它做完之前，本稿**不宣称 D16 实机兑现**。
+
+### 9.6 D9 本轮登记（不改代码）
+
+原始现象（12 分钟无响应无提示）**已由固定 10 分钟上限解决**（`generation-run-service.ts:205-207`，`5e031021`）。判据里还剩「上限可配置」未兑现：现行上限写在 `RootBudget` 之外，要扩成 per-call 可配，得动冻结的 budget 键集（`main-generation-plan.ts:188-190` 要求键集与冻结常量**完全相等**）并新增 `readMainGenerationPolicy` 的 version 分支——属结构性改动，需另裁，本轮只登记不实施。
+
+### 9.7 附带发现（既有，非本轮引入；已报告，待作者裁）
+
+跑测试时撞到 2 个红，`git stash` 对照确认**与本轮改动无关**（基线同样红），根因已定位并留证：
+
+- **现象**：`portable-project-format.test.ts` 期望 `{tables: 66, fields: 635}`，实际 **638**；`generation-controller.test.ts:716` 的 `exportPortableProject` 直接抛 `PORTABLE_SCHEMA_UNSUPPORTED`。
+- **根因**：`a5bdd184 feat(d2): generation_runs 执行租约` 给 `generation_runs` 加了 3 列 —— `execution_owner` / `execution_epoch` / `lease_expires_at` —— **没登记进 `electron/services/portable-project-field-policy.json`**。`assertPortableSourceSchema` 是「DB 实际列必须全部出现在策略白名单里」的 fail-closed 校验，因此整张表被拒。
+- **影响面**：不只是测试红 —— `exportPortableProject` 是**项目导出 / 便携备份**的入口，这条断言在运行时同路径。也就是说**当前分支的项目导出功能实际不可用**，而「备份与迁移」是作者在意的功能点。
+- **修法（未实施，等裁）**：3 列补进 policy JSON（附 disposition），并把 `portable-project-format.test.ts:95` 的期望从 635 改为 638。属 schema/policy 同步问题，不属 D16/B16 范围，本轮不动。
+
+

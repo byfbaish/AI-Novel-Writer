@@ -104,6 +104,13 @@ export interface MainGenerationRunView {
   unsavedTails?: readonly { attemptId: string; artifactId: string; durableRevision: number; text: string; failureCode: string }[]
   ledger?: { policy: RootBudget; tokenLiability: number; physicalRequests: number; activeElapsedMs: number; blockedCode: string | null }
   handle: MainGenerationRunHandle
+  /**
+   * D16：该运行实际使用的模型（事实源 = 持久化 `binding_json.sourceManifest.modelReceipt`）。
+   * 可选：历史 / 导入 run 的 binding 可能没有合法 `modelReceipt`，此时不投影该字段，
+   * 而不是抛错——`viewOf` 同时喂给 `generation:list`，抛错会连累整个列表。
+   * `modelName` 是 provider 名（如 `deepseek-flash`）；状态栏展示用户昵称需按 `modelId` 另查。
+   */
+  model?: { modelId: string; modelName: string }
   /** Read-only compatibility projection from the persistent main ledger. */
   budget: Readonly<GenerationSessionBudget>
   /**

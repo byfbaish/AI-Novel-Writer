@@ -130,6 +130,20 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
     if (!value || typeof value.modelId !== 'string' || !/^[a-f0-9]{64}$/u.test(value.modelRevision)) throw new Error('GENERATION_MODEL_BINDING_INVALID')
     return value
   }
+  /**
+   * D16：给「运行视图」用的**宽容**读法。
+   *
+   * `modelReceipt()` 对缺合法 `modelRevision` 的历史 / 导入 binding 会抛
+   * `GENERATION_MODEL_BINDING_INVALID`；而视图要喂 `generation:list`，
+   * 一条旧 run 抛错就会让整个列表失败。所以这里只取能确认的 `modelId`，
+   * 名字缺失时退回 id，读不到就干脆不投影。
+   */
+  const viewModel = (binding: RunBinding): { modelId: string; modelName: string } | undefined => {
+    const value = binding.sourceManifest.modelReceipt as Partial<SafeGenerationModelReceipt> | undefined
+    if (!value || typeof value.modelId !== 'string' || !value.modelId) return undefined
+    const name = typeof value.modelName === 'string' ? value.modelName.trim() : ''
+    return { modelId: value.modelId, modelName: name || value.modelId }
+  }
   const finalizedCharacters = new FinalizedCharacterGeneration(deps.database, repository, { projectId: deps.projectId, epoch: deps.epoch }, assertCurrent, deps.transferOrigin)
   const reviewRevisions = new ReviewRevisionGeneration(deps.database, repository, { projectId: deps.projectId, epoch: deps.epoch }, assertCurrent)
   const handleOf = (run: DurableGenerationRun): MainGenerationRunHandle => ({ projectId: run.binding.projectId,
@@ -282,7 +296,9 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
         reasons: receipt.budgetDecision?.reasons ?? [],
       }
     })
+    const model = viewModel(run.binding)
     return { handle: handleOf(run), status: run.status as MainGenerationRunView['status'], operation: run.binding.sourceManifest.operation as string,
+      ...(model ? { model } : {}),
       ...(plotOutline ? { plotOutline } : {}),
       budgetDiagnostics,
       nonReplayable: run.binding.epoch !== deps.epoch || run.status !== 'running' || !!budget.blockedCode
@@ -295,6 +311,23 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
         physicalRequests: budget.attempts.filter(attempt => attempt.status !== 'cancelled-before-dispatch').length,
         activeElapsedMs: budget.activeElapsedMs, blockedCode: budget.blockedCode }, artifacts, candidates,
       unsavedTails: service.readUnsavedTails().filter(tail => budget.attempts.some(attempt => attempt.attemptId === tail.attemptId)) }
+  }
+  /**
+   * D16：最近一次**实际调用**用过的模型，供渲染层在重启 / 切项目后回填状态栏。
+   *
+   * 只回事实（provider 名），不解析用户昵称——昵称属展示层，作者改名后要立刻生效，
+   * 不能把某次调用时的旧名字冻进库或 store。
+   */
+  const lastModel = (): { modelId: string; modelName: string } | null => {
+    assertCurrent()
+    const rows = deps.database.prepare('SELECT run_id FROM generation_runs ORDER BY created_at_ms DESC, rowid DESC LIMIT 50').all() as { run_id: string }[]
+    for (const row of rows) {
+      const run = repository.get(row.run_id)
+      if (run.binding.projectId !== deps.projectId) continue
+      const model = viewModel(run.binding)
+      if (model) return model
+    }
+    return null
   }
   const list = () => {
     assertCurrent()
@@ -989,7 +1022,7 @@ export function createMainGenerationOwner(deps: MainGenerationOwnerDependencies)
       attemptCount: deps.database.prepare('SELECT COUNT(*) FROM generation_attempts WHERE run_id=?').pluck().get(run.runId) as number,
       ...(artifact ? {artifact} : {}), ...(proposal ? {proposal} : {}) }
   }
-  return { begin: (selection: BeginGenerationRequest) => begin(selection), bindMaterialDecision, execute: (request: ExecuteGenerationRequest) => execute(request), resume, list, assertSourcesCurrent, agents,
+  return { begin: (selection: BeginGenerationRequest) => begin(selection), bindMaterialDecision, execute: (request: ExecuteGenerationRequest) => execute(request), resume, list, lastModel, assertSourcesCurrent, agents,
     readLegacyRosterSource: () => { assertCurrent(); return readLegacyRosterSource(deps.database) },
     adoptLegacyCards: (request: LegacyRosterGenerationChannels['legacy-roster:adopt-existing']['args'][0]) => { assertCurrent(); return adoptLegacyCards(deps.database, request) },
     beginLegacyRosterGeneration: (request: LegacyRosterGenerationChannels['legacy-roster:begin']['args'][0]) => {

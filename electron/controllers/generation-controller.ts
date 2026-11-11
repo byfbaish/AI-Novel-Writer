@@ -286,6 +286,8 @@ export function registerGenerationController(options: {
   register('generation:confirm-batch-finalization', 1, (owner, request) => owner.confirmBatchFinalization(request))
   register('generation:read-visible-composition', 1, (owner, handle) => owner.readVisibleComposition(handle))
   register('generation:list', 0, owner => owner.list())
+  // D16：轻量通道，只回最近一次实际调用用过的模型，不返回产物全文（列表太重，不适合启动期拉）。
+  register('generation:last-model', 0, owner => owner.lastModel())
   register('generation:list-directory-progress', 0, owner => owner.listDirectoryProgress())
   register('generation:pause', 1, (owner, handle) => owner.pause(handle))
   // D2：批次收口。渲染侧 workflow run 收尾调一次，主进程按 root 幂等 —— 唯一的终态写入点。

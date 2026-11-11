@@ -22,16 +22,27 @@ describe('resolveStatusbarModel (D16 实际调用优先)', () => {
   })
 })
 
-describe('statusbarModelCopy (D16 zh/en 不串)', () => {
+describe('statusbarModelCopy (D16 zh/en 不串 + 来源分档)', () => {
   it('uses zh copy for zh-CN without English', () => {
-    const copy = statusbarModelCopy('zh-CN', '实际模型B')
-    expect(copy).toEqual({ title: '当前模型：实际模型B', label: '实际模型B' })
+    const copy = statusbarModelCopy('zh-CN', '实际模型B', 'actual')
+    expect(copy).toEqual({ title: '当前模型（实际调用）：实际模型B', label: '实际模型B' })
     expect(copy.title).not.toContain('Current model')
   })
 
   it('uses en copy for en-US without Chinese', () => {
-    const copy = statusbarModelCopy('en-US', '实际模型B')
-    expect(copy).toEqual({ title: 'Current model: 实际模型B', label: '实际模型B' })
+    const copy = statusbarModelCopy('en-US', '实际模型B', 'actual')
+    expect(copy).toEqual({ title: 'Current model (actual): 实际模型B', label: '实际模型B' })
     expect(copy.title).not.toContain('当前模型')
+  })
+
+  it('tooltip 区分「实际调用」与「仅配置」，可见文本仍只有模型名', () => {
+    const actual = statusbarModelCopy('zh-CN', '实际模型B', 'actual')
+    const configured = statusbarModelCopy('zh-CN', '配置模型A', 'configured')
+    expect(actual.label).toBe('实际模型B')
+    expect(configured.label).toBe('配置模型A')
+    expect(actual.title).toContain('实际调用')
+    expect(configured.title).toContain('配置')
+    expect(configured.title).not.toContain('实际调用')
+    expect(statusbarModelCopy('en-US', 'x', 'configured').title).toContain('configured')
   })
 })
