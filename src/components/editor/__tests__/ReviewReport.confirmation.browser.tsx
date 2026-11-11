@@ -339,8 +339,9 @@ describe('ReviewReport human-confirmed revision flow', () => {
     expect(container?.textContent).toContain('已解决')
     expect(container?.textContent).not.toContain('合并已提交')
 
+    // renderReport 复用同一个 root、不卸载 ⇒ showPassed 跨两次 render 保留：
+    // 上面那次点击已展开折叠区，重渲染后仍是展开态，不要再点第二次（再点会收起）。
     await renderReport(RAW_AI_REPORT, { ...generated, revisionStatus: 'merge-committed', mergedHash: 'a'.repeat(64) })
-    await act(async () => page.getByRole('button', { name: /检查通过/ }).click())
     expect(container?.textContent).toContain('合并已提交')
     expect(container?.querySelector('[data-review-finding-status="unresolved"]')).not.toBeNull()
     expect(container?.querySelector('[data-review-finding-status="resolved"]')).not.toBeNull()

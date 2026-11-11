@@ -58,7 +58,7 @@ beforeEach(() => {
   useLLMStore.setState({ loaded: true })
   useLocaleStore.setState({ locale: 'zh-CN' })
   useLayoutStore.setState({ sidebarView: 'project', activeRailItem: 'project', sidebarOpen: true,
-    aiPanelOpen: true, bottomPanelOpen: true, immersive: false, preImmersivePanels: null })
+    aiPanelOpen: true, bottomPanelOpen: true, bottomTab: 'log', immersive: false, preImmersivePanels: null })
   useEditorStore.setState({ tabs: [], activeTabId: null, draftLedgers: {} })
   useProjectStore.setState({ currentProject: project })
   host = document.createElement('div')
