@@ -135,6 +135,7 @@ node C:/develop/workspace/AI-writer/develop/scripts/task-board/dsh-task-board.mj
 - 实测状态要分清：**CLI 与看板的通路已验**（见 §8 复验表）、**豆包能跑终端命令已验**（`doubao-channel.md` §7.1），但**「让豆包去跑这个 CLI」本身还没跑过一次**——第一次实跑才算数。
 - 先决条件：任务模式的**项目**要用「通过本地文件夹创建项目」指到本仓库。这一步弹的是**系统原生对话框，CDP 驱动不了**，只能人工点一次（细节见 [`doubao-channel.md`](./doubao-channel.md) §4）。
 - 命令的 cwd 应为任务模式选定的项目目录（**此点未逐条实测**），因此 CLI 与 `--report` 一律用**绝对路径**，别依赖相对路径。
+- 反过来说：**项目目录必须等于卡面所有绝对路径的父目录**。豆包是三者中唯一有显式「选项目」操作的（WorkBuddy 叫「空间」、DSH 叫「工作区」，对照表与判据见 [`workbuddy-channel.md`](./workbuddy-channel.md) §2.3）。选错了不会有任何报错，只会在无人值守时变成提权确认框——2026-11-11 夜跑三次事故同根。
 - 它的执行权限有「本地电脑 / 项目 / 按需确认」三档，选择会决定要不要人工放行每条命令；无人值守要选到能自动执行的档。
 
 路线 B —— **自定义连接器（MCP，未实测）**：豆包的自定义连接器处在 **MCP client 位**（它调外部服务，不是外部调它）。其二进制内有 `mcp_helper` / `streamable` 字样，暗示支持本地 stdio 或 Streamable HTTP，但**我们这份壳是 stdio、能否被直接拉起没有验证过**。要试就照 Copilot CLI 那段填（`command: node` + 绝对路径 + `env.DSH_BOARD_AGENT=doubao`），不通过就退回路线 A —— **别把「没测通」写成「支持」**。
@@ -145,6 +146,7 @@ node C:/develop/workspace/AI-writer/develop/scripts/task-board/dsh-task-board.mj
 
 - 卡放 **To Do**，打标签 **`external`**（CLI 默认只认这个标签；可用 `--tag` 换）。
 - prompt **自包含**（外部 agent 没有 DSH 会话上下文），至少写清：目标、工作目录、允许/禁止的操作、验收标准、报告路径。
+- **会话落地的根目录 = 卡面所有绝对路径的父目录**。这是夜间无人值守的硬前提：任何一处越界都会变成一个没人点的提权确认框。三平台对同一个概念叫法不同（WorkBuddy「空间」/ DSH「工作区」/ 豆包「项目」），判据与现有闸门见 [`workbuddy-channel.md`](./workbuddy-channel.md) §2.3。
 - **不要给外部卡挂 schedule**：调度卡归 Host，CLI 默认跳过；且带 schedule 的卡即使外部成功回写也会落回 todo。
 - 允许 subtasks：tag 打在需要被认领的那张卡上；**子卡建出来就继承父卡标签**（§4.1），所以「父卡挂 `external`、子卡一建就能派」成立。
 - 发布后不要点 Run：外部认领期间 Host 再跑会开出第二条执行；外部侧检测到会**让位**（exit 3），但双份工作已经发生。

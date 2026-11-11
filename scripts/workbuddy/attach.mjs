@@ -333,6 +333,61 @@ export function samePath(a, b) {
 }
 
 /**
+ * 判定「这次派活到底落在了哪个会话 / 哪个目录」——夜间无人值守的落点闸门。
+ *
+ * 为什么需要它（2026-11-11 夜跑提权卡死的根因，证据见
+ * docs/handoffs/2026-11-11-night-shift-plan.md §10）
+ * ---------------------------------------------------
+ * 点侧栏空间标题右边的 `+` 本意是「开一张新草稿」。但实测过：`+` 没生效时
+ * `waitForEditor` 会立刻在**旧会话**上返回 hasEditor=true，随后脚本照常打字发送，
+ * 文本就落进了旧会话（02:1x 实测：目标文件一个没写成、却显示「已发送」）。
+ * 旧代码试图用 `chips.workspace` 拦住这一步，但该字段**恒为 null**
+ * （`status` 输出 `"chips":{"workspace":null,...}`）⇒ `?? null` + 真值判断
+ * 等于永不校验。可靠字段是 `window.wb.conversations.currentId`（即 sessionId）
+ * 与 sqlite `sessions.cwd`，本函数就只吃这两样。
+ *
+ * 判据（before/after 都是「当前会话 id」）
+ * --------------------------------------
+ * - `cwd-mismatch`：已落库且 cwd ≠ 期望 ⇒ **一律拒**（--force 也不赦免：
+ *   这不是归属争议，是活干到了错的目录，产物不可用）。
+ * - `stuck`：before 有值且 after 与 before 相同 ⇒ 新草稿没打开、文本会进旧会话 ⇒
+ *   **拒**。force 不赦免：force 的语义是「允许离开固定归属目录」，不是
+ *   「允许把任务投给错误的会话」。
+ * - `switched-unverified`：id 变了但还没落库（新会话要等第一条消息才进 sessions 表）
+ *   ⇒ 放行但标 `verified:false`，由调用方在产物里留痕，事后按 cwd 复核。
+ * - `cwd-ok`：落库 cwd 与期望一致 ⇒ 放行且 `verified:true`。
+ */
+export function judgeLanding({ beforeSessionId, afterSessionId, landedCwd, expectedCwd, force = false } = {}) {
+  const before = beforeSessionId ? String(beforeSessionId) : null
+  const after = afterSessionId ? String(afterSessionId) : null
+  if (expectedCwd && landedCwd && !samePath(landedCwd, expectedCwd)) {
+    return {
+      ok: false,
+      verdict: 'cwd-mismatch',
+      verified: true,
+      reason: '会话已落库但目录不符：cwd=' + landedCwd + ' 期望=' + expectedCwd,
+    }
+  }
+  if (before && after === before) {
+    return {
+      ok: false,
+      verdict: 'stuck',
+      verified: false,
+      reason: '点「+」后当前会话仍是 ' + before + '，新草稿没打开（消息会落进旧会话）',
+    }
+  }
+  if (expectedCwd && landedCwd) {
+    return { ok: true, verdict: 'cwd-ok', verified: true, reason: 'cwd 与期望一致：' + landedCwd }
+  }
+  return {
+    ok: true,
+    verdict: 'switched-unverified',
+    verified: false,
+    reason: '会话已切换但尚未落库，落点未能证实' + (force ? '（--force）' : ''),
+  }
+}
+
+/**
  * 归属护栏：WorkBuddy 只准在 pinnedCwd（wt-2）里干活（docs/agents/worktree-parallel.md §3.1）。
  *
  * 只做纯判断，打印与退出码在 CLI 层：返回 {ok:true}（forced 表示走了 --force），或 {ok:false, reason}。

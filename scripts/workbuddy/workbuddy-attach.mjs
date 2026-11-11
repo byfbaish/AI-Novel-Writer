@@ -39,6 +39,7 @@ import {
   readRunState,
   isSettledSignal,
   checkPinnedCwd,
+  judgeLanding,
   extractReply,
   summarizeSnapshot,
   buildModelItemsExpression,
@@ -345,6 +346,11 @@ async function clickSelector(client, selector) {
 /** 打开「cwd 对应空间」的新会话草稿（等价于人点空间标题右边的 +）。 */
 async function openSpaceDraft(client, { cwd }) {
   const label = spaceLabelForCwd(cwd)
+  // 点 + 之前先记住「当前是哪条会话」。点完必须变成另一条（或变成尚未落库的草稿），
+  // 否则说明 + 没生效、编辑器还停在上一条会话上，接着打字就是把任务投给错的人
+  // （2026-11-11 02:1x 实测事故，证据见 docs/handoffs/2026-11-11-night-shift-plan.md §10）。
+  const before = await client.evaluate(buildCurrentSessionExpression())
+  const beforeSessionId = before?.ok ? before.sessionId ?? null : null
   const rect = await client.evaluate(buildSpaceActionExpression({ label, kind: 'new-task' }))
   if (!rect || rect.error) {
     throw new Error('侧栏找不到空间「' + label + '」的新建按钮（' + (rect?.error ?? 'no-rect') + '）：先在 WorkBuddy 里打开过 ' + cwd + ' 再重试')
@@ -352,11 +358,23 @@ async function openSpaceDraft(client, { cwd }) {
   await clickRect(client, rect)
   await sleep(1200)
   const snapshot = await waitForEditor(client)
+  const after = await client.evaluate(buildCurrentSessionExpression())
   const workspace = snapshot?.chips?.workspace ?? null
-  if (workspace && normalizePath(workspace) !== normalizePath(label)) {
+  if (!workspace) {
+    // 这条分支以前是「读到 null 就当通过」，等于永不校验。显式说明，落点改由会话 id + sessions.cwd 判。
+    log('[warn] 读不到 chips.workspace（该字段实测恒为 null），工作区改由「会话 id 是否切换」+「sessions.cwd」判定')
+  } else if (normalizePath(workspace) !== normalizePath(label)) {
     throw new Error('点「+」后工作区不是 ' + label + '，而是 ' + workspace + '（拒绝在错的目录派活）')
   }
-  return { snapshot, label, workspace }
+  const landing = judgeLanding({
+    beforeSessionId,
+    afterSessionId: after?.ok ? after.sessionId ?? null : null,
+    expectedCwd: cwd,
+  })
+  if (!landing.ok) {
+    throw new Error('[refuse] ' + landing.reason + '\n  先在 WorkBuddy 里手动打开「' + label + '」空间、点 + 开一张空草稿，确认编辑器是空的再重试')
+  }
+  return { snapshot, label, workspace, beforeSessionId, landing }
 }
 
 /** 切到某条会话：优先按 sessionId 找卡片，找不到就退回该空间下第一张卡片。 */
@@ -370,6 +388,33 @@ async function resumeSession(client, { sessionId, cwd }) {
   const snapshot = await waitForEditor(client)
   const current = await client.evaluate(buildCurrentSessionExpression())
   return { ok: true, snapshot, currentSessionId: current?.sessionId ?? null, reason: current?.reason ?? null }
+}
+
+/**
+ * 发送后短轮询：等会话落库并核对 cwd。
+ *
+ * 为什么是「发送后」而不是「开草稿时」：新会话要等第一条消息发出才写进 sessions 表，
+ * 开草稿那一刻库里根本没有这一行，无从核对。所以只能：发完立刻查，查不到如实标「未证实」，
+ * 但「查到了却不符」必须当场拦下——不能等 15 分钟回复完才发现活干在错的目录。
+ */
+async function confirmLanding(client, { expectedCwd, timeoutMs = 8000 }) {
+  const deadline = Date.now() + timeoutMs
+  let sessionId = null
+  let landedCwd = null
+  while (Date.now() < deadline) {
+    const current = await client.evaluate(buildCurrentSessionExpression())
+    if (current?.ok && current.sessionId) {
+      sessionId = String(current.sessionId)
+      const session = readSession(sessionId)
+      if (session?.cwd) {
+        landedCwd = session.cwd
+        break
+      }
+    }
+    await sleep(700)
+  }
+  const judged = judgeLanding({ afterSessionId: sessionId, landedCwd, expectedCwd })
+  return { ...judged, sessionId, landedCwd }
 }
 
 async function focusEditor(client) {
@@ -608,6 +653,21 @@ async function commandSend(args, prompt, { forceNewSession, modelTarget }) {
       log('[warn] 发送后输入框仍有内容，可能没点中发送按钮')
     }
 
+    // 落点确认（2026-11-11 夜跑事故的止损点）：消息已经发出去了，此刻立刻核对这条会话落在哪个目录。
+    // 「查到且不符」直接失败——不这样，接下来 15 分钟等的回复可能根本不是这条任务书的产物。
+    const landing = await confirmLanding(client, { expectedCwd: args.cwd, timeoutMs: 8000 })
+    if (!landing.ok) {
+      log('[refuse] 任务已发出，但落点不对：' + landing.reason)
+      log('  ⚠ 不要直接重跑（同一条任务书会投递两次）；先去 WorkBuddy 界面确认并处理那条会话')
+      return EXIT.fail
+    }
+    if (landing.sessionId && !sessionId) sessionId = landing.sessionId
+    if (!landing.verified) {
+      log('[warn] ' + landing.reason + '（产物里记 landing=unverified，事后按 sessions.cwd 复核）')
+    } else {
+      log('[ok] 落点已证实：会话 ' + landing.sessionId + ' @ ' + landing.landedCwd)
+    }
+
     if (args.noWait) {
       if (!sessionId && afterSend?.currentSessionId) sessionId = afterSend.currentSessionId
       // 消息已经发出去了：产物落盘失败（例如沙箱对 .runtime 没有写权限）不能让整条命令以失败退出，
@@ -641,6 +701,13 @@ async function commandSend(args, prompt, { forceNewSession, modelTarget }) {
         sessionId: sessionId ?? null,
         cwd: session?.cwd ?? args.cwd,
         how,
+        landing: {
+          verdict: landing.verdict,
+          verified: landing.verified,
+          sessionId: landing.sessionId,
+          landedCwd: landing.landedCwd,
+          reason: landing.reason,
+        },
         model: modelResult.model,
         modelPolicy: {
           how: modelTarget.how,

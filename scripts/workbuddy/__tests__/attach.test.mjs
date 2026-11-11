@@ -13,6 +13,7 @@ import {
   checkPinnedCwd,
   extractReply,
   isSettledSignal,
+  judgeLanding,
   looksLikePlaceholder,
   parseCdpVersion,
   pickPage,
@@ -411,6 +412,43 @@ describe('checkPinnedCwd（归属护栏：WorkBuddy 只准 wt-2）', () => {
     expect(checkPinnedCwd({}).ok).toBe(false)
     expect(checkPinnedCwd({ cwd: wt2 }).ok).toBe(false)
     expect(checkPinnedCwd({ cwd: '   ', pinnedCwd: wt2 }).ok).toBe(false)
+  })
+})
+
+describe('judgeLanding（派活落点闸门：会话 id + sessions.cwd）', () => {
+  const wt2 = 'C:\\develop\\workspace\\AI-writer\\wt-2'
+
+  it('回归：点「+」没生效、当前会话没变 ⇒ 拒（2026-11-11 02:1x 事故：文本落进旧会话却显示已发送）', () => {
+    const r = judgeLanding({ beforeSessionId: 'old-1', afterSessionId: 'old-1', expectedCwd: wt2 })
+    expect(r.ok).toBe(false)
+    expect(r.verdict).toBe('stuck')
+    expect(r.reason).toContain('旧会话')
+  })
+
+  it('会话已切换但还没落库 ⇒ 放行但标注未证实（新会话要等首条消息才进 sessions 表）', () => {
+    const r = judgeLanding({ beforeSessionId: 'old-1', afterSessionId: 'new-2', expectedCwd: wt2 })
+    expect(r.ok).toBe(true)
+    expect(r.verified).toBe(false)
+    expect(r.verdict).toBe('switched-unverified')
+  })
+
+  it('落库 cwd 与期望一致 ⇒ 证实通过（含大小写/分隔符等价）', () => {
+    const r = judgeLanding({ afterSessionId: 'new-2', landedCwd: 'c:/develop/workspace/AI-writer/WT-2/', expectedCwd: wt2 })
+    expect(r.ok).toBe(true)
+    expect(r.verified).toBe(true)
+    expect(r.verdict).toBe('cwd-ok')
+  })
+
+  it('落库 cwd 不符 ⇒ 拒，且 --force 不赦免（这是活干错目录，不是归属争议）', () => {
+    for (const force of [false, true]) {
+      const r = judgeLanding({ afterSessionId: 'new-2', landedCwd: 'C:/develop/workspace/AI-writer/develop', expectedCwd: wt2, force })
+      expect(r.ok).toBe(false)
+      expect(r.verdict).toBe('cwd-mismatch')
+    }
+  })
+
+  it('--force 同样不赦免 stuck（force 的语义是离开固定归属目录，不是投错会话）', () => {
+    expect(judgeLanding({ beforeSessionId: 'old-1', afterSessionId: 'old-1', expectedCwd: wt2, force: true }).ok).toBe(false)
   })
 })
 

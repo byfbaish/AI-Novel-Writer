@@ -1,6 +1,6 @@
 # 给 WorkBuddy 派活（协作通道操作手册）
 
-> 状态：已实施（2026-11-05 实施；2026-11-07 移除 headless 兜底，现只保留 attach 一条路）· 实测版本 WorkBuddy 5.9.3（Chromium 138.0.7204.251 / Electron 37.10.3）
+> 状态：已实施（2026-11-05 实施；2026-11-07 移除 headless 兜底，现只保留 attach 一条路；**2026-11-11 补落点闸门 §2.3**，修三次夜间事故同根问题）· 实测版本 WorkBuddy 5.9.3（Chromium 138.0.7204.251 / Electron 37.10.3）
 > 用途：把 AI-writer 仓库里的活派给本机 WorkBuddy（腾讯 CodeBuddy 系）。**只有一条路：attach**——CDP 驱动桌面 UI，复用作者已登录的账号与积分。
 > 关系：与 [豆包通道](doubao-channel.md)、[Copilot 通道](copilot-channel.md) 平级；**工作目录固定 `wt-2`**（[归属表](worktree-parallel.md#31-槽位归属固定不是谁空谁用)）。
 > 社区调研：已查 `workbuddy-mcp` / `workbuddy-proxy` / `workbuddy-to-dsh` / `workbuddy-daily-credits` / `dsh-botcrew`，没有现成的「桌面已登录态 + 可编排」轮子，取舍见 §11。
@@ -70,10 +70,35 @@ WorkBuddy 侧栏的「空间」= **按 cwd 分组的会话列表**（不是 `wor
 |---|---|
 | 在 wt-2 下开新会话 | 点「空间 `wt-2`」标题右边的 `+`（`button.workspace-new-task-button`）⇒ 得到 `工作区=wt-2` 的草稿；**会话要等第一条消息发出才落库** |
 | 复用已有会话 | 点带 `data-conversation-id` 的会话卡片（优先 `last-session.json` / `--session` 指定的 id，找不到退回该空间第一张卡片） |
-| 核对真的在 wt-2 | 发送后读渲染层 `window.wb.conversations.currentId` 补记 id，再用 sqlite 的 `sessions.cwd` 复核；不一致直接 `[refuse]`（`--force` 可跳） |
+| 核对真的落在 wt-2 | **两道闸门，`chips.workspace` 不参与**（见 §2.3） |
 
 **不要**用 `spawn(WorkBuddy.exe, [cwd])` 开新会话：second-instance 转发不可靠（2026-11-05 两次实验：sqlite 里 12s/30s 都没出现新行）。
 **不要**用 `window.wb.conversations.setCurrentConversation(id)` 切会话：返回 `{ok:true}` 但界面不载入（实测 msgs=0）。切会话一律**点卡片**。
+
+### 2.3 落点闸门：派活到底落在哪个目录（2026-11-11 事故后补齐）
+
+**为什么单列一节**：三次夜间事故的共同根因是「会话落地的根目录 ≠ 任务书里写的绝对路径」，而开窗后**没有任何一条通道能验证这件事**。这一节就是那条通道。
+
+**命名对照**——三个平台对同一个概念各叫各的，别混：
+
+| 平台 | 叫法 | 等价物 |
+|---|---|---|
+| WorkBuddy | **空间**（侧栏按 cwd 分组的会话列表，标题 = `basename(cwd)`） | 点标题右侧 `+` 才在该目录下开新会话 |
+| DSH | **工作区**（`--cwd`） | 有 `--cwd` 但**无校验** |
+| 豆包 | **项目**（`bootstrap.mjs --project <名>`） | 三者中唯一有显式选择操作 |
+
+**两道闸门**（已实现在 `workbuddy-attach.mjs`，纯函数判定在 `attach.mjs` 的 `judgeLanding`，有单测）：
+
+| # | 时机 | 判据 | 不通过 |
+|---|---|---|---|
+| ① | **打字之前** | 点 `+` 前后取 `window.wb.conversations.currentId`：**未变化 ⇒ 新草稿没打开、编辑器还停在上一条会话上 ⇒ 拒** | `[refuse]` 抛错，**一个字都不打** |
+| ② | **发出之后 8s 内** | 按 `currentSessionId` 回查 sqlite `sessions.cwd`，与 `--cwd` 比对 | `cwd-mismatch` ⇒ 当场失败；未落库 ⇒ 标 `landing=unverified` 并写进产物 |
+
+- **`chips.workspace` 恒为 `null`**（`status` 实测输出 `"chips":{"workspace":null,...}`）。旧代码 `const workspace = chips?.workspace ?? null; if (workspace && ...)` 因为 `?? null` + 真值判断，**从未真正校验过**。现在读到 null 会打 `[warn]` 显式说明，不再假装通过。
+- **`--force` 不赦免这两道闸门**：force 的语义是「允许离开固定归属目录（wt-2）」，不是「允许把任务投给错误的会话」。落错会话/落错目录都是产物不可用，与归属无关。
+- **为什么闸门 ① 卡在打字前**：2026-11-11 02:1x 实测——`+` 没生效时 `waitForEditor` 会在旧会话上立刻返回 `hasEditor=true`，脚本照常打字发送，于是目标文件一个没写成、却显示「已发送」。此时唯一的止损点就是打字之前。
+
+**夜间无人值守的唯一硬前提**：**会话落地的根目录必须等于任务书里所有绝对路径的父目录**。做不到就别派——任何一处越界都会在无人值守时变成提权确认框，而确认框没人点。
 
 ## 3. 命令速查
 
@@ -103,6 +128,7 @@ node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会�
 | slot 3 | `wt-3`（5183 / 9225） | DeepSeek Harness |
 
 - 归属固定、不抢：WorkBuddy 不许在 develop 或 wt-1 里改文件；`--cwd` 指到别处会**直接 exit 1 拒绝**（`checkPinnedCwd`），只有 `--force` 能越过，且必须在报告里写明原因。
+- **夜间无人值守禁止 `--force` 跨目录派活**（2026-11-11 教训）：`--force` 只是关掉了归属护栏，并不会让会话真的落到那个目录——端口/空间的对应关系仍由侧栏决定，结果就是「显示已发送、目标文件一个没写」，而且无人值守时没人看见。**需要 develop 的产物就由 Lead 自己跑**（这是计划稿 §0-5「develop 由 Lead 独占」的由来），不要用 force 把 WorkBuddy 派进去。
 - 分配前分支要 reset 到主线 HEAD（`git -C ../wt-2 reset --hard <main HEAD>`），否则平台在旧提交上干活。
 - 细则与「运行态 ≠ 归属」的探测方法见 [worktree-parallel.md §3.1 / §11](worktree-parallel.md)。
 
@@ -177,6 +203,7 @@ node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会�
 - **端到端真跑**：`task "只回复两个字母 OK，不要别的内容" --new --timeout 240` → exit 0，25s，reply=`OK`，产物四件套齐全（prompt/meta/reply/snapshot），末尾 markers 为空。
 
 未验证（要用先测）：
+- **落点闸门 ①②（§2.3）只有单测，尚未在真机上制造事故复现**：单测覆盖 `judgeLanding` 的五个分支（`stuck` / `switched-unverified` / `cwd-ok` / `cwd-mismatch` / force 不赦免），但「点 `+` 后 `currentId` 真的不变」这个现场信号来自 2026-11-11 02:1x 的一次观测，没有第二次复现。**首次实机派活时先看日志里是否出现 `[ok] 落点已证实`**——没出现就说明闸门 ② 走的还是未证实分支，按 §8 回查。
 - 长任务（>10 分钟）在轮询下是否会被 UI 虚拟滚动影响；`waitForSettled` 靠 `agentCount` 增长 + 正文两次一致，超长输出可能需要调 `--timeout`。
 - 高峰拦截（exit 5）只在单元测试里覆盖过时段判断，尚未在真实工作日高峰实跑。
 - 同时开两条 WorkBuddy 会话并发派活：本通道假设「当前只有一条会话在跑」，并发需另做隔离。
@@ -188,6 +215,9 @@ node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会�
 | `status` exit 2 / `NEED_HUMAN_DEBUG` | 9333 没监听：按 §2.1 让作者重启 Debug 实例；确认旧实例已在托盘退出 |
 | `/json/version` 通但 `hasEditor=false` | 页面还在启动或开的是别的窗口；等 5s 重跑 `status` |
 | 「侧栏找不到空间 wt-2 的新建按钮」 | 该目录还没在 WorkBuddy 里打开过：让作者打开一次 wt-2。**不要**换目录——归属固定，`--cwd` 指到别处会被拒 |
+| `[refuse] 点「+」后当前会话仍是 xxx，新草稿没打开` | 闸门 ① 命中：`+` 点了但界面没切走。手工在侧栏点该空间的 `+` 开一张空草稿，确认编辑器为空后重跑；**不要**改任务书重试（任务书没问题） |
+| `[refuse] 任务已发出，但落点不对：cwd=… 期望=…` | 闸门 ② 命中：任务投到了错误目录。**不要直接重跑**（会重复投递），先去界面处理那条会话，再按 §2.3 检查空间是否真的对应目标目录 |
+| 派活「成功」但目标目录没有产物 | 先 `status --json` 看 `recentSessions[].cwd` / `recordedSession.cwd`，再看产物里的 `landing.verdict`：`switched-unverified` = 当时没能证实落点，按 cwd 回查 |
 | 「模型选择器里没有 X」 | 模型下架/改名：`status` 看 `chips.model`，用 `--model` 试现名，再更新 `model-policy.mjs` 白名单 |
 | 发送后输入框还有内容 | 发送按钮被挡（弹层/草稿）：`read` 看有没有回复；重跑会先清空编辑器 |
 | 等回复超时（exit 4） | 模型在长思考：加大 `--timeout`；或 `read` 看看是否已经答完只是没触发稳定信号。**2026-11-05 踩过**：界面早就答完却一直 exit 4，根因是收尾基线取在「打开新草稿之前」的快照上（`agentCount=1`），`grew` 永远 false ⇒ 已改成打字后取基线 + `messageCount +2` / 正文变化兜底（`isSettledSignal`，有单测） |
