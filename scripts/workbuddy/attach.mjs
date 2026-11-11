@@ -245,6 +245,53 @@ export function buildSpaceActionExpression({ label, kind = 'new-task', sessionId
 }
 
 /**
+ * 直接在页面里点「空间标题右边的 +」/「会话卡片」（不做坐标点击）。
+ *
+ * 为什么不再用坐标：2026-11-12 00:0x 实测，`rect()` 先 scrollIntoView 再立刻
+ * getBoundingClientRect，在可滚动侧栏（当时 8 个空间）里算出的坐标与按钮实际位置
+ * 不符；CDP 的鼠标事件点在空处不报错，于是静默变成「点了没反应」，被落点闸门判 stuck。
+ * 同一个按钮在页面内调 `.click()` 却能正常开出新草稿（currentId → null）。
+ * 事故与探针证据见 docs/handoffs/2026-11-12-workbuddy-landing-click-fix.md。
+ *
+ * - kind='new-task'：点该空间的 `+`（开新草稿）；
+ * - kind='card'：点该空间下第一张会话卡片；
+ * - sessionId：按 `data-conversation-id` 精确点那张卡片（与旧 buildSpaceActionExpression 对齐）。
+ *
+ * 返回 `{clicked:true, label|sessionId}` 或 `{error:'no-section'|'no-new-task-button'|'no-cards'|'no-card'|'button-disabled'}`。
+ * 注意：`{clicked:true}` 只证明「表达式调用了 click」，不证明界面真的切走了——
+ * 落点仍由调用方的 currentId 比对与发送后 sessions.cwd 回查判定。
+ */
+export function buildSpaceClickExpression({ label, kind = 'new-task', sessionId = null, selectors = SELECTORS } = {}) {
+  const cfg = JSON.stringify({ label: label ?? null, kind, sessionId, selectors })
+  return '(function(cfg){' +
+    'var s=cfg.selectors;' +
+    'if (cfg.sessionId) {' +
+    '  var card=document.querySelector("[data-conversation-id=\\""+cfg.sessionId+"\\"]");' +
+    '  if(!card) return {error:"no-card", sessionId:cfg.sessionId};' +
+    '  card.click();' +
+    '  return {clicked:true, sessionId:cfg.sessionId};' +
+    '}' +
+    'var sections=Array.prototype.slice.call(document.querySelectorAll(s.sidebarSection));' +
+    'for (var i=0;i<sections.length;i++){' +
+    '  var labelEl=sections[i].querySelector(s.sidebarSectionLabel);' +
+    '  if(!labelEl || labelEl.textContent.trim()!==cfg.label) continue;' +
+    '  if (cfg.kind==="new-task") {' +
+    '    var btn=sections[i].querySelector(s.spaceNewTaskButton);' +
+    '    if(!btn) return {error:"no-new-task-button", label:cfg.label};' +
+    '    if (btn.disabled) return {error:"button-disabled", label:cfg.label};' +
+    '    btn.click();' +
+    '    return {clicked:true, label:cfg.label};' +
+    '  }' +
+    '  var cards=sections[i].querySelectorAll(s.conversationCard);' +
+    '  if(!cards.length) return {error:"no-cards", label:cfg.label};' +
+    '  cards[0].click();' +
+    '  return {clicked:true, label:cfg.label};' +
+    '}' +
+    'return {error:"no-section", label:cfg.label};' +
+    '})(' + cfg + ')'
+}
+
+/**
  * 列出模型选择器里的所有模型（含积分倍率与是否选中）。
  * 必须先点开选择器：列表是 portal，收起时不在 DOM 里。
  */
@@ -384,6 +431,46 @@ export function judgeLanding({ beforeSessionId, afterSessionId, landedCwd, expec
     verdict: 'switched-unverified',
     verified: false,
     reason: '会话已切换但尚未落库，落点未能证实' + (force ? '（--force）' : ''),
+  }
+}
+
+/**
+ * 判「点了 `+` 之后拿到的确实是一张空草稿」——`switched-unverified` 的补充证据。
+ *
+ * 为什么需要它：`currentId` 从旧会话变成 null 只说明「不在旧会话了」，而草稿本身
+ * 还没落库（第一条消息才进 sessions 表），所以 `judgeLanding` 那时给不出 verified。
+ * 2026-11-12 起开草稿改走页面内 DOM click，不再有点击坐标这种「点没点中」的天然信号，
+ * 因此必须由界面状态本身给出三件证据：当前不在任何已落库会话 + 消息数 0 + 编辑器为空。
+ *
+ * 空草稿的编辑器里会渲染欢迎文案（实测「今天帮你做些什么？@ 添加上下文，/调用技能与指令」，
+ * 此时没有 placeholder 节点），所以把它按「空」处理。文案改版会让这里退化成 **fail-closed**
+ * （返回 fresh:false 并带上现场数字），不会静默放行——看 reason 里的字符数即可定位。
+ *
+ * 返回 `{fresh:boolean, reason?:string, evidence:{currentSessionId,messageCount,editorChars,placeholderVisible}}`。
+ */
+export function judgeFreshDraft(snapshot) {
+  const currentSessionId = snapshot?.currentSessionId ?? null
+  const messageCount = Number(snapshot?.messageCount ?? -1)
+  const editorText = String(snapshot?.editorText ?? '')
+  const placeholderVisible = snapshot?.placeholderVisible === true
+  const evidence = {
+    currentSessionId,
+    messageCount,
+    editorChars: editorText.length,
+    placeholderVisible,
+  }
+  const heroCopy = /^今天帮你做些什么/.test(editorText.trim())
+  const editorEmpty = editorText.length === 0 || placeholderVisible || heroCopy
+  if (currentSessionId === null && messageCount === 0 && editorEmpty) {
+    return { fresh: true, evidence }
+  }
+  return {
+    fresh: false,
+    reason: '当前界面不是一张空草稿：currentSessionId=' + String(currentSessionId) +
+      ' / messageCount=' + String(messageCount) +
+      ' / 编辑器字符数=' + String(editorText.length) +
+      ' / 占位可见=' + String(placeholderVisible),
+    evidence,
   }
 }
 

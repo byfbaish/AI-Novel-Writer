@@ -1,6 +1,6 @@
 # 给 WorkBuddy 派活（协作通道操作手册）
 
-> 状态：已实施（2026-11-05 实施；2026-11-07 移除 headless 兜底，现只保留 attach 一条路；**2026-11-11 补落点闸门 §2.3**，修三次夜间事故同根问题）· 实测版本 WorkBuddy 5.9.3（Chromium 138.0.7204.251 / Electron 37.10.3）
+> 状态：已实施（2026-11-05 实施；2026-11-07 移除 headless 兜底，现只保留 attach 一条路；**2026-11-11 补落点闸门 §2.3**，修三次夜间事故同根问题；**2026-11-12 开草稿改页面内 DOM click**（坐标点击在可滚动侧栏会静默点空），并补「新草稿证据」——见 [`../handoffs/2026-11-12-workbuddy-landing-click-fix.md`](../handoffs/2026-11-12-workbuddy-landing-click-fix.md)）· 实测版本 WorkBuddy 5.9.3（Chromium 138.0.7204.251 / Electron 37.10.3）
 > 用途：把 AI-writer 仓库里的活派给本机 WorkBuddy（腾讯 CodeBuddy 系）。**只有一条路：attach**——CDP 驱动桌面 UI，复用作者已登录的账号与积分。
 > 关系：与 [豆包通道](doubao-channel.md)、[Copilot 通道](copilot-channel.md) 平级；**工作目录固定 `wt-2`**（[归属表](worktree-parallel.md#31-槽位归属固定不是谁空谁用)）。
 > 社区调研：已查 `workbuddy-mcp` / `workbuddy-proxy` / `workbuddy-to-dsh` / `workbuddy-daily-credits` / `dsh-botcrew`，没有现成的「桌面已登录态 + 可编排」轮子，取舍见 §11。
@@ -94,11 +94,11 @@ WorkBuddy 侧栏的「空间」= **按 cwd 分组的会话列表**（不是 `wor
 | ① | **打字之前** | 点 `+` 前后取 `window.wb.conversations.currentId`：**未变化 ⇒ 新草稿没打开、编辑器还停在上一条会话上 ⇒ 拒** | `[refuse]` 抛错，**一个字都不打** |
 | ② | **发出之后 8s 内** | 按 `currentSessionId` 回查 sqlite `sessions.cwd`，与 `--cwd` 比对 | `cwd-mismatch` ⇒ 当场失败；未落库 ⇒ 标 `landing=unverified` 并写进产物 |
 
-- **`chips.workspace` 恒为 `null`**（`status` 实测输出 `"chips":{"workspace":null,...}`）。旧代码 `const workspace = chips?.workspace ?? null; if (workspace && ...)` 因为 `?? null` + 真值判断，**从未真正校验过**。现在读到 null 会打 `[warn]` 显式说明，不再假装通过。
-- **`--force` 不赦免这两道闸门**：force 的语义是「允许离开固定归属目录（wt-2）」，不是「允许把任务投给错误的会话」。落错会话/落错目录都是产物不可用，与归属无关。
-- **为什么闸门 ① 卡在打字前**：2026-11-11 02:1x 实测——`+` 没生效时 `waitForEditor` 会在旧会话上立刻返回 `hasEditor=true`，脚本照常打字发送，于是目标文件一个没写成、却显示「已发送」。此时唯一的止损点就是打字之前。
-
-**夜间无人值守的唯一硬前提**：**会话落地的根目录必须等于任务书里所有绝对路径的父目录**。做不到就别派——任何一处越界都会在无人值守时变成提权确认框，而确认框没人点。
+- **`chips.workspace` 有两种形态**：会话里读到 `null`（实测恒 null），草稿里读到**空间名**（如 `wt-2`），个别版本可能给完整 cwd ⇒ 代码用 `workspaceMatches()` 两种都接。旧代码 `const workspace = chips?.workspace ?? null; if (workspace && ...)` 因为 `?? null` + 真值判断，**从未真正校验过**；现在读到 null 会打 `[warn]` 显式说明，不再假装通过。
+- **开草稿靠页面内 DOM `click()`，不用坐标**（`buildSpaceClickExpression`）：坐标点击要先 `scrollIntoView` 再 `getBoundingClientRect`，侧栏可滚动时算出的位置与按钮实际位置错位，而 CDP 鼠标事件**点在空处不报错** ⇒ 静默「点了没反应」，闸门 ① 随后判 `stuck`。2026-11-12 实测：同坐标点 `+` 页面快照完全不变，页面内 `.click()` 则 `currentId` → null。
+- **闸门 ① 之后还有一道「新草稿证据」**：`switched-unverified`（`currentId` 既没停在旧会话、也还没落库）时，必须 `currentSessionId=null` + `messageCount=0` + 编辑器空（欢迎文案按空算）三件同时成立才放行；否则 `[refuse]`。因为 DOM click 本身不产生「点没点中」的信号，不能只凭 `{clicked:true}` 就打字。
+- **夜间无人值守的唯一硬前提**：**会话落地的根目录必须等于任务书里所有绝对路径的父目录**。做不到就别派——任何一处越界都会在无人值守时变成提权确认框，而确认框没人点。
+- **跨目录派活（如 wt-2 ↔ develop）已实测可行**：`--cwd <目标> --force --new` 三段往返（wt-2 → develop → wt-2）全部 `[ok] 落点已证实`、无提权框。注意 `--force` 只越过归属护栏，**不越过落点闸门**。
 
 ## 3. 命令速查
 
@@ -194,7 +194,13 @@ node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会�
 
 ## 7. 已验证 / 未验证
 
-已验证（2026-11-05）：
+已验证（2026-11-12，落点闸门专项）：
+- **闸门 ① 真机复现**：同一台实例、同一空间，`--new` 在坐标点击版本下稳定命中 `[refuse] 点「+」后当前会话仍是 …，新草稿没打开`，**一个字都没打出去**；页面内 DOM `click()` 版本下同命令立刻 `[ok] 已确认是新草稿…` → `[ok] 落点已证实：会话 <新id> @ …/wt-2`。
+- **闸门 ② 真机复现**：发送后按 `currentSessionId` 回查 `sessions.cwd`，三段（wt-2 → develop → wt-2）全部 `[ok] 落点已证实`，`sessions` 表里三条会话的 cwd 与 `status=completed` 都对得上；全程无提权确认框。
+- **跨目录 `--force`**：`--cwd …\develop --force --new` 可用；`--force` 只越过归属护栏，落点闸门照旧生效。
+- **无消息新草稿的现场特征**：`currentSessionId=null`、`messageCount=0`、`editorText` 是 25 字符欢迎文案「今天帮你做些什么？@ 添加上下文，/调用技能与指令」、`placeholderVisible=false`、`chips.workspace="wt-2"`（空间名形态）。
+
+已验证（2026-11-05，通道基础能力）：
 - CDP 连接：`/json/version` 返回 `WorkBuddy/5.9.3`、Chromium `138.0.7204.251`；单 page target（`app.asar/renderer/index.html`）。
 - 只读诊断 `status`：端口/版本/编辑器/runState/chips/当前会话/最近会话全通。
 - 中文 `Input.insertText` + 真实鼠标点 `button[aria-label="发送"]` + 从 `.cr-agent .cr-markdown` 取干净正文（无 `WorkBuddy/已完成/共消耗` 噪音）。
@@ -203,10 +209,12 @@ node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会�
 - **端到端真跑**：`task "只回复两个字母 OK，不要别的内容" --new --timeout 240` → exit 0，25s，reply=`OK`，产物四件套齐全（prompt/meta/reply/snapshot），末尾 markers 为空。
 
 未验证（要用先测）：
-- **落点闸门 ①②（§2.3）只有单测，尚未在真机上制造事故复现**：单测覆盖 `judgeLanding` 的五个分支（`stuck` / `switched-unverified` / `cwd-ok` / `cwd-mismatch` / force 不赦免），但「点 `+` 后 `currentId` 真的不变」这个现场信号来自 2026-11-11 02:1x 的一次观测，没有第二次复现。**首次实机派活时先看日志里是否出现 `[ok] 落点已证实`**——没出现就说明闸门 ② 走的还是未证实分支，按 §8 回查。
+- **DSH 侧「受限令牌 append 已存在日志被 ACL 拒 → `approval/asked`」仍无第二次复现**（2026-11-10 卡死那次的现场只留有日志文本），也不要指望本通道的闸门能替它兜底：那是进程权限档的问题，与落点无关。
+- **`resumeSession()` 切卡片仍走坐标点击**（见 §7 未验证项与 [`../handoffs/2026-11-12-workbuddy-landing-click-fix.md`](../handoffs/2026-11-12-workbuddy-landing-click-fix.md) §5-1）：点偏时函数会返回成功、且若原会话 cwd 恰好等于目标 cwd，闸门 ② 会判 `cwd-ok`；真机尚未制造过这个场景。
 - 长任务（>10 分钟）在轮询下是否会被 UI 虚拟滚动影响；`waitForSettled` 靠 `agentCount` 增长 + 正文两次一致，超长输出可能需要调 `--timeout`。
 - 高峰拦截（exit 5）只在单元测试里覆盖过时段判断，尚未在真实工作日高峰实跑。
 - 同时开两条 WorkBuddy 会话并发派活：本通道假设「当前只有一条会话在跑」，并发需另做隔离。
+- 欢迎文案（新草稿编辑器的 25 字符占位句）是硬编码前缀匹配：WorkBuddy 改文案时会 fail-closed 报错，不会静默放行；报错里带字符数与占位可见性，改 `heroCopy` 正则即可。
 
 ## 8. 失效判据与恢复
 
@@ -215,14 +223,15 @@ node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会�
 | `status` exit 2 / `NEED_HUMAN_DEBUG` | 9333 没监听：按 §2.1 让作者重启 Debug 实例；确认旧实例已在托盘退出 |
 | `/json/version` 通但 `hasEditor=false` | 页面还在启动或开的是别的窗口；等 5s 重跑 `status` |
 | 「侧栏找不到空间 wt-2 的新建按钮」 | 该目录还没在 WorkBuddy 里打开过：让作者打开一次 wt-2。**不要**换目录——归属固定，`--cwd` 指到别处会被拒 |
-| `[refuse] 点「+」后当前会话仍是 xxx，新草稿没打开` | 闸门 ① 命中：`+` 点了但界面没切走。手工在侧栏点该空间的 `+` 开一张空草稿，确认编辑器为空后重跑；**不要**改任务书重试（任务书没问题） |
+| `[refuse] 点「+」后当前会话仍是 xxx，新草稿没打开` | 闸门 ① 命中：`+` 点了但界面没切走。手工在侧栏点该空间的 `+` 开一张空草稿，确认编辑器为空后重跑；**不要**改任务书重试（任务书没问题）。若日志里先出现的是「已确认是新草稿」，这条就不是命令点击问题，按下一行查 |
+| `[refuse] 点了「+」但没拿到「这是新草稿」的证据` | 页面内 DOM click 也没生效，或 WorkBuddy 改了空草稿外观（欢迎文案/占位符）：先 `status --json` 看 `chips.workspace` 是否为 `null`，再手工开一张空草稿对照；若编辑器有内容但不是欢迎文案，改 `heroCopy` 前缀（`workbuddy-attach.mjs`）。**不要**放宽成「只要有编辑器就放行」 |
 | `[refuse] 任务已发出，但落点不对：cwd=… 期望=…` | 闸门 ② 命中：任务投到了错误目录。**不要直接重跑**（会重复投递），先去界面处理那条会话，再按 §2.3 检查空间是否真的对应目标目录 |
 | 派活「成功」但目标目录没有产物 | 先 `status --json` 看 `recentSessions[].cwd` / `recordedSession.cwd`，再看产物里的 `landing.verdict`：`switched-unverified` = 当时没能证实落点，按 cwd 回查 |
 | 「模型选择器里没有 X」 | 模型下架/改名：`status` 看 `chips.model`，用 `--model` 试现名，再更新 `model-policy.mjs` 白名单 |
 | 发送后输入框还有内容 | 发送按钮被挡（弹层/草稿）：`read` 看有没有回复；重跑会先清空编辑器 |
 | 等回复超时（exit 4） | 模型在长思考：加大 `--timeout`；或 `read` 看看是否已经答完只是没触发稳定信号。**2026-11-05 踩过**：界面早就答完却一直 exit 4，根因是收尾基线取在「打开新草稿之前」的快照上（`agentCount=1`），`grew` 永远 false ⇒ 已改成打字后取基线 + `messageCount +2` / 正文变化兜底（`isSettledSignal`，有单测） |
 | 回复里混进 `WorkBuddy/已完成/共消耗` | `.cr-markdown` 选择器变了：改 `attach.mjs` 的 `SELECTORS.agentMarkdown`，补一条单测 |
-| 点击全都不生效 | WorkBuddy 升级后 CSS Modules hash 变了：全站没有 `data-testid`，只能靠 aria-label / 语义前缀；先跑 `status` 核对 `buttonLabels` |
+| 点击全都不生效 | 先分清是哪一种：**开草稿**走页面内 `element.click()`（2026-11-12 起；切卡片与发送按钮仍走 `clickRect()` 坐标点击），若连它都不生效多半是 UI 结构变了（`.collapsible-section` / `.workspace-new-task-button` / `data-conversation-id` 改名）——跑 `status` 核对 `buttonLabels`，改 `attach.mjs` 的 `SELECTORS`；**发送按钮/模型选择器**仍走 `clickRect()` 坐标点击，点了没反应就是坐标算偏（侧栏滚动/窗口缩放），先看日志有无 `[warn] 点发送` 再考虑重跑 |
 
 ## 9. headless 兜底通道：已移除（2026-11-07）
 

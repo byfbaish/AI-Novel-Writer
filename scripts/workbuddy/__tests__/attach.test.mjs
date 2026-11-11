@@ -8,11 +8,13 @@ import {
   buildNeedHumanDebugBanner,
   buildSnapshotExpression,
   buildSpaceActionExpression,
+  buildSpaceClickExpression,
   buildStartCommands,
   buildTailTextExpression,
   checkPinnedCwd,
   extractReply,
   isSettledSignal,
+  judgeFreshDraft,
   judgeLanding,
   looksLikePlaceholder,
   parseCdpVersion,
@@ -53,6 +55,10 @@ function makeNode({ innerText = '', textContent, attrs = {}, children = {}, rect
     scrollIntoView() {},
     getBoundingClientRect() {
       return rect
+    },
+    clicked: false,
+    click() {
+      node.clicked = true
     },
   }
   return node
@@ -278,6 +284,97 @@ describe('buildSpaceActionExpression（按空间开新会话 / 点卡片切会�
   })
 })
 
+describe('buildSpaceClickExpression（页面内 DOM click，不走坐标）', () => {
+  function sectionWith(label, { hasButton = true, disabled = false, cards = [] } = {}) {
+    const children = {
+      [SELECTORS.sidebarSectionLabel]: makeNode({ innerText: label, textContent: label }),
+    }
+    let button = null
+    if (hasButton) {
+      button = makeNode({ rect: { left: 200, top: 40, width: 18, height: 18 } })
+      button.disabled = disabled
+      children[SELECTORS.spaceNewTaskButton] = button
+    }
+    if (cards.length) children[SELECTORS.conversationCard] = cards
+    return { section: makeNode({ children }), button, cards }
+  }
+
+  it('点目标空间的「+」→ 页面内真的发出 click（不靠坐标）', () => {
+    const wt2 = sectionWith('wt-2')
+    globalThis.document = makeDocument({ [SELECTORS.sidebarSection]: [sectionWith('develop').section, wt2.section] })
+    expect(runExpression(buildSpaceClickExpression({ label: 'wt-2', kind: 'new-task' }))).toEqual({ clicked: true, label: 'wt-2' })
+    expect(wt2.button.clicked).toBe(true)
+  })
+
+  it('空间不存在 → no-section，且不误点任何按钮（宁可报错也不派到错目录）', () => {
+    const develop = sectionWith('develop')
+    globalThis.document = makeDocument({ [SELECTORS.sidebarSection]: [develop.section] })
+    expect(runExpression(buildSpaceClickExpression({ label: 'wt-2' }))).toEqual({ error: 'no-section', label: 'wt-2' })
+    expect(develop.button.clicked).toBe(false)
+  })
+
+  it('空间在但没有「+」→ no-new-task-button', () => {
+    globalThis.document = makeDocument({ [SELECTORS.sidebarSection]: [sectionWith('wt-2', { hasButton: false }).section] })
+    expect(runExpression(buildSpaceClickExpression({ label: 'wt-2' }))).toEqual({ error: 'no-new-task-button', label: 'wt-2' })
+  })
+
+  it('按钮被禁用 → button-disabled（点了也没用，直接报错）', () => {
+    const wt2 = sectionWith('wt-2', { disabled: true })
+    globalThis.document = makeDocument({ [SELECTORS.sidebarSection]: [wt2.section] })
+    expect(runExpression(buildSpaceClickExpression({ label: 'wt-2' }))).toEqual({ error: 'button-disabled', label: 'wt-2' })
+    expect(wt2.button.clicked).toBe(false)
+  })
+
+  it('kind=card → 点该空间下第一张会话卡片', () => {
+    const card = makeNode({ attrs: { 'data-conversation-id': 'sess-abc' } })
+    const wt2 = sectionWith('wt-2', { cards: [card] })
+    globalThis.document = makeDocument({ [SELECTORS.sidebarSection]: [wt2.section] })
+    expect(runExpression(buildSpaceClickExpression({ label: 'wt-2', kind: 'card' }))).toEqual({ clicked: true, label: 'wt-2' })
+    expect(card.clicked).toBe(true)
+  })
+
+  it('kind=card 但该空间没有卡片 → no-cards', () => {
+    globalThis.document = makeDocument({ [SELECTORS.sidebarSection]: [sectionWith('wt-2').section] })
+    expect(runExpression(buildSpaceClickExpression({ label: 'wt-2', kind: 'card' }))).toEqual({ error: 'no-cards', label: 'wt-2' })
+  })
+
+  it('空间名必须完全相等：「wt-2-old」不能被当成「wt-2」', () => {
+    const old = sectionWith('wt-2-old')
+    globalThis.document = makeDocument({ [SELECTORS.sidebarSection]: [old.section] })
+    expect(runExpression(buildSpaceClickExpression({ label: 'wt-2' }))).toEqual({ error: 'no-section', label: 'wt-2' })
+    expect(old.button.clicked).toBe(false)
+  })
+
+  it('反方向也钉死：侧栏只有更短的「wt」段时，目标「wt-2」不得命中', () => {
+    const short = sectionWith('wt')
+    globalThis.document = makeDocument({ [SELECTORS.sidebarSection]: [short.section] })
+    expect(runExpression(buildSpaceClickExpression({ label: 'wt-2' }))).toEqual({ error: 'no-section', label: 'wt-2' })
+    expect(short.button.clicked).toBe(false)
+  })
+
+  it('目标空间没有「+」时不回落到别的空间去点（错目录比不动更糟）', () => {
+    const target = sectionWith('wt-2', { hasButton: false })
+    const other = sectionWith('develop')
+    globalThis.document = makeDocument({ [SELECTORS.sidebarSection]: [target.section, other.section] })
+    expect(runExpression(buildSpaceClickExpression({ label: 'wt-2' }))).toEqual({ error: 'no-new-task-button', label: 'wt-2' })
+    expect(other.button.clicked).toBe(false)
+  })
+
+  it('sessionId 分支：按 data-conversation-id 精确点那张卡片', () => {
+    const card = makeNode({ attrs: { 'data-conversation-id': 'sess-abc' } })
+    globalThis.document = makeDocument({ '[data-conversation-id="sess-abc"]': card })
+    expect(runExpression(buildSpaceClickExpression({ sessionId: 'sess-abc' }))).toEqual({ clicked: true, sessionId: 'sess-abc' })
+    expect(card.clicked).toBe(true)
+  })
+
+  it('sessionId 不在 DOM 里 → no-card（不退回点第一张）', () => {
+    const other = makeNode({ attrs: { 'data-conversation-id': 'sess-other' } })
+    globalThis.document = makeDocument({ '[data-conversation-id="sess-other"]': other })
+    expect(runExpression(buildSpaceClickExpression({ sessionId: 'sess-abc' }))).toEqual({ error: 'no-card', sessionId: 'sess-abc' })
+    expect(other.clicked).toBe(false)
+  })
+})
+
 describe('buildCurrentSessionExpression', () => {
   it('读得到就返回真实 id（写回 last-session.json 用）', () => {
     globalThis.document = makeDocument({})
@@ -453,3 +550,44 @@ describe('judgeLanding（派活落点闸门：会话 id + sessions.cwd）', () =
 })
 
 
+
+describe('judgeFreshDraft（「这是不是一张空草稿」的界面证据）', () => {
+  const HERO = '今天帮你做些什么？@ 添加上下文，/调用技能与指令'
+
+  it('空草稿：currentId=null + messageCount=0 + 欢迎文案 ⇒ fresh', () => {
+    const r = judgeFreshDraft({ currentSessionId: null, messageCount: 0, editorText: HERO, placeholderVisible: false })
+    expect(r.fresh).toBe(true)
+    expect(r.evidence).toEqual({ currentSessionId: null, messageCount: 0, editorChars: HERO.length, placeholderVisible: false })
+  })
+
+  it('真 placeholder 可见 ⇒ 也按空算（老版本 UI）', () => {
+    expect(judgeFreshDraft({ currentSessionId: null, messageCount: 0, editorText: '', placeholderVisible: true }).fresh).toBe(true)
+  })
+
+  it('编辑器里有真实内容 ⇒ 不是空草稿（宁可拒绝也不在别人的稿子上打字）', () => {
+    const r = judgeFreshDraft({ currentSessionId: null, messageCount: 0, editorText: '帮我改一下第三章', placeholderVisible: false })
+    expect(r.fresh).toBe(false)
+    expect(r.reason).toContain('编辑器字符数=8')
+  })
+
+  it('messageCount > 0 ⇒ 不是空草稿（旧会话里的残留）', () => {
+    expect(judgeFreshDraft({ currentSessionId: null, messageCount: 6, editorText: '' }).fresh).toBe(false)
+  })
+
+  it('currentId 仍有值 ⇒ 不是空草稿（还停在上一条会话上）', () => {
+    expect(judgeFreshDraft({ currentSessionId: 'old-1', messageCount: 0, editorText: '' }).fresh).toBe(false)
+  })
+
+  it('snapshot 缺失 ⇒ fail-closed（拿不到证据就不打字）', () => {
+    const r = judgeFreshDraft(null)
+    expect(r.fresh).toBe(false)
+    expect(r.reason).toContain('currentSessionId=null')
+    expect(r.reason).toContain('messageCount=-1')
+  })
+
+  it('欢迎文案改版 ⇒ fail-closed，但 reason 里带现场数字便于定位', () => {
+    const r = judgeFreshDraft({ currentSessionId: null, messageCount: 0, editorText: '新的欢迎语', placeholderVisible: false })
+    expect(r.fresh).toBe(false)
+    expect(r.reason).toContain('编辑器字符数=5')
+  })
+})

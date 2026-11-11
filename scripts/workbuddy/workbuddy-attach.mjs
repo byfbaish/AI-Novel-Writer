@@ -35,11 +35,13 @@ import {
   buildClearEditorExpression,
   buildTailTextExpression,
   buildSpaceActionExpression,
+  buildSpaceClickExpression,
   buildCurrentSessionExpression,
   readRunState,
   isSettledSignal,
   checkPinnedCwd,
   judgeLanding,
+  judgeFreshDraft,
   extractReply,
   summarizeSnapshot,
   buildModelItemsExpression,
@@ -164,6 +166,19 @@ function assertAllowedModel(model, { force }) {
 
 function normalizePath(value) {
   return String(value == null ? '' : value).split('\\').join('/').replace(/\/+$/, '').toLowerCase()
+}
+
+/**
+ * `chips.workspace` 有两种形态，别拿一种去比另一种：
+ * - 会话里读到 null（实测恒 null，所以旧守卫 `if (workspace && …)` 从未生效）；
+ * - 草稿里读到**空间名**（如 `wt-2`，2026-11-12 实测），个别版本可能给完整 cwd。
+ * 判据：像路径（含 / 或 \ 或盘符）就与 cwd 比，否则与空间名标签比。
+ */
+function workspaceMatches(workspace, cwd) {
+  const value = String(workspace ?? '').trim()
+  if (!value) return true
+  const looksLikePath = /[\\/]/.test(value) || /^[a-zA-Z]:/.test(value)
+  return looksLikePath ? normalizePath(value) === normalizePath(cwd) : value === path.basename(path.resolve(cwd))
 }
 
 function log(message) {
@@ -351,20 +366,24 @@ async function openSpaceDraft(client, { cwd }) {
   // （2026-11-11 02:1x 实测事故，证据见 docs/handoffs/2026-11-11-night-shift-plan.md §10）。
   const before = await client.evaluate(buildCurrentSessionExpression())
   const beforeSessionId = before?.ok ? before.sessionId ?? null : null
-  const rect = await client.evaluate(buildSpaceActionExpression({ label, kind: 'new-task' }))
-  if (!rect || rect.error) {
-    throw new Error('侧栏找不到空间「' + label + '」的新建按钮（' + (rect?.error ?? 'no-rect') + '）：先在 WorkBuddy 里打开过 ' + cwd + ' 再重试')
+  // 用页面内 DOM click 点「+」，不走坐标：侧栏可滚动时 rect 算出的坐标会偏，
+  // 而 CDP 鼠标事件点空不报错 ⇒ 静默「点了没反应」（2026-11-12 实机探针证据见
+  // docs/handoffs/2026-11-12-workbuddy-landing-click-fix.md）。
+  const clicked = await client.evaluate(buildSpaceClickExpression({ label, kind: 'new-task' }))
+  if (!clicked || clicked.error) {
+    throw new Error('侧栏找不到空间「' + label + '」的新建按钮（' + (clicked?.error ?? 'no-click') + '）：先在 WorkBuddy 里打开过 ' + cwd + ' 再重试')
   }
-  await clickRect(client, rect)
   await sleep(1200)
   const snapshot = await waitForEditor(client)
   const after = await client.evaluate(buildCurrentSessionExpression())
   const workspace = snapshot?.chips?.workspace ?? null
   if (!workspace) {
     // 这条分支以前是「读到 null 就当通过」，等于永不校验。显式说明，落点改由会话 id + sessions.cwd 判。
-    log('[warn] 读不到 chips.workspace（该字段实测恒为 null），工作区改由「会话 id 是否切换」+「sessions.cwd」判定')
-  } else if (normalizePath(workspace) !== normalizePath(label)) {
-    throw new Error('点「+」后工作区不是 ' + label + '，而是 ' + workspace + '（拒绝在错的目录派活）')
+    log('[warn] 读不到 chips.workspace（该字段在会话里恒为 null），工作区改由「会话 id 是否切换」+「sessions.cwd」判定')
+  } else if (!workspaceMatches(workspace, cwd)) {
+    // chips.workspace 有两种形态：会话里为 null；草稿里是**空间名**（如 "wt-2"），
+    // 个别版本可能是完整 cwd。所以路径形态与 cwd 比、否则与空间名比（2026-11-12 实测两种都见过）。
+    throw new Error('点「+」后工作区不是 ' + cwd + '（空间名 ' + label + '），而是 ' + workspace + '（拒绝在错的目录派活）')
   }
   const landing = judgeLanding({
     beforeSessionId,
@@ -373,6 +392,19 @@ async function openSpaceDraft(client, { cwd }) {
   })
   if (!landing.ok) {
     throw new Error('[refuse] ' + landing.reason + '\n  先在 WorkBuddy 里手动打开「' + label + '」空间、点 + 开一张空草稿，确认编辑器是空的再重试')
+  }
+  // `verified:false` 的放行分支（目前只有 switched-unverified）要一份草稿证据：
+  // 以前这条直接放行，但 DOM click 本身不再产生「点没点中」的信号，所以必须由界面状态
+  // 证明「这确实是一张空草稿」（判定逻辑与单测在 attach.mjs 的 judgeFreshDraft）。
+  if (!landing.verified) {
+    const judged = judgeFreshDraft(snapshot)
+    if (!judged.fresh) {
+      throw new Error(
+        '[refuse] 点了「+」但没拿到「这是新草稿」的证据（' + judged.reason +
+        '）：拒绝在身份不明的会话上打字。先在 WorkBuddy 里手动开一张空草稿再重试',
+      )
+    }
+    log('[ok] 已确认是新草稿（currentSessionId=null / messageCount=0 / 编辑器为空），落点待发送后由 sessions.cwd 证实')
   }
   return { snapshot, label, workspace, beforeSessionId, landing }
 }
