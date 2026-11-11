@@ -203,3 +203,76 @@
 
 **④ `wt-1` / `wt-2` 已清干净**：夜跑产物全部进主线后，两处 `reset --hard 8c0bd657` + `clean -fd`（保留 `.workbuddy`），现 `git status` 空、`clean -nd` 0 项。wt-2 那条实测无效的 B11 方案 A 改动随重置丢弃（本就该丢）。
 
+## 9. 2026-11-11 20:00–20:55 补做：单轮 dev 实机（B11 / A2 / B16）+ D9 降静态
+
+**授权**：起 dev / 停 dev · 跑单测（全量不启用）· 看板写 · 改文档现值 · 本地提交（不推送）· 派豆包 · 写产物。**「可改码」未启用，全程零源码改动。**
+
+**为什么只有 1 轮**：B11 是启动/开项目的订阅计数、A2 是唯一真章生成、B16 是编辑器内联链路，三者可在同一 dev 进程串行；D9 慢吐若真跑会 `block(rootActionId)` 与 A2 成功章互斥，故降为静态 + 单测。
+
+### 9.1 B11 实机计数探针（方案 B：模块层包装）
+
+- 结论：三时刻（启动后 / 打开项目后 / 外观损坏恢复路径）`window:close-requested` 活跃订阅数**稳定 = 1**，不增长。
+- 判定：**A —— 测试夹具缺陷（合成 Workspace 多订），非真泄漏、非 TitleBar 未卸载**。
+- 关键排障：`window.aiNovelAPI` 是 frozen + sealed，`api.on` 与整体都不可写；CDP 各 execution context 里 `require`/`ipcRenderer`/`process` 全不可用。可行路径是包装 Vite dev 模块 `src/services/ipc-client.ts` 的 `ipc.on`（普通 `export const` 对象）。
+- 产物：[`b11-probe-result.md`](2026-11-11-night-evidence/b11-probe-result.md)，截图为 T1（T2/T3 截图超时跳过，报告已如实标注）。
+- 卡 `86418ba9` 已由 Lead 交回并复核结项（`tag --add review` → `review --pass`）。
+
+### 9.2 A2 / D16 状态栏模型指示器 —— **实测抓到一个展示层缺口**
+
+| 项 | 结果 |
+|---|---|
+| 「本次创作模型」是否生效 | ✅ 生效：`generation_runs.binding_json.sourceManifest.modelReceipt` = `deepseek-flash`（`88cd3187…` = `deepseek-创作`），`status: completed` |
+| 默认模型 A 是否被误改 | ✅ 未改（`config.json` 仍 `ab365b78…` = `Ollama/qwen3.5:9b-128k`） |
+| 章节生成是否成功 | ✅ 第 2 章 2052 字，工作流「已全部完成」 |
+| D16 状态栏是否显示实际调用模型 | ❌ **未显示**：`useActualModelStore.getState().actual === null`，状态栏恒为配置值 A |
+
+**根因（代码链路，非推断）**：`base-command.ts:154` 在带 main handle 时走 `createWorkflowMainGenerationRuntime` → `createMainOwnedGenerationRuntime`；`MainGenerationSnapshot`（`generation-runtime.ts:82-93`）**没有任何模型字段**，而 `recordActualModel` 唯一调用点在 `generation-runtime.ts:409`（`beginModelExecution` 内部，主进程路径不经过）⇒ store 永远为 `null`，状态栏走配置兜底。
+
+**性质**：展示层缺口，数据侧事实源正确，无数据错写。修法最小点是让主进程在首帧快照带出 `modelReceipt`。**未改，待裁。**
+
+产物：[`a2-d16-recheck.md`](2026-11-11-night-evidence/a2-d16-recheck.md)
+
+### 9.3 B16 来源冲突文案 —— **判定「测试写法问题」，并发现实机走的是另一条文案**
+
+实机逐字采集（DOM `outerHTML` 直接取，未改写）：
+
+```html
+<div role="status" class="space-y-1">
+  <p data-conflict-layer="output">来源已变化：这一稿不能保存，仍可复制。</p>
+  <p data-conflict-layer="batch">来源已变化：后续单元不再执行，需重新发起。</p>
+</div>
+```
+
+- `SourceConflictNotice` 组件路径是**两条独立 `<p>`**，精确 `getByText` 可用。
+- 编辑器内联路径 `setAiError(sourceConflictNoticeText(...))`（`CodeMirrorEditor.tsx:695`、`:717`）塞的是**一条拼接串**，精确匹配前半句必失败 ⇒ 这就是 `CodeMirrorEditor-generation.browser.tsx:281 / :335` 的成因。
+- **实机新发现**：作者最可能的操作（改正文后点「替换」）命中的是 `:730` 的 **「正文或原目标已变化，结果未应用；你仍可复制预览内容」**，不是「来源已变化」。两条文案语义不同但用户难分辨，列入待裁。
+- **第三条文案**（本卡要求单列）：`批次来源已变化，不能继续此批次。请从当前正文发起新任务。` 出自 `AIOutputPanel.tsx:454` 的 `gate.sourceChanged`，与 `source-conflict-copy.ts` 无关。
+
+产物：[`b16-conflict-copy.md`](2026-11-11-night-evidence/b16-conflict-copy.md) + [`b16-conflict.png`](2026-11-11-night-evidence/b16-conflict.png)
+
+### 9.4 D9 降静态（**未实机**，首行已标注）
+
+- 单测真跑：`pnpm test` 两个文件 **12/12 全绿**（`generation-call-timeout` 10 例 + `generation-run-service.call-timeout` 2 例）。
+- 静态判读三点：①`DEFAULT_SINGLE_CALL_TIMEOUT_MS = 10 * 60 * 1000` 写死；②`generation-run-service.ts:206` 调 `resolveCallDeadline(budgetRemainingMs)` **没传 `capMs`** ⇒ 生产路径上「可配置 watchdog」只是函数签名上的能力；③超时把 `endReason` 覆盖成 `'cancelled'`，只保留 `failureCode: GENERATION_CALL_TIMEOUT`，下游若按 `endReason` 判定会把超时读成用户取消（**未追消费方**）。
+- 产物：[`d9-static-judgement.md`](2026-11-11-night-evidence/d9-static-judgement.md)
+
+### 9.5 收尾线（交给豆包，只出材料与判读）
+
+- 卡 `4993ba9c-4537-4137-bf6e-a9a20a061640`，报告 12,744 B，三张表齐全：表 A 14 张未结算卡逐卡处置、表 B DB-8 11 项过滤后 9 项（2 项已被后续裁定吸收、7 项仍待裁）、表 C 8 张旧卡身份错配核对。
+- 豆包自陈未核项 7 条（表 C 6 张卡「依赖路径是否已删」只能记未核、DG 处置口径两种并存等），已原样保留在报告 §四。
+- Lead 换身份复核 `pass → Done`（`lead:reviewer`）。**处置动作一律未执行**：无 `move`、无 `done` 别的卡、无改状态行。
+
+### 9.6 数据侧与残留
+
+- 实机前后对比（`project.db`）：第 1 章 `finalized` 1741 字**未变**；仅新增第 2 章 `draft` 2052 字（20:52 保存，含 B16 造冲突后已还原）。
+- 备份：`.tmp-ui/d8-backup/1111-project.db`、`1111-partial_arch.json`（仅用于可回滚，本轮未回滚）。
+- 外观：B11 T3 造成的 `phase: blocked` 已恢复 `migrated`、`failureCode: null`。
+- dev 已停，5180/9222 释放，Electron 进程 0。
+- 看板 rev：791 → 804（8 张旧卡摘 `external`、建收尾线卡、复核结项）。
+
+### 9.7 今夜新增待裁（3 条）
+
+1. **D16 主进程路径不投影模型**：是否把 `modelReceipt` 塞进 `MainGenerationSnapshot`；不改则应在设计稿标注「指示器只覆盖渲染层持租约路径」。
+2. **B16 两条文案语义重叠**：「正文或原目标已变化」vs「来源已变化」，作者实际更常撞前者，是否统一或加区分。
+3. **D9 `capMs` 未接线**：是否把 `readMainGenerationPolicy` 的 cap 接进 `resolveCallDeadline`（改码，需单独点头）。
+
