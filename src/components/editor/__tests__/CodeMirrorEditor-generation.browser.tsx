@@ -260,7 +260,7 @@ describe('CodeMirror editor AI generation boundary', () => {
   })
 })
 
-it.each([false, true])('明确 handle 恢复原候选；文件改变=%s 时只复制不替换', async changedFile => {
+it.each([false, true])('明确 handle 恢复原候选；文件改变=%s 时提示重新选中且不替换', async changedFile => {
   const handle = { projectId: 'editor-project', epoch: 'editor-epoch', rootActionId: '原预算', runId: '原候选' }
   const documentText = '甲😀乙'
   const documentHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(documentText))), byte => byte.toString(16).padStart(2, '0')).join('')

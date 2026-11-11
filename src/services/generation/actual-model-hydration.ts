@@ -27,6 +27,9 @@ export async function hydrateActualModel(session: ProjectSessionContext | null):
     }
     useActualModelStore.getState().recordActualModel(model)
   } catch {
-    // 回填失败不阻塞界面；状态栏退回配置值，与「尚无实际调用」同义。
+    // 回填失败不阻塞界面。这里必须**清空**：catch 里什么都不做的话，切项目失败时
+    // store 会留着上一个项目的模型，而状态栏把它标成「实际调用」——比显示配置值更误导。
+    // （原注释写「退回配置值」，但没写 clear，实现与注释不符，2026-11-11 豆包复核指出。）
+    useActualModelStore.getState().clearActualModel()
   }
 }

@@ -279,7 +279,7 @@ try {
     frozenInputHash:'1'.repeat(64),rootActionId:'root-old',status:'active'};
   db.prepare('INSERT INTO generation_roots(root_action_id,idempotency_key,action_json,budget_json) VALUES(?,?,?,?)')
     .run('root-old','root-key-old',JSON.stringify(action),JSON.stringify({maxPhysicalRequests:2,maxTokenLiability:1000,maxOutputPerRequest:500,maxActiveElapsedMs:1000}));
-  db.prepare('INSERT INTO generation_runs VALUES(?,?,?,?,?,?)').run('run-old','root-old',
+  db.prepare('INSERT INTO generation_runs(run_id,root_action_id,binding_json,status,created_at_ms,open_key) VALUES(?,?,?,?,?,?)').run('run-old','root-old',
     JSON.stringify({projectId:id,epoch:'source-epoch',fingerprint:{},contextSnapshotId:'context-old',sourceManifest:{},sourceRefs:[]}),
     'running',1,'open-key-old');
   const attempt={attemptId:'attempt-unknown',reservationId:'reservation-old',rootActionId:'root-old',

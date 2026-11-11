@@ -114,9 +114,10 @@ export async function createWorkflowMainGenerationRuntime(request: WorkflowMainG
       readOnlyOutline = view.nonReplayable && view.plotOutline?.protocol === PLOT_OUTLINE_PROTOCOL && view.plotOutline.cursor.kind === 'complete'
       context.mainGenerationRootHandle = Object.freeze({ ...view.handle })
       context.mainGenerationRunHandle = Object.freeze({ ...view.handle })
-      // D16：状态栏显示**实际调用**的模型。这里写的是主进程视图带回来的事实
-      // （源自持久化 binding 的 modelReceipt），不是本地这次请求选的 modelId——
-      // 主进程可能改写模型，只有回执作准。删掉这一行，D16 的验收单测会红。
+      // D16：状态栏取主进程视图带回的模型（源自持久化 binding 的 `sourceManifest.modelReceipt`），
+      // 不直接用本地这次请求的 modelId：binding 是**落库的、重启后仍可读**的那一份，本地请求值只活在内存里。
+      // 注意 `modelReceipt` 是 `begin` 时按 `selection.modelId` 冻结的**请求回显**，不是执行后的观测值
+      // ——当前链路里两者必然相同（执行时 `leases.resolve(leaseId)` 取同一份快照）。删掉这一行，D16 验收单测会红。
       if (view.model) useActualModelStore.getState().recordActualModel(view.model)
       if (intent.importSlot && !importRecovery) {
         const stored = await ipc.invokeWithProjectSession(projectSession, 'import-generation:read', { slot: intent.importSlot })

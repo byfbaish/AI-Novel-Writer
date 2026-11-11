@@ -151,8 +151,9 @@
 
 | N3 判据 | 单测 | 实机（2026-11-11 晚） |
 |---|---|---|
-| 重启后仍显示实际调用模型 | ✅ `main-generation-owner.test.ts` 两条（含 `reopen()` 后读回同一 model） | ✅ `location.reload()` 后 `actual` 重新非空且值不变，只能说来自持久化回执 |
-| 「配置 A / 实际 B」⇒ 显示 B | ✅ `workflow-main-reasoning.test.ts` 新增用例（删写入行必红） | ⚠️ **未直接观察到**：该项目最近一条 run 恰好是 A，显示 A 是正确行为、与配置值相同，区分不出「读实际」与「读配置」。构造副本被「项目未获授权」闸门拦住，未绕过 |
+| 重启后仍显示实际调用模型 | ✅ `main-generation-owner.test.ts` 两条（含 `reopen()` 后读回同一 model） | ⚠️ **只验到「持久化回执可重读」，未验整机重启**：`location.reload()` 只重建渲染进程，主进程 / 项目库 / owner 全是热的。`reload()` 后 `actual` 重新非空且值不变，能证明值来自持久化回执（渲染层 store 是纯内存、无语义记忆），但不覆盖主进程重建、`epoch` / `leaseId` 重建、以及冷启动时 `hydrateActualModel(null)` 先行清空这几段 |
+| 「配置 A / 实际 B」⇒ 显示 B | ✅ `workflow-main-reasoning.test.ts` 新增用例（删写入行必红） | ⚠️ **未直接观察到**：该项目最近一条 run 是 A，显示 A 与配置值相同，区分不出「读实际」与「读配置」。构造副本被「项目未获授权」闸门拦住，未绕过。**注意这条是推断不是观测**：当时依据是「12:50 / 12:51 两条 A 的 cancelled run 比 12:41 的 B 更晚」，但 `cancelled` 不等于发生过调用——代码本身有 `cancelled-before-dispatch → not-dispatched` 映射（`main-generation-owner.ts:288`），查那两条的 attempt 状态才能定案，而证据里没有这一列 |
+| 整机重启（退出 Electron → 重启 → 重开同一项目） | — | ⬜ **未做**（需起应用）。补验时应同时记录「启动到重开项目之间」状态栏是哪一档——按实现应为「配置」，这不算错，但与判据字面不同 |
 | 删掉快照写入行单测会红 | ✅ 同上 | — |
 | 启动期回填通路 | — | ✅ 无生成、纯内存 store 却从 `null` 变为非空 ⇒ 只能来自 `generation:last-model` |
 | tooltip 分档 | ✅ `statusbar-model.test.ts` | ✅ 「（配置）」↔「（实际调用）」两态实测切换，可见文本不变 |
@@ -171,8 +172,42 @@
 - **现象**：`portable-project-format.test.ts` 期望 `{tables: 66, fields: 635}`，实际 **638**；`generation-controller.test.ts:716` 的 `exportPortableProject` 直接抛 `PORTABLE_SCHEMA_UNSUPPORTED`。
 - **根因**：`a5bdd184 feat(d2): generation_runs 执行租约` 给 `generation_runs` 加了 3 列 —— `execution_owner` / `execution_epoch` / `lease_expires_at` —— **没登记进 `electron/services/portable-project-field-policy.json`**。`assertPortableSourceSchema` 是 fail-closed 校验（DB 实际列必须全部出现在白名单里），因此整张表被拒。
 - **影响面**：不只是测试红 —— `exportPortableProject` 是**项目导出 / 便携备份**的入口，运行时走同一断言 ⇒ 当前分支的**项目导出功能实际不可用**。
-- **修法（2026-11-11 作者点头后已实施）**：3 列按 `import_runs` 同义字段的先例登记为 `X`（`exclude-machine-authority`，租约是机器权威、跨机无意义、导入时重建），并把 `portable-project-format.test.ts` 三处计数期望同步（`66/635 → 66/638`、`added 280 → 283`、`m01-m05-delta 123 → 126`）。
+- **修法（2026-11-11 作者点头后已实施）**：3 列按 `import_runs` 同义字段的先例登记为 `X`（`exclude-machine-authority`，租约是机器权威、跨机无意义），并把 `portable-project-format.test.ts` 三处计数期望同步（`66/635 → 66/638`、`added 280 → 283`、`m01-m05-delta 123 → 126`）。
+- **口径更正（2026-11-11 豆包复核）**：先前写「导入时重建（`target-machine-rebind`）」**没有实现支撑**——导出只做 **neutral 化**（`project-archive-service.ts:913-949` 的 `updates` + `neutralValue()`：`INT NOT NULL → 0`、`TEXT NOT NULL → ''`），导入侧靠列默认值兜底。两个副作用未在此前记录：① 导出时正被持有的 `running` run，导出后 `execution_owner=''`，若该 root 进了 `portable-runtime-freeze.json` 则 fence 跳过（`generation-run-repository.ts:817`）⇒ 永久停在 running 且无人持有；未冻结则落 `aborted` 终态（`:840-841`，而 `aborted` 不可 resume）。② `execution_epoch` 归零，当前无读取方，将来若拿它当接管次数判据会失真。
 - **这是第二次同类疏漏**（M22 漏登记 `summary_snapshots.knowledge_candidates` 出现过一次）。加列时「改 schema、改迁移、忘了改字段策略」是复发点，闸门在 `portable-project-format.test.ts` 的首条用例——**加列后跑它就够**。
+
+### 9.8 独立复核（豆包，2026-11-11 夜）与据其修正
+
+**方式**：走豆包电脑版通道（`scripts/doubao/`），新开线程，只读审计，禁跑任何测试。豆包选的项目是 `wt-1`（分支 `agent/wt-1`），与本轮提交不同分支 —— 靠任务书写死「一切阅读带 `git show <hash>:<path>` 前缀、禁读工作区同名文件」，因为 commit 对象共享，不需要切项目。
+**产物**：`wt-1/.runtime/doubao-review-20261111.md`（30KB，七问逐条判定 + 原样命令输出 + 指名最弱一环）。
+
+**七个必答题的判定**（均经我方逐条复验，无一条是复核方读错）：
+
+| # | 判定 | 要点 |
+|---|---|---|
+| Q1 投影的是实际还是请求 | 部分成立 | `main-generation-owner.ts:445` 是 `leases.begin(selection.modelId)` —— 租约按**请求值**建，binding 里的 `modelReceipt` 是「请求回显」不是「执行后观测」。单 run 内两者必然相同（`:657 leases.resolve` 取同一快照），但「主进程可能改写模型」这个动机描述**编的** |
+| Q2「重启后仍显示」 | 部分成立 | `location.reload()` 只重建渲染进程，主进程全热；只能证明「持久化回执可重读」，不证明「重启后」。原表打 ✅ 属写过头 |
+| Q3 `lastModel()` 边界 | 成立 | ① 不看 `status`/attempt，会把「开了没跑 / 已取消」的 run 当成最近一次实际调用（系统自己有 `cancelled-before-dispatch → not-dispatched` 映射却没用）；② `LIMIT 50` 在跨项目过滤**之前**生效；③ `repository.get` 抛错时 `catch` 静默且**不清空 store** ⇒ 串项目显示 |
+| Q4 三列登记为 `X` | 部分成立 | 方向对（租约跨机无意义），但「导入时重建」无实现支撑；导出时正持有的 `running` run 会落 `aborted` 或永久无人持有 |
+| Q5 五处计数 | 成立 | 638 / 283 / 126 / 639 全对。口径：policy **639 键** = DB **638 列** + `characters.avatar`（在 `optionalFields` 内、库里无此列） |
+| Q6 修实现还是改断言 | 以 (a) 为主，夹一处 (b) | 守卫是真修（`target=null` 时「替换」按钮可用却静默无操作，是独立于测试的用户可见缺陷）；文案改动有硬证据（气泡 `select-none` 且无复制控件）。但**用例名与判据脱钩**：「只复制不替换」的语义在内联层已不存在 |
+| Q7 死函数残留 | 代码侧干净，文档侧有 | 代码/测试/导出的 `sourceConflictNoticeText` 只剩墓碑注释；历史证据稿仍按旧行号引用 —— **按「历史不改写」保留，改在墓碑注释里加迁移导航** |
+
+**据其修正（2026-11-11 作者「一次改完」授权）**：
+
+1. `actual-model-hydration.ts` 的 `catch` 补 `clearActualModel()` —— 原注释写「退回配置值」但没写 clear，实现与注释不符。
+2. `workflow-main-generation.ts` 的 D16 注释重写：删掉「主进程可能改写模型」的错误动机，改为「binding 是落库的、重启后仍可读的那一份」+ 明确标注它是**请求回显**。
+3. 本稿 §9.5 两行实机证据由 ✅ 降为 ⚠️，并补「整机重启」一行 ⬜ 未做。
+4. `CodeMirrorEditor-generation.browser.tsx` 用例名改为「…提示重新选中且不替换」，与断言对齐。
+5. `scripts/f05-u16-recovery-boundaries-journey.mjs:282` 补显式列名（上一轮只修了 2 个 test + 1 fixture，漏了这条 journey 脚本）。
+6. 本稿 §9.7「导入时重建」口径更正 + 补两个未记录的副作用。
+
+**未修（如实登记）**：
+
+- **`hydrateActualModel` 的切项目竞态**：无请求序号保护，连续切换时先发的旧响应可覆盖新值。修法要定「谁算 stale」（按 `session.epoch` 还是单调 token），属设计取舍，另裁。
+- **文档 5 处历史引用**（`2026-11-10-r2-fixtures-...:100`、`b16-conflict-copy.md:57,63`、`night-1111-review.md:26,29`、`scripts/night/20261111/*`）：按「历史不改写」保留，导航写在 `source-conflict-copy.ts:44` 的墓碑注释里。
+- **`lastModel()` 不看 `status`**：属实现选择（「最近一次请求过的模型」vs「最近一次真派发过的模型」）。若作者要的是后者，得改查询口径并补 attempt 判定，另裁。
+
 
 
 

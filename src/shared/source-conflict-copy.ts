@@ -47,4 +47,8 @@ export function sourceConflictCopy(locale: Locale, status: SourceConflictStatus)
  * 内联是单次调用，没有「后续单元」，拼进去等于把批次语义搬进没有批次的场景。
  * 内联改调 `sourceConflictCopy(...).outputInline` 后，该函数已无生产调用点，留作死代码会
  * 让「同一后果两套拼法」并存，故整体移除。
+ *
+ * 迁移导航：历史证据稿（`docs/handoffs/2026-11-11-night-evidence/*.md`、`scripts/night/20261111/*.md`）
+ * 里仍按旧行号引用本函数名——那是当晚的现场记录，按「历史不改写」保留原样。要查当时的实现，
+ * 用 `git show 90770846^:src/shared/source-conflict-copy.ts`；当前口径以本文件为准。
  */
