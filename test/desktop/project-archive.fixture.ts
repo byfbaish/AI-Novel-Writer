@@ -229,7 +229,9 @@ function insertRoundtripDomain(database: Database.Database, sourceProjectId: str
         maxOutputPerRequest: 500,
         maxActiveElapsedMs: 1000,
       }))
-    database.prepare('INSERT INTO generation_runs VALUES(?,?,?,?,?,?)').run(
+    // 显式列名：迁移会往 `generation_runs` 追加列（D2 的租约三列），位置式插入会随 schema 变化而炸。
+    // D2 设计稿 `d2-run-lease-abort-design.md:230` 已记过同一隐患，但当时只修了生产代码，漏了这套夹具。
+    database.prepare('INSERT INTO generation_runs(run_id, root_action_id, binding_json, status, created_at_ms, open_key) VALUES(?,?,?,?,?,?)').run(
       'run-old', 'root-old', JSON.stringify({
         projectId: sourceProjectId,
         epoch: 'source-epoch',

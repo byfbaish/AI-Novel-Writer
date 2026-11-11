@@ -173,7 +173,8 @@ function seedProject(f: Fixture, secret = 'token-绝不外带'): { body: string;
       .run('root-1', 'root-key-1', JSON.stringify({ ...action, secretRef: secret }), JSON.stringify({
         maxPhysicalRequests: 2, maxTokenLiability: 1000, maxOutputPerRequest: 500, maxActiveElapsedMs: 1000,
       }))
-    db.prepare('INSERT INTO generation_runs VALUES(?,?,?,?,?,?)').run(
+    // 显式列名：`generation_runs` 会被迁移追加列（如 D2 的租约三列），无列名的位置式插入会随 schema 变化而炸。
+    db.prepare('INSERT INTO generation_runs(run_id, root_action_id, binding_json, status, created_at_ms, open_key) VALUES(?,?,?,?,?,?)').run(
       'run-1', 'root-1', JSON.stringify({ projectId: f.projectId, epoch: 'epoch-1', fingerprint: {},
         contextSnapshotId: 'context-1', sourceManifest: { secretRef: secret }, sourceRefs: [] }), 'running', 1, 'open-key-1')
     const attempt = { attemptId: 'attempt-1', reservationId: 'reservation-1', rootActionId: 'root-1',
@@ -341,7 +342,7 @@ describe('portable project export service', { timeout: 20_000 }, () => {
         Object.assign(binding.sourceManifest.reviewRevisionContext, extras)
         binding.sourceManifest.reviewRevisionContextHash = hash(JSON.stringify(binding.sourceManifest.reviewRevisionContext))
         binding.sourceManifest.authorInputs = [{ id: 'review-revision-context', text: JSON.stringify(binding.sourceManifest.reviewRevisionContext) }]
-        db.prepare('INSERT INTO generation_runs VALUES(?,?,?,?,?,?)').run('run-next-review', 'root-merge', JSON.stringify(binding), 'open', 2, 'open-next-review')
+        db.prepare('INSERT INTO generation_runs(run_id, root_action_id, binding_json, status, created_at_ms, open_key) VALUES(?,?,?,?,?,?)').run('run-next-review', 'root-merge', JSON.stringify(binding), 'open', 2, 'open-next-review')
       } finally { db.close() }
     }
     const f = fixture()
@@ -628,9 +629,10 @@ describe('portable project export service', { timeout: 20_000 }, () => {
       // P2-3 期 3b / M26：+1 列（project_core.synopsis_source_ref）—— 26/65/625 → 26/65/626。
       // P2-3 / S6c / M27：+1 表 8 列（upstream_revision_log）—— 26/65/626 → 27/66/634。
       // P2-3 / S6：+1 列（drafts.outline_rev）—— 27/66/634 → 27/66/635。
+      // D2 执行租约（`a5bdd184`）：+3 列（generation_runs 租约三列）—— 27/66/635 → 27/66/638。
       // 版本号用常量而不是字面量：这条断言在 M20 之后每一版都得手改一次，而它想表达的只是
       // 「导出的 sourceEvidence 反映的是**当前**库」——写死 21 会让「迁移做对了」表现成「测试红了」。
-      sourceEvidence: { schemaVersion: CURRENT_DESKTOP_SCHEMA_VERSION, tableCount: 66, fieldCount: 635 },
+      sourceEvidence: { schemaVersion: CURRENT_DESKTOP_SCHEMA_VERSION, tableCount: 66, fieldCount: 638 },
     })
     expect(contextCalls).toEqual(['lease-current', 'lease-current', 'lease-current'])
     expect(fs.readFileSync(f.databasePath)).toEqual(before)
@@ -692,8 +694,8 @@ describe('portable project export service', { timeout: 20_000 }, () => {
     const receipt = await exportPortableProject(input(f))
     // 与上一条同源：M10 的两列与 M11 的两张表同样计入 donor 夹具（比上一条多 1 个字段）；
     // M15 加 1 表 13 列，M16 加 1 表 11 列，M17 加 1 表 13 列。
-    // donor 夹具在上一条基础上多一列，所以字段数比 635 多 1。
-    expect(receipt.sourceEvidence).toMatchObject({ schemaVersion: CURRENT_DESKTOP_SCHEMA_VERSION, tableCount: 66, fieldCount: 636 })
+    // donor 夹具在上一条基础上多一列，所以字段数比 638 多 1。
+    expect(receipt.sourceEvidence).toMatchObject({ schemaVersion: CURRENT_DESKTOP_SCHEMA_VERSION, tableCount: 66, fieldCount: 639 })
     const targetProjectRoot = path.join(f.base, 'restored-donor')
     await restorePortableProject({ archivePath: f.target, targetProjectRoot })
 

@@ -92,8 +92,14 @@ describe('portable v7 field policy', () => {
     //   —— 65/625 → 65/626。
     // P2-3 / S6c / M27：+1 表 8 列（upstream_revision_log，上游版本流水）—— 65/626 → 66/634。
     // P2-3 / S6：再 +1 列（drafts.outline_rev，定稿时的大纲版本）—— 66/634 → 66/635。
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 66, fields: 635 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 66, fields: 635 })
+    // D2 执行租约（`a5bdd184`）：+3 列（generation_runs.execution_owner / execution_epoch /
+    //   lease_expires_at）—— 66/635 → 66/638。
+    //   ⚠️ 2026-11-11 补登：与 M22 那次同一类疏漏 —— 加列时**漏了字段策略登记**，
+    //   `assertPortableSourceSchema` 是 fail-closed（DB 实际列必须全部出现在白名单里），
+    //   于是整张表被拒 ⇒ `exportPortableProject` 抛 `PORTABLE_SCHEMA_UNSUPPORTED`，
+    //   **项目导出 / 便携备份在运行时不可用**，不只是这条用例红。
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 66, fields: 638 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 66, fields: 638 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -142,12 +148,14 @@ describe('portable v7 field policy', () => {
     // + P2-3 期 3b / M26：+1 列（project_core.synopsis_source_ref）—— 270 → 271。
     // + P2-3 / S6c / M27：+1 表 8 列（upstream_revision_log）—— 271 → 279。
     // + P2-3 / S6：+1 列（drafts.outline_rev）—— 279 → 280。
-    expect(added).toHaveLength(280)
+    // + D2 执行租约（`a5bdd184`）：+3 列（generation_runs 的租约三列）—— 280 → 283。
+    expect(added).toHaveLength(283)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
     const delta = added.filter(key => getPortableFieldPolicy(...key.split('.') as [string, string]).origin === 'm01-m05-delta')
-    expect(delta).toHaveLength(123)
+    // M01-M05 增量 123 → 126：D2 执行租约（`a5bdd184`）给 generation_runs 补登的 3 列。
+    expect(delta).toHaveLength(126)
     expect(new Set(delta.map(key => key.split('.')[0]).filter(table => !baselineTables.has(table!))).size).toBe(15)
     expect(delta.filter(key => key.startsWith('characters.')).sort()).toEqual([
       'characters.character_id', 'characters.identity_revision', 'characters.legacy_key',
@@ -264,7 +272,8 @@ describe('portable v7 field policy', () => {
       // P2-2 期 2 / M25：再 +3 列 ⇒ 65/625。
       // P2-3 期 3b / M26：再 +1 列（synopsis_source_ref）⇒ 65/626。
       // P2-3 / S6c / M27：再 +1 表 8 列（upstream_revision_log）⇒ 66/634；S6 再 +1 列 ⇒ 66/635。
-      expect({ tables: tables.length, fields }).toEqual({ tables: 66, fields: 635 })
+      // D2 执行租约（`a5bdd184`）：+3 列 ⇒ 66/638（删索引的 DDL fork 仍必须被拒绝）。
+      expect({ tables: tables.length, fields }).toEqual({ tables: 66, fields: 638 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)

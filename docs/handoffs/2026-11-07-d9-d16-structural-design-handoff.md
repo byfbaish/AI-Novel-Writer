@@ -161,13 +161,15 @@
 
 原始现象（12 分钟无响应无提示）**已由固定 10 分钟上限解决**（`generation-run-service.ts:205-207`，`5e031021`）。判据里还剩「上限可配置」未兑现：现行上限写在 `RootBudget` 之外，要扩成 per-call 可配，得动冻结的 budget 键集（`main-generation-plan.ts:188-190` 要求键集与冻结常量**完全相等**）并新增 `readMainGenerationPolicy` 的 version 分支——属结构性改动，需另裁，本轮只登记不实施。
 
-### 9.7 附带发现（既有，非本轮引入；已报告，待作者裁）
+### 9.7 附带发现：便携字段策略漏登记 3 列（既有问题，已修）
 
-跑测试时撞到 2 个红，`git stash` 对照确认**与本轮改动无关**（基线同样红），根因已定位并留证：
+跑测试时撞到 2 个红，`git stash` 对照确认**与本轮 D16/B16 改动无关**（基线同样红），根因已定位：
 
 - **现象**：`portable-project-format.test.ts` 期望 `{tables: 66, fields: 635}`，实际 **638**；`generation-controller.test.ts:716` 的 `exportPortableProject` 直接抛 `PORTABLE_SCHEMA_UNSUPPORTED`。
-- **根因**：`a5bdd184 feat(d2): generation_runs 执行租约` 给 `generation_runs` 加了 3 列 —— `execution_owner` / `execution_epoch` / `lease_expires_at` —— **没登记进 `electron/services/portable-project-field-policy.json`**。`assertPortableSourceSchema` 是「DB 实际列必须全部出现在策略白名单里」的 fail-closed 校验，因此整张表被拒。
-- **影响面**：不只是测试红 —— `exportPortableProject` 是**项目导出 / 便携备份**的入口，这条断言在运行时同路径。也就是说**当前分支的项目导出功能实际不可用**，而「备份与迁移」是作者在意的功能点。
-- **修法（未实施，等裁）**：3 列补进 policy JSON（附 disposition），并把 `portable-project-format.test.ts:95` 的期望从 635 改为 638。属 schema/policy 同步问题，不属 D16/B16 范围，本轮不动。
+- **根因**：`a5bdd184 feat(d2): generation_runs 执行租约` 给 `generation_runs` 加了 3 列 —— `execution_owner` / `execution_epoch` / `lease_expires_at` —— **没登记进 `electron/services/portable-project-field-policy.json`**。`assertPortableSourceSchema` 是 fail-closed 校验（DB 实际列必须全部出现在白名单里），因此整张表被拒。
+- **影响面**：不只是测试红 —— `exportPortableProject` 是**项目导出 / 便携备份**的入口，运行时走同一断言 ⇒ 当前分支的**项目导出功能实际不可用**。
+- **修法（2026-11-11 作者点头后已实施）**：3 列按 `import_runs` 同义字段的先例登记为 `X`（`exclude-machine-authority`，租约是机器权威、跨机无意义、导入时重建），并把 `portable-project-format.test.ts` 三处计数期望同步（`66/635 → 66/638`、`added 280 → 283`、`m01-m05-delta 123 → 126`）。
+- **这是第二次同类疏漏**（M22 漏登记 `summary_snapshots.knowledge_candidates` 出现过一次）。加列时「改 schema、改迁移、忘了改字段策略」是复发点，闸门在 `portable-project-format.test.ts` 的首条用例——**加列后跑它就够**。
+
 
 

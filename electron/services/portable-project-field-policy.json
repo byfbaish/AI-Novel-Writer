@@ -121,7 +121,7 @@
     "generation_artifacts": {"artifact_id":"H","attempt_id":"H","run_id":"H","artifact_json":"R","revision":"H","status":"H"},
     "generation_attempts": {"attempt_id":"H","reservation_id":"H","run_id":"H","root_action_id":"H","attempt_json":"R","usage_receipt_json":"R","invocation_nonce":"H"},
     "generation_roots": {"root_action_id":"H","idempotency_key":"H","action_json":"R","budget_json":"R","active_elapsed_ms":"H","active_since_ms":"H","blocked_code":"H","revision":"H"},
-    "generation_runs": {"run_id":"H","root_action_id":"H","binding_json":"R","status":"H","created_at_ms":"H","open_key":"H"},
+    "generation_runs": {"run_id":"H","root_action_id":"H","binding_json":"R","status":"H","created_at_ms":"H","open_key":"H","execution_owner":"X","execution_epoch":"X","lease_expires_at":"X"},
     "import_effect_ledger": {"run_id":"H","stage":"H","batch_id":"H","effect_namespace":"H","effect_key":"H","state":"H","evidence_kind":"H","diagnostic_code":"H","created_at":"H","updated_at":"H"},
     "import_global_fact_operations": {"operation_id":"D","payload_hash":"R","receipt_json":"R","created_at":"H"},
     "import_legacy_identity_bridge": {"id":"X","ciphertext_hex":"X","iv_hex":"X","auth_tag_hex":"X","created_at":"X"},
