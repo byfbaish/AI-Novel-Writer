@@ -7186,7 +7186,7 @@ test('formal冻结拒绝未跟踪生产源码或实际bridge，保留未跟踪�
     fs.mkdirSync(path.join(dir, 'scripts/fixtures'), { recursive: true })
     fs.writeFileSync(path.join(dir, 'scripts/fixtures/production.fixture.mjs'), 'export const adapter = 1')
     assert.throws(() => assertCommittedProductionFiles(dir), /UNCOMMITTED_PRODUCTION_FILES/)
-  } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+  } finally { discardTree(dir) }
 })
 
 test('formal freeze只接受已提交且tracked clean的协议revision', () => {
@@ -7204,7 +7204,7 @@ test('formal freeze只接受已提交且tracked clean的协议revision', () => {
     assert.doesNotThrow(() => assertFormalTargetCandidateClean(dir))
     fs.writeFileSync(protocolPath, '{"decisionRevision":"v2-uncommitted"}\n')
     assert.throws(() => assertFormalTargetCandidateClean(dir), /TARGET_TRACKED_DIRTY/)
-  } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+  } finally { discardTree(dir) }
 })
 
 
