@@ -208,6 +208,10 @@ describe('release dependency contract', () => {
       PATH: process.env.PATH,
       SystemRoot: process.env.SystemRoot,
       npm_lifecycle_event: 'build:win:artifacts',
+      // 测试跑在 Electron 运行时里，process.execPath 就是 electron.exe。
+      // 最小 env 不继承入口注入的 ELECTRON_RUN_AS_NODE 时，子进程会以 GUI 模式
+      // 启动并永不退出，spawnSync 永久阻塞（曾让两轮全量挂死在 7 小时以上）。
+      ELECTRON_RUN_AS_NODE: '1',
     } as unknown as NodeJS.ProcessEnv
     const bypass = spawnSync(process.execPath, ['scripts/require-release-gate.mjs'], {
       cwd: process.cwd(),

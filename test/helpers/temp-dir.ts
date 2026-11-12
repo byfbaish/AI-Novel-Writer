@@ -54,6 +54,42 @@ export function discardTree(root: string): void {
 }
 
 /**
+ * 删一棵**可能含 junction / symlink 的**目录树：先把链接拆掉，再删目录。
+ *
+ * ## 为什么不能用 `fs.rmSync(root, { recursive: true })`
+ *
+ * 2026-11-12 事故：`scripts/__tests__/quality-modernization-r3-native.test.mjs` 把仓库根的
+ * 真实 `electron/` 以 junction 挂进测试目录，收尾 `fs.rmSync` 在 Windows 上顺着 junction
+ * 递归进真实目标，**把 455 个源码文件删了**。六轮全量基线因此全废（跑到一半源码没了，
+ * 268–270 个测试文件成片红），排查了一整夜。
+ *
+ * 链接本身不是内容：先用 `unlinkSync` 拆（只删链接，目标完好），再删剩余目录。
+ * 拆链接失败（权限/占用）也不抛，交给后面的 `rmSync` 和 `sweepDiscardedTrees()`。
+ */
+export function discardTreeWithoutFollowingLinks(root: string): void {
+  unlinkLinksInTree(root)
+  fs.rmSync(root, { recursive: true, force: true, ...TEMP_RETRY })
+}
+
+function unlinkLinksInTree(dir: string): void {
+  let entries: fs.Dirent[]
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true })
+  } catch {
+    return
+  }
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name)
+    // Windows junction 在 Dirent 上就是 isSymbolicLink() === true、isDirectory() === false
+    if (entry.isSymbolicLink()) {
+      try { fs.unlinkSync(full) } catch { /* 占用/权限：留给 rmSync 与 sweep */ }
+      continue
+    }
+    if (entry.isDirectory()) unlinkLinksInTree(full)
+  }
+}
+
+/**
  * 删掉所有 `discard-*` 残留。只在测试进程全部退出后调用（vitest `globalSetup` 的 teardown），
  * 那时不会有句柄还锁着。返回**仍然删不掉**的条数，供上层决定要不要提一句。
  */
