@@ -1,0 +1,9 @@
+# WB-P1 · dsh-wakeup-plugin bundle patch layer
+# 与 dsh-win-notify / dshmarket / dsh-our-free-model 同形：bundle 自带 patch，
+# 由 package.json 的 dsh.bundle.patch 指向；profile 的 cordis.yml 是空树 []，
+# 树 = 各 bundle 的 - insert: 依次叠加 → profile 的 cordis.patch.yml → --patch 覆盖。
+# 这里只负责「把插件行插进树」；三项配置由 desktop/cordis.patch.yml 按同 id 覆盖。
+- insert:
+    - id: dsh-wakeup-plugin
+      name: dsh-wakeup-plugin
+      config: {}
