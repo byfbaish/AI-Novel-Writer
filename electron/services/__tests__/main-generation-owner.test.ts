@@ -3,6 +3,7 @@ import { planBlueprintGenerationCost } from '../../../src/services/workflows/blu
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import { discardTree } from '../../../test/helpers/temp-dir'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { initializeLegacyBaselineSchema } from '../../migrations/baseline-schema'
 import { getDesktopMigrationRegistry, CURRENT_DESKTOP_SCHEMA_VERSION } from '../../migrations/desktop-registry'
@@ -78,7 +79,7 @@ function fixture(dispatch?: GenerationRunServiceDependencies['dispatch'], silico
   }
   const owners = [makeOwner()]
   cleanups.push(() => { for (const owner of owners) { try { owner.suspendForProjectClose() } catch { /* injected disk error retains tail */ } }
-    if (db.open) db.close(); fs.rmSync(root, { recursive: true, force: true }) })
+    if (db.open) db.close(); discardTree(root) })
   const begin: BeginGenerationRequest = { operation: 'chapter-draft', uiActionNonce: 'click', modelId: model.id, chapterNumber: 1,
     selectedDraftIds: [], selectedFinalizedDraftIds: [], promptKeys: ['first_chapter_draft'], skillStages: [], output: 'visible-text' }
   return { root, model, get db() { return db }, owner: owners[0], begin,
