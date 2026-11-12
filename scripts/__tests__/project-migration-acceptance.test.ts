@@ -1,9 +1,10 @@
-import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, copyFileSync, mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
+import { discardTree } from '../../test/helpers/temp-dir'
 
 const source = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'project-migration-acceptance.mjs')
 const fixtures: string[] = []
@@ -34,7 +35,7 @@ function dryRun(root: string, script: string) {
 }
 
 afterEach(() => {
-  for (const root of fixtures.splice(0)) rmSync(root, { recursive: true, force: true })
+  for (const root of fixtures.splice(0)) discardTree(root)
 })
 
 describe('project migration acceptance source provenance', () => {

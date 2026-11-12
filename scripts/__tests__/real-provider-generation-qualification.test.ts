@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { discardTree } from '../../test/helpers/temp-dir'
 
 import {
   createModelExecutionLeaseReceipt,
@@ -438,7 +439,7 @@ describe('real provider generation qualification contract', () => {
       })).rejects.toMatchObject({ code: 'SOURCE_TREE_DIRTY' })
       expect(fetchSpy).not.toHaveBeenCalled()
     } finally {
-      rmSync(dirtyRepositoryRoot, { recursive: true, force: true })
+      discardTree(dirtyRepositoryRoot)
     }
   })
 
