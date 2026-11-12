@@ -1,7 +1,8 @@
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { afterAll, expect, it } from 'vitest'
+import { discardTree } from '../../test/helpers/temp-dir'
 
 const windowsIt = process.platform === 'win32' ? it : it.skip
 const repository = path.resolve(import.meta.dirname, '../..')
@@ -9,7 +10,7 @@ const driver = path.join(repository, 'scripts/f05-a11-offline-import-journey.mjs
 const cache = path.join(repository, '.runtime', '.cache')
 mkdirSync(cache, { recursive: true })
 const scratch = mkdtempSync(path.join(cache, 'a11-win-driver-'))
-afterAll(() => rmSync(scratch, { recursive: true, force: true }))
+afterAll(() => discardTree(scratch))
 
 windowsIt('admits the installed official Windows mode before checking package bytes', () => {
   const installedApp = path.join(scratch, 'installed-app')

@@ -10,6 +10,7 @@ import childProcess, { spawnSync } from 'node:child_process'
 import { syncBuiltinESMExports } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { gunzipSync } from 'node:zlib'
+import { discardTree } from '../../test/helpers/temp-dir'
 import { ROOT, PLANNED_CALL_ALLOCATION, CAMPAIGN_ID, campaignIdFor, hash, currentProtocolBinding, assertProtocolBinding, validateHistoricalLedgerBoundary, validateHistoricalSupersessionBoundary, validateCampaignBinding, buildFixtureExports, validatePair, selectPhase, forwardReasoningFor, forwardQualificationWindowFor, assertScenarioMatchesProtocol, reconcileDispatchedAttempts, updateLedger, main, inspectTarget, freezeEnvironment, fixedStartup, validateFrozenExecution, runnerAdapterHash, assertCommittedProductionFiles, assertFormalTargetCandidateClean, createShortIsolationRoot, assertOwnedIsolationRoot, validatePhysicalLedger, registeredCampaignWorktree, developmentLedgerPath } from '../quality-modernization-run.mjs'
 import { COMMAND_PROBES, selectOwnerDispatch, productionBridgeHash, copyIsolatedRealModelConfig, PHASE_SCENARIOS, classifyProductionPair,
   fullExecutionSchedule, classifyFullProduction, validateFullAcceptedPredecessor,
@@ -1289,7 +1290,7 @@ test('separated-review diagnostic runs six zero-model owner slots and preserves 
     assert.equal(restarted.status, 0, restarted.stderr)
     assert.equal(restarted.stdout.trim(), 'SEPARATED_REVIEW_DIAGNOSTIC_SLOT_UNAVAILABLE')
     assert.equal(originalRead(persisted, 'utf8').trimEnd().split('\n').length, 18)
-  } finally { fs.readFileSync = originalRead; fs.rmSync(directory, { recursive: true, force: true }) }
+  } finally { fs.readFileSync = originalRead; discardTree(directory) }
 })
 
 test('diagnostic authority routing preserves missing-fact rejection for qualification', () => {
@@ -1669,7 +1670,7 @@ test('父桥实际生成配置和 spawn options 使用同一已登记窗口，�
   } finally {
     childProcess.spawnSync = original
     syncBuiltinESMExports()
-    fs.rmSync(directory, { recursive: true, force: true })
+    discardTree(directory)
   }
 })
 
@@ -1738,7 +1739,7 @@ test('前向资格窗口接受实际四个 phase prepare 的登记列表，漂�
   } finally {
     childProcess.spawnSync = original
     syncBuiltinESMExports()
-    fs.rmSync(directory, { recursive: true, force: true })
+    discardTree(directory)
   }
 })
 
@@ -5083,7 +5084,7 @@ const s14bHistoryTest = test.extend({
       fs.readFileSync = originalRead
       childProcess.spawnSync = originalSpawn
       syncBuiltinESMExports()
-      fs.rmSync(dir, { recursive: true, force: true })
+      discardTree(dir)
     }
   },
 })

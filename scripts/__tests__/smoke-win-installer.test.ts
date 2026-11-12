@@ -4,6 +4,7 @@ import { existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, rmSync, rmd
 import { tmpdir } from 'node:os'
 import { join, resolve, win32 } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { discardTree } from '../../test/helpers/temp-dir'
 import { closeConnection, getEmbeddingSpaces, search } from '../../electron/vector-store'
 import { assertProjectStoragePathSupported } from '../../electron/services/project-storage-preflight'
 
@@ -996,7 +997,7 @@ catch { $failure = $_.Exception.Message }
     } finally {
       const scratchBase = join(process.env.LOCALAPPDATA!, 'VibeCodingScratch', 'an')
       if (scratch?.startsWith(`${scratchBase}\\`) && existsSync(join(scratch, '.vibe-owner.json'))) rmSync(scratch, { recursive: true })
-      rmSync(evidence, { recursive: true })
+      discardTree(evidence)
     }
   })
 
@@ -1020,7 +1021,7 @@ catch { $_.Exception.Message }
       expect(output).toContain('receipt path differs from its isolated scratch root')
       expect(output).not.toContain('UNEXPECTED_PASS')
     } finally {
-      rmSync(temporary, { recursive: true, force: true })
+      discardTree(temporary)
     }
   })
 
