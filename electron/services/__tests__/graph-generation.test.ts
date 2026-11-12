@@ -16,6 +16,7 @@ import { provenGraphOwnEventIds } from '../graph-generation'
 import type { ModelProfile } from '../../../src/shared/ipc-channels'
 import type { GenerationRunServiceDependencies } from '../generation-run-service'
 import type { GraphGenerationEffect, GraphGenerationInput } from '../../../src/shared/graph-generation'
+import { discardTree } from '../../../test/helpers/temp-dir'
 
 vi.mock('../../database', async original => ({...await original<typeof import('../../database')>(),getProjectDb:vi.fn()}))
 const Database=createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
@@ -37,7 +38,7 @@ function fixture(dispatch?:GenerationRunServiceDependencies['dispatch']) {
   buildBinding:(selection,receipt,policy)=>buildGenerationSourceBinding(deps,{...selection,projectId:'project',epoch,modelReceipt:receipt,policy,outputContract:generationOutputContract(selection)}).binding,
   rebuildBinding:(previous,receipt)=>rebuildGenerationSourceBinding(deps,previous,epoch,receipt,readMainGenerationPolicy(previous.sourceManifest.policy)).binding})
  const owner=make('epoch-1');const owners=[owner]
- cleanup.push(()=>{owners.forEach(item=>item.suspendForProjectClose());db.close();fs.rmSync(root,{recursive:true,force:true})})
+ cleanup.push(()=>{owners.forEach(item=>item.suspendForProjectClose());db.close();discardTree(root)})
  return {owner,get db(){return db},spy,plan,begin:(input:GraphGenerationInput={kind:'plan',chapterNumber:1})=>owner.beginGraphGeneration({input,modelId:'synthetic',uiActionNonce:'图谱动作'}),
   removeModel:()=>{model=null},reopen:()=>{owners.at(-1)!.suspendForProjectClose();db.close();db=new Database(file);deps.db=db;vi.mocked(getProjectDb).mockReturnValue(db);const next=make('epoch-2');owners.push(next);return next}}
 }

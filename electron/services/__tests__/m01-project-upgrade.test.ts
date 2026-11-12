@@ -12,6 +12,7 @@ import { createMigrationRegistry } from '../../migrations/registry'
 import { createCanonicalProjectManifest } from '../../../src/shared/project-format'
 import { getProjectDataRoot } from '../project-data-locator'
 import { backupProjectSqlite, probeProjectSqlite, upgradeProjectSqlite } from '../sqlite-project-migration'
+import { discardTree } from '../../../test/helpers/temp-dir'
 
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
 const roots: string[] = []
@@ -35,7 +36,7 @@ function fixture(version: 1 | 4 | 5 | 'current' = 1) {
 afterEach(() => {
   for (const unsub of unsubscribers.splice(0)) unsub()
   closeProjectDatabase(); vi.restoreAllMocks()
-  for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true })
+  for (const root of roots.splice(0)) discardTree(root)
 })
 it('新建项目baseline写入失败时回滚已执行的schema', () => {
   const base = path.resolve('.runtime/.cache/novel-quality-modernization/s05-m01')

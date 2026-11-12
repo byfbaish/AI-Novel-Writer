@@ -25,6 +25,7 @@ import { LLMHistoryRepository } from '../../repositories/llm-repository'
 import { PostProcessRepository } from '../../repositories/post-process-repository'
 import { closeConnection } from '../../vector-store'
 import { listDocuments, readDocumentCopy } from '../../knowledge-base'
+import { discardTree } from '../../../test/helpers/temp-dir'
 
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
 const roots: string[] = []
@@ -203,7 +204,7 @@ async function terminateImportAt(f: ReturnType<typeof fixture>, phase: 'sqlite-c
     if (observed) { expect(killed).toBe(true); expect(signal).toBe('SIGTERM') }
   }
 }
-afterEach(() => { closeProjectDatabase(); for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }) })
+afterEach(() => { closeProjectDatabase(); for (const root of roots.splice(0)) discardTree(root) })
 
 it.each(['v100', 'v110'] as const)('%s 有旧角色原文但无角色卡时拒绝发布且保留源', async version => {
   const f = fixture(version), before = sourceState(f)

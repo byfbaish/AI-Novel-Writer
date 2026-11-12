@@ -18,6 +18,7 @@ import type { MainGenerationExecuteReceipt } from '../../../src/services/generat
 import { parseFinalizedCharacterStateResponse } from '../../../src/shared/finalized-continuity'
 import { getBuiltinPromptTemplate } from '../../../src/services/builtin-prompt-templates'
 import * as portableAuthority from '../portable-current-authority'
+import { discardTree } from '../../../test/helpers/temp-dir'
 
 vi.mock('../../database', async importOriginal => ({ ...await importOriginal<typeof import('../../database')>(), getProjectDb: vi.fn() }))
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
@@ -61,7 +62,7 @@ function fixture(dispatch?: GenerationRunServiceDependencies['dispatch'], option
   })
   const owner=makeOwner('epoch')
   const reopen=()=>{owner.suspendForProjectClose();db.close();db=new Database(path.join(root,'.ai-novel','project.db'));deps.db=db;vi.mocked(getProjectDb).mockReturnValue(db);const next=makeOwner('epoch-2');cleanup.unshift(()=>next.suspendForProjectClose());return next}
-  cleanup.push(() => { owner.suspendForProjectClose(); db.close(); fs.rmSync(root, { recursive: true, force: true }) })
+  cleanup.push(() => { owner.suspendForProjectClose(); db.close(); discardTree(root) })
   const prepared = owner.readFinalizedCharacterContext(1)
   const selection: BeginGenerationRequest = { operation: 'finalized-character-state', uiActionNonce: 'extract', modelId: model.id, chapterNumber: 1,
     selectedDraftIds: [], selectedFinalizedDraftIds: [1], promptKeys: ['character_state_update'], skillStages: [], output: 'structured-data',

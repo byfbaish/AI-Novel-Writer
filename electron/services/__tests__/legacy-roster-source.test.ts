@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { prepareCanonicalStorageFixture } from '../../../test/helpers/canonical-project-fixture'
 import { getProjectDb } from '../../database'
 import { readLegacyRosterSource, captureLegacyRosterContext, adoptLegacyCards, type AdoptLegacyCardsRequest } from '../legacy-roster-source'
+import { discardTree } from '../../../test/helpers/temp-dir'
 
 vi.mock('../../database',async original=>({...await original<typeof import('../../database')>(),getProjectDb:vi.fn()}))
 const Database=createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3')
@@ -18,7 +19,7 @@ function fixture(cards=true) {
  db.exec("INSERT INTO project_core(id,project_name,genre,writing_language) VALUES('main','旧角色','奇幻','zh-CN')")
  db.prepare("UPDATE character_roster_meta SET migration_state=?,legacy_markdown=? WHERE id='main'").run(cards?'legacy_cards_preserved':'legacy_markdown_pending',legacy)
  if(cards){db.exec("INSERT INTO characters(character_id,name,cs_location,static_provenance,cs_provenance) VALUES('角色甲','林岚','北塔','{\"kind\":\"legacy\"}','{}'); INSERT INTO character_aliases VALUES('角色甲','旧名字','旧来源',0,NULL)")}
- cleanup.push(()=>{db.close();fs.rmSync(root,{recursive:true,force:true})})
+ cleanup.push(()=>{db.close();discardTree(root)})
  return {get db(){return db},reopen:()=>{db.close();db=new Database(file)},request:():AdoptLegacyCardsRequest=>{
   const source=readLegacyRosterSource(db);return {operationId:'采用甲',expectedRevision:source.snapshot.revision,expectedIdentityRevision:source.identityRevision,expectedLegacyHash:source.legacyHash,expectedFactsHash:source.factsHash}
  }}

@@ -21,6 +21,7 @@ import { authorMaterialOmitForOperation } from '../../../src/shared/review-revis
 import { selectFrozenReviewRevisionMaterials } from '../../../src/services/workflows/commands/review-revision-materials';
 import { FinalizationRepository } from '../../repositories/finalization-repository';
 import { createProjectArchiveRoundtripFixture } from '../../../test/desktop/project-archive.fixture';
+import { discardTree } from '../../../test/helpers/temp-dir';
 const Database = createRequire(import.meta.url)('better-sqlite3') as typeof import('better-sqlite3');
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0))
@@ -72,7 +73,7 @@ function fixture() {
     fs.mkdirSync(globalDataRoot);
     const db = new Database(path.join(root, 'source.db'));
     initializeLegacyBaselineSchema(db);
-    cleanups.push(() => { db.close(); fs.rmSync(root, { recursive: true, force: true }); });
+    cleanups.push(() => { db.close(); discardTree(root); });
     db.prepare("INSERT INTO project_core(id,project_name,global_guidance) VALUES('main','项目','作者全局指导')").run();
     db.prepare("INSERT INTO blueprints(chapter_number,title,user_guidance) VALUES(2,'第二章','章指导')").run();
     db.prepare("INSERT INTO contents(id,body) VALUES(1,'原文\r\n汉字。'),(2,'未选草稿'),(3,'已定稿原文')").run();
