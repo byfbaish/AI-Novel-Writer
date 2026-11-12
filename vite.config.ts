@@ -153,6 +153,7 @@ export default defineConfig(({ command }) => {
       '**/.pnpm-store/**',
       '**/.workbuddy/**',
       '**/.runtime/**',
+      '**/scripts/.tmp/**',
       '**/plugins/**',
       // Frozen planning scripts retain their standalone Node entrypoints.
       // quality-modernization-run.test.mjs executes their assertions explicitly.
