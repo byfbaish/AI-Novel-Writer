@@ -315,7 +315,7 @@ docs/
 | [`idle-guards-wiring-inventory.md`](design/features/idle-guards-wiring-inventory.md) | 待裁定（2026-11-04） | 三个「写完但零调用方」的守卫（D5 / D15 / D18）各自该在哪一行被调用；含「接线前必须先定的三件事」 |
 | [`batch-interrupt-resume-design.md`](design/features/batch-interrupt-resume-design.md) | ✅ 已实施（2026-11-09 · 甲方案；乙/丙待裁定） | **批量写到一半失败后无路可走**（A1 验收的卡点）：点「继续此批次」→ 去续一条已 terminated 的 run ⇒ `GENERATION_RESUME_REFUSED`；重新开一批 → 起始章仍是已完成的那章 ⇒ 撞「已有草稿不覆盖」。定位到 `batch-chapter-workflow.ts:272` 与 `generation-run-repository.ts:789-791`；三条修法（甲补文案+默认起点 / 乙终止批次改走新开 / 丙批次跨运行存活），建议先走甲。**机制为读码定位，尚未实机复现** |
 
-### 4.6 产品与方法论 · [`design/product/`](design/product/)（6 篇）
+### 4.6 产品与方法论 · [`design/product/`](design/product/)（14 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -330,7 +330,9 @@ docs/
 | [`d21-gate-ui-guide-20261109.md`](design/product/d21-gate-ui-guide-20261109.md) | 🔍 设计输入（2026-11-09 夜跑） | **D21 修法 C 的 UI 操作指南**（豆包）：四个固定位置的中英文案可直接进下一批实现 + 作者操作路径；指出「确认先于过期」（`src/shared/outline-progress-gate.ts:136`/`:143`）与卷末交接闸「过期优先」（`volume-handoff-gate.ts:66`）相反；主次按钮顺序、「表旧」做附注还是第五档待作者裁 |
 | [`d12-retry-design-20261109.md`](design/product/d12-retry-design-20261109.md) | ⛔ **不实施**（2026-11-09 作者裁定：已结案事项被重列为待裁，属伪议题） | **D12 拦截后自动重跑一次**（豆包）：触发条件从「结尾 1000 × 开头 1200、8-gram ≥80」换成全章 `analyzeChapterReuse` blocking 0.45；重跑必须同时做材料减法（撤上一章结尾，缺陷稿 `:851` 自述强指导无效）；两个硬前置＝缺「上一章全文」入参、`generate-draft.command.test.ts:979-998` 写死三次调用 |
 | [`same-plot-check-20261109.md`](design/product/same-plot-check-20261109.md) | ⛔ **伪需求 · 不实施**（2026-11-09 作者裁定） | **「连续两章剧情相同」怎么查**（豆包）：现有一致性检查是一次 LLM 审稿、不是判据集合；逐字判定器对改写式复用 `ratio=0`（不是阈值问题）；推荐先落「相邻两章蓝图 `key_events` 重合度」（2–4h，唯一有结构化输入），拦路石是审稿证据锚点要求逐字唯一引文（`review-chapter.command.ts:129`） |
+| [`2026-11-13-q4-delivery-plan.md`](design/product/2026-11-13-q4-delivery-plan.md) | 待裁定（2026-11-12 用户已同意入库） | **Q4 交付计划**：唯一硬指标从「做了几个功能」改成「『已实施未实机』几时清零」；四期 + 季度收口（1a 清噪声 11/13 → 1b D12 接线与 G14 第一张成绩单 11/14–11/17 → 2 实机复验 → 3 架构一致性 → 4 计划层 UI）；红线 `no new red`，基线双轨（browser 按 G7、全量按 G12），三个数字任一恶化即停新功能 |
 | [`2026-11-07-batch-acceptance-plan.md`](design/product/2026-11-07-batch-acceptance-plan.md) | ✅ 已裁定（2026-11-07） | **第三方独立复核验收清单**（甲方案：E0 台账卫生 + A 实机 + B 界面小缺陷 + C 撤销）：开工基准快照、§3 逐项可判验收矩阵（「第三方结论」列留空、不替复核者下判断）、实测读数、红线检查表、签核表；**2026-11-07 作者裁「丙」拆批**：B 组独立复核 3 兑现 / 2 打回，D9/D16 结转下一批结构设计；明确列出 A1 未跑 / A2-1·2·6 未兑现，证据保留至签核后 |
+| [`2026-11-12-author-now-what-works.md`](design/product/2026-11-12-author-now-what-works.md) | 待裁定（2026-11-12） | **作者口径的「现在能做什么、不能做什么」一页**：按开新书→设定→大纲→逐章正文→批次→审稿→定稿七段，逐格写「能做 / 不能做 / 作者要做的」；四处必须人接手 —— 相邻章剧情重演（D12 判定器零接线）、卷单元章区间重叠（D15 未开工）、批次终态未实机（D2 / D13）、钩子与 AI 味只报不拦（D18 / P8）。QA 交叉核对后认可「能做 / 不能做」划分 |
 
 ### 4.7 Harness 与文档治理 · [`design/harness/`](design/harness/)（2 篇）
 
