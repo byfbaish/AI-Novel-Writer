@@ -1,6 +1,6 @@
 # AI Novel Writer for DeepSeek Harness
 
-> **Maintenance status:** the `0.1.0` preview is frozen, with no short-term feature work planned. Existing documentation remains for current users and maintainers; resuming development requires a new, explicitly scoped plan. The desktop application remains active.
+> **Status: maintenance paused / optional branch.** The `0.1.0` preview gets no short-term feature work, but the assets stay in place and this line may be restarted under a new, explicitly scoped plan — it is not archived. Only pick this branch if you already run DeepSeek Harness; if you just want to write, install the desktop application instead. Assets, presets, qualification scripts, and CI are kept as-is for that restart.
 
 This out-of-tree bundle adds a revisioned, local-first novel project format to DeepSeek Harness. The legacy V1 dedicated agent sees only `novel_read` and `novel_apply_change`; every V1 mutation is presented as a one-file diff and passes through Harness native one-shot approval before execution.
 
