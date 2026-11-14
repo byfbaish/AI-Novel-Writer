@@ -57,6 +57,8 @@ const mocks = vi.hoisted(() => ({
   draftListAll: vi.fn((): Array<Record<string, unknown>> => []),
   draftUpdateContent: vi.fn(),
   draftDelete: vi.fn(),
+  contentGetBody: vi.fn(),
+  draftEditStatsRecord: vi.fn(),
   postProcessCreateRun: vi.fn(() => 'run-1'),
   postProcessGetLatestRun: vi.fn(),
   postProcessGetSteps: vi.fn(() => []),
@@ -176,6 +178,18 @@ vi.mock('../../repositories/draft-repository', () => ({
     updateStatus: vi.fn(),
     updateContent: mocks.draftUpdateContent,
     delete: mocks.draftDelete,
+  },
+}))
+
+vi.mock('../../repositories/content-repository', () => ({
+  ContentRepository: {
+    getBody: mocks.contentGetBody,
+  },
+}))
+
+vi.mock('../../repositories/draft-edit-stats-repository', () => ({
+  DraftEditStatsRepository: {
+    record: mocks.draftEditStatsRecord,
   },
 }))
 
@@ -1099,6 +1113,64 @@ describe('database controller project context guard', () => {
     expect(mocks.recoveryUpdatePending).toHaveBeenCalledOnce()
     expect(mocks.recoveryUpdatePending).toHaveBeenCalledWith('candidate-1', '候选正文')
     expect(mocks.recoveryResolve).toHaveBeenCalledOnce()
+  })
+
+  it('records human draft saves with the minimum changed-character count', async () => {
+    mocks.draftGetMeta.mockReturnValueOnce({
+      id: 1,
+      chapterNumber: 1,
+      version: 1,
+      status: 'draft',
+      contentId: 77,
+    })
+    const oldBody = `${'甲'.repeat(90)}${'乙'.repeat(10)}`
+    const newBody = `${'甲'.repeat(90)}${'丙'.repeat(10)}`
+    mocks.contentGetBody.mockReturnValueOnce(oldBody)
+
+    await expect(handler('db:draft-update-content')(
+      {},
+      1,
+      newBody,
+      100,
+      'C:/projects/A',
+      'human',
+    )).resolves.toEqual({ success: true })
+
+    expect(mocks.draftUpdateContent).toHaveBeenCalledWith(1, newBody, 100)
+    expect(mocks.draftEditStatsRecord).toHaveBeenCalledWith({
+      draftId: 1,
+      origin: 'human',
+      changedChars: 10,
+      oldChars: 100,
+      newChars: 100,
+    })
+  })
+
+  it('defaults draft update metrics to ai when origin is omitted', async () => {
+    mocks.draftGetMeta.mockReturnValueOnce({
+      id: 2,
+      chapterNumber: 2,
+      version: 1,
+      status: 'draft',
+      contentId: 78,
+    })
+    mocks.contentGetBody.mockReturnValueOnce('abc')
+
+    await expect(handler('db:draft-update-content')(
+      {},
+      2,
+      'abXc',
+      4,
+      'C:/projects/A',
+    )).resolves.toEqual({ success: true })
+
+    expect(mocks.draftEditStatsRecord).toHaveBeenCalledWith({
+      draftId: 2,
+      origin: 'ai',
+      changedChars: 1,
+      oldChars: 3,
+      newChars: 4,
+    })
   })
 
   it('closes only the explicitly matched project database', async () => {

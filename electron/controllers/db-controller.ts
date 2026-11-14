@@ -30,6 +30,8 @@ import { commitAuthorCharacterRoster } from '../services/character-roster-author
 import { CharacterRosterRepository } from '../repositories/character-roster-repository'
 import type { CharacterRosterCommitRequest } from '../../src/shared/character-roster'
 import { DraftRepository } from '../repositories/draft-repository'
+import { ContentRepository } from '../repositories/content-repository'
+import { DraftEditStatsRepository } from '../repositories/draft-edit-stats-repository'
 import type { DraftSourceDependency } from '../../src/shared/draft-source-dependency'
 import { FinalizedDraftImportRepository } from '../repositories/finalized-draft-import-repository'
 import { FinalizationRepository } from '../repositories/finalization-repository'
@@ -235,6 +237,37 @@ function registerProjectDatabaseHandler(channel: string, handler: ProjectDatabas
       throw error
     }
   })
+}
+
+/**
+ * 新旧正文的最小差异字数：Levenshtein 编辑距离（替换/插入/删除各记 1 字）。
+ * 先削掉公共前后缀，只对真正变化的中段做两行动态规划，避免整章全量矩阵。
+ */
+function changedCharsBetween(oldBody: string, newBody: string): number {
+  if (oldBody === newBody) return 0
+  let prefix = 0
+  const maxPrefix = Math.min(oldBody.length, newBody.length)
+  while (prefix < maxPrefix && oldBody[prefix] === newBody[prefix]) prefix += 1
+  let suffix = 0
+  const maxSuffix = Math.min(oldBody.length - prefix, newBody.length - prefix)
+  while (suffix < maxSuffix
+    && oldBody[oldBody.length - 1 - suffix] === newBody[newBody.length - 1 - suffix]) suffix += 1
+  const oldMiddle = oldBody.slice(prefix, oldBody.length - suffix)
+  const newMiddle = newBody.slice(prefix, newBody.length - suffix)
+  if (!oldMiddle.length) return newMiddle.length
+  if (!newMiddle.length) return oldMiddle.length
+
+  let previous = Array.from({ length: newMiddle.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= oldMiddle.length; i += 1) {
+    const current = new Array<number>(newMiddle.length + 1)
+    current[0] = i
+    for (let j = 1; j <= newMiddle.length; j += 1) {
+      const substitution = previous[j - 1] + (oldMiddle[i - 1] === newMiddle[j - 1] ? 0 : 1)
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, substitution)
+    }
+    previous = current
+  }
+  return previous[newMiddle.length]
 }
 
 export function registerDatabaseController() {
@@ -1204,7 +1237,7 @@ export function registerDatabaseController() {
     }
   })
 
-  ipcMain.handle('db:draft-update-content', async (_event, id: number, content: string, wordCount: number, expectedProjectPath: string) => {
+  ipcMain.handle('db:draft-update-content', async (_event, id: number, content: string, wordCount: number, expectedProjectPath: string, origin?: 'human' | 'ai') => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
       const draft = DraftRepository.getMeta(id)
@@ -1212,7 +1245,23 @@ export function registerDatabaseController() {
       if (draft.status === 'finalized') {
         throw new Error('已定稿正文为只读内容，不能再修改')
       }
+      // 旧正文只在这里还能读到：updateContent 会就地覆盖 contents.body，且没有历史表。
+      const oldBody = ContentRepository.getBody(draft.contentId) ?? ''
+      const changedChars = changedCharsBetween(oldBody, content)
       DraftRepository.updateContent(id, content, wordCount)
+      try {
+        DraftEditStatsRepository.record({
+          draftId: id,
+          // 缺省必须按 ai 计：update-content 会被 AI 修稿复用，宁可少记人工。
+          origin: origin === 'human' ? 'human' : 'ai',
+          changedChars,
+          oldChars: oldBody.length,
+          newChars: content.length,
+        })
+      } catch (metricError) {
+        // 计量失败不回滚已成功的正文保存，也不改变保存结果。
+        console.warn('[db:draft-update-content] 编辑计量写入失败', metricError)
+      }
       return { success: true }
     } catch (err) {
       return { success: false, error: String(err) }

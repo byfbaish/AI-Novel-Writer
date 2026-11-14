@@ -215,6 +215,7 @@ function DraftEditorSession({ tabId, filePath, content, projectKey }: Props) {
           saveSnapshot.content,
           countDraftUnits(saveSnapshot.content),
           projectSession.projectPath,
+          'human',
         )
         if (!result.success) throw new Error(result.error || text('草稿保存失败', 'Could not save the draft'))
       }
