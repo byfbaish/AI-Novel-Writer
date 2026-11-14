@@ -75,6 +75,8 @@ The 1.0.0 fixes for multi-draft saves, stale requests, source recovery, exports,
 
 It is an optional branch that requires installing DeepSeek Harness first, and it is **not the primary form** of the product: readers who just want to write should use the zero-dependency desktop app (Windows / macOS, [latest Release](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest)). It neither takes part in nor affects the writing, review, or export chain. Historical notes live in the [plugin README](plugins/dsh-ai-novel-writer/README.md); this root README no longer repeats the install steps.
 
+> For the DSH route, see [the plugin README](plugins/dsh-ai-novel-writer/README.md): it requires a DSH environment, is paused, and may resume.
+
 
 
 
