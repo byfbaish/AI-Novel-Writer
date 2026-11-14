@@ -65,7 +65,7 @@
 
 `plugins/dsh-ai-novel-writer/` 及其 npm 包 `@ethanyoq/dsh-ai-novel-writer` 是**前身插件资产**：来自上游旧分支，上游已不再维护支持，本仓库**维护暂停**——资产保留、CI 照旧，但短期不做功能开发与兼容性修复。
 
-它是需要**先安装 DeepSeek Harness** 才能走的可选支路，**不是主推形态**；对只想写小说的用户，直接下载零依赖的桌面版即可（Windows / macOS，[最新 Release](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest)）。它不参与也不影响写作、验收、导出主链路。历史说明见[插件目录的 README](plugins/dsh-ai-novel-writer/README.md)，根 README 不再展开安装步骤。
+它是需要**先安装 DeepSeek Harness** 才能走的可选支路，**不是主推形态**；对只想写小说的用户，直接下载零依赖的桌面版即可（Windows / macOS，[最新 Release](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest)）。它不参与也不影响写作、验收、导出主链路。安装步骤不在本 README 展开。
 
 > 想在 DeepSeek Harness 里用这条支路的人，装法与条目说明见[插件目录的 README](plugins/dsh-ai-novel-writer/README.md)——需先具备 DSH 环境；该支路维护暂停，但不排除重启。
 

@@ -73,7 +73,7 @@ The 1.0.0 fixes for multi-draft saves, stale requests, source recovery, exports,
 
 `plugins/dsh-ai-novel-writer/` and its npm package `@ethanyoq/dsh-ai-novel-writer` are **legacy plugin assets** from an old upstream branch that is no longer maintained upstream. Maintenance here is **paused**: the assets and CI stay, but no feature work or compatibility fixes are planned.
 
-It is an optional branch that requires installing DeepSeek Harness first, and it is **not the primary form** of the product: readers who just want to write should use the zero-dependency desktop app (Windows / macOS, [latest Release](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest)). It neither takes part in nor affects the writing, review, or export chain. Historical notes live in the [plugin README](plugins/dsh-ai-novel-writer/README.md); this root README no longer repeats the install steps.
+It is an optional branch that requires installing DeepSeek Harness first, and it is **not the primary form** of the product: readers who just want to write should use the zero-dependency desktop app (Windows / macOS, [latest Release](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest)). It neither takes part in nor affects the writing, review, or export chain. Install steps are not repeated here.
 
 > For the DSH route, see [the plugin README](plugins/dsh-ai-novel-writer/README.md): it requires a DSH environment, is paused, and may resume.
 
