@@ -195,6 +195,57 @@ describe('project clear repositories', () => {
     }
   })
 
+  it('clears draft edit stats with generated text and counts the extra category', () => {
+    const db = new Database(':memory:')
+    const projectPath = fs.mkdtempSync(path.join(os.tmpdir(), 'writer-clear-stats-'))
+    try {
+      initializeLegacyBaselineSchema(db)
+      migrateSchema(new SqliteSchemaAdapter(db), getDesktopMigrationRegistry(), CURRENT_DESKTOP_SCHEMA_VERSION)
+      const draftId = DraftRepository.create({
+        chapterNumber: 1, source: 'write', content: 'chapter one', wordCount: 11,
+      }, db)
+      db.prepare(`
+        INSERT INTO draft_edit_stats (draft_id, origin, changed_chars, old_chars, new_chars, save_count)
+        VALUES (?, 'human', 2, 11, 12, 1)
+      `).run(draftId)
+      vi.mocked(getProjectDb).mockReturnValue(db)
+      vi.mocked(getCurrentProjectPath).mockReturnValue(projectPath)
+
+      const result = ProjectClearRepository.clearGeneratedData({ generatedText: true })
+
+      expect(db.prepare('SELECT COUNT(*) AS count FROM draft_edit_stats').get()).toEqual({ count: 0 })
+      expect(db.prepare('SELECT COUNT(*) AS count FROM drafts').get()).toEqual({ count: 0 })
+      expect(db.prepare('SELECT COUNT(*) AS count FROM contents').get()).toEqual({ count: 0 })
+      // drafts + contents + draft_edit_stats；P36 之前这张新表不计入，只有 2 类。
+      expect(result.counts.generatedText).toEqual({ categories: 3, rows: 3 })
+      expect(result.cleared).toEqual(['generatedText'])
+    } finally {
+      db.close()
+      fs.rmSync(projectPath, { recursive: true, force: true })
+    }
+  })
+
+  it('skips draft edit stats without throwing when the legacy database has no such table', () => {
+    const run = vi.fn()
+    const prepare = vi.fn((sql: string) => ({
+      sql,
+      run,
+      get: (name?: unknown) => {
+        if (sql.includes('sqlite_master') && name === 'draft_edit_stats') return undefined
+        return { present: true }
+      },
+    }))
+    const db = { prepare, transaction: vi.fn((fn: () => void) => () => fn()) }
+    vi.mocked(getProjectDb).mockReturnValue(db as never)
+    vi.mocked(getCurrentProjectPath).mockReturnValue('C:/no-such-p36-project')
+
+    const result = ProjectClearRepository.clearGeneratedData({ generatedText: true })
+
+    const statements = prepare.mock.calls.map(([sql]) => sql)
+    expect(statements).not.toContain('DELETE FROM draft_edit_stats')
+    expect(result.cleared).toEqual(['generatedText'])
+  })
+
   it('restores moved chapter txt files if database clear fails', () => {
     const run = vi.fn()
     const db = {

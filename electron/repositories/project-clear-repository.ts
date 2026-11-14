@@ -43,7 +43,7 @@ export interface ProjectClearResult {
  * （正文层只 UPDATE `actual_last`，不清行）。
  */
 const CLEAR_COUNT_TABLES: Record<ProjectClearScope, readonly string[]> = {
-    generatedText: ['finalized_draft_import_operations', 'post_process_steps', 'post_process_runs', 'reviews', 'revisions', 'drafts', 'contents', 'summary_snapshots', 'volume_handoffs'],
+    generatedText: ['finalized_draft_import_operations', 'post_process_steps', 'post_process_runs', 'reviews', 'revisions', 'draft_edit_stats', 'drafts', 'contents', 'summary_snapshots', 'volume_handoffs'],
     blueprints: ['blueprint_character_sync_operations', 'blueprint_commit_operations', 'blueprints'],
     creativeFields: ['characters', 'upstream_revisions', 'upstream_revision_log', 'volume_units', 'volumes'],
 }
@@ -174,6 +174,8 @@ export class ProjectClearRepository {
                     db.prepare('DELETE FROM post_process_runs').run()
                     db.prepare('DELETE FROM reviews').run()
                     db.prepare('DELETE FROM revisions').run()
+                    // 先删计量子表再删 drafts；老库没有 M30 表时安静跳过。
+                    if (hasTable(db, 'draft_edit_stats')) db.prepare('DELETE FROM draft_edit_stats').run()
                     db.prepare('DELETE FROM drafts').run()
                     db.prepare('DELETE FROM contents').run()
                     db.prepare('DELETE FROM summary_snapshots').run()
