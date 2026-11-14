@@ -64,20 +64,12 @@
 
 ## DeepSeek Harness 插件（早期 MVP）
 
-除了 Windows 与 macOS 桌面版，本仓库还保留 `@ethanyoq/dsh-ai-novel-writer` `0.1.0` 开发预览。该插件目前冻结维护，短期不扩展功能。DeepSeek Harness 的 V2 工作台是刻意收敛的早期 MVP，当前能力不足桌面软件版的 10%；它不读取桌面版 `.vela` 项目，也不能替代桌面版的项目树、批量工作流、成熟编辑器或自动审校。
+## DeepSeek Harness 插件（前身支路，维护暂停）
 
-V2 只提供人工审核的最小创作链：项目设置 → 故事架构 → 人物设定 → 全书纲要 → 逐章蓝图 → 逐章正文。模型生成的待审核建议到达 Proposal 收件箱后，会先填入右侧工作台的本地编辑表单，供人工查看和修改；只有用户明确审核并应用 Proposal，权威项目状态才会改变。
+`plugins/dsh-ai-novel-writer/` 及其 npm 包 `@ethanyoq/dsh-ai-novel-writer` 是**前身插件资产**：来自上游旧分支，上游已不再维护支持，本仓库**维护暂停**——资产保留、CI 照旧，但短期不做功能开发与兼容性修复。
 
-该插件不属于桌面版正式 Release，但已发布为独立 npm 包，拥有独立锁文件、CI 和 MIT 许可；仓库根目录仍为 GPL-3.0 桌面应用。将它安装到 DeepSeek Harness 的 `web` profile：
+它是需要**先安装 DeepSeek Harness** 才能走的可选支路，**不是主推形态**；对只想写小说的用户，直接下载零依赖的桌面版即可（Windows / macOS，[最新 Release](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest)）。它不参与也不影响写作、验收、导出主链路。历史说明见[插件目录的 README](plugins/dsh-ai-novel-writer/README.md)，根 README 不再展开安装步骤。
 
-```sh
-dsh plugin --profile web add @ethanyoq/dsh-ai-novel-writer
-dsh --profile web
-```
-
-源码开发、固定 tarball 安装和 Windows 含空格路径限制由[插件安装指南](plugins/dsh-ai-novel-writer/docs/official-dsh-plugin-installation.md)单独维护，根 README 不复制这些易变化的维护者步骤。
-
-启动 Web 后，打开“小说工作台”，安装 **“AI 小说作家 V2”** Preset；随后新建会话并选择该 Preset。V2 的 AI 起草结果会先回填到右侧工作台的本地编辑表单，供人工修改和审核；点击应用 Proposal 才会写入项目。完整功能、项目格式、验证范围和卸载方式见[插件说明](plugins/dsh-ai-novel-writer/README.md)。不要使用 `dsh plugin add github:EthanYoQ/AI-Novel-Writer`：仓库根包是桌面应用，不是可激活的 DSH bundle。
 
 
 

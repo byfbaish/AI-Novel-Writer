@@ -5,6 +5,16 @@
 > 关系（历史）：与 [豆包通道](doubao-channel.md)、[WorkBuddy 通道](workbuddy-channel.md)、[Copilot 通道](copilot-channel.md)、[任务看板通道](task-board-channel.md) 平级；`wt-3` 曾是 DSH 的固定格（[归属表](worktree-parallel.md#31-槽位归属固定不是谁空谁用)）。
 > 社区调研：已验证 `dsh-as-mcp` 被版本闸门卡死、`ds-bot` 内置连接器机制不适用，取舍见 §9。
 
+## 开发期旁路（不参与小说产出）
+
+本节回答一个常被问的问题：仓库里这些 DSH 相关脚本，对写小说的人有用吗？
+
+- **结论：无用，也不参与主链路。** 小说产出主链路是桌面应用 → 本地项目文件（`.vela` / `.ai-novel/` / `chapters/`）→ 写作、验收、导出；下列工具只服务「多个 Agent 协作时互相叫醒」，坏了不影响一本书的产出。
+- `scripts/dsh/wake-later.ps1`：到点往某个监控目录投一个「已完成」文件，供 Windows 计划任务一次性唤醒用（`-DryRun` / `-List` / `-Remove`）。
+- `scripts/dsh/wakeup-inbox/`：投递落点，只保留 `.gitkeep`；目录里的 `*.md` 是运行残留，已在 `.gitignore` 排除。
+- 真正的投递实现已剥离到独立仓库 `dsh-handoff-relay`（本仓库不含其源码）。
+- 这三样都是**可选开发期工具**，克隆仓库只为写小说的人可以直接忽略；根 README 不列它们。
+
 ## 0. 一句话读法
 
 ```powershell
