@@ -35,6 +35,7 @@ import { ipc } from '../../services/ipc-client'
 import { requireIpcSuccess } from '../../services/ipc-result'
 import type { ExpectedDraftSource, ModelProfile } from '../../shared/ipc-channels'
 import { summarizeDraftEditMetrics, type DraftEditMetricsSummary } from './review-edit-metrics'
+import { medianActionsLast10, type DraftEditMedianSummary } from './draft-edit-median'
 import { resolveWritingLanguage, type WritingLanguage } from '../../shared/writing-language'
 import { parseChapterGoalReview, type ChapterGoalReview } from '../../shared/chapter-goal-review'
 import type { ReviewCycleProjection, ReviewFindingStatus } from '../../shared/review-cycle'
@@ -308,6 +309,9 @@ function isGenerationModel(model: ModelProfile): boolean {
   return model.purposes.includes('generation')
 }
 
+/** P48：动作数中位数的观察窗口——固定 10 章，与 A2 判据的「连续 10 章」对齐。 */
+const MEDIAN_WINDOW = 10
+
 function availableGenerationModelId(
   models: ModelProfile[],
   modelId: string | null | undefined,
@@ -534,6 +538,67 @@ function ReviewReportSession({
         if (cancelled || !isProjectSessionCurrent(projectSession)) return
         setEditMetrics(null)
         setEditMetricsState('error')
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [draftId, projectKey])
+
+  // P48：近 10 章动作数中位数。与本章计量同一个库、同一条失败语义，但入参是
+  // 项目内的章数而不是单章草稿 ID，所以要单独取一次原始行。
+  const [medianSummary, setMedianSummary] = useState<DraftEditMedianSummary | null>(null)
+  const [medianState, setMedianState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+
+  useEffect(() => {
+    // 与上一行同一道门：报告没关联草稿时，本章计量与十章中位数一起不显示，
+    // 免得出现「有基线、没有本章」的半截读数。
+    if (!draftId) {
+      setMedianSummary(null)
+      setMedianState('idle')
+      return
+    }
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) {
+      setMedianSummary(null)
+      setMedianState('idle')
+      return
+    }
+
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    setMedianSummary(null)
+    setMedianState('loading')
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('recent chapter edit stats timeout')), 3000)
+    })
+
+    void (async () => {
+      try {
+        const rows = await Promise.race([
+          ipc.invokeWithProjectSession(
+            projectSession,
+            'db:draft-edit-stats-recent-chapters',
+            MEDIAN_WINDOW,
+            projectSession.projectPath,
+          ),
+          timeout,
+        ])
+        if (cancelled || !isProjectSessionCurrent(projectSession)) return
+        setMedianSummary(medianActionsLast10(rows.map(row => ({
+          chapterNumber: row.chapter_number,
+          origin: row.origin,
+          changedChars: row.changed_chars,
+        }))))
+        setMedianState('ready')
+      } catch {
+        if (cancelled || !isProjectSessionCurrent(projectSession)) return
+        setMedianSummary(null)
+        setMedianState('error')
       } finally {
         if (timer) clearTimeout(timer)
       }
@@ -1297,6 +1362,33 @@ function ReviewReportSession({
                 <div>{text('（仅统计作者本人改动，AI 修稿不计）', '(Author edits only; AI revisions are excluded.)')}</div>
               </>
             )}
+          </div>
+        ) : null}
+
+        {/*
+          近 10 章动作数中位数（P48，G-A 判据 A2 的唯一读数）。
+          与上一行的本章计量并列：本章是「这一章怎么样」，这一行是「最近十章的基线」。
+        */}
+        {medianState === 'error' ? (
+          // 同一个项目库、同一条守卫，凡上一条已经报过失败，这里不再重复一遍。
+          editMetricsState === 'error' ? null : (
+            <div className="mb-4 text-right text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              {text('计量读取失败', 'Failed to load edit metrics')}
+            </div>
+          )
+        ) : medianState === 'ready' && medianSummary ? (
+          <div
+            data-review-median-sample={medianSummary.sampleChapters}
+            className="mb-4 text-right text-xs leading-5"
+            style={{ color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}
+          >
+            <span className="font-medium">{text('近 10 章动作数中位数：', 'Median author edits over the last 10 chapters: ')}</span>
+            {medianSummary.median === null
+              ? text(
+                `样本不足（${medianSummary.sampleChapters}/10 章）`,
+                `not enough samples (${medianSummary.sampleChapters}/10 chapters)`,
+              )
+              : medianSummary.median}
           </div>
         ) : null}
 

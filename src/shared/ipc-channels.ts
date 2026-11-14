@@ -977,6 +977,18 @@ export interface DraftEditStatRow {
   save_count: number
 }
 
+/**
+ * 跨章计量原始行（P48）：`draft_edit_stats` join `drafts` 后的最小投影。
+ *
+ * 只带章节号、来源、改动字数三列——「近 10 章动作数中位数」的口径在渲染层算，
+ * 主进程不做筛选与聚合。
+ */
+export interface DraftEditChapterStatRow {
+  chapter_number: number
+  origin: 'human' | 'ai'
+  changed_chars: number
+}
+
 // ===== 数据库操作 =====
 export interface DatabaseChannels {
   'db:close': { args: [expectedProjectPath: string]; return: { success: boolean } }
@@ -1254,6 +1266,18 @@ export interface DatabaseChannels {
   'db:draft-update-status': { args: [id: number, status: string, wordCount: number | undefined, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:draft-update-content': { args: [id: number, content: string, wordCount: number, expectedProjectPath: string, origin?: 'human' | 'ai']; return: { success: boolean; error?: string } }
   'db:draft-edit-stats': { args: [draftId: number, expectedProjectPath: string]; return: DraftEditStatRow[] }
+  /**
+   * P48：本项目最近 N 章（按 `chapter_number` 降序）的全部计量原始行。
+   *
+   * 与 `db:draft-edit-stats` 并列而不合并：后者按草稿取行、回 `DraftEditStatRow`
+   * （含 draft_id / at / save_count，无章节号），是 P38 已冻结的契约；跨章聚合要
+   * 换入参（章数而非草稿 ID）与返回形状（章节号而非草稿号），合并会让一个通道
+   * 同时背两套语义。
+   */
+  'db:draft-edit-stats-recent-chapters': {
+    args: [chapterLimit: number, expectedProjectPath: string]
+    return: DraftEditChapterStatRow[]
+  }
   'db:draft-delete': {
     args: [id: number, expectedProjectPath: string]
     return: {

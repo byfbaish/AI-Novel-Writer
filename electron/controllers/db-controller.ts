@@ -1273,6 +1273,16 @@ export function registerDatabaseController() {
     return DraftEditStatsRepository.listForDraft(draftId)
   })
 
+  // P48：只回最近 N 章的原始行，中位数口径在渲染层算（P37 判例）。
+  ipcMain.handle('db:draft-edit-stats-recent-chapters', async (
+    _event,
+    chapterLimit: number,
+    expectedProjectPath: string,
+  ) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return DraftEditStatsRepository.listRecentChaptersForProject(chapterLimit)
+  })
+
   ipcMain.handle('db:draft-delete', async (_event, id: number, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
