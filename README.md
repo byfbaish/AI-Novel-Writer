@@ -61,8 +61,6 @@
 
 
 
-## DeepSeek Harness 插件（早期 MVP）
-
 ## DeepSeek Harness 插件（前身支路，维护暂停）
 
 `plugins/dsh-ai-novel-writer/` 及其 npm 包 `@ethanyoq/dsh-ai-novel-writer` 是**前身插件资产**：来自上游旧分支，上游已不再维护支持，本仓库**维护暂停**——资产保留、CI 照旧，但短期不做功能开发与兼容性修复。
