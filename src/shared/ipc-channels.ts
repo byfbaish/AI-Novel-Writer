@@ -965,6 +965,18 @@ import type {
 import type { WorldStateView } from './world-state-view'
 import type { DerivedInventory, InvalidationPlan } from './invalidation-plan'
 
+/** 草稿编辑计量原始行（M30 `draft_edit_stats`）。口径由渲染层决定，主进程只回原始行。 */
+export interface DraftEditStatRow {
+  id: number
+  draft_id: number
+  at: string
+  origin: 'human' | 'ai'
+  changed_chars: number
+  old_chars: number
+  new_chars: number
+  save_count: number
+}
+
 // ===== 数据库操作 =====
 export interface DatabaseChannels {
   'db:close': { args: [expectedProjectPath: string]; return: { success: boolean } }
@@ -1241,6 +1253,7 @@ export interface DatabaseChannels {
   'db:draft-next-version': { args: [chapterNumber: number, expectedProjectPath: string]; return: number }
   'db:draft-update-status': { args: [id: number, status: string, wordCount: number | undefined, expectedProjectPath: string]; return: { success: boolean; error?: string } }
   'db:draft-update-content': { args: [id: number, content: string, wordCount: number, expectedProjectPath: string, origin?: 'human' | 'ai']; return: { success: boolean; error?: string } }
+  'db:draft-edit-stats': { args: [draftId: number, expectedProjectPath: string]; return: DraftEditStatRow[] }
   'db:draft-delete': {
     args: [id: number, expectedProjectPath: string]
     return: {

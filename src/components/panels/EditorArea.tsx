@@ -796,6 +796,7 @@ export default function EditorArea({ onNewProject }: EditorAreaProps) {
             chapterNumber={activeTab.chapterNumber}
             chapterDir={activeTab.chapterDir}
             reviewId={activeTab.reviewId}
+            draftId={activeTab.draftId}
             projectKey={activeTab.projectKey}
           />
         )}

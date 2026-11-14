@@ -34,6 +34,7 @@ import { useLLMStore } from '../../stores/llm-store'
 import { ipc } from '../../services/ipc-client'
 import { requireIpcSuccess } from '../../services/ipc-result'
 import type { ExpectedDraftSource, ModelProfile } from '../../shared/ipc-channels'
+import { summarizeDraftEditMetrics, type DraftEditMetricsSummary } from './review-edit-metrics'
 import { resolveWritingLanguage, type WritingLanguage } from '../../shared/writing-language'
 import { parseChapterGoalReview, type ChapterGoalReview } from '../../shared/chapter-goal-review'
 import type { ReviewCycleProjection, ReviewFindingStatus } from '../../shared/review-cycle'
@@ -98,6 +99,8 @@ interface ReviewReportProps {
   chapterDir?: string
   /** 原始 AI 审稿报告的数据库 ID；确认快照必须持续指向该记录。 */
   reviewId?: number
+  /** 报告对应的草稿 ID；用于读取本章编辑计量。 */
+  draftId?: number
   /** 审稿与草稿所属项目。 */
   projectKey: string
   /** Optional persisted cycle state; merge committed is deliberately not a resolved finding. */
@@ -441,6 +444,7 @@ function ReviewReportSession({
   chapterDir,
   projectKey,
   reviewId,
+  draftId,
   initialSnapshot,
   cycle,
   reloadCycle,
@@ -487,6 +491,59 @@ function ReviewReportSession({
       ? s.currentProject.novelConfig.writingLanguage
       : undefined,
   ))
+  const [editMetrics, setEditMetrics] = useState<DraftEditMetricsSummary | null>(null)
+  const [editMetricsState, setEditMetricsState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
+
+  useEffect(() => {
+    if (!draftId) {
+      setEditMetrics(null)
+      setEditMetricsState('idle')
+      return
+    }
+    const projectSession = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!projectSession || !isProjectSessionPath(projectSession, projectKey)) {
+      setEditMetrics(null)
+      setEditMetricsState('idle')
+      return
+    }
+
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    setEditMetrics(null)
+    setEditMetricsState('loading')
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('draft edit stats timeout')), 3000)
+    })
+
+    void (async () => {
+      try {
+        const rows = await Promise.race([
+          ipc.invokeWithProjectSession(
+            projectSession,
+            'db:draft-edit-stats',
+            draftId,
+            projectSession.projectPath,
+          ),
+          timeout,
+        ])
+        if (cancelled || !isProjectSessionCurrent(projectSession)) return
+        setEditMetrics(summarizeDraftEditMetrics(rows))
+        setEditMetricsState('ready')
+      } catch {
+        // 计量通道失败不改变报告正文：只在上方留一行失败提示。
+        if (cancelled || !isProjectSessionCurrent(projectSession)) return
+        setEditMetrics(null)
+        setEditMetricsState('error')
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [draftId, projectKey])
   const parsedReport = parseReport(reportText, text('综合检查', 'General review'))
   const [items, setItems] = useState<EditableReviewItem[]>(() => (
     editableItemsFromReview(parsedReport.issues, initialSnapshot, cycle)
@@ -1217,6 +1274,31 @@ function ReviewReportSession({
             </button>
           </div>
         </div>
+
+        {/* 本章编辑计量：主进程只回原始行，口径在 review-edit-metrics 纯函数里算。 */}
+        {editMetricsState === 'error' ? (
+          <div className="mb-4 text-right text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            {text('计量读取失败', 'Failed to load edit metrics')}
+          </div>
+        ) : editMetricsState === 'ready' && editMetrics ? (
+          <div className="mb-4 text-right text-xs leading-5" style={{ color: 'var(--color-text-muted)', fontVariantNumeric: 'tabular-nums' }}>
+            {editMetrics.saveCount === 0 ? (
+              <div>{text('暂无计量数据（本版起记录）', 'No edit metrics yet (recorded from this version)')}</div>
+            ) : (
+              <>
+                <div>
+                  <span className="font-medium">{text('本章编辑计量：', 'Chapter edit metrics: ')}</span>
+                  <span>{text('保存', 'saves')} {editMetrics.saveCount} {text('次', '')}</span>
+                  <span className="mx-1.5">·</span>
+                  <span>{text('作者改动', 'author edits')} {editMetrics.authorActions} {text('处', '')}</span>
+                  <span className="mx-1.5">·</span>
+                  <span>{text('千字改动', 'changes per 1k chars')} {editMetrics.changedPerKChars}</span>
+                </div>
+                <div>{text('（仅统计作者本人改动，AI 修稿不计）', '(Author edits only; AI revisions are excluded.)')}</div>
+              </>
+            )}
+          </div>
+        ) : null}
 
         {/* 颜色图例说明 */}
         {showLegend && (

@@ -59,6 +59,7 @@ const mocks = vi.hoisted(() => ({
   draftDelete: vi.fn(),
   contentGetBody: vi.fn(),
   draftEditStatsRecord: vi.fn(),
+  draftEditStatsListForDraft: vi.fn((): Array<Record<string, unknown>> => []),
   postProcessCreateRun: vi.fn(() => 'run-1'),
   postProcessGetLatestRun: vi.fn(),
   postProcessGetSteps: vi.fn(() => []),
@@ -190,6 +191,7 @@ vi.mock('../../repositories/content-repository', () => ({
 vi.mock('../../repositories/draft-edit-stats-repository', () => ({
   DraftEditStatsRepository: {
     record: mocks.draftEditStatsRecord,
+    listForDraft: mocks.draftEditStatsListForDraft,
   },
 }))
 
@@ -1171,6 +1173,29 @@ describe('database controller project context guard', () => {
       oldChars: 3,
       newChars: 4,
     })
+  })
+
+  it('returns draft edit stats rows only for the current project session', async () => {
+    const rows = [{
+      id: 11,
+      draft_id: 7,
+      at: '2026-11-14 08:00:00',
+      origin: 'human',
+      changed_chars: 12,
+      old_chars: 100,
+      new_chars: 112,
+      save_count: 3,
+    }]
+    mocks.draftEditStatsListForDraft.mockReturnValueOnce(rows)
+
+    await expect(handler('db:draft-edit-stats')({}, 7, 'C:/projects/A')).resolves.toEqual(rows)
+    expect(mocks.draftEditStatsListForDraft).toHaveBeenCalledWith(7)
+
+    mocks.draftEditStatsListForDraft.mockClear()
+    mocks.currentProjectPath = 'C:/projects/B'
+    await expect(handler('db:draft-edit-stats')({}, 7, 'C:/projects/A'))
+      .rejects.toThrow(/项目上下文已切换/)
+    expect(mocks.draftEditStatsListForDraft).not.toHaveBeenCalled()
   })
 
   it('closes only the explicitly matched project database', async () => {

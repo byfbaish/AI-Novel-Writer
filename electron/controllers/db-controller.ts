@@ -1268,6 +1268,11 @@ export function registerDatabaseController() {
     }
   })
 
+  ipcMain.handle('db:draft-edit-stats', async (_event, draftId: number, expectedProjectPath: string) => {
+    assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+    return DraftEditStatsRepository.listForDraft(draftId)
+  })
+
   ipcMain.handle('db:draft-delete', async (_event, id: number, expectedProjectPath: string) => {
     try {
       assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
