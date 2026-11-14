@@ -83,3 +83,10 @@ tailwind.config.js.bak
 
 # 临时脚本 / 样本 / 取证产物：按约定刻意不入库（见 docs/handoffs、docs/agents）。
 /scripts/.tmp/
+
+# 夜班运行账本（卡面、报告、信号、桥接、草稿）：是运行时产物，不随仓库分发。
+# 正式交付报告走 reports/ 入库，不在这里。
+/.batch/
+
+# 唤醒脚本目录入库，但投递残留文件不入库。
+/scripts/dsh/wakeup-inbox/*.md
