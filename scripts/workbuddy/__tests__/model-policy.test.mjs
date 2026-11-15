@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   ALLOWED_MODELS,
+  HY4_DISABLED,
   HY4_PROMO_ALL_DAY_UNTIL,
   MODEL_DEEPSEEK_FLASH,
   MODEL_HY4,
@@ -19,6 +20,8 @@ import {
 
 /**
  * 用例来源：
+ * - **Hy4 已全线禁用（2026-11-16 用户拍板，HY4_DISABLED = true）**：促销期与夜间窗的旧断言
+ *   一律改为「禁用后恒不出 Hy4」，旧逻辑保留在代码里、开关置 false 即可恢复。
  * - Hy4 **全天限免促销 ≤2026-11-15**（作者 2026-11-07 20:2x 订正：11-15 之前全天免费，日内有额度上限）
  * - Hy4 常规夜间限免 23:00–次日 08:00（腾讯公告，IT之家 2026-10-02）
  * - DeepSeek-V4.1-Flash 高峰 = 周一至周五 09:00–12:00、14:00–18:00，其余 5 折（腾讯云 2026-10-22）
@@ -28,6 +31,12 @@ import {
  */
 const at = (year, month, day, hour, minute = 0) => new Date(year, month - 1, day, hour, minute, 0, 0)
 
+describe('Hy4 全局禁用开关', () => {
+  it('HY4_DISABLED 当前为 true（用户 2026-11-16 拍板）', () => {
+    expect(HY4_DISABLED).toBe(true)
+  })
+})
+
 describe('Hy4 全天限免促销期（≤ 2026-11-15，含当天）', () => {
   it('促销期判断含末日', () => {
     expect(isHy4PromoAllDay(at(2026, 11, 7, 0, 0))).toBe(true)
@@ -35,52 +44,59 @@ describe('Hy4 全天限免促销期（≤ 2026-11-15，含当天）', () => {
     expect(isHy4PromoAllDay(at(2026, 11, 16, 0, 0))).toBe(false)
   })
 
-  it('促销期内白天也免费（不再是 23:00 才免费）', () => {
-    expect(isHy4FreeAt(at(2026, 11, 7, 10, 0))).toBe(true) // 周六上午
-    expect(isHy4FreeAt(at(2026, 11, 9, 10, 15))).toBe(true) // 周一原 DeepSeek 高峰
-    expect(isHy4FreeAt(at(2026, 11, 8, 15, 0))).toBe(true) // 周日下午
-    expect(isHy4FreeAt(at(2026, 11, 15, 23, 59))).toBe(true) // 促销末日
+  it('禁用后促销期内也一律不出 Hy4（白天/凌晨都不免）', () => {
+    expect(isHy4FreeAt(at(2026, 11, 7, 10, 0))).toBe(false) // 周六上午
+    expect(isHy4FreeAt(at(2026, 11, 9, 10, 15))).toBe(false) // 周一原 DeepSeek 高峰
+    expect(isHy4FreeAt(at(2026, 11, 8, 15, 0))).toBe(false) // 周日下午
+    expect(isHy4FreeAt(at(2026, 11, 15, 23, 59))).toBe(false) // 促销末日
   })
 
-  it('促销期内 pickModel 直接给 Hy4，且不触发高峰拦截', () => {
+  it('禁用后促销期内 pickModel 也不出 Hy4，高峰照常拦截', () => {
+    // 周一 10:15 本是 DeepSeek 高峰：促销期不再能绕过 ⇒ 仍按高峰拦下
+    expect(pickModel(at(2026, 11, 9, 10, 15))).toMatchObject({ ok: false, blocked: true })
+    // 周六上午非高峰 ⇒ 直接走 DeepSeek-V4.1-Flash
     expect(pickModel(at(2026, 11, 7, 10, 0))).toMatchObject({
       ok: true,
-      model: MODEL_HY4,
-      window: 'hy4-promo-all-day',
+      model: MODEL_DEEPSEEK_FLASH,
+      window: 'deepseek-off-peak',
     })
-    // 周一 10:15 本是 DeepSeek 高峰原价段，促销期内走 Hy4 免费 ⇒ 不该拦
-    expect(pickModel(at(2026, 11, 9, 10, 15))).toMatchObject({ ok: true, model: MODEL_HY4 })
-    expect(pickModel(at(2026, 11, 9, 15, 40)).ok).toBe(true)
+    // 周一 15:40 也在 DeepSeek 高峰段内 ⇒ 同样拦
+    expect(pickModel(at(2026, 11, 9, 15, 40))).toMatchObject({ ok: false, blocked: true })
+    // 周一午间 12:30 非高峰 ⇒ 放行走 DeepSeek-V4.1-Flash
+    expect(pickModel(at(2026, 11, 9, 12, 30))).toMatchObject({ ok: true, model: MODEL_DEEPSEEK_FLASH })
   })
 
-  it('促销期 reason 里写明「日内有额度上限」与兜底模型', () => {
-    const picked = pickModel(at(2026, 11, 7, 10, 0))
-    expect(picked.reason).toContain('额度上限')
-    expect(picked.reason).toContain(MODEL_DEEPSEEK_FLASH)
-    expect(picked.reason).toContain(HY4_PROMO_ALL_DAY_UNTIL)
+  it('禁用后 pickModel 的任何返回路径都不给 Hy4', () => {
+    for (const date of [at(2026, 11, 7, 10, 0), at(2026, 11, 15, 23, 59), at(2026, 11, 16, 23, 30)]) {
+      const picked = pickModel(date)
+      expect(picked.model).not.toBe(MODEL_HY4)
+      if (picked.ok) expect(picked.model).toBe(MODEL_DEEPSEEK_FLASH)
+    }
+    // 促销常量与文案外壳仍在（恢复开关后仍按旧规则跑）
+    expect(HY4_PROMO_ALL_DAY_UNTIL).toBe('2026-11-15')
   })
 })
 
-describe('促销结束后的夜间限免窗（23:00–08:00）', () => {
+describe('促销结束后的夜间限免窗（23:00–08:00）—— 已随 Hy4 禁用失效', () => {
   it('22:59 还没到限免（促销已结束）', () => {
     expect(isHy4FreeAt(at(2026, 11, 16, 22, 59))).toBe(false)
   })
 
-  it('23:00 起免费，且跨午夜到 07:59', () => {
-    expect(isHy4FreeAt(at(2026, 11, 16, 23, 0))).toBe(true)
-    expect(isHy4FreeAt(at(2026, 11, 17, 0, 30))).toBe(true)
-    expect(isHy4FreeAt(at(2026, 11, 17, 7, 59))).toBe(true)
+  it('禁用后 23:00–07:59 也不再免费', () => {
+    expect(isHy4FreeAt(at(2026, 11, 16, 23, 0))).toBe(false)
+    expect(isHy4FreeAt(at(2026, 11, 17, 0, 30))).toBe(false)
+    expect(isHy4FreeAt(at(2026, 11, 17, 7, 59))).toBe(false)
   })
 
   it('08:00 起不再限免', () => {
     expect(isHy4FreeAt(at(2026, 11, 17, 8, 0))).toBe(false)
   })
 
-  it('促销结束后 pickModel 回到 window=hy4-free-night', () => {
+  it('禁用后夜间 23:30 pickModel 落到 DeepSeek-V4.1-Flash', () => {
     expect(pickModel(at(2026, 11, 16, 23, 30))).toMatchObject({
       ok: true,
-      model: MODEL_HY4,
-      window: 'hy4-free-night',
+      model: MODEL_DEEPSEEK_FLASH,
+      window: 'deepseek-off-peak',
     })
   })
 })
@@ -144,15 +160,15 @@ describe('高峰横幅（PEAK_HOURS）', () => {
     expect(banner.split('\n').at(-1)).toBe('PEAK_HOURS')
     expect(banner).toContain('审查 D18')
     expect(banner).toContain('--model ' + MODEL_DEEPSEEK_FLASH)
-    expect(banner).toContain('--model ' + MODEL_HY4)
+    expect(banner).not.toContain(MODEL_HY4)
     expect(banner).toContain('12:00')
   })
 })
 
 describe('模型白名单', () => {
   it('只放行 Hy4 和 DeepSeek-V4.1-Flash', () => {
-    expect(ALLOWED_MODELS).toEqual([MODEL_HY4, MODEL_DEEPSEEK_FLASH])
-    expect(rejectUnknownModel(MODEL_HY4)).toBeNull()
+    expect(ALLOWED_MODELS).toEqual([MODEL_DEEPSEEK_FLASH])
+    expect(rejectUnknownModel(MODEL_HY4)).toContain('不在白名单')
     expect(rejectUnknownModel(MODEL_DEEPSEEK_FLASH)).toBeNull()
     expect(rejectUnknownModel(null)).toBeNull()
   })
@@ -170,10 +186,10 @@ describe('模型白名单', () => {
 })
 
 describe('describeModelPolicy', () => {
-  it('促销期内给出 Hy4 全天摘要', () => {
+  it('禁用后促销期内给出 DeepSeek 摘要，不再出 Hy4', () => {
     const line = describeModelPolicy(at(2026, 11, 7, 10, 0))
-    expect(line).toContain(MODEL_HY4)
-    expect(line).toContain('全天')
+    expect(line).not.toContain(MODEL_HY4)
+    expect(line).toContain(MODEL_DEEPSEEK_FLASH)
   })
 
   it('促销结束后非高峰给出「时刻 → 模型」的一行摘要', () => {

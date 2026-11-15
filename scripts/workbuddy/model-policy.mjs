@@ -2,6 +2,8 @@
  * WorkBuddy 通道的「用哪个模型」策略（纯函数层，零依赖）。
  *
  * 规则来自用户拍板 + 官方公告：
+ * - **Hy4 已全线禁用（2026-11-16 用户拍板：优惠时限已到）**：不分时段、不分促销期，一律不出 Hy4；
+ *   `HY4_DISABLED = true` 是唯一开关，恢复时只改这一行。下面两条 Hy4 旧规则仅作历史说明保留。
  * - Hy4 **全天限免促销（≤2026-11-15，含当天）**：作者 2026-11-07 20:2x 订正 —— 促销期内
  *   任何时段免费，但**日内有额度上限**；撞上限按 §13 识别特征（连续两次秒回 + 兜底文案）
  *   切 DeepSeek-V4.1-Flash，本模块不做额度探测（status 不返回剩余额度）。
@@ -16,12 +18,19 @@
  * `--model <名字>` 可显式指定（视为人工授权，绕过高峰拦截）。
  */
 
+/**
+ * Hy4 全局禁用开关（2026-11-16 用户拍板：Hy4 优惠时限已到，全线禁用）。
+ * true = 不分时段、不分促销期，一律不出 Hy4，白名单里也不再有它。
+ * 恢复时只改这一行（false 即回落到旧的促销期/夜间窗逻辑），其余代码无需动。
+ */
+export const HY4_DISABLED = true
+
 /** 允许出现的模型名（必须与模型选择器里 .cr-model-selector__item-name 的文本完全一致） */
 export const MODEL_HY4 = 'Hy4'
 export const MODEL_DEEPSEEK_FLASH = 'DeepSeek-V4.1-Flash'
-export const ALLOWED_MODELS = [MODEL_HY4, MODEL_DEEPSEEK_FLASH]
+export const ALLOWED_MODELS = HY4_DISABLED ? [MODEL_DEEPSEEK_FLASH] : [MODEL_HY4, MODEL_DEEPSEEK_FLASH]
 
-/** Hy4 限免窗口：23:00 → 次日 08:00（跨午夜）；促销期外生效 */
+/** 夜间限免窗口：23:00 → 次日 08:00（跨午夜）；HY4_DISABLED=false 时生效 */
 export const HY4_FREE_WINDOW = { startHour: 23, endHour: 8 }
 
 /**
@@ -60,8 +69,9 @@ export function isHy4PromoAllDay(date = new Date()) {
   return localDateKey(date) <= HY4_PROMO_ALL_DAY_UNTIL
 }
 
-/** 促销期内全天免费；促销期外只有 23:00–08:00（含跨午夜）。 */
+/** 促销期内全天免费；促销期外只有 23:00–08:00（含跨午夜）。Hy4 全局禁用时恒 false。 */
 export function isHy4FreeAt(date = new Date()) {
+  if (HY4_DISABLED) return false
   if (isHy4PromoAllDay(date)) return true
   return inWindow(minutesOfDay(date), HY4_FREE_WINDOW)
 }
@@ -99,7 +109,7 @@ export function formatClock(date) {
  * @returns {{ok: true, model: string, window: string, reason: string} | {ok: false, blocked: true, model: null, reason: string, nextOffPeakAt: Date}}
  */
 export function pickModel(date = new Date()) {
-  if (isHy4PromoAllDay(date)) {
+  if (!HY4_DISABLED && isHy4PromoAllDay(date)) {
     return {
       ok: true,
       model: MODEL_HY4,
@@ -107,7 +117,7 @@ export function pickModel(date = new Date()) {
       reason: 'Hy4 全天限免促销（截止 ' + HY4_PROMO_ALL_DAY_UNTIL + '），日内有额度上限，撞上限切 DeepSeek-V4.1-Flash',
     }
   }
-  if (isHy4FreeAt(date)) {
+  if (!HY4_DISABLED && isHy4FreeAt(date)) {
     return { ok: true, model: MODEL_HY4, window: 'hy4-free-night', reason: 'Hy4 夜间限免（23:00–08:00），免费且比 Hy3 强' }
   }
   if (isDeepSeekPeakAt(date)) {
@@ -136,8 +146,6 @@ export function buildPeakBanner({ now = new Date(), target, command = 'task', pr
     '   现在就要跑（明确接受原价）可以加 --model ' + MODEL_DEEPSEEK_FLASH + '：',
     '     node scripts/workbuddy/workbuddy-attach.mjs ' + command + ' "' + rerunPrompt + '" --model ' + MODEL_DEEPSEEK_FLASH,
     '',
-    '   或者现在改用 Hy4（同期积分照常计费，非限免）：',
-    '     node scripts/workbuddy/workbuddy-attach.mjs ' + command + ' "' + rerunPrompt + '" --model ' + MODEL_HY4,
     line,
     'PEAK_HOURS',
   ].join('\n')
