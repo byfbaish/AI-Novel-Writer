@@ -551,6 +551,8 @@ function ReviewReportSession({
 
   // P48：近 10 章动作数中位数。与本章计量同一个库、同一条失败语义，但入参是
   // 项目内的章数而不是单章草稿 ID，所以要单独取一次原始行。
+  // P51：窗口是「当前章向前连续 10 个章号」，当前章就是本报告挂的那一章，
+  // 所以取窗终点必须显式传给纯函数（拿不到章号时函数才退到最大已计量章号）。
   const [medianSummary, setMedianSummary] = useState<DraftEditMedianSummary | null>(null)
   const [medianState, setMedianState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
 
@@ -589,11 +591,15 @@ function ReviewReportSession({
           timeout,
         ])
         if (cancelled || !isProjectSessionCurrent(projectSession)) return
-        setMedianSummary(medianActionsLast10(rows.map(row => ({
-          chapterNumber: row.chapter_number,
-          origin: row.origin,
-          changedChars: row.changed_chars,
-        }))))
+        setMedianSummary(medianActionsLast10(
+          rows.map(row => ({
+            chapterNumber: row.chapter_number,
+            origin: row.origin,
+            changedChars: row.changed_chars,
+          })),
+          MEDIAN_WINDOW,
+          chapterNumber,
+        ))
         setMedianState('ready')
       } catch {
         if (cancelled || !isProjectSessionCurrent(projectSession)) return
@@ -608,7 +614,7 @@ function ReviewReportSession({
       cancelled = true
       if (timer) clearTimeout(timer)
     }
-  }, [draftId, projectKey])
+  }, [draftId, projectKey, chapterNumber])
   const parsedReport = parseReport(reportText, text('综合检查', 'General review'))
   const [items, setItems] = useState<EditableReviewItem[]>(() => (
     editableItemsFromReview(parsedReport.issues, initialSnapshot, cycle)
