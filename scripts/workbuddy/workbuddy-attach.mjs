@@ -63,6 +63,15 @@ const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO_ROOT = path.resolve(HERE, '..', '..')
 /** WorkBuddy 的固定工作目录（归属表见 docs/agents/worktree-parallel.md §3.1） */
 const DEFAULT_CWD = path.resolve(REPO_ROOT, '..', 'wt-2')
+/** 额外归属白名单：环境变量 `WORKBUDDY_ALLOWED_CWDS`，绝对路径清单，`path.delimiter`（Windows=;）分隔。
+ *  空 / 不设 = 不注册任何额外目录 ⇒ 只有 DEFAULT_CWD，与历史行为逐字相同（软回滚就是清掉这个变量）。
+ *  选 env 不选配置文件：①与 WORKBUDDY_DB / WORKBUDDY_MODEL_POLICY 同构；②落盘会随提交扩散到所有人检出，
+ *  等于把「谁能投到哪」变成可提交内容；③env 每次调用显式给、用完即失效，不会静默长期生效。
+ *  这里只做切分，合法性与匹配判据全在 checkPinnedCwd（单一真相，避免两处规则漂移）。 */
+const ALLOWED_CWDS = String(process.env.WORKBUDDY_ALLOWED_CWDS ?? '')
+  .split(path.delimiter)
+  .map(entry => entry.trim())
+  .filter(Boolean)
 /** 产物与会话记录的落点：先试 `develop/.runtime`，不可写就退到委托槽位自己的 `.batch/`。
  *  夜间定时卡的会话跑在受限沙箱里，写 `develop/.runtime` 会 EPERM 并弹提权申请；各槽位的 `.batch/`
  *  从工作区根继承写权限（11-09 夜跑实测可写），所以失败后换第二落点，绝不反复尝试。 */
@@ -784,7 +793,9 @@ async function commandSend(args, prompt, { forceNewSession, modelTarget }) {
 
 function usage() {
   return [
-    'WorkBuddy attach 通道（复用桌面登录态，单会话多轮，固定 wt-2）',
+    'WorkBuddy attach 通道（复用桌面登录态，单会话多轮，默认只认 wt-2）',
+    '',
+    '归属：默认固定 wt-2；要投别的目录先 set WORKBUDDY_ALLOWED_CWDS=<绝对路径>[;<绝对路径>] 注册，用完即失效',
     '',
     '  node scripts/workbuddy/workbuddy-attach.mjs status            # 只读诊断：端口/页面/空间/模型/权限/会话',
     '  node scripts/workbuddy/workbuddy-attach.mjs sessions          # 读本地 sqlite 里 wt-2 的历史会话',
@@ -827,8 +838,9 @@ async function main() {
 
   if (command === 'help' || matches(flags, 'help')) { log(usage()); return EXIT.ok }
 
-  // 归属护栏：--cwd 只能指向 wt-2（归属固定，见 docs/agents/worktree-parallel.md §3.1）
-  const pin = checkPinnedCwd({ cwd: args.cwd, pinnedCwd: DEFAULT_CWD, force: args.force })
+  // 归属护栏：--cwd 默认只准指向 wt-2，另可用 WORKBUDDY_ALLOWED_CWDS 注册额外目录
+  //（归属表见 docs/agents/worktree-parallel.md §3.1）
+  const pin = checkPinnedCwd({ cwd: args.cwd, pinnedCwd: DEFAULT_CWD, allowedCwds: ALLOWED_CWDS, force: args.force })
   if (!pin.ok) {
     process.stderr.write('[refuse] ' + pin.reason + '\n')
     return EXIT.fail

@@ -8,6 +8,8 @@
  * 选择器集中在这里 —— WorkBuddy 升级后只需要改这一个文件。
  */
 
+import path from 'node:path'
+
 export const DEFAULT_PORT = 9333
 export const DEFAULT_TIMEOUT_MS = 900_000
 export const POLL_INTERVAL_MS = 2_000
@@ -371,12 +373,30 @@ export function isSettledSignal({
 }
 
 /**
- * 归属护栏用的纯路径比较：Windows 大小写不敏感，'C:\\a\\b' 与 'c:/a/b/' 必须等价。
+ * 归属判据的统一归一化：Windows 大小写不敏感，'C:\\a\\b' 与 'c:/a/b/' 必须等价。
+ * 全仓只此一份——`samePath` 与 `isUnderCwd` 都吃它，口径不会各自漂移。
  */
+function normalizeCwd(value) {
+  return String(value ?? '').replace(/[\\/]+/g, '/').replace(/\/+$/, '').toLowerCase()
+}
+
+/** 归属护栏用的纯路径比较（全等）。 */
 export function samePath(a, b) {
-  const norm = value => String(value ?? '').replace(/[\\/]+/g, '/').replace(/\/+$/, '').toLowerCase()
-  const left = norm(a)
-  return left !== '' && left === norm(b)
+  const left = normalizeCwd(a)
+  return left !== '' && left === normalizeCwd(b)
+}
+
+/**
+ * 按「路径段」判包含：`candidate` 就是 `base`，或在 `base` 之下。
+ *
+ * 不用裸 `startsWith(base)`：那样注册 `…\dsh-group-rules-prompt` 会把
+ * `…\dsh-group-rules-prompt-other` / `…\dsh-group-rules-promptX` 一起放进来。
+ */
+export function isUnderCwd(candidate, base) {
+  const left = normalizeCwd(candidate)
+  const right = normalizeCwd(base)
+  if (left === '' || right === '') return false
+  return left === right || left.startsWith(right + '/')
 }
 
 /**
@@ -475,21 +495,49 @@ export function judgeFreshDraft(snapshot) {
 }
 
 /**
- * 归属护栏：WorkBuddy 只准在 pinnedCwd（wt-2）里干活（docs/agents/worktree-parallel.md §3.1）。
+ * 归属护栏：WorkBuddy 默认只在 pinnedCwd（wt-2）里干活，另可通过 `allowedCwds`
+ * 注册**额外**归属目录（来源：环境变量 WORKBUDDY_ALLOWED_CWDS，见 workbuddy-attach.mjs）。
+ * 不传 `allowedCwds` 时行为与「只认 wt-2」逐字等价——软回滚就是清掉那个环境变量。
  *
  * 只做纯判断，打印与退出码在 CLI 层：返回 {ok:true}（forced 表示走了 --force），或 {ok:false, reason}。
- * --force 是人工授权的唯一出口，必须在报告里写明原因。
+ *
+ * 判定顺序（顺序即语义，别调换）：
+ * 1. 全等命中 pinnedCwd ⇒ 过。默认归属不受任何注册项干扰，env 写错也砸不了主路。
+ * 2. `--force` ⇒ 过。它是「全等失败后」的人工出口，逻辑一个字没动，也没放宽。
+ * 3. 请求必须是绝对路径；相对路径无从判定是否在归属之下 ⇒ 拒。
+ * 4. 注册项本身非法（通配符 / 盘根 / 相对路径）⇒ 拒，不静默忽略。
+ * 5. 逐条按路径段判包含 ⇒ 过；全不中 ⇒ 拒并列出**当前生效的完整归属清单**。
  */
-export function checkPinnedCwd({ cwd, pinnedCwd, force = false } = {}) {
+export function checkPinnedCwd({ cwd, pinnedCwd, allowedCwds = [], force = false } = {}) {
   if (!cwd) return { ok: false, reason: '缺少目标目录' }
   if (!pinnedCwd) return { ok: false, reason: '未配置归属目录（pinnedCwd）' }
   if (samePath(cwd, pinnedCwd)) return { ok: true, forced: false }
   if (force) return { ok: true, forced: true }
+  if (!path.isAbsolute(cwd)) {
+    return { ok: false, reason: '目标目录必须是绝对路径：\n  请求=' + cwd }
+  }
+  const registered = []
+  for (const raw of Array.isArray(allowedCwds) ? allowedCwds : [allowedCwds]) {
+    const entry = String(raw ?? '').trim()
+    if (!entry) continue
+    if (/[*?]/.test(entry)) {
+      return { ok: false, reason: '归属白名单不支持通配符（* / ?）：\n  注册项=' + entry + '\n（WORKBUDDY_ALLOWED_CWDS 只接绝对路径，一行一个）' }
+    }
+    if (!path.isAbsolute(entry)) {
+      return { ok: false, reason: '归属白名单注册项必须是绝对路径：\n  注册项=' + entry }
+    }
+    if (normalizeCwd(entry).length <= 3) {
+      return { ok: false, reason: '归属白名单不允许注册盘根（等于放开整盘）：\n  注册项=' + entry }
+    }
+    registered.push(entry)
+  }
+  if (registered.some(entry => isUnderCwd(cwd, entry))) return { ok: true, forced: false }
   return {
     ok: false,
     reason:
-      '目标目录不在本通道的固定归属里：\n  请求=' + cwd + '\n  归属=' + pinnedCwd +
-      '\n（WorkBuddy 固定用 wt-2，见 docs/agents/worktree-parallel.md §3.1；确需排障时加 --force，并在报告里写明）',
+      '目标目录不在本通道的归属白名单里（默认仍是固定归属，见 docs/agents/worktree-parallel.md §3.1）：\n  请求=' + cwd +
+      '\n  允许=\n' + [pinnedCwd, ...registered].map(entry => '    ' + entry).join('\n') +
+      '\n（要新增归属用环境变量 WORKBUDDY_ALLOWED_CWDS 注册；确需排障时加 --force，并在报告里写明）',
   }
 }
 

@@ -1,3 +1,6 @@
+import os from 'node:os'
+import path from 'node:path'
+
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
@@ -14,6 +17,7 @@ import {
   checkPinnedCwd,
   extractReply,
   isSettledSignal,
+  isUnderCwd,
   judgeFreshDraft,
   judgeLanding,
   looksLikePlaceholder,
@@ -589,5 +593,104 @@ describe('judgeFreshDraft（「这是不是一张空草稿」的界面证据）'
     const r = judgeFreshDraft({ currentSessionId: null, messageCount: 0, editorText: '新的欢迎语', placeholderVisible: false })
     expect(r.fresh).toBe(false)
     expect(r.reason).toContain('编辑器字符数=5')
+  })
+})
+
+/**
+ * P55：归属从「单值固定」改为「单值默认 + 可注册白名单」。
+ * 路径全部由 os.tmpdir() 推导——不把某台机器的绝对路径钉进用例（换机可跑）。
+ */
+describe('checkPinnedCwd · 可注册白名单（WORKBUDDY_ALLOWED_CWDS）', () => {
+  const ROOT = path.join(os.tmpdir(), 'wb-allowlist-case')
+  const PINNED = path.join(ROOT, 'wt-2')
+  const EXTRA = path.join(ROOT, 'dsh-group-rules-prompt')
+  const OTHER = path.join(ROOT, 'another-repo')
+
+  it('G1 不注册时行为零变化：pinned 命中放行，投别处仍拒且报错列出归属白名单', () => {
+    expect(checkPinnedCwd({ cwd: PINNED, pinnedCwd: PINNED })).toEqual({ ok: true, forced: false })
+    expect(checkPinnedCwd({ cwd: PINNED, pinnedCwd: PINNED, allowedCwds: [] })).toEqual({ ok: true, forced: false })
+
+    const refused = checkPinnedCwd({ cwd: EXTRA, pinnedCwd: PINNED })
+    expect(refused.ok).toBe(false)
+    expect(refused.reason).toContain('归属白名单')
+    expect(refused.reason).toContain('--force')
+    expect(refused.reason).toContain(PINNED) // 生效清单里必须有默认归属
+    expect(refused.reason).toContain('WORKBUDDY_ALLOWED_CWDS')
+  })
+
+  it('G2 注册后可投，且是白名单放行、不是 --force 放行', () => {
+    expect(checkPinnedCwd({ cwd: EXTRA, pinnedCwd: PINNED, allowedCwds: [EXTRA] })).toEqual({ ok: true, forced: false })
+    // 没注册的目录照旧拒（白名单不是「注册一个、全放开」）
+    expect(checkPinnedCwd({ cwd: OTHER, pinnedCwd: PINNED, allowedCwds: [EXTRA] }).ok).toBe(false)
+    // 多项注册时逐条判
+    expect(checkPinnedCwd({ cwd: OTHER, pinnedCwd: PINNED, allowedCwds: [EXTRA, OTHER] })).toEqual({ ok: true, forced: false })
+    // 报错里要把已注册项一起列出来（否则看不懂为什么还是拒）
+    expect(checkPinnedCwd({ cwd: OTHER, pinnedCwd: PINNED, allowedCwds: [EXTRA] }).reason).toContain(EXTRA)
+  })
+
+  it('G3 按路径段判包含：-other / 尾缀 X 不混过，子目录属该归属', () => {
+    const allowedCwds = [EXTRA]
+    expect(checkPinnedCwd({ cwd: EXTRA + '-other', pinnedCwd: PINNED, allowedCwds }).ok).toBe(false)
+    expect(checkPinnedCwd({ cwd: EXTRA + 'X', pinnedCwd: PINNED, allowedCwds }).ok).toBe(false)
+    expect(checkPinnedCwd({ cwd: path.join(EXTRA, 'sub', 'dir'), pinnedCwd: PINNED, allowedCwds }))
+      .toEqual({ ok: true, forced: false })
+  })
+
+  it('G4 边界拒绝：通配符 / 盘根 / 相对路径一律拒；大小写与斜杠变体照旧命中', () => {
+    const wildcardStar = checkPinnedCwd({ cwd: EXTRA, pinnedCwd: PINNED, allowedCwds: [path.join(EXTRA, '*')] })
+    expect(wildcardStar.ok).toBe(false)
+    expect(wildcardStar.reason).toContain('通配符')
+
+    const wildcardQuestion = checkPinnedCwd({ cwd: EXTRA, pinnedCwd: PINNED, allowedCwds: [path.join(EXTRA, '?')] })
+    expect(wildcardQuestion.ok).toBe(false)
+    expect(wildcardQuestion.reason).toContain('通配符')
+
+    // 盘根：放行整盘等于没有护栏。path.parse(...).root 在两平台分别是 'C:\' 与 '/'
+    const driveRoot = path.parse(PINNED).root
+    const rootRefused = checkPinnedCwd({ cwd: EXTRA, pinnedCwd: PINNED, allowedCwds: [driveRoot] })
+    expect(rootRefused.ok).toBe(false)
+    expect(rootRefused.reason).toContain('盘根')
+
+    // 请求是相对路径：无从判定是否在归属之下 ⇒ 拒（宁可不干，不猜基准目录）
+    const relativeRequest = checkPinnedCwd({ cwd: 'dsh-group-rules-prompt', pinnedCwd: PINNED, allowedCwds: [EXTRA] })
+    expect(relativeRequest.ok).toBe(false)
+    expect(relativeRequest.reason).toContain('绝对路径')
+
+    // 注册项本身是相对路径 ⇒ 同样拒（不拿 process.cwd() 去猜一个基准）
+    expect(checkPinnedCwd({ cwd: EXTRA, pinnedCwd: PINNED, allowedCwds: ['dsh-group-rules-prompt'] }).ok).toBe(false)
+
+    // 大小写 / 分隔符变体与 samePath 同口径
+    expect(checkPinnedCwd({ cwd: EXTRA.replace(/\\/g, '/').toUpperCase(), pinnedCwd: PINNED, allowedCwds: [EXTRA] }))
+      .toEqual({ ok: true, forced: false })
+  })
+
+  it('G5 --force 未放宽：白名单外的请求仍只有 force 能过，且标 forced=true', () => {
+    expect(checkPinnedCwd({ cwd: OTHER, pinnedCwd: PINNED, allowedCwds: [EXTRA], force: true })).toEqual({ ok: true, forced: true })
+    expect(checkPinnedCwd({ cwd: OTHER, pinnedCwd: PINNED, allowedCwds: [EXTRA], force: false }).ok).toBe(false)
+  })
+
+  it('allowedCwds 传单个字符串也吃得下（不静默当成字符数组）', () => {
+    expect(checkPinnedCwd({ cwd: EXTRA, pinnedCwd: PINNED, allowedCwds: EXTRA })).toEqual({ ok: true, forced: false })
+  })
+})
+
+describe('isUnderCwd（归属白名单的路径段判据）', () => {
+  it('同目录 / 子目录算包含；前缀相近的兄弟目录不算', () => {
+    const base = path.join(os.tmpdir(), 'wb-under-case', 'repo')
+    expect(isUnderCwd(base, base)).toBe(true)
+    expect(isUnderCwd(path.join(base, 'a', 'b'), base)).toBe(true)
+    expect(isUnderCwd(base + '-other', base)).toBe(false)
+    expect(isUnderCwd(base + 'X', base)).toBe(false)
+    expect(isUnderCwd(path.dirname(base), base)).toBe(false)
+  })
+
+  it('归一化与 samePath 同口径：反斜杠 / 正斜杠 / 尾斜杠 / 大小写等价', () => {
+    const base = path.join(os.tmpdir(), 'wb-under-case', 'repo')
+    expect(isUnderCwd(base.toUpperCase().replace(/\\/g, '/') + '/', base)).toBe(true)
+  })
+
+  it('空值不命中（宁可不干，不能猜目录）', () => {
+    expect(isUnderCwd('', 'C:/x')).toBe(false)
+    expect(isUnderCwd('C:/x', '')).toBe(false)
   })
 })
