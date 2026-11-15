@@ -160,7 +160,7 @@ interface OpenThread {
 
 ### 4.2 计划水位
 
-`blueprints` 新增一列（走 lane 六步，见 [`notes/data-and-schema.md`](../../../.workbuddy/memory/notes/data-and-schema.md)）：
+`blueprints` 新增一列（走 lane 六步，见 `notes/data-and-schema.md`——本机工作记忆，不入库）：
 
 ```
 planned_against_finalized_through INTEGER NOT NULL DEFAULT 0
