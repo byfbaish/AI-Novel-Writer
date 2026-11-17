@@ -2,7 +2,9 @@
 // 安装/刷新本地 git hook。挂在 `prepare` 上，所以 `pnpm install` 之后自动生效；
 // 也可以手动跑 `pnpm hooks:install`（改过本脚本或 hook 内容后需要重跑）。
 //
-// 只装一个 hook：`pre-commit` → `pnpm check:fast`。
+// 只装一个 hook：`pre-commit` → `pnpm check:fast` → 协作介质卫生检查
+// （`scripts/ops/check-batch-hygiene.mjs --staged`：尾行换行、禁版本号文件名，见
+//  .batch/night/org/ruling-git-workflow-1117.md §二·1/4/8）。
 //
 // ## 为什么 pre-commit 只跑 fast 档
 //
@@ -34,6 +36,15 @@ ${MARKER}
 node scripts/check-fast.mjs || {
   echo ""
   echo "提交被拦住：pnpm check:fast 未通过。修完再提交，或用 --no-verify 并说明理由。"
+  exit 1
+}
+
+# 协作介质卫生：尾行换行、禁版本号文件名（.batch/night/archive 与 staging 豁免）。
+# 只读检查，不改文件；失败时打印修法，不替人改。
+node scripts/ops/check-batch-hygiene.mjs --staged || {
+  echo ""
+  echo "提交被拦住：协作介质卫生检查未通过（尾行换行／带版本号文件名）。"
+  echo "修法：给文件末尾补一个换行（printf '\\n' >> <path>）；带 .vN 的文件用 git mv 改名。"
   exit 1
 }
 `
@@ -84,4 +95,4 @@ if (fs.existsSync(target)) {
 
 fs.writeFileSync(target, HOOK, { mode: 0o755 })
 try { fs.chmodSync(target, 0o755) } catch { /* Windows 上没有意义，忽略 */ }
-console.log(`[hooks] 已写入 ${path.relative(ROOT, target)}（pre-commit → pnpm check:fast）`)
+console.log(`[hooks] 已写入 ${path.relative(ROOT, target)}（pre-commit → pnpm check:fast → 协作介质卫生检查）`)
