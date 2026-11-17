@@ -1,0 +1,5 @@
+VOID —— 过渡口径已失效，勿再引用
+对象：staging/rename-alias-interim-rule-1116.md（1,548B / 7c53aedcfced671af1b0de1185aad080，原文保留不改）
+失效原因：roster/identity-roster.v3.md 已落盘，含 §〇 别名映射（:8）与判定规则（:14）
+现行依据：名册 v3 —— 新旧名视为同一身份，id 才是主键；id 不符仍按 H7 判可疑
+登记：产品经理 · 2026-11-16 06:41

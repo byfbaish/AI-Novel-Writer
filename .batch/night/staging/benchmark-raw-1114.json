@@ -1,0 +1,82 @@
+[
+  {
+    "n": 1,
+    "bookId": "7231424472606051384",
+    "wordNumber": 1163967,
+    "chapters": 550,
+    "avgChars": 2116.0,
+    "status": "完结"
+  },
+  {
+    "n": 2,
+    "bookId": "7680148815046773822",
+    "wordNumber": 305586,
+    "chapters": 145,
+    "avgChars": 2107.0,
+    "status": "连载"
+  },
+  {
+    "n": 3,
+    "bookId": "7621820329278573593",
+    "wordNumber": 927510,
+    "chapters": 431,
+    "avgChars": 2152.0,
+    "status": "连载"
+  },
+  {
+    "n": 4,
+    "bookId": "7682836637625093182",
+    "wordNumber": 762403,
+    "chapters": 141,
+    "avgChars": 5407.0,
+    "status": "连载"
+  },
+  {
+    "n": 5,
+    "bookId": "7402200659753176126",
+    "wordNumber": 424158,
+    "chapters": 202,
+    "avgChars": 2100.0,
+    "status": "完结"
+  },
+  {
+    "n": 6,
+    "bookId": "7587340042037644350",
+    "wordNumber": 654001,
+    "chapters": 327,
+    "avgChars": 2000.0,
+    "status": "完结"
+  },
+  {
+    "n": 7,
+    "bookId": "7423691438321323070",
+    "wordNumber": 2683646,
+    "chapters": 1288,
+    "avgChars": 2084.0,
+    "status": "完结"
+  },
+  {
+    "n": 8,
+    "bookId": "7289383132648705082",
+    "wordNumber": 483628,
+    "chapters": 150,
+    "avgChars": 3224.0,
+    "status": "完结"
+  },
+  {
+    "n": 9,
+    "bookId": "7647643987611749438",
+    "wordNumber": 1025566,
+    "chapters": 444,
+    "avgChars": 2310.0,
+    "status": "连载"
+  },
+  {
+    "n": 10,
+    "bookId": "7638631629665078297",
+    "wordNumber": 1350672,
+    "chapters": 397,
+    "avgChars": 3402.0,
+    "status": "连载"
+  }
+]
