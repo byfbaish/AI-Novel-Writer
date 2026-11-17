@@ -55,13 +55,25 @@ describe('① 生成件正文无三元组自报字段', () => {
 })
 
 describe('② 机检不再比对行数', () => {
-  it('scripts/ops/*.mjs 源码里没有行数比对惯用法', () => {
-    const files = readdirSync(OPS_DIR, { withFileTypes: true })
-      .filter(entry => entry.isFile() && entry.name.endsWith('.mjs'))
-      .map(entry => entry.name)
-    expect(files.length).toBeGreaterThan(0)
+  // 范围＝A 卡自己的五件产出脚本（CARD-1117-E 判据 5；项目总负责人 16:14 裁定）：
+  // 判据约束的是这五件产出物，不是整个 scripts/ops/ 目录——检查器自身会在注释里引述这些字眼。
+  const OWN_FILES = [
+    'make-ledger-v7.mjs',
+    'fix-ledger-v7.mjs',
+    'patch-reboot.mjs',
+    'no-at-count.mjs',
+    'pointer-metrics.mjs',
+  ]
+
+  it('A 卡五件产出脚本都在 scripts/ops/ 下（防文件名写错后空转）', () => {
+    for (const name of OWN_FILES) {
+      expect(readdirSync(OPS_DIR)).toContain(name)
+    }
+  })
+
+  it('A 卡五件产出脚本里没有行数比对惯用法', () => {
     const idioms = ["split('\\n').length", 'wc -l', 'awk NR']
-    for (const name of files) {
+    for (const name of OWN_FILES) {
       const source = readFileSync(path.join(OPS_DIR, name), 'utf8')
       for (const idiom of idioms) {
         expect(source.includes(idiom), name + ' 含「' + idiom + '」').toBe(false)
