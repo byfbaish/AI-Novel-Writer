@@ -4,6 +4,8 @@
  * 规则来自用户拍板 + 官方公告：
  * - **Hy4 已全线禁用（2026-11-16 用户拍板：优惠时限已到）**：不分时段、不分促销期，一律不出 Hy4；
  *   `HY4_DISABLED = true` 是唯一开关，恢复时只改这一行。下面两条 Hy4 旧规则仅作历史说明保留。
+ * - **Hy4 flash（0.00x，限时免费，2026-11-17 用户拍板放开）**：与 0.29x 的 `Hy4` 是选择器里两条
+ *   并列的独立选项，逐字文本 `Hy4 flash`（flash 全小写、中间一个半角空格）。只开这一条，`Hy4` 仍禁用。
  * - Hy4 **全天限免促销（≤2026-11-15，含当天）**：作者 2026-11-07 20:2x 订正 —— 促销期内
  *   任何时段免费，但**日内有额度上限**；撞上限按 §13 识别特征（连续两次秒回 + 兜底文案）
  *   切 DeepSeek-V4.1-Flash，本模块不做额度探测（status 不返回剩余额度）。
@@ -20,15 +22,35 @@
 
 /**
  * Hy4 全局禁用开关（2026-11-16 用户拍板：Hy4 优惠时限已到，全线禁用）。
- * true = 不分时段、不分促销期，一律不出 Hy4，白名单里也不再有它。
- * 恢复时只改这一行（false 即回落到旧的促销期/夜间窗逻辑），其余代码无需动。
+ * true = 不分时段、不分促销期，一律不出 Hy4；白名单里只有 `Hy4 flash` 与 DeepSeek-V4.1-Flash。
+ * 授权现状：主人 2026-11-17 01:10 主身私聊授权，只开 `Hy4 flash`（0.00x 限时免费）；
+ * `Hy4`(0.29x) 仍禁用，本开关与它的拒绝语义都不许动。
+ * 恢复 Hy4 时只改这一行（false 即回落到旧的促销期/夜间窗逻辑），其余代码无需动。
  */
 export const HY4_DISABLED = true
 
 /** 允许出现的模型名（必须与模型选择器里 .cr-model-selector__item-name 的文本完全一致） */
 export const MODEL_HY4 = 'Hy4'
+export const MODEL_HY4_FLASH = 'Hy4 flash'
 export const MODEL_DEEPSEEK_FLASH = 'DeepSeek-V4.1-Flash'
-export const ALLOWED_MODELS = HY4_DISABLED ? [MODEL_DEEPSEEK_FLASH] : [MODEL_HY4, MODEL_DEEPSEEK_FLASH]
+export const ALLOWED_MODELS = HY4_DISABLED
+  ? [MODEL_HY4_FLASH, MODEL_DEEPSEEK_FLASH]
+  : [MODEL_HY4, MODEL_HY4_FLASH, MODEL_DEEPSEEK_FLASH]
+
+/**
+ * 每条白名单模型的授权出处：`<角色>|<渠道>|<ISO>`；无法溯源写 `UNVERIFIED`。
+ * 缺这一行列即判不合格（不是 WARN）——status / help 输出靠它自证「谁在何时授权」。
+ */
+export const MODEL_AUTH = {
+  [MODEL_HY4_FLASH]: '主人|主身私聊|2026-11-17T01:10+08:00',
+  [MODEL_DEEPSEEK_FLASH]: 'UNVERIFIED',
+  [MODEL_HY4]: 'UNVERIFIED',
+}
+
+/** 取某模型的授权出处；白名单外的模型一律 `UNVERIFIED`。 */
+export function authOf(model) {
+  return MODEL_AUTH[model] ?? 'UNVERIFIED'
+}
 
 /** 夜间限免窗口：23:00 → 次日 08:00（跨午夜）；HY4_DISABLED=false 时生效 */
 export const HY4_FREE_WINDOW = { startHour: 23, endHour: 8 }
@@ -155,9 +177,17 @@ export function buildPeakBanner({ now = new Date(), target, command = 'task', pr
 export function describeModelPolicy(date = new Date()) {
   const picked = pickModel(date)
   if (!picked.ok) {
-    return formatClock(date) + ' 高峰 → 不派活（' + formatClock(picked.nextOffPeakAt) + ' 后可自动派活）'
+    return formatClock(date) + ' 高峰 → 不派活（' + formatClock(picked.nextOffPeakAt) + ' 后可自动派活） auth=UNVERIFIED'
   }
-  return formatClock(date) + ' → ' + picked.model + '（' + picked.reason + '）'
+  return formatClock(date) + ' → ' + picked.model + '（' + picked.reason + '） auth=' + authOf(picked.model)
+}
+
+/**
+ * 白名单逐条的授权出处行：每行以 `auth=` 开头，供机检 `^auth=` 直接命中。
+ * 与 describeModelPolicy 共用同一张 MODEL_AUTH，不存在第二份口径。
+ */
+export function describeModelAuthLines() {
+  return ALLOWED_MODELS.map(model => 'auth=' + authOf(model) + ' model=' + model)
 }
 
 /** 模型名比较：选择器文本可能带空白，统一按「去空白 + 忽略大小写」比对。 */

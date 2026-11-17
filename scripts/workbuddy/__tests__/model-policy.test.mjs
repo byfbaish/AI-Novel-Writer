@@ -6,6 +6,7 @@ import {
   HY4_PROMO_ALL_DAY_UNTIL,
   MODEL_DEEPSEEK_FLASH,
   MODEL_HY4,
+  MODEL_HY4_FLASH,
   buildPeakBanner,
   describeModelPolicy,
   formatClock,
@@ -22,6 +23,8 @@ import {
  * 用例来源：
  * - **Hy4 已全线禁用（2026-11-16 用户拍板，HY4_DISABLED = true）**：促销期与夜间窗的旧断言
  *   一律改为「禁用后恒不出 Hy4」，旧逻辑保留在代码里、开关置 false 即可恢复。
+ * - **`Hy4 flash` 已放开（主人 2026-11-17 01:10 主身私聊授权，只开 `Hy4 flash`）**：0.00x 限时免费，
+ *   与 0.29x 的 `Hy4` 是选择器里两条并列独立选项；`Hy4`(0.29x) 仍禁用，其拒绝断言不许动。
  * - Hy4 **全天限免促销 ≤2026-11-15**（作者 2026-11-07 20:2x 订正：11-15 之前全天免费，日内有额度上限）
  * - Hy4 常规夜间限免 23:00–次日 08:00（腾讯公告，IT之家 2026-10-02）
  * - DeepSeek-V4.1-Flash 高峰 = 周一至周五 09:00–12:00、14:00–18:00，其余 5 折（腾讯云 2026-10-22）
@@ -166,8 +169,8 @@ describe('高峰横幅（PEAK_HOURS）', () => {
 })
 
 describe('模型白名单', () => {
-  it('只放行 Hy4 和 DeepSeek-V4.1-Flash', () => {
-    expect(ALLOWED_MODELS).toEqual([MODEL_DEEPSEEK_FLASH])
+  it('只放行 Hy4 flash 和 DeepSeek-V4.1-Flash（Hy4 0.29x 仍禁用）', () => {
+    expect(ALLOWED_MODELS).toEqual([MODEL_HY4_FLASH, MODEL_DEEPSEEK_FLASH])
     expect(rejectUnknownModel(MODEL_HY4)).toContain('不在白名单')
     expect(rejectUnknownModel(MODEL_DEEPSEEK_FLASH)).toBeNull()
     expect(rejectUnknownModel(null)).toBeNull()
