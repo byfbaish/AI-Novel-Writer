@@ -1,0 +1,363 @@
+{
+  "readAt": "2026-11-16T17:02:12.484Z",
+  "readAtLocal": "2026-11-17 01:02:12",
+  "port": 9333,
+  "cdp": {
+    "browser": "Chrome/138.0.7204.251",
+    "appVersion": "5.11.3",
+    "chromiumVersion": "138.0.7204.251",
+    "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) WorkBuddy/5.11.3 Chrome/138.0.7204.251 Electron/37.10.3 Safari/537.36"
+  },
+  "pageUrl": "file:///C:/Users/%E4%BC%AF%E4%BA%91%E9%A3%9E/AppData/Local/Programs/WorkBuddy/resources/app.asar/renderer/index.html?locale=zh-CN&wbSeedToken=d688fc5e663cfe279ba8192edf4ab284&accountSnapshot=%257B%2522version%2522%253A1%252C%2522uid%2522%253A%2522444a07e4-17cc-4596-b00e-3a1c128bd094%2522%252C%2522nickname%2522%253A%2522%25E6%25B0%25B8%25E9%2581%25A0%25E3%2581%25AE%25E5%25B0%2591%25E5%25B9%25B4%2522%252C%2522type%2522%253A%2522personal%2522%252C%2522editionType%2522%253A%2522free%2522%252C%2522isPro%2522%253Afalse%252C%2522isAdmin%2522%253Afalse%252C%2522oneidAccountId%2522%253A%2522%2522%252C%2522enableArdotDesign%2522%253Atrue%252C%2522showDefaultPermission%2522%253Atrue%252C%2522savedAt%2522%253A1794768234894%257D",
+  "runStateBefore": null,
+  "chipsBefore": {
+    "workspace": "dsh-plugins-project",
+    "branch": "p1-identity-resolve",
+    "permission": "允许完全访问",
+    "model": "DeepSeek-V4.1-Flash"
+  },
+  "triggerText": "DeepSeek-V4.1-Flash",
+  "itemCount": 24,
+  "items": [
+    {
+      "i": 0,
+      "raw": "快速",
+      "trim": "快速",
+      "credits": "0.15x",
+      "selected": false,
+      "itemText": "快速\n0.15x"
+    },
+    {
+      "i": 1,
+      "raw": "均衡",
+      "trim": "均衡",
+      "credits": "0.50x",
+      "selected": false,
+      "itemText": "均衡\n0.50x"
+    },
+    {
+      "i": 2,
+      "raw": "极致",
+      "trim": "极致",
+      "credits": "1.00x",
+      "selected": false,
+      "itemText": "极致\n1.00x"
+    },
+    {
+      "i": 3,
+      "raw": "Hy4",
+      "trim": "Hy4",
+      "credits": "0.29x",
+      "selected": false,
+      "itemText": "Hy4\n0.29x"
+    },
+    {
+      "i": 4,
+      "raw": "Hy4 flash",
+      "trim": "Hy4 flash",
+      "credits": "0.00x",
+      "selected": false,
+      "itemText": "Hy4 flash\n限时免费\n0.00x"
+    },
+    {
+      "i": 5,
+      "raw": "DeepSeek-V4.1-Flash",
+      "trim": "DeepSeek-V4.1-Flash",
+      "credits": "0.11x",
+      "selected": true,
+      "itemText": "DeepSeek-V4.1-Flash\n夜间折扣\n0.11x"
+    },
+    {
+      "i": 6,
+      "raw": "GLM-5.3",
+      "trim": "GLM-5.3",
+      "credits": "0.69x",
+      "selected": false,
+      "itemText": "GLM-5.3\n订阅优先\n0.69x"
+    },
+    {
+      "i": 7,
+      "raw": "GLM-5.3-Flash",
+      "trim": "GLM-5.3-Flash",
+      "credits": "0.08x",
+      "selected": false,
+      "itemText": "GLM-5.3-Flash\n订阅优先\n0.08x"
+    },
+    {
+      "i": 8,
+      "raw": "GLM-5.2",
+      "trim": "GLM-5.2",
+      "credits": "0.79x",
+      "selected": false,
+      "itemText": "GLM-5.2\n夜间折扣\n0.79x"
+    },
+    {
+      "i": 9,
+      "raw": "Space-Bunny",
+      "trim": "Space-Bunny",
+      "credits": "0.08x",
+      "selected": false,
+      "itemText": "Space-Bunny\n0.08x"
+    },
+    {
+      "i": 10,
+      "raw": "MiniMax-M3.1-Flash",
+      "trim": "MiniMax-M3.1-Flash",
+      "credits": "0.08x",
+      "selected": false,
+      "itemText": "MiniMax-M3.1-Flash\n0.08x"
+    },
+    {
+      "i": 11,
+      "raw": "Kimi-K3.1-Pro",
+      "trim": "Kimi-K3.1-Pro",
+      "credits": "0.97x",
+      "selected": false,
+      "itemText": "Kimi-K3.1-Pro\n订阅优先\n0.97x"
+    },
+    {
+      "i": 12,
+      "raw": "Kimi-K3",
+      "trim": "Kimi-K3",
+      "credits": "1.62x",
+      "selected": false,
+      "itemText": "Kimi-K3\n1.62x"
+    },
+    {
+      "i": 13,
+      "raw": "Kimi-K2.8-Preview",
+      "trim": "Kimi-K2.8-Preview",
+      "credits": "0.77x",
+      "selected": false,
+      "itemText": "Kimi-K2.8-Preview\n订阅优先\n0.77x"
+    },
+    {
+      "i": 14,
+      "raw": "DeepSeek-V4-Pro",
+      "trim": "DeepSeek-V4-Pro",
+      "credits": "0.51x",
+      "selected": false,
+      "itemText": "DeepSeek-V4-Pro\n夜间折扣\n0.51x"
+    },
+    {
+      "i": 15,
+      "raw": "Step-5-Preview",
+      "trim": "Step-5-Preview",
+      "credits": "0.33x",
+      "selected": false,
+      "itemText": "Step-5-Preview\n0.33x"
+    },
+    {
+      "i": 16,
+      "raw": "Xiaomi MiMo-V2.6-Pro",
+      "trim": "Xiaomi MiMo-V2.6-Pro",
+      "credits": "0.13x",
+      "selected": false,
+      "itemText": "Xiaomi MiMo-V2.6-Pro\n0.13x"
+    },
+    {
+      "i": 17,
+      "raw": "gpt-oss:20b-128k",
+      "trim": "gpt-oss:20b-128k",
+      "credits": null,
+      "selected": false,
+      "itemText": "gpt-oss:20b-128k"
+    },
+    {
+      "i": 18,
+      "raw": "qwen3.5:9b-128k",
+      "trim": "qwen3.5:9b-128k",
+      "credits": null,
+      "selected": false,
+      "itemText": "qwen3.5:9b-128k"
+    },
+    {
+      "i": 19,
+      "raw": "nemotron-3.5-lightning:30b",
+      "trim": "nemotron-3.5-lightning:30b",
+      "credits": null,
+      "selected": false,
+      "itemText": "nemotron-3.5-lightning:30b"
+    },
+    {
+      "i": 20,
+      "raw": "DeepSeek-V4.1-Flash:deepseek-flash",
+      "trim": "DeepSeek-V4.1-Flash:deepseek-flash",
+      "credits": null,
+      "selected": false,
+      "itemText": "DeepSeek-V4.1-Flash:deepseek-flash"
+    },
+    {
+      "i": 21,
+      "raw": "our-free-model/deepseek-v4.1-flash-free",
+      "trim": "our-free-model/deepseek-v4.1-flash-free",
+      "credits": null,
+      "selected": false,
+      "itemText": "our-free-model/deepseek-v4.1-flash-free"
+    },
+    {
+      "i": 22,
+      "raw": "our-free-model/glm-5.3-flash-free",
+      "trim": "our-free-model/glm-5.3-flash-free",
+      "credits": null,
+      "selected": false,
+      "itemText": "our-free-model/glm-5.3-flash-free"
+    },
+    {
+      "i": 23,
+      "raw": "qwen3.5:9b-fable-q5",
+      "trim": "qwen3.5:9b-fable-q5",
+      "credits": null,
+      "selected": false,
+      "itemText": "qwen3.5:9b-fable-q5"
+    }
+  ],
+  "normalizedNames": [
+    {
+      "name": "快速",
+      "credits": "0.15x",
+      "selected": false
+    },
+    {
+      "name": "均衡",
+      "credits": "0.50x",
+      "selected": false
+    },
+    {
+      "name": "极致",
+      "credits": "1.00x",
+      "selected": false
+    },
+    {
+      "name": "Hy4",
+      "credits": "0.29x",
+      "selected": false
+    },
+    {
+      "name": "Hy4 flash",
+      "credits": "0.00x",
+      "selected": false
+    },
+    {
+      "name": "DeepSeek-V4.1-Flash",
+      "credits": "0.11x",
+      "selected": true
+    },
+    {
+      "name": "GLM-5.3",
+      "credits": "0.69x",
+      "selected": false
+    },
+    {
+      "name": "GLM-5.3-Flash",
+      "credits": "0.08x",
+      "selected": false
+    },
+    {
+      "name": "GLM-5.2",
+      "credits": "0.79x",
+      "selected": false
+    },
+    {
+      "name": "Space-Bunny",
+      "credits": "0.08x",
+      "selected": false
+    },
+    {
+      "name": "MiniMax-M3.1-Flash",
+      "credits": "0.08x",
+      "selected": false
+    },
+    {
+      "name": "Kimi-K3.1-Pro",
+      "credits": "0.97x",
+      "selected": false
+    },
+    {
+      "name": "Kimi-K3",
+      "credits": "1.62x",
+      "selected": false
+    },
+    {
+      "name": "Kimi-K2.8-Preview",
+      "credits": "0.77x",
+      "selected": false
+    },
+    {
+      "name": "DeepSeek-V4-Pro",
+      "credits": "0.51x",
+      "selected": false
+    },
+    {
+      "name": "Step-5-Preview",
+      "credits": "0.33x",
+      "selected": false
+    },
+    {
+      "name": "Xiaomi MiMo-V2.6-Pro",
+      "credits": "0.13x",
+      "selected": false
+    },
+    {
+      "name": "gpt-oss:20b-128k",
+      "credits": null,
+      "selected": false
+    },
+    {
+      "name": "qwen3.5:9b-128k",
+      "credits": null,
+      "selected": false
+    },
+    {
+      "name": "nemotron-3.5-lightning:30b",
+      "credits": null,
+      "selected": false
+    },
+    {
+      "name": "DeepSeek-V4.1-Flash:deepseek-flash",
+      "credits": null,
+      "selected": false
+    },
+    {
+      "name": "our-free-model/deepseek-v4.1-flash-free",
+      "credits": null,
+      "selected": false
+    },
+    {
+      "name": "our-free-model/glm-5.3-flash-free",
+      "credits": null,
+      "selected": false
+    },
+    {
+      "name": "qwen3.5:9b-fable-q5",
+      "credits": null,
+      "selected": false
+    }
+  ],
+  "hy4Candidates": [
+    {
+      "i": 3,
+      "raw": "Hy4",
+      "trim": "Hy4",
+      "credits": "0.29x",
+      "selected": false,
+      "itemText": "Hy4\n0.29x"
+    },
+    {
+      "i": 4,
+      "raw": "Hy4 flash",
+      "trim": "Hy4 flash",
+      "credits": "0.00x",
+      "selected": false,
+      "itemText": "Hy4 flash\n限时免费\n0.00x"
+    }
+  ],
+  "selectorClosedElementsAfterEscape": 24,
+  "chipsAfter": {
+    "workspace": "dsh-plugins-project",
+    "branch": "p1-identity-resolve",
+    "permission": "允许完全访问",
+    "model": "DeepSeek-V4.1-Flash"
+  },
+  "screenshot": "C:/develop/workspace/AI-writer/develop/.batch/night/staging/hy4-model-selector-20261117.png"
+}

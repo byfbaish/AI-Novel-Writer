@@ -1,0 +1,6 @@
+恢复探针（developer 放的，唯一一条）
+时间：2026-11-14 02:14:34
+用途：验证插件解冻后「启动扫描 → 投递 → 唤醒目标会话」全链路。
+目标：AI writer总负责人 session-daeb834f-a940-44d0-b4cc-9d56b7c5eb72
+预期：本目录只剩 .gitkeep；delivered\<dirKey>\ 只多出这一条；其余 6 条存量不得被投。
+<!-- DONE -->

@@ -1,4 +1,4 @@
-# 条目数：195
+# 条目数：194
 # 生成 SHA：7182062d
 # 生成命令：node scripts/ops/check-batch-hygiene.mjs --disk --write-baseline
 .batch/night/cards/d1-delivered-path.v1.md
@@ -32,7 +32,6 @@
 .batch/night/org/ledger-append-1117-hy4flash-auth.v7.md
 .batch/night/org/process-efficiency-assign-1116.v1.md
 .batch/night/org/process-efficiency-draft-v1.md
-.batch/night/org/ruling-git-workflow-1117.md
 .batch/night/reports/build-v67.py
 .batch/night/reports/build-v68.py
 .batch/night/reports/d1-delivered-path-qa-firstcheck.v2.md

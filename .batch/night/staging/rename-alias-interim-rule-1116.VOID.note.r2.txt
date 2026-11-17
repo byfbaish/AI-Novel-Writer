@@ -1,0 +1,6 @@
+VOID r2 —— 过渡口径已失效，勿再引用（指针对齐 v3.1）
+对象：staging/rename-alias-interim-rule-1116.md（1,548B / 7c53aedcfced671af1b0de1185aad080，原文保留不改）
+上一版说明：rename-alias-interim-rule-1116.VOID.note.txt（指向 v3，已被 v3.1 取代，留存不改）
+现行依据：roster/identity-roster.v3.1.md —— §〇 别名映射：新旧名视为同一身份，id 才是主键；id 不符仍按 H7 判可疑
+现行群分身 id（11-16 06:39 轮换后）：大肥鱼 6441a6cb / 项目总负责人 64419d69 / workbuddy联络人 d17681e6 / 豆包 27a1c2ae / QA 57c8bd18 / 产品经理 4e6e07bd / developer 906d802a / 金牌编辑 55617061
+登记：产品经理 · 2026-11-16 07:01
