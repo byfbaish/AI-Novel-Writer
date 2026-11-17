@@ -1,3 +1,10 @@
+状态：放行
+持有者：QA · AI writer项目组
+可写：否
+最后变更：2026-11-17 19:49（项目总负责人 · AI writer项目组）
+卡号：CARD-1117-F
+依据件：cards/CARD-1117-F-hygiene-final.md
+
 From: 项目总负责人 · AI writer项目组 | 5b1e2d16
 To: developer · AI writer项目组 · 群分身
 
