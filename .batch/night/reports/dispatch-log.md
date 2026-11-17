@@ -1,0 +1,19 @@
+- 04:47 派 npm-publish-fields.md（WorkBuddy，预估 10 分钟，基线 HEAD 7f217e2，8 files）；QA 首验 README 改写 commit 7f217e2
+- 04:53 派 signal-watch-setup.md（developer，配置层零改码，预估 15 分钟；基线 cordis.patch.yml 304 行 / watches 3 条 / 首字节 23 20 59）
+- 05:00 派 relay-addressing-facts.md（developer，只读取证，预估 15 分钟；问标题/bot 名/roots 字段/重启后 id 是否变）
+- 05:39 中止字段卡原回合，改派 npm-fields-finish.md（豆包，只做 add+commit+报告+信号，预估 8 分钟；基线 HEAD 7f217e2 / M package.json 22 行）
+- 05:43 豆包新线程 project=wt-1（C:\develop\workspace\AI-writer\wt-1）与目标仓库 dsh-handoff-relay 不同，已在群内要求卡面钉死绝对路径与 toplevel 证据
+- 05:49 字段卡交付 aa20fea（报告 1,305B，信号已落），派 QA 首验
+- 05:50 桥接探针写入 to-owner（140B, 05:49:39），12 秒后私聊会话 a1d48adb 会话文件在 05:50:02 被写，探针已删；派 QA 首验字段卡 aa20fea
+- 05:53 to-group 反向探针 155B 于 05:52:45 落盘，群窗口 f6f51eef 会话文件 05:52:53 被写（+8s），探针已删；tag 定 0.3.1（不重写已公开 v0.3.0）派 developer 发布
+- 06:14 派 p6-addressing.md（WorkBuddy，预估 20 分钟；主人裁定：包含匹配 + 不 cwd 兜底；附通知带绝对路径；基线 HEAD 0ec84d0、porcelain 空）
+- 06:17 按 workbuddy联络人 的四处核对改 P6 卡（source 按内容核验=index.js:150、resolveSession 下沉投递路径、日志 :252/:293 同步、新增 {path} 占位符、判据改 TOTAL 不降），改派豆包（WorkBuddy wt-2 空间不是本仓库，no-section 阻碍）
+- 06:31 发布事故：npm 0.3.1 tarball 内容=ed6ca81(P6)，GitHub tag v0.3.1→0ec84d0，两处不一致；定口径：QA 首验 ed6ca81，过则打 v0.3.2 并 publish，deprecate 0.3.1
+- 06:32 教训台账：发布前必须比对 tag peeled commit 与 git rev-parse HEAD，且 porcelain 必须为空；仅比 version 与 shasum 拦不住内容不一致
+- 06:36 P6 终审 PASS（ed6ca81，依据 QA 首验 56/56）；派 developer 打 v0.3.2 + publish + deprecate 0.3.1
+- 06:41 派 readme-032.md（豆包，预估 12 分钟；基线 fe19581 / porcelain 空；范围仅两份 README）
+- 06:43 写卡 why-relay.md（豆包，随想 docs/why-relay.md，排队在 readme-032 之后，避免同文件并发）；README 故事段另开一小卡，顺序：readme-032 → why-relay → README 故事段
+- 06:44 why-relay 卡改为仓外草稿（.batch/night/essays/），不 commit 不 add，仓库 porcelain 保持空；标题与产物段已同步
+- 06:47 写 docs-merge 卡（豆包，2,9xx B）：插故事段（EN 插 ## Install 前 / ZH 插 ## 安装 前）+ 新建 docs/why-relay.md + 一次点名提交；基线 HEAD 5b69035 porcelain 空。排队在 why-relay 之后。
+- 07:02 写卡 dedupe-persist.md（豆包，预估 25 分钟）：按 dedupe-spec.md v2 落盘去重表；基线 HEAD e114e44、56/56、porcelain 空
+- 23:33 派 p11-settings-card.md（豆包，估 120-150 分钟，基线 HEAD 4fb80da / 84-84）；投前投后 currentSessionId 一致（线程 38453472829355778）；检查点任务 dsh-wake-20261114-0205

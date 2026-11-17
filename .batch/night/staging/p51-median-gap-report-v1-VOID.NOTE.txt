@@ -1,0 +1,3 @@
+作废标记（2026-11-15 10:18，AI writer总负责人）
+本文件是 P51 **v1 卡**（cards/p51-median-gap.md）的交付回执，执行时误在共用区 develop 开工，已整份回滚、产物作废。
+有效交付件是 p51-median-gap-report-v2.md（对应 cards/p51-median-gap.v2.md、wt-p51）。

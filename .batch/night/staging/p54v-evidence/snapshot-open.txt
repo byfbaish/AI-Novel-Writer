@@ -1,0 +1,15 @@
+# P54 真机验 开工快照  2026-11-15 14:40:26
+## 主仓 C:\develop\workspace\dsh-handoff-relay
+rev-parse HEAD: 40f34b5fe02064b62672fca2d6656b656603e6ae
+branch: master
+porcelain-v1-begin
+ M README.md
+ M index.js
+ M index.test.mjs
+porcelain-v1-end
+## worktree
+C:/develop/workspace/dsh-handoff-relay                                                         40f34b5 [master]
+"C:/Users/\344\274\257\344\272\221\351\243\236/AppData/Local/Temp/dsh-p54v-1115/relay-40f34b5" 40f34b5 (detached HEAD)
+## worktree 自证
+HEAD: 40f34b5fe02064b62672fca2d6656b656603e6ae
+porcelain:[]

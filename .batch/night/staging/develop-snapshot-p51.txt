@@ -1,0 +1,16 @@
+snapshot_at=2026-11-15T07:27:29+08:00
+HEAD=26627655c61fd84410412f109edc161537eac950
+branch=exp/resource-ledger
+---porcelain---
+ M src/components/editor/ReviewReport.tsx
+ M src/components/editor/__tests__/draft-edit-median.test.ts
+ M src/components/editor/draft-edit-median.ts
+?? "\345\274\200\347\257\207\350\257\225\346\240\267 02/"
+---numstat---
+6	2	src/components/editor/ReviewReport.tsx
+52	0	src/components/editor/__tests__/draft-edit-median.test.ts
+35	18	src/components/editor/draft-edit-median.ts
+---hashes---
+src/components/editor/ReviewReport.tsx 77423 98962FF7EEDCF5B173CC9AD28F8FDADE
+src/components/editor/__tests__/draft-edit-median.test.ts 5961 F99545C78778FA901D815A44758B43C8
+src/components/editor/draft-edit-median.ts 3980 3FBEE37587B527F24A4ACC9841574309

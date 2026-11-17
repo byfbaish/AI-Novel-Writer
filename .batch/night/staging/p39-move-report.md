@@ -1,0 +1,1 @@
+收尾一步，只做移动、不改内容、不重做代码：把 C:\develop\workspace\dsh-handoff-relay\.batch\night\staging\p39-frame-color-report.md 复制到 C:\develop\workspace\AI-writer\develop\.batch\night\staging\p39-frame-color-report.md（一个字节都不许改），然后删掉插件仓库 C:\develop\workspace\dsh-handoff-relay\.batch 整个目录（是误落的相对路径产物，里面两份都是旧件）。做完回：目标文件字节数+MD5，以及 C:\develop\workspace\dsh-handoff-relay 的 git status --porcelain 是否为空。

@@ -1,0 +1,11 @@
+# P54 真机验取证件（隔离根删除前抽存，2026-11-15 17:4x）
+# 来源：/c/Users/<用户名>/AppData/Local/Temp/dsh-p54v-1115 下由 session.v4.jsonl.zstd 解出的明文 session-8ea61110*.jsonl
+## 注入身份头（去重）
+From: QA · AI writer项目组 | 11111111
+From: UNKNOWN
+To: Chief | session- | 主身
+## 源件
+184136 2026-11-15T15:47:13 C:\Users\<用户名>\AppData\Local\Temp\dsh-p54v-1115\session-8ea61110-b.jsonl
+181117 2026-11-15T15:41:34 C:\Users\<用户名>\AppData\Local\Temp\dsh-p54v-1115\session-8ea61110.jsonl
+## 真实 profile relay.log 中 dir 指向探针的行数
+13

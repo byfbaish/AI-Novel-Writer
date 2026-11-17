@@ -24,6 +24,9 @@ const steps = [
   { name: 'typecheck', args: [path.join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'), '--noEmit'] },
   { name: 'doc-links', args: [path.join(ROOT, 'scripts', 'check-doc-links.mjs')] },
   { name: 'doc-placement', args: [path.join(ROOT, 'scripts', 'check-doc-placement.mjs'), '--strict'] },
+  // 协作介质卫生：尾行换行、禁版本号文件名（.batch/night/archive 与 staging 豁免）。
+  // 只读检查，不改文件；有不合规即非零退出，与本档其余步骤一致。
+  { name: 'batch-hygiene', args: [path.join(ROOT, 'scripts', 'ops', 'check-batch-hygiene.mjs'), '--all'] },
 ]
 
 for (const step of steps) {

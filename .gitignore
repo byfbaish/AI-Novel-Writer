@@ -84,9 +84,19 @@ tailwind.config.js.bak
 # 临时脚本 / 样本 / 取证产物：按约定刻意不入库（见 docs/handoffs、docs/agents）。
 /scripts/.tmp/
 
-# 夜班运行账本（卡面、报告、信号、桥接、草稿）：是运行时产物，不随仓库分发。
-# 正式交付报告走 reports/ 入库，不在这里。
-/.batch/
+# 夜班运行账本：机器信号、桥接投递、草稿、临时取证、归档一律不入库；
+# 但“协作介质”入库——卡面、裁定、会签、台账清单、名册、评审请求是团队唯一的权威源，
+# 不是运行时残留。版本由 git 承担（分支／提交），文件名不再带 vN（2026-11-17 定）。
+# 脚本一律走 /scripts/，不放 .batch/night/tools。
+/.batch/*
+!/.batch/night/
+/.batch/night/*
+!/.batch/night/cards/
+!/.batch/night/org/
+!/.batch/night/reports/
+!/.batch/night/review-requests/
+!/.batch/night/roster/
+!/.batch/night/staging/
 
 # 唤醒脚本目录入库，但投递残留文件不入库。
 /scripts/dsh/wakeup-inbox/*.md
