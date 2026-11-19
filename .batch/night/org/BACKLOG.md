@@ -68,3 +68,7 @@ A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
 - [ ] **B-20 `post-merge-check.ps1` 的 MERGE_HEAD 探测在 linked worktree 里误判（developer 22:5x 报，负责人 23:1x 受理）**
   - 事实：linked worktree 里 `.git` 是文件而非目录，脚本仍判「合并未完成」→ 假 RED；同一棵树 `check:fast` 本身 EXIT=0。
   - 规矩：修脚本须单独出卡（改码）；在那之前合并后核以 `check:fast` 末行 + `check-batch-hygiene --all` 为准，`post-merge-check.ps1` 的红先看 MERGE_HEAD 探测这条已知缺陷再定性。
+- [ ] **B-21 `archive/` 待补字段清理（stage 2 遗留 8 条，2026-11-20 记）**
+  - 现状：`.batch/night/archive/README.md` §二 97 行里 8 行仍带 `待补`——1 条缺「谁建」（`resume-1114/wakeup-inbox/dsh-wake-20261114-0205-7426.md`，唤醒便条无署名）、7 条缺「何时」（`cards/p51-median-gap.v2.md`、`review-requests/p56.v2–v5.md`、`review-requests/reboot-hy4flash-sync.v2.md`、`staging/d1-delivered-path-report.v2.md`，原件均无日期）。
+  - 口径（项目总负责人 2026-11-20 00:31 裁）：能查则查、查不出永久标 `待补` 并写清复核过程，不许写「未知」、不因此卡 stage 2。
+  - 追平方式：下一张补登记卡；逐版时间须从台账/派验单留痕取得，禁按同族件推定日期填表。
