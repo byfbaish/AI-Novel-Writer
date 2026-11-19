@@ -1,7 +1,7 @@
-状态：待派
-持有者：developer · AI writer项目组
-可写：是
-最后变更：2026-11-20 01:40
+状态：收口
+持有者：项目总负责人 · AI writer项目组
+可写：否
+最后变更：2026-11-20 06:45
 卡号：CARD-1119-H
 依据件：`org/board-roadmap.md`、Goal stage 3、`.batch/night/org/stage2-disposition-1119.md`
 
@@ -55,7 +55,7 @@
 | 1 | 机检清零 | `node "<rotation>/pii-scan.mjs" --repo . --all-tracked` | `0 个文件 / 0 处命中`，exit 0，贴末三行 |
 | 2 | 日志件出跟踪面 | `git ls-files | grep -c 'tmp-c9ff5961.jsonl'` | `0` |
 | 3 | 日志件留档可复原 | `md5sum C:/tmp/pmo-stage2-quarantine/tmp-c9ff5961.jsonl`；`git cat-file blob b5cbf42a | md5sum`；`ls C:/tmp/pmo-stage2-quarantine/` | 两条 md5 逐字符相同，文件在，报告贴两条命令原文 |
-| 4 | allow 有据 | `grep -vE '^[[:space:]]*(#|$)' .piiallow | wc -l`、`grep -c '^[^#]*# 依据：' .piiallow`、报告表 allow 行数 | 有效行数＝报告表 allow 行数＝带 `# 依据：` 的行数（三者相等） |
+| 4 | allow 有据 | `grep -vE '^[[:space:]]*(#|$)' .piiallow | wc -l`、`grep -c '^# 依据：' .piiallow`、报告表 allow 行数 | 有效行数＝报告表 allow 行数＝带 `# 依据：` 的行数（三者相等）。**读法（2026-11-20 追认）：`^# 依据：` 行首即命中**，不要求 `#` 之前有内容——原写法 `^[^#]*# 依据：` 与两行式相冲，是出卡笔误 |
 | 5 | 归档面未动 | `git diff --name-only 058c0867 HEAD -- .batch/night/archive | wc -l`；`git show HEAD:.batch/night/archive/MANIFEST.sha256 | sha256sum` | `0`；若为 `1` 则唯一件必须是 `README.md` 且报告写明非改不可的理由。本卡正常执行应为 `0`（只动 `staging/` 与 `.gitignore`）。哈希仍 `ab1119a2…` |
 | 6 | 机检与门禁 | `node scripts/ops/check-batch-hygiene.mjs --all`；`pnpm check:fast` | `0 项不合规` EXIT=0；末行 `EXIT=0` |
 | 7 | 工作区干净 | `git status --porcelain -uall | wc -l` | `0` |
@@ -82,3 +82,5 @@
 ## 七、交付后
 
 本卡 PASS 后才谈合并推送。推送仍只由主身或授权执行人做（Goal rules 第 2 条）。
+
+**2026-11-20 收口**：QA 首验 PASS（受判 `adb17d44`，判词 `.batch/night/reports/CARD-1119-H-qa-firstcheck.md`）；我终审通过；合并 `eba81c43`（`--no-ff` 入 `exp/mainline-1119`）；主身推送至 `eb4bd364`（未 force）。四笔裁定与判据 4 读法见 `.batch/night/review-requests/CARD-1119-H-rulings.md`。
