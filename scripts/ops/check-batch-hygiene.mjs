@@ -36,6 +36,12 @@ export const RULE_TRAILING = 'trailing-newline'
 export const RULE_VERSIONED = 'versioned-filename'
 export const WATCH_ROOT = '.batch/night'
 export const EXEMPT_VERSIONED_DIRS = [`${WATCH_ROOT}/archive/`, `${WATCH_ROOT}/staging/`]
+/**
+ * 尾行检查的目录豁免面（与版本文件名豁免面分开维护）：
+ * archive/ 是「原样留档、事后哈希对账」的冻结区，补末行换行会改归档件字节，
+ * 故只对尾行规则放行 archive/；staging/、cards/、reports/ 仍照常检查。
+ */
+export const EXEMPT_TRAILING_DIRS = [`${WATCH_ROOT}/archive/`]
 export const CARD_NO_PATTERN = /CARD-\d+/u
 export const VERSIONED_PATTERNS = [/\.v\d+\./u, /-v\d+$/u]
 export const DEFAULT_BASELINE = 'scripts/ops/hygiene-baseline.txt'
@@ -64,6 +70,14 @@ export function checkTrailingNewline(content) {
 }
 
 /**
+ * 判一条路径是否豁免尾行检查（只看 EXEMPT_TRAILING_DIRS 前缀）。
+ * @param {string} repoRelPath 仓库相对路径，posix 分隔符
+ */
+export function isTrailingExempt(repoRelPath) {
+  return EXEMPT_TRAILING_DIRS.some((dir) => repoRelPath.startsWith(dir))
+}
+
+/**
  * 规则 2：禁版本号文件名。返回 null 表示合规（或落在豁免目录）。
  * @param {string} repoRelPath 仓库相对路径，posix 分隔符
  */
@@ -87,7 +101,7 @@ export function collectViolations(files) {
     if (!inScope(file.path)) continue
     const versioned = checkVersionedName(file.path)
     if (versioned) violations.push({ path: file.path, rule: RULE_VERSIONED, reason: versioned })
-    if (file.path.endsWith('.md')) {
+    if (file.path.endsWith('.md') && !isTrailingExempt(file.path)) {
       const trailing = checkTrailingNewline(file.content)
       if (trailing) violations.push({ path: file.path, rule: RULE_TRAILING, reason: trailing })
     }

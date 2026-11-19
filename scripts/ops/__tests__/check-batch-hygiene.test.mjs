@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   DISK_NOTICE,
+  EXEMPT_TRAILING_DIRS,
   RULE_TRAILING,
   RULE_VERSIONED,
   applyBaseline,
@@ -16,6 +17,7 @@ import {
   checkVersionedName,
   collectViolations,
   inScope,
+  isTrailingExempt,
   parseBaseline,
   renderBaseline,
   renderReport,
@@ -83,6 +85,53 @@ describe('尾行换行规则', () => {
 
   it('CRLF 结尾按换行算，不误判', () => {
     expect(checkTrailingNewline('# 标题\r\n正文\r\n')).toBeNull()
+  })
+})
+
+describe('尾行豁免面：archive 不报、其它照报（CARD-1119-E）', () => {
+  it('豁免面只含 archive/，staging/cards/reports 不在其中', () => {
+    expect(EXEMPT_TRAILING_DIRS).toEqual(['.batch/night/archive/'])
+    expect(isTrailingExempt('.batch/night/archive/roster/identity-roster.v3.8.md')).toBe(true)
+    expect(isTrailingExempt('.batch/night/staging/x.md')).toBe(false)
+    expect(isTrailingExempt('.batch/night/cards/x.md')).toBe(false)
+    expect(isTrailingExempt('.batch/night/reports/x.md')).toBe(false)
+  })
+
+  it('archive 下缺尾行的 .md ⇒ 不报', () => {
+    const violations = collectViolations([
+      { path: '.batch/night/archive/roster/identity-roster.v3.8.md', content: '# 标题' },
+      { path: '.batch/night/archive/1107/bridge-to-group/decision-p6-0612.md', content: '# 标题' },
+    ])
+    expect(violations).toEqual([])
+  })
+
+  it('archive 以连续空行结尾 ⇒ 也不报（仅尾行规则豁免，不是整体关检查）', () => {
+    const violations = collectViolations([
+      { path: '.batch/night/archive/roster/identity-roster.v3.9.md', content: '# 标题\n\n' },
+    ])
+    expect(violations).toEqual([])
+  })
+
+  it('staging 下缺尾行的 .md ⇒ 照报', () => {
+    const violations = collectViolations([{ path: '.batch/night/staging/draft.md', content: '# 标题' }])
+    expect(violations).toHaveLength(1)
+    expect(violations[0]).toMatchObject({ path: '.batch/night/staging/draft.md', rule: RULE_TRAILING })
+  })
+
+  it('cards / reports 下缺尾行的 .md ⇒ 照报', () => {
+    const violations = collectViolations([
+      { path: '.batch/night/cards/c.md', content: '# 标题' },
+      { path: '.batch/night/reports/r.md', content: '# 标题\n\n' },
+    ])
+    expect(violations.map((v) => v.path)).toEqual(['.batch/night/cards/c.md', '.batch/night/reports/r.md'])
+    expect(violations.every((v) => v.rule === RULE_TRAILING)).toBe(true)
+  })
+
+  it('archive 的版本文件名仍由 EXEMPT_VERSIONED_DIRS 豁免，两条规则互不替代', () => {
+    const violations = collectViolations([
+      { path: '.batch/night/archive/roster/identity-roster.v3.10.md', content: '# 标题\n' },
+    ])
+    expect(violations).toEqual([])
   })
 })
 
