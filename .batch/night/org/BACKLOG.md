@@ -74,5 +74,5 @@ A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
   - 追平方式：下一张补登记卡；逐版时间须从台账/派验单留痕取得，禁按同族件推定日期填表。
 
 - [ ] **B-22 `--all-tracked` 90 文件／289 处命中须在推送前清零（developer 01:2x 报，负责人 01:40 出卡）**
-  - 事实：`058c0867` 上 `pii-scan --all-tracked` 报 90 文件／289 处（user-path 106・secret 37・email 24・phone 14・privacy-word 10・idcard 9・name 9）；其中**真名只 8 文件／17 处**，其余 272 处是测试夹具与设计字样（`@example.invalid`、`sk-capsule--complete` 等）。`.batch/night/staging/tmp-c9ff5961.jsonl`（1,591,957B，blob `b5cbf42a`）是完整会话日志，含 system prompt，已随 CARD-1117-B 入库。
+  - 事实：`058c0867` 上 `pii-scan --all-tracked` 报 90 文件／289 处（user-path 106・secret 37・email 24・phone 14・privacy-word 10・idcard 9・name 9）；其中**真名只 8 文件／17 处**，其余 272 处是测试夹具与设计字样（`@example.invalid`、`sk-` 开头的设计字样等）。`.batch/night/staging/tmp-c9ff5961.jsonl`（1,591,957B，blob `b5cbf42a`）是完整会话日志，含 system prompt，已随 CARD-1117-B 入库。
   - 处置：出 `cards/CARD-1119-H-pii-preflight.md`（判据 7 条、红线 6 条，`--all-tracked` 命中 0 为唯一门禁）；真名改文本、假数据进 `.piiallow`（每行带依据）、日志件 `git rm --cached` 后移出到 quarantine 并留 md5。禁批量改测试夹具。

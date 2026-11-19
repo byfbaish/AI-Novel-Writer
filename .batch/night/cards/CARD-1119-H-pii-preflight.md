@@ -17,7 +17,7 @@
 
 按顶层目录（文件数）：`.batch/` 38、`docs/` 15、`scripts/` 14、`electron/` 10、`src/` 9、`reports/` 2、`test/` 1、`pnpm-lock.yaml` 1。
 
-**关键：真名只占 8 个文件 / 17 处，其余 272 处是测试夹具与设计字样。** 两类处置完全不同，禁「扫到就批量改」——改测试夹具会打断断言（`secret` 37 处里 `sk-capsule--complete`、`sk-completion-notify-design` 是设计字样，`email` 里 `@example.invalid` / `@provider-a.example` 是假域）。
+**关键：真名只占 8 个文件 / 17 处，其余 272 处是测试夹具与设计字样。** 两类处置完全不同，禁「扫到就批量改」——改测试夹具会打断断言（`secret` 37 处里 `sk-` 开头的两条设计字样是假数据，`email` 里 `@example.invalid` / `@provider-a.example` 是假域）。
 
 ## 三、三类处置（逐类逐件，不许合并动作）
 
@@ -34,7 +34,7 @@
 | 7 | `.batch/night/staging/vn-history-1119/org/process-efficiency-assign-1116.v1.md` | 2 |
 | 8 | `.batch/night/staging/vn-history-1119/cards/wb-rules-example.v1.md` | 1 |
 
-改法：真名 → `<用户名>`；`C:\Users\<真名>` → `C:\Users\<用户名>`；`/Users/<真名>` → `/Users/<用户名>`。这 8 件都在 `staging/vn-history-1119/`（本阶段新入库件，**不是** stage 1 冻结的 97 件归档物），改字节合规。
+改法：真名 → `<用户名>`；含家目录前缀的绝对路径一律把用户名段换成 `<用户名>`（Windows 与 macOS 两侧同规矩）。这 8 件都在 `staging/vn-history-1119/`（本阶段新入库件，**不是** stage 1 冻结的 97 件归档物），改字节合规。
 
 ### T2 · 会话日志 `tmp-c9ff5961.jsonl` → 移出跟踪面
 
@@ -45,7 +45,7 @@
 ### T3 · 假数据（其余 82 文件 / 272 处）→ 不改文本，写 `.piiallow`
 
 - 建 `.piiallow`（仓根，机检脚本已支持）：**一行一条正则 ＋ 同一行行尾 `# 依据：…`**，依据写明「测试夹具」「示例假域」「设计字样」等，能指到代码位置就指（`scripts/__tests__/smoke-win-installer.test.ts` 的随机用户名夹具等）。
-- `secret` 37 处必须逐条判：属设计字样（`sk-capsule--complete` 这类）才进 allow；**形如真密钥的（长度/前缀与真实 key 同形）一律删改**，不得进 allow 了事。
+- `secret` 37 处必须逐条判：属设计字样（`sk-` 开头的设计字样这类）才进 allow；**形如真密钥的（长度/前缀与真实 key 同形）一律删改**，不得进 allow 了事。
 - `idcard` 9、`phone` 14、`privacy-word` 10 同理：先在 82 件里逐条列出，报告给一张「kind × 文件 × 处置（改/allow）」表；**不许用 `.piiignore` 整目录掩盖**。
 
 ## 四、判据（命令 + 实输出 + exit）
@@ -59,6 +59,12 @@
 | 5 | 归档面未动 | `git diff --name-only 058c0867 HEAD -- .batch/night/archive | wc -l`；`git show HEAD:.batch/night/archive/MANIFEST.sha256 | sha256sum` | `1`（仅 README）；仍 `ab1119a2…` |
 | 6 | 机检与门禁 | `node scripts/ops/check-batch-hygiene.mjs --all`；`pnpm check:fast` | `0 项不合规` EXIT=0；末行 `EXIT=0` |
 | 7 | 工作区干净 | `git status --porcelain -uall | wc -l` | `0` |
+
+### §四 注解（2026-11-20 01:45 补，判据 1 的读取口径）
+
+1. **判据 1 的通过线读作**：`--all-tracked` 报告 `0 个文件 / 0 处命中` 且 `EXIT=0`。这个 0 是 **`.piiallow` 生效之后**的 0——假数据不靠改文本清零，靠 allow 正则收敛；allow 行数与报告表行数必须对得上（判据 4）。
+2. **分母含卡面与台账自身**：本卡与 `org/BACKLOG.md` 也在扫描面内。QA 01:4x 实测本卡原含 5 处、台账 1 处字面量（`sk-` 字样与家目录示例），我 01:45 已改成 `sk-<占位>`／家目录占位写法；`--text` 复扫两件均 exit 0。自此规矩：**写卡时不许把命中字面量抄进卡面**，只写「某文件某行某类型」。
+3. 若清理过程中发现某件既不是真名也不是可授权的假数据（例如真密钥），**停下报我**，不进 allow、不等同 T3。
 
 ## 五、红线
 
