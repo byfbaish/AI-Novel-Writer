@@ -218,7 +218,7 @@ model=deepseek-v4.1-flash | 倍率=1x | provider=deepseek
 
 | # | 命令 | 输出 |
 |---|---|---|
-| 1 | `node "<rotation>/pii-scan.mjs" --repo . --all-tracked` | `隐私机检：通过（扫描 3360 个文件，0 处命中）`，EXIT=0 |
+| 1 | `node "<rotation>/pii-scan.mjs" --repo . --all-tracked` | `隐私机检：通过（扫描 3362 个文件，0 处命中）`，EXIT=0 |
 | 2 | `git ls-files \| grep -c 'tmp-c9ff5961.jsonl'` | `0` |
 | 3 | `md5sum C:/tmp/pmo-stage2-quarantine/tmp-c9ff5961.jsonl`；`git cat-file blob b5cbf42a \| md5sum` | 两条均 `8a16b866cf6e453e407abcb7f6550c7a`；文件在 |
 | 4 | `grep -vE '^[[:space:]]*(#\|$)' .piiallow \| wc -l`；`grep -c '^[^#]*# 依据：' .piiallow`；报告表行数 | `149`／`149`／`149` 三者相等 |
@@ -243,8 +243,11 @@ cp C:/develop/workspace/AI-writer/tmp-dev/pii-scan.mjs.bak-1119H "<rotation>/pii
 
 机检 `email` 类里有 6 处是仓库 committer 的**真实邮箱**（`947875122@qq.com`），分布在 `.batch/night/reports/merge-p55-into-develop-qa.md:22,23,33`、`.batch/night/reports/task-ledger.md:154`、`.batch/night/staging/incident-plugin-push-1116.md:13,16`。我**没有改文本**，两条理由：①该值已存在于公开仓库全部提交的作者/提交者字段，删文档不改暴露面；②`task-ledger.md` 按规则只有产品经理可写。故列为 allow，依据写「公开仓库 committer 身份（git 历史同值），非新增泄漏」。若你要求按 T1 改文本，我可以改那两件报告与 staging 件（台账需产品经理动）。
 
-## 七、遗留
+**待裁 3 · 新增 `.piiignore` 一行（表本体自指）**
 
+`.piiallow` 一旦入库，它自己也在扫描面内；表里为占位写法保留的反斜杠（如家目录变量的转义形式）会被 `user-path` 规则扫成 41 处命中。故新增仓根 `.piiignore`（新件），只放一行 `.piiallow`，注释写明「表本体不是数据」。这**不是**给业务内容开整文件豁免：其余 81 个假数据文件仍走 `.piiallow` 逐行正则。若你不同意，替代做法是把 12 条含反斜杠的 allow 改成「只匹配用户名尾段」——正则精度会下降，我选前者。
+
+## 七、遗留
 - 本卡未 push、未合并，`card/1119-H` 留在本地等验收；`exp/mainline-1119` 未动。
 - `.piiallow` 149 条为一次性落表，后续新增假数据按同一格式追加；条目与报告表的一致性靠判据 4 的三处相等守。
 - `.batch/night/staging/` 下还有 `.mjs` 等运行件（既有），不在本卡范围。
