@@ -19,7 +19,7 @@
 | `AI-writer/.backups` | 996 文件 / 116.2 MB，全部在 4 个快照目录里，无 996 个散 `.bak` | 996 个 `.bak-20261108` |
 
 待候选：
-- [ ] B-1a `.backups` 三个项目快照目录 116 MB（`proj-pre-a1` 42.35 MB、`proj-pre-d12` 42.35 MB、`proj-pre-b1replay` 31.27 MB，前两个内容清单仅 2 条不同，近乎重复）。可选：整体打包归档后删目录，或只先去重复份。**需主人一句话**，未批不动。
+- [ ] B-1a 三个 proj-pre 快照目录（`proj-pre-a1`／`proj-pre-d12`／`proj-pre-b1replay`）原件**已不存在**：`.backups` 目录 mtime 停在 2026-11-17 19:37（正是最后一次性实测时刻，当时 `proj-pre-a1`／`proj-pre-d12` 各 391 件、`proj-pre-b1replay` 194 件，`project.db` 分别为 14,405,632B 与 16,969,728B），之后从盘上消失；**无归档件、无删除留痕，来源待查**。补记：`.backups-archive/backups-archive-20261117-160935.zip`（76,597B）内容是 `wt-2-d916-2026-11-07/` 补丁包（17 条／解压 180,696B），**与这三个快照无关**，别再当成快照归档。现 `.backups` 只剩 3 个 11-08 文件共 0.04 MB。删留仍等主人拍。
 - [ ] B-1b `_scratch-d18` 45.6 MB（469 文件，12 天）—— 认领后按「未跟踪＋未引用＋>30 天」逐档判。
 - [ ] B-1c `_backup-2026-11-01` 23.2 MB（16 天）。
 - [ ] B-1d `AI-writer` 根不是 git 仓库，`.backups`／`_scratch-d18`／`_trash`／`_backup-2026-11-01` 全在仓库外，既不进 `git status` 也不受 `.gitignore` 约束——要么纳入，要么明确「仓库外仓」。
@@ -92,10 +92,10 @@ A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
 
 ### 转下期清单（stage 4 认定）
 
-B-1a／B-1b／B-1c／B-1d（五个快照目录约 190 MB，等主人一句话）、B-2 分支清理、B-3 集成验收、B-4 口径入协作规则、B-5 追加段另存规矩入规则、B-18 卡与派验单成对出、B-19 `tmp-dev/` 25 件、B-20 `post-merge-check.ps1` MERGE_HEAD 误判、B-21 `archive/` 8 条 `待补`、B-23。
+B-1a／B-1b／B-1c／B-1d（现存可清理约 135 MB：`_scratch-d18` 46.8 MB／`_backup-2026-11-01` 23.5 MB／`develop/.backups` 63.0 MB，另两份 11-17 B-merge tar 共 1.1 MB；B-1a 三个 proj-pre 目录原件已不存在）、B-2 分支清理、B-3 集成验收、B-4 口径入协作规则、B-5 追加段另存规矩入规则、B-18 卡与派验单成对出、B-19 `tmp-dev/` 25 件、B-20 `post-merge-check.ps1` MERGE_HEAD 误判、B-21 `archive/` 8 条 `待补`、B-23。
 
 ### 要主人一句话（3 条，未答复即转下期）
 
-1. 五个快照目录删不删（B-1a/b/c，约 190 MB，均无人认领）。
+1. B-1b／B-1c 与 `develop/.backups` 存量删不删（现存可清理约 135 MB，均无人认领）；B-1a 那三个 proj-pre 目录已不在盘上，无需处置，但来源待主身认。
 2. `C:/tmp/pmo-stage2-quarantine/` 7 件的保留期（含会话日志原件）。
 3. 97 件原件 bundle 的保留期与过期给谁——developer 已写「推送＋QA 核验同 sha 后 7 天，过期交群管理裁定，任何人不得自删」，等价于已给出期限，本项可视为已答。
