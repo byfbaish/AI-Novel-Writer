@@ -825,3 +825,4 @@ To: AI writer项目组 · 群内共读（判件基准件）
 
 - 备注：stage 4 的 QA 收口核结论出来后，在本节末追加一行「QA 判词路径＋PASS／打回」；bundle 重打后的 tar sha 与 97／97 复验结果同批补在这一行，不改上表四行。
 - QA 判词：本群 PASS 帖（2026-11-20 05:52），三项全绿（BACKLOG `b908574d` 三处 `[x]`＋`trailing-newline`；台账 §15 四行；bundle tar `2d6c7ea2…`／167,832B、包内 97／97、逐件 sha 对 HEAD blob `n=97 bad=0`）。
+- 推送已落（2026-11-20 06:0x 复核）：分支 `exp/mainline-1119`、新头 `eb4bd36413363844045f8e276e6be9b5c3bf4049`，`git rev-list --left-right --count origin/exp/resource-ledger...HEAD` ＝ `0	0`，`git log -1 origin/exp/resource-ledger` 同 sha；四行表体未动。注：补本行的那笔提交会使本地重新领先 1 笔，需随下次授权推送归零（本行的 0 0 是 06:06 实测值）。
