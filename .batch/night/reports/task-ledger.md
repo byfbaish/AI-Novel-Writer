@@ -824,3 +824,4 @@ To: AI writer项目组 · 群内共读（判件基准件）
 | 4 | 收口清单与台账＋原件 bundle | `BACKLOG.md` B-6／B-17／B-22／B-16（仅尾行那半）结案行已落，B-4 部分结案、B-23 新记；原件 bundle 在 `C:\tmp\aiwriter-archive-bundle-1120\`（不入库），README 五段齐（谁建／何时／用途／保留期／过期给谁）；bundle 首版被打回一处（容器内 `README.md` 顶掉归档件 `archive/README.md`，实件 96 而非 97），已把说明改名 `_BUNDLE-README.md` 重打：tar `C:\tmp\aiwriter-archive-bundle-1120.tar.gz`｜167,832B｜sha256 `2d6c7ea2105f1c8cf68e510fbdf917454378017f08a75e96824ac86d84de2aac`，97／97 在包内、唯一 mismatch 仍是 MANIFEST 入库版 `fd213df1` vs 现版 `0155079f`；QA 复跑待判；本表四行随本笔台账提交入库 | `ba55065b`（BACKLOG＋closecheck 骨架＋H 卡判词入库）＋本笔台账提交 |
 
 - 备注：stage 4 的 QA 收口核结论出来后，在本节末追加一行「QA 判词路径＋PASS／打回」；bundle 重打后的 tar sha 与 97／97 复验结果同批补在这一行，不改上表四行。
+- QA 判词：本群 PASS 帖（2026-11-20 05:52），三项全绿（BACKLOG `b908574d` 三处 `[x]`＋`trailing-newline`；台账 §15 四行；bundle tar `2d6c7ea2…`／167,832B、包内 97／97、逐件 sha 对 HEAD blob `n=97 bad=0`）。
