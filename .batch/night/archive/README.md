@@ -1,114 +1,173 @@
 # `.batch/night/archive/` 说明（README）
 
-- **谁建**：developer · AI writer项目组（群分身），2026-11-18 10:48 首次建立；2026-11-19 12:4x 由 CARD-1118-D 追加收编清单。
-- **何时**：CARD-1118-B（2026-11-18，2 件同字节重复件）；CARD-1118-D（2026-11-19，版本件收编，清单见 §二）。
-- **用途**：收纳两类件——①「与主件字节相同」的 `.vN` 重复件（B 卡 2 件）；②「与主件字节不同」的真历史版本件（D 卡 47 件，只移不删、保原名、留档备查）。丙类无主件孤本**不进本目录**，原地保留。
-- **保留期限**：保留到「收编去重」结论落库为止；在此之前不得删除、不得改名、不得移回。
-- **过期归属**：由项目总负责人裁定删除或归档去向；无法联系时按群规留信（to-owner）后原地不动。
+## 一、目录用途与保留期限
 
-## 一、CARD-1118-B 移入（2 条）
+- **谁建**：developer · AI writer项目组（群分身）。2026-11-18 首次建立（CARD-1118-B）；2026-11-19 CARD-1118-D 追加收编清单；2026-11-19 `78d56ea0` 整体入库（stage 1）；本版由 stage 2 按 `git ls-tree` 逐件补齐登记。
+- **何时**：收编动作为 2026-11-19（`78d56ea0`）。每件的「何时」取该件自身可核的时间证据：件内 `生成时刻`／`版本：`／`时间：`／`采集时间`／`deliveredAt` → 文件名或所在子目录的日期段（`1107`／`1113`／`resume-1114`／`1116`／`1117`／`20261119` 等）→ 均取不到写 `待补` 并列入 §四。
+- **用途**：收纳不再作为现行判定输入、但需留档备查的历史件——`.vN` 历史版本（与主件字节不同或已无主件）、历史名册、历史派验单与卡面、阶段性报告、通道信号与回执、bridge 信件。分类语义按原目录：`roster/`=身份名册历史版、`cards/`=卡面历史版、`review-requests/`=派验单历史版、`org/`=组织/台账件、`staging/`=待决件历史版、`1107/`・`resume-1114/`・`*-1113/`=按日期分段的通道件。
+- **保留期限**：长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e。一律「只移不删、不改名」，拒绝就地删除或改字节。
+- **过期归属**：由项目总负责人裁定删除或转存；无法联系时按群规留信（to-owner）后原地不动。
+- **是否清洗版**：是（与 `MANIFEST.sha256` 一致）。97 件全部来自提交 `78d56ea0` 的脱敏入库版，条目字节与 `MANIFEST.sha256` 逐件一致；原件不随库外发。
+- **计数口径**：本表一行一件，共 **97** 条 ＝ `git ls-tree -r --name-only HEAD -- .batch/night/archive` 的 98 项减去 `MANIFEST.sha256`，含 `README.md` 自身一条。目录分布：roster 22／staging 22／1107 15／review-requests 13／org 8／cards 6／resume-1114 6／（根级） 3／p9-prefix-restart-1113 1／pre-restart-1113 1。
 
-| # | 原路径 | 新路径 | 类别 | 字节 | 备注 |
-|---|---|---|---|---|---|
-| 1 | `.batch/night/org/ledger-append-1117-hy4flash-auth.v7.md` | `.batch/night/archive/org/ledger-append-1117-hy4flash-auth.v7.md` | 甲 | 10,820 | 同字节重复件（B-7） |
-| 2 | `.batch/night/staging/rules-review-docs-1116.v2.md` | `.batch/night/archive/staging/rules-review-docs-1116.v2.md` | 甲 | 3,703 | 同字节重复件 |
+## 二、登记清单（97 条）
 
-## 二、CARD-1118-D 收编清单（82 条：乙类 47 条已移入 ＋ 丙类 34 条未移 ＋ 已入库件 1 条未移）
-
-| # | 原路径 | 新路径 | 类别 | 字节 | 被引用件数 | 备注 |
+| # | 归档路径（相对 `.batch/night/archive/`） | 谁建 | 何时 | 用途 | 保留期限 | 是否清洗版 |
 |---|---|---|---|---|---|---|
-| 1 | `.batch/night/cards/d1-delivered-path.v1.md` | —（原地保留，未移动） | 丙 | 11,297 | 1 | 唯一现存副本 |
-| 2 | `.batch/night/cards/d1-delivered-path.v2.md` | —（原地保留，未移动） | 丙 | 13,188 | 1 | 唯一现存副本 |
-| 3 | `.batch/night/cards/d1-delivered-path.v3.md` | —（原地保留，未移动） | 丙 | 13,853 | 5 | 唯一现存副本 |
-| 4 | `.batch/night/cards/d1-delivered-path.v4.md` | —（原地保留，未移动） | 丙 | 13,854 | 2 | 唯一现存副本 |
-| 5 | `.batch/night/cards/d1-delivered-path.v5.md` | —（原地保留，未移动） | 丙 | 14,183 | 4 | 唯一现存副本 |
-| 6 | `.batch/night/cards/p31-dedupe-persist.v2.md` | `.batch/night/archive/cards/p31-dedupe-persist.v2.md` | 乙 | 8,240 | 5 | 真历史版本，留档备查 |
-| 7 | `.batch/night/cards/p50-fix4-ch03.v1-REBUILT.md` | —（原地保留，未移动） | 乙 | 2,199 | 3 | 已入库件，移动会产生 git 删除记录、超出本卡范围，原地保留 |
-| 8 | `.batch/night/cards/p51-median-gap.v2.md` | `.batch/night/archive/cards/p51-median-gap.v2.md` | 乙 | 4,279 | 7 | 真历史版本，留档备查 |
-| 9 | `.batch/night/cards/p51-median-gap.v3.md` | `.batch/night/archive/cards/p51-median-gap.v3.md` | 乙 | 6,866 | 1 | 真历史版本，留档备查 |
-| 10 | `.batch/night/cards/p54-fix3-to8.v2.md` | `.batch/night/archive/cards/p54-fix3-to8.v2.md` | 乙 | 3,762 | 5 | 真历史版本，留档备查 |
-| 11 | `.batch/night/cards/p54-fix3-to8.v3.md` | `.batch/night/archive/cards/p54-fix3-to8.v3.md` | 乙 | 3,762 | 3 | 真历史版本，留档备查 |
-| 12 | `.batch/night/cards/p54-fromto-inject.v1.md` | `.batch/night/archive/cards/p54-fromto-inject.v1.md` | 乙 | 7,914 | 4 | 真历史版本，留档备查 |
-| 13 | `.batch/night/cards/p55-pinned-cwd-allowlist.v1.md` | —（原地保留，未移动） | 丙 | 10,041 | 1 | 唯一现存副本 |
-| 14 | `.batch/night/cards/p55-pinned-cwd-allowlist.v2.md` | —（原地保留，未移动） | 丙 | 10,216 | 3 | 唯一现存副本 |
-| 15 | `.batch/night/cards/p56-fix-report-header.v1.md` | —（原地保留，未移动） | 丙 | 1,560 | 2 | 唯一现存副本 |
-| 16 | `.batch/night/cards/p56-wb-docs-stale.v1.md` | —（原地保留，未移动） | 丙 | 7,946 | 4 | 唯一现存副本 |
-| 17 | `.batch/night/cards/p56-wb-docs-stale.v2.md` | —（原地保留，未移动） | 丙 | 8,343 | 1 | 唯一现存副本 |
-| 18 | `.batch/night/cards/p56-wb-docs-stale.v3.md` | —（原地保留，未移动） | 丙 | 8,844 | 2 | 唯一现存副本 |
-| 19 | `.batch/night/cards/p56-wb-docs-stale.v4.md` | —（原地保留，未移动） | 丙 | 8,855 | 2 | 唯一现存副本 |
-| 20 | `.batch/night/cards/p56-wb-docs-stale.v5.md` | —（原地保留，未移动） | 丙 | 8,952 | 5 | 唯一现存副本 |
-| 21 | `.batch/night/cards/reboot-hy4flash-sync.v1.md` | —（原地保留，未移动） | 丙 | 9,820 | 3 | 唯一现存副本 |
-| 22 | `.batch/night/cards/reboot-hy4flash-sync.v2.md` | —（原地保留，未移动） | 丙 | 10,616 | 3 | 唯一现存副本 |
-| 23 | `.batch/night/cards/wb-rules-example.v1.md` | —（原地保留，未移动） | 丙 | 6,983 | 4 | 唯一现存副本 |
-| 24 | `.batch/night/org/ledger-append-1117-hy4flash-auth.v1.md` | `.batch/night/archive/org/ledger-append-1117-hy4flash-auth.v1.md` | 乙 | 4,288 | 2 | 真历史版本，留档备查 |
-| 25 | `.batch/night/org/ledger-append-1117-hy4flash-auth.v2.md` | `.batch/night/archive/org/ledger-append-1117-hy4flash-auth.v2.md` | 乙 | 5,438 | 1 | 真历史版本，留档备查 |
-| 26 | `.batch/night/org/ledger-append-1117-hy4flash-auth.v3.md` | `.batch/night/archive/org/ledger-append-1117-hy4flash-auth.v3.md` | 乙 | 7,098 | 1 | 真历史版本，留档备查 |
-| 27 | `.batch/night/org/ledger-append-1117-hy4flash-auth.v4.md` | `.batch/night/archive/org/ledger-append-1117-hy4flash-auth.v4.md` | 乙 | 7,830 | 1 | 真历史版本，留档备查 |
-| 28 | `.batch/night/org/ledger-append-1117-hy4flash-auth.v5.md` | `.batch/night/archive/org/ledger-append-1117-hy4flash-auth.v5.md` | 乙 | 8,973 | 1 | 真历史版本，留档备查 |
-| 29 | `.batch/night/org/ledger-append-1117-hy4flash-auth.v6.md` | `.batch/night/archive/org/ledger-append-1117-hy4flash-auth.v6.md` | 乙 | 9,927 | 6 | 真历史版本，留档备查 |
-| 30 | `.batch/night/org/ledger-append-1117-hy4flash-auth.v8.md` | `.batch/night/archive/org/ledger-append-1117-hy4flash-auth.v8.md` | 乙 | 10,632 | 2 | 真历史版本，留档备查 |
-| 31 | `.batch/night/org/process-efficiency-assign-1116.v1.md` | —（原地保留，未移动） | 丙 | 6,435 | 2 | 唯一现存副本 |
-| 32 | `.batch/night/review-requests/CARD-1118-B-fork-close.v2.md` | `.batch/night/archive/review-requests/CARD-1118-B-fork-close.v2.md` | 乙 | 4,141 | 0 | 真历史版本，留档备查 |
-| 33 | `.batch/night/review-requests/CARD-1118-B-fork-close.v3.md` | `.batch/night/archive/review-requests/CARD-1118-B-fork-close.v3.md` | 乙 | 4,446 | 0 | 真历史版本，留档备查 |
-| 34 | `.batch/night/review-requests/CARD-1118-B-fork-close.v4.md` | `.batch/night/archive/review-requests/CARD-1118-B-fork-close.v4.md` | 乙 | 6,569 | 0 | 真历史版本，留档备查 |
-| 35 | `.batch/night/review-requests/CARD-1118-C-placeholder-close.v2.md` | `.batch/night/archive/review-requests/CARD-1118-C-placeholder-close.v2.md` | 乙 | 4,801 | 0 | 真历史版本，留档备查 |
-| 36 | `.batch/night/review-requests/CARD-1118-C-placeholder-close.v3.md` | `.batch/night/archive/review-requests/CARD-1118-C-placeholder-close.v3.md` | 乙 | 4,957 | 0 | 真历史版本，留档备查 |
-| 37 | `.batch/night/review-requests/d1-delivered-path.v2.md` | `.batch/night/archive/review-requests/d1-delivered-path.v2.md` | 乙 | 6,802 | 1 | 真历史版本，留档备查 |
-| 38 | `.batch/night/review-requests/d1-delivered-path.v3.md` | `.batch/night/archive/review-requests/d1-delivered-path.v3.md` | 乙 | 8,288 | 5 | 真历史版本，留档备查 |
-| 39 | `.batch/night/review-requests/merge-p55-into-develop.v1.md` | —（原地保留，未移动） | 丙 | 2,719 | 3 | 唯一现存副本 |
-| 40 | `.batch/night/review-requests/p54-fix3-to8.v2.md` | `.batch/night/archive/review-requests/p54-fix3-to8.v2.md` | 乙 | 4,624 | 5 | 真历史版本，留档备查 |
-| 41 | `.batch/night/review-requests/p56.v2.md` | `.batch/night/archive/review-requests/p56.v2.md` | 乙 | 3,660 | 1 | 真历史版本，留档备查 |
-| 42 | `.batch/night/review-requests/p56.v3.md` | `.batch/night/archive/review-requests/p56.v3.md` | 乙 | 3,976 | 3 | 真历史版本，留档备查 |
-| 43 | `.batch/night/review-requests/p56.v4.md` | `.batch/night/archive/review-requests/p56.v4.md` | 乙 | 4,087 | 3 | 真历史版本，留档备查 |
-| 44 | `.batch/night/review-requests/p56.v5.md` | `.batch/night/archive/review-requests/p56.v5.md` | 乙 | 4,370 | 4 | 真历史版本，留档备查 |
-| 45 | `.batch/night/review-requests/reboot-hy4flash-sync.v2.md` | `.batch/night/archive/review-requests/reboot-hy4flash-sync.v2.md` | 乙 | 3,471 | 3 | 真历史版本，留档备查 |
-| 46 | `.batch/night/staging/d1-delivered-path-report.v2.md` | `.batch/night/archive/staging/d1-delivered-path-report.v2.md` | 乙 | 11,466 | 1 | 真历史版本，留档备查 |
-| 47 | `.batch/night/staging/d1-precheck-1117.v2.md` | `.batch/night/archive/staging/d1-precheck-1117.v2.md` | 乙 | 7,135 | 1 | 真历史版本，留档备查 |
-| 48 | `.batch/night/staging/d1-precheck-1117.v3.md` | `.batch/night/archive/staging/d1-precheck-1117.v3.md` | 乙 | 8,032 | 1 | 真历史版本，留档备查 |
-| 49 | `.batch/night/staging/d1-precheck-1117.v4.md` | `.batch/night/archive/staging/d1-precheck-1117.v4.md` | 乙 | 8,305 | 1 | 真历史版本，留档备查 |
-| 50 | `.batch/night/staging/dispatch-schedule-endorse-doubao.v1.md` | —（原地保留，未移动） | 丙 | 2,833 | 2 | 唯一现存副本 |
-| 51 | `.batch/night/staging/dispatch-schedule-endorse-doubao.v2.md` | —（原地保留，未移动） | 丙 | 3,581 | 0 | 唯一现存副本 |
-| 52 | `.batch/night/staging/dispatch-schedule-endorse-doubao.v3.md` | —（原地保留，未移动） | 丙 | 6,471 | 0 | 唯一现存副本 |
-| 53 | `.batch/night/staging/dispatch-schedule-endorse-doubao.v4.md` | —（原地保留，未移动） | 丙 | 7,157 | 1 | 唯一现存副本 |
-| 54 | `.batch/night/staging/dispatch-schedule.v1.md` | —（原地保留，未移动） | 丙 | 1,742 | 1 | 唯一现存副本 |
-| 55 | `.batch/night/staging/dispatch-schedule.v2.md` | —（原地保留，未移动） | 丙 | 7,030 | 0 | 唯一现存副本 |
-| 56 | `.batch/night/staging/dispatch-schedule.v3.md` | —（原地保留，未移动） | 丙 | 8,749 | 2 | 唯一现存副本 |
-| 57 | `.batch/night/staging/doubao-liaison-handoff.v2.md` | `.batch/night/archive/staging/doubao-liaison-handoff.v2.md` | 乙 | 2,258 | 0 | 真历史版本，留档备查 |
-| 58 | `.batch/night/staging/doubao-liaison-handoff.v3.md` | `.batch/night/archive/staging/doubao-liaison-handoff.v3.md` | 乙 | 2,643 | 0 | 真历史版本，留档备查 |
-| 59 | `.batch/night/staging/identity-copies/bot-session-identity.v2.md` | —（原地保留，未移动） | 丙 | 4,252 | 2 | 唯一现存副本 |
-| 60 | `.batch/night/staging/identity-copies/bot-session-identity.v3.md` | —（原地保留，未移动） | 丙 | 4,252 | 1 | 唯一现存副本 |
-| 61 | `.batch/night/staging/identity-copies/bot-session-identity.v4.md` | —（原地保留，未移动） | 丙 | 4,528 | 0 | 唯一现存副本 |
-| 62 | `.batch/night/staging/incident-plugin-push-1116.v2.md` | `.batch/night/archive/staging/incident-plugin-push-1116.v2.md` | 乙 | 7,089 | 0 | 真历史版本，留档备查 |
-| 63 | `.batch/night/staging/message-admission.v1.md` | —（原地保留，未移动） | 丙 | 4,171 | 1 | 唯一现存副本 |
-| 64 | `.batch/night/staging/no-at-count.v2.mjs` | `.batch/night/archive/staging/no-at-count.v2.mjs` | 乙 | 1,833 | 3 | 真历史版本，留档备查 |
-| 65 | `.batch/night/staging/no-at-count.v3.mjs` | `.batch/night/archive/staging/no-at-count.v3.mjs` | 乙 | 1,737 | 2 | 真历史版本，留档备查 |
-| 66 | `.batch/night/staging/owner-config-fix-1116.v2.md` | `.batch/night/archive/staging/owner-config-fix-1116.v2.md` | 乙 | 3,341 | 1 | 真历史版本，留档备查 |
-| 67 | `.batch/night/staging/owner-config-fix-1116.v3.md` | `.batch/night/archive/staging/owner-config-fix-1116.v3.md` | 乙 | 3,489 | 1 | 真历史版本，留档备查 |
-| 68 | `.batch/night/staging/owner-config-fix-1116.v4.md` | `.batch/night/archive/staging/owner-config-fix-1116.v4.md` | 乙 | 1,631 | 0 | 真历史版本，留档备查 |
-| 69 | `.batch/night/staging/owner-config-fix-1116.v5.md` | `.batch/night/archive/staging/owner-config-fix-1116.v5.md` | 乙 | 1,851 | 0 | 真历史版本，留档备查 |
-| 70 | `.batch/night/staging/p54-realmachine-1115.v2.md` | `.batch/night/archive/staging/p54-realmachine-1115.v2.md` | 乙 | 6,718 | 1 | 真历史版本，留档备查 |
-| 71 | `.batch/night/staging/p56-report.v2.md` | `.batch/night/archive/staging/p56-report.v2.md` | 乙 | 12,080 | 5 | 真历史版本，留档备查 |
-| 72 | `.batch/night/staging/pointer-plan.v1.md` | —（原地保留，未移动） | 丙 | 10,809 | 0 | 唯一现存副本 |
-| 73 | `.batch/night/staging/pointer-plan.v2.md` | —（原地保留，未移动） | 丙 | 8,096 | 0 | 唯一现存副本 |
-| 74 | `.batch/night/staging/pointer-plan.v3.md` | —（原地保留，未移动） | 丙 | 8,107 | 0 | 唯一现存副本 |
-| 75 | `.batch/night/staging/pointer-plan.v4.md` | —（原地保留，未移动） | 丙 | 7,826 | 1 | 唯一现存副本 |
-| 76 | `.batch/night/staging/rules-example-acceptance.v2.md` | `.batch/night/archive/staging/rules-example-acceptance.v2.md` | 乙 | 5,780 | 0 | 真历史版本，留档备查 |
-| 77 | `.batch/night/staging/rules-example-acceptance.v3.md` | `.batch/night/archive/staging/rules-example-acceptance.v3.md` | 乙 | 6,438 | 0 | 真历史版本，留档备查 |
-| 78 | `.batch/night/staging/to-owner-watch-diagnosis-1116.v2.md` | `.batch/night/archive/staging/to-owner-watch-diagnosis-1116.v2.md` | 乙 | 6,071 | 0 | 真历史版本，留档备查 |
-| 79 | `.batch/night/staging/wb-quota-schedule-1117.v1.md` | —（原地保留，未移动） | 丙 | 4,896 | 0 | 唯一现存副本 |
-| 80 | `.batch/night/staging/wt2-merge-backout-plan-1116.v2.md` | `.batch/night/archive/staging/wt2-merge-backout-plan-1116.v2.md` | 乙 | 11,421 | 0 | 真历史版本，留档备查 |
-| 81 | `.batch/night/staging/wt2-merge-backout-plan-1116.v3.md` | `.batch/night/archive/staging/wt2-merge-backout-plan-1116.v3.md` | 乙 | 13,825 | 0 | 真历史版本，留档备查 |
-| 82 | `.batch/night/staging/wt2-merge-backout-plan-1116.v4.md` | `.batch/night/archive/staging/wt2-merge-backout-plan-1116.v4.md` | 乙 | 15,513 | 0 | 真历史版本，留档备查 |
+| 1 | `1107/bridge-to-group/bug-duplicate-delivery-0654.md` | 待补 | 2026-11-07 | 缺陷报告：桥接重复投递已读文件 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 2 | `1107/bridge-to-group/decision-p6-0612.md` | 待补 | 2026-11-07 | 主人裁定：P6 两点 + npm 令牌 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 3 | `1107/bridge-to-group/reverse-test-0558.md` | 待补 | 2026-11-07 | 私聊窗口反向测试 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 4 | `1107/bridge-to-owner/ask-npm-token.md` | 待补 | 2026-11-07 | 待主人操作：npm 发布需要访问令牌 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 5 | `1107/bridge-to-owner/ask-p6-addressing.md` | 待补 | 2026-11-07 | 待主人裁定：插件寻址方案 P6 两点 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 6 | `1107/bridge-to-owner/bridge-handoff-reverse-test.md` | 待补 | 2026-11-07 | 交接：你有一个「向项目群窗口喊话」的通道（含一次反向测试） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 7 | `1107/bridge-to-owner/how-to-deliver-npm-token.md` | 待补 | 2026-11-07 | 补一条：npm 令牌怎么交 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 8 | `1107/bridge-to-owner/where-the-files-are.md` | 待补 | 2026-11-07 | 你读不到内容的原因：通知里只有文件名，没有路径 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 9 | `1107/signals-doubao/dedupe-persist.done` | 待补 | 2026-11-07 | 完成信号（产物路径：C:\develop\workspace\），指向 `reports/dedupe-persist.md` | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 10 | `1107/signals-doubao/docs-merge.done` | 待补 | 2026-11-07 | 完成信号（产物路径：C:\develop\workspace\），指向 `reports/docs-merge.md` | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 11 | `1107/signals-doubao/npm-fields.done` | 待补 | 2026-11-07 | 完成信号（产物路径：C:\develop\workspace\），指向 `reports/npm-fields.md` | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 12 | `1107/signals-doubao/readme-032.done` | 待补 | 2026-11-07 | 完成信号（产物路径：C:\develop\workspace\），指向 `reports/readme-032.md` | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 13 | `1107/signals-doubao/story-rewrite.done` | 待补 | 2026-11-07 | 完成信号（产物路径：C:\develop\workspace\），指向 `reports/story-rewrite.md` | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 14 | `1107/signals-doubao/why-relay.done` | 待补 | 2026-11-07 | 完成信号（产物路径：C:\develop\workspace\），指向 `reports/why-relay.md` | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 15 | `1107/signals-workbuddy/p6-addressing.done` | 待补 | 2026-11-07 | 完成信号（产物路径：C:\develop\workspace\），指向 `reports/p6-addressing.md` | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 16 | `P9.json` | 待补 | 2026-11-13 | "card": "P9", | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 17 | `README.md` | developer · AI writer项目组（群分身） | 2026-11-18 | `.batch/night/archive/` 目录说明与收编登记表（本文件） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 18 | `cards/p31-dedupe-persist.v2.md` | 待补 | 待补 | P31 · 投递层物理去重（拦在唤醒模型之前）· v2 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 19 | `cards/p51-median-gap.v2.md` | 豆包 | 待补 | P51 · 动作数中位数改「连续 10 章」口径（A 类改码卡）· v2 重投版 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 20 | `cards/p51-median-gap.v3.md` | 豆包 | 待补 | P51 · 动作数中位数改「连续 10 章」口径（A 类改码卡）· v2 重投版 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 21 | `cards/p54-fix3-to8.v2.md` | 豆包 | 2026-11-15 | To 行身份段修复（D-TO8 ＋ To 标题段为空） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 22 | `cards/p54-fix3-to8.v3.md` | 豆包 | 2026-11-15 | To 行身份段修复（D-TO8 ＋ To 标题段为空） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 23 | `cards/p54-fromto-inject.v1.md` | AI writer总负责人 · AI writer项目组 | 2026-11-15 | P54-fix1 · relay 注入头强制写 From/To 身份（A 类改码卡） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 24 | `org/ledger-append-1117-hy4flash-auth.v1.md` | 大肥鱼主身，01:11 落盘 | 2026-11-17 | 台账一笔：Hy4 flash 白名单改动＝已授权 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 25 | `org/ledger-append-1117-hy4flash-auth.v2.md` | 大肥鱼主身，01:11 落盘 | 2026-11-17 | 台账一笔：Hy4 flash 白名单改动＝已授权 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 26 | `org/ledger-append-1117-hy4flash-auth.v3.md` | 大肥鱼主身，01:11 落盘 | 2026-11-17 | 台账一笔：Hy4 flash 白名单改动＝已授权 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 27 | `org/ledger-append-1117-hy4flash-auth.v4.md` | 大肥鱼主身，01:11 落盘 | 2026-11-17 | 状态：现行 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 28 | `org/ledger-append-1117-hy4flash-auth.v5.md` | 大肥鱼主身，01:11 落盘 | 2026-11-17 | 状态：现行 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 29 | `org/ledger-append-1117-hy4flash-auth.v6.md` | 大肥鱼主身，01:11 落盘 | 2026-11-17 | 状态：现行 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 30 | `org/ledger-append-1117-hy4flash-auth.v7.md` | 大肥鱼主身，01:11 落盘 | 2026-11-17 | 状态：现行 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 31 | `org/ledger-append-1117-hy4flash-auth.v8.md` | 大肥鱼主身，01:11 落盘 | 2026-11-17 | 状态：现行 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 32 | `p9-prefix-restart-1113/p9-failed-take.done` | 待补 | 2026-11-13 | 完成信号（报告路径：C:\develop\workspace\），指向 `reports/p9-failed-take.md` | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 33 | `pre-restart-1113/doubao/p8-take.done` | 待补 | 2026-11-13 | 完成信号（产物路径：C:\develop\workspace\），指向 `reports/p8-take-and-cleanup.md` | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 34 | `resume-1114/bridge-to-owner/2026-11-14-0125-plugin-pitfalls-guide.md` | 待补 | 2026-11-14 | 避坑指南已落地（17 条） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 35 | `resume-1114/bridge-to-owner/2026-11-14-0205-card-visible.md` | 待补 | 2026-11-14 | 卡出来了：方案 A 三条判据全过 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 36 | `resume-1114/bridge-to-owner/2026-11-14-0207-release-notes-ready.md` | 待补 | 2026-11-14 | 主人在上一条问询（2026-11-14-0205-card-visible.md）之外补一句： | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 37 | `resume-1114/signals-doubao/p13-settings-inject-crash.done` | 待补 | 2026-11-14 | 完成信号：完成：P13 修复（ctx.settings→getService+try/catch、调用点 .catch） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 38 | `resume-1114/signals-doubao/p14-settings-inject-mount.done` | 待补 | 2026-11-14 | 完成信号：完成：P14 挂卡改 ctx.inject(['settings'], cb) 就绪挂载 + schemast | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 39 | `resume-1114/wakeup-inbox/dsh-wake-20261114-0205-7426.md` | 待补 | 2026-11-14 | 检查点（11-14 02:05）：P11（23:33 派豆包，估 120-150 分钟）应已落盘。核 .batch/ni | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 40 | `review-requests/CARD-1118-B-fork-close.v2.md` | developer · AI writer项目组 | 2026-11-18 | CARD-1118-B 派验单 v2 · 分叉收口（A 方案）＋未跟踪件归位 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 41 | `review-requests/CARD-1118-B-fork-close.v3.md` | developer · AI writer项目组 | 2026-11-18 | CARD-1118-B 派验单 v3 · 分叉收口（A 方案）＋未跟踪件归位 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 42 | `review-requests/CARD-1118-B-fork-close.v4.md` | developer · AI writer项目组 | 2026-11-18 | CARD-1118-B 派验单 v4 · 分叉收口（A 方案）＋未跟踪件归位 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 43 | `review-requests/CARD-1118-C-placeholder-close.v2.md` | developer · AI writer项目组 | 2026-11-18 | CARD-1118-C 派验单 v2 · 协作件入索引收口（pii-scan 闸门） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 44 | `review-requests/CARD-1118-C-placeholder-close.v3.md` | developer · AI writer项目组 | 2026-11-18 | CARD-1118-C 派验单 v2 · 协作件入索引收口（pii-scan 闸门） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 45 | `review-requests/d1-delivered-path.v2.md` | WorkBuddy（2026-11-16 18:00 后派；周一 14:00–18:00 禁派窗内不投） | 2026-11-16 | 派验单 · D-1（注入正文指向 delivered 落点） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 46 | `review-requests/d1-delivered-path.v3.md` | WorkBuddy（2026-11-16 18:00 后派；周一 14:00–18:00 禁派窗内不投） | 2026-11-16 | 派验单 · D-1（注入正文指向 delivered 落点） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 47 | `review-requests/p54-fix3-to8.v2.md` | 豆包 | 2026-11-15 | p54-fix3-to8 派验单（To 行身份段：剥 session- ＋ 空标题占位） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 48 | `review-requests/p56.v2.md` | 项目总负责人 · AI writer项目组 | 待补 | 派验单 p56 · workbuddy 文档陈旧判据与 Hy4 残档清理 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 49 | `review-requests/p56.v3.md` | 项目总负责人 · AI writer项目组 | 待补 | 派验单 p56 · workbuddy 文档陈旧判据与 Hy4 残档清理 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 50 | `review-requests/p56.v4.md` | 项目总负责人 · AI writer项目组 | 待补 | 派验单 p56 · workbuddy 文档陈旧判据与 Hy4 残档清理 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 51 | `review-requests/p56.v5.md` | 项目总负责人 · AI writer项目组 | 待补 | 派验单 p56 · workbuddy 文档陈旧判据与 Hy4 残档清理 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 52 | `review-requests/reboot-hy4flash-sync.v2.md` | 项目总负责人 · AI writer项目组 | 待补 | 状态：待首验（等 developer 报告落盘后开工） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 53 | `roster/identity-roster.v2.md` | 大肥鱼（项目管家） | 2026-11-15 | Bot 身份名册（v2） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 54 | `roster/identity-roster.v3.1.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 55 | `roster/identity-roster.v3.10.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 56 | `roster/identity-roster.v3.11.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 57 | `roster/identity-roster.v3.12.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 58 | `roster/identity-roster.v3.13.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 59 | `roster/identity-roster.v3.14.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 60 | `roster/identity-roster.v3.15.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 61 | `roster/identity-roster.v3.16.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 62 | `roster/identity-roster.v3.17.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 63 | `roster/identity-roster.v3.18.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 64 | `roster/identity-roster.v3.19.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 65 | `roster/identity-roster.v3.2.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 66 | `roster/identity-roster.v3.20.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 67 | `roster/identity-roster.v3.3.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 68 | `roster/identity-roster.v3.4.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 69 | `roster/identity-roster.v3.5.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 70 | `roster/identity-roster.v3.6.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 71 | `roster/identity-roster.v3.7.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 72 | `roster/identity-roster.v3.8.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 73 | `roster/identity-roster.v3.9.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 74 | `roster/identity-roster.v3.md` | 大肥鱼（项目管家） | 2026-11-16 | Bot 身份名册（v3） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 75 | `staging/d1-delivered-path-report.v2.md` | WorkBuddy | 待补 | D-1 执行方报告：注入正文指向 delivered 落点 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 76 | `staging/d1-precheck-1117.v2.md` | ／取数件三元组（index.js 74243B / 58025002…）／model= | 2026-11-16 | D-1 派卡前置核对单（d1-delivered-path） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 77 | `staging/d1-precheck-1117.v3.md` | ／取数件三元组（index.js 74243B / 58025002…）／model= | 2026-11-16 | D-1 派卡前置核对单（d1-delivered-path） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 78 | `staging/d1-precheck-1117.v4.md` | ／取数件三元组（index.js 74243B / 58025002…）／model= | 2026-11-16 | D-1 派卡前置核对单（d1-delivered-path） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 79 | `staging/doubao-liaison-handoff.v2.md` | 豆包联络人 · AI writer项目组 | 2026-11-16 | 执行方：豆包联络人 · AI writer项目组 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 80 | `staging/doubao-liaison-handoff.v3.md` | 豆包联络人 · AI writer项目组 | 2026-11-16 | 执行方：豆包联络人 · AI writer项目组 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 81 | `staging/incident-plugin-push-1116.v2.md` | developer · AI writer项目组（906d802a） | 2026-11-16 | 插件仓 e6362a8 无人认领推送 · 取证 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 82 | `staging/no-at-count.v2.mjs` | 大肥鱼（维护人） | 2026-11-16 | // no-at-count.v2.mjs — 无@率唯一出处（大肥鱼维护，2026-11-16） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 83 | `staging/no-at-count.v3.mjs` | 大肥鱼（维护人） | 2026-11-16 | // no-at-count.v3.mjs — 无@率唯一出处（大肥鱼维护，2026-11-16 20:45） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 84 | `staging/owner-config-fix-1116.v2.md` | 待补 | 2026-11-16 | 待主人执行的配置修正清单（relay watch 绑定） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 85 | `staging/owner-config-fix-1116.v3.md` | 待补 | 2026-11-16 | 待主人执行的配置修正清单（relay watch 绑定）· v3 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 86 | `staging/owner-config-fix-1116.v4.md` | 项目总负责人 | 2026-11-16 | cordis.patch.yml relay 绑定修复 · v4（现状版） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 87 | `staging/owner-config-fix-1116.v5.md` | 项目总负责人 | 2026-11-16 | cordis.patch.yml relay 绑定 · v5（现状版，回滚路径已改正） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 88 | `staging/p54-realmachine-1115.v2.md` | developer | 2026-11-15 | P54 真机验取证（40f34b5 · 隔离副本） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 89 | `staging/p56-report.v2.md` | WorkBuddy | 2026-11-16 | p56 回执 · workbuddy 文档陈旧判据与 Hy4 残档清理 | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 90 | `staging/rules-example-acceptance.v2.md` | QA。 | 2026-11-16 | 验收口径：rules.example.md + README 迁移节（卡 1，执行方＝WorkBuddy） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 91 | `staging/rules-example-acceptance.v3.md` | QA。 | 2026-11-16 | 验收口径：rules.example.md + README 迁移节（卡 1，执行方＝WorkBuddy） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 92 | `staging/rules-review-docs-1116.v2.md` | 待补 | 2026-11-16 | rules-review-docs-1116（文档视角：与台账 / 名册 / notice 的冲突、缺口、不可执行） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 93 | `staging/to-owner-watch-diagnosis-1116.v2.md` | 待补 | 2026-11-16 | 六条 watch × 目标会话 对照表（定性用，不含修改） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 94 | `staging/wt2-merge-backout-plan-1116.v2.md` | developer · AI writer项目组 | 2026-11-16 | wt-2 → exp/resource-ledger 收口方案（v2 · 只计划，不动分支） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 95 | `staging/wt2-merge-backout-plan-1116.v3.md` | developer · AI writer项目组 | 2026-11-16 | wt-2 → exp/resource-ledger 收口方案（v3 · 含合并执行记录与三债现状） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 96 | `staging/wt2-merge-backout-plan-1116.v4.md` | developer · AI writer项目组 | 2026-11-16 | wt-2 → exp/resource-ledger 收口方案（v3 · 含合并执行记录与三债现状） | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
+| 97 | `wake-later.json` | 待补 | 2026-11-13 | "card": "wake-later", | 长期（项目生命周期内）；过期处置见 `.batch/night/org/BACKLOG.md` B-1e | 是（与 `MANIFEST.sha256` 一致） |
 
-## 三、判定与改读口径（CARD-1118-D §八，负责人 2026-11-19 12:3x 裁定）
+## 三、stage 2 未跟踪件清场记录（2026-11-19/20）
 
-- **丙类（无主件）不移**：34 件中 26 件被在盘件按原路径引用，移动即断引用且 git 侧零留痕；故只登记「唯一现存副本·未移」，判据 5 改读「原路径仍在且字节一致」。
-- **判据 4 后半句改读文件系统实存**：`archive/` 未被 `.gitignore` 放行（`.gitignore:93`，只放行 cards/org/reports/review-requests/roster/staging），实测 `git ls-files --others --exclude-standard` 与 `git status --porcelain` 对 archive 内件**均返回空**，故以「新路径存在＋字节/md5 与清单一致」为准，git 侧只要求 `status -- .batch/night` 无 ` D`。
-- **丁类（被已入库件引用的必须留可读路径）共 58 件**：即本节清单「被引用件数」列 > 0 的行；比清单表（`.batch/night/org/version-files-inventory-1119.md`，79 行口径 56 件）多 2 件，来源是并入的 `staging/identity-copies/` 3 件中 `bot-session-identity.v2.md`（被引用 2）与 `.v3.md`（被引用 1）。移入 archive 的 47 件新路径见「新路径」列，旧路径 → 新路径映射即该列，已入库件正文未改。
-- **`??` 数量下降不是丢件**：乙类 47 件移入 ignore 区后，`git status` 可见的未跟踪件减少，属预期。
+按 `.batch/night/org/stage2-disposition-1119.md` §三分四组处置，禁 `git clean`／`git stash`：
 
-## 四、注意
+- **G1 入库**：卡面／派验单／裁定／报告／规范件 27 件（含 `org/stage2-disposition-1119.md`、`reports/GOAL2-untracked-inventory-qa.md` 两件在负责人计数之后新增的件）。
+- **G2 归位后入库**：无主件历史 `.vN` 37 件 → `.batch/night/staging/vn-history-1119/`（`staging/` 对 `versioned-filename` 豁免，故 `--all` 仍 0 项）；原相对结构保留）。
+- **G3 移出工作区**：SQLite 运行态 5 件（`project.db`／`-wal`／`-shm`）→ `C:/tmp/pmo-stage2-quarantine/`，不入库。
+- **G4 移出工作区**：`delivered/62e69db07b3/2026-11-18-2000-report.md`（relay 投递留痕 1 件）→ 同处留本机。
+- **G5 移出工作区待认领**：`scripts/workbuddy/space-readonly-check.mjs` 1 件（BACKLOG B-8）。
 
-- 本目录整体被 git 忽略（`.gitignore:93`），故本 README 与其中文件都**不入库**；任何要长期留存的结论必须写进 `.batch/night/org/BACKLOG.md`。
-- 本卡（CARD-1118-D）**未改** `.gitignore`；archive 是否入库是主人待决项 B-6，不属本卡范围。
-- 生成脚本：`tmp-dev/d-move.cjs`（首轮 46 件）＋ `tmp-dev/d-state.cjs`（状态重建与 2 件 `.mjs` 补移）＋ `tmp-dev/d-readme.cjs`（引用数重算与本 README）。
+## 四、`待补` 清单（38 条）
+
+取数不到即写 `待补`、不写「未知」，也不作推断性描述；每条列出缺哪个字段与建议补法，交下一张补登记卡追平。
+
+1. `1107/bridge-to-group/bug-duplicate-delivery-0654.md` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+2. `1107/bridge-to-group/decision-p6-0612.md` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+3. `1107/bridge-to-group/reverse-test-0558.md` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+4. `1107/bridge-to-owner/ask-npm-token.md` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+5. `1107/bridge-to-owner/ask-p6-addressing.md` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+6. `1107/bridge-to-owner/bridge-handoff-reverse-test.md` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+7. `1107/bridge-to-owner/how-to-deliver-npm-token.md` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+8. `1107/bridge-to-owner/where-the-files-are.md` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+9. `1107/signals-doubao/dedupe-persist.done` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+10. `1107/signals-doubao/docs-merge.done` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+11. `1107/signals-doubao/npm-fields.done` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+12. `1107/signals-doubao/readme-032.done` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+13. `1107/signals-doubao/story-rewrite.done` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+14. `1107/signals-doubao/why-relay.done` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+15. `1107/signals-workbuddy/p6-addressing.done` —— 缺：谁建；补法：查 1107 段 bridge/信号台账（本机会话存档）与主人侧来往件
+16. `P9.json` —— 缺：谁建；补法：交付回执 JSON，写入方为通道脚本；查对应报告件的执行方行
+17. `cards/p31-dedupe-persist.v2.md` —— 缺：谁建、何时；补法：查台账该卡条目或派验单 From 行
+18. `cards/p51-median-gap.v2.md` —— 缺：何时；补法：查台账该卡条目或派验单 From 行
+19. `cards/p51-median-gap.v3.md` —— 缺：何时；补法：查台账该卡条目或派验单 From 行
+20. `p9-prefix-restart-1113/p9-failed-take.done` —— 缺：谁建；补法：信号件无件内署名，按信号协议由执行方落盘；查同卡报告件的 `执行方：` 行
+21. `pre-restart-1113/doubao/p8-take.done` —— 缺：谁建；补法：信号件无件内署名，按信号协议由执行方落盘；查同卡报告件的 `执行方：` 行
+22. `resume-1114/bridge-to-owner/2026-11-14-0125-plugin-pitfalls-guide.md` —— 缺：谁建；补法：查 `.batch/night/reports/task-ledger*.md` 对应条目或当次会话存档
+23. `resume-1114/bridge-to-owner/2026-11-14-0205-card-visible.md` —— 缺：谁建；补法：查 `.batch/night/reports/task-ledger*.md` 对应条目或当次会话存档
+24. `resume-1114/bridge-to-owner/2026-11-14-0207-release-notes-ready.md` —— 缺：谁建；补法：查 `.batch/night/reports/task-ledger*.md` 对应条目或当次会话存档
+25. `resume-1114/signals-doubao/p13-settings-inject-crash.done` —— 缺：谁建；补法：信号件无件内署名，按信号协议由执行方落盘；查同卡报告件的 `执行方：` 行
+26. `resume-1114/signals-doubao/p14-settings-inject-mount.done` —— 缺：谁建；补法：信号件无件内署名，按信号协议由执行方落盘；查同卡报告件的 `执行方：` 行
+27. `resume-1114/wakeup-inbox/dsh-wake-20261114-0205-7426.md` —— 缺：谁建；补法：查 `.batch/night/reports/task-ledger*.md` 对应条目或当次会话存档
+28. `review-requests/p56.v2.md` —— 缺：何时；补法：查台账该卡条目日期
+29. `review-requests/p56.v3.md` —— 缺：何时；补法：查台账该卡条目日期
+30. `review-requests/p56.v4.md` —— 缺：何时；补法：查台账该卡条目日期
+31. `review-requests/p56.v5.md` —— 缺：何时；补法：查台账该卡条目日期
+32. `review-requests/reboot-hy4flash-sync.v2.md` —— 缺：何时；补法：查台账该卡条目日期
+33. `staging/d1-delivered-path-report.v2.md` —— 缺：何时；补法：查 `.batch/night/reports/task-ledger*.md` 对应条目或当次会话存档
+34. `staging/owner-config-fix-1116.v2.md` —— 缺：谁建；补法：查 `.batch/night/reports/task-ledger*.md` 对应条目或当次会话存档
+35. `staging/owner-config-fix-1116.v3.md` —— 缺：谁建；补法：查 `.batch/night/reports/task-ledger*.md` 对应条目或当次会话存档
+36. `staging/rules-review-docs-1116.v2.md` —— 缺：谁建；补法：查 `.batch/night/reports/task-ledger*.md` 对应条目或当次会话存档
+37. `staging/to-owner-watch-diagnosis-1116.v2.md` —— 缺：谁建；补法：查 `.batch/night/reports/task-ledger*.md` 对应条目或当次会话存档
+38. `wake-later.json` —— 缺：谁建；补法：交付回执 JSON，写入方为通道脚本；查对应报告件的执行方行
+
+## 五、变更记录
+
+- 2026-11-18：首次建立（CARD-1118-B，2 件同字节重复件）。
+- 2026-11-19：CARD-1118-D 收编 47 件历史版本（乙类）；丙类 34 件原地保留不入本目录。
+- 2026-11-19：`78d56ea0` 全目录 97 件入库（stage 1），生成 `MANIFEST.sha256`（97 条，自身不入表）。
+- 2026-11-19/20：stage 2 按 `ls-tree` 逐件补登记至 97 条（五字段），并记录 G1–G5 清场。
