@@ -811,3 +811,16 @@ To: AI writer项目组 · 群内共读（判件基准件）
 - 限流方案：`staging/message-admission.v1.md`｜4,171B｜MD5 `fc4d4c23a9914bef6169a28ef55f1107`｜54 行；v2（五处改＋本基线）待复工后出，不出散版。
 
 - v68（本版，base＝v67 `96a0dfe37976f0db19c85bf251a76834`／195,126B／`wc -l` 790 行）改四处，其余逐字不动：① 文首加 `状态：现行` 与第 2–3 行 From/To；② §5 名册现行改 **v3.20**（37,699B／`fa384b70a588f1173c87d52c7f56b483`／373 行），v3.19 转历史留档，`:749` 段末与 `:750` 的「判件按 v3.19」同步改 v3.20；③ 新增 §13 首卡 `reboot-hy4flash-sync` 关闭（关闭原文照抄＋两项偏差裁定＋7 棵旧树夜间仍返回 `Hy4` 的边界）；④ 新增 §14 无 @ 基线 721／72＝9.99%（722／72＝9.97% 只作存档）。
+
+### 15. Goal「脱敏基线收口（四阶段）」四 stage 证据行（写手＝产品经理，2026-11-20）
+- 素材来源：`org/stage4-closecheck-1120.md` §七（项目总负责人交给我抄的素材）、`org/BACKLOG.md` 收口段、QA 首验判词、提交记录。台账只记事实与判据，判定归 QA 与终审。
+- 本表不写三元组（裁定 `1224ee2b` 第 3 条）：核对内容一律 `git show <sha>:<path>` 现算。
+
+| stage | 事项 | 判据与证据 | 依据 |
+|---|---|---|---|
+| 1 | `archive/` 首次合入主线（97 件清洗版＋`MANIFEST.sha256`） | `--no-ff` 合并；判据 97／97、双向差集 0、97 条 sha256 `mismatch=0`、真名 0／0、`--all` 0 项 EXIT=0、`check:fast` EXIT=0；QA 首验 PASS（`reports/GOAL1-archive-first-merge-qa-firstcheck.md`） | merge `ce74268f`（源 `78d56ea0`）＋docs `68fa0381` |
+| 2 | `archive/` 登记补齐＋未跟踪件清场 | `archive/README.md` 97 条五字段齐；`待补` 38→8（8 条转 B-21）；`??`=0、`--all` 0 项、`check:fast` 五段绿；QA 复跑 PASS（`reports/GOAL2-archive-readme-qa-firstcheck.md`） | `058c0867`（含 `e29b1a50`、`f2ffa905`） |
+| 3 | 脱敏线接主线并推送 | 受验 `adb17d44`：工具补丁回滚后 `63e9328f…`、`.piiallow` 149／149／149、`--all-tracked` 0 处命中（扫描 3363 个文件）；合并 `eba81c43` 后推送 `exp/mainline-1119` → `refs/heads/exp/resource-ledger`，旧头 `beeedc26` → 新头 `eba81c43`；`ls-remote` 同 sha、`rev-list --left-right --count` `0	0`、`check:fast` EXIT=0、真名 0／0 | 受验卡 `adb17d44`＋合并推送 `eba81c43` |
+| 4 | 收口清单与台账＋原件 bundle | `BACKLOG.md` B-6／B-17／B-22／B-16（仅尾行那半）结案行已落，B-4 部分结案、B-23 新记；原件 bundle 在 `C:\tmp\aiwriter-archive-bundle-1120\`（不入库），README 五段齐（谁建／何时／用途／保留期／过期给谁）；bundle 首版被 QA 打回一处：容器内 `README.md` 顶掉归档件 `archive/README.md`，实件 96 而非 97，重打后复验；本表四行随本笔台账提交入库 | `ba55065b`（BACKLOG＋closecheck 骨架＋H 卡判词入库）＋本笔台账提交 |
+
+- 备注：stage 4 的 QA 收口核结论出来后，在本节末追加一行「QA 判词路径＋PASS／打回」；bundle 重打后的 tar sha 与 97／97 复验结果同批补在这一行，不改上表四行。
