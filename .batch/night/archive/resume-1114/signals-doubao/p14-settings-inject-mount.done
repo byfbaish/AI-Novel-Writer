@@ -1,0 +1,3 @@
+完成：P14 挂卡改 ctx.inject(['settings'], cb) 就绪挂载 + schemastery 解析基线改为 profile 根（createRequire(<profile>/package.json) → lib/index.cjs），已提交 2ea6b5397deb9637edc1aea013fa2a8ed7b66e6e 与 26ba94c7444ad014306db2fae522220f86c7c366
+改了几处：index.js 挂载段 + loadSchemastery 换基线；测试新增 11 条（先就绪/后到/无服务/回调抛错 + register spy + 基线断言）；报告新增「3. schemastery 基线」节
+测试 TOTAL：TOTAL: 111/111 PASS（RESULT: PASS，exit 0；提交后 porcelain 空，%TEMP% 无 relay-p13-*/relay-p14-* 残留；未 push）

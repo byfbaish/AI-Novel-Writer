@@ -1,0 +1,3 @@
+完成：P13 修复（ctx.settings→getService+try/catch、调用点 .catch）已提交 c55d7f1；追加卡细化已落实并提交 3e9abd6（relay-p13- 临时目录+归属断言+用例结束删净、真 watcher 投递断言、schemastery 不可解析 warn 用例、8c5c073 前后对照）
+改了几处：index.js 1 处运行时未声明服务访问 + 1 处调用点兜底 + getService；测试新增 4 条严格 ctx/降级用例；报告新增 §6 追加落实（含 porcelain/临时目录绝对路径原文）
+测试 TOTAL：TOTAL: 99/99 PASS（RESULT: PASS，exit 0；提交后 porcelain 空，未 push）

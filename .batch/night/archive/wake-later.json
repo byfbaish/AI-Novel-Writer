@@ -1,0 +1,18 @@
+{
+  "card": "wake-later",
+  "deliveredAt": "2026-11-13 21:57:32",
+  "script": "scripts/dsh/wake-later.ps1",
+  "scriptBytes": 17508,
+  "scriptSha256": "3781841DEEE104125390DF75494D4AF06F0F485564F3323C12DDECAC2FFA2804",
+  "scriptMtime": "21:52:43",
+  "report": ".batch/night/reports/wake-later.md",
+  "reportBytes": 9702,
+  "reportMtime": "21:54:28",
+  "signal": ".batch/night/signals/doubao/wake-later.done",
+  "signalBytes": 176,
+  "wt1Copy": "C:\\develop\\workspace\\AI-writer\\wt-1\\scripts\\dsh\\wake-later.ps1",
+  "wt1SameHash": true,
+  "gitCommitted": false,
+  "submitter": "豆包联络人",
+  "submittedAt": "2026-11-13 21:42:32"
+}
