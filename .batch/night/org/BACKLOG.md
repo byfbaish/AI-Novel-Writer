@@ -20,6 +20,7 @@
 
 待候选：
 - [ ] B-1a 三个 proj-pre 快照目录（`proj-pre-a1`／`proj-pre-d12`／`proj-pre-b1replay`）原件**已不存在**：`.backups` 目录 mtime 停在 2026-11-17 19:37（正是最后一次性实测时刻，当时 `proj-pre-a1`／`proj-pre-d12` 各 391 件、`proj-pre-b1replay` 194 件，`project.db` 分别为 14,405,632B 与 16,969,728B），之后从盘上消失；**无归档件、无删除留痕，来源待查**。补记：`.backups-archive/backups-archive-20261117-160935.zip`（76,597B）内容是 `wt-2-d916-2026-11-07/` 补丁包（17 条／解压 180,696B），**与这三个快照无关**，别再当成快照归档。现 `.backups` 只剩 3 个 11-08 文件共 0.04 MB。删留仍等主人拍。
+  11-20 07:0x 实取清单：现存可清理约 135 MB（五项明细见 C:\tmp\aiwriter-snapshot-inventory-1120.md）；closecheck 里的 190 MB 为 11-20 早先口径，已作废，不回改历史件。
 - [ ] B-1b `_scratch-d18` 45.6 MB（469 文件，12 天）—— 认领后按「未跟踪＋未引用＋>30 天」逐档判。
 - [ ] B-1c `_backup-2026-11-01` 23.2 MB（16 天）。
 - [ ] B-1d `AI-writer` 根不是 git 仓库，`.backups`／`_scratch-d18`／`_trash`／`_backup-2026-11-01` 全在仓库外，既不进 `git status` 也不受 `.gitignore` 约束——要么纳入，要么明确「仓库外仓」。
