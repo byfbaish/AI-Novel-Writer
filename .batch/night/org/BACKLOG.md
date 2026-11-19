@@ -46,14 +46,14 @@ A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
 
 - **B-6 `archive/` 193 件未入 git（QA 在 F 卡首验提出，我受理，F 卡不改）**
   - 事实：B 卡收编把 193 件搬进 `archive/`，但 `.gitignore:93` 挡住，从未入库；本机 worktree 里没有 `archive/` 目录，所以 F 卡判据 7 的「archive 尾行 0」是在空集上成立，真反证来自单测夹具（`check-batch-hygiene.test.mjs:193`/`:206`）。
-  - 影响：F 卡的 `final-newline` 整目录豁免保护的正是这批件，而卡面又要求「原样留档、事后哈希对账」——它们一旦随工作区清理消失，对账基线一起消失，且没有任何提交能证明存在过。
+  - 影响：F 卡的 `trailing-newline` 整目录豁免保护的正是这批件，而卡面又要求「原样留档、事后哈希对账」——它们一旦随工作区清理消失，对账基线一起消失，且没有任何提交能证明存在过。
   - 待办（落主线后第一张卡）：二选一——给 `archive/` 加 `!` 反向包含后入库（186 件量级，需清场口径）；或明确「仅留本机」并写进备份口径 + 带 README（谁建/何时/用途/保留期/过期给谁）。
 
-- [ ] **B-16 `archive/` 是否整目录豁免 batch-hygiene 规则（11-19 12:26 记）**
-  - 事实：F 卡只给 `archive/` 豁免了 `final-newline`，`versioned-filename`（同目录须有主件）对 archive 仍生效。CARD-1118-D 把 82 件 `.vN` 工作件移进 `archive/` 后，`--disk` 计数会上升（`--all` 只扫已跟踪面，仍为 0）。
+- [x] **B-16 `archive/` 是否整目录豁免 batch-hygiene 规则（11-19 12:26 记）**（结案见 §收口段：只结了尾行那半，整目录豁免 `versioned-filename` 转 B-23）
+  - 事实：F 卡只给 `archive/` 豁免了 `trailing-newline`，`versioned-filename`（同目录须有主件）对 archive 仍生效。CARD-1118-D 把 82 件 `.vN` 工作件移进 `archive/` 后，`--disk` 计数会上升（`--all` 只扫已跟踪面，仍为 0）。
   - 待办：评估是否给 `archive/` 整目录豁免（理由：留档区不是流转件区，主件判据在这里无意义），或改用「archive 内文件名去掉版本段」的替代方案。改规则要动 `scripts/ops/check-batch-hygiene.mjs`，须单独出卡、不得在收编卡里顺手改。
 
-- [ ] **B-17 `archive/` 全量补登记 47 件（QA 13:2x 勘误后扩账，取代原「roster 22 件」口径）**
+- [x] **B-17 `archive/` 全量补登记 47 件（QA 13:2x 勘误后扩账，取代原「roster 22 件」口径）**（结案见 §收口段）
   - 事实：`archive/` 实存 97 件＝已登记 50 ＋ **未登记 47**：`.vN` 22 件全在 `archive/roster/`（`identity-roster.v2/.v3/.v3.1/.v3.2…`），另有非 `.vN` 老档 25 件（`1107/` 15、`resume-1114/` 6、`p9-prefix-restart-1113/` 1、`pre-restart-1113/` 1、`P9.json`、`wake-later.json`）。均不在 CARD-1118-D 的 82 件清单内。
   - 待办：按 B-1e 补进 README（谁建/何时/用途/保留期/过期给谁），或并入下一次 archive 整理卡。
 
@@ -73,7 +73,7 @@ A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
   - 口径（项目总负责人 2026-11-20 00:31 裁）：能查则查、查不出永久标 `待补` 并写清复核过程，不许写「未知」、不因此卡 stage 2。
   - 追平方式：下一张补登记卡；逐版时间须从台账/派验单留痕取得，禁按同族件推定日期填表。
 
-- [ ] **B-22 `--all-tracked` 90 文件／289 处命中须在推送前清零（developer 01:2x 报，负责人 01:40 出卡）**
+- [x] **B-22 `--all-tracked` 90 文件／289 处命中须在推送前清零（developer 01:2x 报，负责人 01:40 出卡）**（结案见 §收口段）
   - 事实：`058c0867` 上 `pii-scan --all-tracked` 报 90 文件／289 处（user-path 106・secret 37・email 24・phone 14・privacy-word 10・idcard 9・name 9）；其中**真名只 8 文件／17 处**，其余 272 处是测试夹具与设计字样（`@example.invalid`、`sk-` 开头的设计字样等）。`.batch/night/staging/tmp-c9ff5961.jsonl`（1,591,957B，blob `b5cbf42a`）是完整会话日志，含 system prompt，已随 CARD-1117-B 入库。
   - 处置：出 `cards/CARD-1119-H-pii-preflight.md`（判据 7 条、红线 6 条，`--all-tracked` 命中 0 为唯一门禁）；真名改文本、假数据进 `.piiallow`（每行带依据）、日志件 `git rm --cached` 后移出到 quarantine 并留 md5。禁批量改测试夹具。
 
@@ -82,12 +82,12 @@ A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
 - [x] **B-6 结案**：97 件清洗版已入库并生成 `.batch/night/archive/MANIFEST.sha256`（97 条，自身不入表）。判据：`git ls-tree -r --name-only HEAD -- .batch/night/archive \| grep -v 'MANIFEST\.sha256$' \| wc -l` = 97、`git show HEAD:.batch/night/archive/MANIFEST.sha256 \| wc -l` = 97、`archive/README.md` 登记 97 条。原「193 件」口径作废：193 是 B 卡搬入件数，入库面是其中 97 件（清洗版），其余仍在 `staging/`。
 - [x] **B-17 结案**：`archive/README.md` 97 条五字段齐；`待补` 38→8，余 8 条转 B-21（不在本 Goal 收口面）。
 - [x] **B-22 结案**：`--all-tracked` 90 文件／289 处 → `card/1119-H` @ `adb17d44` 上「通过（扫描 3363 个文件，0 处命中）」EXIT=0；机检工具 md5 回补丁前 `63e9328f548f66174e53a3e9937ddda8`。
-- [x] **B-16 结案（仅尾行那半）**：`card/1119-E` @ `44ff679f` 让 `final-newline` 对 `archive/` 整目录豁免；**整目录豁免 `versioned-filename` 未做**，另记 **B-23**（见下）。
+- [x] **B-16 结案（仅尾行那半）**：`card/1119-E` @ `44ff679f` 让 `trailing-newline`（脚本 `:35` `RULE_TRAILING`）对 `archive/` 整目录豁免；**整目录豁免 `versioned-filename` 未做**，另记 **B-23**（见下）。
 - [ ] **B-4 部分结案**：本次合并前未跟踪件 1 件、无撞车（B 卡那次 255 件的场面未复现）；口径条文仍未并入协作规则，转下期。
 
 ### B-23（新记，2026-11-20 05:45）：`archive/` 整目录豁免 `versioned-filename`
 
-- 事实：`scripts/ops/check-batch-hygiene.mjs` 里 `EXEMPT_VERSIONED_DIRS` 已含 `archive/`，但 `final-newline` 与 `versioned-filename` 的生效面口径在 E 卡只解决了前者；`--disk` 对 `archive/` 内 `.vN` 件仍会按「同目录须有主件」判。
+- 事实：`scripts/ops/check-batch-hygiene.mjs` 里 `EXEMPT_VERSIONED_DIRS` 已含 `archive/`，但 `trailing-newline` 与 `versioned-filename` 的生效面口径在 E 卡只解决了前者；`--disk` 对 `archive/` 内 `.vN` 件仍会按「同目录须有主件」判。
 - 待办：改码须单独出卡，禁在收编/收口卡里顺手改。
 
 ### 转下期清单（stage 4 认定）
