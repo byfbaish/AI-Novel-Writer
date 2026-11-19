@@ -1,0 +1,18 @@
+{
+  "card": "P9",
+  "deliveredAt": "2026-11-13 22:11:36",
+  "repo": "C:\\develop\\workspace\\dsh-handoff-relay",
+  "baseCommit": "6563d27",
+  "committed": false,
+  "porcelain": "M index.js; M index.test.mjs",
+  "numstat": "index.js 165 +/17 -; index.test.mjs 236 +/0 -",
+  "testRun": "node index.test.mjs => TOTAL: 77/77 PASS / RESULT: PASS / exit 0",
+  "report": ".batch/night/reports/p9-failed-take.md",
+  "reportBytes": 5509,
+  "reportMtime": "22:09:05",
+  "signal": ".batch/night/signals/doubao/p9-failed-take.done",
+  "leftIntact": "signals/doubao/wake-later.done 176B 仍在原地",
+  "notVerifiedInRuntime": true,
+  "submitter": "豆包联络人",
+  "submittedAt": "2026-11-13 22:03:46"
+}

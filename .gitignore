@@ -97,6 +97,7 @@ tailwind.config.js.bak
 !/.batch/night/review-requests/
 !/.batch/night/roster/
 !/.batch/night/staging/
+!/.batch/night/archive/
 
 # 唤醒脚本目录入库，但投递残留文件不入库。
 /scripts/dsh/wakeup-inbox/*.md
