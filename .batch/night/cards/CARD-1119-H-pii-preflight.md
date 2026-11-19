@@ -17,7 +17,7 @@
 
 按顶层目录（文件数）：`.batch/` 38、`docs/` 15、`scripts/` 14、`electron/` 10、`src/` 9、`reports/` 2、`test/` 1、`pnpm-lock.yaml` 1。
 
-**关键：真名只占 8 个文件 / 17 处，其余 272 处是测试夹具与设计字样。** 两类处置完全不同，禁「扫到就批量改」——改测试夹具会打断断言（`secret` 37 处里 `sk-` 开头的两条设计字样是假数据，`email` 里 `@example.invalid` / `@provider-a.example` 是假域）。
+**关键：真名只占 8 个文件 / 17 处，会话日志 1 件 3 处，其余 81 文件 / 269 处是测试夹具与设计字样**（289 − 17 − 3 ＝ 269；90 文件 − 8 − 1 ＝ 81，QA 02:2x 复算一致）。 两类处置完全不同，禁「扫到就批量改」——改测试夹具会打断断言（`secret` 37 处里 `sk-` 开头的两条设计字样是假数据，`email` 里 `@example.invalid` / `@provider-a.example` 是假域）。
 
 ## 三、三类处置（逐类逐件，不许合并动作）
 
@@ -42,7 +42,7 @@
 - 处置：`git rm --cached` 移出跟踪面（保留磁盘件）＋ `.gitignore` 增例外一行（写在 `.batch` 反向包含段内，写清注释）；件本体移到 `C:/tmp/pmo-stage2-quarantine/`，同目录 `README.md` 按 B-1e 写六段（谁建／何时／用途／保留期／过期给谁），保留期写「待主人定」。
 - 报告须写：原 blob OID、字节数、md5、移动后路径、md5 一致（证明未改字节）。
 
-### T3 · 假数据（其余 82 文件 / 272 处）→ 不改文本，写 `.piiallow`
+### T3 · 假数据（其余 81 文件 / 269 处）→ 不改文本，写 `.piiallow`
 
 - 建 `.piiallow`（仓根，机检脚本已支持）：**一行一条正则 ＋ 同一行行尾 `# 依据：…`**，依据写明「测试夹具」「示例假域」「设计字样」等，能指到代码位置就指（`scripts/__tests__/smoke-win-installer.test.ts` 的随机用户名夹具等）。
 - `secret` 37 处必须逐条判：属设计字样（`sk-` 开头的设计字样这类）才进 allow；**形如真密钥的（长度/前缀与真实 key 同形）一律删改**，不得进 allow 了事。
@@ -54,9 +54,9 @@
 |---|---|---|---|
 | 1 | 机检清零 | `node "<rotation>/pii-scan.mjs" --repo . --all-tracked` | `0 个文件 / 0 处命中`，exit 0，贴末三行 |
 | 2 | 日志件出跟踪面 | `git ls-files | grep -c 'tmp-c9ff5961.jsonl'` | `0` |
-| 3 | 日志件留档可复原 | `ls C:/tmp/pmo-stage2-quarantine/`；报告贴 md5 | 文件在，md5 与原 blob 解出内容一致 |
-| 4 | allow 有据 | `grep -c '^\s*$' .piiallow`、`grep -vc '#' .piiallow`、报告表行数 | allow 有效行数＝报告表 allow 行数，每行有 `# 依据：` |
-| 5 | 归档面未动 | `git diff --name-only 058c0867 HEAD -- .batch/night/archive | wc -l`；`git show HEAD:.batch/night/archive/MANIFEST.sha256 | sha256sum` | `1`（仅 README）；仍 `ab1119a2…` |
+| 3 | 日志件留档可复原 | `md5sum C:/tmp/pmo-stage2-quarantine/tmp-c9ff5961.jsonl`；`git cat-file blob b5cbf42a | md5sum`；`ls C:/tmp/pmo-stage2-quarantine/` | 两条 md5 逐字符相同，文件在，报告贴两条命令原文 |
+| 4 | allow 有据 | `grep -vE '^[[:space:]]*(#|$)' .piiallow | wc -l`、`grep -c '^[^#]*# 依据：' .piiallow`、报告表 allow 行数 | 有效行数＝报告表 allow 行数＝带 `# 依据：` 的行数（三者相等） |
+| 5 | 归档面未动 | `git diff --name-only 058c0867 HEAD -- .batch/night/archive | wc -l`；`git show HEAD:.batch/night/archive/MANIFEST.sha256 | sha256sum` | `0`；若为 `1` 则唯一件必须是 `README.md` 且报告写明非改不可的理由。本卡正常执行应为 `0`（只动 `staging/` 与 `.gitignore`）。哈希仍 `ab1119a2…` |
 | 6 | 机检与门禁 | `node scripts/ops/check-batch-hygiene.mjs --all`；`pnpm check:fast` | `0 项不合规` EXIT=0；末行 `EXIT=0` |
 | 7 | 工作区干净 | `git status --porcelain -uall | wc -l` | `0` |
 
