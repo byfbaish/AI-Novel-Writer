@@ -98,6 +98,8 @@ tailwind.config.js.bak
 !/.batch/night/roster/
 !/.batch/night/staging/
 !/.batch/night/archive/
+# 会话日志不入库（CARD-1119-H）：含 system prompt 与群内容全文，原件留本机 quarantine。
+/.batch/night/staging/tmp-c9ff5961.jsonl
 
 # 唤醒脚本目录入库，但投递残留文件不入库。
 /scripts/dsh/wakeup-inbox/*.md

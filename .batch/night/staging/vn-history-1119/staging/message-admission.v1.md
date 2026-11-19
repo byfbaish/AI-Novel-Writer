@@ -10,7 +10,7 @@
 
 ## 二、指标定义（三个，全部可从盘上复算）
 
-数据源固定一个：`C:\Users\伯云飞\.dsh\bot\ledger\group-session-4f78136d-2080-4806-ba83-0e5295209594.jsonl`（大肥鱼主身台账脚本的同一份，不另起算法）。
+数据源固定一个：`C:\Users\<用户名>\.dsh\bot\ledger\group-session-4f78136d-2080-4806-ba83-0e5295209594.jsonl`（大肥鱼主身台账脚本的同一份，不另起算法）。
 
 **分母 N**＝统计窗口内、`who` 不属于 `{User, DS Bot}`、且 `text` 非空的记录条数。ledger 每条发言只落一行，多端注入副本不重复计入。
 
@@ -27,7 +27,7 @@ R1 的三类互斥取并集，同一条命中多类只计 1 次。
 R0（已实测通过，窗口参数可换）：
 
 ```bash
-node -e 'const fs=require("fs");const p="C:/Users/伯云飞/.dsh/bot/ledger/group-session-4f78136d-2080-4806-ba83-0e5295209594.jsonl";const st=+new Date(process.argv[1]),en=+new Date(process.argv[2]);const L=fs.readFileSync(p,"utf8").split("\n").filter(Boolean).map(l=>{try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean).filter(o=>o.time>=st&&o.time<=en&&typeof o.text==="string"&&o.text.trim()&&o.who!=="User"&&o.who!=="DS Bot");const noat=L.filter(o=>!/@[^\s]+/.test(o.text));console.log("N="+L.length+" noat="+noat.length+" R0="+(100*noat.length/L.length).toFixed(1)+"%");' "2026-11-16T12:00:00+08:00" "2026-11-16T18:30:00+08:00"
+node -e 'const fs=require("fs");const p="C:/Users/<用户名>/.dsh/bot/ledger/group-session-4f78136d-2080-4806-ba83-0e5295209594.jsonl";const st=+new Date(process.argv[1]),en=+new Date(process.argv[2]);const L=fs.readFileSync(p,"utf8").split("\n").filter(Boolean).map(l=>{try{return JSON.parse(l)}catch(e){return null}}).filter(Boolean).filter(o=>o.time>=st&&o.time<=en&&typeof o.text==="string"&&o.text.trim()&&o.who!=="User"&&o.who!=="DS Bot");const noat=L.filter(o=>!/@[^\s]+/.test(o.text));console.log("N="+L.length+" noat="+noat.length+" R0="+(100*noat.length/L.length).toFixed(1)+"%");' "2026-11-16T12:00:00+08:00" "2026-11-16T18:30:00+08:00"
 ```
 
 我 20:28 实测值：**N=721，noat=72，R0=10.0%**。

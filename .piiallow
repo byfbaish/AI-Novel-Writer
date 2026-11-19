@@ -1,0 +1,302 @@
+# .piiallow —— 隐私机检假数据白名单（CARD-1119-H）
+# 格式：两行式——上一行 `# 依据：…`，下一行一条正则；命中该正则的行跳过机检。
+# 只收「确属假数据/夹具/占位/误判」，真名与真密钥一律改文本，不得进本表；收表本体（本文件）由 `.piiignore` 排除。
+# 判据 4：grep -c '^# 依据：' .piiallow ＝ 正则行数 ＝ 报告表 allow 行数，三者相等。
+# 依据：哈希/十六进制串中的数字段，经手机号规则误判｜.batch/night/archive/MANIFEST.sha256:80｜phone×1
+13538859058
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/cards/CARD-1118-C-placeholder-close.md:37,38｜user-path×2
+C:\\\\Users\\\\\$\(whoami
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/cards/CARD-1118-C-placeholder-close.md:22｜user-path×1
+C:\\Users\\<真名>
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/cards/CARD-1119-A-pii-line-landing.md:17,38,39｜user-path×3
+C:\\\\Users\\\\\$USERNAME
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/cards/p5-rename-and-title-check.md:46｜user-path×1
+C:\\Users\\\.\.\.
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜.batch/night/reports/CARD-1118-C-qa-firstcheck.md:50｜user-path×1
+/Users/\$\(whoami
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/reports/CARD-1118-C-qa-firstcheck.md:56,67,72,76,78｜user-path×5
+C:\\\\Users\\\\\$USERNAME
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜.batch/night/reports/CARD-1118-C-report.md:46｜user-path×1
+/Users/\$\(whoami
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/reports/CARD-1118-C-report.md:72｜user-path×1
+C:\\\\\\\\Users\\\\\\\\\$\(whoami
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/reports/CARD-1118-C-report.md:53｜user-path×1
+C:\\\\Users\\\\<真名>
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/reports/CARD-1118-C-report.md:61,64,72,77,79｜user-path×5
+C:\\\\Users\\\\\$\(whoami
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/reports/CARD-1119-A-qa-firstcheck.md:55,62｜user-path×2
+C:\\\\Users\\\\\$USERNAME
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜.batch/night/reports/CARD-1119-A-report.md:62｜user-path×1
+/Users/\$\(whoami
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/reports/CARD-1119-A-report.md:135｜user-path×1
+C:\\\\\\\\Users\\\\\\\\\$USERNAME
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/reports/CARD-1119-A-report.md:18,103,107｜user-path×3
+C:\\Users\\\$USERNAME
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜.batch/night/reports/CARD-1119-E-qa-firstcheck.md:152｜user-path×1
+C:\\\\Users\\\\\[\^<\]
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜.batch/night/reports/d12-wiring-sites.md:147｜secret×1
+sk-reuse-coverage-20261109
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜.batch/night/reports/d12-wiring-sites.md:147｜secret×1
+sk-reuse-threshold-calibration-20261109
+# 依据：公开仓库 committer 身份（git 历史同值），非新增泄漏；相关台账只读故未改文本，列报告待裁｜.batch/night/reports/merge-p55-into-develop-qa.md:22,23,33｜email×3
+947875122@qq\.com
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/reports/p28-probe-after-fix.md:68｜user-path×1
+C:\\Users\\\?\?\?
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜.batch/night/reports/p3-oss-cleanup.md:337｜user-path×1
+C:\\Users\\…
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜.batch/night/reports/p33-target-resolve.md:58｜secret×1
+sk-dedupe-physical-0854
+# 依据：git SSH 远端地址写法，非个人邮箱｜.batch/night/reports/p5-verdict.md:29｜email×1
+git@github\.com
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜.batch/night/reports/qa-62-failures-attribution.md:16｜user-path×1
+C:\\Users\\\\ufffd
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜.batch/night/reports/red-attribution.md:24,25,26,30｜user-path×4
+C:\\Users\\���Ʒ�
+# 依据：公开仓库 committer 身份（git 历史同值），非新增泄漏；相关台账只读故未改文本，列报告待裁｜.batch/night/reports/task-ledger.md:154｜email×1
+947875122@qq\.com
+# 依据：git SSH 远端地址写法，非个人邮箱｜.batch/night/reports/time-ledger-1116.md:230｜email×1
+git@github\.com
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/review-requests/CARD-1118-C-placeholder-close.md:30,31｜user-path×2
+C:\\\\Users\\\\\$\(whoami
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/review-requests/CARD-1118-C-rulings.md:28｜user-path×1
+C:\\\\\\\\Users\\\\\\\\\$\(whoami
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/review-requests/CARD-1118-C-rulings.md:16,29｜user-path×3
+C:\\\\Users\\\\\$USERNAME
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜.batch/night/review-requests/CARD-1119-A-pii-line-landing.md:25,26｜user-path×2
+C:\\\\Users\\\\\$USERNAME
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜.batch/night/staging/dev-draft-rules-example-1116/README.en.md:63｜user-path×1
+/Users/you
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜.batch/night/staging/dev-draft-rules-example-1116/README.zh-CN.md:57｜user-path×1
+/Users/you
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜.batch/night/staging/hy4-probe-raw.json:11｜user-path×1
+/Users/%E4%BC%AF%E4%BA%91%E9%A3%9E
+# 依据：公开仓库 committer 身份（git 历史同值），非新增泄漏；相关台账只读故未改文本，列报告待裁｜.batch/night/staging/incident-plugin-push-1116.md:13,16｜email×2
+947875122@qq\.com
+# 依据：git SSH 远端地址写法，非个人邮箱｜.batch/night/staging/push-plan-relay-4commits.md:17｜email×1
+git@github\.com
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜.batch/night/staging/verify-after-p26.md:44｜user-path×1
+C:\\Users\\…
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜.batch/night/staging/wb-rules-example-preflight-1116.md:23｜user-path×1
+C:\\Users\\…
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜docs/agents/task-board-channel.md:3｜secret×2
+sk-board-access-design
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜docs/design/features/system-notification-design.md:6,12,238｜secret×5
+sk-completion-notify-design
+# 依据：git SSH 远端地址写法，非个人邮箱｜docs/design/harness/dsh-plugin-pitfalls/03-evidence.md:34,35｜email×2
+git@github\.com
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜docs/design/prompt/chapter-task-anchor-design.md:58｜user-path×1
+C:\\Users\\<用户>
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜docs/handoffs/2026-11-03-doubao-bootstrap.md:187,191｜user-path×2
+C:\\\\Users\\\\���Ʒ�
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜docs/handoffs/2026-11-09-d3-b-to-c-handoff.md:198,208｜secret×2
+sk-d21-fix-c-plan-20261109
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜docs/handoffs/2026-11-09-d3-b-to-c-handoff.md:198,209｜secret×2
+sk-system-notice-landing-20261109
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜docs/handoffs/2026-11-09-dsh-first-run-and-batch-resume-handoff.md:59,97,131｜secret×3
+sk-d-status-audit-20261109
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜docs/handoffs/2026-11-09-dsh-first-run-and-batch-resume-handoff.md:679｜secret×1
+sk-d21-fix-c-plan-20261109
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜docs/handoffs/2026-11-09-dsh-first-run-and-batch-resume-handoff.md:28,97,131｜secret×3
+sk-reuse-coverage-20261109
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜docs/handoffs/2026-11-09-dsh-first-run-and-batch-resume-handoff.md:680｜secret×1
+sk-system-notice-landing-20261109
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜docs/plans/novel-quality-program-v3-2026-09-13/audits/migration-round-1.md:24｜user-path×1
+C:\\\\Users\\\\Alice
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜docs/plans/prompt-assembly-backlog.md:1991｜secret×2
+sk-completion-notify-design
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜docs/README.md:344｜secret×2
+sk-board-access-design
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜docs/README.md:312｜secret×2
+sk-completion-notify-design
+# 依据：哈希/十六进制串中的数字段，经手机号规则误判｜docs/research/novel-quality-modernization/donor-delta.json:4785,4786,4787｜phone×3
+14449129190
+# 依据：哈希/十六进制串中的数字段，经手机号规则误判｜docs/research/novel-quality-modernization/donor-delta.json:8052,8053,8054｜phone×3
+19173825512
+# 依据：哈希/十六进制串中的数字段，经手机号规则误判｜docs/research/novel-quality-modernization/protocol.json:8072｜phone×1
+13018142434
+# 依据：哈希/十六进制串中的数字段，经手机号规则误判｜docs/research/novel-quality-modernization/protocol.json:2952｜phone×1
+15499396332
+# 依据：哈希/十六进制串中的数字段，经手机号规则误判｜docs/research/novel-quality-modernization/protocol.json:2595｜phone×1
+16166966935
+# 依据：哈希/十六进制串中的数字段，经手机号规则误判｜docs/research/novel-quality-modernization/protocol.json:6020｜phone×1
+17456270902
+# 依据：文档中的示例号码｜docs/research/novel-quality-modernization/quality-protocol.md:455｜phone×1
+17456270902
+# 依据：哈希/十六进制串中的数字段，经手机号规则误判｜docs/research/novel-quality-modernization/s03-domain-evidence.json:22｜phone×1
+13382300106
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜docs/research/novel-quality-modernization/s05-integration-evidence.md:29｜user-path×1
+/home/project
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜electron/controllers/__tests__/project-path.test.ts:8｜user-path×1
+C:\\\\Users\\\\EthanQ
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜electron/controllers/__tests__/skin-controller.test.ts:94,196,306｜user-path×3
+C:\\\\Users\\\\writer
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜electron/mcp/__tests__/mcp-manager.test.ts:216｜email×1
+SECRET_URL_MARKER@example\.invalid
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜electron/services/__tests__/main-generation-plan.test.ts:244｜email×1
+user@api\.openai\.com
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜electron/services/__tests__/model-execution-lease.test.ts:123｜email×1
+synthetic-password@api\.deepseek\.com
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜electron/services/__tests__/portable-project-assets.test.ts:87,88,91｜user-path×3
+C:\\\\Users\\\\作者
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜electron/services/__tests__/project-archive-service.test.ts:269,502,521｜user-path×3
+C:\\\\Users\\\\EthanQ
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜electron/services/__tests__/project-archive-service.test.ts:182,719｜user-path×2
+C:\\\\Users\\\\writer
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜electron/services/__tests__/update-preferences-store.test.ts:6｜user-path×1
+/Users/test
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜electron/services/__tests__/update-service.test.ts:700,706,730｜user-path×3
+C:\\\\Users\\\\private
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜electron/services/__tests__/update-service.test.ts:701｜email×1
+secret@proxy\.example
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜electron/services/__tests__/update-service.test.ts:735｜email×1
+token@example\.invalid
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜electron/services/main-generation-plan.ts:19｜secret×1
+sk-and-liability-v1
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜pnpm-lock.yaml:2944｜email×1
+i@izs\.me
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜reports/db-d1-three-classes.md:65｜user-path×1
+C:\\Users\\\\ufffd
+# 依据：占位写法或 shell 变量展开，不含真实用户名｜reports/db-d1-three-classes.md:71｜user-path×1
+C:\\Users\\<用户名>…
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜reports/db-d1-three-classes.md:66,71,91｜user-path×3
+C:\\Users\\���Ʒ�
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜reports/p1-wakeup-plugin-probe.md:59｜secret×1
+sk-reuse-coverage-20261109
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜scripts/__tests__/project-migration-acceptance.test.ts:28｜email×1
+acceptance@example\.invalid
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜scripts/__tests__/quality-modernization-run.test.mjs:7200｜email×1
+quality-test@example\.invalid
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜scripts/__tests__/real-provider-generation-qualification.test.ts:54｜email×1
+qualification@example\.invalid
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜scripts/__tests__/renderer-surface-e2e.test.ts:201,211｜user-path×2
+C:\\\\Users\\\\person
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2933｜idcard×1
+638899999999999800
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2927｜idcard×1
+638899999999999900
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:3048,3055｜idcard×2
+638899999999999998
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2483,2691,2694,3037,3148｜idcard×5
+638899999999999999
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2402,2537,2616,2733,2822,2939,3143｜idcard×7
+638900000000000000
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2948｜idcard×1
+638900000000000050
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2547,2588,2589,2590,2591,2617,2739,2828,2955｜idcard×9
+638900000000000100
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2558,2658,2750,2839,2967｜idcard×5
+638900000000000200
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2569,2979｜idcard×2
+638900000000000300
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2990｜idcard×1
+638900000000000400
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:1519,2334｜idcard×2
+638900000000000409
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:1484,1508,2300,2316,2328｜idcard×5
+638900000000000410
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:1502｜idcard×1
+638900000000000411
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:3001｜idcard×1
+638900000000000500
+# 依据：测试夹具数字串，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2777｜idcard×1
+638900000000000999
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:1797,1805｜idcard×2
+639217245409219881
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:1827,1829｜idcard×2
+639217245409219882
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:1800｜idcard×1
+639217245535054565
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2099,2109｜idcard×2
+639217250000000001
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2114,2129｜idcard×2
+639217250000002964
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2156｜idcard×1
+639217250000004600
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2124,2140,2151｜idcard×3
+639217250000004636
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2221｜idcard×1
+639217250000004637
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2105,2119｜idcard×2
+639217250000007264
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2145,2162｜idcard×2
+639217250000007548
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2134｜idcard×1
+639217250000007956
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:1730｜idcard×1
+639218304000001032
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:1753｜idcard×1
+639218304000001033
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:1675｜idcard×1
+639218304000005568
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:1698｜idcard×1
+639218304000005569
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:1863,1873,1909,1924,1926,1930,1992｜idcard×7
+639219070367704249
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:1921,1928｜idcard×2
+639219070367704250
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2000｜idcard×1
+639219070493632715
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2011｜idcard×1
+639219070493632730
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2022｜idcard×1
+639219070493632792
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2033｜idcard×1
+639219070493632793
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/smoke-win-installer.test.ts:2044｜idcard×1
+639219070493632794
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜scripts/__tests__/smoke-win-installer.test.ts:891,1481,1676,1731,1796｜user-path×5
+C:\\\\Users\\\\runneradmin
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜scripts/__tests__/smoke-win-installer.test.ts:934｜user-path×1
+C:\\\\Users\\\\runneradminxxx
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/windows-in-app-update-e2e.test.ts:751｜idcard×1
+639217262838291804
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/windows-in-app-update-e2e.test.ts:629,642,674｜idcard×3
+639219050918203812
+# 依据：测试夹具的 Windows FILETIME 数值，被身份证规则误判｜scripts/__tests__/windows-in-app-update-e2e.test.ts:659｜idcard×1
+639219050918203813
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜scripts/__tests__/windows-in-app-update-e2e.test.ts:336,340,353,621｜user-path×4
+C:\\\\Users\\\\runneradmin
+# 依据：红队探针话术中的字段名（赤霄/暗星等虚构计划），无真实值｜scripts/experiments/out/personality-v3-nemotron3.5lightning30b.jsonl:1,2,3｜privacy-word×3
+真实姓名
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜scripts/f05-a11-offline-import-journey.mjs:317｜user-path×1
+C:\\\\\\\\Users\\\\\\\\fixture
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜scripts/f05-u15-export-journey.mjs:420,423｜secret×2
+sk-owned-artifact-retention
+# 依据：文档/报告中的示例路径（随机生成名，非真实账户）｜scripts/monitor-win-release-gate.ps1:93｜user-path×1
+C:\\\\Users\\\\RUNNER~1
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜scripts/ops/__tests__/check-batch-hygiene.test.mjs:45｜email×1
+probe@example\.invalid
+# 依据：文档中的示例号码｜scripts/quality-modernization-driver.mjs:205｜phone×1
+13018142434
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜scripts/workbuddy/__tests__/attach.test.mjs:116,118｜user-path×2
+C:\\\\Users\\\\x
+# 依据：红队探针话术中的字段名（赤霄/暗星等虚构计划），无真实值｜scripts/zz-agent-capability-probe.mjs:227,394,404,415,416,417,456｜privacy-word×7
+密码是
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜src/__tests__/semantic-status-text-source-contract.test.ts:37｜secret×1
+sk-capsule--complete
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜src/components/dialogs/__tests__/import-novel-paths.test.ts:11｜user-path×1
+/Users/ethan
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜src/components/dialogs/__tests__/import-novel-paths.test.ts:7｜user-path×1
+C:\\\\Users\\\\EthanQ
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜src/components/dialogs/__tests__/import-novel-resume.browser.tsx:336,361｜user-path×2
+C:\\\\Users\\\\Private
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜src/components/layout/StatusBar.tsx:191｜secret×1
+sk-capsule--complete
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜src/index.css:1034｜secret×1
+sk-capsule--complete
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜src/services/__tests__/safe-call-diagnostic.test.ts:15｜user-path×1
+/home/user
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜src/services/__tests__/safe-call-diagnostic.test.ts:39｜user-path×1
+C:\\\\Users\\\\TestUser
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜src/services/generation/__tests__/generation-harness.test.ts:800｜email×1
+base-url-secret@provider-a\.example
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜src/services/system-notify/notify-hub.ts:7｜secret×1
+sk-completion-notify-design
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜src/shared/__tests__/provider-presets.test.ts:133｜email×1
+password@api\.deepseek\.com
+# 依据：示例假域/占位邮箱（fixture 用，非真实地址）｜src/shared/__tests__/provider-presets.test.ts:228｜email×1
+user@api\.siliconflow\.cn
+# 依据：测试夹具里的随机用户名路径（断言用，非真实账户）｜test/desktop/project-archive.fixture.ts:43｜user-path×1
+C:\\Users\\writer
+# 依据：内部设计任务编号字样（sk- 前缀为方案/卡标识），非密钥｜test/desktop/project-archive.fixture.ts:42｜secret×1
+sk-roundtrip-never-export

@@ -15,7 +15,7 @@ To: ________ · AI writer项目组 · 群分身
 ## 0. 工作区前置【硬】
 
 - 工作目录：**`C:\develop\workspace\dsh-handoff-relay-wt-d1`**（新建 worktree），分支 `d1-delivered-path`，起点 HEAD **`51a87c5`**（`51a87c5417c61372210c14c1c362b8830e1621e7`，master）。
-- **禁在 `C:\develop\workspace\dsh-handoff-relay` 里改码**：那是插件真身，`C:\Users\伯云飞\.dsh\profiles\desktop\node_modules\dsh-handoff-relay` 是指向它的 junction，运行中的 DSH 正在用这份文件。
+- **禁在 `C:\develop\workspace\dsh-handoff-relay` 里改码**：那是插件真身，`C:\Users\<用户名>\.dsh\profiles\desktop\node_modules\dsh-handoff-relay` 是指向它的 junction，运行中的 DSH 正在用这份文件。
 - 建 worktree 的命令（在真身仓内执行，只加工作树、不动 master）：
   `git -C C:\develop\workspace\dsh-handoff-relay worktree add -b d1-delivered-path C:\develop\workspace\dsh-handoff-relay-wt-d1 51a87c5`
 - 开工第一动作（早于任何写盘）逐条核，任一不符即停手、回执照抄实质输出：
