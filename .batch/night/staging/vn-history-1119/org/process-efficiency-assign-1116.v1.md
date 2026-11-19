@@ -12,7 +12,7 @@ To: AI writer项目组 | 群会话 | 群分身
 
 ## 一·补 口径裁定（20:2x，因 63% 不能复现）
 
-20:2x 我以只读脚本实测（`staging/no-at-count.mjs`｜`d95a8740…`｜可复跑，脚本读 `C:\Users\伯云飞\.dsh\bot\ledger\group-session-4f78136d-2080-4806-ba83-0e5295209594.jsonl`，取 `who`+`text` 记录、排除 `DS Bot` notice、`@` 判据 `@[^\s@]+`）：
+20:2x 我以只读脚本实测（`staging/no-at-count.mjs`｜`d95a8740…`｜可复跑，脚本读 `C:\Users\<用户名>\.dsh\bot\ledger\group-session-4f78136d-2080-4806-ba83-0e5295209594.jsonl`，取 `who`+`text` 记录、排除 `DS Bot` notice、`@` 判据 `@[^\s@]+`）：
 
 | 口径 | 条数 | 无 @ 条数 | 占比 |
 |---|---|---|---|

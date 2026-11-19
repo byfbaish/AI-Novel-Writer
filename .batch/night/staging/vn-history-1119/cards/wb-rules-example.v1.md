@@ -52,7 +52,7 @@ To: WorkBuddy · 主身
 
 - **G1 产物齐全且在版本控制内**：`git ls-files rules.example.md` 命中；两份 README 各**恰有一节**迁移说明（`grep -n "从 notice 迁移\|From the notice\|Migrating from"`），不许多节重复。只落盘未 `git add` → FAIL。
 - **G2 模板与 notice 逐条对得上（唯一定性判据）**：出**映射表**（notice 块 → 条目 → example 行号 → 判定），六块＋「发言」段逐条落位。两条同时成立：①**无遗漏**（语义不丢，把「同议题每 bot ≤1 次」写成「尽量少说」＝丢失）；②**无新增口径**（每条祈使句都能指回 notice 某行并写出偏移；指不回的列出原文与行号，交负责人裁，**不自行删改**）。
-- **G3 不污染配置面、不绑本机**：配置键仍只有 `enabled/defaultFile/fileByRoom/maxChars/refreshMs` 五个，无第 6 键；example 内无本机绝对路径/盘符/用户名（`grep -nE "C:[/\\\\]|伯云飞"` 空）；安装示例仍写 `<克隆目录>`。
+- **G3 不污染配置面、不绑本机**：配置键仍只有 `enabled/defaultFile/fileByRoom/maxChars/refreshMs` 五个，无第 6 键；example 内无本机绝对路径/盘符/用户名（`grep -nE "C:[/\\\\]|<用户名>"` 空）；安装示例仍写 `<克隆目录>`。
 - **G4 两份 README 迁移节一一对应**：小节数与顺序一致、同一步命令与配置键逐字一致、指向的 example 文件名一致；允许译文差异，不许英文节多出或缺少一步。
 - **G5 不动代码、测试不退化**：本卡 diff 不碰 `lib/`；从**提交树**导出跑 `node --test lib/index.test.mjs` 仍 **14/14 pass、fail 0、skipped 0**。
 - **G6 提交纪律**：提交说明与实际 diff 一致；`git add` **点名三个文件**（禁 `-A`）；三份文件 `crlf=0`；`git status --porcelain` 交件后为空。
