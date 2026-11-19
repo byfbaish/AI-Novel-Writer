@@ -7,15 +7,15 @@ model=deepseek-v4.1-flash | 倍率=1x | provider=deepseek
 
 ## 一、结论
 
-三类处置按卡面 §三 分别执行，判据 1–7 全绿：机检 `--all-tracked` **0 个文件 / 0 处命中**（EXIT=0，扫描 3360 件）。
+三类处置按卡面 §三 分别执行，判据 1–7 全绿：机检 `--all-tracked` **0 个文件 / 0 处命中**（EXIT=0，扫描 3363 件，工具为**回滚后的原版**）。
 
 | 类 | 处置 | 量 |
 |---|---|---|
 | T1 真名 | 改 `<用户名>` | 8 件 / 9 处字面量（机检 17 处命中清零，1 处路径+1 处姓名同源计 2 次） |
 | T2 会话日志 | 出跟踪面 + 移 quarantine + `.gitignore` 例外一行 | 1 件 / 1,591,957B |
-| T3 假数据 | 不改文本，`.piiallow` 149 行正则 | 81 文件 / 269 处 |
+| T3 假数据 | 不改文本，`.piiallow` 149 条（两行式：上一行依据、下一行正则） | 81 文件 / 269 处 |
 
-两处需裁定（§六）：`pii-scan.mjs` 的一处工具补丁、6 处「公开仓库 committer 邮箱」。
+三处已裁（§六）：①`pii-scan.mjs` 工具补丁——**驳、已回滚**，`.piiallow` 改两行式；②6 处「公开仓库 committer 邮箱」——认，不改文本；③`.piiignore` 一行——认，仅此一行。
 
 ## 二、T1 · 真名 → 占位符（8 件 9 处）
 
@@ -47,9 +47,9 @@ model=deepseek-v4.1-flash | 倍率=1x | provider=deepseek
 | `.gitignore` | 在 `!/.batch/night/archive/` 之后加 2 行：注释 + `/.batch/night/staging/tmp-c9ff5961.jsonl` |
 | quarantine README | 追加「附：CARD-1119-H 移出的会话日志」六段（谁建／何时／用途／保留期限＝**待主人定**／过期给谁／回滚），见 `C:/tmp/pmo-stage2-quarantine/README.md` |
 
-## 四、T3 · 假数据白名单（149 行 = 报告表 149 行）
+## 四、T3 · 假数据白名单（149 条 = 报告表 149 行；两行式 302 行）
 
-不改文本，逐条写 `.piiallow`（仓根新件）：一行一条正则，行尾 `# 依据：…` 写明类别、文件:行、kind×处数。覆盖面 269/269。
+不改文本，逐条写 `.piiallow`（仓根新件）：**两行式**——上一行 `# 依据：…` 写明类别、文件:行、kind×处数，下一行一条正则。覆盖面 269/269。此格式取代首轮「行尾注释」写法（该写法需要改共用工具才能生效，裁定见 §六 待裁 1）。
 
 | kind | 处数 | 典型依据 |
 |---|---|---|
@@ -60,7 +60,7 @@ model=deepseek-v4.1-flash | 倍率=1x | provider=deepseek
 | phone | 14 | 哈希串中的数字段、测试假号 |
 | privacy-word | 10 | 红队探针话术里的字段名（虚构计划名，无真实值） |
 
-### 表（149 行，与 `.piiallow` 有效行一一对应）
+### 表（149 行，与 `.piiallow` 149 条正则行一一对应）
 
 | # | 命中字面量（正则源） | kind | 处数 | 首现行 | 依据 |
 |---|---|---|---|---|---|
@@ -221,35 +221,39 @@ model=deepseek-v4.1-flash | 倍率=1x | provider=deepseek
 | 1 | `node "<rotation>/pii-scan.mjs" --repo . --all-tracked` | `隐私机检：通过（扫描 3362 个文件，0 处命中）`，EXIT=0 |
 | 2 | `git ls-files \| grep -c 'tmp-c9ff5961.jsonl'` | `0` |
 | 3 | `md5sum C:/tmp/pmo-stage2-quarantine/tmp-c9ff5961.jsonl`；`git cat-file blob b5cbf42a \| md5sum` | 两条均 `8a16b866cf6e453e407abcb7f6550c7a`；文件在 |
-| 4 | `grep -vE '^[[:space:]]*(#\|$)' .piiallow \| wc -l`；`grep -c '^[^#]*# 依据：' .piiallow`；报告表行数 | `149`／`149`／`149` 三者相等 |
+| 4 | `grep -c '^# 依据：' .piiallow`；`grep -vE '^[[:space:]]*(#\|$)' .piiallow \| wc -l`；报告表行数 | `149`／`149`／`149` 三者相等 |
 | 5 | `git diff --name-only 058c0867 HEAD -- .batch/night/archive \| wc -l`；`git show HEAD:.batch/night/archive/MANIFEST.sha256 \| sha256sum` | `0`；`ab1119a28ff94b38825da188feb228eea456a151efdd134fa5567f51d98426b0`（未变） |
 | 6 | `node scripts/ops/check-batch-hygiene.mjs --all`；`pnpm check:fast` | `0 项不合规` EXIT=0；`typecheck ✓ 36.0s`／`doc links: checked 1468, broken 0`／`doc placement … 新增 0 条`／`[check:fast] 全部通过。` EXIT=0 |
 | 7 | `git status --porcelain -uall \| wc -l` | 提交后 `0` |
 
-## 六、待裁（两处）
+## 六、三处裁定的执行记录（均已裁）
 
-**待裁 1 · `pii-scan.mjs` 有 1 处工具补丁（必须先看这条）**
+**已裁 1 · `pii-scan.mjs` 工具补丁：驳，已回滚**
 
-卡面要求 allow 行尾写 `# 依据：…`，但原版 `loadGlobs` 只跳过以 `#` 开头的整行，**不剥行尾注释**——行尾注释会被当成正则的一部分，正则永远匹配不上，判据 1 走不到 0。我在 `rotation/pii-scan.mjs` 做了一个 4 行补丁：`loadGlobs(file, stripInlineComment = false)`，仅对 `.piiallow` 调用时传 `true`，剥掉 `\s+#\s.*$`；`.piiignore` 行为不变。备份与回滚：
+经过：卡面的行尾 `# 依据：` 写法在原版 `loadGlobs` 下不生效——它只跳过以 `#` 开头的整行、**不剥行尾注释**，行尾注释会并入正则导致永不命中。首轮我用 4 行补丁（`loadGlobs(file, stripInlineComment = false)`，仅 `.piiallow` 传 `true`）让行尾写法跑通。
 
+裁定：**驳、回滚**——该脚本跨群共用、不在本 Goal 改动范围（`scripts/ops/*` 才是），两行式零工具风险，纪律优先。
+
+执行（本笔）：
 ```
-# 备份：C:/develop/workspace/AI-writer/tmp-dev/pii-scan.mjs.bak-1119H（patch 前 md5 63e9328f548f66174e53a3e9937ddda8）
 cp C:/develop/workspace/AI-writer/tmp-dev/pii-scan.mjs.bak-1119H "<rotation>/pii-scan.mjs"
+md5sum "<rotation>/pii-scan.mjs"   → 63e9328f548f66174e53a3e9937ddda8（= 补丁前）
+wc -c   "<rotation>/pii-scan.mjs"   → 9190（= 补丁前字节）
 ```
+备份件 `C:/develop/workspace/AI-writer/tmp-dev/pii-scan.mjs.bak-1119H` 留档，未删。`.piiallow` 重排为**两行式**（149 条 → 302 行：4 行表头 + 149 条依据行 + 149 条正则行），判据 4 读作 `grep -c '^# 依据：'` ＝ 正则行数 ＝ 报告表行数。回滚后重跑判据 1：`隐私机检：通过（扫描 3363 个文件，0 处命中）`，说明两行式在**未改工具**下成立。
 
-补丁后 `--staged-diff` 钩子路径未改；本卡提交时 pre-commit 实测通过。**若你不同意改工具，替代方案是 allow 不带行尾注释、判据 4 第三处改读 `^# 依据：` 注释行数**——那要改判据口径，所以我先按卡面格式走补丁。
+**已裁 2 · 6 处真实 committer 邮箱：认（不改文本）**
 
-**待裁 2 · 6 处真实 committer 邮箱**
+判定沿用：该值已在公开仓库全部提交的作者/提交者字段里，删文档不减暴露面；`task-ledger.md` 只有产品经理可写。allow 依据行逐条点名 6 条路径：`.batch/night/reports/merge-p55-into-develop-qa.md:22,23,33`、`.batch/night/reports/task-ledger.md:154`、`.batch/night/staging/incident-plugin-push-1116.md:13,16`。台账那处归产品经理另记一笔，本卡未动。
 
-机检 `email` 类里有 6 处是仓库 committer 的**真实邮箱**（`947875122@qq.com`），分布在 `.batch/night/reports/merge-p55-into-develop-qa.md:22,23,33`、`.batch/night/reports/task-ledger.md:154`、`.batch/night/staging/incident-plugin-push-1116.md:13,16`。我**没有改文本**，两条理由：①该值已存在于公开仓库全部提交的作者/提交者字段，删文档不改暴露面；②`task-ledger.md` 按规则只有产品经理可写。故列为 allow，依据写「公开仓库 committer 身份（git 历史同值），非新增泄漏」。若你要求按 T1 改文本，我可以改那两件报告与 staging 件（台账需产品经理动）。
+**已裁 3 · 新增 `.piiignore` 一行（表本体自指）：认**
 
-**待裁 3 · 新增 `.piiignore` 一行（表本体自指）**
-
-`.piiallow` 一旦入库，它自己也在扫描面内；表里为占位写法保留的反斜杠（如家目录变量的转义形式）会被 `user-path` 规则扫成 41 处命中。故新增仓根 `.piiignore`（新件），只放一行 `.piiallow`，注释写明「表本体不是数据」。这**不是**给业务内容开整文件豁免：其余 81 个假数据文件仍走 `.piiallow` 逐行正则。若你不同意，替代做法是把 12 条含反斜杠的 allow 改成「只匹配用户名尾段」——正则精度会下降，我选前者。
+`.piiallow` 入库后自身在扫描面内，表里保留的反斜杠写法会被 `user-path` 规则自触发 41 处命中。故 `.piiignore` 只放一行 `.piiallow`，注释写明「表本体不是数据」；**只此一行，不扩**。其余 81 个假数据文件仍走 `.piiallow` 逐行正则。
 
 ## 七、遗留
 - 本卡未 push、未合并，`card/1119-H` 留在本地等验收；`exp/mainline-1119` 未动。
-- `.piiallow` 149 条为一次性落表，后续新增假数据按同一格式追加；条目与报告表的一致性靠判据 4 的三处相等守。
+- `.piiallow` 149 条（两行式，302 行）为一次性落表，后续新增假数据按同一格式追加；条目与报告表的一致性靠判据 4 的三处相等守。
+- `rotation/pii-scan.mjs` 的「行尾注释不剥」是工具既有行为，本卡按裁定不改；若其它群也要用行尾写法，须走跨群共识另出卡。
 - `.batch/night/staging/` 下还有 `.mjs` 等运行件（既有），不在本卡范围。
 
 <!-- DONE -->
