@@ -76,3 +76,26 @@ A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
 - [ ] **B-22 `--all-tracked` 90 文件／289 处命中须在推送前清零（developer 01:2x 报，负责人 01:40 出卡）**
   - 事实：`058c0867` 上 `pii-scan --all-tracked` 报 90 文件／289 处（user-path 106・secret 37・email 24・phone 14・privacy-word 10・idcard 9・name 9）；其中**真名只 8 文件／17 处**，其余 272 处是测试夹具与设计字样（`@example.invalid`、`sk-` 开头的设计字样等）。`.batch/night/staging/tmp-c9ff5961.jsonl`（1,591,957B，blob `b5cbf42a`）是完整会话日志，含 system prompt，已随 CARD-1117-B 入库。
   - 处置：出 `cards/CARD-1119-H-pii-preflight.md`（判据 7 条、红线 6 条，`--all-tracked` 命中 0 为唯一门禁）；真名改文本、假数据进 `.piiallow`（每行带依据）、日志件 `git rm --cached` 后移出到 quarantine 并留 md5。禁批量改测试夹具。
+
+## 收口 · Goal「脱敏基线收口（四阶段）」stage 4（2026-11-20 05:45，项目总负责人）
+
+- [x] **B-6 结案**：97 件清洗版已入库并生成 `.batch/night/archive/MANIFEST.sha256`（97 条，自身不入表）。判据：`git ls-tree -r --name-only HEAD -- .batch/night/archive \| grep -v 'MANIFEST\.sha256$' \| wc -l` = 97、`git show HEAD:.batch/night/archive/MANIFEST.sha256 \| wc -l` = 97、`archive/README.md` 登记 97 条。原「193 件」口径作废：193 是 B 卡搬入件数，入库面是其中 97 件（清洗版），其余仍在 `staging/`。
+- [x] **B-17 结案**：`archive/README.md` 97 条五字段齐；`待补` 38→8，余 8 条转 B-21（不在本 Goal 收口面）。
+- [x] **B-22 结案**：`--all-tracked` 90 文件／289 处 → `card/1119-H` @ `adb17d44` 上「通过（扫描 3363 个文件，0 处命中）」EXIT=0；机检工具 md5 回补丁前 `63e9328f548f66174e53a3e9937ddda8`。
+- [x] **B-16 结案（仅尾行那半）**：`card/1119-E` @ `44ff679f` 让 `final-newline` 对 `archive/` 整目录豁免；**整目录豁免 `versioned-filename` 未做**，另记 **B-23**（见下）。
+- [ ] **B-4 部分结案**：本次合并前未跟踪件 1 件、无撞车（B 卡那次 255 件的场面未复现）；口径条文仍未并入协作规则，转下期。
+
+### B-23（新记，2026-11-20 05:45）：`archive/` 整目录豁免 `versioned-filename`
+
+- 事实：`scripts/ops/check-batch-hygiene.mjs` 里 `EXEMPT_VERSIONED_DIRS` 已含 `archive/`，但 `final-newline` 与 `versioned-filename` 的生效面口径在 E 卡只解决了前者；`--disk` 对 `archive/` 内 `.vN` 件仍会按「同目录须有主件」判。
+- 待办：改码须单独出卡，禁在收编/收口卡里顺手改。
+
+### 转下期清单（stage 4 认定）
+
+B-1a／B-1b／B-1c／B-1d（五个快照目录约 190 MB，等主人一句话）、B-2 分支清理、B-3 集成验收、B-4 口径入协作规则、B-5 追加段另存规矩入规则、B-18 卡与派验单成对出、B-19 `tmp-dev/` 25 件、B-20 `post-merge-check.ps1` MERGE_HEAD 误判、B-21 `archive/` 8 条 `待补`、B-23。
+
+### 要主人一句话（3 条，未答复即转下期）
+
+1. 五个快照目录删不删（B-1a/b/c，约 190 MB，均无人认领）。
+2. `C:/tmp/pmo-stage2-quarantine/` 7 件的保留期（含会话日志原件）。
+3. 97 件原件 bundle 的保留期与过期给谁——developer 已写「推送＋QA 核验同 sha 后 7 天，过期交群管理裁定，任何人不得自删」，等价于已给出期限，本项可视为已答。
