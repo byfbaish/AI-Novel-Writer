@@ -851,14 +851,14 @@ To: AI writer项目组 · 群内共读（判件基准件）
 | 5 | **四条待裁已 relay 主身**（本组不代答） | ①约 20.1 MiB 删不删（含 tar、`tmp-dev`、三处 `.backups`；删 `tmp-dev` 前须单独保留 `pii-scan.mjs.bak-1119H`，它是 `rotation/pii-scan.mjs` 唯一回滚件）②`.batch-a` 101 MB 怎么办（补 README／纳管／删）③B-1d 仓库外目录纳不纳管 ④7 条已并入分支删不删 | 同件 §五（四条，含体积对比与回滚路径） |
 
 - 推送状态（2026-11-21 02:0x 复核）：本地 HEAD `0d2671db`，`git rev-list --left-right --count origin/exp/resource-ledger...HEAD` ＝ `0	2`（待推 `f9c84f90`、`0d2671db`），`git status --porcelain -uall` 8 行（1 `M`＝BACKLOG 回写中、7 `??`＝两卡两判词＋S3 两件＋一 reports 件），均不单独推，随下次授权推送一并归零。
-- 口径提醒：本节四行只记 S3 已成立的事实与四条待裁，S4 的 BACKLOG 结案行与看板六卡一致性由负责人回写、QA 核；四阶段证据行仍以 §15 四行为准，本节不替代。
+- 口径提醒：本节四行只记 S3 已成立的事实与四条待裁，S4 的 BACKLOG 结案行与看板六卡一致性由负责人回写、QA 核；四阶段证据行＝S1 §16、S2 §18 首行、S3 §17、S4 §18；§15 属上一个 Goal（脱敏基线收口四阶段），不充当本轮依据，本节亦不替代。
 
 ### 18. S4 结案与看板一致性（2026-11-21）
 
 | # | 结论 | 判据与证据 | 依据件／提交 |
 |---|---|---|---|
 | S2 | S2 收口复核：B-23 判「不成立」结案（`d1a6e75c` 起 `archive/` 早已豁免）；B-20 探测四值齐 | `git show d1a6e75c:scripts/ops/check-batch-hygiene.mjs` 命中 `EXEMPT_VERSIONED_DIRS`（`:26`）与 `return null`（`:55`），父提交 `d1a6e75c^` 命中 0；`wt-p56` 探测四值＝`dotgit_is_file=True`／`dotgit_mergehead_test=False`／`gitpath_raw=C:/develop/workspace/AI-writer/develop/.git/worktrees/wt-p56/MERGE_HEAD`／`gitpath_test=False`（不进等待循环、不置 `$inProgress`）；`--all` 0 项、`--disk` 14 项且 archive 命中 0、`archive` 内 `.vN` 71 件 | QA 首次判词 `reports/S2-premise-qa-recheck.md`（PASS＋勘误 3 项：`while` 在 `:61` 非 `:62`、「本卡不改码」在第 7 行非第 4 行、`gitpath_raw` 为裸串）；BACKLOG `### B-23` 在 `:90`、B-24 在 `:98` |
-| S4 | BACKLOG 结案回写落地，**只剩 1 条 open**＝B-1e 常驻规矩（长期规矩，故意不勾） | `grep -c '^- \[ \]'`＝`1`（即 `BACKLOG.md:52` B-1e）、`^- \[x\]`＝`21`；B-1a／B-1d／B-19 记「转主人裁」，B-1b／B-1c 记「结案·非本组删除」，B-2 记「39＝当前 1＋已并入 7＋未并入 31」，B-3／B-5／B-18 结案，B-4／B-21 记「去向＝转下期」；旧「18 分支／8 条可直接删」清单与「135 MB」口径均标作废 | `30d3799e`（父 `ab8e8e17`，2 files／+121−22，`check:fast` 全绿、`--all` 0 项）；`BACKLOG.md` 现 125 行／`1d9e81bb32e8e0860d177ce7b922de2c`；S3 清单件随之入库（`bbdd6c5f…`／76 行／7,031B） |
+| S4 | BACKLOG 结案回写落地，**只剩 1 条 open**＝B-1e 常驻规矩（长期规矩，故意不勾） | `grep -c '^- \[ \]'`＝`1`（即 `BACKLOG.md:52` B-1e）、`^- \[x\]`＝`21`；B-1a／B-1d／B-19 记「已处置」（B-1a 已删并留档、B-1d 仓库外仓不纳管、B-19 已删并留档），B-1b／B-1c 记「结案·非本组删除」，B-2 记「39＝当前 1＋已并入 7＋未并入 31」，B-3／B-5／B-18 结案，B-4／B-21 记「去向＝转下期」；旧「18 分支／8 条可直接删」清单与「135 MB」口径均标作废 | `30d3799e`（父 `ab8e8e17`，2 files／+121−22，`check:fast` 全绿、`--all` 0 项）；`BACKLOG.md` 现 125 行／`1d9e81bb32e8e0860d177ce7b922de2c`；S3 清单件随之入库（`bbdd6c5f…`／76 行／7,031B） |
 | S4 | 看板六卡与实况一致（revision 844），无待改 | S1 `23433174` done／S2 `76273d1a` done／S3 `2a8b0b0d` done／S4 `4ee6b83e` done／S5 `19bd077a` done／S6 `3aabf83a` todo＋首行标「归 DSH 插件组，不在本项目路线图」 | 负责人 02:1x 核对结果；待 QA 复核 |
 | S4 | 判据三项到位：BACKLOG 各有结案或转裁、台账含四阶段证据行、看板六卡一致 | 本轮 Goal 的四阶段证据行＝S1 §16、S2 §18 首行、S3 §17、S4 §18；§15 属上一个 Goal（脱敏基线收口四阶段），不充当本轮依据（口径按 QA 02:2x 判词更正）；最终 PASS 归 QA／admin | — |
 
