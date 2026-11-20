@@ -74,3 +74,19 @@ wt-p56        7478b44a [agent/p56-wb-docs]
 4. **7 条已并入分支删不删**（回滚路径已备）。
 
 证据：`for p in …; [ -e "$p" ]` → §二；`git branch|wc -l`＝`39`、`--merged`＝`7`、`--no-merged`＝`32`、`ls-remote --heads|wc -l`＝`5`；`git worktree list` → §四；`find tmp-dev -type f|wc -l`＝`61`；`find .batch-a -type f|wc -l`＝`860`、`du -sh .batch-a`＝`101M`；`md5sum .batch-a/d12proj/.ai-novel/project.db`＝`734804176281b0bd979133950522a181`、其 `stat -c %s`＝`14405632`；`md5sum .batch-a/proj/.ai-novel/project.db`＝`e1cb3b49cbe438aa68cef3eb5e15543e`；`sha256sum` tar → §二。
+
+## 六、处置结果（新增栏 · 2026-11-21 02:2x 跟班执行、主身复核、负责人实测复核）
+
+> 本栏只记**已发生的处置事实**与凭据；本件 §一～§五 是处置前的清单，不改写。写成「已删并留档」，不写「已清理干净」——出口必须带 tar＋sha256 与回滚件。
+
+| 对象 | 处置前体积 | 处置结果 | 留档凭据（tar＋sha256） | 回滚件 | 实测复核 |
+|---|---|---|---|---|---|
+| `AI-writer/.batch-a/`（含 `d12proj`、`proj`、`d12-manual-test/`、`_removed-txt/`） | 860 文件／103,613,677B（du 101M），`d12proj` db 14,405,632B／md5 `73480417…` | **已删除**（`[ -e ]` 假，路径不再存在） | `C:\tmp\aiwriter-batch-a-1121.tar.gz`｜29,740,172B｜sha256 `bf6047565892e2b7b25774ee2ffe6199b8beaae58585cd0c20d8419193cbc7ed`｜条目 922＝860 文件＋62 目录｜根名 `.batch-a/` | tar 即回滚件（解包即还原原路径） | 我 02:2x 实跑 `stat`／`sha256sum`／`tar -tvzf` 计 dirs=62 files=860；QA 独立复核同值 |
+| `AI-writer/tmp-dev/` | 61 文件／534,352B（du 656K 为块对齐，顶层 25 条目） | **已删除**（`[ -e ]` 假） | `C:\tmp\aiwriter-tmpdev-1121.tar.gz`｜107,370B｜sha256 `50c40c1c6138aa323fe16b17492a459d2878bc6f4698e99361d2edfc6cbf4a62`｜条目 62＝**61 文件＋1 目录**｜根名 `tmp-dev/` | tar ＋ `rotation\pii-scan.mjs`（9,190B／md5 `63e9328f548f66174e53a3e9937ddda8`，与同目录备份件 `pii-scan.mjs.bak-1119H` 同字节） | 同上；回滚件 md5 由主身/管家侧实测、我引用 |
+| 根 `AI-writer/.backups` | 3 件／19,311B | **原样未动**（不删） | — | — | 02:2x `ls -l` |
+| `develop/.backups` | 2 件／180,192B | **原样未动**（不删） | — | — | 02:2x `ls -l` |
+| `.backups-archive/` | 1 件／76,597B | **原样未动**（不删） | — | — | 02:2x `ls -l` |
+| worktree `night-probe`／`test-master`／`wt-1117f`、`_trash` | — | **原样未动** | — | — | 02:2x 未触碰 |
+| `_scratch-d18`／`_backup-2026-11-01` | 原记 45.6 MB／23.2 MB | 处置前路径即不存在，**非本组删除**（B-1b／B-1c 结案「仓库外仓·不纳管」） | — | — | 01:44 实测 `[ -e ]` 假 |
+
+口径说明（防后人当成矛盾）：`batch-a` 写「922 条目＝860 文件＋62 目录」；`tmpdev` 写「62 条目＝61 文件＋1 目录」——「条目」含目录，两处不要互相套用。
