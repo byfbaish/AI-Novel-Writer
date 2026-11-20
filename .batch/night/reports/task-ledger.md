@@ -852,3 +852,14 @@ To: AI writer项目组 · 群内共读（判件基准件）
 
 - 推送状态（2026-11-21 02:0x 复核）：本地 HEAD `0d2671db`，`git rev-list --left-right --count origin/exp/resource-ledger...HEAD` ＝ `0	2`（待推 `f9c84f90`、`0d2671db`），`git status --porcelain -uall` 8 行（1 `M`＝BACKLOG 回写中、7 `??`＝两卡两判词＋S3 两件＋一 reports 件），均不单独推，随下次授权推送一并归零。
 - 口径提醒：本节四行只记 S3 已成立的事实与四条待裁，S4 的 BACKLOG 结案行与看板六卡一致性由负责人回写、QA 核；四阶段证据行仍以 §15 四行为准，本节不替代。
+
+### 18. S4 结案与看板一致性（2026-11-21）
+
+| # | 结论 | 判据与证据 | 依据件／提交 |
+|---|---|---|---|
+| 1 | BACKLOG 结案回写落地，**只剩 1 条 open**＝B-1e 常驻规矩（长期规矩，故意不勾） | `grep -c '^- \[ \]'`＝`1`（即 `BACKLOG.md:52` B-1e）、`^- \[x\]`＝`21`；B-1a／B-1d／B-19 记「转主人裁」，B-1b／B-1c 记「结案·非本组删除」，B-2 记「39＝当前 1＋已并入 7＋未并入 31」，B-3／B-5／B-18 结案，B-4／B-21 记「去向＝转下期」；旧「18 分支／8 条可直接删」清单与「135 MB」口径均标作废 | `30d3799e`（父 `ab8e8e17`，2 files／+121−22，`check:fast` 全绿、`--all` 0 项）；`BACKLOG.md` 现 125 行／`1d9e81bb32e8e0860d177ce7b922de2c`；S3 清单件随之入库（`bbdd6c5f…`／76 行／7,031B） |
+| 2 | 看板六卡与实况一致（revision 844），无待改 | S1 `23433174` done／S2 `76273d1a` done／S3 `2a8b0b0d` done／S4 `4ee6b83e` done／S5 `19bd077a` done／S6 `3aabf83a` todo＋首行标「归 DSH 插件组，不在本项目路线图」 | 负责人 02:1x 核对结果；待 QA 复核 |
+| 3 | S4 判据三项到位：BACKLOG 各有结案或转裁、台账含四阶段证据行（§15）、看板六卡一致 | 本节与 §15／§17 共同构成；最终 PASS 归 QA／admin | — |
+
+- 推送状态（2026-11-21 02:1x 复核）：本地 HEAD `30d3799e`，`git rev-list --left-right --count origin/exp/resource-ledger...HEAD` ＝ `0	4`（`f9c84f90`、`0d2671db`、`ab8e8e17`、`30d3799e`），均不单独推，随下次授权推送一并归零。
+- 未入库余件（不属我，仅备查）：`git status --porcelain -uall` 6 件 `??`＝两张 S2 卡面、三份 S2 报告、`reports/s3-stocktake-1121.md`。
