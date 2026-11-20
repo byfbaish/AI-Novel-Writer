@@ -19,11 +19,11 @@
 | `AI-writer/.backups` | 996 文件 / 116.2 MB，全部在 4 个快照目录里，无 996 个散 `.bak` | 996 个 `.bak-20261108` |
 
 待候选：
-- [ ] B-1a 三个 proj-pre 快照目录（`proj-pre-a1`／`proj-pre-d12`／`proj-pre-b1replay`）原件**已不存在**：`.backups` 目录 mtime 停在 2026-11-17 19:37（正是最后一次性实测时刻，当时 `proj-pre-a1`／`proj-pre-d12` 各 391 件、`proj-pre-b1replay` 194 件，`project.db` 分别为 14,405,632B 与 16,969,728B），之后从盘上消失；**无归档件、无删除留痕，来源待查**。补记：`.backups-archive/backups-archive-20261117-160935.zip`（76,597B）内容是 `wt-2-d916-2026-11-07/` 补丁包（17 条／解压 180,696B），**与这三个快照无关**，别再当成快照归档。现 `.backups` 只剩 3 个 11-08 文件共 0.04 MB。删留仍等主人拍。
+- [x] **B-1a 去向＝转主人裁（2026-11-21 01:5x，S3 实测改写；此前「原件已不存在」的结论作废）**：`proj-pre-d12` **未删除，是被改名搬进 `.batch-a/d12proj`**——391 文件、`project.db` 14,405,632B、md5 `734804176281b0bd979133950522a181`，与旧记三个数逐项相符；改名人与时间无留痕。`proj-pre-a1`（db md5 `c338bad5…`）与 `proj-pre-b1replay`（db 16,969,728B）在 `.batch-a` 两个 `project.db` 里都没有，**仍未找到**。`.batch-a/` 整体 860 件／103,613,677B（du 101 MB）、无 README、在 git 之外，按 B-1e 属待认领孤儿；内有 `d12-manual-test/`（28 件／460K）、`_removed-txt/`（10 件／80K）、`d12proj/`、`proj/`（431 件，db 19,574,784B／md5 `e1cb3b49…`，11-15 新快照）。处置结论：**转主人裁**（补 README 留档／纳入某仓／删），本组不动一个字节。取证见 `.batch/night/org/s3-disposition-1121.md` §一、§二。
   11-20 07:0x 实取清单：现存可清理约 135 MB（五项明细见 C:\tmp\aiwriter-snapshot-inventory-1120.md）；closecheck 里的 190 MB 为 11-20 早先口径，已作废，不回改历史件。
-- [ ] B-1b `_scratch-d18` 45.6 MB（469 文件，12 天）—— 认领后按「未跟踪＋未引用＋>30 天」逐档判。
-- [ ] B-1c `_backup-2026-11-01` 23.2 MB（16 天）。
-- [ ] B-1d `AI-writer` 根不是 git 仓库，`.backups`／`_scratch-d18`／`_trash`／`_backup-2026-11-01` 全在仓库外，既不进 `git status` 也不受 `.gitignore` 约束——要么纳入，要么明确「仓库外仓」。
+- [x] **B-1b 结案（2026-11-21 01:44 实测）**：`AI-writer/_scratch-d18` **路径不存在**（原记 45.6 MB／469 文件）；**非本组删除**，本组从未删除、未打包该目录，删除方与时间不明。无可处置对象。
+- [x] **B-1c 结案（同上实测）**：`AI-writer/_backup-2026-11-01` **路径不存在**（原记 23.2 MB／118 文件）——同 B-1b，**非本组删除**，无可处置对象。
+- [x] **B-1d 去向＝转主人裁（2026-11-21 01:5x）**：`AI-writer` 根不是 git 仓库，仓外目录既不进 `git status` 也不受 `.gitignore` 约束。现存实测：根 `.backups` 3 件／19,311B、`develop/.backups` 2 件／180,192B、`.backups-archive` 1 件／76,597B、`tmp-dev/` 61 件／534,352B、`.batch-a/` 860 件／103,613,677B。两条去向待主人一句话：①写「**仓库外仓·不纳管**」结案 ②纳入某个仓。删除与否另问，本轮不动。
 
 ## B-2 分支清理（负责人认领）
 
@@ -34,7 +34,15 @@
 - 2 个 detached worktree 需处置：`night-probe`、`test-master`。
 - 缺口：没有分支登记册（字段见 skill `project-git-workflow`），建册后每条分支都要有 owner 与去留期限。
 
+- [x] **B-2 S3 结论（2026-11-21 01:52 实测；删除动作 0）**：本地 **39** 条分支／远端 **5** 条 heads／**5** 棵 worktree。
+  - **可删 7 条（只列不动，等主人一句话）**：`card/1119-H`、`card/1119-archive-first-merge`、`work/archive-in-git-1119`、`relive-src/{card/git-track-ops-1117,dev_byf,exp/resource-ledger,master}`；QA 复核逐条 `git merge-base --is-ancestor <tip> origin/exp/resource-ledger`＝exit 0，无独有提交。回滚＝`git branch <名> <tip>`，tip 见 `reports/s3-stocktake-1121.md` §6.1。
+  - **其余 31 条保留**（39 ＝ 当前 `exp/mainline-1119` 1 ＋ 已并入 7 ＋ 未并入 31）：未并入即可能还有独有提交，本轮不出「已被别处携带」的证明就不删；含 25 条脱敏前老线与 `archive/local-rebuilt-1118`、`work/reboot-1118`（永不推送）。
+  - 上面 `现状：18 本地分支…` 那张老清单连同 8 条「可直接删」名单**作废**，以本节实测为准。
+  - worktree：`develop`（mainline）／`wt-1117f`（`card/1117-F`）／`wt-p56`（`agent/p56-wb-docs`，14 项他人既存改动）／`night-probe`＋`test-master`（detached，后者属另一仓）；清理须先认领，本轮不动。
+
 ## B-3 集成验收（合并后暴露，负责人裁）
+
+- [x] **B-3 结案（2026-11-21 02:0x）**：两处红已由 E 卡收口——①`--all` 门禁面收窄为「已跟踪路径＋本次变更集」，`--disk` 降为统计面（只报不作门禁），`--write-baseline` 机制先建后删；②A 卡「`scripts/ops/*.mjs` 不含 `wc -l`」的冲突以「注释内字样不算违规」处理，E/F 两卡机检与单测同时绿。现状：`check-batch-hygiene --all`＝0 项 EXIT=0、`check-fast` 全绿、`--disk` 仍报历史账（14 项，全在 `signals/lead`／`tmp/`／`tools/`，`archive/` 0 行）。
 
 A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
 - `check-batch-hygiene` 报 236 项不合规，全部在 `.batch/` 内（带 `.vN` 文件名、缺末行换行）——白名单让这批文件进了机检视野，而它们正是 B 卡要收编的对象。
@@ -42,8 +50,8 @@ A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
 判据二选一：机检只对已收编路径生效；或先做收编卡再收紧。修完整体重验，通过后才落主线。
 - [x] **B-1 认领结论（19:1x，项目总负责人）：五个目录全部「无人认领」。** 取证：`recall`（自身/群/团队记忆）、`read_own_chat`、`read_group_chat` 三次检索这些目录名均零命中，我这边没有任何建目录记录。实测元数据：`proj-pre-a1` 391 文件 44M、`proj-pre-d12` 391 文件 44M（**文件路径清单完全相同**，`project.db` 同为 14,405,632B 但 md5 `c338bad5…`≠`73480417…`，故不是字节重复份，是同一时点两次快照）、`proj-pre-b1replay` 194 文件 32M（db 16,969,728B）、`_scratch-d18` 469 文件 47M（11-04/11-05）、`_backup-2026-11-01` 118 文件 24M（11-01「清除前」）。全部为 `.ai-novel/project.db`＋章节 txt 的项目数据快照，均在 git 之外、无 README。**删不删等主人一句话，我不动一个字节。**
 - [ ] **B-1e 规矩（大管家 11-17 定）：任何留档目录/归档件落盘时，同目录必须有 `README.md` 或首行说明**——建它的人、时间、用途、保留期限、过期后给谁。无说明一律按「待认领孤儿」进本 backlog，不许静默留着。
-- [ ] **B-4 合并前清场口径（负责人 19:2x 定，待并入协作规则）**：凡卡内在 `.batch/night/` 有改动的，合并进 develop 前须三步：①把目标工作区该目录的未跟踪副本整体 `tar.gz` 备份（同目录留 `README.md` 写谁/何时/用途/期限）；②逐件哈希比对未跟踪副本与待合入件，输出 `.log`；③比对结果中「实质不同」的件逐条取舍并写进合并报告，只差行尾的件以分支为准。理由：B 卡合并时 255 件撞车（232 件字节相同、23 件不同：18 件只差行尾、5 件实质差异）。
-- [ ] **B-5 流转件评审追加段的落法（负责人 19:2x 定）**：派验单/卡面在评审过程中追加的终裁、退回、修订、终审段落，一律另存 `<卡号>-rulings.md` 单独成文，原文件字节不动。首个实例：`review-requests/CARD-1117-B-rulings.md`（7,281B，含 §五～§八）；`CARD-1117-B-baseline-intake.md` 恢复为 3,540B 交付版。
+- [x] **B-4 去向＝转下期（2026-11-21 02:0x）**：口径条文已实践两次（B 卡那次 255 件撞车按三步处置；后续合并未再复现），但**条文仍未并入协作规则**，故不进本 Goal 收口面，转下期并入。原文：**B-4 合并前清场口径（负责人 19:2x 定，待并入协作规则）**：凡卡内在 `.batch/night/` 有改动的，合并进 develop 前须三步：①把目标工作区该目录的未跟踪副本整体 `tar.gz` 备份（同目录留 `README.md` 写谁/何时/用途/期限）；②逐件哈希比对未跟踪副本与待合入件，输出 `.log`；③比对结果中「实质不同」的件逐条取舍并写进合并报告，只差行尾的件以分支为准。理由：B 卡合并时 255 件撞车（232 件字节相同、23 件不同：18 件只差行尾、5 件实质差异）。
+- [x] **B-5 结案（2026-11-21 02:0x）：规矩已实践并稳定**：此后 `CARD-1117-F-rulings.md`／`CARD-1118-B-rulings.md`／`CARD-1118-C-rulings.md`／`CARD-1119-E-rulings.md`／`CARD-1119-H-rulings.md` 均按「追加段另存、原件字节不动」出；本 Goal 内无一次原地改派验单。条文并入协作规则随 B-4 一并转下期。原文：**B-5 流转件评审追加段的落法（负责人 19:2x 定）**：派验单/卡面在评审过程中追加的终裁、退回、修订、终审段落，一律另存 `<卡号>-rulings.md` 单独成文，原文件字节不动。首个实例：`review-requests/CARD-1117-B-rulings.md`（7,281B，含 §五～§八）；`CARD-1117-B-baseline-intake.md` 恢复为 3,540B 交付版。
 
 - **B-6 `archive/` 193 件未入 git（QA 在 F 卡首验提出，我受理，F 卡不改）**
   - 事实：B 卡收编把 193 件搬进 `archive/`，但 `.gitignore:93` 挡住，从未入库；本机 worktree 里没有 `archive/` 目录，所以 F 卡判据 7 的「archive 尾行 0」是在空集上成立，真反证来自单测夹具（`check-batch-hygiene.test.mjs:193`/`:206`）。
@@ -58,18 +66,19 @@ A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
   - 事实：`archive/` 实存 97 件＝已登记 50 ＋ **未登记 47**：`.vN` 22 件全在 `archive/roster/`（`identity-roster.v2/.v3/.v3.1/.v3.2…`），另有非 `.vN` 老档 25 件（`1107/` 15、`resume-1114/` 6、`p9-prefix-restart-1113/` 1、`pre-restart-1113/` 1、`P9.json`、`wake-later.json`）。均不在 CARD-1118-D 的 82 件清单内。
   - 待办：按 B-1e 补进 README（谁建/何时/用途/保留期/过期给谁），或并入下一次 archive 整理卡。
 
-- [ ] **B-18 卡与派验单必须成对出（负责人 13:26 自记）**
+- [x] **B-18 结案（2026-11-21 02:0x）：自记后未再复发**。此后每张卡均成对出派验单：`CARD-1119-E`、`CARD-1119-H`、`CARD-1121-B23`、`CARD-1121-B20` 全部齐；S3 清单件亦按「件＋派验单口径」交 QA 判。原文：**B-18 卡与派验单必须成对出（负责人 13:26 自记）**
   - 事实：CARD-1118-D 只出了卡面、没出派验单，QA 只能按卡面＋执行方的裁定请求单判。同类缺失第二次（CARD-1118-B 时由 QA 指出后补过一次）。
   - 规矩：出卡与出派验单是**同一个动作**；卡面无对应派验单（`review-requests/<卡号>-*.md`）不得翻「在办」。出下一张卡前先 `ls review-requests/ | grep <卡号>` 自检。
 
-- [ ] **B-19 `AI-writer/tmp-dev/` 遗留 scratch 件待清理（QA 20:5x 观察，负责人 21:0x 受理）**
+- [x] **B-19 去向＝转主人裁（2026-11-21 01:44 实测：61 件／534,352B，du 656K 为块对齐）**：须先单独保留 `pii-scan.mjs.bak-1119H`（`rotation/pii-scan.mjs` 唯一回滚件）；删除须一句话＋清单＋体积对比＋回滚路径。原文：**B-19 `AI-writer/tmp-dev/` 遗留 scratch 件待清理（QA 20:5x 观察，负责人 21:0x 受理）**
   - 事实：QA 首验 CARD-1119-E 时发现该目录有 13 个 B/C/D 卡遗留 scratch 件；我 21:0x 实测顶层 25 个条目。均在 git 之外、无 README。
   - 规矩：先按 B-1e 判「谁建／何时／用途／保留期」，能追到卡号的并入该卡清理记录，追不到的按「待认领孤儿」报主人后删。**不得为图干净先删后问。**
 
-- [ ] **B-20 `post-merge-check.ps1` 的 MERGE_HEAD 探测在 linked worktree 里误判（developer 22:5x 报，负责人 23:1x 受理）**
-  - 事实：linked worktree 里 `.git` 是文件而非目录，脚本仍判「合并未完成」→ 假 RED；同一棵树 `check:fast` 本身 EXIT=0。
-  - 规矩：修脚本须单独出卡（改码）；在那之前合并后核以 `check:fast` 末行 + `check-batch-hygiene --all` 为准，`post-merge-check.ps1` 的红先看 MERGE_HEAD 探测这条已知缺陷再定性。
-- [ ] **B-21 `archive/` 待补字段清理（stage 2 遗留 8 条，2026-11-20 记）**
+- [x] **B-20 `post-merge-check.ps1` 的 MERGE_HEAD 探测在 linked worktree 里误判（developer 22:5x 报，负责人 23:1x 受理）**（2026-11-21 00:35 结案：验证记录卡）
+  - 事实：linked worktree 里 `.git` 是文件而非目录，脚本仍判「合并未完成」→ 假 RED；同一棵树 `check:fast` 本身 EXIT=0。脚本已于 11-19 23:07 自修，`:59` 加 `--git-path` 兜底。
+  - 结案：走 A「验证记录卡」——本卡不改码，脚本在仓外 `rotation/`（`git ls-files` 无跟踪件），故无分支、无单测；证据＝`wt-p56` 探测原文（`dotgit_is_file=True`／`dotgit_mergehead_test=False`／`gitpath_test=False`，确走兜底且不进等待循环）＋一次完整运行末行 `POSTMERGE OK  exp/mainline-1119 @ 0d2671db`。卡面 `cards/CARD-1121-B20-merge-head-verify.md`，证据 `reports/s2-b20-merge-head-verify.md`。
+  - 遗留：`rotation/` 脚本入不入库 ⇒ **B-24**（只记议题，不写方案不估工时）。
+- [x] **B-21 去向＝转下期（2026-11-21 02:0x）**：8 条 `待补` 仍在 `archive/README.md` §二，按 2026-11-20 00:31 口径「查不出即永久标 `待补` 并写复核过程」处理，本 Goal 不再动 README（改动须另出卡）。原文：**B-21 `archive/` 待补字段清理（stage 2 遗留 8 条，2026-11-20 记）**
   - 现状：`.batch/night/archive/README.md` §二 97 行里 8 行仍带 `待补`——1 条缺「谁建」（`resume-1114/wakeup-inbox/dsh-wake-20261114-0205-7426.md`，唤醒便条无署名）、7 条缺「何时」（`cards/p51-median-gap.v2.md`、`review-requests/p56.v2–v5.md`、`review-requests/reboot-hy4flash-sync.v2.md`、`staging/d1-delivered-path-report.v2.md`，原件均无日期）。
   - 口径（项目总负责人 2026-11-20 00:31 裁）：能查则查、查不出永久标 `待补` 并写清复核过程，不许写「未知」、不因此卡 stage 2。
   - 追平方式：下一张补登记卡；逐版时间须从台账/派验单留痕取得，禁按同族件推定日期填表。
@@ -84,19 +93,33 @@ A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
 - [x] **B-17 结案**：`archive/README.md` 97 条五字段齐；`待补` 38→8，余 8 条转 B-21（不在本 Goal 收口面）。
 - [x] **B-22 结案**：`--all-tracked` 90 文件／289 处 → `card/1119-H` @ `adb17d44` 上「通过（扫描 3363 个文件，0 处命中）」EXIT=0；机检工具 md5 回补丁前 `63e9328f548f66174e53a3e9937ddda8`。
 - [x] **B-16 结案（仅尾行那半）**：`card/1119-E` @ `44ff679f` 让 `trailing-newline`（脚本 `:35` `RULE_TRAILING`）对 `archive/` 整目录豁免；**整目录豁免 `versioned-filename` 未做**，另记 **B-23**（见下）。
-- [ ] **B-4 部分结案**：本次合并前未跟踪件 1 件、无撞车（B 卡那次 255 件的场面未复现）；口径条文仍未并入协作规则，转下期。
+- [x] **B-4 部分结案（转下期，见 §转下期清单）**：本次合并前未跟踪件 1 件、无撞车（B 卡那次 255 件的场面未复现）；口径条文仍未并入协作规则，转下期。
 
-### B-23（新记，2026-11-20 05:45）：`archive/` 整目录豁免 `versioned-filename`
+### B-23 结案（2026-11-21 00:35）：**不成立：自 `d1a6e75c` 起 `archive/` 已豁免**
 
-- 事实：`scripts/ops/check-batch-hygiene.mjs` 里 `EXEMPT_VERSIONED_DIRS` 已含 `archive/`，但 `trailing-newline` 与 `versioned-filename` 的生效面口径在 E 卡只解决了前者；`--disk` 对 `archive/` 内 `.vN` 件仍会按「同目录须有主件」判。
-- 待办：改码须单独出卡，禁在收编/收口卡里顺手改。
+- 原述（2026-11-20 05:45 记）作废：`--disk` 对 `archive/` 内 `.vN` 件会按「同目录须有主件」判——代码中不存在这条规则。
+- 证据一：`scripts/ops/check-batch-hygiene.mjs:38` `EXEMPT_VERSIONED_DIRS` 含 `${WATCH_ROOT}/archive/`，与 `versioned-filename` 规则同提交 `d1a6e75c`（11-17，CARD-1117-D）落地（`git log -S` 实证）。
+- 证据二：`:85` `checkVersionedName` 命中豁免目录直接 `return null`；`grep -rn "主件" scripts/` 0 命中。
+- 证据三：archive 内 `.vN` 实测 **71 件**（69 md＋2 mjs），`--disk | grep -E '^\.batch/night/archive/'` → **0 行**；14 项全在 `signals/lead` 4、`tmp/` 7、`tools/` 5。
+- 定性：**不是本 Goal 修好的，是从未缺过**；S4 结案按「早已豁免、B-23 不成立」写，不许写成「本 Goal 修好的」。卡面 `cards/CARD-1121-B23-versioned-archive-verify.md`，证据 `reports/s2-b23-versioned-archive-not-a-defect.md`。
 
-### 转下期清单（stage 4 认定）
+### B-24（新记，2026-11-21 00:35，下期议题）：仓外运维脚本（`rotation/` 等）是否入库
 
-B-1a／B-1b／B-1c／B-1d（现存可清理约 135 MB：`_scratch-d18` 46.8 MB／`_backup-2026-11-01` 23.5 MB／`develop/.backups` 63.0 MB，另两份 11-17 B-merge tar 共 1.1 MB；B-1a 三个 proj-pre 目录原件已不存在）、B-2 分支清理、B-3 集成验收、B-4 口径入协作规则、B-5 追加段另存规矩入规则、B-18 卡与派验单成对出、B-19 `tmp-dev/` 25 件、B-20 `post-merge-check.ps1` MERGE_HEAD 误判、B-21 `archive/` 8 条 `待补`、B-23。
+- 议题：`<用户主目录>/.dsh/bot/workspace/rotation/` 下的 `post-merge-check.ps1`、`pii-scan.mjs` 等运维脚本，`git ls-files` 无跟踪件、无版本历史、无评审通道；是否入库、入哪些、以何方式分发，待定。
+- 边界：**本条只登记议题**——本 Goal 不写方案、不估工时、不动脚本。
 
-### 要主人一句话（3 条，未答复即转下期）
+### 转下期清单（2026-11-21 02:0x 更新，本 Goal S4 认定）
 
-1. B-1b／B-1c 与 `develop/.backups` 存量删不删（现存可清理约 135 MB，均无人认领）；B-1a 那三个 proj-pre 目录已不在盘上，无需处置，但来源待主身认。
-2. `C:/tmp/pmo-stage2-quarantine/` 7 件的保留期（含会话日志原件）。
-3. 97 件原件 bundle 的保留期与过期给谁——developer 已写「推送＋QA 核验同 sha 后 7 天，过期交群管理裁定，任何人不得自删」，等价于已给出期限，本项可视为已答。
+**已在本 Goal 结案**：B-1b、B-1c（对象已不存在，非本组删除）、B-2（三档结论已出、删除 0）、B-3（E 卡收口）、B-5（规矩已实践）、B-6、B-16（尾行那半）、B-17、B-18（未复发）、B-20（验证记录卡）、B-23（不成立：从未缺过）。
+
+**转主人裁（等一句话，未答即转下期）**：B-1a（`d12` 在 `.batch-a/d12proj`；`a1`／`b1replay` 未找到；`.batch-a` 101 MB 怎么办）、B-1d（仓外目录纳不纳管）、B-19（`tmp-dev` 61 件删留，删前须留 `pii-scan.mjs.bak-1119H`）、B-1b／B-1c 口径已结但删留同问。
+
+**转下期**：B-1e 规矩落地检查、B-4（清场口径入协作规则）、B-21（`archive/` 8 条 `待补`）、B-24（仓外运维脚本是否入库，仅议题）、S3 那 7 条已并入分支的删除执行、5 棵 worktree 清理（须先认领）。
+### 要主人一句话（4 条，未答复即转下期）
+
+1. **约 21,112,163B（约 20.1 MiB）删不删**：`C:/tmp/aiwriter-snapshots-1120.tar.gz` 20,301,711B（sha256 `5a392af4…9ff5`）＋`tmp-dev/` 534,352B（须先单独保留 `pii-scan.mjs.bak-1119H`，它是 `rotation/pii-scan.mjs` 唯一回滚件）＋三处 `.backups` 276,100B。原「135 MB」口径作废。
+2. **`.batch-a/` 101 MB（860 件）怎么办**：里面有 `proj-pre-d12` 的同一快照（db md5 `73480417…`）；补 README 留档／纳入某仓／删，三种都要一句话。
+3. **B-1d 纳不纳管**：仓外目录写「仓库外仓·不纳管」结案，还是纳入某仓。
+4. **7 条已并入分支删不删**（回滚路径已备：`git branch <名> <tip>`）。
+
+**已视为已答**：`C:/tmp/pmo-stage2-quarantine/` 7 件保留期（主身定 11-26 出到期清单）、97 件原件 bundle 保留期（推送＋QA 核验同 sha 后 7 天，至 2026-11-27，过期交群管理裁定）。
