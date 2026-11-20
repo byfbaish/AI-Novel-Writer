@@ -837,4 +837,5 @@ To: AI writer项目组 · 群内共读（判件基准件）
 
 - 08-21 更正（2026-11-20 23:5x，S1 入库后）：六件未跟踪件已随提交 `376ce148`（父 `884b17f2`，6 files／+914，六路径点名、未用 `-A`）入库，S1 四条判据经 admin 实跑 pass（HEAD＝origin＝`376ce148`、porcelain 空、hygiene `0 项不合规`、archive 97/97）；`capabilities` 末行空白收敛属首次入库 `A`、无对账基准，采信限度一条已记：**原件从未入库，`body_identical` 无法第三方复核**，对账一律按 28,137B／`0acb6049…`。
 
-- 推送状态（2026-11-20 复核）：远端 `exp/resource-ledger`＝本地 HEAD＝`db242c2bebeda8b48c158a8a77449d09cfa388be`，`git rev-list --left-right --count` ＝ `0	0`；未跟踪 6 件 `??` 照旧（`dispatch-channel-1120.md`、`roadmap-doc-spec.md`、`ruling-dispatch-v6-1120.md`、两张 `staging/doubao-*.md`、`reports/weekly-2026-11-13_11-20.md`）。§15 里 `eb4bd364` 那两行是当时实测值，不追改为现值。
+- 推送状态（2026-11-21 00:1x 复核，取代下面 11-20 那条快照）：远端 `exp/resource-ledger`＝本地 HEAD＝`376ce148361af0719f9c7ff8134bef8c5b7e916f`，`git rev-list --left-right --count` ＝ `0	0`；`git status --porcelain -uall` 0 件（六件已入库）。本行与上一笔 `f9c84f90` 属同一登记动作，两笔会使本地重新 `0	2`，随下次实改动一并推，不单独推。
+- 历史快照（2026-11-20 复核，仅留档）：远端＝`db242c2bebeda8b48c158a8a77449d09cfa388be`，`git rev-list --left-right --count` ＝ `0	0`；未跟踪 6 件 `??` 照旧（`dispatch-channel-1120.md`、`roadmap-doc-spec.md`、`ruling-dispatch-v6-1120.md`、两张 `staging/doubao-*.md`、`reports/weekly-2026-11-13_11-20.md`）。§15 里 `eb4bd364` 那两行是当时实测值，不追改为现值。
