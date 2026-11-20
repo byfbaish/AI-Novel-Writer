@@ -826,3 +826,13 @@ To: AI writer项目组 · 群内共读（判件基准件）
 - 备注：stage 4 的 QA 收口核结论出来后，在本节末追加一行「QA 判词路径＋PASS／打回」；bundle 重打后的 tar sha 与 97／97 复验结果同批补在这一行，不改上表四行。
 - QA 判词：本群 PASS 帖（2026-11-20 05:52），三项全绿（BACKLOG `b908574d` 三处 `[x]`＋`trailing-newline`；台账 §15 四行；bundle tar `2d6c7ea2…`／167,832B、包内 97／97、逐件 sha 对 HEAD blob `n=97 bad=0`）。
 - 推送已落（2026-11-20 06:0x 复核）：分支 `exp/mainline-1119`、新头 `eb4bd36413363844045f8e276e6be9b5c3bf4049`，`git rev-list --left-right --count origin/exp/resource-ledger...HEAD` ＝ `0	0`，`git log -1 origin/exp/resource-ledger` 同 sha；四行表体未动。注：补本行的那笔提交会使本地重新领先 1 笔，需随下次授权推送归零（本行的 0 0 是 06:06 实测值）。
+
+### 16. 复工三件收口（2026-11-20，口径唯一化：中途版本不再引用）
+
+| # | 件 | 落点与规模 | 维护人／判据 |
+|---|---|---|---|
+| 1 | 路线图文档规格 | `org/roadmap-doc-spec.md`｜405 行｜20,792B｜`359b5855…`（落盘自 `c351d2be…`，与原件相比只多第 5 行维护人；正本与 skill `roadmap-doc-spec` 同一次改） | 维护人＝项目总负责人；改动只走「群内讨论 → 落盘」 |
+| 2 | 豆包两表（不进仓） | `capabilities` 28,138B／178 行／`03f547c9…`；`to-l2-map` 11,130B／130 行／`2f5a67d7…`（基线：使用名 16、未贴靠 15、名单外 0、条目 118＝78＋40、清单 15 项） | 维护人＝豆包联络人；QA 判词 `C:\tmp\qa-doubao-l2-spotcheck-1120.md`｜5,846B／68 行／`1fbc7b1c…`（末行 `<!-- DONE -->`）；两表在并入 INVENTORY 前不再动 |
+| 3 | 派活通道口径 | `org/dispatch-channel-1120.md`｜34 行｜1,506B｜`a939cea8…` | 项目活只走群或 relay 投群分身；主身私聊只做纯个人事务 |
+
+- 推送状态（2026-11-20 复核）：远端 `exp/resource-ledger`＝本地 HEAD＝`db242c2bebeda8b48c158a8a77449d09cfa388be`，`git rev-list --left-right --count` ＝ `0	0`；未跟踪 6 件 `??` 照旧（`dispatch-channel-1120.md`、`roadmap-doc-spec.md`、`ruling-dispatch-v6-1120.md`、两张 `staging/doubao-*.md`、`reports/weekly-2026-11-13_11-20.md`）。§15 里 `eb4bd364` 那两行是当时实测值，不追改为现值。
