@@ -832,7 +832,9 @@ To: AI writer项目组 · 群内共读（判件基准件）
 | # | 件 | 落点与规模 | 维护人／判据 |
 |---|---|---|---|
 | 1 | 路线图文档规格 | `org/roadmap-doc-spec.md`｜405 行｜20,792B｜`359b5855…`（落盘自 `c351d2be…`，与原件相比只多第 5 行维护人；正本与 skill `roadmap-doc-spec` 同一次改） | 维护人＝项目总负责人；改动只走「群内讨论 → 落盘」 |
-| 2 | 豆包两表（不进仓） | `capabilities` 28,138B／178 行／`03f547c9…`；`to-l2-map` 11,130B／130 行／`2f5a67d7…`（基线：使用名 16、未贴靠 15、名单外 0、条目 118＝78＋40、清单 15 项） | 维护人＝豆包联络人；QA 判词 `C:\tmp\qa-doubao-l2-spotcheck-1120.md`｜5,846B／68 行／`1fbc7b1c…`（末行 `<!-- DONE -->`）；两表在并入 INVENTORY 前不再动 |
+| 2 | 豆包两表（入 `staging/` 候选材料面，不进 `docs/`／INVENTORY） | `capabilities` **28,137B／177 行／`0acb6049…`**（入库时 hygiene `trailing-newline` 收敛末尾第 2 个换行，正文未动；值 `28,138B／178 行／03f547c9…` 已作废）；`to-l2-map` 11,130B／130 行／`2f5a67d7…`（基线：使用名 16、未贴靠 15、名单外 0、条目 118＝78＋40、清单 15 项） | 维护人＝豆包联络人；QA 判词 `C:\tmp\qa-doubao-l2-spotcheck-1120.md`｜5,846B／68 行／`1fbc7b1c…`（末行 `<!-- DONE -->`）；两表在并入 INVENTORY 前不再动 |
 | 3 | 派活通道口径 | `org/dispatch-channel-1120.md`｜34 行｜1,506B｜`a939cea8…` | 项目活只走群或 relay 投群分身；主身私聊只做纯个人事务 |
+
+- 08-21 更正（2026-11-20 23:5x，S1 入库后）：六件未跟踪件已随提交 `376ce148`（父 `884b17f2`，6 files／+914，六路径点名、未用 `-A`）入库，S1 四条判据经 admin 实跑 pass（HEAD＝origin＝`376ce148`、porcelain 空、hygiene `0 项不合规`、archive 97/97）；`capabilities` 末行空白收敛属首次入库 `A`、无对账基准，采信限度一条已记：**原件从未入库，`body_identical` 无法第三方复核**，对账一律按 28,137B／`0acb6049…`。
 
 - 推送状态（2026-11-20 复核）：远端 `exp/resource-ledger`＝本地 HEAD＝`db242c2bebeda8b48c158a8a77449d09cfa388be`，`git rev-list --left-right --count` ＝ `0	0`；未跟踪 6 件 `??` 照旧（`dispatch-channel-1120.md`、`roadmap-doc-spec.md`、`ruling-dispatch-v6-1120.md`、两张 `staging/doubao-*.md`、`reports/weekly-2026-11-13_11-20.md`）。§15 里 `eb4bd364` 那两行是当时实测值，不追改为现值。
