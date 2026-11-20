@@ -860,7 +860,19 @@ To: AI writer项目组 · 群内共读（判件基准件）
 | S2 | S2 收口复核：B-23 判「不成立」结案（`d1a6e75c` 起 `archive/` 早已豁免）；B-20 探测四值齐 | `git show d1a6e75c:scripts/ops/check-batch-hygiene.mjs` 命中 `EXEMPT_VERSIONED_DIRS`（`:26`）与 `return null`（`:55`），父提交 `d1a6e75c^` 命中 0；`wt-p56` 探测四值＝`dotgit_is_file=True`／`dotgit_mergehead_test=False`／`gitpath_raw=C:/develop/workspace/AI-writer/develop/.git/worktrees/wt-p56/MERGE_HEAD`／`gitpath_test=False`（不进等待循环、不置 `$inProgress`）；`--all` 0 项、`--disk` 14 项且 archive 命中 0、`archive` 内 `.vN` 71 件 | QA 首次判词 `reports/S2-premise-qa-recheck.md`（PASS＋勘误 3 项：`while` 在 `:61` 非 `:62`、「本卡不改码」在第 7 行非第 4 行、`gitpath_raw` 为裸串）；BACKLOG `### B-23` 在 `:90`、B-24 在 `:98` |
 | S4 | BACKLOG 结案回写落地，**只剩 1 条 open**＝B-1e 常驻规矩（长期规矩，故意不勾） | `grep -c '^- \[ \]'`＝`1`（即 `BACKLOG.md:52` B-1e）、`^- \[x\]`＝`21`；B-1a／B-1d／B-19 记「转主人裁」，B-1b／B-1c 记「结案·非本组删除」，B-2 记「39＝当前 1＋已并入 7＋未并入 31」，B-3／B-5／B-18 结案，B-4／B-21 记「去向＝转下期」；旧「18 分支／8 条可直接删」清单与「135 MB」口径均标作废 | `30d3799e`（父 `ab8e8e17`，2 files／+121−22，`check:fast` 全绿、`--all` 0 项）；`BACKLOG.md` 现 125 行／`1d9e81bb32e8e0860d177ce7b922de2c`；S3 清单件随之入库（`bbdd6c5f…`／76 行／7,031B） |
 | S4 | 看板六卡与实况一致（revision 844），无待改 | S1 `23433174` done／S2 `76273d1a` done／S3 `2a8b0b0d` done／S4 `4ee6b83e` done／S5 `19bd077a` done／S6 `3aabf83a` todo＋首行标「归 DSH 插件组，不在本项目路线图」 | 负责人 02:1x 核对结果；待 QA 复核 |
-| S4 | 判据三项到位：BACKLOG 各有结案或转裁、台账含四阶段证据行（§15）、看板六卡一致 | 本节与 §15／§17 共同构成；最终 PASS 归 QA／admin | — |
+| S4 | 判据三项到位：BACKLOG 各有结案或转裁、台账含四阶段证据行、看板六卡一致 | 本轮 Goal 的四阶段证据行＝S1 §16、S2 §18 首行、S3 §17、S4 §18；§15 属上一个 Goal（脱敏基线收口四阶段），不充当本轮依据（口径按 QA 02:2x 判词更正）；最终 PASS 归 QA／admin | — |
 
 - 推送状态（2026-11-21 02:2x 复核，登记本节这两笔之前）：本地 HEAD `30d3799e`、远端旧头 `376ce148`，`git rev-list --left-right --count origin/exp/resource-ledger...HEAD` ＝ `0	4`；加上 §18 这两笔登记（`7791f2f6` 与本次补 S2 行那笔）共 `0	6`，全部不单独推，随下次授权推送一并归零。
 - 未入库余件（不属我，仅备查）：`git status --porcelain -uall` 6 件 `??`＝两张 S2 卡面、三份 S2 报告、`reports/s3-stocktake-1121.md`。
+
+### 19. 处置结果：`.batch-a` 与 `tmp-dev` 已删并留档（tar＋sha256）（2026-11-21）
+
+| 对象 | 结论 | 判据与证据 | 依据 |
+|---|---|---|---|
+| `.batch-a`（860 件／103,613,677B） | **已删并留档（tar＋sha256）**，执行人＝管家跟班，组内未动手 | `C:\tmp\aiwriter-batch-a-1121.tar.gz`｜29,740,172B｜sha256 `bf6047565892e2b7b25774ee2ffe6199b8beaae58585cd0c20d8419193cbc7ed`｜tar 条目 922＝860 文件＋62 目录（根名 `.batch-a/`，我 `tar tzf \| wc -l` 实得 922）；`C:\develop\workspace\AI-writer` 下 `.batch-a` 已不存在 | admin 02:2x 报告；QA 只读复核一致 |
+| `tmp-dev`（61 件／534,352B） | **已删并留档（tar＋sha256）** | `C:\tmp\aiwriter-tmpdev-1121.tar.gz`｜107,370B｜sha256 `50c40c1c6138aa323fe16b17492a459d2878bc6f4698e99361d2edfc6cbf4a62`｜条目 62＝**61 文件＋1 目录**（首条 `tmp-dev/`；「62 条目」与「61 文件」两种写法都指同一包，引用时写明哪个是哪个）；`tmp-dev` 已不存在 | 同上 |
+| 回滚件 | `rotation/pii-scan.mjs.bak-1119H` 在盘（bot 工作区 `C:\Users\伯云飞\.dsh\bot\workspace\rotation\`） | 9,190B｜md5 `63e9328f548f66174e53a3e9937ddda8`（我实测）；它同时是 `rotation/pii-scan.mjs` 的唯一回滚件 | 我实测 |
+| 未动项 | `.backups`／`night-probe`／`test-master`／`wt-1117f`／`_trash` 按 admin 报告原样未动；本行未自验 | — | admin 02:2x 报告 |
+
+- 措辞口径（admin 定）：写「**已删并留档（tar＋sha256）**」，不写「已清理干净」。
+- 边界：本组任何人未执行删除；B-1a／B-19 的结案行由负责人在 BACKLOG 里同步改标题与正文，台账本节只记事实。
