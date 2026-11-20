@@ -835,7 +835,20 @@ To: AI writer项目组 · 群内共读（判件基准件）
 | 2 | 豆包两表（入 `staging/` 候选材料面，不进 `docs/`／INVENTORY） | `capabilities` **28,137B／177 行／`0acb6049…`**（入库时 hygiene `trailing-newline` 收敛末尾第 2 个换行，正文未动；值 `28,138B／178 行／03f547c9…` 已作废）；`to-l2-map` 11,130B／130 行／`2f5a67d7…`（基线：使用名 16、未贴靠 15、名单外 0、条目 118＝78＋40、清单 15 项） | 维护人＝豆包联络人；QA 判词 `C:\tmp\qa-doubao-l2-spotcheck-1120.md`｜5,846B／68 行／`1fbc7b1c…`（末行 `<!-- DONE -->`）；两表在并入 INVENTORY 前不再动 |
 | 3 | 派活通道口径 | `org/dispatch-channel-1120.md`｜34 行｜1,506B｜`a939cea8…` | 项目活只走群或 relay 投群分身；主身私聊只做纯个人事务 |
 
-- 08-21 更正（2026-11-20 23:5x，S1 入库后）：六件未跟踪件已随提交 `376ce148`（父 `884b17f2`，6 files／+914，六路径点名、未用 `-A`）入库，S1 四条判据经 admin 实跑 pass（HEAD＝origin＝`376ce148`、porcelain 空、hygiene `0 项不合规`、archive 97/97）；`capabilities` 末行空白收敛属首次入库 `A`、无对账基准，采信限度一条已记：**原件从未入库，`body_identical` 无法第三方复核**，对账一律按 28,137B／`0acb6049…`。
+- 11-21 更正（2026-11-20 23:5x，S1 入库后）：六件未跟踪件已随提交 `376ce148`（父 `884b17f2`，6 files／+914，六路径点名、未用 `-A`）入库，S1 四条判据经 admin 实跑 pass（HEAD＝origin＝`376ce148`、porcelain 空、hygiene `0 项不合规`、archive 97/97）；`capabilities` 末行空白收敛属首次入库 `A`、无对账基准，采信限度一条已记：**原件从未入库，`body_identical` 无法第三方复核**，对账一律按 28,137B／`0acb6049…`。
 
 - 推送状态（2026-11-21 00:1x 复核，取代下面 11-20 那条快照）：远端 `exp/resource-ledger`＝本地 HEAD＝`376ce148361af0719f9c7ff8134bef8c5b7e916f`，`git rev-list --left-right --count` ＝ `0	0`；`git status --porcelain -uall` 0 件（六件已入库）。本行与上一笔 `f9c84f90` 属同一登记动作，两笔会使本地重新 `0	2`，随下次实改动一并推，不单独推。
 - 历史快照（2026-11-20 复核，仅留档）：远端＝`db242c2bebeda8b48c158a8a77449d09cfa388be`，`git rev-list --left-right --count` ＝ `0	0`；未跟踪 6 件 `??` 照旧（`dispatch-channel-1120.md`、`roadmap-doc-spec.md`、`ruling-dispatch-v6-1120.md`、两张 `staging/doubao-*.md`、`reports/weekly-2026-11-13_11-20.md`）。§15 里 `eb4bd364` 那两行是当时实测值，不追改为现值。
+
+### 17. Goal 四阶段收口：S3 存量处置结论与四条待裁（2026-11-21）
+
+| # | 结论 | 判据与证据 | 依据件／提交 |
+|---|---|---|---|
+| 1 | S3 判 **pass**（admin 实核）；存量清单只列不动，删除动作 **0** | 三处数字与我方实取一致：`AI-writer/.batch-a` 860 件／103,613,677B（du 101M）、`.batch-a/d12proj/.ai-novel/project.db` 14,405,632B／md5 `734804176281b0bd979133950522a181`、`tmp-dev` 61 件／534,352B；tar `C:\tmp\aiwriter-snapshots-1120.tar.gz` 20,301,711B／sha256 `5a392af4…9ff5` 原样未动 | 清单 `org/s3-disposition-1121.md`｜76 行／7,031B／`bbdd6c5f4f01aa8e634532c21778f53e`（未入库，`git ls-files` 未命中，待 QA 按新 md5 复判）；取数 `reports/s3-stocktake-1121.md`｜159 行／11,210B／`a5a0324a408ac477a9be68533451dcd9` |
+| 2 | **B-1a 改判「转主人裁」**（首版「无可处置对象」作废） | `proj-pre-d12` 未删，是被改名搬进 `.batch-a/d12proj`（md5 与 BACKLOG 记的三个数逐项相符）；`proj-pre-a1`（db md5 `c338bad5…`）与 `proj-pre-b1replay`（db 16,969,728B）仍未找到；`.batch-a` 无 README、在 git 之外，按 B-1e 属待认领孤儿 | 同件 §〇、§一；负责人 01:58 已按其改写并自行认错 |
+| 3 | B-1b／B-1c **结案（对象已不存在，非本组删除）**；可清理合计 **21,112,163B（约 20.1 MiB）**，原「135 MB」作废 | `─_scratch-d18`、`_backup-2026-11-01` 实测 GONE；合计＝tar 20,301,711B＋`tmp-dev` 534,352B＋根 `.backups` 19,311B（3 件）＋`develop/.backups` 180,192B（2 件）＋`.backups-archive` 76,597B（1 件） | 同件 §〇、§二 |
+| 4 | B-2 分支三档：**39 ＝ 当前 1 ＋ 已并入 7 ＋ 未并入 31**（件内写 32 是含了当前分支，admin 已订正）；7 条可删（只列不动）、31 条保留、远端 5 条不动 | 实测 `git branch|wc -l`＝39、`--merged origin/exp/resource-ledger`＝7、`ls-remote --heads`＝5；7 条均 ⊂ `376ce148`（QA 逐条 `merge-base --is-ancestor` exit 0）；回滚＝`git branch <名> <tip>`，tip 见 stocktake §6.1 | 同件 §三 |
+| 5 | **四条待裁已 relay 主身**（本组不代答） | ①约 20.1 MiB 删不删（含 tar、`tmp-dev`、三处 `.backups`；删 `tmp-dev` 前须单独保留 `pii-scan.mjs.bak-1119H`，它是 `rotation/pii-scan.mjs` 唯一回滚件）②`.batch-a` 101 MB 怎么办（补 README／纳管／删）③B-1d 仓库外目录纳不纳管 ④7 条已并入分支删不删 | 同件 §五（四条，含体积对比与回滚路径） |
+
+- 推送状态（2026-11-21 02:0x 复核）：本地 HEAD `0d2671db`，`git rev-list --left-right --count origin/exp/resource-ledger...HEAD` ＝ `0	2`（待推 `f9c84f90`、`0d2671db`），`git status --porcelain -uall` 8 行（1 `M`＝BACKLOG 回写中、7 `??`＝两卡两判词＋S3 两件＋一 reports 件），均不单独推，随下次授权推送一并归零。
+- 口径提醒：本节四行只记 S3 已成立的事实与四条待裁，S4 的 BACKLOG 结案行与看板六卡一致性由负责人回写、QA 核；四阶段证据行仍以 §15 四行为准，本节不替代。
