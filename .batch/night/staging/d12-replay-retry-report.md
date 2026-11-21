@@ -9,14 +9,15 @@ model=DeepSeek-V4.1 | 倍率=— | provider=—
 ## 1. 起止与改动面
 
 - 起点 HEAD：`89ec7014`（卡面指定）
-- 终点 HEAD：`1ee3efd8`
-- 分支上三笔提交（不 amend，逐笔可查）：
+- 终点 HEAD：本报告所在提交（`git log --oneline -1`），其父为脚本提交面 `1ee3efd8`
+- 分支上逐笔提交（不 amend，逐笔可查）：
 
 | SHA | 提交信息 | 内容 |
 |---|---|---|
 | `f8d703c0` | `feat(draft): D12 重演命中后带原因整章重写一次（CARD-D12-replay-retry）` | 实现 + 单测 + 实机脚本 + 缺陷稿 + 本报告（含 QA 打回的 §4.2.7 两条子断言） |
 | `4f2c62a4` | `test(draft): D12 实测脚本 candidates 实读 + 4 处判据补齐（CARD-D12-replay-retry）` | 脚本 5 处假读数/短路修正（§5.3 四列表） |
 | `1ee3efd8` | `test(draft): D12 实测脚本末行输出后显式退出…（CARD-D12-replay-retry）` | 脚本收口：末行 JSON 后 `process.exit`，让调用方拿到真实 `EXIT`（§9.5） |
+| 末尾一笔（仅本报告） | `docs(batch): D12 交件报告同步…` | 本报告自身更新（复跑证据、判据行号表、裁定结论），不含代码 |
 
 - `git diff --numstat 89ec7014 HEAD`（本报告自身行数随编辑变动，故下表只列其余 5 件；报告行数见 `wc -l .batch/night/staging/d12-replay-retry-report.md`）
 
