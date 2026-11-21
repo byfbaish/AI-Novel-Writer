@@ -3,7 +3,7 @@ import { safeTransportError, type GenerationTransportDiagnostics } from '../../s
 import { GenerationRunRepository, type OpenGenerationRunRequest, type RunBinding, type GenerationExecutionReceipt, type GenerationUsageReceipt } from '../repositories/generation-run-repository';
 import type { ProviderUsagePolicy } from '../../src/shared/generation-contract';
 import { parseAgentResponseProtocol, projectInterruptedAgentVisibleText } from '../../src/shared/agent-response-protocol';
-import { resolveCallDeadline, runDeadlineTimeout, type DeadlineTimeoutFailureCode } from '../../src/shared/generation-call-timeout';
+import { createSingleCallWatchdog, resolveCallDeadline, resolveSingleCallTimeoutMs, runDeadlineTimeout, type DeadlineTimeoutFailureCode, type SingleCallPhase } from '../../src/shared/generation-call-timeout';
 export type { OpenGenerationRunRequest, RunBinding, DurableGenerationRun, GenerationExecutionReceipt, GenerationBudgetReceipt } from '../repositories/generation-run-repository';
 export interface VisibleGenerationEvent {
     kind: 'delta' | 'cumulative';
@@ -70,6 +70,16 @@ export interface GenerationRunServiceDependencies {
         diagnostics?: GenerationTransportDiagnostics;
     }) => void;
     validateRecovery?: (previous: RunBinding, next: RunBinding) => Promise<boolean>;
+    /**
+     * D9：单次调用上限的注入点（验收脚本把 10 分钟压到秒级用）。
+     * 缺省/非法值一律回落 `DEFAULT_SINGLE_CALL_TIMEOUT_MS`，生产调用方不传，语义与接卡前完全一致。
+     */
+    callTimeoutCapMs?: number;
+    /**
+     * D9：单次调用的阶段态出口（`generating` → `timed-out` / `failed`）。
+     * 只报状态、不参与判定；`timed-out` 的收尾仍由 `block(root, code)` 那条路径决定。
+     */
+    onCallPhase?: (event: { attemptId: string; phase: SingleCallPhase }) => void;
 }
 export function settleProviderUsage(usage: GenerationProviderUsage | null, policy: ProviderUsagePolicy): GenerationUsageReceipt {
     const conservative: GenerationUsageReceipt = { policy, trusted: false };
@@ -99,8 +109,20 @@ export function settleProviderUsage(usage: GenerationProviderUsage | null, polic
         return conservative;
     return { policy, trusted: true, inputTokens: p, completionTokens: c, ...(r !== null ? { reasoningTokens: r } : {}), actualTokens: actual };
 }
-export function createGenerationRunService(deps: GenerationRunServiceDependencies) {
-    const controllers = new Map<string, {
+/**
+ * D9 验收注入点：把单次调用上限压到秒级，才能在实机上一次跑完「真超时中止」。
+ * 生产/开发环境不设这个变量，取值即 `undefined`，回落 `DEFAULT_SINGLE_CALL_TIMEOUT_MS`。
+ * 非法值同样按未设置处理——不因一个环境变量放宽护栏。
+ */
+function acceptanceCallTimeoutCapMs(): number | undefined {
+    const raw = process.env.AI_NOVEL_CALL_TIMEOUT_CAP_MS;
+    if (!raw || !/^\d+$/u.test(raw.trim()))
+        return undefined;
+    const parsed = Number(raw.trim());
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+export function createGenerationRunService(deps: GenerationRunServiceDependencies) {    const controllers = new Map<string, {
         controller: AbortController;
         rootId: string;
         flush: () => void;
@@ -181,7 +203,16 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
             controllers.set(attemptId, { controller, rootId: run.rootActionId, flush: () => { retainInterruptedAgentText(); flush(); },
                 suspend: () => { receipt = deps.repository.receipt(attemptId); suspended = true; controller.abort(); } });
             let timer: ReturnType<typeof setInterval> | undefined;
-            let deadline: ReturnType<typeof setTimeout> | undefined;
+            let callWatchdog: ReturnType<typeof createSingleCallWatchdog> | undefined;
+            /** D9：阶段态只上报、不参与判定；未接 watchdog 时静默。 */
+            const reportCallPhase = () => {
+                if (!callWatchdog)
+                    return;
+                try {
+                    deps.onCallPhase?.({ attemptId, phase: callWatchdog.phase });
+                }
+                catch { /* A display-only event cannot alter durable generation. */ }
+            };
             let removeAbortListener = () => { };
             let timedOut = false;
             /** 超时的归属：固定 per-call 上限还是 root 剩余预算。只由那一条 deadline 计时器写入。 */
@@ -200,24 +231,37 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                     throw error;
                 }
                 timer = setInterval(flush, 1000);
-                // D9：单次调用固定上限（10 分钟）与 root 剩余预算取更早者，**复用同一条 deadline**。
+                // D9：单次调用固定上限（默认 10 分钟）与 root 剩余预算取更早者，**复用同一条 deadline**。
                 // 预算充裕时由上限定值；预算紧张时由剩余定值。另起计时器会造出第三条判定来源。
+                // 上限可注入（`callTimeoutCapMs`）只为验收把 10 分钟压到秒级；不传即默认值，语义不变。
                 const budgetRemainingMs = Math.max(0, receipt.budget.policy.maxActiveElapsedMs - deps.repository.budget(run.rootActionId).activeElapsedMs);
-                const callDeadline = resolveCallDeadline(budgetRemainingMs);
-                deadline = setTimeout(() => runDeadlineTimeout({
-                    failureCode: callDeadline.failureCode,
-                    markTimedOut: () => { timeoutFailureCode = callDeadline.failureCode; timedOut = true; },
-                    block: code => {
-                        try {
-                            deps.repository.block(run.rootActionId, code);
-                        }
-                        catch {
-                            storageFailed = true;
-                            failedRoots.add(run.rootActionId);
-                        }
+                const capMs = resolveSingleCallTimeoutMs(deps.callTimeoutCapMs ?? acceptanceCallTimeoutCapMs());
+                const callDeadline = resolveCallDeadline(budgetRemainingMs, capMs);
+                // 唯一计时器：watchdog 既计时又持有阶段态（generating → timed-out/failed），
+                // 触发时仍走 runDeadlineTimeout 的 mark → block → abort 顺序，block 收尾路径原样不动。
+                // `Math.max(1, …)` 防止 0 预算被 resolveSingleCallTimeoutMs 的回落规则放大成 10 分钟。
+                callWatchdog = createSingleCallWatchdog({
+                    timeoutMs: Math.max(1, callDeadline.deadlineMs),
+                    onTimeout: () => {
+                        reportCallPhase();
+                        runDeadlineTimeout({
+                            failureCode: callDeadline.failureCode,
+                            markTimedOut: () => { timeoutFailureCode = callDeadline.failureCode; timedOut = true; },
+                            block: code => {
+                                try {
+                                    deps.repository.block(run.rootActionId, code);
+                                }
+                                catch {
+                                    storageFailed = true;
+                                    failedRoots.add(run.rootActionId);
+                                }
+                            },
+                            abort: () => controller.abort(),
+                        });
                     },
-                    abort: () => controller.abort(),
-                }), callDeadline.deadlineMs);
+                });
+                callWatchdog.start();
+                reportCallPhase();
                 const cancelled = new Promise<never>((_resolve, reject) => { const abort = () => reject(new Error('GENERATION_CANCELLED')); controller.signal.addEventListener('abort', abort, { once: true }); removeAbortListener = () => controller.signal.removeEventListener('abort', abort); });
                 const provider = deps.dispatch(request.providerRequest, { signal: controller.signal, onDiagnostics: value => {
                         if (terminal || storageFailed || controller.signal.aborted) return;
@@ -292,6 +336,10 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                 }
                 retainInterruptedAgentText();
                 flush();
+                if (!timedOut && callWatchdog) {
+                    callWatchdog.fail();
+                    reportCallPhase();
+                }
                 try {
                     if (suspended) return { ...receipt, ...(storageFailed ? { unsavedTail: text.slice(durable.length) } : {}), failureCode: 'GENERATION_PROJECT_CLOSED' };
                     const current = deps.repository.receipt(attemptId);
@@ -316,8 +364,8 @@ export function createGenerationRunService(deps: GenerationRunServiceDependencie
                 terminal = true;
                 if (timer)
                     clearInterval(timer);
-                if (deadline)
-                    clearTimeout(deadline);
+                if (callWatchdog)
+                    callWatchdog.dispose();
                 removeAbortListener();
                 controllers.delete(attemptId);
             }
