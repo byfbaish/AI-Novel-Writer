@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GenerationTransportDiagnostics } from '../../../src/shared/generation-contract'
 import { createGenerationRunService, type ExecuteGenerationRequest } from '../generation-run-service'
 import type { GenerationRunRepository } from '../../repositories/generation-run-repository'
+import { GENERATION_CALL_TIMEOUT_FAILURE_CODE, resolveCallDeadline, resolveSingleCallTimeoutMs } from '../../../src/shared/generation-call-timeout'
 
 /**
  * D9 阶段 1 补测：覆盖 `generation-run-service.ts:285-293` 的 `if (timedOut)` 覆盖分支。
@@ -66,8 +67,12 @@ function dispatchWithCancelledSnapshot(_request: unknown, options: { signal: Abo
   return new Promise<never>(() => {})
 }
 
-afterEach(() => { vi.useRealTimers() })
+/** 真失败（非超时）：provider 直接抛错，用来区分「超时已中止」与「调用失败」两态。 */
+function dispatchProviderFailure() {
+  return Promise.reject(new Error('GENERATION_PROVIDER_FAILED'))
+}
 
+afterEach(() => { vi.useRealTimers() })
 describe('D9 单次调用超时：timedOut 覆盖分支', () => {
   it('预算大于上限时按 10 分钟收口：block / settle 都落 GENERATION_CALL_TIMEOUT，且压过已存在的 cancelled 诊断', async () => {
     vi.useFakeTimers()
@@ -99,3 +104,61 @@ describe('D9 单次调用超时：timedOut 覆盖分支', () => {
     expect(result.failureCode).toBe('ROOT_BUDGET_EXHAUSTED')
   })
 })
+
+describe('D9 上限可注入：默认值不变、注入值生效', () => {
+  it('不传 callTimeoutCapMs 时上限仍是 10 分钟（600000），注入前语义不变', () => {
+    expect(resolveSingleCallTimeoutMs()).toBe(600_000)
+    expect(resolveSingleCallTimeoutMs(undefined)).toBe(600_000)
+    expect(resolveCallDeadline(3_600_000)).toEqual({ deadlineMs: 600_000, failureCode: GENERATION_CALL_TIMEOUT_FAILURE_CODE })
+    expect(resolveCallDeadline(300_000)).toEqual({ deadlineMs: 300_000, failureCode: 'ROOT_BUDGET_EXHAUSTED' })
+  })
+
+  it('注入 1200ms 后按注入值收口：1199ms 不动，1200ms 落 GENERATION_CALL_TIMEOUT', async () => {
+    vi.useFakeTimers()
+    const f = fixture(3_600_000)
+    const service = createGenerationRunService({ repository: f.repository, dispatch: dispatchWithCancelledSnapshot, callTimeoutCapMs: 1_200 })
+    const operation = service.execute(request)
+
+    await vi.advanceTimersByTimeAsync(1_199)
+    expect(f.blockCalls).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(1)
+    const result = await operation
+    expect(f.blockCalls).toEqual([['root-1', 'GENERATION_CALL_TIMEOUT']])
+    expect(f.settleCalls[0].failureCode).toBe('GENERATION_CALL_TIMEOUT')
+    expect(result.failureCode).toBe('GENERATION_CALL_TIMEOUT')
+  })
+})
+
+describe('D9 三态：watchdog 在生产接线后的阶段态取值', () => {
+  it('超时：阶段态依次为 generating → timed-out，之后不再变化', async () => {
+    vi.useFakeTimers()
+    const f = fixture(3_600_000)
+    const phases: string[] = []
+    const service = createGenerationRunService({
+      repository: f.repository, dispatch: dispatchWithCancelledSnapshot, callTimeoutCapMs: 1_200,
+      onCallPhase: event => phases.push(`${event.attemptId}:${event.phase}`),
+    })
+    const operation = service.execute(request)
+    await vi.advanceTimersByTimeAsync(1_200)
+    await operation
+    expect(phases).toEqual(['attempt-1:generating', 'attempt-1:timed-out'])
+  })
+
+  it('调用失败：阶段态依次为 generating → failed', async () => {
+    vi.useFakeTimers()
+    const f = fixture(3_600_000)
+    const phases: string[] = []
+    const service = createGenerationRunService({
+      repository: f.repository, dispatch: dispatchProviderFailure, callTimeoutCapMs: 1_200,
+      onCallPhase: event => phases.push(`${event.attemptId}:${event.phase}`),
+    })
+    const result = await service.execute(request)
+
+    expect(result.failureCode).toBeUndefined()
+    expect(f.settleCalls[0].failureCode).toBe('GENERATION_PROVIDER_FAILED')
+    expect(f.blockCalls).toEqual([])
+    expect(phases).toEqual(['attempt-1:generating', 'attempt-1:failed'])
+  })
+})
+
