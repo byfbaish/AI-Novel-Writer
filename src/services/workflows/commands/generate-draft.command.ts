@@ -23,7 +23,7 @@ import { projectScopedText } from '../../../shared/text-scope-tags'
 export { synopsisSettingSectionsForDraft } from '../../../shared/synopsis-projection'
 import { createWorkflowMainGenerationRuntime, type WorkflowMainGenerationRequest } from '../workflow-main-generation'
 import { safeProtocolCode } from '../structured-batch-executor'
-import { CHAPTER_FAILURE_CODES, incompleteFinishReasonCode } from '../../../shared/chapter-failure'
+import { CHAPTER_FAILURE_CODES, incompleteFinishReasonCode, isChapterFailureCode } from '../../../shared/chapter-failure'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import { formatResourceUri } from '../../../shared/project-paths'
 import {
@@ -1873,10 +1873,13 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         cleanDraftText, id: createResult.id, nextVersion, mergedGuidance, targetChars })
     } catch (error) {
       // D13 §5.4 A 路：跨 IPC 的失败（如组装层 GENERATION_COMPOSITION_NO_PROGRESS）到渲染层只剩
-      // message 里那一串，Electron 会把 `code` 属性丢掉。判定出的受控码挂回抛出的对象，
-      // 上层与恢复候选才能按码分流（判据 2），不必各自再解析一次 message。
+      // message 里那一串，Electron 会把 `code` 属性丢掉。判出的**受控码**（chapter-failure 词表内）
+      // 挂回抛出的对象，上层与恢复候选才能按码分流（判据 2），不必各自再解析一次 message。
+      // 只给词表内的码赋值：词表外的失败（含 provider 回传的不受信文本）保持不带 `code`，
+      // 既有不变量「不把不受信失败文本变成展示码」照旧成立（QA 判据 5 打回点）。
       const failureCode = recoveryFailureCode(error, context.cancelled)
-      if (error && typeof error === 'object' && typeof (error as { code?: unknown }).code !== 'string') {
+      if (error && typeof error === 'object' && typeof (error as { code?: unknown }).code !== 'string'
+        && isChapterFailureCode(failureCode)) {
         Object.assign(error, { code: failureCode })
       }
       // D13 裁定 2=A（§7.1：让生产也留候选，2026-11-06 作者裁定 A 后落地）：
