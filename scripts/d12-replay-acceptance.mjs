@@ -299,7 +299,7 @@ async function appDb(app, task, payload = {}) {
           drafts: db.prepare('SELECT id, chapter_number AS chapter, version, status FROM drafts ORDER BY id').all(),
           finalizations: db.prepare('SELECT draft_id AS draftId, chapter_title AS title, publication_status AS status FROM finalization_outbox').all(),
           summaries: db.prepare('SELECT id, chapter_number AS chapter, length(chapter_notes) AS notesLength FROM summary_snapshots').all(),
-          candidates: db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%candidate%'").all(),
+          candidates: db.prepare('SELECT chapter_number AS chapter, failure_code AS failureCode, status FROM recovery_candidates ORDER BY created_at').all(),
           attempts: db.prepare('SELECT attempt_json AS attemptJson, usage_receipt_json AS receiptJson FROM generation_attempts').all(),
         }
       }
@@ -445,7 +445,9 @@ async function main() {
   const notesBlock = notesStart < 0 || notesEnd <= notesStart
     ? ''
     : outlinePrompt.slice(notesStart + '上一章已完成的事（要点）：'.length, notesEnd)
-  const correction = retryDispatch.prompt.slice(retryDispatch.prompt.indexOf('【修正说明】'))
+  // 取不到修正段时显式落空串，不能用 slice(-1)（会取到末字符，让 Boolean(correction) 假真）。
+  const correctionAt = retryDispatch.prompt.indexOf('【修正说明】')
+  const correction = correctionAt < 0 ? '' : retryDispatch.prompt.slice(correctionAt)
   // compose-visible 的签收证据落在 artifact 所属 attempt 的 usage_receipt_json.visibleComposition 里；
   // 页面里的 window.aiNovelAPI 是 contextBridge 冻结对象，改不动，因此从库里读权威证据。
   const composeCalls = out.rows.attempts.filter(row => String(row.receiptJson ?? '').includes('visibleComposition')).length
@@ -459,26 +461,33 @@ async function main() {
 
   const evidence = {
     endingBlockUnits: units(endingBlock),
-    notesSixColumnsPresent: SIX_COLUMN_HEADINGS.every(heading => outlinePrompt.includes(heading)),
+    // 段缺失时 units('') 会算成 0 直接过半（fail-open），所以另判「段非空」。
+    endingBlockNonEmpty: endingBlock.length > 0,
+    // 六栏要在要点块里全在；整份 prompt 命中只作对照（模板里也可能出现同名标题）。
+    notesSixColumnsPresent: SIX_COLUMN_HEADINGS.every(heading => notesBlock.includes(heading)),
+    notesHeadingsInPrompt: SIX_COLUMN_HEADINGS.filter(heading => outlinePrompt.includes(heading)).length,
     notesTableRowsUnchanged: dataRowCount(notesBlock) === dataRowCount(NOTES),
     notesHooksCountUnchanged: hookItemCount(notesBlock) === hookItemCount(NOTES),
     notesBlockUnits: units(notesBlock),
     notesSourceUnits: units(NOTES),
     outlineMidMaxOverlapUnits: midOverlap,
-    proseContainsFullPrevious: initialDispatch.prompt.includes(CH1_TAIL.slice(-120)),
+    // 卡面「含上一章全文」：用整段 300 码元结尾做探针，不用只截 120 的短探针。
+    proseContainsFullPrevious: initialDispatch.prompt.includes(CH1_TAIL),
     proseDispatches: proseDispatches.length,
     retryHasCorrection: Boolean(correction) && correction.includes('【修正说明】上一稿开头与上一章结尾连续重合'),
     retryLeaksDraftFragment: correction.includes(REPLAY_PROSE.slice(-40)),
     composeCalls,
     drafts: chapter2Drafts.length,
-    candidates: out.rows.drafts.filter(row => row.chapter === 2 && row.status !== 'finalized').length > 0 ? 0 : 0,
+    // 失败候选（recovery_candidates）实读，不写死：卡 §4.3 要求成功路径一行不落。
+    candidates: out.rows.candidates.length,
     physicalModelRequests: out.mainState.physicalModelRequests,
     embeddings: out.mainState.embeddings,
     unclassified: out.mainState.unclassified,
     correctionText: correction,
     outlinePromptChars: outlinePrompt.length,
   }
-  const expected = { endingBlockUnits: value => value <= 300, notesSixColumnsPresent: value => value === true,
+  const expected = { endingBlockUnits: value => value <= 300, endingBlockNonEmpty: value => value === true,
+    notesSixColumnsPresent: value => value === true,
     notesTableRowsUnchanged: value => value === true, notesHooksCountUnchanged: value => value === true,
     outlineMidMaxOverlapUnits: value => value <= 80, proseContainsFullPrevious: value => value === true,
     proseDispatches: value => value === 2, retryHasCorrection: value => value === true,
