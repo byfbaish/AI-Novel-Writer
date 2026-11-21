@@ -521,3 +521,9 @@ async function main() {
 }
 
 await main()
+
+// playwright 与 Electron 的驱动连接在应用被强杀后仍持有句柄，事件循环不会自然排空，
+// 进程会一直挂着不退（外层 shell 收不到 EXIT）。证据文件与末行 JSON 都已写完，
+// 这里等 stdout 冲刷后显式退出，让调用方拿到真实退出码。
+await new Promise((resolve) => setTimeout(resolve, 50))
+process.exit(process.exitCode ?? 0)
