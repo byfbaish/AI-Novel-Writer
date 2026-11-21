@@ -59,7 +59,7 @@
 | 编号 | 级别 | 状态 | 一句话 | 证据位置 |
 |---|---|---|---|---|
 | D1 | 阻塞 | 🟡 已实施（部分复验） | 批内多单元/多章生成时第二次调用即抛 `GENERATION_SOURCE_CHANGED`，整批静默中止。**2026-11-02**：连写 2 单元已实机跑通（12 → 15 章）；机制层补 8 条单测，同 run 多调用路径（正文批量）仍未复验 | `electron/services/main-generation-owner.ts:931`；`electron/services/agent-generation.ts:158/190/196`；`src/services/agent/agent-generation-client.ts:33` |
-| D12 | 阻塞 | ✅ **结案（2026-11-08 · 判定为 9B 模型弱点，非 App 缺陷；直连复跑 10 次 3 干净 / 5 重演 / 2 失控，与 App 内同量级）** | 正文重演被丢弃且无重试、无回流。**真因是短细纲把上一章全文当成本章任务**，不是校验过严（见「第二轮实测」）。修法 = R6 短细纲砍全文（要点 + 结尾 ≤300 字）+ 判据改结构化对应，`ba3d4bc5` | `generate-draft.command.ts:1536`（拦截）；`chapter-materials.ts`（`previousChapterEnding(content, maxChars)`）；`draft-short-outline.ts`（`draftShortOutlinePredecessor`）；合并稿 `previous-chapter-context-assessment.md` §8/§9 |
+| D12 | 阻塞 | 🟡 **重开（2026-11-21 · S1）**：注入形态已由 R6 落地、待实机锁定；命中后「零重跑」为 App 侧缺口，本轮补「带原因重跑一次」 | 正文重演被丢弃且无重试、无回流。**两半条**：① 注入形态——短细纲只收「要点整份 + 结尾 ≤300」，不收上一章全文（R6，现头 `generate-draft.command.ts:1205-1224`）；正文链路仍按 R2/R3 收上一章全文（`chapter-materials.ts:608-624`，required 不裁）。② 失败处理——重演命中后按判法（不给例子）整章重写一次，仍命中才落候选。11-08 的「9B 模型弱点」结论只解释「模型会重演」，不覆盖「命中后零重跑」。判据与证据见 `.batch/night/cards/d12-replay-retry.md` | `generate-draft.command.ts:361-402`（判据）、`:1616-1621`（拦截）、`:1347-1362`（compose）；`draft-short-outline.ts:58`（300） |
 | D2 | 高 | ✅ **已实施并实机复验通过**（方案乙 + 甲；`68a37585`；2026-11-06 22:4x 在**项目副本**上造真崩溃跑通一遍）。中止文案 + 禁用按钮合格；崩溃遗留的 run 在**本进程首次调用生成通道**时被判 `aborted`。**与设计稿措辞不符一处**：稿子写「启动 fence」，实际在 owner 构建时（本进程第一次调用任一 `generation:*`，含只读的 `generation:list`）跑。**已知残留**：崩溃后若再也不调任何 gen 通道，库里那条 run 会一直是 `running`；但会读库的面板一挂载就先建 owner、当场判 `aborted`，所以界面不会出现「假继续」，只是「库里说得准不准」 | 批次中断在 UI 上完全静默：无失败回执，进度条「假继续」。乙 = 收口统一 seal；甲 = 执行租约 + 启动 fence 判 `aborted`（`68a37585`），`aborted` 现为不可续终态 | `generation_runs` 36 条无终态、`blocked_code` 为 NULL；`generation_attempts` 却为 `settled`；设计稿 `features/d2-run-lease-abort-design.md` §10；**实机与触发点见本文 D2 段「2026-11-06 22:4x 实机」** |
 | D13 | 高 | 🟡 已实施（2026-11-06 · **1=B / 2=A（与 D8 裁定 2 合并答）/ 3=A**；§5.4 跨 IPC 取码已验通；实施已合并 `959a3647`，T5 缺口于 2026-11-06 按裁定 A 补齐（`3f954431`，条件放开 + 三条断言同向收紧）；**未实机**） | 同一章三次失败分别挂在三个不同层，失败原因互不相关且都无恢复路径。**实读后定性修正**：不是三个 bug，是**一条链上没有失败契约**——正文层 10 处抛点 + 主进程 4 处 + 组装层 4 处、共约 8 个码，且码全在 message 里不带 `code` 字段 | 短细纲层 / 重演层 / `GENERATION_COMPOSITION_NO_PROGRESS`；方案稿 [`architecture/d13-chapter-failure-contract-design.md`](../architecture/d13-chapter-failure-contract-design.md) |
 | D14 | 高 | ✅ 已实施（已复验） | 卷结构三步（建卷结构 / 标卷完成 / 登记交接）全手动，生成流程从不调用、系统从不提示 → `l3-handoff-missing` 必然。**2026-11-02 已修**：建结构 + 推进进度改为自动（A 已实机复验，含历史回填），缺口提醒（B）沿用既有闸门、待第 10 章之后复验 | `VolumeHandoffRegistryPanel.tsx:269/293`（原全库唯一调用点）；`volumes` / `volume_units` / `volume_handoffs` 三表初始 0 行；`volumes.actual_last` 定稿后仍全 `null` |
@@ -849,6 +849,8 @@ A 不是边角情况：D14 已裁定「交接单**仍然手动登记**」（自�
   「续写内容被接受 → 走到 compose `:531` 才判没变长」，不是"没被消费"。→ 方案稿 §4.1
 - **[第 1 条部分失效 2026-11-05]** 方向对，但范围写小了：不止三个失败点，是**正文层 10 处 + 主进程 4 处 + 组装层 4 处**，
   且码全在 message 里、不带 `code` 字段，跨 IPC 还会再丢一次。→ 方案稿 §2 / §2.1 / §5.4
+
+> **2026-11-21 S1 重开口径**：11-08 结案依据为直连复跑（3 干净/5 重演/2 失控），只证明「模型会重演」，未覆盖「命中后零重跑」，且注入形态从未实机锁定。本轮按两半条补齐：注入形态补单测 + 实机读数；重跑补一次带原因整章重写。验收证据见 `.batch/night/reports/d12-replay-retry-qa-firstcheck.md` 与本卡 §4。
 
 ---
 

@@ -982,8 +982,14 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(legacy.createRuntime).not.toHaveBeenCalled()
     const executed = f.invoke.mock.calls.filter(([channel]) => channel === 'generation:execute')
     // 新 run 直接生成正文，唯一压缩仍使用同一 run。
+    // D12：首稿命中「开头重演」后本卡会带原因整章重写一次，故正文请求出现两次；压缩仍只一次。
     expect(executed.map(([, request]) => (request as { task: GenerationTask }).task.purpose))
-      .toEqual(['chapter-draft-short-outline', 'chapter-draft', 'chapter-draft-condense'])
+      .toEqual(['chapter-draft-short-outline', 'chapter-draft', 'chapter-draft-no-progress-recovery', 'chapter-draft-condense'])
+    const rewriteRequest = (executed[2]?.[1] as { task: GenerationTask }).task
+    // 主进程只放行首稿之外的三种变体 purpose（main-generation-owner.ts:607），重写必须落在其中一种。
+    expect(rewriteRequest.purpose).toBe('chapter-draft-no-progress-recovery')
+    expect(rewriteRequest.messages.at(-1)?.content).toContain('【修正说明】')
+    expect(rewriteRequest.messages.at(-1)?.content).toContain('不得复述、确认或回放上一章已经发生的事件')
     expect(f.invoke.mock.calls.filter(([channel]) => channel === 'generation:compose-visible')).toHaveLength(2)
     expect(f.invoke.mock.calls.some(([channel]) => channel === 'generation:pause')).toBe(false)
     expect(f.invoke.mock.calls.some(([channel]) => channel === 'generation:commit-draft')).toBe(false)
@@ -996,6 +1002,255 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
       failureCode: 'DRAFT_PREVIOUS_ENDING_REPLAY',
     }))
     expect(f.callbacks.replaceText).toHaveBeenLastCalledWith(text)
+  })
+
+  it('rewrites the chapter once with the reason attached when the first draft replays the previous ending', async () => {
+    const legacy = fakeOutcomes()
+    const replayedEnding = '潮'.repeat(500)
+    const f = setup({
+      runtime: legacy,
+      chapterNumber: 2,
+      previousFinalizedContent: replayedEnding,
+      wordsTarget: 2000,
+      wordsPerChapter: 2000,
+      mainDefault: true,
+    })
+    f.context.generationModelId = '合成模型'
+    const handle: MainGenerationRunHandle = {
+      projectId: f.context.projectSession.projectId,
+      epoch: f.context.projectSession.leaseId,
+      rootActionId: '重演根',
+      runId: '重演正文',
+    }
+    const replayText = `${replayedEnding}${'灯'.repeat(1500)}`
+    const cleanText = '灯'.repeat(2000)
+    const hash = (value: string) => createHash('sha256').update(value).digest('hex')
+    const view: MainGenerationRunView = {
+      handle,
+      status: 'running',
+      nonReplayable: false,
+      artifacts: [],
+      budget: {
+        maxAttempts: 32,
+        maxRequestedOutputTokens: 2000000,
+        maxRequestedOutputTokensPerAttempt: 32768,
+        deadlineAt: Date.now() + 3600000,
+      },
+    }
+    const draftTexts = [replayText, cleanText]
+    let draftAttempts = 0
+    const original = f.invoke.getMockImplementation()!
+    f.invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'generation:begin' || channel === 'generation:read') return view
+      if (channel === 'generation:execute') {
+        const task = (args[0] as { task: GenerationTask }).task
+        if (task.purpose === 'chapter-draft-short-outline')
+          return { outcome: outcome('目标：读信；前驱：信已送到；行动与结果：本章读完信；结尾：保留原约束。', 'stop'), run: view }
+        const chosen = draftTexts[Math.min(draftAttempts, draftTexts.length - 1)]!
+        draftAttempts += 1
+        const result = outcome(chosen, 'stop')
+        result.receipt.visibleArtifact = {
+          artifactId: draftAttempts === 1 ? '首稿片' : '重写片',
+          attemptId: draftAttempts === 1 ? '首稿物理请求' : '重写物理请求',
+          revision: 1,
+          textHash: hash(chosen),
+        }
+        return { outcome: result, run: view }
+      }
+      if (channel === 'generation:compose-visible') {
+        const artifactIds = (args.find((item) => Array.isArray(item)) ?? []) as string[]
+        const composed = artifactIds.includes('重写片') ? cleanText : replayText
+        return {
+          algorithm: DRAFT_VISIBLE_TEXT_VERSION,
+          artifactIds,
+          text: composed,
+          textHash: hash(composed),
+          sources: [],
+        }
+      }
+      if (channel === 'generation:commit-draft') return { success: true, id: 21, version: 1, content: cleanText, contentHash: hash(cleanText) }
+      if (channel === 'generation:pause') return { ...view, status: 'paused' }
+      return original(channel, ...args)
+    })
+
+    await expect(f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks }))
+      .resolves.toBe(cleanText)
+
+    const executed = f.invoke.mock.calls.filter(([channel]) => channel === 'generation:execute')
+    // 短细纲 → 首稿（重演）→ 带原因重写；重写稿在限内，不再走压缩。
+    expect(executed.map(([, request]) => (request as { task: GenerationTask }).task.purpose))
+      .toEqual(['chapter-draft-short-outline', 'chapter-draft', 'chapter-draft-no-progress-recovery'])
+    const rewriteRequest = (executed[2]?.[1] as { task: GenerationTask }).task
+    expect(rewriteRequest.messages.at(-1)?.content).toContain('【修正说明】')
+    expect(rewriteRequest.messages.at(-1)?.content).toContain('连续重合 1 处、共 500 字')
+    // §4.2.7 子断言一：重写的 user 内容＝首稿 user 内容 ＋ "\n\n" ＋ 修正说明（整段前缀相等，不是「包含」）。
+    const firstDraftUser = (executed[1]?.[1] as { task: GenerationTask }).task.messages.at(-1)?.content ?? ''
+    const rewriteUser = rewriteRequest.messages.at(-1)?.content ?? ''
+    expect(rewriteUser.startsWith(`${firstDraftUser}\n\n【修正说明】`)).toBe(true)
+    // §4.2.7 子断言二：重写请求只多出「原因」，不夹带首稿正文——除共享前缀外，追加段里
+    // 首稿任意连续 8 码元都不出现。（整段重写请求必然含上一章结尾——那是首稿 prompt 本身
+    // 带入的合法上下文，故判的是追加段，不是整段。）
+    const appendedToRewrite = rewriteUser.slice(firstDraftUser.length)
+    const leakedWindows = Array.from({ length: Math.max(0, [...replayText].length - 7) }, (_, start) =>
+      [...replayText].slice(start, start + 8).join(''))
+      .filter((window) => appendedToRewrite.includes(window))
+    expect(appendedToRewrite.startsWith('\n\n【修正说明】')).toBe(true)
+    expect(leakedWindows).toEqual([])
+    // 判据：`generation:compose-visible` 恰一次，且只含最终稿的片。
+    const composed = f.invoke.mock.calls.filter(([channel]) => channel === 'generation:compose-visible')
+    expect(composed).toHaveLength(1)
+    expect(composed[0]?.some((item) => JSON.stringify(item) === JSON.stringify(['重写片']))).toBe(true)
+    const committed = f.invoke.mock.calls.filter(([channel]) => channel === 'generation:commit-draft')
+    expect(committed).toHaveLength(1)
+    expect(committed[0]?.[1]).toEqual(expect.objectContaining({ expectedCompositionHash: hash(cleanText) }))
+    expect(f.callbacks.log).toHaveBeenCalledWith(expect.stringContaining('开头重演上一章结尾（1 处 / 500 字）'))
+  })
+
+  it('keeps the first draft when the reasoned rewrite request itself fails', async () => {
+    const legacy = fakeOutcomes()
+    const replayedEnding = '潮'.repeat(500)
+    const f = setup({
+      runtime: legacy,
+      chapterNumber: 2,
+      previousFinalizedContent: replayedEnding,
+      wordsTarget: 2000,
+      wordsPerChapter: 2000,
+      mainDefault: true,
+    })
+    f.context.generationModelId = '合成模型'
+    const handle: MainGenerationRunHandle = {
+      projectId: f.context.projectSession.projectId,
+      epoch: f.context.projectSession.leaseId,
+      rootActionId: '重写失败根',
+      runId: '重写失败正文',
+    }
+    const replayText = `${replayedEnding}${'灯'.repeat(1500)}`
+    const hash = (value: string) => createHash('sha256').update(value).digest('hex')
+    const view: MainGenerationRunView = {
+      handle,
+      status: 'running',
+      nonReplayable: false,
+      artifacts: [],
+      budget: {
+        maxAttempts: 32,
+        maxRequestedOutputTokens: 2000000,
+        maxRequestedOutputTokensPerAttempt: 32768,
+        deadlineAt: Date.now() + 3600000,
+      },
+    }
+    let draftAttempts = 0
+    const original = f.invoke.getMockImplementation()!
+    f.invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'generation:begin' || channel === 'generation:read') return view
+      if (channel === 'generation:execute') {
+        const task = (args[0] as { task: GenerationTask }).task
+        if (task.purpose === 'chapter-draft-short-outline')
+          return { outcome: outcome('目标：读信；前驱：信已送到；行动与结果：本章读完信；结尾：保留原约束。', 'stop'), run: view }
+        draftAttempts += 1
+        // 第 2 次（带原因重写）请求本身失败：provider 报错。
+        if (draftAttempts > 1) throw new Error('provider 断流')
+        const result = outcome(replayText, 'stop')
+        result.receipt.visibleArtifact = { artifactId: '首稿片', attemptId: '首稿物理请求', revision: 1, textHash: hash(replayText) }
+        return { outcome: result, run: view }
+      }
+      if (channel === 'generation:compose-visible') {
+        const artifactIds = (args.find((item) => Array.isArray(item)) ?? []) as string[]
+        return { algorithm: DRAFT_VISIBLE_TEXT_VERSION, artifactIds, text: replayText, textHash: hash(replayText), sources: [] }
+      }
+      if (channel === 'generation:pause') return { ...view, status: 'paused' }
+      return original(channel, ...args)
+    })
+
+    await expect(f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks }))
+      .rejects.toThrow('已自动重写一次仍未通过')
+
+    expect(f.callbacks.log).toHaveBeenCalledWith(expect.stringContaining('重写请求失败，沿用首稿'))
+    // 首稿仍被签收：compose-visible 只有首稿那一次，没有第二次重写片。
+    const composed = f.invoke.mock.calls.filter(([channel]) => channel === 'generation:compose-visible')
+    expect(composed).toHaveLength(1)
+    expect(composed[0]?.some((item) => JSON.stringify(item) === JSON.stringify(['首稿片']))).toBe(true)
+    const candidates = f.invoke.mock.calls.filter(([channel]) => channel === 'db:recovery-candidate-record')
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]?.[1]).toEqual(expect.objectContaining({
+      visibleText: replayText,
+      failureCode: 'DRAFT_PREVIOUS_ENDING_REPLAY',
+    }))
+  })
+
+  it('fails with the auto-rewrite note when the reasoned rewrite replays the previous ending again', async () => {
+    const legacy = fakeOutcomes()
+    const replayedEnding = '潮'.repeat(500)
+    const f = setup({
+      runtime: legacy,
+      chapterNumber: 2,
+      previousFinalizedContent: replayedEnding,
+      wordsTarget: 2000,
+      wordsPerChapter: 2000,
+      mainDefault: true,
+    })
+    f.context.generationModelId = '合成模型'
+    const handle: MainGenerationRunHandle = {
+      projectId: f.context.projectSession.projectId,
+      epoch: f.context.projectSession.leaseId,
+      rootActionId: '两度重演根',
+      runId: '两度重演正文',
+    }
+    const replayText = `${replayedEnding}${'灯'.repeat(1500)}`
+    const hash = (value: string) => createHash('sha256').update(value).digest('hex')
+    const view: MainGenerationRunView = {
+      handle,
+      status: 'running',
+      nonReplayable: false,
+      artifacts: [],
+      budget: {
+        maxAttempts: 32,
+        maxRequestedOutputTokens: 2000000,
+        maxRequestedOutputTokensPerAttempt: 32768,
+        deadlineAt: Date.now() + 3600000,
+      },
+    }
+    let draftAttempts = 0
+    const original = f.invoke.getMockImplementation()!
+    f.invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'generation:begin' || channel === 'generation:read') return view
+      if (channel === 'generation:execute') {
+        const task = (args[0] as { task: GenerationTask }).task
+        if (task.purpose === 'chapter-draft-short-outline')
+          return { outcome: outcome('目标：读信；前驱：信已送到；行动与结果：本章读完信；结尾：保留原约束。', 'stop'), run: view }
+        // 首稿与带原因重写都重演上一章结尾。
+        draftAttempts += 1
+        const result = outcome(replayText, 'stop')
+        result.receipt.visibleArtifact = {
+          artifactId: draftAttempts === 1 ? '首稿片' : '重写片',
+          attemptId: draftAttempts === 1 ? '首稿物理请求' : '重写物理请求',
+          revision: 1,
+          textHash: hash(replayText),
+        }
+        return { outcome: result, run: view }
+      }
+      if (channel === 'generation:compose-visible') {
+        const artifactIds = (args.find((item) => Array.isArray(item)) ?? []) as string[]
+        return { algorithm: DRAFT_VISIBLE_TEXT_VERSION, artifactIds, text: replayText, textHash: hash(replayText), sources: [] }
+      }
+      if (channel === 'generation:pause') return { ...view, status: 'paused' }
+      if (channel === 'generation:commit-draft') throw new Error('unexpected commit')
+      return original(channel, ...args)
+    })
+
+    // 第二次仍命中：不再重跑，走既有失败路径，文案带「已自动重写一次」与统计数字。
+    await expect(f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks }))
+      .rejects.toThrow('已自动重写一次仍未通过（1 处 / 500 字）')
+
+    const executed = f.invoke.mock.calls.filter(([channel]) => channel === 'generation:execute')
+    const purposes = executed.map(([, request]) => (request as { task: GenerationTask }).task.purpose)
+    // 短细纲 → 首稿 → 带原因重写：正文 purpose 恰两次，重写走主进程放行的变体 purpose。
+    expect(purposes.slice(0, 3)).toEqual(['chapter-draft-short-outline', 'chapter-draft', 'chapter-draft-no-progress-recovery'])
+    expect(purposes.filter(purpose => purpose === 'chapter-draft')).toHaveLength(1)
+    const committed = f.invoke.mock.calls.filter(([channel]) => channel === 'generation:commit-draft')
+    expect(committed).toHaveLength(0)
+    const candidates = f.invoke.mock.calls.filter(([channel]) => channel === 'db:recovery-candidate-record')
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]?.[1]).toEqual(expect.objectContaining({ failureCode: 'DRAFT_PREVIOUS_ENDING_REPLAY' }))
   })
 
   it.each(['stop', 'length', 'saved-ack-lost', 'legacy-length'] as const)('默认恢复沿精确组合与 %s 终态，不重发初始正文', async (state) => {
@@ -1258,6 +1513,158 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     expect(f.invoke.mock.calls.some(([channel]) => channel === 'generation:begin' || channel === 'generation:bind-material-decision')).toBe(false)
   })
 
+  it('does not send a reasoned rewrite when the first draft is clean', async () => {
+    const f = setup({
+      runtime: fakeOutcomes(),
+      chapterNumber: 2,
+      previousFinalizedContent: '潮'.repeat(300),
+      wordsTarget: 2000,
+      wordsPerChapter: 2000,
+      mainDefault: true,
+    })
+    f.context.generationModelId = '合成模型'
+    const handle: MainGenerationRunHandle = {
+      projectId: f.context.projectSession.projectId,
+      epoch: f.context.projectSession.leaseId,
+      rootActionId: '干净根',
+      runId: '干净正文',
+    }
+    const view: MainGenerationRunView = {
+      handle,
+      status: 'running',
+      nonReplayable: false,
+      artifacts: [],
+      budget: {
+        maxAttempts: 32,
+        maxRequestedOutputTokens: 2000000,
+        maxRequestedOutputTokensPerAttempt: 32768,
+        deadlineAt: Date.now() + 3600000,
+      },
+    }
+    const cleanText = '灯'.repeat(2000)
+    const hash = (value: string) => createHash('sha256').update(value).digest('hex')
+    let draftAttempts = 0
+    const original = f.invoke.getMockImplementation()!
+    f.invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'generation:begin' || channel === 'generation:read') return view
+      if (channel === 'generation:execute') {
+        const task = (args[0] as { task: GenerationTask }).task
+        if (task.purpose === 'chapter-draft-short-outline')
+          return { outcome: outcome('目标：读信；前驱：信已送到；行动与结果：本章读完信；结尾：保留原约束。', 'stop'), run: view }
+        draftAttempts += 1
+        const result = outcome(cleanText, 'stop')
+        result.receipt.visibleArtifact = {
+          artifactId: '干净片',
+          attemptId: '干净请求',
+          revision: 1,
+          textHash: hash(cleanText),
+        }
+        return { outcome: result, run: view }
+      }
+      if (channel === 'generation:compose-visible') {
+        return {
+          algorithm: DRAFT_VISIBLE_TEXT_VERSION,
+          artifactIds: ['干净片'],
+          text: cleanText,
+          textHash: hash(cleanText),
+          sources: [],
+        }
+      }
+      if (channel === 'generation:commit-draft') return { success: true, id: 21, version: 1, content: cleanText, contentHash: hash(cleanText) }
+      return original(channel, ...args)
+    })
+
+    await expect(f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks }))
+      .resolves.toBe(cleanText)
+
+    const executed = f.invoke.mock.calls.filter(([channel]) => channel === 'generation:execute')
+    expect(executed.map(([, request]) => (request as { task: GenerationTask }).task.purpose))
+      .toEqual(['chapter-draft-short-outline', 'chapter-draft'])
+    expect(draftAttempts).toBe(1)
+    const sentAnyReason = executed.some(([, request]) =>
+      JSON.stringify((request as { task: GenerationTask }).task.messages).includes('【修正说明】'))
+    expect(sentAnyReason).toBe(false)
+  })
+
+  it('does not reason-rewrite on a continuation round that only replays after merging', async () => {
+    const f = setup({
+      runtime: fakeOutcomes(),
+      chapterNumber: 2,
+      previousFinalizedContent: '潮'.repeat(300),
+      wordsTarget: 3000,
+      mainDefault: true,
+    })
+    f.context.generationModelId = '合成模型'
+    const handle: MainGenerationRunHandle = {
+      projectId: f.context.projectSession.projectId,
+      epoch: f.context.projectSession.leaseId,
+      rootActionId: '续写根',
+      runId: '续写正文',
+    }
+    const view: MainGenerationRunView = {
+      handle,
+      status: 'running',
+      nonReplayable: false,
+      artifacts: [],
+      budget: {
+        maxAttempts: 32,
+        maxRequestedOutputTokens: 2000000,
+        maxRequestedOutputTokensPerAttempt: 32768,
+        deadlineAt: Date.now() + 3600000,
+      },
+    }
+    // 首稿干净且短 → 走续写轮；续写片段才把上一章结尾接回来（合并后重演，不是首稿重演）。
+    const fragments = ['灯'.repeat(800), `${'潮'.repeat(300)}${'钟'.repeat(2200)}。`]
+    const hash = (value: string) => createHash('sha256').update(value).digest('hex')
+    let attempt = 0
+    let composed = ''
+    const purposes: string[] = []
+    const original = f.invoke.getMockImplementation()!
+    f.invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'generation:begin' || channel === 'generation:read') return view
+      if (channel === 'generation:execute') {
+        const task = (args[0] as { task: GenerationTask }).task
+        if (task.purpose === 'chapter-draft-short-outline')
+          return { outcome: outcome('目标：读信；前驱：信已送到；行动与结果：本章读完信；结尾：保留原约束。', 'stop'), run: view }
+        purposes.push(task.purpose)
+        const raw = fragments[Math.min(attempt, fragments.length - 1)]!
+        const result = outcome(raw, attempt === 0 ? 'length' : 'stop')
+        result.receipt.visibleArtifact = {
+          artifactId: `续片${attempt}`,
+          attemptId: `续请求${attempt}`,
+          revision: 1,
+          textHash: hash(raw),
+        }
+        attempt += 1
+        return { outcome: result, run: view }
+      }
+      if (channel === 'generation:compose-visible') {
+        const ids = (args[1] as string[]) ?? []
+        composed = ids.reduce(
+          (text, id) => composeDraftVisibleContinuation(text, fragments[Number(id.slice(2))] ?? ''),
+          '',
+        )
+        return {
+          algorithm: DRAFT_VISIBLE_TEXT_VERSION,
+          artifactIds: ids,
+          text: composed,
+          textHash: hash(composed),
+          sources: [],
+        }
+      }
+      if (channel === 'generation:commit-draft') return { success: true, id: 21, version: 1, content: composed, contentHash: hash(composed) }
+      return original(channel, ...args)
+    })
+
+    const executed = () => f.invoke.mock.calls.filter(([channel]) => channel === 'generation:execute')
+    await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks }).catch(() => undefined)
+
+    // 判据 11：续写/压缩轮不触发带原因重写——全流程没有任何【修正说明】请求。
+    const sentAnyReason = executed().some(([, request]) =>
+      JSON.stringify((request as { task: GenerationTask }).task.messages).includes('【修正说明】'))
+    expect(sentAnyReason).toBe(false)
+    expect(purposes.filter((purpose) => purpose === 'chapter-draft')).toHaveLength(1)
+  })
   it('main续写低增量片段保持独立，不进入确认组合或正式草稿', async () => {
     const f = setup({ runtime: fakeOutcomes(), mainDefault: true, wordsTarget: 3000 })
     f.context.generationModelId = '合成模型'
@@ -3630,6 +4037,46 @@ ${headingPrefix}第3章：潮门
       // 短细纲拿要点判断「上一章已经发生了什么」（R6）。
       expect(runtime.outline.mock.calls[0]![0].messages[0]!.content).toContain(notes)
       // 正文那一步仍按既有形态：要点只能经「前文事实」投影进场，原文不得逐字注入（不变量未变）。
+      for (const [task] of runtime.complete.mock.calls) expect(task.messages.at(-1)!.content).not.toContain(notes)
+    })
+
+    it.each(['zh-CN', 'en-US'] as const)('feeds the %s short outline the whole long previous-chapter notes without truncation', async writingLanguage => {
+      const runtime = fakeOutcomes(outcome('初'.repeat(100), 'length'), outcome(`${'续'.repeat(400)}。`, 'stop'))
+      // 要点整份带入、不截断（群内 2026-11-21 07:38 裁定；卡面 v3/v4 已撤「封 300」）。
+      // 常见档约 394 字、丰富档约 576 字；这里取 600+ 字，末尾埋哨兵，截断就会丢。
+      const notes = [
+        '# 第1章 港口 要点',
+        '## 时间定位',
+        '- 故事日：0',
+        '## 空间锚点',
+        '- 场景：南港·旧码头，岸灯沿栈桥排到尽头',
+        '## 剧情节点',
+        `- [触发] ${'林岚核对日志上的潮汐刻度，记下北岸退潮时段'.repeat(8)}`,
+        '## 角色动态',
+        '| 角色 | 本章变化/状态 |',
+        '|------|-------------|',
+        `| 林岚 | ${'已核完刻度，日志随身，绳结留在旧码头铁环上'.repeat(4)} |`,
+        `| 守塔人 | ${'只远远看过一眼，未与林岚交谈，灯照例在亥时熄'.repeat(4)} |`,
+        '## 新增设定',
+        '- 南港以岸灯与潮汐刻度记录进出船只',
+        '## 伏笔与钩子',
+        `- [埋] ${'日志末页夹着一角旧航线图，标着北岸暗门'.repeat(4)}`,
+        '- [埋] 要点末行哨兵：铜锣挂回钉上。',
+      ].join('\n')
+      expect(notes.length).toBeGreaterThan(600)
+      const f = setup({ runtime, wordsTarget: 500, writingLanguage, chapterNumber: 2, keyEvents: '读信',
+        previousFinalizedContent: '上一章定稿正文。',
+        continuity: [{ draftId: 42, chapterNumber: 1, chapterTitle: '作者第一章', chapterNotes: notes }] })
+
+      await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+
+      const outlinePrompt = runtime.outline.mock.calls[0]![0].messages[0]!.content
+      expect(outlinePrompt).toContain(notes)
+      // 六栏整份都在，尤其末尾的伏笔栏没有被切掉。
+      for (const heading of ['## 时间定位', '## 空间锚点', '## 剧情节点', '## 角色动态', '## 新增设定', '## 伏笔与钩子']) {
+        expect(outlinePrompt).toContain(heading)
+      }
+      expect(outlinePrompt).toContain('铜锣挂回钉上。')
       for (const [task] of runtime.complete.mock.calls) expect(task.messages.at(-1)!.content).not.toContain(notes)
     })
 

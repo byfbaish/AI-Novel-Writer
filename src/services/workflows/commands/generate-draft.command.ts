@@ -358,11 +358,26 @@ function toBlueprintProjection(
   }
 }
 
-function hasSubstantialPreviousChapterReuse(
+/** 开头重演的统计读数：连续重合的段数与总码元数（判据与「修正说明」共用一份算法）。 */
+export interface PreviousChapterReuseMeasurement {
+  /** 达到「大段重合」判据的连续段数。 */
+  runs: number
+  /** 这些连续段合计覆盖的码元数（归一化后，不含标点与空白）。 */
+  units: number
+}
+
+/**
+ * 量一次「新章开头重演上一章结尾」的程度。
+ *
+ * 判据不变（归一化 + ngram 覆盖 + 连续段阈值），从「命中就返回 true」改成「把命中量出来」，
+ * 是为了让带原因重跑能说清「重合几处、共几字」——按 D12 卡面要求，这段数字要进修正说明，
+ * 而修正说明**不得**包含任何被判废正文或上一章原文的片段（例子会被逐字抄成内容）。
+ */
+export function measurePreviousChapterReuse(
   previousEnding: string,
   draft: string,
   writingLanguage: WritingLanguage,
-): boolean {
+): PreviousChapterReuseMeasurement {
   const ngramCharacters = writingLanguage === 'en-US'
     ? CROSS_CHAPTER_REUSE_ENGLISH_NGRAM_CHARS
     : CROSS_CHAPTER_REUSE_CJK_NGRAM_CHARS
@@ -373,7 +388,7 @@ function hasSubstantialPreviousChapterReuse(
   const previous = normalize(previousEnding)
   const nextHead = normalize(draft.slice(0, NEXT_CHAPTER_HEAD_MAX_CHARS))
   if (previous.length < ngramCharacters || nextHead.length < ngramCharacters) {
-    return false
+    return { runs: 0, units: 0 }
   }
 
   const previousNgrams = new Set<string>()
@@ -389,16 +404,50 @@ function hasSubstantialPreviousChapterReuse(
     }
   }
 
+  let runs = 0
+  let units = 0
   let runLength = 0
   for (let index = 0; index <= covered.length; index += 1) {
     if (covered[index]) {
       runLength += 1
       continue
     }
-    if (runLength >= CROSS_CHAPTER_REUSE_LONG_RUN_CHARS) return true
+    if (runLength >= CROSS_CHAPTER_REUSE_LONG_RUN_CHARS) {
+      runs += 1
+      units += runLength
+    }
     runLength = 0
   }
-  return false
+  return { runs, units }
+}
+
+function hasSubstantialPreviousChapterReuse(
+  previousEnding: string,
+  draft: string,
+  writingLanguage: WritingLanguage,
+): boolean {
+  return measurePreviousChapterReuse(previousEnding, draft, writingLanguage).runs > 0
+}
+
+/**
+ * 带原因重跑时追加到第 2 次请求末尾的【修正说明】。
+ *
+ * 只说判法（重合几处、共几字），**不给例子**：贴回任何片段都会被逐字抄成正文。
+ * 文字逐字取自 D12 卡面 §2.2，改措辞须同步卡面与判据。
+ */
+export function draftReplayCorrectionText(
+  writingLanguage: WritingLanguage,
+  measurement: PreviousChapterReuseMeasurement,
+): string {
+  return writingLanguage === 'en-US'
+    ? `[Correction] The previous draft's opening overlapped the previous chapter's ending in `
+      + `${measurement.runs} run(s), ${measurement.units} units in total. Rewrite the whole chapter: `
+      + `start at the moment after the previous chapter's last action and write only what happens in this chapter. `
+      + `Do not retell, confirm, or replay any event, action, or imagery already completed in the previous chapter, `
+      + `and do not summarize it.`
+    : `【修正说明】上一稿开头与上一章结尾连续重合 ${measurement.runs} 处、共 ${measurement.units} 字。`
+      + `请整章重写：从上一章最后一个动作结束之后的时间点起笔，只写本章新发生的事件；`
+      + `不得复述、确认或回放上一章已经发生的事件、动作与意象，也不得摘要上一章。`
 }
 
 function observeWorkflowCancellation(context: CommandExecuteParams['context']): {
@@ -1232,6 +1281,8 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
     let alreadySaved = false
     let draftPersisted = false
     let recoverableDraftCandidate = ''
+    // D12：首稿命中「开头重演上一章结尾」时，本卡只给一次带原因整章重写的机会（本卡内不再重试）。
+    let replayRewriteAttempted = false
     const priorSave = this.resumeHandle
       ? await ipc.invokeWithProjectSession(projectSession, 'generation:read-context', { handle: this.resumeHandle })
       : null
@@ -1503,7 +1554,49 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
             initialFinishReason = initialCompletion.finishReason
             initialFailureCode = initialOutcome.receipt.failureCode
             initialReasoning = initialOutcome.receipt.capabilities.reasoning === true
-            await acknowledge(initialOutcome, initialVisibleDraft)
+            let adoptedOutcome: GenerationOutcome = initialOutcome
+            const initialReuse = measurePreviousChapterReuse(previousEnding, initialVisibleDraft, writingLanguage)
+            if (initialReuse.runs > 0) {
+              replayRewriteAttempted = true
+              callbacks.log(uiText(
+                `  开头重演上一章结尾（${initialReuse.runs} 处 / ${initialReuse.units} 字），带原因整章重写一次`,
+                `  The opening replays the previous ending (${initialReuse.runs} run(s) / ${initialReuse.units} units); rewriting the chapter once with the reason attached`,
+              ))
+              try {
+                const rewritten = await draftingSession.complete({
+                  // 主进程只允许「首稿之外的变体正文请求」走这三个 purpose（main-generation-owner.ts:607）；
+                  // 带原因整章重写最贴近 no-progress-recovery：同样是「这一稿不能用，按原因再要一次」。
+                  purpose: 'chapter-draft-no-progress-recovery',
+                  budgetDemand: { kind: 'draft-units', writingLanguage, requestedUnits: targetChars, segmentable: false },
+                  reasoningStage: 'drafting',
+                  output: 'visible-text',
+                  messages: [
+                    { role: 'system', content: systemRole },
+                    { role: 'user', content: `${initialPrompt}\n\n${draftReplayCorrectionText(writingLanguage, initialReuse)}` },
+                  ],
+                }, { signal: cancellation.signal })
+                logDraftAttempt(
+                  callbacks,
+                  context,
+                  { zhCN: '带原因重写', enUS: 'Reasoned rewrite' },
+                  rewritten.receipt,
+                )
+                const rewrittenCompletion = completionFromOutcome(rewritten)
+                initialVisibleDraft = sanitizeDraftText(this.stripThinkingTags(rewrittenCompletion.content), compositionVersion)
+                initialFinishReason = rewrittenCompletion.finishReason
+                initialFailureCode = rewritten.receipt.failureCode
+                initialReasoning = rewritten.receipt.capabilities.reasoning === true
+                adoptedOutcome = rewritten
+              } catch {
+                // 重写请求本身失败（provider / 网络 / 预算不足）：首稿不能让出去，按原行为往下走。
+                callbacks.log(uiText(
+                  '  重写请求失败，沿用首稿',
+                  '  The rewrite request failed; keeping the initial draft',
+                ))
+              }
+            }
+            // `acknowledge` 只认 `generation:compose-visible` 恰好一次：重写与否，都只在这里签收最终采用的那一稿。
+            await acknowledge(adoptedOutcome, initialVisibleDraft)
             }
           recoverableDraftCandidate = initialVisibleDraft
           // 退化早失败：占位拒绝语与工序词一旦出现，后续续写不会把它们消除，早阻断省掉续写与压缩预算。
@@ -1614,9 +1707,16 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
         }
       }
       if (!alreadySaved && hasSubstantialPreviousChapterReuse(previousEnding, cleanDraftText, writingLanguage)) {
+        const replayMeasurement = measurePreviousChapterReuse(previousEnding, cleanDraftText, writingLanguage)
+        const replayRewriteNote = replayRewriteAttempted
+          ? `已自动重写一次仍未通过（${replayMeasurement.runs} 处 / ${replayMeasurement.units} 字）。`
+          : ''
+        const replayRewriteNoteEn = replayRewriteAttempted
+          ? ` An automatic rewrite was already attempted once and did not pass (${replayMeasurement.runs} run(s) / ${replayMeasurement.units} units).`
+          : ''
         throw Object.assign(new Error(uiText(
-          '新章节开头与上一章结尾存在大段重演，结果未保存。请重新生成，并让本章从上一章已完成事件之后继续。',
-          'The new chapter substantially replays the previous ending, so it was not saved. Regenerate it and continue after the events already completed in the previous chapter.',
+          `新章节开头与上一章结尾存在大段重演，结果未保存。${replayRewriteNote}请重新生成，并让本章从上一章已完成事件之后继续。`,
+          `The new chapter substantially replays the previous ending, so it was not saved.${replayRewriteNoteEn} Regenerate it and continue after the events already completed in the previous chapter.`,
         )), { code: CHAPTER_FAILURE_CODES.DRAFT_PREVIOUS_ENDING_REPLAY })
       }
 
