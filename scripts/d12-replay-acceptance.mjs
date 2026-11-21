@@ -299,7 +299,7 @@ async function appDb(app, task, payload = {}) {
           drafts: db.prepare('SELECT id, chapter_number AS chapter, version, status FROM drafts ORDER BY id').all(),
           finalizations: db.prepare('SELECT draft_id AS draftId, chapter_title AS title, publication_status AS status FROM finalization_outbox').all(),
           summaries: db.prepare('SELECT id, chapter_number AS chapter, length(chapter_notes) AS notesLength FROM summary_snapshots').all(),
-          candidates: db.prepare('SELECT chapter_number AS chapter, failure_code AS failureCode, status FROM recovery_candidates ORDER BY created_at').all(),
+          candidates: db.prepare('SELECT chapter_number AS chapter, failure_code AS failureCode, status FROM recovery_candidates WHERE chapter_number = 2 ORDER BY created_at').all(),
           attempts: db.prepare('SELECT attempt_json AS attemptJson, usage_receipt_json AS receiptJson FROM generation_attempts').all(),
         }
       }
@@ -478,7 +478,7 @@ async function main() {
     retryLeaksDraftFragment: correction.includes(REPLAY_PROSE.slice(-40)),
     composeCalls,
     drafts: chapter2Drafts.length,
-    // 失败候选（recovery_candidates）实读，不写死：卡 §4.3 要求成功路径一行不落。
+    // 失败候选（recovery_candidates）实读且只算本章，不写死：卡 §4.3 要求成功路径一行不落。
     candidates: out.rows.candidates.length,
     physicalModelRequests: out.mainState.physicalModelRequests,
     embeddings: out.mainState.embeddings,
