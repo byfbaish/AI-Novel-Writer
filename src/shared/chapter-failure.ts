@@ -45,6 +45,8 @@ export const CHAPTER_FAILURE_CODES = {
   DRAFT_PREVIOUS_ENDING_REPLAY: 'DRAFT_PREVIOUS_ENDING_REPLAY',
   /** 作者配置在生成途中被改 */
   DRAFT_AUTHOR_CONFIG_CHANGED: 'DRAFT_AUTHOR_CONFIG_CHANGED',
+  /** 短细纲没拿到可用结果（正文尚未开始）——D13 三失败点之一 */
+  DRAFT_SHORT_OUTLINE_FAILED: 'DRAFT_SHORT_OUTLINE_FAILED',
   /** 唯一一次无进展恢复后仍无进展 */
   DRAFT_NO_PROGRESS: 'DRAFT_NO_PROGRESS',
   /** finishReason=length（正文收尾 / 压缩轮共用映射） */
@@ -123,6 +125,12 @@ const CHAPTER_FAILURE_META: Readonly<Record<ChapterFailureCode, ChapterFailure>>
     code: CHAPTER_FAILURE_CODES.DRAFT_AUTHOR_CONFIG_CHANGED,
     detail: '生成途中章节配置发生了变化，本次结果未保存。',
     suggestions: ['确认配置稳定后重新生成本章'],
+  },
+  [CHAPTER_FAILURE_CODES.DRAFT_SHORT_OUTLINE_FAILED]: {
+    layer: 'call',
+    code: CHAPTER_FAILURE_CODES.DRAFT_SHORT_OUTLINE_FAILED,
+    detail: '短细纲没有正常返回，正文尚未开始，本次没有写入任何内容。',
+    suggestions: ['重新生成本章', '更换生成模型后重试'],
   },
   [CHAPTER_FAILURE_CODES.DRAFT_NO_PROGRESS]: {
     layer: 'content',

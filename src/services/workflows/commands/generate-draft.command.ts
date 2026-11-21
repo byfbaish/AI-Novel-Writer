@@ -23,7 +23,7 @@ import { projectScopedText } from '../../../shared/text-scope-tags'
 export { synopsisSettingSectionsForDraft } from '../../../shared/synopsis-projection'
 import { createWorkflowMainGenerationRuntime, type WorkflowMainGenerationRequest } from '../workflow-main-generation'
 import { safeProtocolCode } from '../structured-batch-executor'
-import { CHAPTER_FAILURE_CODES, incompleteFinishReasonCode } from '../../../shared/chapter-failure'
+import { CHAPTER_FAILURE_CODES, incompleteFinishReasonCode, isChapterFailureCode } from '../../../shared/chapter-failure'
 import type { MainGenerationRunHandle } from '../../generation/generation-runtime'
 import { formatResourceUri } from '../../../shared/project-paths'
 import {
@@ -523,6 +523,16 @@ function recoveryFailureCode(error: unknown, cancelled: boolean): string {
 }
 
 type DraftCandidate = { text: string; finishReason: 'stop' | 'length' }
+
+/**
+ * D13 §5.4：短细纲失败必须是**受控码**（词表 `DRAFT_SHORT_OUTLINE_FAILED`）。
+ * message 保留既有英文串——既有测试与日志按子串匹配它；机器判定一律走 `code`
+ * （`recoveryFailureCode` 先读 `error.code`，再退回 `safeProtocolCode`）。
+ */
+function draftShortOutlineFailedError(): Error {
+  return Object.assign(new Error('GENERATION_DRAFT_SHORT_OUTLINE_FAILED'),
+    { code: CHAPTER_FAILURE_CODES.DRAFT_SHORT_OUTLINE_FAILED })
+}
 
 function draftTooShortError(
   context: CommandExecuteParams['context'],
@@ -1453,7 +1463,7 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
               shortOutline = recovery.draftShortOutline?.completedOutput ?? ''
               if (shortOutline !== outlined.content || !outlined.receipt.visibleArtifact
                 || !recovery.draftShortOutline?.artifactIds.includes(outlined.receipt.visibleArtifact.artifactId))
-                throw new Error('GENERATION_DRAFT_SHORT_OUTLINE_FAILED')
+                throw draftShortOutlineFailedError()
               reconciliationArtifactIds = new Set([...(recovery.draftReconciliation?.artifactIds ?? []), ...recovery.draftShortOutline.artifactIds])
             }
           }
@@ -1463,11 +1473,12 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
               ? uiText('模型输出被截断', 'the model output was truncated')
               : !outlined.content.trim() ? uiText('模型未返回可见内容', 'the model returned no visible content')
                 : uiText('模型未正常完成输出', 'the model did not complete the output normally')
-            throw new Error(uiText(`短细纲生成失败：${reason}。正文尚未开始。`,
+            throw Object.assign(new Error(uiText(`短细纲生成失败：${reason}。正文尚未开始。`,
               `The short chapter outline failed: ${reason}. Drafting has not started.`)
-              + ` (GENERATION_DRAFT_SHORT_OUTLINE_FAILED; status=${outlined.status}; finishReason=${outlined.finishReason})`)
+              + ` (GENERATION_DRAFT_SHORT_OUTLINE_FAILED; status=${outlined.status}; finishReason=${outlined.finishReason})`),
+            { code: CHAPTER_FAILURE_CODES.DRAFT_SHORT_OUTLINE_FAILED })
           }
-          if (recovery?.draftShortOutline && !shortOutline) throw new Error('GENERATION_DRAFT_SHORT_OUTLINE_FAILED')
+          if (recovery?.draftShortOutline && !shortOutline) throw draftShortOutlineFailedError()
           // 短细纲退化只丢弃、不阻断：它不落正文库，丢掉等价于退回「无细纲」路径，代价最低。
           // **不跑 meta-leak**：细纲本来就写「本章 / 蓝图 / 分段预算」，且会逐字复制 keyEvents，
           // 跑它必然自相残杀。恢复路径不在此丢弃，否则会破坏下面的 initialDraftTask 身份校验。
@@ -1861,13 +1872,22 @@ export class GenerateDraftCommand extends BaseWorkflowCommand {
       return this.publishSavedDraft({ context, callbacks, projectSession, expectedProjectPath,
         cleanDraftText, id: createResult.id, nextVersion, mergedGuidance, targetChars })
     } catch (error) {
+      // D13 §5.4 A 路：跨 IPC 的失败（如组装层 GENERATION_COMPOSITION_NO_PROGRESS）到渲染层只剩
+      // message 里那一串，Electron 会把 `code` 属性丢掉。判出的**受控码**（chapter-failure 词表内）
+      // 挂回抛出的对象，上层与恢复候选才能按码分流（判据 2），不必各自再解析一次 message。
+      // 只给词表内的码赋值：词表外的失败（含 provider 回传的不受信文本）保持不带 `code`，
+      // 既有不变量「不把不受信失败文本变成展示码」照旧成立（QA 判据 5 打回点）。
+      const failureCode = recoveryFailureCode(error, context.cancelled)
+      if (error && typeof error === 'object' && typeof (error as { code?: unknown }).code !== 'string'
+        && isChapterFailureCode(failureCode)) {
+        Object.assign(error, { code: failureCode })
+      }
       // D13 裁定 2=A（§7.1：让生产也留候选，2026-11-06 作者裁定 A 后落地）：
       // 候选落库不再以 `!mainOwned` 为前提——生产里 mainOwned 恒为真，原条件让这条
       // 分支在生产不可达。只放开本条件；落库形态沿用 db:recovery-candidate-record，
       // 不改汇编码、不加超时/心跳/run 终态兜底（§5.6 / §6 划界照旧）。
       if (!draftPersisted && recoverableDraftCandidate) {
         callbacks.replaceText?.(recoverableDraftCandidate)
-        const failureCode = recoveryFailureCode(error, context.cancelled)
         const failureReason = error instanceof Error ? error.message : String(error)
         try {
           const result = await ipc.invokeWithProjectSession(

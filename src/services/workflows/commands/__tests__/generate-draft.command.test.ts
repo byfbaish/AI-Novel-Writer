@@ -914,6 +914,84 @@ describe('GenerateDraftCommand generation runtime boundary', () => {
     } else expect(candidates).toHaveLength(0)
   })
 
+  // D13 §5.2/§5.4：主进程在 compose 里抛的失败码跨 IPC 只剩 message，
+  // 命令层必须用 safeProtocolCode 把码捞回来，并带着码把候选落盘。
+  it('keeps the compose failure code across IPC and records the candidate', async () => {
+    const legacy = fakeOutcomes()
+    const f = setup({
+      runtime: legacy,
+      chapterNumber: 2,
+      previousFinalizedContent: '港'.repeat(400),
+      wordsTarget: 1000,
+      wordsPerChapter: 1000,
+      mainDefault: true,
+    })
+    f.context.generationModelId = '合成模型'
+    const handle: MainGenerationRunHandle = {
+      projectId: f.context.projectSession.projectId,
+      epoch: f.context.projectSession.leaseId,
+      rootActionId: '无进展根',
+      runId: '无进展正文',
+    }
+    const draft = `${'潮'.repeat(120)}。`
+    const hash = (value: string) => createHash('sha256').update(value).digest('hex')
+    const view: MainGenerationRunView = {
+      handle,
+      status: 'running',
+      nonReplayable: false,
+      artifacts: [],
+      budget: {
+        maxAttempts: 32,
+        maxRequestedOutputTokens: 2000000,
+        maxRequestedOutputTokensPerAttempt: 32768,
+        deadlineAt: Date.now() + 3600000,
+      },
+    }
+    const original = f.invoke.getMockImplementation()!
+    f.invoke.mockImplementation(async (channel, ...args) => {
+      if (channel === 'generation:begin' || channel === 'generation:read') return view
+      if (channel === 'generation:execute') {
+        const purpose = (args[0] as { task: GenerationTask }).task.purpose
+        if (purpose === 'chapter-draft-short-outline')
+          return { outcome: outcome('目标：等潮；前驱：船已靠岸；行动与结果：本章等到潮水；结尾：保留原约束。', 'stop'), run: view }
+        // 首稿与续写都吐同一份文本：合并不出增长，正文一个字没变。
+        const result = outcome(draft, 'stop')
+        result.receipt.visibleArtifact = {
+          artifactId: purpose === 'chapter-draft' ? '首稿片' : '续写片',
+          attemptId: purpose === 'chapter-draft' ? '首稿请求' : '续写请求',
+          revision: 1,
+          textHash: hash(draft),
+        }
+        return {
+          outcome: result,
+          run: { ...view, artifacts: [{ ...handle, ...result.receipt.visibleArtifact, text: draft, durableRevision: 1, status: 'completed' }] },
+        }
+      }
+      if (channel === 'generation:compose-visible') {
+        const ids = args[1] as string[]
+        if (ids.length === 1)
+          return { algorithm: DRAFT_VISIBLE_TEXT_VERSION, artifactIds: ids, text: draft, textHash: hash(draft), sources: [] }
+        // 与 generation-run-repository.ts 里 fail(...) 跨 IPC 的现场同形：只剩 message。
+        throw new Error("Error invoking remote method 'generation:compose-visible': Error: GENERATION_COMPOSITION_NO_PROGRESS")
+      }
+      if (channel === 'generation:commit-draft') throw new Error('unexpected commit')
+      return original(channel, ...args)
+    })
+
+    const error = await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+      .then(() => null, (reason: unknown) => reason as { code?: string; message?: string })
+    expect(error?.message).toContain('GENERATION_COMPOSITION_NO_PROGRESS')
+    expect(error?.code).toBe('GENERATION_COMPOSITION_NO_PROGRESS')
+    const candidates = f.invoke.mock.calls.filter(([channel]) => channel === 'db:recovery-candidate-record')
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]?.[1]).toEqual(expect.objectContaining({
+      visibleText: draft,
+      failureCode: 'GENERATION_COMPOSITION_NO_PROGRESS',
+      chapterNumber: 2,
+    }))
+    expect(f.invoke.mock.calls.some(([channel]) => channel === 'db:draft-create')).toBe(false)
+  })
+
   it('still rejects previous-chapter replay in an over-limit main-owned draft', async () => {
     const legacy = fakeOutcomes()
     const replayedEnding = '潮'.repeat(500)
@@ -3953,7 +4031,11 @@ ${headingPrefix}第3章：潮门
       const runtime = fakeOutcomes(outcome('正文'.repeat(250), 'stop'))
       runtime.outline.mockResolvedValue(outcome('未完成的计划', 'length'))
       const f = setup({ runtime, wordsTarget: 500 })
-      await expect(f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })).rejects.toThrow('GENERATION_DRAFT_SHORT_OUTLINE_FAILED')
+      // D13：短细纲失败也要带住码，不能只靠 message。
+      const error = await f.command.execute({ step: {}, context: f.context, callbacks: f.callbacks })
+        .then(() => null, (reason: unknown) => reason as { code?: string; message?: string })
+      expect(error?.message).toContain('GENERATION_DRAFT_SHORT_OUTLINE_FAILED')
+      expect(error?.code).toBe('DRAFT_SHORT_OUTLINE_FAILED')
       expect(runtime.complete).not.toHaveBeenCalled()
       expect(f.invoke.mock.calls.some(([channel]) => channel === 'db:draft-create' || channel === 'db:recovery-candidate-record')).toBe(false)
     })
