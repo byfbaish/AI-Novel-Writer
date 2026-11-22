@@ -221,6 +221,10 @@ describe('probeSynopsisUnitLaunch', () => {
     expect(estimateRemainingVolumeChapters({ coveredTo: 5, completedUnits: 3, remainingUnits: 2 })?.volumeChapters).toBe(3)
     // 小样本下限 1：2/3×1=0.67 ⇒ floor 0 ⇒ 抬到 1
     expect(estimateRemainingVolumeChapters({ coveredTo: 2, completedUnits: 3, remainingUnits: 1 })?.volumeChapters).toBe(1)
+    // 反例（11-22 D7 首验判据 2）：先取商再乘会丢精度 ⇒ 13/3×27 = 116.99… 落成 116；必须 117
+    expect(estimateRemainingVolumeChapters({ coveredTo: 13, completedUnits: 3, remainingUnits: 27 })?.volumeChapters).toBe(117)
+    // 反例：15/11×11 = 14.999… ⇒ 14；必须 15
+    expect(estimateRemainingVolumeChapters({ coveredTo: 15, completedUnits: 11, remainingUnits: 11 })?.volumeChapters).toBe(15)
   })
 
   it('显式游标不算推导；读不到检查点时 found=false', async () => {

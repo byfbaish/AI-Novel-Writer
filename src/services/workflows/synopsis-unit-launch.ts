@@ -334,7 +334,7 @@ export async function probeSynopsisUnitLaunch(
 /**
  * D7 历史折算的纯算术部分：本卷剩余单元预计还会写几章。
  *
- * 口径（卡面 v3 口径 A′）：`max(1, floor(已写章数 ÷ 已完成单元数 × 本卷剩余单元数))`。
+ * 口径（卡面 v3 口径 A′）：`max(1, floor(已写章数 × 本卷剩余单元数 ÷ 已完成单元数))`——整数先乘后除，避免浮点先取商丢精度。
  * **只读展示**，与 `computeSynopsisUnitRange` 无调用关系；样本不足（没写完任何一个单元 /
  * 已写章数为 0）返回 `null`，由调用方走兜底文案。
  */
@@ -348,7 +348,7 @@ export function estimateRemainingVolumeChapters(input: {
   if (!Number.isSafeInteger(input.remainingUnits) || input.remainingUnits < 1) return null
   const perUnitChapters = input.coveredTo / input.completedUnits
   return Object.freeze({
-    volumeChapters: Math.max(1, Math.floor(perUnitChapters * input.remainingUnits)),
+    volumeChapters: Math.max(1, Math.floor((input.coveredTo * input.remainingUnits) / input.completedUnits)),
     perUnitChapters,
   })
 }
