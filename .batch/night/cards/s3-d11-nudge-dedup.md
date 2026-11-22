@@ -43,7 +43,10 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 > 判据 6 的实例纪律三项须贴原文，其中 `tasklist | grep -c electron` 的输出必须写进 evidence。
 
 1. `[live]` 同一卷连写 3 批（检查点仍 `incomplete=true` 时）⇒ 提示 0 次；最后一次使 `synopsis_incomplete=false` ⇒ 提示 1 次。
+   - 等价触发（admin 11-22 15:14 裁）：允许以「UI 保存正文（三批）＋库翻转 `synopsis_incomplete` 检查点状态」代替全链路连写；三批正文变化必须走真实编辑器保存路径，不许直接写库。evidence 须记 `triggerMode`：正文改动标 `ui-save`、卷与检查点标 `db-flip`，判词同样写明「库造，非链路」。
+   - **wip 态不可观测（admin 11-22 15:3x 裁，走 ①）**：合成模型下「`incomplete=true` 时 0 次」与「翻 `final` 后 1 次」经 UI 不可达——`src/services/workflows/synopsis-unit-launch.ts:297` 在 `coveredTo === 0 && outlineCoveredTo >= 1` 时返回 `skip('checkpoint-lost')`（预填后连写入口直接不出现），而先起链则在首单元即停（toast「连续生成已停止（1/3）：这一批失败了，已停止连写」），wip 窗口不足 1 秒；叠加横幅渲染门 `src/components/editor/ArchFileViewer.tsx:1149` 要求 `!recovery` 与判定门 `architecture-character-nudge.ts:149` 要求正文 ≥50 字，合成模型下 wip 态无经 UI 的可达路径。故这两半段降 `[mock]`，依据 `architecture-character-nudge.test.ts:94`（连写 3 批、正文递增）与 `:64-65`（`v1:wip`／`v1:final`）；**`[live]` 的判据 1 改由「有/无 dismiss 记录的 0 次 vs 1 次对照」承担**：无 dismiss 记录时保存正文应提示 1 次，关闭（写入 `v…`）后连跑三批应 0 次。判词须写「wip 不可观测，库造，非链路」。
 2. `[live]` 进入下一卷并完成 ⇒ 再提示 1 次（贴两卷的 `volumeIndex` 与提示次数）。
+   - 等价触发同上：两卷的 `volumeIndex` 可库造（`wip`→`final`），正文变化仍须走界面保存路径；evidence 记 `triggerMode`，判词写明「库造，非链路」。
 3. `[live]` 判据 3「存量兼容」：读到旧格式值（`dismissed` 或 `c<ch>:l<len>`）时按「未处理」返回，允许该项目**一次**重提示；用户再次关闭必须写入新格式 `v<卷号>:<wip|final>`，此后同一卷不再提示，该卷大纲定稿态变化（`wip`→`final`）才可再提示一次。判 FAIL 线：①同一卷同一状态下第二次提示；②再次关闭后仍写旧格式；③为兼容旧值而删改调用点或扩到其他文件。
 4. `[mock]` 单测：①同卷多批不重复；②跨卷各一次；③存量形态兼容。
 5. `[static]` `pnpm test <相关路径>` 整文件汇总行 + `pnpm check:fast` 末行 + `EXIT=`。
@@ -79,3 +82,7 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 3. **§4 分层与取证口径**：1–3 `[live]`、4 `[mock]`、5 `[static]`、6 `[live]`；`[live]` 条按 `collab-rules-v1.md` §8 第 62 行取样口径，判据 6 的 `tasklist | grep -c electron` 原文进 evidence。
 4. **双 sha（11-22 主身裁后补）**：追认实现 `0b5fd9a6`（`git merge-base --is-ancestor 0b5fd9a6 a73ec4c6` → rc=0；指纹 `:134-136`、判定 `:139-150` 已在主线），base `a73ec4c6`。只写 base 会让人以为本卡分支还没被合并过。
 5. **判据 3 定稿（11-22 主身裁）**：走「保留一次重提示」支，不改码去「视为已处理」；§4 判据 3 已换为裁定原文，§2 第 4 条原表述随之取代；白名单不变，仍限 `src/services/architecture-character-nudge.ts` 及其单测。注释 `:29`「宁可再提示一次」保留不改。
+
+6. **判据 1／2 等价触发（admin 11-22 15:14 裁）**：允许「UI 保存正文＋库翻转检查点状态」代替全链路连写。依据：`architecture-character-nudge.ts:134-136` 指纹只含 `volumeIndex` 与 `synopsis_incomplete`，正文长度不进指纹；章级 churn 已由单测 `architecture-character-nudge.test.ts:94` 在 mock 层盖住，真链只是重演同一判定。约束：正文改动必须走界面保存、卷与检查点可库造且在 evidence／判词中标 `db-flip`；判据 3／4／5 读数不受影响，不重跑。
+
+7. **判据 1／2 的 wip 降级与 live 对照（admin 11-22 15:3x 裁 ①）**：wip 窗口在合成模型下不可经 UI 观测（`synopsis-unit-launch.ts:297`＋首单元即停＋`ArchFileViewer.tsx:1149`／`:149` 两道门），「`incomplete=true` 时 0 次」与「翻 `final` 后 1 次」降 `[mock]`；`[live]` 由「有／无 dismiss 记录的 0 次 vs 1 次对照」承担；判据 2 的 live 部分不降——两卷都造 `final`、正文走界面保存、经 `:170-177` 真实读取链＋真 toast，取「卷 1 一次／卷 2 一次」与两卷 `volumeIndex`，只有「wip→final 各一次」半段降 `[mock]`。判据 3／4／5 不动。
