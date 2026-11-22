@@ -35,11 +35,13 @@ To: developer · AI writer项目组（实机 live 一项）；QA · AI writer项
 `src/shared/statusbar-model.ts`、`src/components/layout/StatusBar.tsx`、`src/shared/__tests__/statusbar-model.test.ts`、`src/components/layout/__tests__/StatusBar.test.tsx`。
 禁改：`electron/` 任何文件、`actual-model-store.ts`、`actual-model-hydration.ts`、`generation:*` 契约、D16 卡的判词与报告。
 
-## 4. 为什么由主身实施（不是破坏「实施外派」）
+## 4. 流程（作者 11-22 12:56 定：这张卡交给群里走审核验收流程）
 
-- 这是 30 行级展示层改动＋改两条既有断言，作者当面报的 bug，等待成本高于实施成本；
-- 先例：D7 判据 2 的公式修复也由主身落地（`abe52aca`）；
-- **实施归主身，验收仍归 QA**：判据 5 的 live 证据由 developer 跑、QA 判，主身不自己判自己的码。
+- **`961eaa05` 定位＝参考实现**，不是已交付：主身不直接并入主线，主线在 `9f31562f` 停着等流程走完。
+- **派单件与派验单归项目总负责人**（起点 `9f31562f`、分支头 `961eaa05`、分母三处 sha、判据分层标签照本卡）。
+- **先评审后实施，二选一明确表态**：采纳参考实现（developer 只做 apply＋跑 live，代码署主身／apply 署 developer），或要求重做（developer 出实施包＋独立认可件，再走 apply）。负责人与 developer 各给一句理由。
+- **QA 首验按判据 1–6 逐条判**，判据 5 的 live 由 developer 跑、QA 判，不许 mock 顶。
+- **入库归主身**：QA PASS 后 merge＋`post-merge-check`＋push，报新头 sha；在此之前任何人不得并入主线。
 
 ## 5. 回执
 
