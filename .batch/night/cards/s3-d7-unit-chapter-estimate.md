@@ -16,8 +16,8 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 ## 1. 现状（读于 `b4e8da53`；`:72`、正文 `:592-620`）
 
 - 状态：**🔍 已取证**（2026-11-03）——「与对话框预告不符」**不成立**（两侧同一 `computeSynopsisUnitRange`，差异只是显示精度：对话框 `ceil` 取整、prompt 侧 1 位小数）；「偏保守」成立，**原因在模型行为**（`maxChapters` 只约束上限、不约束下限，模型按「一单元=一段对峙」写完即收）。
-- 预告文案：`src/components/dialogs/ArchitectureConfirmDialog.tsx:774` — `本卷剩余 ${unitMode.volumeRemaining} 章，名义上界 ${unitMode.maxChapters} 章。篇幅由剧情决定，写完按实际章数落盘。`
-- 折算实现：`src/services/workflows/synopsis-unit-launch.ts:298`、`src/services/workflows/commands/architecture.command.ts:2948`（同源）、`src/shared/arc-position.ts:960`（prompt 精度）。
+- 预告文案：`src/components/dialogs/ArchitectureConfirmDialog.tsx:790` — `本卷剩余 ${unitMode.volumeRemaining} 章，名义上界 ${unitMode.maxChapters} 章。篇幅由剧情决定，写完按实际章数落盘。`（行号 11-22 勘误，原记 :774）
+- 折算实现：`src/services/workflows/synopsis-unit-launch.ts:299`（`computeSynopsisUnitRange` 调用点）、`src/services/workflows/commands/architecture.command.ts:316`（函数定义）／`:3420`（调用点）、`src/shared/arc-position.ts:960`（prompt 精度）——后两处 11-22 勘误，原记 :298／:2948
 - 系统已自记偏差：`partial_arch.json` → `synopsis_volume_deviations = [{ volumeIndex: 1, planned: 5, actual: 6 }]`。
 - 实测倾向：四批 `2d60f259 / ce80d97d / 8e48c534 / e11a7ec4` 分别落 3 / 1 / 2 / 3 章；18 单元按「1 单元≈1 章」只能到约 18 章 < 配置 30 章。
 
@@ -27,6 +27,8 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 
 - 名义上界（现有 `maxChapters`，保持原值原算法）；
 - **按当前实际倾向的估计**：由既有 `synopsis_volume_deviations`（或等价的历史实际章数/单元数比）推出本卷剩余单元的预计章数；无历史偏差时**不得瞎猜**，须显示明确兜底文案（如「暂无历史折算，无法估计」）而不是复用名义上界。
+- 估计算式（负责人 11-22 定）：估计 ＝ 已写章数 ÷ 已完成单元数 × 本卷剩余单元数（取整规则同现有预告），历史一律取自 `synopsis_volume_deviations`，不新增表/列/IPC；无历史时按上一条兜底，不复用名义上界。
+- 作废算式 `Σactual / Σplanned`（k 倍名义上界）：k≥1 时估计恒 ≥ 名义上界，结构性做不出「偏少」，撞本节「不许把估计做成第二个上限」；只可作报告内交叉读数，不进界面、不作判据。
 - 两数都不改 `computeSynopsisUnitRange`、不改 prompt 文案精度、不改落盘行为。
 
 ## 3. 白名单与禁改区
