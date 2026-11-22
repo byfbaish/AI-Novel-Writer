@@ -33,6 +33,24 @@ ${MARKER}
 #   npm/node_modules/node/bin/node: line 1: This: command not found
 # （npm 全局 shim 的内容被 sh 当脚本读了）。hook 是 sh 跑的，写 pnpm 就会
 # 「因为环境坏了而不是代码坏了」把每次提交挡住 —— 那种闸门只会被 --no-verify 绕过。
+
+# 分支闸门（2026-11-22）：协作文档 .batch/ 只准提交到主线。
+# 教训：主身的一笔 docs 提交落在 card/s3-d16-indicator-verify（4ef01457）上，
+# 卡分支因此凭空多出一笔，只能 cherry-pick 回主线再 branch -f 回退。
+# 只拦 .batch/（卡面/判词/派单/报告这些协作介质），产品码在卡分支上照常提交。
+branch=$(git rev-parse --abbrev-ref HEAD)
+if [ "$branch" != "exp/mainline-1119" ]; then
+  docs_staged=$(git diff --cached --name-only --diff-filter=ACMR -- '.batch/')
+  if [ -n "$docs_staged" ]; then
+    echo ""
+    echo "提交被拦住：当前分支 $branch 不是 exp/mainline-1119，暂存区却含协作文档："
+    echo "$docs_staged"
+    echo "协作文档（.batch/）一律提交到主线：git switch exp/mainline-1119 后再提交。"
+    echo "确属例外请用 --no-verify，并在提交信息里写明理由。"
+    exit 1
+  fi
+fi
+
 node scripts/check-fast.mjs || {
   echo ""
   echo "提交被拦住：pnpm check:fast 未通过。修完再提交，或用 --no-verify 并说明理由。"
