@@ -3,8 +3,8 @@
 From: 项目总负责人 · AI writer项目组
 To: QA · AI writer项目组（首验方）
 执行方（apply 位）：developer · AI writer项目组（按包逐行落盘＋跑单测＋在 `develop` 起一次实例；不许自行改法，认为包有问题即停手报 admin）
-外派位：**本卡不宜外派（admin 11-22 裁）**——改动面仅 1 生产文件＋1 测试文件，删除路径真删数据、走 FK 事务，须落盘人自跑单测＋实机；落盘与实机均由 developer 在 `develop` 执行（卡面 §5）
-分母：卡面 `.batch/night/cards/s3-d10-clear-reset.md` 78 行 / 7,504B / sha256 `7f9ee244596dbd24770ad5890129505562352a1ee4c562aa76a12a760f0ec354`；评审裁定 `.batch/night/reports/s3-d10-d11-review-rulings.md` 58 行 / 4,372B / sha256 `9d9de711e91865b3b3af1db5b7053d7121dcfa97df4f44edc71a8f077d3cbe68`；实施包 `.batch/night/staging/s3-d10-impl-package.md` 102 行 / 12,388B / sha256 `f268ca863c29999cc7609aa3db9b871d2a597153c2f0a45c06e7e09d0fd58983`
+外派位：**先外派（豆包）出「极小补丁提案」，apply 仍归 developer**（主身 11-22 13:3x 裁，覆盖本条早先「本卡不宜外派（admin 11-22 裁）」）：豆包只出提案——改哪一处、发什么信号（`generation:snapshot` 还是渲染层重置入口）、要不要动 handler、判据 2 怎么验（清空后卡片数 0、不靠 reload）；**不动代码、不 commit、不碰 develop**。60 分钟软限内不回，则由 developer 直接走本卡 apply 位 fix-forward，同样在交件报告注明「改法由谁定」。提案回群后评审只核三点：不动删除语义、不扩白名单、不靠 reload 才归零；核过由 developer 落盘（apply 提交署 developer、改法署外派）。
+分母：卡面 `.batch/night/cards/s3-d10-clear-reset.md` **88 行 / 9,446B / sha256 `f841a2c9c0c6f94d11a593803555630ad10edc5ebc37082ad5faab9a0f65587e`**（§8.1 留痕版；旧 `7f9ee244…`／78 行／7,504B 作废——admin 11-22 13:3x 换分母，§8.1 只加留痕、§3 白名单与 §4 判据文字一字未动）；评审裁定 `.batch/night/reports/s3-d10-d11-review-rulings.md` 58 行 / 4,372B / sha256 `9d9de711e91865b3b3af1db5b7053d7121dcfa97df4f44edc71a8f077d3cbe68`；实施包 `.batch/night/staging/s3-d10-impl-package.md` 102 行 / 12,388B / sha256 `f268ca863c29999cc7609aa3db9b871d2a597153c2f0a45c06e7e09d0fd58983`
 认可件：`.batch/night/staging/s3-d10-impl-ack.md`（developer 每卡另出；判词只核「该件存在」与「其内所写包 sha == 本单分母包 sha」，不引其三列读数）
 起点/base：**`9cd24897`**（D16 入库后的主线远端头，`git ls-remote origin refs/heads/exp/resource-ledger` 同值）；卡面写的 `5a285e83` 是卡面编写时的旧起点，本单一律以 `9cd24897` 为准
 分支：`card/s3-d10-clear-reset`（从 `9cd24897` 起；点名路径 `git add`，禁 `-A`，**并 commit 一次、提交信息写 CARD-S3-D10**；不 push、不动 `develop` 主工作区）。依据：判定面须不可变——工作区读数会被后续动作污染，提交 sha 才钉得住；push 仍只归主身。（11-22 主身裁，此后本行冻结）
@@ -37,7 +37,7 @@ To: QA · AI writer项目组（首验方）
 
 ## 判定纪律
 
-- 只判本单列出的 6 条，不追加卡面外要求；判据分母＝卡面（`7f9ee244596dbd24770ad5890129505562352a1ee4c562aa76a12a760f0ec354`）＋本单，判据文字不许由执行方或首验方改动。
+- 只判本单列出的 6 条，不追加卡面外要求；判据分母＝卡面（`f841a2c9c0c6f94d11a593803555630ad10edc5ebc37082ad5faab9a0f65587e`／88 行／9,446B，§8.1 留痕版）＋本单，判据文字不许由执行方或首验方改动。
 - 外派产物只是证据，不构成 PASS；判不了的部分写明「实机后补证」，不许默认通过。
 - 判定面是提交 sha（`9cd24897` ＋分支头），不是工作区；工作区取证须同时贴 `git status --porcelain` 证明代码面干净、等于该 sha。
 - 判词落 `.batch/night/reports/s3-d10-qa-firstcheck.md`，直投 `.batch/night/bridge/to-owner`；群里报最终 sha（行数／字节／sha256 整行）与结论。
