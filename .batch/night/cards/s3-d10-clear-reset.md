@@ -4,7 +4,7 @@
 
 From: 项目总负责人 · AI writer项目组
 To: developer · AI writer项目组（执行方）；QA · AI writer项目组（首验方）
-版本：v1 · 2026-11-22 · 起点：`exp/mainline-1119` 头 **`b4e8da53`**
+版本：v1 · 2026-11-22 · 起点：`exp/mainline-1119` 头 **`5a285e83`**
 顺序：**S3 第四张**（D4 → D7 → D16 → D10 → D11）
 
 ## 0. 开工件必读确认（三行，缺一行不许 start）
@@ -13,17 +13,18 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 ② 版本或日期：`README.md` `c87cd4ab`（2026-11-14）；`AGENTS.md` `a276fffb`（2026-11-07）；`ruling-dispatch` v6 · 2026-11-20。
 ③ 三条口径：授权边界最窄执行（只做清空入口的重置与回执，不改历史面板本身）；实机复验不外派；证据只认命令与输出原文。
 
-## 1. 现状（读于 `b4e8da53`；表行 `:76`、正文 `:694-714`）
+## 1. 现状（读于 `5a285e83`；表行 `:76`、正文 `:694-714`）
 
 - 状态：**🟡 已实施，待实机**（机制级兑现、仅单测；`20:3x` 已合并主区 `e0704a07`；**回执事件生产订阅方为零、残留宿主未定位 ⇒ 现象未闭环**）。
 - 现象：清空后 DB 侧计数为 0（`blueprints`/`drafts`/`volumes`/`volume_units`/`volume_handoffs` 全 0），界面仍显示「第1章审稿候选」「第1章生成记录」「确认继续已选正文」等卡片与孤立「复制」「编辑恢复稿」按钮。
 - 清空语义：`src/components/dialogs/ClearProjectDataDialog.tsx:35/43/51`（三档：故事架构、章节规划、正文与审稿）。
-- 缺口：①渲染进程侧无重置钩子（只删库）；②**回执事件已定义但生产侧订阅方为零**；③残留宿主未定位（localStorage / store / `generation_artifacts` 历史）。
+- 缺口（2026-11-22 外派复核更正）：①渲染层重置钩子**已存在**（`src/services/project-clear-service.ts:171-199`：关 Tab、`useDraftStore.reset()`、`clearAllArchProgress`、`notifySynopsisCandidateDiscarded`、重载角色卡、刷新文件树）；②`PROJECT_DATA_CLEARED` 已于 2026-11-09 移除（`project-clear-service.ts:164-167`，原文「生产订阅方为零…现已移除发射与事件类型」），现存订阅为 `system-notice-toast.ts:33` 的通用 `SYSTEM_NOTICE`；③**残留宿主＝`generation_runs`＋`generation_attempts`＋`generation_artifacts`**（`AIOutputPanel.tsx:320-344,356-359,423,476,504`；`main-generation-owner.ts:332-336`），不含 localStorage 键。
 
 ## 2. 要做什么
 
-1. **定位残留宿主**：逐层查 `localStorage`/`sessionStorage`/渲染层 store/`generation_artifacts` 历史，给出「哪一类卡片的数据来自哪张表或哪个 key」的清单（本步只读，先出清单）。
+1. **残留宿主清单**：外派已给出（三类卡片同源＝上条③三表）；apply 时按同一路径复核一遍，逐条列宿主。
 2. **接上重置**：清空完成后由渲染进程侧重置对应 store/localStorage 键，使界面与 DB 口径一致；能清则清，清不掉（第三方缓存/无法定位）**照实登记**，不许用「强制刷新页面」当修法。
+- **修法（负责人 11-22 裁 A）**：扩白名单到 `electron/repositories/project-clear-repository.ts`，在 `clearGeneratedData` 事务内按 `generation_artifacts → generation_attempts → generation_runs → generation_roots` 追加删除，并把四表补进 `:46` 计数清单。禁在面板层隐藏卡片、禁改既有删除语句与三档语义。
 3. **接上回执**：让既有回执事件有真实订阅方，清空完成后给出「清了哪几类、各多少条」的可见回执（数字须与 DB 计数可对账）。
 4. 不改历史面板自身的渲染逻辑；不改三档语义。
 
@@ -49,7 +50,7 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 
 ## 6. 回执与交付
 
-- 分支：`card/s3-d10-clear-reset`，从 `b4e8da53` 起；点名路径 `git add`（禁 `-A`）。
+- 分支：`card/s3-d10-clear-reset`，从 `5a285e83` 起；点名路径 `git add`（禁 `-A`）。
 - 交件：报告 `.batch/night/staging/s3-d10-clear-reset-report.md`；群里交件 @ 项目总负责人 与 QA；回执走 `.batch/night/bridge/to-owner`。
 - 停手：若残留无法在不动第三方实现的前提下清零，停手报清单与已排除路径，不许改判据。
 
@@ -61,7 +62,7 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 
 判据二段，缺一不可：
 
-1) `git diff --numstat b4e8da53..card/s3-d10-clear-reset -- src electron scripts` 输出为空（无改动、无新增）。
+1) `git diff --numstat 5a285e83..card/s3-d10-clear-reset -- src electron scripts` 输出为空（无改动、无新增）。
 2) **无新增生产文件**：分支上未新增 `src/`、`electron/`、`scripts/` 下的文件；若本卡白名单允许新增（仅验收/取证脚本），须逐条列出路径并在判词中标注「白名单内新增」。
 
 不采信不带 `<base>..<branch>` 作用域的 `git diff --stat`（全树常有他人在办的流转件，D1 那次全树假红即此）。
