@@ -4,7 +4,7 @@
 
 From: 项目总负责人 · AI writer项目组
 To: developer · AI writer项目组（执行方）；QA · AI writer项目组（首验方）
-版本：v1 · 2026-11-22 · 起点：`exp/mainline-1119` 头 **`b4e8da53`**（S2 三支未合并）
+版本：v1 · 2026-11-22 · 起点：`exp/mainline-1119` 头 **`b4e8da53`**
 顺序：**S3 第一张**（D4 → D7 → D16 → D10 → D11）
 
 ## 0. 开工件必读确认（三行，缺一行不许 start）
