@@ -70,7 +70,7 @@ pragma foreign_key_list(review_cycles) →
 
 | 表 | 现象里的哪类卡片 | 读它的入口（文件:行） |
 |---|---|---|
-| `generation_runs` | 「第1章生成记录」每条记录一行 | `electron/services/main-generation-owner.ts:332` `SELECT run_id FROM generation_runs ORDER BY created_at_ms DESC, rowid DESC`；IPC `generation:list`（`electron/controllers/generation-controller.ts`） |
+| `generation_runs` | 「第1章生成记录」每条记录一行 | `electron/services/main-generation-owner.ts:334` `SELECT run_id FROM generation_runs ORDER BY created_at_ms DESC, rowid DESC`；IPC `generation:list`（`electron/controllers/generation-controller.ts`） |
 | `generation_artifacts` | 记录下的候选稿／「确认继续已选正文」卡片 | `src/components/panels/AIOutputPanel.tsx:320-344`（`item.view.artifacts`／`candidates`／`unsavedTails` 判定）；`main-generation-owner.ts:252` 以 `SELECT 1 FROM generation_artifacts WHERE artifact_id=? AND status<>'discarded'` 判可见 |
 | `generation_attempts` | 「第1章审稿候选」的恢复稿／重试可用态 | `generation:read-context` 的 `recovery`（`AIOutputPanel.tsx:321-323`）；`main-generation-owner.ts:915` 由 `generation_artifacts` 反查 `attempt_id` |
 | `generation_roots` | 批次根（多章批量生成留下的批次卡） | `generation:list-batches`（`generation-controller.ts:285`）；`main-generation-owner.ts:1032/1101/1251` 以 `generation_runs r JOIN generation_roots g` 取根 |
@@ -81,7 +81,7 @@ pragma foreign_key_list(review_cycles) →
 
 | 判据 | 状态 | 说明 |
 |---|---|---|
-| 1 残留宿主清单 | 外派已交、本卡未复算 | 三类卡片宿主＝`generation_runs`／`generation_attempts`／`generation_artifacts`（卡 §1③） |
+| 1 残留宿主清单 | 外派已交，本卡已复算（见 §4.5 四表清单） | 三类卡片宿主＝`generation_runs`／`generation_attempts`／`generation_artifacts`（卡 §1③） |
 | 2 实机三档清空后卡片数 0 | **未做**（口径待裁） | 卡 §5 写「实机复验须在 develop 由 developer 执行」，与 11-22 10:36 主身口径「worktree 只跑单元测试、禁实机 GUI、developer 不写生产码入库」冲突；我无权动 develop 主区 |
 | 3 回执原文与 DB 计数对账 | **未做**（同上） | 同上，需实机 |
 | 4 订阅方非零（文件:行＋运行时日志） | 运行时日志未取 | 需实机 |
