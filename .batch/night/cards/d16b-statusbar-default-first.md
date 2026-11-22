@@ -26,7 +26,7 @@ To: developer · AI writer项目组（实机 live 一项）；QA · AI writer项
 1. `[static]` 模型段单测：配置A/实际B ⇒ `配置模型A（实际 实际模型B）`；同名 ⇒ 只一次且 `same:true`；只有配置 ⇒ `configured` 档；只有实际 ⇒ `actual` 档；空白串按缺失；两侧皆空 ⇒ `null`。
 2. `[static]` 渲染单测：三种情形 label 与 tooltip 原文正确，zh/en 不串（en 不得出现「当前模型」）。
 3. `[mock]` 无回归：`resolveStatusbarModel` / `statusbarModelCopy` 旧单测 13 条仍绿——证明旧 API 没被删改。
-4. `[static]` 断言修改有据：`StatusBar.test.tsx` 里被改写的 2 条，必须是「D16 的显示 B」→「按 C 并列」，不许借机改其它断言；判词贴 `git diff 961eaa05~1 961eaa05 -- src/components/layout/__tests__/StatusBar.test.tsx` 原文。
+4. `[static]` 断言修改有据：`StatusBar.test.tsx` 里被改写的 3 条（实测：zh／en 两条为「D16 的显示 B」→「按 C 并列」，第三条为配置档文案「当前模型：」→「当前模型（配置）：」，随 tooltip 文案一并变；原稿写 2 条，11-22 按实测改成 3 条，记录项），不许借机改其它断言；判词贴 `git diff 961eaa05~1 961eaa05 -- src/components/layout/__tests__/StatusBar.test.tsx` 原文。
 5. `[live]` 实机（developer 执行，单实例）：①改默认模型后右下角**跟着配置刷新**；②先跑一次生成让实际调用 ≠ 默认，右下角并列显示「默认（实际 B）」；③tooltip 两段原文同屏；④evidence 记 `instancesThisRun`／`exitCode`／`leftoverElectronProcesses=0`／`tasklist | grep -c electron`。
 6. `[static]` 门禁：`pnpm check:fast` 全过；单测按整文件汇总行＋末行 EXIT 报（禁 `-t` 过滤）。
 
