@@ -43,7 +43,7 @@ export interface ProjectClearResult {
  * （正文层只 UPDATE `actual_last`，不清行）。
  */
 const CLEAR_COUNT_TABLES: Record<ProjectClearScope, readonly string[]> = {
-    generatedText: ['finalized_draft_import_operations', 'post_process_steps', 'post_process_runs', 'reviews', 'revisions', 'draft_edit_stats', 'drafts', 'contents', 'summary_snapshots', 'volume_handoffs'],
+    generatedText: ['finalized_draft_import_operations', 'post_process_steps', 'post_process_runs', 'reviews', 'revisions', 'draft_edit_stats', 'drafts', 'contents', 'summary_snapshots', 'volume_handoffs', 'generation_artifacts', 'generation_attempts', 'generation_runs', 'generation_roots'],
     blueprints: ['blueprint_character_sync_operations', 'blueprint_commit_operations', 'blueprints'],
     creativeFields: ['characters', 'upstream_revisions', 'upstream_revision_log', 'volume_units', 'volumes'],
 }
@@ -172,6 +172,10 @@ export class ProjectClearRepository {
                     db.prepare('DELETE FROM finalized_draft_import_operations').run()
                     db.prepare('DELETE FROM post_process_steps').run()
                     db.prepare('DELETE FROM post_process_runs').run()
+                    // D10 老库兜底：review_cycles 的 :61 confirmation_review_id 无 ON DELETE（默认 RESTRICT），
+                    // 只要有一行指向 reviews，下面的 DELETE FROM reviews 就会 FK 失败、整笔回滚（:57 的 CASCADE 救不了）；
+                    // 另 :56 root_action_id → generation_roots 同样无 ON DELETE，故必须在删 roots 之前清掉。
+                    if (hasTable(db, 'review_cycles')) db.prepare('DELETE FROM review_cycles').run()
                     db.prepare('DELETE FROM reviews').run()
                     db.prepare('DELETE FROM revisions').run()
                     // 先删计量子表再删 drafts；老库没有 M30 表时安静跳过。
@@ -187,6 +191,13 @@ export class ProjectClearRepository {
                         db.prepare('UPDATE volumes SET actual_last = NULL, actual_source = NULL, updated_at = ?')
                             .run(new Date().toISOString())
                     }
+                    // D10：生成账四表是「单稿卡／批次卡／目录进度卡」的宿主；不删则清空后列表仍读得到。
+                    // 老库没有 M01 表时安静跳过（与上面 draft_edit_stats / volume_handoffs 同一处理）。
+                    // 顺序先子后父，不能改：artifacts → attempts → runs → roots。
+                    for (const table of ['generation_artifacts', 'generation_attempts', 'generation_runs'] as const) {
+                        if (hasTable(db, table)) db.prepare(`DELETE FROM ${table}`).run()
+                    }
+                    if (hasTable(db, 'generation_roots')) db.prepare('DELETE FROM generation_roots').run()
                     cleared.push('generatedText')
                 }
 
