@@ -66,3 +66,13 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 2) **无新增生产文件**：分支上未新增 `src/`、`electron/`、`scripts/` 下的文件；若本卡白名单允许新增（仅验收/取证脚本），须逐条列出路径并在判词中标注「白名单内新增」。
 
 不采信不带 `<base>..<branch>` 作用域的 `git diff --stat`（全树常有他人在办的流转件，D1 那次全树假红即此）。
+
+## 9. 修订留痕（项目总负责人 · 11-22，只加口径说明，§4 判据文字与 §8 写法不动）
+
+1. **起点改钉 `9cd24897`**（admin 11-22 定，D16 入库后的主线头）：本卡 §1 行内、页首版本行、§5「分支为…，从 `5a285e83` 起」、§8 判据 1) 里的 `5a285e83` **一律按本行替换为 `9cd24897`**。照抄 `5a285e83` 会多出 `5a285e83..9cd24897` 那段差，属假红。
+2. **§3 白名单补两件**（原 §1「修法（负责人 11-22 裁 A）」已写，但 §3 漏列，此处补齐）：
+   - `electron/repositories/project-clear-repository.ts` —— 仅限 `clearGeneratedData` 事务内按 `generation_artifacts → generation_attempts → generation_runs → generation_roots` 追加删除，并把四表补进计数清单；禁改既有删除语句、事务边界、三档语义；
+   - `electron/repositories/__tests__/project-clear-receipt.test.ts` —— 本卡单测。
+3. **行号以实测为准**：`CLEAR_COUNT_TABLES` 声明在 `electron/repositories/project-clear-repository.ts:45`，三档在 `:46-48`；`:54-58` 是 `emptyCounts()`，不是计数清单。
+4. **R4 观察项（admin 11-22 定，不判 FAIL）**：`base..工作头` 会看到 `dcddcb08`（纯文档两件）与 `27d70e07`（`scripts/install-git-hooks.mjs` +18，pre-commit 分支闸门）——两处记观察项，不判 FAIL。
+   三条细节（闸门只在本机 `.git/hooks/` 生效、不入库；作用域仍是 `9cd24897..工作头`）详见 `.batch/night/staging/s3-d10-r4-observation-main.md`（19 行 / 1,592B / sha256 `2d00e6c66f7d7927a2caff05a7b0d5c93dd9883e0280dc823ff8d3324db82e23`），本行只作指针、不抄正文。
