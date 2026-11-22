@@ -7,7 +7,7 @@ To: QA · AI writer项目组（首验方）
 分母：卡面 `.batch/night/cards/s3-d10-clear-reset.md` 78 行 / 7,504B / sha256 `7f9ee244596dbd24770ad5890129505562352a1ee4c562aa76a12a760f0ec354`；评审裁定 `.batch/night/reports/s3-d10-d11-review-rulings.md` 58 行 / 4,372B / sha256 `9d9de711e91865b3b3af1db5b7053d7121dcfa97df4f44edc71a8f077d3cbe68`；实施包 `.batch/night/staging/s3-d10-impl-package.md` 102 行 / 12,388B / sha256 `f268ca863c29999cc7609aa3db9b871d2a597153c2f0a45c06e7e09d0fd58983`
 认可件：`.batch/night/staging/s3-d10-impl-ack.md`（developer 每卡另出；判词只核「该件存在」与「其内所写包 sha == 本单分母包 sha」，不引其三列读数）
 起点/base：**`9cd24897`**（D16 入库后的主线远端头，`git ls-remote origin refs/heads/exp/resource-ledger` 同值）；卡面写的 `5a285e83` 是卡面编写时的旧起点，本单一律以 `9cd24897` 为准
-分支：`card/s3-d10-clear-reset`（从 `9cd24897` 起；点名路径 `git add`，禁 `-A`；不 commit、不 push、不动 `develop`）
+分支：`card/s3-d10-clear-reset`（从 `9cd24897` 起；点名路径 `git add`，禁 `-A`，**并 commit 一次、提交信息写 CARD-S3-D10**；不 push、不动 `develop` 主工作区）。依据：判定面须不可变——工作区读数会被后续动作污染，提交 sha 才钉得住；push 仍只归主身。（11-22 主身裁，此后本行冻结）
 排期：D16 已收口入库，本卡为 S3 第四张；**不与 D11 并行**，一次一张、一次一个实例
 放行依据：S3 顺序 D4 → D7 → D16 → D10 → D11；admin 11-22 12:3x 令「现在出 D10 派验单」；卡面页首「待主人批准后方可派卡」按该令视为已批——若 admin 认为未批，立即停单
 
