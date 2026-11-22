@@ -1,0 +1,157 @@
+{
+  "runId": "af51f396-e79",
+  "startedAt": "2026-11-22T05:04:23.494Z",
+  "stepLog": [
+    {
+      "name": "build:marker",
+      "at": "2026-11-22T05:04:23.502Z",
+      "detail": "[{\"file\":\"App-CCaQMhCA.js\",\"w180\":true,\"actual\":true}]"
+    },
+    {
+      "name": "launch",
+      "at": "2026-11-22T05:04:24.215Z",
+      "detail": {
+        "instancesThisRun": 1,
+        "pid": 63628
+      }
+    },
+    {
+      "name": "project",
+      "at": "2026-11-22T05:04:24.914Z",
+      "detail": {
+        "projectPath": "C:\\Users\\伯云飞\\AppData\\Local\\VibeCodingScratch\\d16\\paf51f3\\d16blive-af51",
+        "totalChapters": 100
+      }
+    },
+    {
+      "name": "statusbar:config-a",
+      "at": "2026-11-22T05:04:25.095Z",
+      "detail": {
+        "statusbarText": "任务 日志 模型 D16 配置模型 A",
+        "found": true,
+        "title": "当前模型（配置）：D16 配置模型 A",
+        "label": "D16 配置模型 A",
+        "allTitles": [
+          "收起任务",
+          "打开日志",
+          "打开模型",
+          "当前模型（配置）：D16 配置模型 A"
+        ]
+      }
+    },
+    {
+      "name": "settings:click-b",
+      "at": "2026-11-22T05:04:25.471Z",
+      "detail": "{\"ok\":true,\"buttons\":1}"
+    },
+    {
+      "name": "statusbar:config-b",
+      "at": "2026-11-22T05:04:25.785Z",
+      "detail": {
+        "statusbarText": "任务 日志 模型 D16 实际模型 B",
+        "found": true,
+        "title": "当前模型（配置）：D16 实际模型 B",
+        "label": "D16 实际模型 B",
+        "allTitles": [
+          "收起任务",
+          "打开日志",
+          "打开模型",
+          "当前模型（配置）：D16 实际模型 B"
+        ]
+      }
+    },
+    {
+      "name": "ui-path",
+      "at": "2026-11-22T05:04:25.785Z",
+      "detail": "settings-click"
+    },
+    {
+      "name": "trigger:b-write",
+      "at": "2026-11-22T05:04:26.217Z",
+      "detail": ""
+    },
+    {
+      "name": "run:done",
+      "at": "2026-11-22T05:04:30.736Z",
+      "detail": "[\"f5be81b6-ec4b-4d3b-a0fd-cf94956236fd:failed:d16-actual\"]"
+    },
+    {
+      "name": "binding:model",
+      "at": "2026-11-22T05:04:30.738Z",
+      "detail": "{\"runId\":\"f5be81b6-ec4b-4d3b-a0fd-cf94956236fd\",\"status\":\"failed\",\"modelId\":\"d16-actual\",\"modelName\":\"gpt-4.1\",\"operation\":\"chapter-draft\",\"createdAtMs\":1795323870605}"
+    },
+    {
+      "name": "settings:click-a",
+      "at": "2026-11-22T05:04:31.132Z",
+      "detail": "{\"ok\":true,\"buttons\":1}"
+    },
+    {
+      "name": "statusbar:mixed",
+      "at": "2026-11-22T05:04:31.452Z",
+      "detail": {
+        "statusbarText": "任务 日志 模型 D16 配置模型 A（实际 D16 实际模型 B）",
+        "found": true,
+        "title": "当前模型（配置）：D16 配置模型 A ｜ 实际调用：D16 实际模型 B",
+        "label": "D16 配置模型 A（实际 D16 实际模型 B）",
+        "allTitles": [
+          "收起任务",
+          "打开日志",
+          "打开模型",
+          "当前模型（配置）：D16 配置模型 A ｜ 实际调用：D16 实际模型 B"
+        ]
+      }
+    }
+  ],
+  "checks": {
+    "uiPath": "settings-click",
+    "refreshOnDefaultChange": true,
+    "configA": {
+      "statusbarText": "任务 日志 模型 D16 配置模型 A",
+      "found": true,
+      "title": "当前模型（配置）：D16 配置模型 A",
+      "label": "D16 配置模型 A",
+      "allTitles": [
+        "收起任务",
+        "打开日志",
+        "打开模型",
+        "当前模型（配置）：D16 配置模型 A"
+      ]
+    },
+    "configB": {
+      "statusbarText": "任务 日志 模型 D16 实际模型 B",
+      "found": true,
+      "title": "当前模型（配置）：D16 实际模型 B",
+      "label": "D16 实际模型 B",
+      "allTitles": [
+        "收起任务",
+        "打开日志",
+        "打开模型",
+        "当前模型（配置）：D16 实际模型 B"
+      ]
+    },
+    "mixedLabel": "D16 配置模型 A（实际 D16 实际模型 B）",
+    "mixedTooltip": "当前模型（配置）：D16 配置模型 A ｜ 实际调用：D16 实际模型 B",
+    "actualModelFromBinding": {
+      "modelId": "d16-actual",
+      "modelName": "gpt-4.1"
+    },
+    "physicalModelRequests": 0
+  },
+  "instancesThisRun": 1,
+  "exitCode": 0,
+  "leftoverElectronProcesses": 0,
+  "mainState": {
+    "chatCalls": 2,
+    "embeddings": 1,
+    "intercepted": []
+  },
+  "projectPath": "C:\\Users\\伯云飞\\AppData\\Local\\VibeCodingScratch\\d16\\paf51f3\\d16blive-af51",
+  "finishedAt": "2026-11-22T05:04:31.591Z",
+  "pids": [
+    {
+      "index": 1,
+      "pid": 63628,
+      "startedAt": "2026-11-22T05:04:23.786Z"
+    }
+  ]
+}

@@ -74,8 +74,11 @@ sed -n '1p' <卡面> | grep -qE '^From:' && sed -n '2p' <卡面> | grep -qE '^To
     - `[mock]`：合成流式模型、文件级单测、`*.browser.tsx` 组件用例可判——逻辑分支、错误码、文案渲染都归这层，可重复、零成本，该多跑；
     - `[live]`：只有真实 Electron 主进程＋IPC＋DB 落库＋**门禁链**＋run 终态能判的，才准标 live。
     - **禁止用 mock 冒充门禁结论**：例「用组件用例证明批次没停时不会出现批次层」，而批次根本没启动过——门禁没起来就宣称「不会误现」判 FAIL。
-    - live 判据的取证要求：单实例串跑（`instancesThisRun`／`exitCode`／`leftoverElectronProcesses=0`＋`tasklist | grep -c electron` 原文三项齐）；脚本自身超时（`exitCode=1`）必须在判词里写明「非产品崩溃、非实例残留」。
+    - live 判据的取证要求：单实例串跑，`instancesThisRun`／`exitCode`／`leftoverElectronProcesses=0` 三项齐；`tasklist | grep -c electron` 的**输出行必须作为 evidence.json 的必落行**（`tasklistGrepCount` 或同等字段，值为该命令的 stdout 原文含计数），只存整段 `tasklist` 原文、或事后现场补测，均判取证不完整；脚本自身超时（`exitCode=1`）必须在判词里写明「非产品崩溃、非实例残留」。
     - live 只能证「当时那一支、那一条路径」；证不到的分支写进观察项，不许写成「已验」。
+
+12. **分母口径【硬·11-22 定】**：凡写“分母”（卡面、派验单、判词、报告）一律用 **`<commit>` 库内 blob** 的行／字节／sha——`git show <commit>:<path> | wc -lc` 与 `git show <commit>:<path> | sha256sum` 两条原文；**工作副本（尤其 CRLF 再现版）不作分母**，行号与字节差异另注「本机工作副本 x 行 / y 字节，仅作定位参考」。
+13. **`[live]` 取证件仓内副本【硬·11-22 主身定】**：`[live]` 判据引用的 `evidence.json` 原件，必须在**判词入库同笔**拷进 `.batch/night/staging/<卡号>-evidence.json`；判词须同时写**原件路径／原件 sha／副本 sha** 三项，worktree 移除前先核副本在。判词里出现 evidence 原件路径而 staging 无同名副本、或副本 sha 不一致 ⇒ 该判据**不得标 `[live] PASS`**。范例：`staging/s3-d11b-evidence.json`（337 行／11,161B／`4e382026…`）。
 
 ## 5. 交付物与信号【硬】
 

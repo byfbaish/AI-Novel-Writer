@@ -876,3 +876,25 @@ To: AI writer项目组 · 群内共读（判件基准件）
 
 - 措辞口径（admin 定）：写「**已删并留档（tar＋sha256）**」，不写「已清理干净」。
 - 边界：本组任何人未执行删除；B-1a／B-19 的结案行由负责人在 BACKLOG 里同步改标题与正文，台账本节只记事实。
+
+## S4 收口（2026-11-22 · 项目总负责人按 admin 19:2x 指派补写）
+
+判定面：HEAD `ec508ec1`（与 `origin/exp/resource-ledger` 同 sha）。六卡行与四阶段行如下，读数均为本机实跑，命令原文与输出摘录并列。
+
+| 卡 | 结论 | 命令原文 → 输出摘录 | 入库 sha／判词 |
+|---|---|---|---|
+| CARD-S3-D4（文案与批次中止关联） | PASS（判面 `a2a9d1d5`） | `git show 544dcbd5:.batch/night/reports/s3-d4-qa-firstcheck.md \| wc -lc` → `219 17336`；`git merge-base --is-ancestor a2a9d1d5 HEAD` → `rc=0` | `a2a9d1d5`／判词 `94fe4c68…`（219/17,336） |
+| CARD-S3-D7（单元→章 折算预告） | PASS（判面 `544dcbd5`） | `git show 544dcbd5:...s3-d7-qa-firstcheck.md \| wc -lc` → `233 17869`；`git merge-base --is-ancestor 544dcbd5 HEAD` → `rc=0` | `544dcbd5`／判词 `423ca481…`（233/17,869） |
+| CARD-S3-D16（模型指示器） | PASS（判面 `de53e22e`） | `git show de53e22e:...s3-d16-qa-firstcheck.md \| wc -lc` → `151 11739`；`git merge-base --is-ancestor de53e22e HEAD` → `rc=0` | `de53e22e`／判词 `9290851e…`（151/11,739） |
+| CARD-S3-D10（清空回显无残留） | PASS（判定面 `4a3aaf18`／合并 `a73ec4c6`） | `git show a73ec4c6:...s3-d10-qa-firstcheck.md \| wc -lc` → `222 24943`；`git merge-base --is-ancestor a73ec4c6 HEAD` → `rc=0` | `a73ec4c6`／判词 `c55ce76c…`（222/24,943）；取证件 `a517a50d…`（39/2,532） |
+| CARD-S3-D11（补卡提示去重，判据 2 转 D11b） | PASS（判面 `ec508ec1`） | `git show ec508ec1:...s3-d11-qa-firstcheck.md \| wc -lc` → `204 12533`；`git merge-base --is-ancestor ec508ec1 HEAD` → `rc=0` | `ec508ec1`／判词 `bdd5b340…`（204/12,533） |
+| CARD-S3-D11b（检查点卷号投影） | PASS（判面 `a7012c51`／合并 `ec508ec1`） | `git show ec508ec1:...s3-d11b-qa-firstcheck.md \| wc -lc` → `187 12561`；`git merge-base --is-ancestor a7012c51 HEAD` → `rc=0` | `ec508ec1`／判词 `8fd184b9…`（187/12,561） |
+
+| 阶段 | 结论 | 判据与证据（命令原文 → 输出摘录） |
+|---|---|---|
+| S1 | pass（D12 收口） | `git merge-base --is-ancestor 0f0ca3ee HEAD` → `rc=0`；判词 `s2-d1-qa-firstcheck.md`（142/8,702/`079cceb0…`） |
+| S2 | pass（D13／D9／D1） | 三条 rc=0：`bff3d327` → `rc=0`、`cd825b81` → `rc=0`、`0f0ca3ee` → `rc=0`；判词 `s2-d13`／`s2-d9`／`s2-d1` |
+| S3 | pass（D4／D7／D16／D10／D11＋D11b） | 六条 rc=0（见上表）；`git status --porcelain -uall \| wc -l` → 6（1 M 模板＋1 M 缺陷稿回写＋4 件 `.batch` 草案，均未提交） |
+| S4 | 待 QA 四项与本件入库 | 四条由 QA 在回写落盘后一次跑完：`pnpm check:fast`、`node scripts/ops/check-batch-hygiene.mjs --all`、`git status --porcelain -uall`、`git rev-parse HEAD` vs `git ls-remote`；本行在判词入库后回填原文 |
+
+- 本段只追加，不改既有条目；六卡行结论词只取 `PASS／不通过／作废／转出`。
