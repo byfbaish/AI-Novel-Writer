@@ -148,7 +148,7 @@ M	src/services/workflows/synopsis-unit-launch.ts
 
 ## 8. 复判（判据 1／2／7，2026-11-22 12:05）
 
-复判基准：**首验判词 `f70ad8c4d910f90bdda01c77a666c00bac0f039c620ddfb421da84ec70a6a45`（149 行 / 10,583B）**，即本文件 §0–§7。判定面 **`abe52aca`**（分支 `card/s3-d7-unit-chapter-estimate` 的**本地头**；`git ls-remote origin 'refs/heads/card/s3-d7*'` 为空，远端未推，push／合并归主身）。交件报告 `.batch/night/staging/s3-d7-unit-chapter-estimate-report.md` **150 行 / 11,446B / `ce883d217c4dc9979d53eff94f83d6ba9900b423c8c44ab4ca09333b7645d6e0`**（现盘实测）。本节只复判判据 1、2、7；判据 3／4／5／6 沿首验结论，判据 3 证据等级按 admin 11-22 12:03 裁定升 `[live]`（判据文字未动）。
+复判基准：**首验判词 `f70ad8c4d910f90bdda01c77a666c00bac0f039c620ddfb421da84ec70a6a45`（149 行 / 10,583B）**，即本文件 §0–§7。判定面（代码面）**`abe52aca`**；分支 `card/s3-d7-unit-chapter-estimate` 现头 **`8c7ec5db`**（父 `abe52aca`，只加交件报告 §实机与 D16 派验单入库，`git diff --numstat abe52aca 8c7ec5db -- src electron scripts` 为空）；远端主线 `exp/resource-ledger` = **`622b07bd`**，远端无 `card/s3-d7*` 分支（`git ls-remote origin` 实测），push／合并归主身。交件报告 `.batch/night/staging/s3-d7-unit-chapter-estimate-report.md` **150 行 / 11,446B / `ce883d217c4dc9979d53eff94f83d6ba9900b423c8c44ab4ca09333b7645d6e0`**（现盘实测）。本节只复判判据 1、2、7；判据 3／4／5／6 沿首验结论，判据 3 证据等级按 admin 11-22 12:03 裁定升 `[live]`（判据文字未动）。
 
 ### 判据 1 · 同屏两个数、标签原文 —— **[live] PASS（两支齐）**
 
@@ -224,9 +224,10 @@ physicalModelRequests = 0（intercepted = []）
 ### 记录项（复判）
 
 1. 交件报告以现盘 **150 行 / 11,446B / `ce883d21…`** 为准；developer 早先报的 151 行 / 11,341B / `0c26b18c…` 是补 §5 前的字节，作废，不进分母。
-2. 判定面是**本地分支头** `abe52aca`，远端尚无 `card/s3-d7*` 分支；push、合并、入库由主身执行，QA 不代做。
+2. 判定面（代码面）是 `abe52aca`；分支现头 `8c7ec5db`（父 `abe52aca`，仅文档/派验单两件，`src electron scripts` 未动）；远端主线 `exp/resource-ledger` = `622b07bd`，远端尚无 `card/s3-d7*` 分支；push、合并、入库由主身执行，QA 不代做。
 3. 实施包计量两说：群内已定 **258 行 / 17,980B / `9ba5ee94…`**；`1adc2c4ac`（群内另一处写作 `1ad2c4ac`）为坏读数，已撤回，不入判据。
 4. 判据 3 升 `[live]` 的边界：B 支只有名义上界一个数，「估计值不得与名义上界相同」由 A 支（30 vs 20）覆盖；判据文字未改，不返工。
 5. 判据 5 本次复跑 `Tests 29 passed (29)` / `TEST_EXIT=0`，与首验一致；`check:fast` 未在本次重跑，沿用 `abe52aca` 提交时 `EXIT=0` 的记录。
+6. 判定面写法按 admin 12:06 裁定更正：原句「远端未推」改为「分支头 `8c7ec5db`、远端主线 `622b07bd`」；本文件已随 `df627032` 入库，此更正在其后落盘，`abe52aca` 仍为代码判定面、判据结论不变。
 
 <!-- DONE -->
