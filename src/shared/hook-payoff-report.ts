@@ -39,22 +39,25 @@ export function summarizeDraftCopyFindings(
  * 但整段落在人名 / 地名上 —— 蹭线提示，可插拔）。蹭线那条的 message 自带
  * 「钩子疑似蹭线（C5）：」引导句，因此在本行里是**独立一句**，不与未落地那句混成一句。
  * **不要**把它挪进 C3 的文案：C3 判的是"照抄"，这是"落地"的同一条血脉。
+ *
+ * 句首机读前缀 `[hook-unplanted] ` **只在真有 `C5-unplanted` 时**出现；纯蹭线行不带，
+ * 免得蹭线提示被下游（定稿链路日志、判据「出现一次」）当成未落地命中。
  */
 export function summarizeDraftPayoffFindings(
   findings: PayoffFinding[],
   uiText: HookPayoffUiText,
 ): string | null {
-  const problems = [
-    ...messagesOf(findings, 'C5-unplanted', uiText),
-    ...messagesOf(findings, 'C5-name-graze', uiText),
-  ]
+  const unplanted = messagesOf(findings, 'C5-unplanted', uiText)
+  const graze = messagesOf(findings, 'C5-name-graze', uiText)
+  const problems = [...unplanted, ...graze]
   if (problems.length === 0) return null
+  const marker = unplanted.length > 0 ? '[hook-unplanted] ' : ''
   const hint = uiText(
     '（正文已定稿；这是提示，不阻断，也不改稿。）',
     '(The manuscript is finalized; this is advisory only — no block, no rewrite.)',
   )
   return uiText(
-    `⚠️ 钩子未落地体检（C5）：${problems.join('；')}。${hint}`,
-    `⚠️ Unplanted-hook check (C5): ${problems.join('; ')}. ${hint}`,
+    `${marker}⚠️ 钩子未落地体检（C5）：${problems.join('；')}。${hint}`,
+    `${marker}⚠️ Unplanted-hook check (C5): ${problems.join('; ')}. ${hint}`,
   )
 }
