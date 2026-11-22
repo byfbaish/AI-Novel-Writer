@@ -160,8 +160,76 @@ D11b 的原件目录 `wt-d11b/.runtime/.cache/s3-d11b/0a2815bf-a6e/` 现已不�
 
 **结论：④ 成立（首测 13 条差异全部消解）。**
 
-### 8.2 判据① 待补
+### 8.2 判据① 入库提交 `988b9f13` 上复判 —— 成立
 
-① 须在新提交上判，不在脏树上判：`git status --porcelain -uall` 为空（或只剩已声明例外）、`git rev-parse HEAD` ＝ `git ls-remote origin refs/heads/exp/resource-ledger`。入库提交 sha 出来后在本节追加命令原文与输出。
+判定面：`988b9f13ff4515ab825e2dd3748ecfaa10cf41a5`（`docs(batch): S4 收口入库…`，父 `ec508ec18c7f77decf1ad7b2645909816de6cd22`，10 files / +957 −16）。
+
+```
+$ git status --porcelain -uall
+（无输出）
+STATUS_LINES=0
+
+$ git rev-parse --abbrev-ref HEAD
+exp/mainline-1119
+
+$ git rev-parse HEAD
+988b9f13ff4515ab825e2dd3748ecfaa10cf41a5
+
+$ git ls-remote origin refs/heads/exp/resource-ledger
+988b9f13ff4515ab825e2dd3748ecfaa10cf41a5	refs/heads/exp/resource-ledger
+LSREMOTE_EXIT=0
+
+$ git rev-list --left-right --count HEAD...origin/exp/resource-ledger
+0	0
+```
+
+本地与远端两行 sha 逐位相同、工作树 0 行、分支名非 `HEAD`（未 detached）、无领先/落后提交。**成立。**
+
+### 8.3 判据② 在判定面重跑 —— 成立
+
+```
+$ pnpm check:fast ; echo CHECKFAST_EXIT=$?
+[check:fast] typecheck ✓ 16.7s
+doc links: checked 1467, broken 0
+[check:fast] doc-links ✓ 1.5s
+doc placement: 扫描 438 份 md，当前违规 0 条，基线内 0 条，新增 0 条
+[check:fast] doc-placement ✓ 0.2s
+0 项不合规
+[check:fast] batch-hygiene ✓ 0.5s
+[check:fast] 全部通过。
+CHECKFAST_EXIT=0
+
+$ node scripts/ops/check-batch-hygiene.mjs --all ; echo HYGIENE_EXIT=$?
+0 项不合规
+HYGIENE_EXIT=0
+```
+
+### 8.4 六件与三副本的库内 blob（`git show 988b9f13:<path>` 逐件复算）
+
+| 件 | 行 | 字节 | sha256（前 16） | 与报数 |
+|---|---|---|---|---|
+| `reports/s4-closeout-draft.md` | 147 | 17,299 | `53779e70b0a24ebf` | 一致（`22a965ff`／146／17,050 作废） |
+| `reports/s4-closeout-qa-firstcheck-1122.md`（本件） | 167 | 11,754 | `91ca94e96503e0bc` | 一致 |
+| `reports/task-ledger.md` | 900 | 215,286 | `90ced6b3f4777f10` | 一致 |
+| `cards/_CARD-TEMPLATE.md` | 133 | 16,080 | `7ed119484a6cd986` | 一致 |
+| `docs/design/product/live-pipeline-acceptance-defects-assessment.md` | 1,241 | 158,795 | `d41fe137ec096151` | 一致 |
+| `staging/s3-d4-evidence.json` | 129 | 9,442 | `9354d68c121cc9f9` | 与原件 sha 逐位相同 |
+| `staging/s3-d16-evidence.json` | 156 | 4,717 | `08ede9d41f0d79bf` | 与原件 sha 逐位相同 |
+| `staging/s3-d11b-evidence.json` | 337 | 11,161 | `4e382026e46da17f` | 与判词记录一致 |
+
+### 8.5 总判
+
+| 判据 | 结论 |
+|---|---|
+| ① 树干净与 HEAD＝远端 | **成立**（`988b9f13`，0 行，两行 sha 相同，未 detached） |
+| ② 两条命令原文 | **成立**（`CHECKFAST_EXIT=0`／`HYGIENE_EXIT=0`，`0 项不合规`） |
+| ③ 台账六卡＋四阶段 | **成立**（`90ced6b3`／900 行，六卡 `:886`–`:891`、阶段 `:895`–`:898`；S4 行重复已记观察项） |
+| ④ 看板↔缺陷稿逐条 | **成立**（§8.1：21 张子卡 done 17／todo 4，D1–D20 双向差异 0） |
+| ⑤ 证据路径可打开 | **成立**（D4／D16 原件在，D10 用仓内替代件，两段齐全） |
+| ⑥ 副本闸（第 13 条） | **成立**（三份副本全在，sha 与原件/记录逐位相同） |
+
+**S4 收口复判：PASS。** 建议项目层把 S4 阶段按 pass 收口；记录项 7 条（§6）不构成缺口，收口后按批处理。
+
+留痕说明：本件 §8.2–§8.5 是在 `988b9f13` 之后追加的，故本件现盘字节与 `988b9f13` 入库 blob（167／11,754／`91ca94e9`）不同；终版随下一笔文档提交入库，入库后 ① 的三行原文只需在那一笔上复核一次（差异仅本件自身）。
 
 <!-- DONE -->
