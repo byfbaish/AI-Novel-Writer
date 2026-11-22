@@ -102,4 +102,4 @@ tailwind.config.js.bak
 /.batch/night/staging/tmp-c9ff5961.jsonl
 
 # 唤醒脚本目录入库，但投递残留文件不入库。
-/scripts/dsh/wakeup-inbox/*.md
+/scripts/dsh/wakeup-inbox/**
