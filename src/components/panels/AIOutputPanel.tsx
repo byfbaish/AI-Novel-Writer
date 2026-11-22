@@ -16,6 +16,7 @@ import {
   type WorkflowRun,
   type WorkflowStep,
 } from '../../stores/workflow-store'
+import { useDraftStore } from '../../stores/draft-store'
 import { useLayoutStore } from '../../stores/layout-store'
 import { openPlanningRecoveryDraft, useEditorStore } from '../../stores/editor-store'
 import { useSynopsisRouteStore } from '../../stores/synopsis-route-store'
@@ -299,6 +300,14 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
   const [agentRuns, setAgentRuns] = useState<import('../../shared/agent-generation').AgentGenerationRecovery[]>([])
   const [editorRuns, setEditorRuns] = useState<EditorInlineRecovery[]>([])
   const [generationRefresh, setGenerationRefresh] = useState(0)
+  // D10 判据 2（2026-11-22 实机）：清空生成内容只删库行、不产生 `generation:snapshot`，本面板
+  // 的恢复稿 state 因此一次都不重取 —— 库四表已 1/2/2/1 → 0/0/0/0，界面还挂着 1 张候选卡，
+  // reload 才消失（卡面 §2 第 2 条禁拿强制刷新当修法）。
+  // 修法不新增任何模块：清空路径本来就会在 generatedText 档调 `useDraftStore.reset()`
+  // （draft-store.ts:134，调用点在 project-clear-service.ts:175），它必然换掉 `draftsByChapter`
+  // 的引用；这里把这份既有状态读成依赖，引用一换就按原路径重取 `generation:list`，
+  // 与「清空后重取一次」等价，不参与任何删除语义。
+  const draftsByChapter = useDraftStore(state => state.draftsByChapter)
   const [selection, setSelection] = useState<Record<string, string[]>>({})
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
@@ -345,7 +354,7 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
       setError([...reviewContexts, ...agentContexts, ...editorContexts].some(result => result.status === 'rejected') ? runText(locale, '部分任务暂时无法读取，其他候选仍可恢复。', 'Some tasks could not be loaded; the other candidates remain available.') : '')
     })().catch(reason => { if (active) setError(reason instanceof Error ? reason.message : String(reason)) })
     return () => { active = false }
-  }, [session, refreshKey, locale, generationRefresh])
+  }, [session, refreshKey, locale, generationRefresh, draftsByChapter])
   if (!session) return null
   const act = async (operation: () => Promise<void>) => {
     if (busy || !sameProjectSessionContext(session, projectSessionContextFromProject(useProjectStore.getState().currentProject))) return
