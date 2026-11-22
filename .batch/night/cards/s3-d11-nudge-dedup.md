@@ -86,3 +86,4 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 6. **判据 1／2 等价触发（admin 11-22 15:14 裁）**：允许「UI 保存正文＋库翻转检查点状态」代替全链路连写。依据：`architecture-character-nudge.ts:134-136` 指纹只含 `volumeIndex` 与 `synopsis_incomplete`，正文长度不进指纹；章级 churn 已由单测 `architecture-character-nudge.test.ts:94` 在 mock 层盖住，真链只是重演同一判定。约束：正文改动必须走界面保存、卷与检查点可库造且在 evidence／判词中标 `db-flip`；判据 3／4／5 读数不受影响，不重跑。
 
 7. **判据 1／2 的 wip 降级与 live 对照（admin 11-22 15:3x 裁 ①）**：wip 窗口在合成模型下不可经 UI 观测（`synopsis-unit-launch.ts:297`＋首单元即停＋`ArchFileViewer.tsx:1149`／`:149` 两道门），「`incomplete=true` 时 0 次」与「翻 `final` 后 1 次」降 `[mock]`；`[live]` 由「有／无 dismiss 记录的 0 次 vs 1 次对照」承担；判据 2 的 live 部分不降——两卷都造 `final`、正文走界面保存、经 `:170-177` 真实读取链＋真 toast，取「卷 1 一次／卷 2 一次」与两卷 `volumeIndex`，只有「wip→final 各一次」半段降 `[mock]`。判据 3／4／5 不动。
+8. **D11b 收口后补注（11-22 19:1x，主身）**：本卡判据 1 的 wip 分支当时按「不可观测」降 `[mock]`，其真实 live 覆盖由 D11b 判据 1 承担（`b9bdcba3` 并入主线 `a7012c51`）；判词末「收口备注」即此句，不改本卡任何判据结论。

@@ -1,0 +1,338 @@
+{
+  "runId": "0a2815bf-a6e",
+  "startedAt": "2026-11-22T11:03:29.327Z",
+  "base": "788b84fd",
+  "branch": "card/s3-d11b-checkpoint-volume-projection",
+  "card": ".batch/night/cards/s3-d11b-checkpoint-volume-projection.md@788b84fd",
+  "reviewRequest": ".batch/night/review-requests/s3-d11b-checkpoint-volume-projection.md@c424a6f2",
+  "sampling": {
+    "mode": "stable-poll",
+    "minGapMs": 300,
+    "pollIntervalMs": 400
+  },
+  "triggerMode": {
+    "instance1:launch": "真实 Electron dist（wt-d11b build）",
+    "judge1-wip-initial": "db-seed(incomplete=true, chain=null；库造，非链路)",
+    "judge1-wip-batch1": "ui-save(正文真实编辑器保存)",
+    "judge1-wip-batch2": "ui-save(正文真实编辑器保存)",
+    "judge1-wip-batch3": "ui-save(正文真实编辑器保存)",
+    "judge1-dbflip-final": "db-flip(incomplete=false，卷 1；库造，非链路)",
+    "judge1-final-save": "ui-save(定稿后保存)",
+    "judge3-close-after-flip": "ui-close",
+    "judge1-final-batch5": "ui-save(同卷已提示过)",
+    "judge1-final-batch6": "ui-save(同卷已提示过)",
+    "judge1-final-batch7": "ui-save(同卷已提示过)",
+    "judge2-dbflip-volume2": "db-flip(volumeIndex=2, incomplete=false；库造，非链路)",
+    "instance2:launch": "顺序第二次启动（同一 userData，不并行）",
+    "judge4-restart-volume2": "restart(检查点仍卷 2、dismiss=v2:final)",
+    "judge4-dbflip-volume3": "db-flip(重启后 volumeIndex=3；库造，非链路)"
+  },
+  "stepLog": [
+    {
+      "name": "build:dist",
+      "at": "2026-11-22T11:03:29.330Z",
+      "detail": "{\"dist\":\"C:\\\\develop\\\\workspace\\\\AI-writer\\\\wt-d11b\\\\dist\",\"main\":\"C:\\\\develop\\\\workspace\\\\AI-writer\\\\wt-d11b\\\\dist-electron\\\\main.js\"}"
+    },
+    {
+      "name": "judge1:wip-initial",
+      "at": "2026-11-22T11:03:36.244Z",
+      "detail": "{\"bannerVisible\":false,\"bannerCount\":0,\"dismissedValue\":null,\"sampleCount\":2,\"sampledAt\":\"2026-11-22T11:03:36.244Z\"}"
+    },
+    {
+      "name": "judge1:wip-batch1",
+      "at": "2026-11-22T11:03:39.676Z",
+      "detail": "banner=false len=189"
+    },
+    {
+      "name": "judge1:wip-batch2",
+      "at": "2026-11-22T11:03:43.047Z",
+      "detail": "banner=false len=256"
+    },
+    {
+      "name": "judge1:wip-batch3",
+      "at": "2026-11-22T11:03:46.452Z",
+      "detail": "banner=false len=323"
+    },
+    {
+      "name": "judge1:final-first",
+      "at": "2026-11-22T11:03:51.013Z",
+      "detail": "{\"bannerVisible\":true,\"bannerCount\":1,\"dismissedValue\":null,\"sampleCount\":2,\"sampledAt\":\"2026-11-22T11:03:51.013Z\"}"
+    },
+    {
+      "name": "judge1:final-save",
+      "at": "2026-11-22T11:03:54.422Z",
+      "detail": "banner=true len=390"
+    },
+    {
+      "name": "judge3:after-close",
+      "at": "2026-11-22T11:03:55.363Z",
+      "detail": "{\"afterClose\":{\"dismissedValue\":\"v1:final\",\"bannerVisible\":false,\"sampleCount\":2,\"sampledAt\":\"2026-11-22T11:03:55.363Z\"}}"
+    },
+    {
+      "name": "judge1:final-batch5",
+      "at": "2026-11-22T11:03:58.769Z",
+      "detail": "banner=false"
+    },
+    {
+      "name": "judge1:final-batch6",
+      "at": "2026-11-22T11:04:02.182Z",
+      "detail": "banner=false"
+    },
+    {
+      "name": "judge1:final-batch7",
+      "at": "2026-11-22T11:04:05.550Z",
+      "detail": "banner=false"
+    },
+    {
+      "name": "judge2:volume2",
+      "at": "2026-11-22T11:04:10.070Z",
+      "detail": "{\"bannerVisible\":true,\"bannerCount\":1,\"dismissedValueBeforeClose\":\"v1:final\",\"sampleCount\":2,\"sampledAt\":\"2026-11-22T11:04:10.070Z\"}"
+    },
+    {
+      "name": "judge2:after-close",
+      "at": "2026-11-22T11:04:11.013Z",
+      "detail": "{\"dismissedValueAfterClose\":\"v2:final\",\"bannerVisible\":false,\"sampleCount\":2,\"sampledAt\":\"2026-11-22T11:04:11.013Z\"}"
+    },
+    {
+      "name": "instance1:quit",
+      "at": "2026-11-22T11:04:12.191Z",
+      "detail": "leftover=0"
+    },
+    {
+      "name": "judge4:reopen",
+      "at": "2026-11-22T11:04:12.931Z",
+      "detail": "{\"success\":true}"
+    },
+    {
+      "name": "judge4:after-restart",
+      "at": "2026-11-22T11:04:15.209Z",
+      "detail": "{\"bannerVisible\":false,\"bannerCount\":0,\"dismissedValue\":\"v2:final\",\"sampleCount\":2,\"sampledAt\":\"2026-11-22T11:04:15.209Z\",\"checkpoint\":{\"synopsis_incomplete\":false,\"synopsis_unit_cursor\":{\"volumeIndex\":2,\"unitIndex\":1,\"writtenInVolume\":0}}}"
+    },
+    {
+      "name": "judge4:volume3",
+      "at": "2026-11-22T11:04:19.743Z",
+      "detail": "{\"bannerVisible\":true,\"bannerCount\":1,\"dismissedValue\":\"v2:final\",\"sampleCount\":2,\"sampledAt\":\"2026-11-22T11:04:19.743Z\"}"
+    },
+    {
+      "name": "judge4:volume3-close",
+      "at": "2026-11-22T11:04:20.689Z",
+      "detail": "{\"dismissedValue\":\"v3:final\",\"bannerVisible\":false,\"sampleCount\":2,\"sampledAt\":\"2026-11-22T11:04:20.689Z\"}"
+    }
+  ],
+  "instancesThisRun": 2,
+  "instances": [
+    {
+      "index": 1,
+      "label": "instance1",
+      "quit": {
+        "pid": 37372,
+        "closedAt": "2026-11-22T11:04:11.155Z"
+      },
+      "leftoverElectronProcesses": 0,
+      "tasklistElectronRaw": "INFO: No tasks are running which match the specified criteria.\r\n"
+    },
+    {
+      "index": 2,
+      "label": "final",
+      "quit": {
+        "pid": 7156,
+        "closedAt": "2026-11-22T11:04:20.870Z"
+      },
+      "leftoverElectronProcesses": 0,
+      "tasklistElectronRaw": "INFO: No tasks are running which match the specified criteria.\r\n"
+    }
+  ],
+  "exitCode": 0,
+  "leftoverElectronProcesses": 0,
+  "tasklistElectronRaw": "INFO: No tasks are running which match the specified criteria.\r\n",
+  "physicalModelRequests": 0,
+  "sourceRefs": [
+    "src/services/architecture-character-nudge.ts:134-136（指纹 v<卷号|n>:<wip|final>）",
+    "src/services/architecture-character-nudge.ts:148-150（globallyDisabled → !hasOutlineContent → synopsisIncomplete 门 → dismissedVersion !==）",
+    "src/App.tsx:333-338（await readSynopsisUnitCheckpoint + isCurrentProjectSession 守卫 → outlineNudgeVolumeIdentity）",
+    "src/components/editor/ArchFileViewer.tsx:344-347 改为 useState + useEffect（检查点未就绪为 null，不判提示、不写 dismiss）",
+    "src/services/workflows/synopsis-unit-launch.ts:186,308（readSynopsisUnitCheckpoint；checkpoint.synopsis_unit_cursor）"
+  ],
+  "checkpointSeed": {
+    "synopsis_incomplete": true,
+    "synopsis_unit_cursor": {
+      "volumeIndex": 1,
+      "unitIndex": 1,
+      "writtenInVolume": 0
+    }
+  },
+  "checks": {
+    "judge1": {
+      "wipInitial": {
+        "bannerVisible": false,
+        "bannerCount": 0,
+        "dismissedValue": null,
+        "sampleCount": 2,
+        "sampledAt": "2026-11-22T11:03:36.244Z"
+      },
+      "wipBatches": [
+        {
+          "index": 1,
+          "saved": {
+            "clicked": true,
+            "saveButtonGone": true
+          },
+          "sampleCount": 2,
+          "sampledAt": "2026-11-22T11:03:39.664Z",
+          "bannerVisible": false,
+          "bannerCount": 0,
+          "dismissedValue": null,
+          "synopsisLen": 189
+        },
+        {
+          "index": 2,
+          "saved": {
+            "clicked": true,
+            "saveButtonGone": true
+          },
+          "sampleCount": 2,
+          "sampledAt": "2026-11-22T11:03:43.040Z",
+          "bannerVisible": false,
+          "bannerCount": 0,
+          "dismissedValue": null,
+          "synopsisLen": 256
+        },
+        {
+          "index": 3,
+          "saved": {
+            "clicked": true,
+            "saveButtonGone": true
+          },
+          "sampleCount": 2,
+          "sampledAt": "2026-11-22T11:03:46.443Z",
+          "bannerVisible": false,
+          "bannerCount": 0,
+          "dismissedValue": null,
+          "synopsisLen": 323
+        }
+      ],
+      "finalFirst": {
+        "bannerVisible": true,
+        "bannerCount": 1,
+        "dismissedValue": null,
+        "sampleCount": 2,
+        "sampledAt": "2026-11-22T11:03:51.013Z"
+      },
+      "finalSave": {
+        "saved": {
+          "clicked": true,
+          "saveButtonGone": true
+        },
+        "sampleCount": 2,
+        "sampledAt": "2026-11-22T11:03:54.412Z",
+        "bannerVisible": true,
+        "bannerCount": 1,
+        "dismissedValue": null,
+        "synopsisLen": 390
+      },
+      "finalBatches": [
+        {
+          "index": 5,
+          "saved": {
+            "clicked": true,
+            "saveButtonGone": true
+          },
+          "sampleCount": 2,
+          "sampledAt": "2026-11-22T11:03:58.763Z",
+          "bannerVisible": false,
+          "bannerCount": 0,
+          "dismissedValue": "v1:final",
+          "synopsisLen": 457
+        },
+        {
+          "index": 6,
+          "saved": {
+            "clicked": true,
+            "saveButtonGone": true
+          },
+          "sampleCount": 2,
+          "sampledAt": "2026-11-22T11:04:02.174Z",
+          "bannerVisible": false,
+          "bannerCount": 0,
+          "dismissedValue": "v1:final",
+          "synopsisLen": 524
+        },
+        {
+          "index": 7,
+          "saved": {
+            "clicked": true,
+            "saveButtonGone": true
+          },
+          "sampleCount": 2,
+          "sampledAt": "2026-11-22T11:04:05.545Z",
+          "bannerVisible": false,
+          "bannerCount": 0,
+          "dismissedValue": "v1:final",
+          "synopsisLen": 591
+        }
+      ]
+    },
+    "judge2": {
+      "beforeClose": {
+        "bannerVisible": true,
+        "bannerCount": 1,
+        "dismissedValueBeforeClose": "v1:final",
+        "sampleCount": 2,
+        "sampledAt": "2026-11-22T11:04:10.070Z"
+      },
+      "afterClose": {
+        "dismissedValueAfterClose": "v2:final",
+        "bannerVisible": false,
+        "sampleCount": 2,
+        "sampledAt": "2026-11-22T11:04:11.013Z"
+      },
+      "checkpointBeforeRestart": {
+        "synopsis_incomplete": false,
+        "synopsis_unit_cursor": {
+          "volumeIndex": 2,
+          "unitIndex": 1,
+          "writtenInVolume": 0
+        }
+      },
+      "dismissedBeforeRestart": "v2:final"
+    },
+    "judge3": {
+      "afterClose": {
+        "dismissedValue": "v1:final",
+        "bannerVisible": false,
+        "sampleCount": 2,
+        "sampledAt": "2026-11-22T11:03:55.363Z"
+      }
+    },
+    "judge4": {
+      "afterRestart": {
+        "bannerVisible": false,
+        "bannerCount": 0,
+        "dismissedValue": "v2:final",
+        "sampleCount": 2,
+        "sampledAt": "2026-11-22T11:04:15.209Z",
+        "checkpoint": {
+          "synopsis_incomplete": false,
+          "synopsis_unit_cursor": {
+            "volumeIndex": 2,
+            "unitIndex": 1,
+            "writtenInVolume": 0
+          }
+        }
+      },
+      "volume3BeforeClose": {
+        "bannerVisible": true,
+        "bannerCount": 1,
+        "dismissedValue": "v2:final",
+        "sampleCount": 2,
+        "sampledAt": "2026-11-22T11:04:19.743Z"
+      },
+      "volume3AfterClose": {
+        "dismissedValue": "v3:final",
+        "bannerVisible": false,
+        "sampleCount": 2,
+        "sampledAt": "2026-11-22T11:04:20.689Z"
+      }
+    }
+  }
+}

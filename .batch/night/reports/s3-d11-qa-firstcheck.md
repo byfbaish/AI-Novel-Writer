@@ -198,3 +198,7 @@ $ git diff --name-status --diff-filter=A a73ec4c6..HEAD -- src electron scripts 
 ## 11. 版本变更
 
 - v1 2026-11-22 18:4x 首次落盘：六条判据全判，判据 2 FAIL、总判退回（D11 不 PASS）。无中间稿。
+
+## 收口备注（11-22，S3 收口时补）
+
+判据 1 的 wip 分支当时按「不可观测」降 `[mock]`，该分支的真实 live 覆盖由 D11b 判据 1 承担；本条不改变 D11 判据 1 的 PASS 结论。
