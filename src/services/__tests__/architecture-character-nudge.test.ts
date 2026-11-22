@@ -32,6 +32,7 @@ const OUTLINE = '## 第1章：无声公寓\n沈舟在规则里找漏洞，反复
 const VOLUME_1 = outlineNudgeVolumeIdentity({ volumeIndex: 1, synopsisIncomplete: true })
 const VOLUME_1_FINAL = outlineNudgeVolumeIdentity({ volumeIndex: 1, synopsisIncomplete: false })
 const VOLUME_2 = outlineNudgeVolumeIdentity({ volumeIndex: 2, synopsisIncomplete: true })
+const VOLUME_2_FINAL = outlineNudgeVolumeIdentity({ volumeIndex: 2, synopsisIncomplete: false })
 
 describe('hasOutlineContent', () => {
   it('requires more than the minimum number of non-whitespace characters', () => {
@@ -97,13 +98,42 @@ describe('shouldNudgeOutlineCharacterSupplement', () => {
       if (shouldNudgeOutlineCharacterSupplement({
         synopsis: longerOutline,
         dismissedVersion: readOutlineCharacterNudgeDismissedVersion(project, storage),
+        volume: VOLUME_1_FINAL,
+      })) {
+        prompts += 1
+        dismissOutlineCharacterNudge(project, VOLUME_1_FINAL, storage)
+      }
+    }
+    expect(prompts).toBe(1)
+  })
+
+  it('该卷未定稿（synopsis_incomplete=true）期间一次都不提示，正文每批增长也不提示', () => {
+    const storage = memoryStorage()
+    const project = 'C:/books/wip'
+    let prompts = 0
+    for (let batch = 0; batch < 3; batch += 1) {
+      const longerOutline = `${OUTLINE}\n## 第${batch + 7}章：新单元\n又多了一批内容。`
+      expect(shouldNudgeOutlineCharacterSupplement({
+        synopsis: longerOutline,
+        dismissedVersion: readOutlineCharacterNudgeDismissedVersion(project, storage),
+        volume: VOLUME_1,
+      })).toBe(false)
+      if (shouldNudgeOutlineCharacterSupplement({
+        synopsis: longerOutline,
+        dismissedVersion: readOutlineCharacterNudgeDismissedVersion(project, storage),
         volume: VOLUME_1,
       })) {
         prompts += 1
         dismissOutlineCharacterNudge(project, VOLUME_1, storage)
       }
     }
-    expect(prompts).toBe(1)
+    expect(prompts).toBe(0)
+    // 定稿那一刻才提示：同一卷、同一份正文，只因为定稿态翻了
+    expect(shouldNudgeOutlineCharacterSupplement({
+      synopsis: OUTLINE,
+      dismissedVersion: readOutlineCharacterNudgeDismissedVersion(project, storage),
+      volume: VOLUME_1_FINAL,
+    })).toBe(true)
   })
 
   it('跨卷提示第 2 次', () => {
@@ -115,28 +145,28 @@ describe('shouldNudgeOutlineCharacterSupplement', () => {
       volume,
     })
     // 卷 1：第一次提示，处理后本卷静音
-    expect(should(VOLUME_1)).toBe(true)
-    dismissOutlineCharacterNudge(project, VOLUME_1, storage)
-    expect(should(VOLUME_1)).toBe(false)
-    // 卷 2：跨卷 ⇒ 第 2 次提示
-    expect(should(VOLUME_2)).toBe(true)
+    expect(should(VOLUME_1_FINAL)).toBe(true)
+    dismissOutlineCharacterNudge(project, VOLUME_1_FINAL, storage)
+    expect(should(VOLUME_1_FINAL)).toBe(false)
+    // 卷 2：跨卷 ⇒ 第 2 次提示（同一份进程内，与内存链无关）
+    expect(should(VOLUME_2_FINAL)).toBe(true)
   })
 
   it('prompts only when an outline exists and this volume was not handled yet', () => {
-    expect(shouldNudgeOutlineCharacterSupplement({ synopsis: OUTLINE, dismissedVersion: null, volume: VOLUME_1 })).toBe(true)
+    expect(shouldNudgeOutlineCharacterSupplement({ synopsis: OUTLINE, dismissedVersion: null, volume: VOLUME_1_FINAL })).toBe(true)
     expect(shouldNudgeOutlineCharacterSupplement({
       synopsis: OUTLINE,
-      dismissedVersion: outlineNudgeDraftVersion(VOLUME_1),
-      volume: VOLUME_1,
+      dismissedVersion: outlineNudgeDraftVersion(VOLUME_1_FINAL),
+      volume: VOLUME_1_FINAL,
     })).toBe(false)
-    expect(shouldNudgeOutlineCharacterSupplement({ synopsis: '', dismissedVersion: null, volume: VOLUME_1 })).toBe(false)
+    expect(shouldNudgeOutlineCharacterSupplement({ synopsis: '', dismissedVersion: null, volume: VOLUME_1_FINAL })).toBe(false)
   })
 
   it('stays silent when the global switch is off, even for a fresh volume', () => {
     expect(shouldNudgeOutlineCharacterSupplement({
       synopsis: OUTLINE,
       dismissedVersion: null,
-      volume: VOLUME_1,
+      volume: VOLUME_1_FINAL,
       globallyDisabled: true,
     })).toBe(false)
   })
@@ -169,7 +199,7 @@ describe('outline character nudge state', () => {
     expect(shouldNudgeOutlineCharacterSupplement({
       synopsis: OUTLINE,
       dismissedVersion: readOutlineCharacterNudgeDismissedVersion(project, storage),
-      volume: VOLUME_1,
+      volume: VOLUME_1_FINAL,
     })).toBe(true)
   })
 

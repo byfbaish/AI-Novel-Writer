@@ -31,6 +31,7 @@ import { launchCreativeWorkflow } from '../../services/workflows/creative-workfl
 import {
   describeSynopsisUnitProbe,
   probeSynopsisUnitLaunchForProject,
+  readSynopsisUnitCheckpoint,
   reportSynopsisUnitProbe,
 } from '../../services/workflows/synopsis-unit-launch'
 import type { ArchitectureUnitRange } from '../../shared/generation-owner-contract'
@@ -52,6 +53,7 @@ import {
   readOutlineCharacterNudgeDismissedVersion,
   shouldNudgeOutlineCharacterSupplement,
   subscribeOutlineCharacterNudgeConfig,
+  type OutlineNudgeVolumeIdentity,
 } from '../../services/architecture-character-nudge'
 import {
   ARCH_REFRESH_BLOCKED_MESSAGE,
@@ -340,11 +342,25 @@ function ArchFileViewerSession({
   const [outlineNudgeGloballyDisabled, setOutlineNudgeGloballyDisabled] = useState(false)
   /** E3 T12：连续生成的进度（调度在 App，这里只读来显示）。 */
   const unitChain = useSynopsisUnitChainStore(s => s.chain)
-  /** D11：去重键按卷 —— 连写链当前卷号 + 该卷大纲是否仍在逐批生成（未定稿）。 */
-  const nudgeVolume = useMemo(() => outlineNudgeVolumeIdentity({
-    volumeIndex: unitChain?.volumeIndex ?? null,
-    synopsisIncomplete: unitChain?.status === 'running',
-  }), [unitChain])
+  /** D11b：去重键按卷 —— 卷号与定稿态取**检查点**（与连写侧同源），不再读内存链。 */
+  const [nudgeVolume, setNudgeVolume] = useState<OutlineNudgeVolumeIdentity | null>(null)
+  useEffect(() => {
+    if (stepKey !== 'synopsis' || !projectMatches) { setNudgeVolume(null); return }
+    const session = captureProjectSession(currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) { setNudgeVolume(null); return }
+    let disposed = false
+    void readSynopsisUnitCheckpoint(session)
+      .then((checkpoint) => {
+        if (disposed || !isProjectSessionCurrent(session)) return
+        setNudgeVolume(outlineNudgeVolumeIdentity({
+          volumeIndex: checkpoint.synopsis_unit_cursor?.volumeIndex ?? null,
+          synopsisIncomplete: checkpoint.synopsis_incomplete === true,
+        }))
+      })
+      // 读不到检查点时保持「未就绪」：宁可这次不提示，也不拿 `vn:final` 去覆盖已关闭记录。
+      .catch(() => { if (!disposed) setNudgeVolume(null) })
+    return () => { disposed = true }
+  }, [stepKey, projectMatches, currentProject, projectKey])
   useEffect(() => {
     let cancelled = false
     void ipc.invoke('config:get')
@@ -357,7 +373,7 @@ function ArchFileViewerSession({
     return () => { cancelled = true; unsubscribe() }
   }, [])
   useEffect(() => {
-    if (stepKey !== 'synopsis' || !projectMatches) { setOutlineCharacterNudge(false); return }
+    if (stepKey !== 'synopsis' || !projectMatches || !nudgeVolume) { setOutlineCharacterNudge(false); return }
     setOutlineCharacterNudge(shouldNudgeOutlineCharacterSupplement({
       synopsis: editorContent,
       dismissedVersion: readOutlineCharacterNudgeDismissedVersion(projectKey),
@@ -365,8 +381,9 @@ function ArchFileViewerSession({
       volume: nudgeVolume,
     }))
   }, [stepKey, projectMatches, editorContent, projectKey, outlineNudgeGloballyDisabled, nudgeVolume])
-  /** 只处理「这一卷」：跨卷或该卷重新定稿后自动重新提示。 */
+  /** 只处理「这一卷」：跨卷或该卷重新定稿后自动重新提示。检查点未就绪时不许写。 */
   const settleOutlineNudge = () => {
+    if (!nudgeVolume) return
     dismissOutlineCharacterNudge(projectKey, nudgeVolume)
     setOutlineCharacterNudge(false)
   }

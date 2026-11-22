@@ -45,7 +45,7 @@ import {
   shouldNudgeOutlineCharacterSupplement,
 } from './services/architecture-character-nudge'
 import { useSynopsisUnitChainStore } from './stores/synopsis-unit-chain-store'
-import { probeSynopsisUnitLaunchForProject } from './services/workflows/synopsis-unit-launch'
+import { probeSynopsisUnitLaunchForProject, readSynopsisUnitCheckpoint } from './services/workflows/synopsis-unit-launch'
 import { formatChapterPosition } from './shared/chapter-position'
 import { decideUnitChainStep, UNIT_CHAIN_STOP_COPY, type UnitChainStopReason } from './services/workflows/synopsis-unit-chain'
 import { launchCreativeWorkflow } from './services/workflows/creative-workflow-launcher'
@@ -330,10 +330,13 @@ export default function App() {
           const projectPath = projectSession.projectPath
           const synopsis = core?.synopsis
           // D11：去重键按卷 —— 连写链当前卷号 + 该卷大纲是否仍在逐批生成（未定稿）。
-          const activeChain = useSynopsisUnitChainStore.getState().chain
+          // D11b：卷号与定稿态都取**检查点**（与连写侧同源），不再读内存里的链 ——
+          // 链只在界面上存活，重启即失忆，会让已关闭的 `v2:final` 再提示一次。
+          const checkpoint = await readSynopsisUnitCheckpoint(projectSession)
+          if (!isCurrentProjectSession()) return
           const volume = outlineNudgeVolumeIdentity({
-            volumeIndex: activeChain?.volumeIndex ?? null,
-            synopsisIncomplete: activeChain?.status === 'running',
+            volumeIndex: checkpoint.synopsis_unit_cursor?.volumeIndex ?? null,
+            synopsisIncomplete: checkpoint.synopsis_incomplete === true,
           })
           if (!shouldNudgeOutlineCharacterSupplement({
             synopsis,
