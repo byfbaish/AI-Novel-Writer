@@ -453,13 +453,10 @@ function MainDraftRecoverySection({ session, locale, refreshKey }: {
         `Batch drafts: ${batch.completedChapters.length} saved; next chapter ${batch.nextChapterNumber}`)}</p>
       {gate.sourceChanged && <p>{runText(locale, '批次来源已变化，不能继续此批次。请从当前正文发起新任务。',
         'The batch source changed. This batch cannot continue. Start a new task from the current text.')}</p>}
-      {gate.terminated && <p>{runText(locale,
-        gate.wayOut?.chapterNumber == null
-          ? '本批次已终止，请重新开一批（会生成新的批次编号）。'
-          : `本批次已终止，请从第${gate.wayOut.chapterNumber}章重新开一批（会生成新的批次编号）。`,
-        gate.wayOut?.chapterNumber == null
-          ? 'This batch has stopped. Start a new batch (it will have a new batch number).'
-          : `This batch has stopped. Start a new batch from Chapter ${gate.wayOut.chapterNumber} (it will have a new batch number).`)}</p>}
+      {/* D4：批次层只在批次确实已停止时出现（`gate.terminated` 来自 root run 终态），
+          不拿 `sourceStatus === 'conflict'` 顶替；文案与产物层同源，见 `source-conflict-copy.ts`。 */}
+      <SourceConflictNotice sourceStatus={gate.sourceChanged ? 'conflict' : 'current'}
+        batchStopped={gate.terminated} batchChapterNumber={gate.wayOut?.chapterNumber ?? null} />
       <button type="button" className="icon-btn px-2" style={candidateTextButtonStyle} disabled={busy || !gate.canContinue} onClick={() => { void act(async () => {
         const workflow = await createBatchRecoveryWorkflow(session, batch.batchId)
         await useWorkflowStore.getState().startWorkflow(workflow)
