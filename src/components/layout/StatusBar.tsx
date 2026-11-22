@@ -6,7 +6,7 @@ import { useLayoutStore, type BottomTab } from '../../stores/layout-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
 import { useLocaleStore } from '../../stores/locale-store'
 import { useActualModelStore } from '../../stores/actual-model-store'
-import { resolveStatusbarModel, statusbarModelCopy, type ActualCallModel } from '../../shared/statusbar-model'
+import { statusbarModelDisplay, statusbarModelTitle, type ActualCallModel } from '../../shared/statusbar-model'
 
 /** 仅测试注入用：生产下全部走各自 store。 */
 export interface StatusBarProps {
@@ -67,9 +67,10 @@ export default function StatusBar({
     ? (models.find(m => m.id === effectiveActual.modelId)?.name ?? effectiveActual.modelName.trim())
     : null
   const resolvedActual = actualLabel && effectiveActual ? { ...effectiveActual, modelName: actualLabel } : effectiveActual
-  const shownModelName = resolveStatusbarModel(resolvedActual, effectiveConfigured)
-  const modelSource = actualLabel ? 'actual' : 'configured'
-  const modelCopy = shownModelName ? statusbarModelCopy(localeProp ?? storeLocale, shownModelName, modelSource) : null
+  // 2026-11-22 作者裁定 C：常态显示默认（配置）模型；实际调用与配置不同时并列成「默认A（实际 B）」。
+  // 之前的 D16 口径是「有实际调用就只显示它」，换默认模型后不刷新，作者判定为迷惑性 bug。
+  const modelDisplay = statusbarModelDisplay(resolvedActual, effectiveConfigured)
+  const modelTitle = modelDisplay ? statusbarModelTitle(modelDisplay, localeProp ?? storeLocale) : null
 
   return (
     <div
@@ -118,13 +119,13 @@ export default function StatusBar({
         {/* AI 任务胶囊指示器（右下角） */}
         <AITaskCapsule />
 
-        {modelCopy ? (
+        {modelDisplay && modelTitle ? (
           <StatusBarSegment
-            title={modelCopy.title}
+            title={modelTitle}
             onClick={() => openSettings()}
           >
             <Wifi size={11} />
-            <span className="opacity-80 max-w-[120px] truncate">{modelCopy.label}</span>
+            <span className="opacity-80 max-w-[180px] truncate">{modelDisplay.label}</span>
           </StatusBarSegment>
         ) : (
           <StatusBarSegment
