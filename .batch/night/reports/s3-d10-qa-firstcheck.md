@@ -7,7 +7,7 @@
 | 判据 | 分层 | 结论 |
 |---|---|---|
 | 1 残留宿主清单 | [static] | **通过**（四表逐表列出，行号我回源码核过，一处偏移见记录项 1；报告认 `8f8b8dfc`，见 §8 记录项 6） |
-| 2 实机三档清空后卡片数为 0 | [live] | **不通过**：三档清空后界面仍 1 张「第2章候选」（`afterCards=1`／`finalCards=1`），reload＋重开项目才归 0，卡面 §2 禁此修法 |
+| 2 实机三档清空后卡片数为 0 | [live] | **不通过**（按主身裁 (a) 收窄到 `generatedText` 档，见 §8.3）：该档清空后界面仍 1 张「第2章候选」（`tierGeneratedText.afterCards=1`／`finalCards=1`），reload＋重开项目才归 0，卡面 §2 禁此修法；`creativeFields`／`blueprints` 两档记 **N/A**（该档不删生成内容，候选卡片应保留） |
 | 3 回执原文与 DB 计数逐类对账 | [live] | **通过**（四表与 drafts 前后读数与回执数字一致；14 表口径其余行的原件见 §8 记录项 4） |
 | 4 订阅方非零：文件:行＋运行时日志一行 | [static]＋[live] | **通过**（订阅注册处 `project-clear-service.ts:168-169`＋消费链 `system-notice-toast.ts:22`＋回执界面可见；`AppLogger` 不落 page console 按 admin 13:2x 裁定记记录项，不单列 FAIL） |
 | 5 单测＋`check:fast` | [static] | **通过**（我本机复跑，见 §3） |
@@ -161,3 +161,11 @@ consoleLinesAll = []（n=0）
 ### 8.2 下一步（fix-forward 后补 §10 复判）
 
 developer 在同一卡分支 commit（不 push）后，三档各再跑一次、证据刷成新件（旧 `7a50674e` 标作废），并把 `tasklist | grep -c electron` 原文与逐类计数直接落 evidence；我据新件在 §10 出复判，只重判判据 2（其余判据沿用本 §8）。
+
+### 8.3 分母与判据 2 口径变更（2026-11-22 13:38，主身裁 (a)）
+
+主身裁 (a)、卡面 §8.1 第 5 条已落：**判据 2 按「该档实际清空的对象」判**——`generatedText` 档清空成功后界面卡片数必须 `= 0`（不靠 reload、不靠点刷新）；`creativeFields`／`blueprints` 两档该档不删生成内容（`src/services/project-clear-service.ts:174-176` 的 `reset` 只在 `normalized.generatedText` 分支触发），卡片保留是正确行为，判据 2 记 **N/A**，理由原样写「该档不删生成内容，候选卡片应保留」，不许留空默认通过。
+
+据此重述 §8 的判据 2：判的是 `tierGeneratedText` 那一档——evidence 原文 `tierGeneratedText.afterCards = 1`、`checks.finalCards = 1`，而该档四表 `1/2/2/1 → 0/0/0/0`，即「库删干净、界面仍挂 1 张」，**判据 2 不通过**的结论不变；另两档 `afterCards=1` 改记 N/A，不再算缺口。§8 里「三档清空后界面仍 1 张」的表述按本条收窄为「generatedText 档」。
+
+分母同步换成入库版（我实测）：卡面 `.batch/night/cards/s3-d10-clear-reset.md` **101 行 / 12,319B / `c938dcba7bdade4167efb53aaf7eddad81a16e6b30b538266c66fc969147264f`**（§8.1 留痕＋§3.1 补白，§3 白名单与 §4 判据文字未动）；派验单 `.batch/night/review-requests/s3-d10-clear-reset.md` **44 行 / 8,641B / `40b29bc36a9935a6d39b2b324a1f19158b5b5f12b09482b32d7bc4cc51deb558`**（`:7`／`:40` 分母已换 `c938dcba`，`:6` 软限 45 分钟、15 分钟无产物即放 FF，外派位改为「豆包只出提案、apply 归 developer」）。旧分母 `7f9ee244`（78/7,504）与 `053c29e3`（44/7,763）作废，判定面代码仍为 `71f72b9b`。
