@@ -34,7 +34,9 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 ## 4. 判据（QA 首验逐条，逐条要输出原文）
 
 1. 整机重启：贴进程起止（PID 或起停时间戳）+ 重启前/后状态栏快照或可见文本原文，值等于实际调用模型。
-2. 构造 A≠B：贴配置值 A、主进程日志实际 `model:` B、界面显示 B 三处原文同屏。
+   > **reload 一支作废（2026-11-22 11:3x，负责人裁定）**：外派实施记录里「reload 后 `actual` 仍非空」**不作为证据**——`currentProject=null` 时状态栏回「（配置）」，`actual` 非空不能反证模型未变。判据 2 只认 reload 前的同源对账；若要保留 reload 后一支，须先证明 `lastModel()` 与状态栏同时可见，否则不写进判词。
+2. 构造 A≠B：贴配置值 A、**实际调用的持久化事实源** B、界面显示 B 三处原文同屏，且三条须**同源对账**（不得只贴 UI 文案）。
+   > **证据源留痕（2026-11-22 11:3x，负责人裁定，非放宽）**：原措辞「主进程日志实际 `model:`」在本仓**不存在**该证据源——`electron/` 侧无任何日志模块（`grep -rln "createLogger\|logger\.\|winston\|pino" --include=*.ts electron` 零命中）。改认两个持久化事实源：`binding_json`（持久化绑定的 `sourceManifest.modelReceipt.model`）与 `generation:last-model` IPC 原文（`electron/controllers/generation-controller.ts:290`；契约 `src/shared/generation-owner-contract.ts:424`；渲染层消费者 `src/services/generation/actual-model-hydration.ts:21`）。「A≠B 必须现场构造」这一方向不变。
 3. tooltip 两档（实际调用 / 配置）在 B≠A 时文案原文正确。
 4. 无回归：`GENERATION_MODEL_BINDING_INVALID` 未出现；`generation:list` 仍可用。
 5. 实例纪律三项：`instancesThisRun`、`exitCode`、`leftoverElectronProcesses`（须 0）。
