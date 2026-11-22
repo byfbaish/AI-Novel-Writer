@@ -145,3 +145,73 @@ git diff 961eaa05~1 961eaa05 -- src/shared/__tests__/statusbar-model.test.ts | g
 node scripts/run-tests-electron.mjs src/shared/__tests__/statusbar-model.test.ts src/components/layout/__tests__/StatusBar.test.tsx
 pnpm run check:fast
 ```
+
+## 10. 复判（判据 1–6 全量，2026-11-22 13:1x，分母换新卡）
+
+复判对象：判据 5 的 live 证据到位后按新卡对全六条重判一次。判定面仍是参考实现 `961eaa05`（父 `fb2c5d6f`，4 文件 +167/−20），工作区判读面 `2185b365`，`git status --porcelain -uall` 输出 0 行。
+
+分母（本次现算，旧值全部作废）：
+
+| 件 | 读数 | sha256 |
+|---|---|---|
+| 卡面 `.batch/night/cards/d16b-statusbar-default-first.md` | 49 行 / 4,681B | `594d7691941d472776dcdf0ad191c90198bd9f5cabb2167727384a7ca7059c23` |
+| 派验单 `.batch/night/review-requests/d16b-statusbar-default-first.md` | 41 行 / 5,552B | `828aea01914aac3094f5c81393b2591c3c1a3eb2c11b5aee019cf6eddcd0933a` |
+| 交件报告 `.batch/night/staging/d16b-statusbar-report.md` | 85 行 / 5,776B | `a21753d2963c536171b403784d2239beea3483766b0406d32d229551b39e8779` |
+| 本判词（自指，本轮写入前） | 147 行 / 9,312B | `164bffdd5188ec485a5e13a188dbda810f1ce2bd101d271e8aae7899bdd5be19` |
+
+新卡 §2 的 1–6 条与旧卡 `252d6e19` 判据文句一致（我已逐条回读原文比对），故判据 1／2／3／6 的既有结论按原证据沿用，判据 4 按 admin 要求重取 diff 原文，判据 5 用本次交件报告的 live 证据。
+
+### 10.1 判据 5 `[live]` —— PASS
+
+证据文件 `.runtime/.cache/s3-d16/af51f396-e79/evidence.json`（run `af51f396-e79`），我逐项独立读取，非采信报告转述：
+
+```
+$ python -c "import json;d=json.load(open('.runtime/.cache/s3-d16/af51f396-e79/evidence.json'));print(d['instancesThisRun'],d['exitCode'],d['leftoverElectronProcesses'],d['pids'])"
+1 0 0 [{'index': 1, 'pid': 63628, 'startedAt': '2026-11-22T05:04:23.786Z'}]
+```
+
+- ① 改默认模型后跟着配置刷新（不 reload，走设置页点击）：`checks.uiPath="settings-click"`、`checks.refreshOnDefaultChange=true`；`stepLog[3]` `statusbar:config-a` 取到 `"任务 日志 模型 D16 配置模型 A"`、`title="当前模型（配置）：D16 配置模型 A"`；`stepLog[5]` `statusbar:config-b` 取到 `"任务 日志 模型 D16 实际模型 B"`，两次之间只有 `settings:click-b`，无 reload 步骤。
+- ② 实际 ≠ 默认时并列：`checks.mixedLabel="D16 配置模型 A（实际 D16 实际模型 B）"`，同一次 `stepLog[11]` 的 `statusbarText` 原文一致；实际值来源 `checks.actualModelFromBinding={"modelId":"d16-actual","modelName":"gpt-4.1"}`，对应 run `f5be81b6-ec4b-4d3b-a0fd-cf94956236fd` 的 `binding_json.modelReceipt`。
+- ③ tooltip 两段同屏：`checks.mixedTooltip="当前模型（配置）：D16 配置模型 A ｜ 实际调用：D16 实际模型 B"`，与 ②的可见文本在同一条 `statusbar:mixed` 里一起取到（`allTitles` 第 4 项同值）。
+- ④ 实例纪律：`instancesThisRun=1`、`exitCode=0`、`leftoverElectronProcesses=0`、`pids` 单条；合成调用 `mainState={"chatCalls":2,"embeddings":1,"intercepted":[]}`、`checks.physicalModelRequests=0`。
+
+`tasklist` 读数补测（报告 §4 表列了 0，但原始输出未入 evidence，故我自己再跑一次）：
+
+```
+$ tasklist //FI "IMAGENAME eq electron.exe" | grep -c electron.exe
+0
+$ echo $?
+1
+```
+
+命中 0 行时 `grep -c` 自身返回 1，属正常，不是失败。
+
+### 10.2 判据 4 `[static]` —— PASS（记录项放行）
+
+```
+$ git diff --numstat 961eaa05~1 961eaa05 -- src/components/layout/__tests__/StatusBar.test.tsx
+26	12	src/components/layout/__tests__/StatusBar.test.tsx
+```
+
+改写实测 **3 条**，不是卡面写的 2 条：① `zh` 用例「显示 B、不显示 A」→「并列 A（实际 B）」；② `en` 用例同口径；③ 配置档用例「当前模型：配置模型A」→「当前模型（配置）：配置模型A」。第③条是 C 口径下 `configured` 档文案必变所致，且 admin 11-22 13:0x 已预裁「按记录项放行，不判 FAIL」，此处照裁执行。
+
+其余断言逐字未动：`describe('StatusBar bottom tool-window entries')` 整段、空态「未配置模型」用例、`not.toContain('当前模型')`（en 侧）均保留；新增 2 条（配置与实际同名只显示一次、只有实际档）属补覆盖不是改写；用例数 5 → 7。改写方向与裁定 C 一致，无借机改动。
+
+### 10.3 判据 1／2／3／6 —— PASS（沿用，证据不重取）
+
+- 判据 1：`statusbar-model.ts` 六情形（不同／同名 `same:true`／只有配置／只有实际／空白串／皆空 `null`）用例齐，`statusbarModelDisplay()` `:87`、`statusbarModelTitle()` `:116`。
+- 判据 2：渲染 7 条绿，en 侧 `not.toContain('当前模型')`。
+- 判据 3 `[mock]`：旧 API `resolveStatusbarModel`（`:20`）、`statusbarModelCopy`（`:43`）原样保留，旧用例实测 6 条全绿；卡面写「13 条」是整文件现总数，数字偏差已由 admin 按记录项放行。
+- 判据 6：`Test Files 2 passed (2)`／`Tests 20 passed (20)`／`TEST_EXIT=0`；`[check:fast] 全部通过。`／`CHECKFAST_EXIT=0`。
+
+### 10.4 记录项（不改变结论）
+
+1. `tasklist | grep -c electron` 的原始输出未写进 `evidence.json`（报告 §4 只在表里给了 0）；我用现行机器补测 0 行贴在本节，事实成立，但**后续卡的取证脚本要把这条读数直接落到 evidence**，别只写进报告表。
+2. 判据 4 的改写条数：卡面写 2 条、实测 3 条，按 admin 预裁记记录项放行，收口时卡面数字应改成 3（新提交，禁 `checkout --`）。
+3. 本次 run 终态 `failed`（合成流式不做完稿收尾），`modelReceipt` 仍落 `d16-actual`／`gpt-4.1`；判据 5 读数取自该 run 内，run 失败原因不在本卡判据内。
+4. 本件未出截图，按卡面 §5 允许的「DOM 原文」交付；`dist/` 与 `961eaa05` 的等价性用包内标记（`w180`／`actual`）判定，属标记级而非 bundle sha 级等价，报告已自述该残余风险。
+5. 合并 push 归主身；本判词只判代码与证据，不构成合并授权。
+
+### 10.5 结论
+
+判据 1–6 全部 PASS。建议放行：把参考实现 `961eaa05` 并入主线（由主身执行，需 push），之后 D16B 转 ✅；本判词入库须由主身提交（`.batch` 下卡分支不收文档）。
