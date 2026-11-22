@@ -2,18 +2,18 @@
 
 判词角色：QA · AI writer项目组（群分身）。判定口径：只按卡面 §4 判据与派验单 `053c29e3` 逐条独立复跑，不采信交件报告转述。
 
-## 0. 结论（首验不通过：判据 2 FAIL，见 §8）
+## 0. 结论（首验 13:1x 快照：判据 2 FAIL；最终见 §10.5 PASS）
 
 | 判据 | 分层 | 结论 |
 |---|---|---|
 | 1 残留宿主清单 | [static] | **通过**（四表逐表列出，行号我回源码核过，一处偏移见记录项 1；报告认 `8f8b8dfc`，见 §8 记录项 6） |
-| 2 实机三档清空后卡片数为 0 | [live] | **不通过**（按主身裁 (a) 收窄到 `generatedText` 档，见 §8.3）：该档清空后界面仍 1 张「第2章候选」（`tierGeneratedText.afterCards=1`／`finalCards=1`），reload＋重开项目才归 0，卡面 §2 禁此修法；`creativeFields`／`blueprints` 两档记 **N/A**（该档不删生成内容，候选卡片应保留） |
+| 2 实机三档清空后卡片数为 0 | [live] | **PASS**（复判见 §10.2）。首验 FAIL：`generatedText` 档清空后界面仍 1 张「第2章候选」（`tierGeneratedText.afterCards=1`／`finalCards=1`），reload＋重开项目才归 0，卡面 §2 禁此修法；`creativeFields`／`blueprints` 两档记 **N/A**（该档不删生成内容，候选卡片应保留） |
 | 3 回执原文与 DB 计数逐类对账 | [live] | **通过**（四表与 drafts 前后读数与回执数字一致；14 表口径其余行的原件见 §8 记录项 4） |
 | 4 订阅方非零：文件:行＋运行时日志一行 | [static]＋[live] | **通过**（订阅注册处 `project-clear-service.ts:168-169`＋消费链 `system-notice-toast.ts:22`＋回执界面可见；`AppLogger` 不落 page console 按 admin 13:2x 裁定记记录项，不单列 FAIL） |
 | 5 单测＋`check:fast` | [static] | **通过**（我本机复跑，见 §3） |
 | 6 实例纪律三项 | [live] | **通过**（`instancesThisRun=1`／`exitCode=0`／`leftover=0`、`tasklist` 原文已落 evidence；`grep -c` 计数形式见记录项 5） |
 
-首验总判：**不通过（D10 不 PASS）**，唯一判据级缺口是判据 2——库已清空、界面仍挂 1 张卡片。按 admin 13:2x 裁定：不另开卡、不扩白名单，由 developer 在 D10 的 apply 位 fix-forward（补一次 `generation:snapshot` 或等价渲染层重置入口），同卡分支 commit 不 push，三档各复跑一次、证据刷成新件后，在同一份判词追加 §10 复判。
+首验总判（13:1x 快照，最终结论见 §10.5）：**不通过（D10 不 PASS）**，唯一判据级缺口是判据 2——库已清空、界面仍挂 1 张卡片。按 admin 13:2x 裁定：不另开卡、不扩白名单，由 developer 在 D10 的 apply 位 fix-forward（补一次 `generation:snapshot` 或等价渲染层重置入口），同卡分支 commit 不 push，三档各复跑一次、证据刷成新件后，在同一份判词追加 §10 复判。
 
 ## 1. 分母与判定面（本判词现算）
 
@@ -169,3 +169,54 @@ developer 在同一卡分支 commit（不 push）后，三档各再跑一次、�
 据此重述 §8 的判据 2：判的是 `tierGeneratedText` 那一档——evidence 原文 `tierGeneratedText.afterCards = 1`、`checks.finalCards = 1`，而该档四表 `1/2/2/1 → 0/0/0/0`，即「库删干净、界面仍挂 1 张」，**判据 2 不通过**的结论不变；另两档 `afterCards=1` 改记 N/A，不再算缺口。§8 里「三档清空后界面仍 1 张」的表述按本条收窄为「generatedText 档」。
 
 分母同步换成入库版（我实测）：卡面 `.batch/night/cards/s3-d10-clear-reset.md` **101 行 / 12,319B / `c938dcba7bdade4167efb53aaf7eddad81a16e6b30b538266c66fc969147264f`**（§8.1 留痕＋§3.1 补白，§3 白名单与 §4 判据文字未动）；派验单 `.batch/night/review-requests/s3-d10-clear-reset.md` **44 行 / 8,641B / `40b29bc36a9935a6d39b2b324a1f19158b5b5f12b09482b32d7bc4cc51deb558`**（`:7`／`:40` 分母已换 `c938dcba`，`:6` 软限 45 分钟、15 分钟无产物即放 FF，外派位改为「豆包只出提案、apply 归 developer」）。旧分母 `7f9ee244`（78/7,504）与 `053c29e3`（44/7,763）作废，判定面代码仍为 `71f72b9b`。
+
+### 8.4 复判前的口径预备（2026-11-22 13:5x，admin 指令，尚未出 §10）
+
+**一、分母再换版（我实测，`84e12504` 入库）**：卡面 `.batch/night/cards/s3-d10-clear-reset.md` **104 行 / 14,060B / `b608362ee557bf36a95c0afe915801e0a94bc2fc22e5f302c87517827874093c`**（§8.1 新增第 6 条「不走主进程补发 `generation:snapshot`」与第 7 条「判据 2 确定性取样」）；派验单 `.batch/night/review-requests/s3-d10-clear-reset.md` **44 行 / 8,814B / `02e221bc1adf8799e959d3c87c6d3cc120f595e5c918afa87b53edb3863ce033`**。旧分母 `c938dcba`（101/12,319）、`7f9ee244`（78/7,504）、`88 行 / 9,446B`、`027a832b`（100 行）全部作废。判定面代码仍为 `71f72b9b`；`84e12504` 只动两件 `.batch` 文档。
+
+**二、§10 复判必须写的口径说明（原文照录，不许省）**：「判据 2 的取证方法已按卡面 §8.1 第 7 条更新为确定性取样，不是放宽判据」——该项改动只修「取样太早造成假红」（旧脚本 `.runtime/s3-d10-live.mjs:312` 固定等 800ms，被 `refreshFileTree` 的 await 吃掉窗口），判据阈值一条未动，仍为 `tier*.afterCards = 0`、`finalCards = 0`、`checks.noResidualCards = true`（含 `sectionPresent === false`）；`afterReopenCardCount` 不得顶替。
+
+**三、记录项 8（写进 §10）**：豆包提案 A1（新建 `generation-refresh-store.ts`）按**依据过期**否——它 13:39 落盘时对的是 100 行 / `027a832b` 那版卡面（§3.1 尚点名允许新文件），而现行定稿 `c938dcba`→`b608362e` 已删该路；否决理由记「依据过期」，不按技术判断否。附带：提案取证部分（固定 sleep 造成假红的取样陷阱、判据 2 只认哪几个键）被采纳。
+
+## 10. 复判（判据 2，2026-11-22 13:5x）—— PASS
+
+### 10.1 判定面与改动面（我独立核）
+
+判定面 = **`4a3aaf1823d3b2cb26c5c241a400ac042fd061ff`**（`CARD-S3-D10-FF`，父 `71f72b9b`），实现在 wt-d10（`C:/develop/workspace/AI-writer/wt-d10`，分支 `card/s3-d10-clear-reset`）。
+
+```
+git log --oneline -2        → 4a3aaf18 CARD-S3-D10-FF / 71f72b9b CARD-S3-D10
+git diff --numstat 71f72b9b 4a3aaf18 → 10  1  src/components/panels/AIOutputPanel.tsx
+git ls-files | grep -c generation-refresh-store → 0
+git status --porcelain -uall → ?? .batch/night/staging/s3-d10-clear-reset-report.md
+                               ?? .batch/night/staging/s3-d10-live-evidence.md
+```
+
+单文件 +10/−1，全在白名单（`AIOutputPanel.tsx`）；`project-clear-service.ts` 零改动（删除语义未动，`reset()` 仍在 `:175` 那一拍）。改法落实卡面 §3.1 复用路：`import { useDraftStore } …`（`:19`）＋`const draftsByChapter = useDraftStore(state => state.draftsByChapter)`（`:303`）＋加载 effect 依赖扩为 `[session, refreshKey, locale, generationRefresh, draftsByChapter]`（`:357`）。未新增文件、未加模块，`generation:snapshot` 发送点未动（`electron/controllers/generation-controller.ts:139` 零改动）。
+
+### 10.2 判据 2 复判（[live]）—— PASS
+
+evidence：`.runtime/.cache/s3-d10/b96d57c6-7c9/evidence.json`，run `b96d57c6-7c9`。我逐字段读原文：
+
+- `checks.tierGeneratedText.afterCards = 0`；`sampleCount = 2`；`afterCardsAt = 2026-11-22T05:46:41.380Z`；该档 `after = {generation_runs:0, generation_artifacts:0, generation_attempts:0, generation_roots:0, drafts:0, blueprints:0}`，`before` 为 `1/2/2/1, drafts 2`。
+- `checks.finalCards = 0`、`checks.finalSectionPresent = false`、`checks.noResidualCards = true`、`checks.fourTablesZero = true`、`checks.finalCounts` 全部 0。
+- 对照项（`checks.residualEvidence`）：`afterClearCardCount = 0`、`afterClearSectionPresent = false`、`afterManualRefreshCardCount = 0`、`afterReopenCardCount = 0`、`panelGenerationListCalls = []`、`panelGenerationListCallsAfterReopen = []`——即不点刷新、不 reload 时卡片已是 0，`afterReopenCardCount` 仅作对照、未用来顶替。
+- 取样口径：`checks.sampling = {"mode":"stable-poll","minGapMs":300,"pollIntervalMs":350,"generatedTextAfterCardsAt":"2026-11-22T05:46:41.380Z","generatedTextSampleCount":2}`，与卡面 §8.1 第 7 条一致，无固定 sleep 参与判定。
+- 另两档按裁 (a) 记 **N/A**：`tierCreativeFields.afterCards = 1`、`tierBlueprints.afterCards = 1`，理由原样「该档不删生成内容，候选卡片应保留」（`project-clear-service.ts:174-176` 的 `reset` 只在 `normalized.generatedText` 分支触发）。
+
+**口径说明（admin 指定原文，照录）**：「判据 2 的取证方法已按卡面 §8.1 第 7 条更新为确定性取样，不是放宽判据」——该改动只修「旧脚本 `:312` 固定等 800ms 被 `refreshFileTree` 的 await 吃掉窗口」造成的假红，阈值一条未动（`tier*.afterCards = 0`、`finalCards = 0`、`noResidualCards = true`）。
+
+### 10.3 实例与其它读数（我核）
+
+`instancesThisRun = 1`、`exitCode = 0`、`leftoverElectronProcesses = 0`、`tasklistElectronRaw = "INFO: No tasks are running which match the specified criteria."`、`checks.physicalModelRequests = 0`、`checks.chatCalls = 2`、`checks.receiptsVisible = true`、`checks.runtimeLogLines = []`（与首验同，判据 4 仍按 admin 13:2x 裁定记记录项，不判 FAIL）。
+
+### 10.4 记录项（§10）
+
+9. **`checks.finalGenerationList` 报 `GENERATION_REQUEST_FAILED:ProjectSessionLeaseStale`**：清空后 lease 已轮换，面板自己那次 `generation:list` 取不到数。判据 2 的判据键不受影响（用的是 `tier*.afterCards`／`finalCards`／`noResidualCards` 与界面读面），清空后的 IPC 侧证据以探针 `checks.residualEvidence.generationListAfterClear = []` 为准；取证描述应写「面板侧调用因 lease 轮换报 `ProjectSessionLeaseStale`，另以探针取到 `[]`」。清空后 lease 轮换致面板 `generation:list` 不可用一事，留 S4 看是否单独立卡。
+10. 取样脚本首次尝试把轮询间隔设成 150ms，自己触发「间隔 <300ms」判不稳、超时写出假红 run `6da1e901`（已作废）；间隔调 350ms 后通过。属脚本自伤，不计入产品缺陷。
+11. 分母再换版：卡面 **104 行 / 14,060B / `b608362ee557bf36a95c0afe915801e0a94bc2fc22e5f302c87517827874093c`**、派验单 **44 行 / 8,814B / `02e221bc1adf8799e959d3c87c6d3cc120f595e5c918afa87b53edb3863ce033`**（`84e12504` 入库）；旧 `c938dcba`（101/12,319）、`7f9ee244`（78/7,504）、`88 行/9,446B`、`027a832b`（100 行）全部作废。取证件 `.batch/night/staging/s3-d10-live-evidence.md` 亦换版为 **39 行 / 2,532B / `a517a50dfe79d4782cd90972d4bde1dcfad9de231d149f7702e11a8e405c7a9a`**（在 wt-d10 内为 `??`；旧 35 行 / 2,119B / `a42ca940…` 作废，其前 `7a50674e…`、`95d46e3c…` 同作废），原始证据仍是 `.runtime/.cache/s3-d10/b96d57c6-7c9/evidence.json`（`cd73444e…`、246 行 / 10,526B）。
+12. 豆包提案 A1（新建 `generation-refresh-store.ts`）按**依据过期**否，不按技术判断否（详见 §8.4 第三项）。
+
+### 10.5 复判结论
+
+判据 1／3／4／5／6 沿用首验结论（PASS），判据 2 由 **FAIL → PASS**（`generatedText` 档 `afterCards = 0`，不靠 reload、不靠点刷新）。**D10 首验最终结论：PASS，建议放行 `4a3aaf18` 入库**（入库与 push 归主身；本判词按规矩只写盘、不提交）。
