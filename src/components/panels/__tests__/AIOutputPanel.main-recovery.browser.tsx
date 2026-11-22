@@ -104,10 +104,46 @@ it.each(['zh-CN', 'en-US'] as const)('来源变化的未完成批次不能继续
   expect(copy).toHaveBeenCalledWith(content)
   expect(startWorkflow).not.toHaveBeenCalled()
   expect(invoke.mock.calls.some(([channel]) => channel === 'generation:read-batch')).toBe(false)
+  // D4（判据 4「无中止」支）：批次来源变化，但该批根 run 不在终态 ⇒ 不得报「本批已停止」。
+  expect(container!.querySelector('[data-conflict-layer="batch"]')).toBeNull()
+  expect(container!.textContent).not.toContain('本批已停止')
+  expect(container!.textContent).not.toContain('后续单元不再执行')
   batch.sourceCurrent = true
   await act(async () => root!.render(<AIOutputPanel key="当前来源" />))
   await vi.waitFor(() => expect(batchButtons()[0]?.disabled).toBe(false))
   expect(container.textContent).not.toContain(message)
+})
+
+it.each(['zh-CN', 'en-US'] as const)('批次来源变化且批次确实已终止：产物层与批次层同屏，批次层说清从第几章重开：%s', async locale => {
+  const session = { projectId: '停批海港', leaseId: '新会话', projectPath: 'C:/合成停批海港' }
+  const handle: MainGenerationRunHandle = { projectId: session.projectId, epoch: '旧会话', rootActionId: '停批预算', runId: '停掉批次' }
+  const batch: GenerationBatchHistory = { batchId: handle.runId, rootHandle: handle, sourceCurrent: false,
+    mode: 'draft_review', range: { startChapter: 1, endChapter: 3 }, targetUnits: 1200, modelId: '原模型', authorInputs: [],
+    nextChapterNumber: 3, completedChapters: [{ chapterNumber: 1, draftId: 1, version: 1, contentHash: 'a'.repeat(64), sourceRunHandle: handle }] }
+  const invoke = vi.fn(async (channel: string) => {
+    // 该批次的根 run 在列表里、状态为终态失败 ⇒ `evaluateBatchRecoveryGate(...).terminated === true`
+    if (channel === 'generation:list') return [{ handle, status: 'failed', artifacts: [] }]
+    if (channel === 'generation:list-batches') return [batch]
+    if (channel === 'db:recovery-candidate-list') return []
+    if (channel === 'generation:read-context') return { draftSave: { kind: 'absent' }, handle, operation: 'chapter-draft', chapterNumber: 3, composition: null, attemptedPurposes: ['chapter-draft'] }
+    throw new Error(`Unexpected action: ${channel}`)
+  })
+  Object.defineProperty(window, 'aiNovelAPI', { configurable: true, value: { invoke, on: () => () => {} } })
+  useProjectStore.setState({ currentProject: { id: session.projectId, path: session.projectPath, name: '停批海港', sessionLease: session.leaseId, novelConfig: {} } as never })
+  useWorkflowStore.setState({ activeRuns: [], history: [], currentRun: null, startWorkflow: vi.fn() })
+  useLocaleStore.setState({ locale })
+  container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container)
+  await act(async () => root!.render(<AIOutputPanel />))
+  const outputLayer = locale === 'zh-CN' ? '来源已变化：这一稿不能保存，仍可复制。' : 'Sources changed: this draft cannot be saved, but can still be copied.'
+  const batchLayer = locale === 'zh-CN' ? '本批已停止：后续单元不再执行，需从第3章重新发起本批。'
+    : 'This batch has stopped: later units will not run. Start a new batch from Chapter 3.'
+  await vi.waitFor(() => expect(container!.textContent).toContain(batchLayer))
+  // 两层同屏：产物层与批次层都在，且各自挂在各自的 data 标记上（判据 1／判据 4「有中止」支）
+  expect(container!.textContent).toContain(outputLayer)
+  expect(container!.querySelector('[data-conflict-layer="output"]')).not.toBeNull()
+  expect(container!.querySelector('[data-conflict-layer="batch"]')?.textContent).toBe(batchLayer)
+  const continueButton = () => [...container!.querySelectorAll('button')].find(button => button.textContent === (locale === 'zh-CN' ? '继续此批次' : 'Continue this batch'))!
+  expect(continueButton().disabled).toBe(true)
 })
 
 it.each(['review-chapter', 'refine-draft', 'refine-from-review'] as const)('中文面板沿明确的 %s 原任务恢复，源冲突只可复制，已保存结果可直接打开', async operation => {
@@ -142,8 +178,12 @@ it.each(['review-chapter', 'refine-draft', 'refine-from-review'] as const)('中�
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container)
   await act(async () => root!.render(<AIOutputPanel />))
   await vi.waitFor(() => expect(container!.textContent).toContain('来源已变化：这一稿不能保存，仍可复制。'))
-  // D4：同一份 sourceStatus 必须同时驱动两层文案。
-  expect(container!.textContent).toContain('来源已变化：后续单元不再执行，需重新发起。')
+  // D4（行为翻转，报告已点名）：单稿冲突不再自动报「整批已停」。
+  // 旧断言 `…toContain('来源已变化：后续单元不再执行，需重新发起。')` 断言的正是本次要修的误报：
+  // 这里是审修任务的单稿冲突、没有批次，批次层必须缺席。批次层的「在」由下面的批次用例覆盖。
+  expect(container!.textContent).not.toContain('后续单元不再执行')
+  expect(container!.textContent).not.toContain('本批已停止')
+  expect(container!.querySelector('[data-conflict-layer="batch"]')).toBeNull()
   const recoverButton = () => [...container!.querySelectorAll('button')].find(item => item.textContent === (operation === 'review-chapter' ? '重新审稿' : '恢复此审修任务'))!
   expect(recoverButton().disabled).toBe(true)
   if (operation === 'review-chapter') {
