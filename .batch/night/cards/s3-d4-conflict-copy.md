@@ -4,7 +4,7 @@
 
 From: 项目总负责人 · AI writer项目组
 To: developer · AI writer项目组（执行方）；QA · AI writer项目组（首验方）
-版本：v1 · 2026-11-22 · 起点：`exp/mainline-1119` 头 **`b4e8da53`**
+版本：v2 · 2026-11-22 · 起点：`exp/mainline-1119` 头 **`b4e8da53`**（S2 三支已合并；本卡 base 一律 `b4e8da53`）
 顺序：**S3 第一张**（D4 → D7 → D16 → D10 → D11）
 
 ## 0. 开工件必读确认（三行，缺一行不许 start）
@@ -61,7 +61,9 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 
 判据二段，缺一不可：
 
-1) `git diff --numstat b4e8da53..card/s3-d4-conflict-copy -- src electron scripts` 输出为空（无改动、无新增）。
-2) **无新增生产文件**：分支上未新增 `src/`、`electron/`、`scripts/` 下的文件；若本卡白名单允许新增（仅验收/取证脚本），须逐条列出路径并在判词中标注「白名单内新增」。
+1) `git diff --name-only b4e8da53..card/s3-d4-conflict-copy -- src electron scripts` 每一行都落在本卡 §3 白名单内（本卡要改 5 个文件，不再要求输出为空）。
+2) **无新增生产文件**：分支上未新增 `src/`、`electron/`、`scripts/` 下的文件；若本卡白名单允许新增（仅验收/取证脚本），须逐条列出路径并在判词中标注「白名单内新增」。`git diff --name-status b4e8da53..card/s3-d4-conflict-copy -- src electron scripts` 不得出现 `A` 行（白名单内新增除外）。
 
 不采信不带 `<base>..<branch>` 作用域的 `git diff --stat`（全树常有他人在办的流转件，D1 那次全树假红即此）。
+
+> **判据一修订（2026-11-22 11:0x，负责人裁定）**：原「`git diff --numstat … 输出为空`」只适用零改码卡（D16／D1）；本卡改 5 文件 +133/−26，照字面必 FAIL，故按派验单 `.batch/night/review-requests/s3-d4-conflict-copy.md`（sha256 `23f99b3f18ca96d9ada6f4ef347db5ae2e6a6e838d90609c8a4ff5d65324a144`）口径执行——**判据分母以派验单为准，本卡 v2 仅作归档对齐**。base 由 `5a285e83` 更正为 `b4e8da53`（`b4e8da53` 那笔入库时漏改）。
