@@ -146,4 +146,6 @@ binding_json→sourceManifest.modelReceipt → {"modelId":"d16-actual","modelNam
 
 **PASS**。判据 1／2／3／4／5／6 全部通过（判据 1／2／5 为 live，3／4／6 为 static）。判定面 `544dcbd5` 零改码，建议放行 D16 收口。
 
+入库回填（2026-11-22 12:3x）：库内版本 sha 与盘上一致——提交 `9cd24897`（父 `544dcbd5`，`refs/heads/exp/resource-ledger` 已推同 sha），派验单 `f282eb0c2f17637c8253ea3869c58ad84bf610d2c1184f7d1dc07ce72c163cb2`（30 行 / 4,500B）、判词 `df83bc378baa5be9dfdc535dc5888775b557be78cbe657d338ef1a22672ed59f`（149 行 / 11,075B）、交件报告 `6fd0c42ac58817d7dc38600de55c16543d5961d954c5f8f35dd91b9a0a0e45c1`（172 行 / 11,349B）三件在提交面 `git show 9cd24897:<path>` 与盘上 sha256sum 逐字一致、未变；卡分支 `card/s3-d16-indicator-verify` 已回 `544dcbd5`（零提交），`git status --porcelain` 空。
+
 <!-- DONE -->
