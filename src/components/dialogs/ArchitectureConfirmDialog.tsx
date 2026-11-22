@@ -278,6 +278,8 @@ export default function ArchitectureConfirmDialog({
   }, [isOpen, currentProject, totalChapterCount, unitRouteEnabled])
   /** 本次走单元模式时，章号区间与「续写」都不再参与生成。 */
   const unitMode = unitPreview?.unit ?? null
+  /** D7：本卷剩余单元的预计章数；`null` = 没有历史，走兜底文案（绝不回落到名义上界）。 */
+  const chapterEstimate = unitPreview?.chapterEstimate ?? null
   /** 闸门读侧与面板共用的会话；`null` = 还没有可用的项目会话（不拦）。 */
   const dialogSession = captureProjectSession(currentProject)
   /** 连写的硬上限 = 本卷还剩几个单元（v1 不跨卷）。读不到卷结构就只让写 1 个。 */
@@ -787,8 +789,18 @@ export default function ArchitectureConfirmDialog({
                       </p>
                       <p className="m-0" style={{ color: 'var(--color-text-secondary)' }}>
                         {text(
-                          `本卷剩余 ${unitMode.volumeRemaining} 章，名义上界 ${unitMode.maxChapters} 章。篇幅由剧情决定，写完按实际章数落盘。`,
-                          `${unitMode.volumeRemaining} chapters left in this volume, nominal cap ${unitMode.maxChapters}. The unit ends when the plot ends and the actual count is recorded afterwards.`,
+                          `本卷剩余 ${unitMode.volumeRemaining} 章，名义上界 ${unitMode.maxChapters} 章。`
+                            + (chapterEstimate
+                              ? `按当前实际倾向估计：本卷剩余单元约 ${chapterEstimate.volumeChapters} 章`
+                                + `（据已写完 ${chapterEstimate.completedUnits} 个单元的实际章数折算）。`
+                              : '按当前实际倾向估计：暂无历史折算（还没有写完的单元），无法估计。')
+                            + '篇幅由剧情决定，写完按实际章数落盘。',
+                          `${unitMode.volumeRemaining} chapters left in this volume, nominal cap ${unitMode.maxChapters}. `
+                            + (chapterEstimate
+                              ? `At the current pace, about ${chapterEstimate.volumeChapters} chapters remain for this volume `
+                                + `(based on ${chapterEstimate.completedUnits} completed unit(s)). `
+                              : 'No historical conversion yet (no completed unit), so no estimate is available. ')
+                            + 'The unit ends when the plot ends and the actual count is recorded afterwards.',
                         )}
                       </p>
                       <p className="m-0" style={{ color: 'var(--color-text-muted)' }}>

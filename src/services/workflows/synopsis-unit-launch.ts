@@ -98,6 +98,21 @@ export interface SynopsisUnitProbeResult {
     /** 本卷还剩几个单元（含当前这个）。连写的硬上限：v1 不跨卷。 */
     readonly remainingUnits: number
   } | null
+  /**
+   * D7 历史折算：按「已完成单元的平均实际章数」估计**本卷剩余单元**还会写几章。
+   *
+   * `null` = 没有历史（还没写完任何一个单元）⇒ 对话框显示兜底文案，**不得回落到 `unit.maxChapters`**。
+   * ⚠️ 只用于展示：不参与 `computeSynopsisUnitRange`、不进 `ArchitectureUnitRange`、不进 planning intent、
+   * 不进检查点、不被任何校验或闸门读取（否则等于把估计做成第二个上限）。
+   */
+  readonly chapterEstimate?: {
+    /** 本卷剩余单元的预计章数（`max(1, floor(已写章数 ÷ 已完成单元数 × 本卷剩余单元数))`） */
+    readonly volumeChapters: number
+    /** 平均每个已完成单元的实际章数（原值，不取整，供报告复算） */
+    readonly perUnitChapters: number
+    /** 样本量：已完成单元数 */
+    readonly completedUnits: number
+  } | null
   /** `probe-error` 时的原始报错文本。 */
   readonly detail?: string
 }
@@ -298,6 +313,7 @@ export async function probeSynopsisUnitLaunch(
   if (!cursor) return skip('no-cursor', coveredTo, found)
   const unit = computeSynopsisUnitRange(input.plotStructurePlan, totalChapters, cursor, coveredTo)
   if (!unit) return skip('compute-null', coveredTo, found, explicitCursor === null)
+  const volume = await describeUnitVolume(input.plotStructurePlan, totalChapters, cursor)
   return Object.freeze({
     unit,
     reason: null,
@@ -305,7 +321,35 @@ export async function probeSynopsisUnitLaunch(
     checkpointFound: found,
     outlineCoveredTo,
     cursorDerived: explicitCursor === null,
-    volume: await describeUnitVolume(input.plotStructurePlan, totalChapters, cursor),
+    volume,
+    chapterEstimate: await estimateFromCheckpoint({
+      plotStructurePlan: input.plotStructurePlan,
+      cursor,
+      coveredTo,
+      remainingUnits: volume?.remainingUnits ?? 0,
+    }),
+  })
+}
+
+/**
+ * D7 历史折算的纯算术部分：本卷剩余单元预计还会写几章。
+ *
+ * 口径（卡面 v3 口径 A′）：`max(1, floor(已写章数 ÷ 已完成单元数 × 本卷剩余单元数))`。
+ * **只读展示**，与 `computeSynopsisUnitRange` 无调用关系；样本不足（没写完任何一个单元 /
+ * 已写章数为 0）返回 `null`，由调用方走兜底文案。
+ */
+export function estimateRemainingVolumeChapters(input: {
+  readonly coveredTo: number
+  readonly completedUnits: number
+  readonly remainingUnits: number
+}): { volumeChapters: number; perUnitChapters: number } | null {
+  if (!Number.isSafeInteger(input.coveredTo) || input.coveredTo < 1) return null
+  if (!Number.isSafeInteger(input.completedUnits) || input.completedUnits < 1) return null
+  if (!Number.isSafeInteger(input.remainingUnits) || input.remainingUnits < 1) return null
+  const perUnitChapters = input.coveredTo / input.completedUnits
+  return Object.freeze({
+    volumeChapters: Math.max(1, Math.floor(perUnitChapters * input.remainingUnits)),
+    perUnitChapters,
   })
 }
 
@@ -332,6 +376,39 @@ async function describeUnitVolume(
     })
   } catch {
     // 卷进度只是「连写上限」的参考值：读不出来就按 1 个单元处理（宁可少写，不可越权）。
+    return null
+  }
+}
+
+/**
+ * D7：把「已完成单元数」从卷/单元结构里数出来，再交给纯函数算估计。
+ *
+ * 已完成单元数 = 游标所在卷之前的每卷**计划单元数**之和 + 当前卷的 `unitIndex − 1`
+ * （卷内已过去的单元都算写完；实际偏差只体现在平均章数上，不再二次修正）。
+ * 任何异常都退化成 `null`（对话框走兜底文案），绝不抛错、绝不回落名义上界。
+ */
+async function estimateFromCheckpoint(input: {
+  readonly plotStructurePlan: string | undefined
+  readonly cursor: { readonly volumeIndex: number; readonly unitIndex: number; readonly writtenInVolume: number }
+  readonly coveredTo: number
+  readonly remainingUnits: number
+}): Promise<SynopsisUnitProbeResult['chapterEstimate']> {
+  try {
+    const { parseArcStructure } = await import('../../shared/arc-position')
+    const parsed = parseArcStructure(input.plotStructurePlan ?? '')
+    if (!parsed) return null
+    let completedUnits = 0
+    for (let volume = 1; volume < input.cursor.volumeIndex; volume += 1) {
+      completedUnits += parsed.majors[volume - 1]?.mids.length ?? 0
+    }
+    completedUnits += Math.max(0, input.cursor.unitIndex - 1)
+    const estimate = estimateRemainingVolumeChapters({
+      coveredTo: input.coveredTo,
+      completedUnits,
+      remainingUnits: input.remainingUnits,
+    })
+    return estimate ? Object.freeze({ ...estimate, completedUnits }) : null
+  } catch {
     return null
   }
 }

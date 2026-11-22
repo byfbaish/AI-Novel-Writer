@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectSessionContext } from '../../../shared/ipc-channels'
 import {
   describeSynopsisUnitProbe,
+  estimateRemainingVolumeChapters,
   probeSynopsisUnitLaunch,
   probeSynopsisUnitLaunchForProject,
   resetSynopsisCheckpoint,
@@ -192,6 +193,34 @@ describe('probeSynopsisUnitLaunch', () => {
     expect((await probe()).volume?.remainingUnits).toBe(1)
     // 没进单元模式时不给卷进度（避免 UI 拿它当「可以连写」的信号）
     expect((await probe({ totalChapters: 0 })).volume).toBeNull()
+  })
+
+  it("D7：无历史（还没写完任何单元）时 chapterEstimate 为 null，名义上界不变", async () => {
+    doubles.checkpoint = { synopsis_covered_to: 10 }
+    const result = await probe()
+    expect(result.chapterEstimate).toBeNull()
+    // 估计不得回落到名义上界：unit 本身一个键都不许多
+    expect(result.unit).toEqual({ from: 11, unitIndex: 1, maxChapters: 10, volumeRemaining: 20 })
+  })
+
+  it("D7：有历史时按 max(1, floor(已写÷已完成单元×本卷剩余单元)) 折算，且不影响名义上界", async () => {
+    doubles.checkpoint = { synopsis_covered_to: 20, synopsis_unit_cursor: { volumeIndex: 1, unitIndex: 2, writtenInVolume: 20 } }
+    const result = await probe()
+    // 已完成单元数=1（卷 1 单元 1），平均 20 章/单元，本卷只剩 1 个单元 ⇒ 20÷1×1=20 ⇒ floor 20
+    expect(result.chapterEstimate).toEqual({ volumeChapters: 20, perUnitChapters: 20, completedUnits: 1 })
+    expect(result.unit?.maxChapters).toBe(10)
+    expect(result.chapterEstimate?.volumeChapters).not.toBe(result.unit?.maxChapters)
+  })
+
+  it("D7 纯函数边界：样本不足返回 null；floor 与下限 1 生效", () => {
+    expect(estimateRemainingVolumeChapters({ coveredTo: 0, completedUnits: 3, remainingUnits: 2 })).toBeNull()
+    expect(estimateRemainingVolumeChapters({ coveredTo: 5, completedUnits: 0, remainingUnits: 2 })).toBeNull()
+    expect(estimateRemainingVolumeChapters({ coveredTo: 5, completedUnits: 2, remainingUnits: 0 })).toBeNull()
+    expect(estimateRemainingVolumeChapters({ coveredTo: 5, completedUnits: 2, remainingUnits: 2 })?.volumeChapters).toBe(5)
+    // 10/3=3.33 ⇒ floor 3（此处与 ceil 分叉，断言不是 4）
+    expect(estimateRemainingVolumeChapters({ coveredTo: 5, completedUnits: 3, remainingUnits: 2 })?.volumeChapters).toBe(3)
+    // 小样本下限 1：2/3×1=0.67 ⇒ floor 0 ⇒ 抬到 1
+    expect(estimateRemainingVolumeChapters({ coveredTo: 2, completedUnits: 3, remainingUnits: 1 })?.volumeChapters).toBe(1)
   })
 
   it('显式游标不算推导；读不到检查点时 found=false', async () => {
