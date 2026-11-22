@@ -1,0 +1,106 @@
+{
+  "runId": "a59a522b-260",
+  "startedAt": "2026-11-22T14:56:10.196Z",
+  "cards": [
+    ".batch/night/staging/s5-stage-card.md",
+    ".batch/night/cards/s3-d11-nudge-dedup.md"
+  ],
+  "tree": "C:\\develop\\workspace\\AI-writer\\wt-d18",
+  "treeHead": "7b48f074",
+  "instancesThisRun": 1,
+  "exitCode": 0,
+  "leftoverElectronProcesses": 0,
+  "tasklistElectronRaw": "INFO: No tasks are running which match the specified criteria.",
+  "tasklistElectronCountRaw": "0",
+  "triggerMode": {
+    "judge-d18-4": "ui-write(合成模型返回作者库真实正文) + ui-finalize"
+  },
+  "stepLog": [
+    {
+      "name": "seed",
+      "at": "2026-11-22T14:56:15.686Z",
+      "detail": "{\"projectPath\":\"C:\\\\Users\\\\伯云飞\\\\AppData\\\\Local\\\\VibeCodingScratch\\\\s5\\\\pa59a52\\\\S5 取证\",\"seeded\":{\"chapter_number\":6,\"suspense_hook\":\"第一道因果纹灼烧皮肤带来的寿元透支危机已无法逆转\"},\"seededChapters\":[{\"chapter_number\":1,\"version\":1,\"status\":\"finalized\"},{\"chapter_number\":2,\"version\":1,\"status\":\"finalized\"},{\"chapter_number\":3,\"version\":1,\"status\":\"finalized\"},{\"chapter_number\":4,\"version\":1,\"status\":\"finalized\"},{\"chapter_number\":5,\"version\":1,\"status\":\"finalized\"}]}"
+    },
+    {
+      "name": "reenter",
+      "at": "2026-11-22T14:56:19.668Z",
+      "detail": "true"
+    },
+    {
+      "name": "open-chapter-blueprints",
+      "at": "2026-11-22T14:56:20.879Z",
+      "detail": "true"
+    },
+    {
+      "name": "open-write-dialog",
+      "at": "2026-11-22T14:56:26.250Z",
+      "detail": "{\"clicked\":\"写作第6章\",\"dialogVisible\":true}"
+    },
+    {
+      "name": "start-writing",
+      "at": "2026-11-22T14:56:26.252Z",
+      "detail": "true"
+    },
+    {
+      "name": "draft-ready",
+      "at": "2026-11-22T14:58:26.905Z",
+      "detail": "{\"finalizeReady\":false,\"drafts\":[{\"ch\":1,\"v\":1,\"status\":\"finalized\",\"len\":309},{\"ch\":2,\"v\":1,\"status\":\"finalized\",\"len\":309},{\"ch\":3,\"v\":1,\"status\":\"finalized\",\"len\":309},{\"ch\":4,\"v\":1,\"status\":\"finalized\",\"len\":309},{\"ch\":5,\"v\":1,\"status\":\"finalized\",\"len\":309}]}"
+    },
+    {
+      "name": "judge-d18",
+      "at": "2026-11-22T14:58:26.907Z",
+      "detail": "{\"hookInBlueprint\":\"第一道因果纹灼烧皮肤带来的寿元透支危机已无法逆转\",\"logTextLength\":2580,\"hookUnplantedPrefixCount\":0,\"committedLinePresent\":false,\"c5UnplantedMentionCount\":0,\"logExcerpt\":[],\"logCaptureMethod\":\"bodyInnerText\"}"
+    },
+    {
+      "name": "arch-generate",
+      "at": "2026-11-22T14:58:30.920Z",
+      "detail": "{\"generateOpened\":false,\"generateStarted\":false}"
+    },
+    {
+      "name": "arch-generate-fallback",
+      "at": "2026-11-22T14:58:30.922Z",
+      "detail": "true"
+    },
+    {
+      "name": "judge-d5",
+      "at": "2026-11-22T14:58:38.930Z",
+      "detail": "{\"promptChars\":0,\"promptHasPlaceholder\":false,\"echoedProductHits\":0,\"dbReadbackHits\":0,\"planLength\":183,\"chatCalls\":0}"
+    }
+  ],
+  "logCaptureMethod": "bodyInnerText",
+  "sourceRefs": [
+    "src/shared/hook-payoff-report.ts:43-59（[hook-unplanted] 前缀只在 unplanted 非空时出现）",
+    "src/services/workflows/commands/finalize-chapter.command.ts:950（定稿提交日志）、:971（if (hookReport) callbacks.log）",
+    "src/services/workflows/commands/finalize-chapter.command.ts:1044-1069（resolveHookText：蓝图 suspenseHook 优先）",
+    "src/shared/arc-placeholder-guard.ts:35（守卫无界正则 /<([^<>]+)>/g）",
+    "src/services/workflows/commands/architecture.command.ts:3228-3240（守卫接在写库路径上）"
+  ],
+  "checks": {
+    "openWriteDialog": {
+      "clicked": "写作第6章",
+      "dialogVisible": true
+    },
+    "d18": {
+      "hookInBlueprint": "第一道因果纹灼烧皮肤带来的寿元透支危机已无法逆转",
+      "logTextLength": 2580,
+      "hookUnplantedPrefixCount": 0,
+      "committedLinePresent": false,
+      "c5UnplantedMentionCount": 0,
+      "logExcerpt": [],
+      "logCaptureMethod": "bodyInnerText"
+    },
+    "d5": {
+      "promptChars": 0,
+      "promptHasPlaceholder": false,
+      "echoedProductHits": 0,
+      "dbReadbackHits": 0,
+      "planLength": 183,
+      "chatCalls": 0
+    }
+  },
+  "physicalModelRequests": 0,
+  "quit": {
+    "pid": 43440,
+    "closedAt": "2026-11-22T14:58:39.208Z"
+  }
+}
