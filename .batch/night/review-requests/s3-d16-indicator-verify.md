@@ -4,10 +4,10 @@ From: 项目总负责人 · AI writer项目组
 To: QA · AI writer项目组（首验方）
 执行方（实机）：developer · AI writer项目组（在 `develop` 起实例）
 外派位：静态活可外派（只登记、不进判据）；**不可外派：实机复验须在 `develop` 由 developer 执行**（卡面 §5）
-分母：卡面 `.batch/night/cards/s3-d16-indicator-verify.md` 65 行 / 5,802B / sha256 `2848337f…`；评审件 `.batch/night/reports/s3-d16-outbound-review.md` 35 行 / 3,133B / sha256 `2757ac8a2e53017085b15ec19cdb9df912f7c931969b1f2f3330c2bffe64fbad`
-起点/base：卡面 `b4e8da53`；分支 `card/s3-d16-indicator-verify`（零改码，分支上零提交）
+分母：卡面 `.batch/night/cards/s3-d16-indicator-verify.md` 65 行 / 5,802B / sha256 `2848337fc1092afb84ea6b9696be11b3edf50f95568741353f03588fc3819b15`；评审件 `.batch/night/reports/s3-d16-outbound-review.md` 35 行 / 3,133B / sha256 `2757ac8a2e53017085b15ec19cdb9df912f7c931969b1f2f3330c2bffe64fbad`
+起点/base：卡面带入点 `b4e8da53`；**R4 作用域 base = `544dcbd5`**（D7 入库合并提交，`git ls-remote origin refs/heads/exp/resource-ledger` 同值；admin 11-22 12:0x 钉定）。本卡零改码，不建 `card/s3-d16-indicator-verify` 分支；实机在 `develop` 主区起实例，取证以「base..实机开跑时工作头」为准
 排期：**D7 PASS 之后**才开跑；不与 D10／D11 并行；一次一个实例
-放行依据：S3 顺序 D4 → D7 → D16 → D10 → D11；主身 11-22 11:5x 定「负责人只出本单」
+放行依据：S3 顺序 D4 → D7 → D16 → D10 → D11；主身 11-22 11:5x 定「负责人只出本单」；base 钉定 `544dcbd5` 由 admin 11-22 12:0x 定（主身 12:0x 同口径）
 
 ## 判据（逐条要输出原文；缺一条即 FAIL）
 
@@ -18,7 +18,7 @@ To: QA · AI writer项目组（首验方）
 3. **[static] tooltip 两档文案**：B≠A 时「实际调用／配置」两档文案原文正确（字符串与分支层判；同屏渲染部分随判据 2 的 live 证据一并贴，不单独升 live）。
 4. **[static] 无回归**：`GENERATION_MODEL_BINDING_INVALID` 未出现；`generation:list` 仍可用（代码层判）；实机 run 日志中该错误码的缺失随判据 1／2 的原文一并贴，作观察项。
 5. **[live] 实例纪律三项**：`instancesThisRun`、`exitCode`、`leftoverElectronProcesses`（须 0）＋`tasklist | grep -c electron` 原文；整机重启用同一轮一次起停，须记两次 PID。
-6. **[static] R4 改动面**：`git diff --numstat <base>..card/s3-d16-indicator-verify -- src electron scripts` 输出为空；分支上未新增 `src/`、`electron/`、`scripts/` 下文件（白名单内取证脚本须逐条列出并标注）。**作用域 base 在 D7 apply 后按当时主线头重钉**，重钉时回写本单并报 sha；重钉前本条记「待定钉」，不预判。
+6. **[static] R4 改动面**：`git diff --numstat 544dcbd5..<实机开跑时工作头> -- src electron scripts` 输出为空（工作头取值用 `git rev-parse HEAD` 写在报告里；实机开跑时工作头应等于 `544dcbd5`，不等须说明来源）；工作头上未新增 `src/`、`electron/`、`scripts/` 下文件（白名单内取证脚本须逐条列出并标注）。**R4 作用域 base 已钉定 `544dcbd5`**；本条不再有待定项。
 
 本卡判据分层：第 1、2、5 条 live、其余 static。
 

@@ -72,3 +72,5 @@ To: developer · AI writer项目组（apply 方）；QA · AI writer项目组（
 2) **无新增生产文件**：`git diff --name-status <base>..card/s3-d7-unit-chapter-estimate -- src electron scripts` 不得出现 `A` 行（白名单内取证脚本除外，须逐条列出路径并在判词中标注「白名单内新增」）。
 
 不采信不带 `<base>..<branch>` 作用域的 `git diff --stat`（全树常有他人在办的流转件，D1 那次全树假红即此）。
+
+收口留痕（项目总负责人 11-22 12:1x）：分支 `card/s3-d7-unit-chapter-estimate` 头 `df627032`，按主身定不推远端留档，内容已在主线 `544dcbd5` 内；本条只作记录，不改任何判据。
