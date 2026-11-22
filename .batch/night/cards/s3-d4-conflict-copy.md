@@ -68,3 +68,5 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 不采信不带 `<base>..<branch>` 作用域的 `git diff --stat`（全树常有他人在办的流转件，D1 那次全树假红即此）。
 
 > **判据一修订（2026-11-22 11:0x，负责人裁定）**：原「`git diff --numstat … 输出为空`」只适用零改码卡（D16／D1）；本卡改 5 文件 +133/−26，照字面必 FAIL，故按派验单 `.batch/night/review-requests/s3-d4-conflict-copy.md`（sha256 `23f99b3f18ca96d9ada6f4ef347db5ae2e6a6e838d90609c8a4ff5d65324a144`）口径执行——**判据分母以派验单为准，本卡 v2 仅作归档对齐**。base 由 `5a285e83` 更正为 `b4e8da53`（`b4e8da53` 那笔入库时漏改）。
+
+> **判据① 收口（2026-11-22 11:3x，主身裁定 a）**：D4 判据 1 不在本卡判「两层同屏」。已达成＝批次层实机取证（报告 §4.1 原文含「本批已停止：后续单元不再执行，需从第2章重新发起本批」＋两条 batch run `failed`）＋单稿档不误现批次层（§4.2 `batchLayers=0`、全屏无「本批已停止」）。「两层同屏」的前提是单稿层有挂载点，而现行 `src/components/panels/AIOutputPanel.tsx:465-500` 单稿块不渲染 `SourceConflictNotice`，故该条**归 D4b（`.batch/night/cards/d4b-source-status-projection.md`），不作本卡判据**。同时：`exitCode=1` 系取证脚本等批次根 run 终态的 300s 超时，非产品崩溃；终态批次 run reload 后不在 `generation:list` 属既存行为，记观察项。

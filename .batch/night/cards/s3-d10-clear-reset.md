@@ -25,7 +25,7 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 1. **残留宿主清单**：外派已给出（三类卡片同源＝上条③三表）；apply 时按同一路径复核一遍，逐条列宿主。
 2. **接上重置**：清空完成后由渲染进程侧重置对应 store/localStorage 键，使界面与 DB 口径一致；能清则清，清不掉（第三方缓存/无法定位）**照实登记**，不许用「强制刷新页面」当修法。
 - **修法（负责人 11-22 裁 A）**：扩白名单到 `electron/repositories/project-clear-repository.ts`，在 `clearGeneratedData` 事务内按 `generation_artifacts → generation_attempts → generation_runs → generation_roots` 追加删除，并把四表补进 `:46` 计数清单。禁在面板层隐藏卡片、禁改既有删除语句与三档语义。
-3. **接上回执（负责人 11-22 11:00 裁定：走既有 `SYSTEM_NOTICE`，不新增事件）**：不新增事件类型、不复活 `PROJECT_DATA_CLEARED`；清空完成后用既有 `SYSTEM_NOTICE` 通道（既有订阅方 `src/services/system-notice-toast.ts:33`）呈现「清了哪几类、各多少条」，数字直接取 `electron/repositories/project-clear-repository.ts:80-92` `diffClearCounts` 的结果（`categories`/`rows`），须与清空前后的 DB 计数可对账。禁为回执新增 IPC、表或列；回执缺失按 FAIL，回执数字与 DB 对不上按 FAIL。
+3. **接上回执**：让既有回执事件有真实订阅方，清空完成后给出「清了哪几类、各多少条」的可见回执（数字须与 DB 计数可对账）。
 4. 不改历史面板自身的渲染逻辑；不改三档语义。
 
 ## 3. 白名单与禁改区
