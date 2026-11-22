@@ -4,7 +4,7 @@
 
 From: 项目总负责人 · AI writer项目组
 To: developer · AI writer项目组（执行方）；QA · AI writer项目组（首验方）
-版本：v1 · 2026-11-22 · 起点：`exp/mainline-1119` 头 **`5a285e83`**
+版本：v1 · 2026-11-22 · 起点：`exp/mainline-1119` 头 **`b4e8da53`**
 顺序：**S3 第三张**（D4 → D7 → D16 → D10 → D11）
 
 ## 0. 开工件必读确认（三行，缺一行不许 start）
@@ -13,7 +13,7 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 ② 版本或日期：`README.md` `c87cd4ab`（2026-11-14）；`AGENTS.md` `a276fffb`（2026-11-07）；`ruling-dispatch` v6 · 2026-11-20。
 ③ 三条口径：本卡**以补验为主**，默认零改码；实机复验不外派；证据只认命令与输出原文。
 
-## 1. 现状（读于 `5a285e83`；表行 `:78`、正文 `:972-975`）
+## 1. 现状（读于 `b4e8da53`；表行 `:78`、正文 `:972-975`）
 
 - 表行：**✅ 已实施（2026-11-11）**，缺陷销账——`viewOf` 从持久化 binding 的 `sourceManifest.modelReceipt` 投影 `model{modelId,modelName}`；新增轻量通道 `generation:last-model` 供启动期回填；状态栏显示名按 `modelId` 反查昵称、兜底 `modelName`、再兜底 `modelId`。
 - **但两处实机缺口未被验证**（原文照抄该行）：①`reload()` 只重建渲染进程、**不等于整机重启**，判据字面的「重启后」未验；②「配置 A / 实际 B ⇒ 显示 B」因该项目最近一条 run 恰好是 A（12:51 cancelled）**未直接观察到**——显示 A 是正确行为、与配置值相同，区分不出读实际还是读配置。
@@ -46,7 +46,7 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 
 ## 6. 回执与交付
 
-- 分支：`card/s3-d16-indicator-verify`，从 `5a285e83` 起；**分支上零提交**（零改码），取证脚本留 `.runtime/`。
+- 分支：`card/s3-d16-indicator-verify`，从 `b4e8da53` 起；**分支上零提交**（零改码），取证脚本留 `.runtime/`。
 - 交件：报告 `.batch/night/staging/s3-d16-indicator-verify-report.md`；群里交件 @ 项目总负责人 与 QA；回执走 `.batch/night/bridge/to-owner`。
 
 ## 7. 实例纪律
@@ -57,7 +57,7 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 
 判据二段，缺一不可：
 
-1) `git diff --numstat 5a285e83..card/s3-d16-indicator-verify -- src electron scripts` 输出为空（无改动、无新增）。
+1) `git diff --numstat b4e8da53..card/s3-d16-indicator-verify -- src electron scripts` 输出为空（无改动、无新增）。
 2) **无新增生产文件**：分支上未新增 `src/`、`electron/`、`scripts/` 下的文件；若本卡白名单允许新增（仅验收/取证脚本），须逐条列出路径并在判词中标注「白名单内新增」。
 
 不采信不带 `<base>..<branch>` 作用域的 `git diff --stat`（全树常有他人在办的流转件，D1 那次全树假红即此）。
