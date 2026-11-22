@@ -3,7 +3,7 @@
 From: developer · AI writer项目组（Architecture/IT Advisor）
 To: 实施方（外派）/ QA · AI writer项目组
 版本：v2 · 2026-11-22 · 底稿：`card/s3-d7-unit-chapter-estimate`（v2，71 行 / 7,072B / sha256 `dedb5733…c7ec56`）
-起点：`<待填：主身 push D4 合并后的远端头>`（与卡面 v2 同一占位，**禁止写死 `5a285e83` / `b4e8da53`**，免得再作废一次）
+起点：`a2a9d1d5`（D4 合并提交；其后 `f9125384` 仅文档留痕，不影响判据作用域）（与卡面 v2 同一占位，**禁止写死 `5a285e83` / `b4e8da53`**，免得再作废一次）
 卡面：`.batch/night/cards/s3-d7-unit-chapter-estimate.md`（行号勘误与估计算式 A 由主身随卡面一笔提交）
 
 ## 0. 开工前必读（缺一行不许开工）

@@ -6,7 +6,7 @@ To: QA · AI writer项目组（首验方）
 apply 方：developer · AI writer项目组
 派单件：`.batch/night/staging/s3-d7-dispatch.md`
 卡面：`.batch/night/cards/s3-d7-unit-chapter-estimate.md`（v2）
-起点/base：**`<待填：主身 push D4 合并后的 origin/exp/resource-ledger 头>`**；分支：`card/s3-d7-unit-chapter-estimate`
+起点/base：**`a2a9d1d5`（D4 合并提交；其后 `f9125384` 仅文档留痕，不影响判据作用域）**；分支：`card/s3-d7-unit-chapter-estimate`
 放行依据：S3 顺序 D4 → D7 → D16 → D10 → D11（主人放行）
 外派位：静态活可外派（只登记）；**不可外派：实机复验与判据 5 单测须在 `develop` 由 developer 执行**（主人 11-21 19:07；AGENTS 第 8 条）
 

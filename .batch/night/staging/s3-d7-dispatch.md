@@ -9,7 +9,7 @@ To: developer · AI writer项目组（apply 方）；QA · AI writer项目组（
 
 ## 1. 起点与分支
 
-- base（三处同值）：**`<待填：主身 push D4 合并后的 origin/exp/resource-ledger 头>`** —— D4 合并 `136c999c` 入主线、主身 push 后由负责人填，卡面 §7／§8、本件、派验单同步替换。
+- base（三处同值）：**`a2a9d1d5`（D4 合并提交；其后 `f9125384` 仅文档留痕，不影响判据作用域）** —— D4 合并 `136c999c` 入主线、主身 push 后由负责人填，卡面 §7／§8、本件、派验单同步替换。
 - 分支：`card/s3-d7-unit-chapter-estimate`，起点＝同一 sha；一卡一分支，点名路径 `git add`（禁 `-A`／`-f`／`--no-verify`）。
 - **apply 顺序**：本卡是 S3 第二张，**等 D4 已入库且远端头更新、且 D7 实施要点备齐后再建分支**；不许与 D16/D10/D11 并行改码。
 
