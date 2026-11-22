@@ -33,6 +33,7 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 - 可改：`src/components/panels/AIOutputPanel.tsx`、承载文案的共享模块（新增或既有）、其单测；`AIOutputPanel` 相关 browser 测试只允许同步断言。
 - 禁改：`src/components/editor/*`、`NarrativeThreadEditor.tsx`、`VersionHistory.tsx`、`ArchFileViewer.tsx`（六处散落本卡不改，登记为一致性遗留）；`sourceStatus` 判定逻辑；D1/D2 状态机与 `GENERATION_SOURCE_CHANGED` 触发点；`chapter-materials.ts`、D12 注入与重跑区。
 - 不许为让文案出现而改批次真假的判定。
+- **白名单解释留痕**：`src/components/ui/SourceConflictNotice.tsx` 属「承载文案的共享模块」（群管理分身 2026-11-22 11:17 裁定，不改判据；与 `src/shared/source-conflict-copy.ts` 同类；后续卡沿用此口径）。
 
 ## 4. 判据（QA 首验逐条，逐条要输出原文）
 
