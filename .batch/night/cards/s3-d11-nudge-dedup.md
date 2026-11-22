@@ -4,7 +4,7 @@
 
 From: 项目总负责人 · AI writer项目组
 To: developer · AI writer项目组（执行方）；QA · AI writer项目组（首验方）
-版本：v1 · 2026-11-22 · 起点：`exp/mainline-1119` 头 **`5a285e83`**
+版本：v2 · 2026-11-22 · 起点：`exp/mainline-1119` 头 **`a73ec4c6`**（13:5x D10 入库合并提交）
 顺序：**S3 第五张**（D4 → D7 → D16 → D10 → D11）
 
 ## 0. 开工件必读确认（三行，缺一行不许 start）
@@ -13,35 +13,41 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 ② 版本或日期：`README.md` `c87cd4ab`（2026-11-14）；`AGENTS.md` `a276fffb`（2026-11-07）；`ruling-dispatch` v6 · 2026-11-20。
 ③ 三条口径：授权边界最窄执行；实机复验不外派；证据只认命令与输出原文。
 
-## 1. 现状（读于 `5a285e83`；表行 `:77`、正文 `:720-760`）
+## 1. 现状（11-22 13:58 以 `a73ec4c6` 复读；指纹 `:134-137`、判定 `:139-150`、文案 `:35-41`/`:44`）
 
-- 状态：**🟡 已实施，待实机**（独立复核基本兑现、仅单测；`20:3x` 合并主区 `e0704a07`；**定稿态用 `chain.status` 投影、未直读 `synopsis_incomplete`，取法待裁定**）。
-- 提示：`src/services/architecture-character-nudge.ts:43-47`（`toast.zh` / `banner.zh` / `action`）。
-- 去重指纹：`:112` `outlineNudgeDraftVersion()` → `c<章级覆盖数>:l<正文长度>`；判定 `:130-137` `shouldNudgeOutlineCharacterSupplement()`（`dismissedVersion !== 当前指纹` 才提示）。
-- 机制问题：每一批大纲都会让「覆盖数」与「正文长度」同时变化 ⇒ 指纹必然变 ⇒ 「已处理」立即失效 ⇒ 同一卷连写多批就弹多次。作者心中的「一稿」是整卷写完那份。
+- 状态：**✅ 已并入 `0b5fd9a6`，本卡转验收**（判据 1／2／4／5／6 只跑 live 与单测复核，不再要求改码；判据 3 按主身 11-22 裁定「保留一次重提示」，不做「视为已处理」迁移）。依据：`0b5fd9a6`（「合并 wt-2 的 D4/D10/D11 三条已兑现改动」）是 `a73ec4c6` 的祖先（`git merge-base --is-ancestor 0b5fd9a6 a73ec4c6` → rc=0），本卡编写时读的 `5a285e83` 上还是旧形态，故 §1 旧表述「已实施待实机／取法待裁定」已过期。
+- 提示文案：`src/services/architecture-character-nudge.ts:35-41`（`toast.zh`／`banner.zh`）＋`:44`（`action`）。
+- 去重指纹（**已落实现**）：`:134-137` `outlineNudgeDraftVersion()` 返回 `v<volumeIndex>:wip|final` —— 卷级、只在「该卷大纲定稿」时变，不再随章级覆盖数与正文长度逐批变；判定 `:139-150` `input.dismissedVersion !== outlineNudgeDraftVersion(input.volume)`。
+- 存量兼容口径（**11-22 主身裁**）：`LEGACY_DISMISSED_VALUE = 'dismissed'`（`:29`；`:174` 读到它按「未处理」返回），旧 `c<ch>:l<len>` 也不迁移 —— 读到旧格式一律按「未处理」返回、允许该项目**一次**重提示，理由：旧值里没有卷号（`dismissed` 是一次点掉、`c<ch>:l<len>` 是章级覆盖数），任何「视为已处理」的映射都等于把提醒永久关掉，那不是修 D11。`:29` 注释「宁可再提示一次」保留不改。§2 第 4 条原「视为已处理过旧形态并保留」表述已由 §4 判据 3 取代。
 - 另：2026-11-09 22:0x 作者裁定「W2 现象来源按现状已达标结项」，指**注入点**问题（不存在按批追加角色集合进正文 prompt 的注入点），与本卡的**提示去重**不是同一件事，本卡只改提示。
 
 ## 2. 我的裁定（取法，写死在卡里，执行方不再自选）
 
+> **11-22 追认（负责人，读于 `a73ec4c6`）**：本节第 1–3 条的取法**已由 `0b5fd9a6` 落进主线**（直读 `synopsisIncomplete`、卷级指纹），不再由执行方自选，改作**既有实现的验收口径**保留；存量兼容口径已定（见第 4 条），现行代码即符合，本卡不要求改码。
+
 - **定稿态取法**：以检查点 `synopsis_incomplete === false`（`partial_arch.json`）作为「整卷大纲完成」的唯一判据，**直读检查点**；不得再用 `chain.status` 投影（投影会把「链状态」当「大纲完成」，语义不等价）。
 - 实现路径（apply 前须写明所选与文件:行）：①渲染层经既有读检查点 IPC 直读；②由主进程把该布尔投影进既有 snapshot 字段（不新增表/列/IPC）。两条都不可行则停手报，禁退回 `chain.status`。
 - **去重粒度**：改为**卷级**——指纹含卷序号（形如 `v<volumeIndex>`）且仅在「该卷 `synopsis_incomplete === false`」时才提示；同一卷无论写多少批，只提示 1 次；进入下一卷且满足条件，再提示 1 次。
-- 已 dismiss 记录的兼容：存量 `dismissedVersion`（`c…:l…` 形态）在迁移时视为「已处理过旧形态」并保留，不清空用户已处理状态；新形态与原形态不得互相误判。
+- 已 dismiss 记录的兼容（**11-22 主身裁后取代本条原表述**）：不做迁移、不改码 —— 旧格式值（`dismissed` 或 `c<ch>:l<len>`）按「未处理」返回、允许一次重提示；用户再次关闭必须写新格式 `v<卷号>:<wip|final>`。口径原文见 §4 判据 3。
 
 ## 3. 白名单与禁改区
 
-- 可改：`src/services/architecture-character-nudge.ts`（指纹与判定）、其单测、读取检查点的只读投影（若需新增读取，优先复用既有读取路径）。
+- 可改：`src/services/architecture-character-nudge.ts`（指纹与判定）、其单测、读取检查点的只读投影（若需新增读取，优先复用既有读取路径）。**预期零改动**，本节仅供判断是否越界。
 - 禁改：提示文案（`:43-47`）、把缺失角色集合注入正文 prompt 的任何路径（作者已裁不注入）、`synopsis_incomplete` 的写入逻辑、D6 常量、D12 注入区。
 - 不许把提示改成阻塞或弹窗打断。
 
 ## 4. 判据（QA 首验逐条，逐条要输出原文）
 
-1. 同一卷连写 3 批（检查点仍 `incomplete=true` 时）⇒ 提示 0 次；最后一次使 `synopsis_incomplete=false` ⇒ 提示 1 次。
-2. 进入下一卷并完成 ⇒ 再提示 1 次（贴两卷的 `volumeIndex` 与提示次数）。
-3. 存量 dismiss 记录兼容：迁移前已 dismiss 的记录不被误判成「未处理」（贴迁移前后读数）。
-4. 单测：①同卷多批不重复；②跨卷各一次；③存量形态兼容。
-5. `pnpm test <相关路径>` 整文件汇总行 + `pnpm check:fast` 末行 + `EXIT=`。
-6. 实例纪律三项（实机若走界面）：`instancesThisRun`、`exitCode`、`leftoverElectronProcesses`。
+> 分层：1–3 `[live]`、4 `[mock]`、5 `[static]`、6 `[live]`。
+> `[live]` 取证按 `collab-rules-v1.md` §8 第 62 行：确定性取样、连续两次读数相同且间隔 ≥ 自设最小间隔，`sampleCount ≥ 2` 与取样时刻写进 evidence；对照读数（手动刷新／重开界面后的计数）只作旁证，不得顶替判定键。
+> 判据 6 的实例纪律三项须贴原文，其中 `tasklist | grep -c electron` 的输出必须写进 evidence。
+
+1. `[live]` 同一卷连写 3 批（检查点仍 `incomplete=true` 时）⇒ 提示 0 次；最后一次使 `synopsis_incomplete=false` ⇒ 提示 1 次。
+2. `[live]` 进入下一卷并完成 ⇒ 再提示 1 次（贴两卷的 `volumeIndex` 与提示次数）。
+3. `[live]` 判据 3「存量兼容」：读到旧格式值（`dismissed` 或 `c<ch>:l<len>`）时按「未处理」返回，允许该项目**一次**重提示；用户再次关闭必须写入新格式 `v<卷号>:<wip|final>`，此后同一卷不再提示，该卷大纲定稿态变化（`wip`→`final`）才可再提示一次。判 FAIL 线：①同一卷同一状态下第二次提示；②再次关闭后仍写旧格式；③为兼容旧值而删改调用点或扩到其他文件。
+4. `[mock]` 单测：①同卷多批不重复；②跨卷各一次；③存量形态兼容。
+5. `[static]` `pnpm test <相关路径>` 整文件汇总行 + `pnpm check:fast` 末行 + `EXIT=`。
+6. `[live]` 实例纪律三项（实机若走界面）：`instancesThisRun`、`exitCode`、`leftoverElectronProcesses`。
 
 ## 5. 外派位
 
@@ -50,7 +56,7 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 
 ## 6. 回执与交付
 
-- 分支：`card/s3-d11-nudge-dedup`，从 `5a285e83` 起；点名路径 `git add`（禁 `-A`）。
+- 分支：`card/s3-d11-nudge-dedup`，从 `a73ec4c6` 起。**预期无提交**；判定取 `git diff --numstat a73ec4c6..HEAD -- src electron scripts` 输出为空。
 - 交件：报告 `.batch/night/staging/s3-d11-nudge-dedup-report.md`；群里交件 @ 项目总负责人 与 QA；回执走 `.batch/night/bridge/to-owner`。
 
 ## 7. 实例纪律
@@ -61,7 +67,15 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 
 判据二段，缺一不可：
 
-1) `git diff --numstat 5a285e83..card/s3-d11-nudge-dedup -- src electron scripts` 输出为空（无改动、无新增）。
+1) `git diff --numstat a73ec4c6..HEAD -- src electron scripts` 输出为空（无改动、无新增）。
 2) **无新增生产文件**：分支上未新增 `src/`、`electron/`、`scripts/` 下的文件；若本卡白名单允许新增（仅验收/取证脚本），须逐条列出路径并在判词中标注「白名单内新增」。
 
 不采信不带 `<base>..<branch>` 作用域的 `git diff --stat`（全树常有他人在办的流转件，D1 那次全树假红即此）。
+
+## 9. 修订留痕（负责人 · 11-22 13:58 起，§8 写法不动；§4 只有判据 3 按主身裁定换成原文）
+
+1. **起点改钉 `a73ec4c6`**：页首版本行、§6「分支为…」、§8 判据 1) 的 `5a285e83` 一律按本条替换。
+2. **§1 复读注**：§1 标题行末写「（11-22 13:58 以 `a73ec4c6` 复读）」，并如实记「卷级指纹已由 `0b5fd9a6` 落进主线」——按旧表述开发会重做已兑现的部分。（「存量 `c…:l…` 兼容未做」是本条 13:58 时的写法，已由第 5 条取代：裁定不改码。）
+3. **§4 分层与取证口径**：1–3 `[live]`、4 `[mock]`、5 `[static]`、6 `[live]`；`[live]` 条按 `collab-rules-v1.md` §8 第 62 行取样口径，判据 6 的 `tasklist | grep -c electron` 原文进 evidence。
+4. **双 sha（11-22 主身裁后补）**：追认实现 `0b5fd9a6`（`git merge-base --is-ancestor 0b5fd9a6 a73ec4c6` → rc=0；指纹 `:134-136`、判定 `:139-150` 已在主线），base `a73ec4c6`。只写 base 会让人以为本卡分支还没被合并过。
+5. **判据 3 定稿（11-22 主身裁）**：走「保留一次重提示」支，不改码去「视为已处理」；§4 判据 3 已换为裁定原文，§2 第 4 条原表述随之取代；白名单不变，仍限 `src/services/architecture-character-nudge.ts` 及其单测。注释 `:29`「宁可再提示一次」保留不改。

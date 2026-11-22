@@ -102,3 +102,4 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 3. **行号以实测为准**：`CLEAR_COUNT_TABLES` 声明在 `electron/repositories/project-clear-repository.ts:45`，三档在 `:46-48`；`:54-58` 是 `emptyCounts()`，不是计数清单。
 4. **R4 观察项（admin 11-22 定，不判 FAIL）**：`base..工作头` 会看到 `dcddcb08`（纯文档两件）与 `27d70e07`（`scripts/install-git-hooks.mjs` +18，pre-commit 分支闸门）——两处记观察项，不判 FAIL。
    三条细节（闸门只在本机 `.git/hooks/` 生效、不入库；作用域仍是 `9cd24897..工作头`）详见 `.batch/night/staging/s3-d10-r4-observation-main.md`（19 行 / 1,592B / sha256 `2d00e6c66f7d7927a2caff05a7b0d5c93dd9883e0280dc823ff8d3324db82e23`），本行只作指针、不抄正文。
+5. **留痕写两个 sha（主身 11-22 定）**：本卡判定面 `4a3aaf18`（FF 后实机取证的分支头）、入库合并 `a73ec4c6`（主线 HEAD，D10 已入库）。只写前者别人会以为该分支没被合并过；只写后者看不出判定是在哪一版做的。
