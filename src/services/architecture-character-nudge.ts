@@ -147,6 +147,10 @@ export function shouldNudgeOutlineCharacterSupplement(input: {
 }): boolean {
   if (input.globallyDisabled === true) return false
   if (!hasOutlineContent(input.synopsis)) return false
+  // D11b：该卷大纲**仍在逐批生成**（检查点 `synopsis_incomplete === true`）时不提示。
+  // 作者此时看到的还是半卷稿，逐批改正文会让「同一卷只提示一次」变成噪音；
+  // 定稿（翻成 false）后按卷号再提示一次，正是作者要的时机。
+  if (input.volume.synopsisIncomplete) return false
   return input.dismissedVersion !== outlineNudgeDraftVersion(input.volume)
 }
 
