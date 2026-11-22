@@ -146,4 +146,87 @@ M	src/services/workflows/synopsis-unit-launch.ts
 2. 修复提交（一笔：`synopsis-unit-launch.ts` 改 1 行 ＋ 单测加 2 条反例断言）落 `card/s3-d7-unit-chapter-estimate`，报 sha；我在该提交上一次跑判据 1、7 的 `[live]` 取证并贴原文，判据 2 复算到逐位一致；
 3. 我在新提交面上只复判判据 2 与判据 1、7，其余沿本判词 §3–§5 结论。
 
+## 8. 复判（判据 1／2／7，2026-11-22 12:05）
+
+复判基准：**首验判词 `f70ad8c4d910f90bdda01c77a666c00bac0f039c620ddfb421da84ec70a6a45`（149 行 / 10,583B）**，即本文件 §0–§7。判定面 **`abe52aca`**（分支 `card/s3-d7-unit-chapter-estimate` 的**本地头**；`git ls-remote origin 'refs/heads/card/s3-d7*'` 为空，远端未推，push／合并归主身）。交件报告 `.batch/night/staging/s3-d7-unit-chapter-estimate-report.md` **150 行 / 11,446B / `ce883d217c4dc9979d53eff94f83d6ba9900b423c8c44ab4ca09333b7645d6e0`**（现盘实测）。本节只复判判据 1、2、7；判据 3／4／5／6 沿首验结论，判据 3 证据等级按 admin 11-22 12:03 裁定升 `[live]`（判据文字未动）。
+
+### 判据 1 · 同屏两个数、标签原文 —— **[live] PASS（两支齐）**
+
+实机 run `42852a36-926`（`2026-11-22T03:59:48Z` 起，真实 Electron dist ＋ 真实 SQLite，`evidence.json` 在 `.runtime/.cache/s3-d7/42852a36-926/`；脚本 `.runtime/s3-d7-live.mjs` 不入库）。A 支（有偏差，检查点 `{synopsis_covered_to:20, synopsis_unit_cursor:{volumeIndex:1,unitIndex:2,writtenInVolume:20}}`）界面原文：
+
+```
+单元模式：第1卷第2单元第1章（全书第21章）（本卷共 2 个单元）本卷剩余 30 章，名义上界 30 章。按当前实际倾向估计：本卷剩余单元约 20 章（据已写完 1 个单元的实际章数折算）。篇幅由剧情决定，写完按实际章数落盘。每次生成都是一个完整单元；上一次未完成的半成品不保留，也不会从断处接着写。检查点记着已写到第 20 章，但数据库里的大纲是空的（多半是刚清空了某一项故事架构）。这样生成会被输入校验拦下并拒绝续接（提示源事实或大纲已变化）。重置情节大纲检查点（从全书起点重来）
+```
+
+两数同屏：**名义上界 30 ≠ 估计 20**，标签「名义上界」「按当前实际倾向估计」原文齐全，未被合并成区间。B 支（同一实例改检查点 `{synopsis_covered_to:0}` 后 reload）原文：
+
+```
+单元模式：第1卷第2单元第1章（全书第1章）（本卷共 2 个单元）本卷剩余 30 章，名义上界 30 章。按当前实际倾向估计：暂无历史折算（还没有写完的单元），无法估计。篇幅由剧情决定，写完按实际章数落盘。每次生成都是一个完整单元；上一次未完成的半成品不保留，也不会从断处接着写。
+```
+
+我按 `evidence.json` 原件对照，`statusTextBias`／`statusTextNoHistory` 与报告 §3／§4 引文逐字一致；`stepLog` 有 `A:enter`、`B:enter` 均 `entered:true, shellReady:true`，`A:checkpoint`／`B:checkpoint` 写入值与上述检查点一致。`checks.bias = {showsNominal:true, showsEstimate:true, nominalValue:"30", estimateValue:"20"}`、`checks.noHistory = {showsNominal:true, showsFallback:true, hasEstimate:false, nominalValue:"30"}`。不是 browser 单文件渲染，无合成探针；`physicalModelRequests = 0`（主进程 fetch 全拦）。
+
+观察项（不扣分）：A 支同屏尾部那句「检查点记着已写到第 20 章，但数据库里的大纲是空的…」是产品既有提示，与 D7 折算文案无关，报告 §3 已说明。
+
+### 判据 2 · 数值可复算 —— **[static] PASS**
+
+源码（`git show abe52aca:src/services/workflows/synopsis-unit-launch.ts`，`:349`–`:353`）：
+
+```ts
+const perUnitChapters = input.coveredTo / input.completedUnits
+return Object.freeze({
+  volumeChapters: Math.max(1, Math.floor((input.coveredTo * input.remainingUnits) / input.completedUnits)),
+  perUnitChapters,
+})
+```
+
+按首验同一口径（`c≥d`，`c≤200, d≤40, r≤40`，`exact = floor(c*r/d)`）独立复跑：
+
+```
+$ node /tmp/qa-d7-enum.mjs
+{"groups":288800,"mismatches_old":350,"mismatches_new":0,
+ "first_old":["13/3/27: impl=116 exact=117","15/11/11: impl=14 exact=15","15/11/22: impl=29 exact=30"],
+ "first_new":[],
+ "cases":["13/3/27 => old=116 new=117","15/11/11 => old=14 new=15","5/3/2 => old=3 new=3","2/3/1 => old=1 new=1","20/1/1 => old=20 new=20"]}
+```
+
+即：旧实现（先取商）在 288,800 组中 350 组差 1（首个不等组 `13/3/27`，与首验 §2 一致）；新实现 **0 组不等**，逐位一致。修复提交 `abe52aca`（父 `cf717039`）只动两个文件：`2/2 synopsis-unit-launch.ts`、`4/0 synopsis-unit-launch.test.ts`；`perUnitChapters` 原样保留，函数头注释改为「整数先乘后除，避免浮点丢精度」。
+
+单测复跑（本次，`abe52aca`）：
+
+```
+$ node scripts/run-tests-electron.mjs src/services/workflows/__tests__/synopsis-unit-launch.test.ts
+ Test Files  1 passed (1)
+      Tests  29 passed (29)
+TEST_EXIT=0
+```
+
+两条反例断言 `13/3/27⇒117`、`15/11/11⇒15` 在既有单测文件内，未新建文件。
+
+### 判据 7 · 实例与环境纪律 —— **[live] PASS**
+
+同一 run 的三项 evidence ＋ 残留进程原文并列：
+
+```
+instancesThisRun = 1
+exitCode = 0
+leftoverElectronProcesses = 0
+tasklist /FI "IMAGENAME eq electron.exe" | grep -c electron.exe → 0
+physicalModelRequests = 0（intercepted = []）
+```
+
+一个实例串 A／B 两场（两次 reload，未再拉第二个实例），`try/finally` 里 `app.close()` ＋ 兜底 `kill()`。此前 `6d6a661e-5b7`／`75e66a4c-23b` 两次 `exitCode=1` 已在报告 §4 明写为**取证脚本**失败（`ProjectSessionContextMissing`／未进入项目），不是产品失败，不记产品红。
+
+### 复判结论
+
+**PASS**。判据 1、2、7 全部通过；判据 3／4／5／6 沿首验通过（判据 3 证据等级升 `[live]`，判据文字未改）。首验 §0 的「判据 2 不通过」与判据 1／7「延后」已被本节取代。建议放行 apply（一次一张），随后 D16 按 admin 排队。
+
+### 记录项（复判）
+
+1. 交件报告以现盘 **150 行 / 11,446B / `ce883d21…`** 为准；developer 早先报的 151 行 / 11,341B / `0c26b18c…` 是补 §5 前的字节，作废，不进分母。
+2. 判定面是**本地分支头** `abe52aca`，远端尚无 `card/s3-d7*` 分支；push、合并、入库由主身执行，QA 不代做。
+3. 实施包计量两说：群内已定 **258 行 / 17,980B / `9ba5ee94…`**；`1adc2c4ac`（群内另一处写作 `1ad2c4ac`）为坏读数，已撤回，不入判据。
+4. 判据 3 升 `[live]` 的边界：B 支只有名义上界一个数，「估计值不得与名义上界相同」由 A 支（30 vs 20）覆盖；判据文字未改，不返工。
+5. 判据 5 本次复跑 `Tests 29 passed (29)` / `TEST_EXIT=0`，与首验一致；`check:fast` 未在本次重跑，沿用 `abe52aca` 提交时 `EXIT=0` 的记录。
+
 <!-- DONE -->
