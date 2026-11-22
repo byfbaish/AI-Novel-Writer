@@ -1,10 +1,11 @@
 From: 项目总负责人 · AI writer项目组 | 64419d69
-To: 外派执行方（WorkBuddy／豆包，由联络人派）· AI writer项目组 · 群分身
+To: WorkBuddy · AI writer项目组 · 群分身
 
-# D18b「arch 前置闸」卡面草案（v0 · 未投、未 start）
+# D18b「arch 前置闸」卡面草案（v1 · 未投、未 start）
 
 > 状态：**草案**，等 admin 放行后按 `.batch/night/cards/_CARD-TEMPLATE.md`（硬字段版 v3）定稿投出。
 > 硬框架由 admin 11-22 定，**三条一条不改**：① 判据只一条、标 `[live]`；② 做法限前置准备（seed／夹具），不改 D18 判据面、不扩白名单、不动 `generation:read-context` 契约；③ D18b 排 D5 之前，两卡共用一趟实机、evidence 分两份。
+> v1（11-22 23:2x admin 三处裁定）：外派只做脚本、实机归 developer；实施包必须先出；D5 看板卡 id 回填。见 §9。
 > 本草案不改卡面模板口径（§0–§8 字段与机检照模板原文），也不 start 阶段。
 
 ## 0. 工作区前置【硬】
@@ -58,10 +59,10 @@ S5 实机（11-22 夜）在点「AI 生成」前，大纲入口弹「**单元定
 2. `[static]` seed 脚本在临时项目内落三件（§2 的 1/2/3），且**仓内 `git diff --numstat HEAD` 为空**（本卡零生产改动）；print 出 `synopsis_covered_to`、`synopsis_unit_cursor`、`planUnitStats` 三个实际值。
 3. `[static]` 作者数据未被触碰：临时项目路径在 `C:\tmp\s5-outbound\d18b\` 下、作者真实项目目录 `mtime` 与库文件 `sha256` 开工前后一致（两条命令原文）。
 4. `[static]` seed 后 `parseArcStructure` 能解析 ＋ `computeSynopsisUnitRange(plan, totalChapters, cursor, 5)` 返回非 null：允许用一条仓外一次性脚本（`node` 直跑，import 不到时按 §2 打印值人工核），输出 `from=6`、`unitIndex`、`maxChapters≥1` 三行原文。**这是防「读到文件但算不出单元」的空跑**——缺此项，§4.1 的 INVALID 就分不清是缺口还是夹具错。
-5. `[live]` **D5 共用同一趟实机**：本卡这趟同时取 D5 的 `[live]` 判据（真实生成一次、产物内尖括号占位符为 0），evidence 另存一份；两卡各自记 `instancesThisRun` / `exitCode` / `leftoverElectronProcesses=0` / `tasklistGrepCount`，**同值可复用但必须各写各的**。
+5. **门槛·联动（不属判据层）** **D5 共用同一趟实机**（由 developer 跑，不外派）：本卡这趟同时取 D5 的 `[live]` 判据（真实生成一次、产物内尖括号占位符为 0），evidence 另存一份；两卡各自记 `instancesThisRun` / `exitCode` / `leftoverElectronProcesses=0` / `tasklistGrepCount`，**同值可复用但必须各写各的**。
 6. `[static]` 提交／外派纪律：外派不 `commit`、不 `push`、不动 `develop` 主区；`git status --porcelain` 只允许 §0 白名单。
 7. `[static]` 判词/报告头三行定式：第 1 行 `执行方：<名字>`、第 2 行取数件三元组（路径／字节数／MD5）、第 3 行 `model=<模型名> | 倍率=<倍率> | provider=<官方直连/自有>`（外部执行方口径，模板 §4 第 9 条）。
-8. `[live]` 取证件仓内副本：`evidence.json` 原件在判词入库同笔拷进 `.batch/night/staging/`，判词写原件路径／原件 sha／副本 sha（模板 §4 第 13 条）。
+8. `[static]` 取证件仓内副本：`evidence.json` 原件在判词入库同笔拷进 `.batch/night/staging/`，判词写原件路径／原件 sha／副本 sha（模板 §4 第 13 条）。
 
 ### 4.3 外派位（草案核心，admin 指定必写）
 
@@ -96,7 +97,7 @@ S5 实机（11-22 夜）在点「AI 生成」前，大纲入口弹「**单元定
   > 本轮取证 `drafts` 仅 1–5 章夹具、第 6 章草稿未生成 ⇒ 前置缺口，判 **INVALID**；不当 FAIL，也不当 PASS。
   - **卡面**：`.batch/night/staging/s5-stage-card.md` 的 D5 段（`:17` 判据行后）与 D18 段（`:21` 判据行后）各加一条留痕注；
   - **缺陷稿**：`docs/plans/prompt-assembly-backlog.md` D5 行 `:128`、D18 行 `:141` 状态列追加同一句；
-  - **看板**：D18 卡 `2b7eb20d-e3e5-49f2-b9bd-53ac73be713e` 描述尾部追加同一句；D5 为容器卡 `61e4535d-0999-4dab-8c14-2e4bbc0b7fcc` 下子卡（**卡 id 待 admin 回填**）。
+  - **看板**：D18 卡 `2b7eb20d-e3e5-49f2-b9bd-53ac73be713e` 描述尾部追加同一句；D5 卡 `d8371b26-b0bd-4639-a647-bf41ce78c863`（`D5 消除卷/单元结构输出里的模板尖括号占位符（模板或机检至少一侧闭环）`，容器卡 `61e4535d-0999-4dab-8c14-2e4bbc0b7fcc` 下子卡，revision 913 现读）描述尾部追加同一句。
   - 三处写入人＝admin 指定（建议产品经理唯一写缺陷稿、admin 写看板、派单方写卡面），**外派与 developer 一律不写**。
 - 顺序硬约束：D18b **排在 D5 之前**；D18b 判 PASS 后 D5 的 `[live]` 才可用同一趟 evidence 判（若 D18b 判 INVALID，D5 `[live]` 同步记 INVALID、不得改记 FAIL）。
 
@@ -105,8 +106,8 @@ S5 实机（11-22 夜）在点「AI 生成」前，大纲入口弹「**单元定
 - 卡面与信号投外部执行方用**形态 B**（`To:` 只写角色·群名·身份，不写 session 前 8 位）；群内 Bot→Bot 的 handoff 用形态 A。两者不混用。
 - 绑定只认「角色＋群名后缀」的群分身；投出后须拿到 `resolved`＋`delivered` 两条，缺一条算没投。
 
-## 9. 待 admin 裁的三处（草案不自决）
+## 9. 三处裁定已落（11-22 23:2x admin 裁，草案不自决）
 
-1. **D5 看板卡 id** 未查（容器卡下有 21 张子卡），INVALID 留痕需回填。
-2. **外派方**：本卡是「改脚本＋单实例实机」，按现行分工归 WorkBuddy；若 admin 定豆包，§4.3 的表要改模型行与通道（豆包须「工作任务·本地电脑」模式，落「对话模式」即无盘上事实，按可疑件退回）。
-3. **实施包是否必须先出**（developer ①→ ②串行）还是允许外派一次做全：草案按串行写，因为 seed 字段取值错一次就要重开实例，成本高于一次实施包。
+1. **外派方＝WorkBuddy，只做 §4.3 的 ②**（seed 三件＋执行脚本＋Dry-run），实机那趟不外派，由 developer 跑（§4.3 ③）；等主身就「实机是否可外派」回话前，一律按此写。
+2. **实施包必须先出**：developer ① 先交、含 seed 字段与命令原文；外派件不得自改口径（§4.3 ② 验收已写「与实施包不一致即退回」）。
+3. **D5 看板卡 id 已回填**：`d8371b26-b0bd-4639-a647-bf41ce78c863`（看板 revision 913 现读，非自造）。
