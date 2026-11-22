@@ -19,6 +19,8 @@
 - `:61` `confirmation_review_id … REFERENCES reviews(id)`——**无 `ON DELETE`（默认 RESTRICT）**：库里只要有一行指向 `reviews`，`electron/repositories/project-clear-repository.ts:175` 的 `DELETE FROM reviews` 就被挡住、整笔回滚。
 
 故次序定死：**清 `review_cycles`（`:174` 之后、`:175` 之前，`hasTable` 守卫）→ `DELETE FROM reviews`（`:175`）→ 删 generation 四表（`generation_roots` 收尾）**。
+
+**理由更正（2026-11-22 13:1x，实施包 `f268ca86` 之后实测推翻原述）**：包内写「兜底行挪到 `DELETE FROM reviews` 之后必红，因为 `:57` 的 CASCADE 救不了 `:61`」，这条**不成立**——`:57` 的 `review_id … ON DELETE CASCADE` 会在删 `reviews` 时把对应 `review_cycles` 行连带删掉，所以把兜底行挪后，单测仍 5 passed。真实机制是：`:61` `confirmation_review_id` 无 `ON DELETE`（RESTRICT），而 `electron/repositories/review-cycle-repository.ts:762-766` 会把 `confirmation_review_id` 更新成**另一条** review；当某行 `review_id` 指向的 review 先被删（行随 CASCADE 消失）但 `confirmation_review_id` 指向另一条仍待删的 review 时，删那条 review 会被 RESTRICT 挡住。结论不变：**先清 `review_cycles` 仍是必需**，兜底行保留；包已冻结不重签，本更正与交件报告留痕为准。
 锚点：`:176` 是 `DELETE FROM revisions`，不是 reviews；`:54-58` 是 `emptyCounts()`，不是 `CLEAR_COUNT_TABLES`（声明在 `:45`，三档 `:46-48`）。
 
 ## 三、签名
