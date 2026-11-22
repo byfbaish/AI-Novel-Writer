@@ -90,6 +90,9 @@ To: developer · AI writer项目组（执行方）；QA · AI writer项目组（
 4. 交件报告与本节各写一句留痕，说明补的是哪个信号、为什么这不改删除语义。
 5. **判据 2 分档口径（主身 11-22 13:3x 裁 (a)；admin 落实，QA 判词照此写，不许留空默认通过）**：判据 2 按「该档实际清空的对象」判——`generatedText` 档清空成功后界面卡片数必须 `= 0`，不靠 reload、不靠点刷新；`creativeFields`、`blueprints` 两档该档不删生成内容（`src/services/project-clear-service.ts:174-176` 的 `reset` 只在 `normalized.generatedText` 分支触发，另两档四表本就没删），卡片保留是正确的，判据 2 记 **N/A**，理由原样写「该档不删生成内容，候选卡片应保留」。理由：判据 2 针对的是「库删了、界面还挂着」的不一致，不是「任何清空都要把生成内容清光」——后者等于顺手扩本卡范围，主身批 (b) 不批。
 
+6. **不走「主进程补发 `generation:snapshot`」这条留痕（主身 11-22 裁，admin 落实）**：外派提案已逐条否掉该路，理由照录——①`MainGenerationSnapshot`（`src/services/generation/generation-runtime.ts:82-93`）必填 `artifactId`/`attemptId`/`revision`/`durableRevision`/`text`/`textHash`，而清空后这些行已按本卡删除（首验读数 `generation_artifacts 2→0`），补发只能编一份指向已删行的快照，等于往事件流塞假事实；②补发点 `electron/controllers/generation-controller.ts:137-140` 不在本卡白名单，要在清空 handler 里发就得把 `owners`/`subscribers` 跨控制器暴露，越界；③`src/services/generation/main-generation-transport.ts:61-63` 是同一通道的另一个消费者，为一次读侧重拉污染 run 快照通道，语义上不成立。**结论：本卡修法只走渲染侧读信号，主进程补发一律不批。**
+7. **判据 2 的取样口径（主身 11-22 裁，admin 落实；只改取样方式，不改判据）**：`wt-d10` 的 live 脚本原先在「回执 toast 出现后固定等 800ms」取 `after`（`.runtime/s3-d10-live.mjs:312`），该固定 sleep 会被 `refreshFileTree` 之类 await 吃掉，出现「`afterCards=1` 但手动刷新为 0」的**假红**。改为**确定性等待**：轮询界面卡片数，连续两次读数相同（两次间隔 ≥300ms）才算稳定；evidence 须记 `afterCardsAt`（时间戳）与 `sampleCount`（取样次数），并保留 `afterManualRefreshCardCount` 作对照。**禁把固定 sleep 当判据**；判据 2 仍只认 `tier*.afterCards`、`finalCards`、`checks.noResidualCards`（含 `sectionPresent === false`），`afterReopenCardCount` 不得顶替。
+
 ## 9. 修订留痕（项目总负责人 · 11-22，只加口径说明，§4 判据文字与 §8 写法不动）
 
 1. **起点改钉 `9cd24897`**（admin 11-22 定，D16 入库后的主线头）：本卡 §1 行内、页首版本行、§5「分支为…，从 `5a285e83` 起」、§8 判据 1) 里的 `5a285e83` **一律按本行替换为 `9cd24897`**。照抄 `5a285e83` 会多出 `5a285e83..9cd24897` 那段差，属假红。
