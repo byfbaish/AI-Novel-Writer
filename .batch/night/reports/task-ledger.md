@@ -898,3 +898,14 @@ To: AI writer项目组 · 群内共读（判件基准件）
 | S4 | 待 QA 四项与本件入库 | 四条由 QA 在回写落盘后一次跑完：`pnpm check:fast`、`node scripts/ops/check-batch-hygiene.mjs --all`、`git status --porcelain -uall`、`git rev-parse HEAD` vs `git ls-remote`；本行在判词入库后回填原文 |
 
 - 本段只追加，不改既有条目；六卡行结论词只取 `PASS／不通过／作废／转出`。
+
+### 20. S5 三卡（D5／D15／D18）判词与缺陷稿／索引回写（2026-11-23）
+
+| 卡 | 结论 | 判据与证据 | 回写落点 |
+|---|---|---|---|
+| CARD-S5-D5-3 | PASS | 判词 `.batch/night/reports/s5-d5-d15-d18-verdict.md`（138 行／16,541B／`3695dc7f…`，提交 `2684206e`）；判定面 `7b48f074`；判据 3 [live] run `aeddad33-cf5` 的 R1／R2／R3 hits 均 0；合并 sha「未合并·待主身」 | 缺陷稿 `:70`、backlog `:128` |
+| CARD-S5-D15 | PASS | apply／判定面 `f95ed1da`（仅测试 +52/−0）；QA 独立复跑 `Tests 32 passed (32)`／`EXIT=0`；合并 sha「未合并·待主身」 | 缺陷稿 `:74`、backlog `:138` |
+| CARD-S5-D18（主体卡） | 部分收口（判据 4 [live] 未取证，转 S6） | 判据 1/2/3 [static] 通过（apply `7b48f074`，未合并）；本轮唯一一次实机 `aeddad33-cf5` 只有 arch 段、无 `hookInput`／finalize 键；D18b 属 arch 前置闸补验，不顶替判据 4；处置＝QA 方案 ②（转 S6、不降判据） | 缺陷稿 `:80`、backlog `:141`；裁定件 `.batch/night/org/ruling-s5-d18-carry-1123.md`（提交 `8508bff3`） |
+
+- 行号订正（照实记）：派验单 §6.5 把「D5 `:128`／D18 `:141`」写成缺陷稿行号，实为 backlog 现值索引；缺陷稿对应 `:70`／`:74`／`:80`。判词 §7.2 写 D15 在 `:135`，实测为 `:138`（`:135` 是 D12 行），本轮回写按 `:138`。
+- 口径：D18 三处一律写「S5 部分收口·判据 4 [live] 未取证」，不写 ✅；合并 sha 一律「未合并·待主身」；两处旧的「本轮取证…判 INVALID」句已按判词 §7.1／§7.2 删除（`grep -Fc '判 INVALID'` 两文件均为 0）。
