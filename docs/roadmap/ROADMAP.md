@@ -27,8 +27,8 @@
 | L1-DEF-01 | L1 | D 系列缺陷复验与销账 | 进行中 | 无 |
 | L2-DEF-01-01 | L2 | D8 候选区残本清场 | 阻塞 | 无 |
 | L2-DEF-01-02 | L2 | D18 钩子偏离三环节收口 | 达标 | 无 |
-| L0-FACT | L0 | 事实层确定性预检 | 未开始 | 无 |
-| L1-FACT-01 | L1 | 扩大 preflight 规则集 | 未开始 | 无 |
+| L0-FACT | L0 | 事实层确定性预检 | 达标 | 无 |
+| L1-FACT-01 | L1 | 扩大 preflight 规则集 | 达标 | 无 |
 | L0-ARCH | L0 | 架构一致性（AC 系） | 阻塞 | 无 |
 | L1-ARCH-01 | L1 | 层间一致性校验 | 阻塞 | 无 |
 | L2-ARCH-01-01 | L2 | AC1/S1 层内一致性 | 阻塞 | 无 |
@@ -96,7 +96,7 @@
 - 目标：在既有 preflight 通路上加确定性规则，不新增流程
 - 完成判据：新规则的纯函数入库 + `pnpm check:fast` 全过 + 新 `stableFactKey` 前缀与 `fact:`/`space:` 隔离（`grep -n "stableFactKey" src/shared/<新文件>.ts` 命中且前缀不同）
 - 前置依赖：无
-- 状态：未开始｜证据：看板卡 `bb3f0d83` 标注「基础设施全齐，纯增量」
+- 状态：达标（2026-11-23）｜证据：判定面 `0ec6c89c`（分支 `card/fact-preflight-3rules`，5 文件 `+542/−25` 全在白名单内、无新增生产文件）；QA 判词 `.batch/night/reports/s2-fact-verdict.md`（73 行／7,530B／`d6a4232c…`，判定面同上）；`grep -n "stableFactKey" src/shared/space-time-consistency.ts` 命中行原文：`:235 function fnvStableFactKey(prefix: string, parts: readonly string[]): string {`、`:249 export function spaceTimeStableFactKey(parts: readonly string[]): string {`、`:254 export function slotStableFactKey(parts: readonly string[]): string {`（`:255` 为 `return fnvStableFactKey('slot', parts)`），`space:`／`slot:` 前缀隔离成立（QA 独立手写 FNV-1a 64 复算 `space:6f155ee620aee7cd` 与测试字面量一致）；合并 sha「未合并·待主身」
 - ID：L0-FACT
 
 #### L1-FACT-01 扩大 preflight 规则集
@@ -104,7 +104,7 @@
 - 目标：在既有预检通路里新增规则并保持 fail-open
 - 完成判据：`task_board_get bb3f0d83-3f24-43a9-977d-8ef6b4e8eb9b` → `column: "done"`
 - 前置依赖：无
-- 状态：未开始
+- 状态：达标（2026-11-23）｜证据：看板卡 `bb3f0d83` 已由群 admin 转 `done`（S3 收口）；`Tests 83 passed (83)`／`EXIT=0`（2 文件 `space-time-consistency.test.ts`、`consistency-preflight-space-time.test.ts`，整文件汇总行）；`pnpm check:fast` 末行「[check:fast] 全部通过。」；R1/R2/R3 三条确定性规则纯增量接入既有预检通路、保持 fail-open，QA 变异测试把 `space-time-consistency.ts:415` 的 fail-open 守卫改恒假 → 3 条负向用例全转红（证明负向断言非空）；合并 sha「未合并·待主身」
 - 不可再拆，原因：一卡即一批规则，逐条开卡会让 fail-open 口径被拆散
 - ID：L1-FACT-01
 

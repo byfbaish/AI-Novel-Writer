@@ -911,3 +911,12 @@ To: AI writer项目组 · 群内共读（判件基准件）
 - 口径：D18 三处一律写「S5 部分收口·判据 4 [live] 未取证」，不写 ✅；合并 sha 一律「未合并·待主身」；两处旧的「本轮取证…判 INVALID」句已按判词 §7.1／§7.2 删除（`grep -Fc '判 INVALID'` 两文件均为 0）。
 - 合并与 HEAD（2026-11-23）：D15 实现 `f95ed1da` → 合并 `64793246`；D18 实现 `7b48f074` → 合并 `89868921`；D5 判定面 `7b48f074` → 合并 `89868921`。HEAD＝远端＝`89868921`（`git ls-remote origin refs/heads/exp/resource-ledger` 同 sha），`git status --porcelain -uall` 0 行；缺陷稿与 backlog 里「未合并·待主身」占位已全部回填为实际 sha。
 | CARD-S6-D18（判据 4） | PASS | 判词 `.batch/night/reports/s6-d18-criterion4-verdict.md`（92 行／9,622B／`a2342504…`，提交 `db2abb4f`）；判定面 `89868921`；runId `b3984cd5-78f`、`instancesThisRun=1`／`exitCode=0`／`leftoverElectronProcesses=0`；`[hook-unplanted]` 恰 1 次（`markerLineCount`／`markerCountMax`／`markerCountFinalBody` 均 1，`final-body.txt:113` 命中第 6 章钩子原文）；边界＝面板 500 行环形缓冲、`exitCode` 由脚本推出不作独立旁证、`callbacks.log` 不落库；定稿后处理两步失败不影响本判据 | 缺陷稿 `:80`、backlog `:141`、看板卡 `2b7eb20d`、留痕卡 `61191d9e` |
+
+### 21. L0-FACT 事实层确定性预检达标（S3 收口，2026-11-23）
+
+| 卡 | 结论 | 判据与证据 | 回写落点 |
+|---|---|---|---|
+| L1-FACT-01（卡 `bb3f0d83`） | 达标 | 判定面 `0ec6c89c`（分支 `card/fact-preflight-3rules`，5 文件 `+542/−25` 全在白名单内）；QA 判词 `.batch/night/reports/s2-fact-verdict.md`（73 行／7,530B／`d6a4232c…`）；`Tests 83 passed (83)`／`EXIT=0`；QA 手写 FNV-1a 64 复算 `space:6f155ee620aee7cd` 与测试字面量一致、`slot:` 前缀隔离成立；变异测试（`:415` 守卫改恒假 → 3 条负向转红）证明负向断言非空；`pnpm check:fast` 末行「全部通过」；合并 sha「未合并·待主身」 | ROADMAP `:30`／`:31`（§1 表）＋ §2 `L0-FACT`／`L1-FACT-01` 状态行；看板卡 `bb3f0d83` 由 admin 转 done |
+
+- 记账两条进 BACKLOG 不随本阶段修：`R3` 只看调用方传入的 `blueprints`（单章路径恒不触发、跨批次检测不到）；单章对话框未传 `structuredRefs`，既有 `space:` 规则单章路径 fail-open。
+- 本段只追加，不改既有条目。

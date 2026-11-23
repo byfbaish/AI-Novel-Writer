@@ -128,6 +128,11 @@ A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
 - 现象：定稿后处理两步（知情候选、角色状态更新）失败；DB 两条 `critical=0`、run `all_critical_passed=1`。
 - 处置：待立卡或结项，未排期。
 
+### 技术债登记：FACT S3 两条记账（2026-11-23，QA 首验记账 2 与 admin 裁定 ①）
+
+- R3 跨批次同格重复检测不到：`findDuplicateSlotAttacks` 只能看调用方传入的 `blueprints`——单章路径（`ChapterCreationDialog.tsx:362` 只传 1 个）永不触发，批量只覆盖本批窗口；与「单章不传 `structuredRefs`」同性质。处置：待立卡或结项，未排期。
+- 单章路径 `space:` 规则 fail-open：单章对话框未传 `structuredRefs`，既有 `space:` 规则在单章路径上不触发（fail-open 属设计本意，但「单章永不检出」这条边界需写进卡面）。处置：待立卡或结项，未排期。
+
 ### 转下期清单（2026-11-21 02:0x 更新，本 Goal S4 认定）
 
 **已在本 Goal 结案**：B-1b、B-1c、B-1d（均「仓库外仓·不纳管」，不删）、B-2（三档结论已出、删除 0）、B-3（E 卡收口）、B-5（规矩已实践）、B-6、B-16（尾行那半）、B-17、B-18（未复发）、B-20（验证记录卡）、B-23（不成立：从未缺过）。
