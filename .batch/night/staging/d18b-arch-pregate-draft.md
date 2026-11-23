@@ -13,7 +13,7 @@ To: WorkBuddy · AI writer项目组 · 群分身
 - 工作目录：`C:\develop\workspace\AI-writer\wt-d18b`（新建 worktree），分支 `card/s5-d18b-arch-pregate`，起点 HEAD `<开工时 develop 主线 sha，由投出方回填>`。
 - **禁在共用主工作区 `develop` 里改码或提交**；禁 `pnpm install` / `rebuild` / `pnpm dev`（切 ABI 会打断其它槽位；node_modules 走 junction，缺失即回执停手）。
 - 开工第一动作按模板 §0 六项逐条核（`show-toplevel` 规范化比较／`branch --show-current`／`short HEAD`／`diff --numstat HEAD` 与 `--ignore-cr-at-eol --stat HEAD` **双空**＋`--cached` 空／`porcelain` 首列无 `M A D R U` 且 `??` 等于白名单（本卡白名单：`.batch/night/staging/d18b/` 全文）／目标文件存在）。
-- **作者数据隔离【硬】**：seed／夹具只准写脚本自建的临时项目目录（`C:\tmp\s5-outbound\d18b\proj\`，含其独立 `.ai-novel/` 与临时库副本）。**禁写作者真实项目目录、真实库、`develop` 工作树的 `.ai-novel/`**；取证结束即弃，不入库、不提交到仓内路径以外。
+- **作者数据隔离【硬】**：seed／夹具只准写脚本自建的临时项目目录（`C:\tmp\s5-outbound\d18b\workbuddy\proj\`，含其独立 `.ai-novel/` 与临时库副本）。**禁写作者真实项目目录、真实库、`develop` 工作树的 `.ai-novel/`**；取证结束即弃，不入库、不提交到仓内路径以外。
 
 ## 1. 起因与背景
 

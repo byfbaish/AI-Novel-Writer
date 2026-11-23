@@ -69,7 +69,7 @@ To: 大肥鱼@主身（D18b 派单方：WorkBuddy · AI writer项目组）
 - 权威链（供卡面引用）：写作入口 `nextWritableBlueprint`（`src/components/editor/ChapterCardEditor.tsx:850`）→ `readAuthoritativeNextChapter`（`src/services/authoritative-chapter-sequence.ts:36`）→ `db:draft-authority-sequence`（`electron/controllers/db-controller.ts:923`）→ `FinalizedDraftImportRepository.authoritySequence()`（`electron/repositories/finalized-draft-import-repository.ts:287`）→ `authorityRows()`（`:141-152`）**只认 `drafts.status='finalized'` 且 JOIN `contents` 有正文的行**。
 - 可复用件＝现成脚本里的 DB 直插形态：`C:\develop\workspace\AI-writer\wt-d18\.runtime\s5-live2.mjs` 的 `seed-finalized-chapter` appDb 任务（我上一轮加的），SQL 形态为 `contents` 插一行 + `drafts` 插 `(chapter_no, status='finalized', version=1)`。它**不是仓内路径**，是仓外脚本；D18b 复用其 SQL 形态即可。
 - **本卡的实际情况（重要，能省外派工时）**：D18b 判据只到「点『AI 生成』打开生成器」，不读 `draft-authority-sequence`；而 `checkpoint-lost`（`:297`）只在 `coveredTo===0` 时触发，本包 `coveredTo=5`，**不 seed drafts 也不会挂**。故 1–5 章夹具在本卡为「可选、仅为与卡面 §2.3 措辞一致」；若 D5 同趟要写作入口，则必须 seed（连续定稿序列 1–5 章 + 第 6 章蓝图，做法同上一轮 `s5-live2.mjs`）。
-- 若选了 seed：`synopsis`（`project_core.synopsis`）里也要有 1–5 章标题，`plotOutlineCoveredTo`（`src/shared/plot-outline-contract.ts:282-287`）才读到 5；标题形态用 `## 第N章 <标题>`（`outlineChapterHeading`，`src/shared/chapter-heading.ts:84-94`，要求 `#` 后有空白）。**落盘后必须打印实际 `outlineCoveredTo`，不要假设格式命中。**
+- 若选了 seed：`synopsis`（`project_core.synopsis`）里也要有 1–5 章标题，`plotOutlineCoveredTo`（`src/shared/plot-outline-contract.ts:282-287`）才读到 5；标题形态**必须**用 `## 第N章：<标题>`（章号后紧跟分隔符）。依据 `outlineChapterHeading`（`src/shared/chapter-heading.ts:84-94`）：要求 `#` 后空白**且**章号后为分隔符或行尾，**空格不算分隔符**——11-22 WorkBuddy 实测 `## 第1章 潮退` → `plotOutlineCoveredTo=0`，改全角 `：` 后 `=5`。原稿此处写的 `## 第N章 <标题>` 有误，已于 11-23 由 admin 按实测回填。**落盘后必须打印实际 `outlineCoveredTo`，不要假设格式命中。**
 
 ## 3. 两个脚本各改哪几行
 
