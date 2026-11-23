@@ -96,7 +96,7 @@
 - 目标：在既有 preflight 通路上加确定性规则，不新增流程
 - 完成判据：新规则的纯函数入库 + `pnpm check:fast` 全过 + 新 `stableFactKey` 前缀与 `fact:`/`space:` 隔离（`grep -n "stableFactKey" src/shared/<新文件>.ts` 命中且前缀不同）
 - 前置依赖：无
-- 状态：达标（2026-11-23）｜证据：判定面 `0ec6c89c`（分支 `card/fact-preflight-3rules`，5 文件 `+542/−25` 全在白名单内、无新增生产文件）；QA 判词 `.batch/night/reports/s2-fact-verdict.md`（73 行／7,530B／`d6a4232c…`，判定面同上）；`grep -n "stableFactKey" src/shared/space-time-consistency.ts` 命中行原文：`:235 function fnvStableFactKey(prefix: string, parts: readonly string[]): string {`、`:249 export function spaceTimeStableFactKey(parts: readonly string[]): string {`、`:254 export function slotStableFactKey(parts: readonly string[]): string {`（`:255` 为 `return fnvStableFactKey('slot', parts)`），`space:`／`slot:` 前缀隔离成立（QA 独立手写 FNV-1a 64 复算 `space:6f155ee620aee7cd` 与测试字面量一致）；合并 sha `26731adb`（merge `0ec6c89c`），已推送，远端 HEAD `ef915a60`
+- 状态：达标（2026-11-23）｜证据：判定面 `0ec6c89c`（分支 `card/fact-preflight-3rules`，5 文件 `+542/−25` 全在白名单内、无新增生产文件）；QA 判词 `.batch/night/reports/s2-fact-verdict.md`（73 行／7,530B／`d6a4232c…`，判定面同上）；`grep -ni "stableFactKey" src/shared/space-time-consistency.ts`（区分大小写时只有 11 行命中、`-i` 后 16 行）命中行原文：`:235 function fnvStableFactKey(prefix: string, parts: readonly string[]): string {`、`:249 export function spaceTimeStableFactKey(parts: readonly string[]): string {`、`:254 export function slotStableFactKey(parts: readonly string[]): string {`（`:255` 为 `return fnvStableFactKey('slot', parts)`），`space:`／`slot:` 前缀隔离成立（QA 独立手写 FNV-1a 64 复算 `space:6f155ee620aee7cd` 与测试字面量一致）；合并 sha `26731adb`（merge `0ec6c89c`），已推送，远端 HEAD `ef915a60`
 - ID：L0-FACT
 
 #### L1-FACT-01 扩大 preflight 规则集
