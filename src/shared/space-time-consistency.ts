@@ -13,6 +13,7 @@
  * 本模块是纯函数，无 IO、无副作用（守「绝不自动执行」）。
  */
 
+import type { BlueprintKeyEvent } from './blueprint-key-events'
 import { parseSpaceHours } from './space-machine-line'
 
 /** 分钟数（自 00:00 起）。区间跨零点时 `start > end`。 */
@@ -230,18 +231,28 @@ export function isWithinWindow(point: number, window: TimeWindow): boolean {
     : point >= window.start || point <= window.end
 }
 
-/**
- * 与连续性 finding 同一套键算法（FNV-1a 64），但用**独立前缀** `space:` ——
- * 两族 finding 的豁免互不串扰（豁免按 `stableFactKey` 精确匹配）。
- */
-export function spaceTimeStableFactKey(parts: readonly string[]): string {
+/** 共享 FNV-1a 64 实现；前缀由调用方给 —— 两族 finding 的键空间互不串扰。 */
+function fnvStableFactKey(prefix: string, parts: readonly string[]): string {
   const identity = parts.map(part => part.trim().replace(/\s+/gu, ' ')).join(':')
   let hash = 0xcbf29ce484222325n
   for (const character of identity) {
     hash ^= BigInt(character.codePointAt(0) ?? 0)
     hash = BigInt.asUintN(64, hash * 0x100000001b3n)
   }
-  return `space:${hash.toString(16).padStart(16, '0')}`
+  return `${prefix}:${hash.toString(16).padStart(16, '0')}`
+}
+
+/**
+ * 与连续性 finding 同一套键算法（FNV-1a 64），但用**独立前缀** `space:` ——
+ * 两族 finding 的豁免互不串扰（豁免按 `stableFactKey` 精确匹配）。
+ */
+export function spaceTimeStableFactKey(parts: readonly string[]): string {
+  return fnvStableFactKey('space', parts)
+}
+
+/** attacks 族独立前缀 `slot:` —— 与 `fact:` / `space:` 隔离（卡面纪律第 3 条）。 */
+export function slotStableFactKey(parts: readonly string[]): string {
+  return fnvStableFactKey('slot', parts)
 }
 
 export interface SpaceTimeValidationInput {
@@ -345,4 +356,166 @@ export function findSpaceTimeConflicts(input: SpaceTimeValidationInput): SpaceTi
       },
     }]
   })
+}
+
+/* ------------------------------------------------------------------------- *
+ * attacks 族（FACT S2 · 扩大 preflight 规则集）：三条确定性规则
+ *
+ * 与上面 B′ 的 `spaceRefs` 规则同法：**结构对结构、零语义解析、缺字段 fail-open**，
+ * 但键用独立前缀 `slot:` —— 与 `fact:` / `space:` 的豁免互不串扰。
+ * 输入是 `blueprints.key_events[].attacks`（契约明文要求逐字复制空间名、
+ * `hour` 是被作废那一格的钟点），全仓此前零校验。
+ * ------------------------------------------------------------------------- */
+
+/** 本章声明的作废目标（`declaredAttack` 已丢弃半残条目，这里只做类型收窄 + 双保险）。 */
+interface DeclaredSlotAttack {
+  /** 在 `keyEvents` 里的下标，仅用于证据定位。 */
+  index: number
+  id: string
+  space: string
+  hour: string
+}
+
+function declaredSlotAttacks(keyEvents: readonly BlueprintKeyEvent[]): DeclaredSlotAttack[] {
+  return keyEvents.flatMap((keyEvent, index): DeclaredSlotAttack[] => {
+    const attack = keyEvent?.attacks
+    if (!attack || attack.kind !== 'slot') return []
+    const space = typeof attack.space === 'string' ? attack.space.trim() : ''
+    const hour = typeof attack.hour === 'string' ? attack.hour.trim() : ''
+    if (!space || !hour) return []
+    return [{ index, id: keyEvent.id, space, hour }]
+  })
+}
+
+export interface SlotAttackValidationInput {
+  chapterNumber: number
+  /** 设定层原文（架构产出的 `project_core.worldbuilding`）。 */
+  worldBuildingText: string | null | undefined
+  /** 本章关键事件（已过 `normalizeKeyEvents`）。 */
+  keyEvents: readonly BlueprintKeyEvent[]
+}
+
+/**
+ * 校验本章声明的作废目标是否与设定层的空间登记自洽（R1 / R2）。
+ *
+ * 判定顺序写死：
+ * 1. 设定层一条机读行都没有 ⇒ 返回 `[]`（旧项目零误报，与 `findSpaceTimeConflicts` 同纪律）；
+ * 2. `kind !== 'slot'` 或缺 `space`/`hour` ⇒ 跳过；
+ * 3. 空间名未登记 ⇒ **R1 warning**；
+ * 4. `hours=none`（作者声明该空间无时段概念）⇒ 跳过；
+ * 5. 未声明 `hours=` 或为按月/跨日窗口 ⇒ 跳过、不产 info（解释归 `space:undecidable-time`）；
+ * 6. `hour` 解析不了 ⇒ 跳过（`normalizedHour` 已保证 `HH:MM`，这是双保险）；
+ * 7. 钟点不在窗口内 ⇒ **R2 warning**。
+ *
+ * 同一章内重复声明同一空间 / 同一格时按 `stableFactKey` 去重，只留第一条。
+ */
+export function findSlotAttackConflicts(input: SlotAttackValidationInput): SpaceTimeFinding[] {
+  const chapterNumber = Number.isSafeInteger(input.chapterNumber) && input.chapterNumber >= 0 ? input.chapterNumber : 0
+  const rules = parseSpaceRules(input.worldBuildingText)
+  if (!rules.length) return []
+  const byName = new Map(rules.map(rule => [rule.space, rule]))
+  const findings: SpaceTimeFinding[] = []
+  const seen = new Set<string>()
+  const push = (finding: SpaceTimeFinding): void => {
+    if (seen.has(finding.stableFactKey)) return
+    seen.add(finding.stableFactKey)
+    findings.push(finding)
+  }
+
+  for (const attack of declaredSlotAttacks(input.keyEvents)) {
+    const rule = byName.get(attack.space)
+    if (!rule) {
+      push({
+        stableFactKey: slotStableFactKey(['unregistered-slot-space', String(chapterNumber), attack.space]),
+        severity: 'warning',
+        sourceChapter: chapterNumber,
+        sourceLayer: 'blueprint',
+        evidence: `keyEvents[${attack.index}].attacks.space = ${attack.space}`,
+        issue: {
+          zhCN: `本章关键事件声明要作废空间「${attack.space}」里的某一格，但世界观第 4 维【空间结构】里没有逐字登记这个名字。`,
+          enUS: `A key event in this chapter declares a slot inside the space “${attack.space}” as the target to be voided, but dimension 4 (spatial structure) of the world setting does not register that exact name.`,
+        },
+        suggestion: {
+          zhCN: `把该事件的 \`attacks.space\` 改成设定层登记过的写法，或在世界观第 4 维补登记「${attack.space}」的机读行（\`${attack.space}｜hours=HH:MM-HH:MM｜entry=…\`）。`,
+          enUS: `Either change this event's \`attacks.space\` to a registered spelling, or add a machine-readable line for “${attack.space}” in dimension 4 (\`${attack.space}｜hours=HH:MM-HH:MM｜entry=…\`).`,
+        },
+      })
+      continue
+    }
+    // 作者显式声明「无时段概念」⇒ 该空间不参与钟点判定。
+    if (rule.noWindow) continue
+    // 未声明 hours=、或登记的是按月/跨日窗口 ⇒ 没有可判定的每日窗口，跳过（不重复报 info）。
+    if (rule.hours === undefined) continue
+    const window = parseTimeWindow(attack.hour)
+    if (!window) continue
+    const hours = rule.hours
+    if (isWithinWindow(window.start, hours) && isWithinWindow(window.end, hours)) continue
+    push({
+      stableFactKey: slotStableFactKey(['slot-outside-window', String(chapterNumber), attack.space, attack.hour]),
+      severity: 'warning',
+      sourceChapter: chapterNumber,
+      sourceLayer: 'blueprint',
+      evidence: `keyEvents[${attack.index}].attacks = ${attack.space}｜${attack.hour}｜hours=${rule.hoursRaw ?? ''}`,
+      issue: {
+        zhCN: `本章把「${attack.space}」的 ${attack.hour} 这一格声明为作废目标，但世界观登记该空间的时段是 ${rule.hoursRaw}——这一格本身不在开放窗口里。`,
+        enUS: `This chapter declares the ${attack.hour} slot of “${attack.space}” as a target to be voided, but the world setting registers that space as open ${rule.hoursRaw} — that slot is not inside the open window at all.`,
+      },
+      suggestion: {
+        zhCN: `若不是笔误，先核对两处：\`attacks.hour\` 是否写成了「动手的钟点」而不是「被作废那一格的钟点」；以及世界观 \`hours=\` 是否登记错了。`,
+        enUS: `If this was not a typo, check two places: whether \`attacks.hour\` was written as the hour of the action instead of the hour of the voided slot, and whether the space's \`hours=\` in the world setting is wrong.`,
+      },
+    })
+  }
+  return findings
+}
+
+export interface DuplicateSlotAttackInput {
+  blueprints: readonly { chapterNumber: number; keyEvents: readonly BlueprintKeyEvent[] }[]
+}
+
+/**
+ * 跨章对账（R3）：同一格被**两个不同章**都声明为作废目标。
+ *
+ * - 只在 `blueprints.length >= 2` 时有效（跨章才谈得上重复）；
+ * - 按 `(space, hour)` 聚合不同章号，集合 size ≥ 2 ⇒ 一条 finding；
+ * - `sourceChapter` 取较大章号；键 `slot:slot-attacked-twice` **不含章号** ——
+ *   豁免一次即对该格永久生效（作者说一次「我知悉」该覆盖后续所有重复）；
+ * - 输出按 `sourceChapter` 升序，同序时按 `space` / `hour` 字典序，稳定。
+ */
+export function findDuplicateSlotAttacks(input: DuplicateSlotAttackInput): SpaceTimeFinding[] {
+  const blueprints = input.blueprints.filter(blueprint => (
+    Number.isSafeInteger(blueprint.chapterNumber) && blueprint.chapterNumber >= 0
+  ))
+  if (blueprints.length < 2) return []
+  const chaptersBySlot = new Map<string, { space: string; hour: string; chapters: Set<number> }>()
+  for (const blueprint of blueprints) {
+    for (const attack of declaredSlotAttacks(blueprint.keyEvents)) {
+      const slotKey = `${attack.space}\u0000${attack.hour}`
+      const entry = chaptersBySlot.get(slotKey)
+      if (entry) entry.chapters.add(blueprint.chapterNumber)
+      else chaptersBySlot.set(slotKey, { space: attack.space, hour: attack.hour, chapters: new Set([blueprint.chapterNumber]) })
+    }
+  }
+  const duplicated = [...chaptersBySlot.values()]
+    .filter(entry => entry.chapters.size >= 2)
+    .map(entry => {
+      const ordered = [...entry.chapters].sort((a, b) => a - b)
+      return { ...entry, first: ordered[0]!, last: ordered[ordered.length - 1]! }
+    })
+    .sort((a, b) => a.last - b.last || a.space.localeCompare(b.space) || a.hour.localeCompare(b.hour))
+  return duplicated.map(({ space, hour, first, last }): SpaceTimeFinding => ({
+    stableFactKey: slotStableFactKey(['slot-attacked-twice', space, hour]),
+    severity: 'warning',
+    sourceChapter: last,
+    sourceLayer: 'blueprint',
+    evidence: `attacks: 第 ${first} 章 / 第 ${last} 章 都声明作废 ${space}｜${hour}`,
+    issue: {
+      zhCN: `同一格（「${space}」${hour}）被第 ${first} 章和第 ${last} 章都声明为作废目标。本规则只做字面对账：若中间没有任何一章**重新建立**过这一格，后一章的作废就没有东西可废。`,
+      enUS: `The same slot (“${space}” ${hour}) is declared as a target to be voided by both chapter ${first} and chapter ${last}. This rule only reconciles the wording: unless some chapter in between **re-established** that slot, the later declaration has nothing left to void.`,
+    },
+    suggestion: {
+      zhCN: `改掉后一处 \`attacks\`，或在前文补一段重新建立该格的叙事；也可以在此豁免（表示作者已知悉）。`,
+      enUS: `Change the later \`attacks\`, or add a passage that re-establishes that slot earlier in the story; you can also exempt it here (meaning you are aware of it).`,
+    },
+  }))
 }

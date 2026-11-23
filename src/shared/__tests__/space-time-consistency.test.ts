@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { normalizeKeyEvents } from '../blueprint-key-events'
 import {
+  findDuplicateSlotAttacks,
+  findSlotAttackConflicts,
   findSpaceTimeConflicts,
   isWithinWindow,
   normalizeSpaceRefs,
   parseSpaceRules,
   parseTimeWindow,
+  slotStableFactKey,
   spaceTimeStableFactKey,
 } from '../space-time-consistency'
 
@@ -366,5 +370,177 @@ describe('findSpaceTimeConflicts · 窗口形态的三种结局', () => {
     expect(findings).toHaveLength(1)
     expect(findings[0]!.issue.zhCN).toContain('未给该空间的')
     expect(findings[0]!.suggestion.zhCN).toContain('补一行')
+  })
+})
+
+/**
+ * attacks 族（FACT S2）：三条确定性规则的正负向。
+ *
+ * 每组都写「必须判」与「必须不判」两向 —— 负向才是防误报的那一半：
+ * 世界观没有机读行、`hours=none`、按月窗口、非法钟点、单章一条，全部必须静默。
+ */
+const SLOT_WORLD = [
+  '### 4.【空间结构（地图与区域）】',
+  '老陈记｜hours=07:00-09:00｜entry=直接进入',
+  '车站｜hours=none｜entry=凭票进入',
+  '夜市｜hours=每月3日 21:00-22:00｜entry=自由进出',
+].join('\n')
+
+function slotEvents(chapterNumber: number, slots: { space: string; hour?: string }[]) {
+  return normalizeKeyEvents(
+    slots.map((slot, index) => ({
+      event: `第 ${index + 1} 个事件`,
+      attacks: { kind: 'slot', space: slot.space, ...(slot.hour === undefined ? {} : { hour: slot.hour }) },
+    })),
+    { chapterNumber },
+  )
+}
+
+describe('findSlotAttackConflicts · R1（attacks.space 未登记）', () => {
+  it('正向：登记过老陈记，attacks.space=查无此店 ⇒ 1 条 warning，键以 slot: 开头', () => {
+    const findings = findSlotAttackConflicts({
+      chapterNumber: 6, worldBuildingText: SLOT_WORLD,
+      keyEvents: slotEvents(6, [{ space: '查无此店', hour: '08:00' }]),
+    })
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toMatchObject({ severity: 'warning', sourceChapter: 6, sourceLayer: 'blueprint' })
+    expect(findings[0]!.stableFactKey.startsWith('slot:')).toBe(true)
+    expect(findings[0]!.evidence).toContain('attacks.space = 查无此店')
+    expect(findings[0]!.issue.zhCN).toContain('没有逐字登记')
+  })
+
+  it('负向：世界观一条机读行都没有 ⇒ 不判（旧项目零误报）', () => {
+    for (const world of [undefined, null, '', '   ', '只有散文，没有机读行。']) {
+      expect(findSlotAttackConflicts({
+        chapterNumber: 6, worldBuildingText: world,
+        keyEvents: slotEvents(6, [{ space: '查无此店', hour: '08:00' }]),
+      }), String(world)).toEqual([])
+    }
+  })
+
+  it('负向：空间名已逐字登记 ⇒ 不判', () => {
+    expect(findSlotAttackConflicts({
+      chapterNumber: 6, worldBuildingText: SLOT_WORLD,
+      keyEvents: slotEvents(6, [{ space: '老陈记', hour: '08:00' }]),
+    })).toEqual([])
+  })
+
+  it('同章两条 attacks 指向同一未登记空间 ⇒ 按键去重，只留 1 条', () => {
+    const findings = findSlotAttackConflicts({
+      chapterNumber: 6, worldBuildingText: SLOT_WORLD,
+      keyEvents: slotEvents(6, [{ space: '查无此店', hour: '08:00' }, { space: '查无此店', hour: '09:00' }]),
+    })
+    expect(findings).toHaveLength(1)
+  })
+
+  it('负向：本章没有 attacks ⇒ []', () => {
+    expect(findSlotAttackConflicts({
+      chapterNumber: 6, worldBuildingText: SLOT_WORLD, keyEvents: normalizeKeyEvents(['只是普通事件'], { chapterNumber: 6 }),
+    })).toEqual([])
+  })
+})
+
+describe('findSlotAttackConflicts · R2（attacks.hour 越窗）', () => {
+  it('正向：老陈记 07:00-09:00，attacks.hour=21:00 ⇒ 1 条', () => {
+    const findings = findSlotAttackConflicts({
+      chapterNumber: 4, worldBuildingText: SLOT_WORLD,
+      keyEvents: slotEvents(4, [{ space: '老陈记', hour: '21:00' }]),
+    })
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]!.severity).toBe('warning')
+    expect(findings[0]!.issue.zhCN).toContain('07:00-09:00')
+    expect(findings[0]!.evidence).toContain('hours=07:00-09:00')
+  })
+
+  it('负向：hours=none（作者声明该空间无时段概念）⇒ []', () => {
+    expect(findSlotAttackConflicts({
+      chapterNumber: 4, worldBuildingText: SLOT_WORLD,
+      keyEvents: slotEvents(4, [{ space: '车站', hour: '21:00' }]),
+    })).toEqual([])
+  })
+
+  it('负向：按月窗口 ⇒ 不猜月历、不判', () => {
+    expect(findSlotAttackConflicts({
+      chapterNumber: 4, worldBuildingText: SLOT_WORLD,
+      keyEvents: slotEvents(4, [{ space: '夜市', hour: '03:00' }]),
+    })).toEqual([])
+  })
+
+  it('负向：非法钟点被 declaredAttack 丢弃（25:00）⇒ []', () => {
+    expect(findSlotAttackConflicts({
+      chapterNumber: 4, worldBuildingText: SLOT_WORLD,
+      keyEvents: slotEvents(4, [{ space: '老陈记', hour: '25:00' }]),
+    })).toEqual([])
+  })
+
+  it('负向：钟点缺省（只剩 space，整条被丢）⇒ []', () => {
+    expect(findSlotAttackConflicts({
+      chapterNumber: 4, worldBuildingText: SLOT_WORLD,
+      keyEvents: slotEvents(4, [{ space: '老陈记' }]),
+    })).toEqual([])
+  })
+
+  it('负向：窗口内 ⇒ 不判', () => {
+    expect(findSlotAttackConflicts({
+      chapterNumber: 4, worldBuildingText: SLOT_WORLD,
+      keyEvents: slotEvents(4, [{ space: '老陈记', hour: '08:00' }]),
+    })).toEqual([])
+  })
+})
+
+describe('findDuplicateSlotAttacks · R3（同一格被两章作废）', () => {
+  it('正向：第 3 章与第 7 章都作废老陈记 08:00 ⇒ 1 条、sourceChapter=7、键不含章号', () => {
+    const findings = findDuplicateSlotAttacks({
+      blueprints: [
+        { chapterNumber: 3, keyEvents: slotEvents(3, [{ space: '老陈记', hour: '08:00' }]) },
+        { chapterNumber: 7, keyEvents: slotEvents(7, [{ space: '老陈记', hour: '08:00' }]) },
+      ],
+    })
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toMatchObject({ severity: 'warning', sourceChapter: 7, sourceLayer: 'blueprint' })
+    expect(findings[0]!.stableFactKey).toBe(slotStableFactKey(['slot-attacked-twice', '老陈记', '08:00']))
+    expect(findings[0]!.evidence).toContain('第 3 章')
+    expect(findings[0]!.evidence).toContain('第 7 章')
+  })
+
+  it('负向：只有一章 ⇒ []（跨章才谈得上重复）', () => {
+    expect(findDuplicateSlotAttacks({
+      blueprints: [{ chapterNumber: 3, keyEvents: slotEvents(3, [{ space: '老陈记', hour: '08:00' }]) }],
+    })).toEqual([])
+  })
+
+  it('负向：同一章内两条重复 ⇒ []', () => {
+    expect(findDuplicateSlotAttacks({
+      blueprints: [{
+        chapterNumber: 3,
+        keyEvents: slotEvents(3, [{ space: '老陈记', hour: '08:00' }, { space: '老陈记', hour: '08:00' }]),
+      }],
+    })).toEqual([])
+  })
+
+  it('负向：不同格不算重复（同空间不同钟点）⇒ []', () => {
+    expect(findDuplicateSlotAttacks({
+      blueprints: [
+        { chapterNumber: 3, keyEvents: slotEvents(3, [{ space: '老陈记', hour: '08:00' }]) },
+        { chapterNumber: 7, keyEvents: slotEvents(7, [{ space: '老陈记', hour: '09:00' }]) },
+      ],
+    })).toEqual([])
+  })
+})
+
+describe('attacks 族键空间', () => {
+  it('键隔离：slot: 与 space: 同入参不同值，且各自前缀对', () => {
+    const slot = slotStableFactKey(['a'])
+    const space = spaceTimeStableFactKey(['a'])
+    expect(slot.startsWith('slot:')).toBe(true)
+    expect(space.startsWith('space:')).toBe(true)
+    expect(slot).not.toBe(space)
+  })
+
+  it('hash 回归：spaceTimeStableFactKey 输出与改造前逐字节相同（存量豁免不能失效）', () => {
+    expect(spaceTimeStableFactKey(['unregistered-space', '6', '查无此店'])).toBe('space:6f155ee620aee7cd')
   })
 })
