@@ -22,6 +22,23 @@ import { useCharacterAvatars } from '../../editor/use-character-avatars'
 import { confirm } from '../../ui/Confirm'
 import { toast } from '../../ui/Toast'
 import { appErrorMessage } from '../../../i18n/app-errors'
+import { projectSessionContextFromProject, sameProjectSessionContext } from '../../../shared/project-session-context'
+import { ipc } from '../../../services/ipc-client'
+import {
+  CHARACTER_RELEVANCE_LAYERS,
+  blueprintDeclarationsFromSyncOperations,
+  characterRelevance,
+  characterRelevanceReasonSlots,
+  characterRelevanceVisible,
+  outlineSourceFromProjectCore,
+  sortCharactersForDisplay,
+  type CharacterRelevance,
+  type CharacterRelevanceContext,
+  type CharacterRelevanceLayer,
+  type CharacterRelevanceLayers,
+  type CharacterRelevanceReason,
+  type CharacterRelevanceSortKey,
+} from '../../../shared/character-relevance'
 
 const CHARACTER_PAGE_SIZE = 50
 
@@ -35,6 +52,15 @@ export default function CharactersView() {
    */
   const [selectionMode, setSelectionMode] = useState(false)
   const [picked, setPicked] = useState<string[]>([])
+  /**
+   * 相关性三档（设计稿 §3.1）：默认全开＝不筛，只决定「显示与标签」。
+   * 它**不许**写 `picked` —— 勾选只能是作者的动作，否则"批量删除"会替作者选中。
+   */
+  const [relevanceLayers, setRelevanceLayers] = useState<CharacterRelevanceLayers>({ relationship: true, blueprint: true, outline: true })
+  const [relevanceSort, setRelevanceSort] = useState<CharacterRelevanceSortKey>('relevance')
+  /** null = 档②／③ 数据尚未读到（或读失败）：这一轮不筛、不标原因、不报错。 */
+  const [relevanceContext, setRelevanceContext] = useState<CharacterRelevanceContext | null>(null)
+  const [expandedReasonKeys, setExpandedReasonKeys] = useState<string[]>([])
   const currentProject = useProjectStore(s => s.currentProject)
   const characters = useCharacterStore(s => s.characters)
   const dataProjectKey = useCharacterStore(s => s.dataProjectKey)
@@ -52,6 +78,26 @@ export default function CharactersView() {
     const { zhCN, enUS } = getCharacterRoleLabels(role)
     return text(zhCN, enUS)
   }
+  const relevanceLayerLabel = (layer: CharacterRelevanceLayer) => (layer === 'relationship'
+    ? text('有关系对象', 'Has relationships')
+    : layer === 'blueprint'
+      ? text('被蓝图声明', 'Declared by blueprint')
+      : text('在大纲／世界观', 'In outline / worldbuilding'))
+  /** 命中原因文案（结构化事实 → 一行的可读短语）。 */
+  const relevanceReasonText = (reason: CharacterRelevanceReason) => {
+    if (reason.layer === 'relationship') {
+      return reason.count > 0
+        ? text(`有 ${reason.count} 条关系`, `${reason.count} relationship${reason.count > 1 ? 's' : ''}`)
+        : text('有关系记录', 'Has relationship notes')
+    }
+    if (reason.layer === 'blueprint') {
+      return text(
+        `蓝图声明过（第 ${reason.chapters.join('、')} 章）`,
+        `Declared in blueprint (ch. ${reason.chapters.join(', ')})`,
+      )
+    }
+    return text('出现在大纲／世界观', 'In outline / worldbuilding')
+  }
   const dataReady = Boolean(
     currentProject
     && dataProjectKey === currentProject.path
@@ -59,10 +105,36 @@ export default function CharactersView() {
     && lastError === null,
   )
   const visibleCharacters = dataReady ? characters : []
+  /**
+   * 每张卡的命中结果按卡对象缓存：标签、排序、筛选共用一次解析，
+   * 免得同一行在渲染里被解析三遍关系文本。
+   */
+  const relevanceIndex = useMemo(() => {
+    const index = new Map<(typeof characters)[number], CharacterRelevance>()
+    if (!relevanceContext) return index
+    for (const character of characters) index.set(character, characterRelevance(character, relevanceContext))
+    return index
+  }, [characters, relevanceContext])
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase()
-  const filteredCharacters = normalizedQuery
+  const searchMatches = normalizedQuery
     ? visibleCharacters.filter(character => character.name.toLocaleLowerCase().includes(normalizedQuery))
     : visibleCharacters
+  /**
+   * 搜索 → 三档相关性 → 排序，然后才分页。相关性这一层放在这里（而不是渲染处），
+   * 是为了让下面 `visibleKeys`（全选）继续等于「当前筛选结果」，语义不随本卡漂移。
+   * 数据未就绪时一律放行：档②／③ 读不到只能不筛，不能把卡藏起来。
+   */
+  const filteredCharacters = sortCharactersForDisplay(
+    relevanceContext
+      ? searchMatches.filter(character => {
+        const relevance = relevanceIndex.get(character)
+        return !relevance || characterRelevanceVisible(relevance, relevanceLayers)
+      })
+      : searchMatches,
+    relevanceSort,
+    relevanceContext ?? {},
+    locale,
+  )
   const pageCount = Math.max(1, Math.ceil(filteredCharacters.length / CHARACTER_PAGE_SIZE))
   const safePage = Math.min(page, pageCount - 1)
   const pageCharacters = filteredCharacters.slice(
@@ -91,6 +163,39 @@ export default function CharactersView() {
     characterRevivalEvents.addEventListener('revived', onRevived)
     return () => characterRevivalEvents.removeEventListener('revived', onRevived)
   }, [text])
+
+  /**
+   * 读档②（蓝图角色同步记录）与档③（项目核心三串）。
+   *
+   * 两条都是 preload 已暴露的只读通道，本卡**不新增 IPC**。读失败（含会话失效、
+   * 旧项目缺表）一律降级成 `null`＝「未就绪」：界面表现为不筛、不标原因，
+   * 绝不因为一次读失败把卡片藏起来——藏卡是静默丢数据。
+   */
+  useEffect(() => {
+    const projectSession = projectSessionContextFromProject(currentProject)
+    if (!projectSession) {
+      setRelevanceContext(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const [operations, core] = await Promise.all([
+          ipc.invokeWithProjectSession(projectSession, 'db:blueprint-character-sync-list-all', projectSession.projectPath),
+          ipc.invokeWithProjectSession(projectSession, 'db:project-core-get', projectSession.projectPath),
+        ])
+        if (cancelled) return
+        if (!sameProjectSessionContext(projectSession, projectSessionContextFromProject(useProjectStore.getState().currentProject))) return
+        setRelevanceContext({
+          blueprintDeclarations: blueprintDeclarationsFromSyncOperations(operations),
+          outline: outlineSourceFromProjectCore(core),
+        })
+      } catch {
+        if (!cancelled) setRelevanceContext(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [currentProject])
 
   const keyOf = (card: (typeof characters)[number]) => characterSelectionKey(card, characters.indexOf(card))
   /** 全选/反选针对**当前筛选结果**（含未显示的页），否则"全选"的语义会随分页漂移。 */
@@ -203,11 +308,56 @@ export default function CharactersView() {
           className="h-7 pl-7 text-xs"
         />
       </div>
+      {/*
+        相关性三档 + 两档排序。放在搜索框正下方（列表头部）而不是 h-9 顶栏：
+        顶栏是纯图标行，塞三个勾选加一个下拉会把标题挤掉。
+        三档**只标不勾**——勾选仍只由作者点行/点「全选」产生。
+      */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 border-b border-[var(--color-border)] px-2 py-1 text-[0.7rem] text-[var(--color-text-secondary)]">
+        <span className="opacity-60">{text('有剧情', 'Has plot')}</span>
+        {CHARACTER_RELEVANCE_LAYERS.map(layer => (
+          <label key={layer} className="flex cursor-pointer items-center gap-1">
+            <input
+              type="checkbox"
+              className="h-3 w-3"
+              checked={relevanceLayers[layer]}
+              aria-label={relevanceLayerLabel(layer)}
+              onChange={event => {
+                const checked = event.target.checked
+                setRelevanceLayers(previous => ({ ...previous, [layer]: checked }))
+                setPage(0)
+              }}
+            />
+            {relevanceLayerLabel(layer)}
+          </label>
+        ))}
+        <label className="ml-auto flex items-center gap-1">
+          <span className="opacity-60">{text('排序', 'Sort')}</span>
+          <select
+            value={relevanceSort}
+            aria-label={text('角色排序', 'Sort characters')}
+            className="h-5 rounded border border-[var(--color-border)] bg-transparent text-[0.7rem]"
+            onChange={event => setRelevanceSort(event.target.value as CharacterRelevanceSortKey)}
+          >
+            <option value="relevance">{text('有剧情优先', 'Has plot first')}</option>
+            <option value="name">{text('名字', 'Name')}</option>
+          </select>
+        </label>
+        {!relevanceContext && (
+          <span className="opacity-50" title={text('蓝图／大纲数据未读到，暂不按相关性筛选', 'Blueprint/outline data is unavailable; relevance filtering is off')}>
+            {text('蓝图／大纲未就绪', 'Blueprint & outline not ready')}
+          </span>
+        )}
+      </div>
       {/* 角色列表 */}
       <div className="flex-1 overflow-y-auto p-1">
         {pageCharacters.map((c) => {
           const selectionKey = keyOf(c)
           const isPicked = picked.includes(selectionKey)
+          const relevance = relevanceContext ? relevanceIndex.get(c) : undefined
+          const reasonExpanded = expandedReasonKeys.includes(selectionKey)
+          // 每行最多 2 条原因，其余收「+N」；展开后给全（命中档最多 3 个，展开到 3 即够）。
+          const reasonSlots = relevance ? characterRelevanceReasonSlots(relevance, reasonExpanded ? 3 : 2) : null
           return (
             <div
               key={selectionKey}
@@ -237,6 +387,38 @@ export default function CharactersView() {
                 <div className="min-w-0">
                   <div className="truncate font-medium">{c.name || text('未命名', 'Untitled')}</div>
                   <div className="mt-0.5 truncate text-[0.7rem] opacity-60">{roleLabel(c.role)}{visibleCharacters.filter(item => item.name === c.name).length > 1 ? ` · ${c.background || c.characterId?.slice(-8)}` : ''}</div>
+                  {relevance && reasonSlots && (
+                    <div
+                      className="mt-0.5 truncate text-[0.65rem] opacity-50"
+                      data-relevance={relevance.hits.length > 0 ? relevance.hits.join(',') : 'none'}
+                    >
+                      {relevance.hits.length === 0
+                        ? text('无剧情线索', 'No plot traces')
+                        : (
+                          <>
+                            {reasonSlots.shown.map(reason => relevanceReasonText(reason)).join(' · ')}
+                            {(reasonSlots.hidden > 0 || reasonExpanded) && (
+                              <button
+                                type="button"
+                                className="ml-1 underline"
+                                aria-label={reasonExpanded
+                                  ? text(`收起「${c.name}」的命中原因`, `Collapse reasons for ${c.name}`)
+                                  : text(`展开「${c.name}」的全部命中原因`, `Show all reasons for ${c.name}`)}
+                                onClick={event => {
+                                  // 这一行整块是「选中/勾选」按钮，点展开不能顺手把卡选上。
+                                  event.stopPropagation()
+                                  setExpandedReasonKeys(previous => (previous.includes(selectionKey)
+                                    ? previous.filter(key => key !== selectionKey)
+                                    : [...previous, selectionKey]))
+                                }}
+                              >
+                                {reasonExpanded ? text('收起', 'Less') : `+${reasonSlots.hidden}`}
+                              </button>
+                            )}
+                          </>
+                        )}
+                    </div>
+                  )}
                   {c.currentState && <div className="mt-0.5 text-[0.65rem] opacity-50">{text(`第${c.currentState.updatedAtChapter}章更新`, `Updated in chapter ${c.currentState.updatedAtChapter}`)}</div>}
                 </div>
               </div>
