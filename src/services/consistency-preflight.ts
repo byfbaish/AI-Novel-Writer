@@ -8,10 +8,14 @@ import {
 } from '../shared/consistency-preflight'
 import { findCharacterRosterRisks } from '../shared/character-roster-consistency'
 import { normalizeSpaceRefs, parseSpaceRules } from '../shared/space-time-consistency'
+import {
+  describeNamedEntityCoverage, findUnregisteredPersonRisks, parseNamedPersonRegistrations,
+} from '../shared/named-registration-consistency'
 import { ipc } from './ipc-client'
 
 // 覆盖度的类型与格式化器在 shared（纯函数、可单测）；这里再导出，调用方只认一处入口。
 export { describeSpaceTimeCoverage, type ConsistencyPreflightCoverage }
+export { describeNamedEntityCoverage }
 
 export interface ConsistencyPreflightResult {
   findings: ConsistencyFinding[]
@@ -42,14 +46,23 @@ export async function readConsistencyPreflight(
     worldBuildingText = (core as { worldbuilding?: string } | null)?.worldbuilding
   } catch { worldBuildingText = undefined }
   /**
+   * 角色台账只读**一次**，AC1 与 AC2 共用同一份快照（S4 收口要求：两笔各加一次读取，合并时并成一次）。
    * AC1/S1：角色名册投影状态。走既有 IPC 取主进程算好的 `status`，渲染层不重算哈希
    * （设计稿 `:201`）。读取失败（含旧项目 `角色名单元数据未初始化`）⇒ fail-open 不判，
    * 与上面 `worldbuilding` 的 try/catch 同一纪律。
+   * AC2：角色台账只作**交叉核对**（裁定 2）。读不到就不判——登记块按规定只收位置锚定型配角，
+   * 主角不在其中，台账缺失时只按登记行判会把主角全报成「未登记」（见实施包 §1.3）。
    */
   let rosterSnapshot: Parameters<typeof findCharacterRosterRisks>[0]
+  let rosterNames: string[] | undefined
   try {
-    rosterSnapshot = await ipc.invokeWithProjectSession(session, 'db:character-roster-read', session.projectPath)
-  } catch { rosterSnapshot = undefined }
+    const snapshot = await ipc.invokeWithProjectSession(session, 'db:character-roster-read', session.projectPath)
+    rosterSnapshot = snapshot
+    rosterNames = (snapshot?.entries ?? []).map(entry => entry.name).filter(name => Boolean(name))
+  } catch {
+    rosterSnapshot = undefined
+    rosterNames = undefined
+  }
   const findings = [
     ...(await Promise.all(blueprints.map(async blueprint => {
       const projections = await ipc.invokeWithProjectSession(
@@ -59,6 +72,11 @@ export async function readConsistencyPreflight(
         ...findBlueprintContinuityRisks(projections, blueprint, exemptions),
         ...findBlueprintSpaceTimeRisks(worldBuildingText, blueprint, exemptions),
         ...findBlueprintSlotAttackRisks(worldBuildingText, blueprint, exemptions),
+        ...findUnregisteredPersonRisks(worldBuildingText, {
+          chapterNumber: blueprint.chapterNumber,
+          characterNames: blueprint.characters,
+          rosterNames,
+        }, exemptions),
         // P11-1 的「意图词命中 ⇒ 报缺 attacks」提醒**已撤下**（2026-10-30）。
         // 它判的是「文本里有没有作废类动词」，而合同要判的是「某一格有没有被改动」——
         // 既不充分也不必要（「名次作废」有词无格；「他推门进了茶楼」有格无词），
@@ -79,6 +97,12 @@ export async function readConsistencyPreflight(
     registeredSpaces: worldBuildingText === undefined ? null : parseSpaceRules(worldBuildingText).length,
     blueprintSpaceRefs: blueprints.reduce(
       (total, blueprint) => total + normalizeSpaceRefs(blueprint.structuredRefs).length, 0,
+    ),
+    // AC2（射程 3：字段加在既有覆盖度上，名单空＝显式未判）
+    registeredNamedPeople: worldBuildingText === undefined
+      ? null : parseNamedPersonRegistrations(worldBuildingText).length,
+    blueprintCharacterRefs: blueprints.reduce(
+      (total, blueprint) => total + blueprint.characters.filter(name => Boolean(name?.trim())).length, 0,
     ),
   }
   return { findings, exemptions, coverage }

@@ -109,7 +109,7 @@ describe('describeSpaceTimeCoverage', () => {
   })
 
   it('★ 实机复现：世界观无机读行 ⇒ 明说「未参与判定」并给出补救', () => {
-    const note = describeSpaceTimeCoverage({ registeredSpaces: 0, blueprintSpaceRefs: 0 })!
+    const note = describeSpaceTimeCoverage({ registeredSpaces: 0, blueprintSpaceRefs: 0, registeredNamedPeople: 0, blueprintCharacterRefs: 0 })!
     expect(note.zhCN).toContain('未参与判定')
     expect(note.zhCN).toContain('hours=')
     expect(note.zhCN).toContain('重新生成世界观')
@@ -117,14 +117,14 @@ describe('describeSpaceTimeCoverage', () => {
   })
 
   it('设定层已登记、蓝图无结构化引用 ⇒ 指名是蓝图侧缺字段', () => {
-    const note = describeSpaceTimeCoverage({ registeredSpaces: 2, blueprintSpaceRefs: 0 })!
+    const note = describeSpaceTimeCoverage({ registeredSpaces: 2, blueprintSpaceRefs: 0, registeredNamedPeople: 0, blueprintCharacterRefs: 0 })!
     expect(note.zhCN).toContain('未参与判定')
     expect(note.zhCN).toContain('2 个空间')
     expect(note.zhCN).toContain('蓝图')
   })
 
   it('两侧都有 ⇒ 报「已完成」并带出覆盖量（作者能确证它真跑过）', () => {
-    const note = describeSpaceTimeCoverage({ registeredSpaces: 3, blueprintSpaceRefs: 5 })!
+    const note = describeSpaceTimeCoverage({ registeredSpaces: 3, blueprintSpaceRefs: 5, registeredNamedPeople: 0, blueprintCharacterRefs: 0 })!
     expect(note.zhCN).toContain('已完成')
     expect(note.zhCN).toContain('3 个空间')
     expect(note.zhCN).toContain('5 条蓝图引用')
@@ -132,17 +132,17 @@ describe('describeSpaceTimeCoverage', () => {
   })
 
   it('设定层读取失败（null）与「一条都没登记」区分开', () => {
-    const note = describeSpaceTimeCoverage({ registeredSpaces: null, blueprintSpaceRefs: 1 })!
+    const note = describeSpaceTimeCoverage({ registeredSpaces: null, blueprintSpaceRefs: 1, registeredNamedPeople: 0, blueprintCharacterRefs: 0 })!
     expect(note.zhCN).toContain('读取设定层失败')
     expect(note.zhCN).not.toContain('还没有可判定的机读行')
   })
 
   it('每条说明都有中英两版且非空', () => {
     for (const coverage of [
-      { registeredSpaces: null, blueprintSpaceRefs: 0 },
-      { registeredSpaces: 0, blueprintSpaceRefs: 0 },
-      { registeredSpaces: 2, blueprintSpaceRefs: 0 },
-      { registeredSpaces: 2, blueprintSpaceRefs: 3 },
+      { registeredSpaces: null, blueprintSpaceRefs: 0, registeredNamedPeople: 0, blueprintCharacterRefs: 0 },
+      { registeredSpaces: 0, blueprintSpaceRefs: 0, registeredNamedPeople: 0, blueprintCharacterRefs: 0 },
+      { registeredSpaces: 2, blueprintSpaceRefs: 0, registeredNamedPeople: 0, blueprintCharacterRefs: 0 },
+      { registeredSpaces: 2, blueprintSpaceRefs: 3, registeredNamedPeople: 0, blueprintCharacterRefs: 0 },
     ]) {
       const note = describeSpaceTimeCoverage(coverage)!
       expect(note.zhCN.trim().length, JSON.stringify(coverage)).toBeGreaterThan(0)
