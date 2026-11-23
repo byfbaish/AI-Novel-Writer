@@ -262,6 +262,10 @@ export interface ConsistencyPreflightCoverage {
   registeredSpaces: number | null
   /** 本次涉及的蓝图里带结构化空间引用（`spaceRefs`）的总条数。 */
   blueprintSpaceRefs: number
+  /** AC2：第 4 维解析出的【具名人物登记】条数。`null` = 设定层读取失败；`0` = 显式未判。 */
+  registeredNamedPeople: number | null
+  /** AC2：本次涉及的蓝图里点名（`characters[]`）的姓名总数。 */
+  blueprintCharacterRefs: number
 }
 
 /**

@@ -7,10 +7,14 @@ import {
   findBlueprintSpaceTimeRisks, findDuplicateSlotAttackRisks,
 } from '../shared/consistency-preflight'
 import { normalizeSpaceRefs, parseSpaceRules } from '../shared/space-time-consistency'
+import {
+  describeNamedEntityCoverage, findUnregisteredPersonRisks, parseNamedPersonRegistrations,
+} from '../shared/named-registration-consistency'
 import { ipc } from './ipc-client'
 
 // 覆盖度的类型与格式化器在 shared（纯函数、可单测）；这里再导出，调用方只认一处入口。
 export { describeSpaceTimeCoverage, type ConsistencyPreflightCoverage }
+export { describeNamedEntityCoverage }
 
 export interface ConsistencyPreflightResult {
   findings: ConsistencyFinding[]
@@ -40,6 +44,13 @@ export async function readConsistencyPreflight(
     const core = await ipc.invokeWithProjectSession(session, 'db:project-core-get', session.projectPath)
     worldBuildingText = (core as { worldbuilding?: string } | null)?.worldbuilding
   } catch { worldBuildingText = undefined }
+  // AC2：角色台账只作**交叉核对**（裁定 2）。读不到就不判——登记块按规定只收位置锚定型配角，
+  // 主角不在其中，台账缺失时只按登记行判会把主角全报成「未登记」（见实施包 §1.3）。
+  let rosterNames: string[] | undefined
+  try {
+    const snapshot = await ipc.invokeWithProjectSession(session, 'db:character-roster-read', session.projectPath)
+    rosterNames = (snapshot?.entries ?? []).map(entry => entry.name).filter(name => Boolean(name))
+  } catch { rosterNames = undefined }
   const findings = [
     ...(await Promise.all(blueprints.map(async blueprint => {
       const projections = await ipc.invokeWithProjectSession(
@@ -49,6 +60,11 @@ export async function readConsistencyPreflight(
         ...findBlueprintContinuityRisks(projections, blueprint, exemptions),
         ...findBlueprintSpaceTimeRisks(worldBuildingText, blueprint, exemptions),
         ...findBlueprintSlotAttackRisks(worldBuildingText, blueprint, exemptions),
+        ...findUnregisteredPersonRisks(worldBuildingText, {
+          chapterNumber: blueprint.chapterNumber,
+          characterNames: blueprint.characters,
+          rosterNames,
+        }, exemptions),
         // P11-1 的「意图词命中 ⇒ 报缺 attacks」提醒**已撤下**（2026-10-30）。
         // 它判的是「文本里有没有作废类动词」，而合同要判的是「某一格有没有被改动」——
         // 既不充分也不必要（「名次作废」有词无格；「他推门进了茶楼」有格无词），
@@ -64,6 +80,12 @@ export async function readConsistencyPreflight(
     registeredSpaces: worldBuildingText === undefined ? null : parseSpaceRules(worldBuildingText).length,
     blueprintSpaceRefs: blueprints.reduce(
       (total, blueprint) => total + normalizeSpaceRefs(blueprint.structuredRefs).length, 0,
+    ),
+    // AC2（射程 3：字段加在既有覆盖度上，名单空＝显式未判）
+    registeredNamedPeople: worldBuildingText === undefined
+      ? null : parseNamedPersonRegistrations(worldBuildingText).length,
+    blueprintCharacterRefs: blueprints.reduce(
+      (total, blueprint) => total + blueprint.characters.filter(name => Boolean(name?.trim())).length, 0,
     ),
   }
   return { findings, exemptions, coverage }
