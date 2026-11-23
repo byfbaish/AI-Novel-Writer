@@ -1,0 +1,64 @@
+{
+  "judgementSha": "89868921",
+  "treeHead": "89868921",
+  "distIndexMtime": "2026-11-23T04:54:18.530Z",
+  "marker": "[hook-unplanted]",
+  "markerLineCount": 1,
+  "markerCountMax": 1,
+  "markerCountFinalBody": 1,
+  "markerLines": [
+    "[hook-unplanted] ⚠️ 钩子未落地体检（C5）：钩子与本章正文的最长共同片段只有 1 字（少于 3 字）：「第6章结尾：名册被划掉的名字在次日夜里重新浮现」在正文里没有对应的写法。可改钩子、改正文，或知悉放行 —— 这一条只判当章，不追下一章。（正文已定稿；这是提示，不阻断，也不改稿。）"
+  ],
+  "settled": true,
+  "openAttempts": [
+    {
+      "label": "草稿",
+      "mode": "exact",
+      "clicked": true,
+      "opened": true
+    }
+  ],
+  "finalizeClicked": true,
+  "confirmClicked": true,
+  "ch6Body": "风从窗缝里挤进来，纸页翻动了一下。他伸手按住，屋里安静得只剩呼吸声。",
+  "ch6BodyLen": 34,
+  "hookText": "第6章结尾：名册被划掉的名字在次日夜里重新浮现",
+  "draftsAfter": [
+    {
+      "id": 1,
+      "chapterNumber": 1,
+      "status": "finalized",
+      "len": 309
+    },
+    {
+      "id": 2,
+      "chapterNumber": 2,
+      "status": "finalized",
+      "len": 309
+    },
+    {
+      "id": 3,
+      "chapterNumber": 3,
+      "status": "finalized",
+      "len": 309
+    },
+    {
+      "id": 4,
+      "chapterNumber": 4,
+      "status": "finalized",
+      "len": 309
+    },
+    {
+      "id": 5,
+      "chapterNumber": 5,
+      "status": "finalized",
+      "len": 309
+    },
+    {
+      "id": 6,
+      "chapterNumber": 6,
+      "status": "finalized",
+      "len": 34
+    }
+  ]
+}
