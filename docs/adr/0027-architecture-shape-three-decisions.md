@@ -1,6 +1,6 @@
 # 架构五层的形状：三类键、第 4 维登记名作锚点、弧用结构位 ID
 
-`architecture-consistency-design.md` 从 2026-10-11 起就写着「S2 需先定最小锚点」「S3 依赖第五层落地」，`plans/00-OVERVIEW.md:109` 也一直写着「顺延到架构定型后」。三张 L2 卡（`L2-ARCH-01-01/02/03`）因此在 ROADMAP 上全部「阻塞」，而「架构定型」这件事**从来没有被裁过一次**：全仓 9 处提到它的地方都是转述（`ROADMAP.md:116/124/132`、`00-OVERVIEW.md:108`、`prompt-assembly-backlog.md:817`、`handoffs/archive/2026-10-15-keyevents-bprime-pause-handoff.md:206`、`arc-granularity-and-enum.md:259/276`、`p11-plan-validity-and-fact-registry-design.md:321`）。
+`architecture-consistency-design.md` 从 2026-10-11 起就写着「S2 需先定最小锚点」「S3 依赖第五层落地」，`plans/00-OVERVIEW.md:108` 也一直把它排在「阶段三：架构定型后的校验（★ 时机后移，成本不变）」，看板卡标注「已拍板顺延到架构定型后」（`ROADMAP.md:132` 原文转述）。三张 L2 卡（`L2-ARCH-01-01/02/03`）因此在 ROADMAP 上全部「阻塞」，而「架构定型」这件事**从来没有被裁过一次**：全仓 9 处提到它的地方都是转述（`ROADMAP.md:116/124/132`、`00-OVERVIEW.md:108`、`prompt-assembly-backlog.md:817`、`handoffs/archive/2026-10-15-keyevents-bprime-pause-handoff.md:206`、`arc-granularity-and-enum.md:259/276`、`p11-plan-validity-and-fact-registry-design.md:321`）。
 
 一个从没被裁的问题会被无限期地当作借口：它不是「还差一个决定」，而是「没人知道该决定什么」。这份 ADR 就是补那一刀。
 
@@ -31,11 +31,11 @@ D1 的两个落地边界（2026-11-23 源码核对后补，均属「怎么写」
 - **取用方式未定，实施时二选一**：`deriveRosterStatus()` 是 electron 侧内部函数（`electron/repositories/character-roster-repository.ts:817`，未导出，`src/` 里搜不到），而架构预检跑在 `src/shared`。实现时要么**经既有 IPC 取投影状态**，要么**把三哈希判据下沉到 `src/shared`**——本 ADR 不预设，但必须选定其一并写进卡面，不允许两处各判一遍。
 - **投影源不止 `characters` 一张表**：投影由角色行 JOIN `character_relationships` 生成（`character-roster-repository.ts:848-857`），所以「校验投影状态」实际校验的是**角色＋关系**两表的事实，改关系也会改投影哈希；把它读成「只校验角色卡那一条」会漏掉关系变动。
 
-**D2 最小锚点＝世界观第 4 维的两类登记。** 空间名 ＋【具名人物登记】行（`builtin-prompt-templates.ts:668-672`）就是「谁算具名实体」的定义。匹配只做**逐字包含**；名单为空即**显式未判**（`consistency-preflight.ts:277-296` 已有该范式）；`characters` 表只作**交叉核对**，冲突以登记行为准。放过指代（"他/那位"），且这一局限必须写进报告。
+**D2 最小锚点＝世界观第 4 维的两类登记。** 空间名 ＋【具名人物登记】行（`builtin-prompt-templates.ts:668-672`）就是「谁算具名实体」的定义。匹配只做**逐字包含**；名单为空即**显式未判**（`consistency-preflight.ts:277-301` 已有该范式，三支分别对应 `:277-282` 读取失败／`:283-293` 无机读行／`:294-301` 蓝图无结构化引用）；`characters` 表只作**交叉核对**，冲突以登记行为准。放过指代（"他/那位"），且这一局限必须写进报告。
 
 D2 的两条落地边界（同上，2026-11-23 补）：
 
-- **「逐字包含」与现有的「trim 后全等」是两套口径，不得混用**：现存的空间—钟点核对是 `byName.get(ref.space)` 全等查表（`src/shared/space-time-consistency.ts:285`，判定顺序注释 `:271` 原文「空间名逐字命中（trim 后全等）」）。按裁定做包含匹配意味着 `藏书阁` 会命中 `藏书阁东厢`——这是新实现、新测试，**不改写既有全等语义**（改它会动 D1–D21 已验收的既有行为）。
+- **「逐字包含」与现有的「trim 后全等」是两套口径，不得混用**：现存的空间—钟点核对是 `byName.get(ref.space)` 全等查表（`src/shared/space-time-consistency.ts:286`，判定顺序注释 `:271` 原文「空间名逐字命中（trim 后全等）」）。按裁定做包含匹配意味着 `藏书阁` 会命中 `藏书阁东厢`——这是新实现、新测试，**不改写既有全等语义**（该语义由 `src/shared/__tests__/space-time-consistency.test.ts` 全文件 56 个 `it()` 锁住，例如 `:153`「引用了未登记的空间名 ⇒ warning，冲突源指向世界观层」）。
 - **人物名单要「显式未判」，须新增字段**：`ConsistencyPreflightCoverage`（`src/shared/consistency-preflight.ts:260-265`）现在只有 `registeredSpaces`／`blueprintSpaceRefs`，说明文案由 `:273-306` 按空间的三支出；人物名单复用该范式**不是零改动**，要加字段并补文案分支。
 
 **D3 弧层的可引用实体＝结构位 ID。** 不建表；弧重排导致 ID 变化时诚实报 `UNKNOWN_NODE`（发射点在 `src/shared/arc-node.ts:251`，经 `validateArcCovers` `:238` ← `auditArcCovers` `:449` ← `architecture.command.ts:812`），不静默重映射。节点文本指纹（`arc-node.ts:59-61` 明写一期不做）一期不做，成本转成作者一次手动复核。
