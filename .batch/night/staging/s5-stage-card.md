@@ -33,11 +33,13 @@ D5 档 A 零改：两条 `[static]` 只作只读验收（不改码、不出实�
 **判据 3 收窄（20:40 终审，卡面留痕）**：原判据含「第 5／7 章不误标」，仓内零样本（夹具仅第 6 章 `fixtures/c5-ch6-hook-planting.fixture.ts:29-35`），自造样本禁。裁定取 developer §6.4 的 (a)：本卡判据 3 只判**第 6 章两向**；5／7 章作「未覆盖」记账——缺陷稿与收口件须原句写明「第 5／7 章未验，待作者库导出真实文本后补验」，**不得**写「5／7 章不误标已验」，补验归 D18-① 待办。另吸纳 developer 收紧项：前缀只在 findings 中 `marker === 'C5-unplanted'` 的行出现（先拆 `unplanted`／`graze` 再按 marker 拼），否则判据 4「出现一次」会被蹭线提示冒充。
 
 ## 退出条件
+**收口口径（admin 11-23 裁，替代「三卡全 ✅」）**：S5 按「**2 ✅ ＋ 1 部分收口**」收口——D5 ✅、D15 ✅、D18 部分收口（判据 4 `[live]` 转 S6；判据不降级、`D18b` 不顶替、本阶段不加第三次实机）。下面 exit #2 实机证据与 #3 QA 复判一律按此口径判定，禁写「三卡全 ✅」。
+
 0. 节拍（admin 20:44 定）：**D18 apply 先跑完、回执核过，D15 才派件**，两卡 apply 不许并行；D15 apply 件按此压后不预投。
 1. 三份提案到齐并由 developer 一次评审（不动删除语义、不扩白名单、判据不让给提案；合报一次，不分三条）。
-2. 群里那一次实机证据齐（三卡 [live] 项 + 三项实例 evidence + `tasklist | grep -c electron` 原文）。
-3. QA 一次复判三卡，判词入库（`[live]` 项须带 `staging/` 证据副本，走第 13 条闸）。
-4. 缺陷稿三行回写、台账三行、看板三卡转 done；入库后 `HEAD`＝`ls-remote`、`porcelain` 0 行。
+2. 群里那一次实机证据齐（三卡 [live] 项 + 三项实例 evidence + `tasklist | grep -c electron` 原文）。**已完成**：runId `aeddad33-cf5`、`instancesThisRun=1`、`exitCode=0`、`leftoverElectronProcesses=0`、`tasklist | grep -ci electron` 原文 `0`。
+3. QA 一次复判三卡，判词入库（`[live]` 项须带 `staging/` 证据副本，走第 13 条闸）。**结论：2 ✅ ＋ 1 部分收口**——D5 PASS、D15 PASS、D18b PASS（仅 arch 前置闸）；D18 判据 4 `[live]` 无证据，按 §八 转 S6。
+4. 缺陷稿三行回写、台账三行；D5／D15 看板转 done，D18 留 todo（「S6 待复验·判据 4 缺定稿段证据」）；合并 sha 一律写「未合并·待主身」。入库后 `HEAD`＝`ls-remote`、`porcelain` 0 行。
 
 ## 派单分工
 - 豆包 ← **D15**（纯函数＋单测，最小面）。
@@ -57,3 +59,11 @@ D5 档 A 零改：两条 `[static]` 只作只读验收（不改码、不出实�
 ## 七、D5b（另立卡，不进 S5）
 - 名称：D5b 大纲侧模板改写（档 C），排额度重置后再起。
 - 其提案直接引 D5 报告 §2.3 那张逐行判法表，不重写。
+
+## 八、S5 收口裁定留痕（2026-11-23，admin）
+
+- **D18 判据 4 转 S6**：本阶段唯一一次实机 `aeddad33-cf5` 只有 arch 段，无 `hookInput`／finalize 键，判据 4「定稿后 `[hook-unplanted]` 出现恰一次」`[live]` **未取证**。admin 采 QA 方案 ②：转 S6（定向定稿段取证，由主人点头后再跑）。**判据不降级、不移出缺陷稿、`D18b` 不顶替**；D18 在缺陷稿保持 🟡，禁写 ✅。
+- **收口口径**：S5 按「2 ✅ ＋ 1 部分收口」收口（D5 ✅／D15 ✅／D18 部分收口），exit #2 与 #3 按此判定（见「退出条件」首段）。
+- **合并 sha**：三卡判定面 `7b48f074`（D5／D18）、D15 `f95ed1da` 均未并入 develop，缺陷稿／台账／收口件一律写「未合并·待主身」，合并后由 admin 回填。
+- 依据：`.batch/night/org/ruling-s5-d18-carry-1123.md`（文件 sha256 `8d957b81b593…`，提交 `8508bff3`）＋ QA 判词 `.batch/night/reports/s5-d5-d15-d18-verdict.md`（138 行／16,541B／`3695dc7f…`，入库 `2684206e`）。
+- 行号错位认账（admin 裁 3）：缺陷稿 §2 表为 `:70`（D5）／`:74`（D15）／`:80`（D18）；`:128`／`:135`／`:141` 属 `docs/plans/prompt-assembly-backlog.md` 现值索引，两处都要回写。
