@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { describeSpaceTimeCoverage, findBlueprintSpaceTimeRisks } from '../consistency-preflight'
-import { findSpaceTimeConflicts } from '../space-time-consistency'
+import { normalizeKeyEvents } from '../blueprint-key-events'
+import {
+  describeSpaceTimeCoverage, findBlueprintSlotAttackRisks, findBlueprintSpaceTimeRisks,
+  findDuplicateSlotAttackRisks,
+} from '../consistency-preflight'
+import { findSlotAttackConflicts, findSpaceTimeConflicts } from '../space-time-consistency'
 
 /**
  * T11：B′ 规则接进**既有预检关卡**（新增规则 ≠ 新增流程）。
@@ -144,5 +148,100 @@ describe('describeSpaceTimeCoverage', () => {
       expect(note.zhCN.trim().length, JSON.stringify(coverage)).toBeGreaterThan(0)
       expect(note.enUS.trim().length, JSON.stringify(coverage)).toBeGreaterThan(0)
     }
+  })
+})
+
+/**
+ * attacks 族（FACT S2）的**接线**：豁免生效、撤销后仍报、设定层缺失时 R1/R2 fail-open
+ * 但 R3 照判、不可判定不产 finding。判定本身由 `space-time-consistency.test.ts` 覆盖。
+ */
+const SLOT_WORLD = [
+  '### 4.【空间结构（地图与区域）】',
+  '老陈记｜hours=07:00-09:00｜entry=直接进入',
+  '车站｜hours=none｜entry=凭票进入',
+  '夜市｜hours=每月3日 21:00-22:00｜entry=自由进出',
+].join('\n')
+
+function slotEvents(chapterNumber: number, slots: { space: string; hour?: string }[]) {
+  return normalizeKeyEvents(
+    slots.map((slot, index) => ({
+      event: `第 ${index + 1} 个事件`,
+      attacks: { kind: 'slot', space: slot.space, ...(slot.hour === undefined ? {} : { hour: slot.hour }) },
+    })),
+    { chapterNumber },
+  )
+}
+
+describe('findBlueprintSlotAttackRisks（R1/R2 接线）', () => {
+  it('未登记的空间名 ⇒ warning，并带上冲突源层级与 slot: 键', () => {
+    const findings = findBlueprintSlotAttackRisks(SLOT_WORLD,
+      { chapterNumber: 6, keyEvents: slotEvents(6, [{ space: '查无此店', hour: '08:00' }]) })
+
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toMatchObject({ severity: 'warning', sourceChapter: 6, sourceLayer: 'blueprint' })
+    expect(findings[0]!.stableFactKey.startsWith('slot:')).toBe(true)
+  })
+
+  it('★ 豁免生效：按 stableFactKey 精确跳过', () => {
+    const blueprint = { chapterNumber: 6, keyEvents: slotEvents(6, [{ space: '查无此店', hour: '08:00' }]) }
+    const [finding] = findBlueprintSlotAttackRisks(SLOT_WORLD, blueprint)
+    expect(finding).toBeTruthy()
+    expect(findBlueprintSlotAttackRisks(SLOT_WORLD, blueprint,
+      [{ stableFactKey: finding!.stableFactKey, reason: '刻意安排', revoked: false }])).toEqual([])
+  })
+
+  it('撤销的豁免不再放行', () => {
+    const blueprint = { chapterNumber: 6, keyEvents: slotEvents(6, [{ space: '查无此店', hour: '08:00' }]) }
+    const [finding] = findBlueprintSlotAttackRisks(SLOT_WORLD, blueprint)
+    expect(findBlueprintSlotAttackRisks(SLOT_WORLD, blueprint,
+      [{ stableFactKey: finding!.stableFactKey, reason: '旧理由', revoked: true }])).toHaveLength(1)
+  })
+
+  it('★ fail-open：worldBuildingText 缺失 / 无机读行 ⇒ R1/R2 一条都不判', () => {
+    for (const world of [undefined, null, '', '只有散文，没有机读行。']) {
+      expect(findBlueprintSlotAttackRisks(world,
+        { chapterNumber: 1, keyEvents: slotEvents(1, [{ space: '查无此店', hour: '21:00' }]) }), String(world)).toEqual([])
+    }
+  })
+
+  it('不可判定（hours=none / 按月窗口）⇒ 连 info 都不产，不进 finding 列表', () => {
+    expect(findBlueprintSlotAttackRisks(SLOT_WORLD,
+      { chapterNumber: 2, keyEvents: slotEvents(2, [{ space: '车站', hour: '21:00' }]) })).toEqual([])
+    expect(findBlueprintSlotAttackRisks(SLOT_WORLD,
+      { chapterNumber: 2, keyEvents: slotEvents(2, [{ space: '夜市', hour: '03:00' }]) })).toEqual([])
+  })
+
+  it('与校验器同源：warning 条数与 findSlotAttackConflicts 的 warning 数一致', () => {
+    const keyEvents = slotEvents(8, [{ space: '查无此店', hour: '08:00' }, { space: '老陈记', hour: '20:00' }])
+    const direct = findSlotAttackConflicts({ chapterNumber: 8, worldBuildingText: SLOT_WORLD, keyEvents })
+      .filter(finding => finding.severity === 'warning')
+    expect(findBlueprintSlotAttackRisks(SLOT_WORLD, { chapterNumber: 8, keyEvents })).toHaveLength(direct.length)
+  })
+})
+
+describe('findDuplicateSlotAttackRisks（R3 接线）', () => {
+  const ch3 = { chapterNumber: 3, keyEvents: slotEvents(3, [{ space: '老陈记', hour: '08:00' }]) }
+  const ch7 = { chapterNumber: 7, keyEvents: slotEvents(7, [{ space: '老陈记', hour: '08:00' }]) }
+
+  it('两章作废同一格 ⇒ 1 条 warning', () => {
+    const findings = findDuplicateSlotAttackRisks([ch3, ch7])
+    expect(findings).toHaveLength(1)
+    expect(findings[0]).toMatchObject({ severity: 'warning', sourceChapter: 7 })
+  })
+
+  it('★ 设定层缺失时 R1/R2 fail-open，但 R3 仍判（R3 只做跨章字面对账）', () => {
+    expect(findBlueprintSlotAttackRisks(undefined,
+      { chapterNumber: 7, keyEvents: ch7.keyEvents })).toEqual([])
+    expect(findDuplicateSlotAttackRisks([ch3, ch7])).toHaveLength(1)
+  })
+
+  it('单章传入 ⇒ []', () => {
+    expect(findDuplicateSlotAttackRisks([ch3])).toEqual([])
+  })
+
+  it('豁免生效：一次「我知悉」对该格永久生效（键不含章号）', () => {
+    const [finding] = findDuplicateSlotAttackRisks([ch3, ch7])
+    expect(findDuplicateSlotAttackRisks([ch3, ch7],
+      [{ stableFactKey: finding!.stableFactKey, reason: '已知悉', revoked: false }])).toEqual([])
   })
 })

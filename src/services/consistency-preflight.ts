@@ -3,7 +3,8 @@ import type {
   BlueprintForPreflight, ConsistencyExemption, ConsistencyFinding, ConsistencyPreflightCoverage,
 } from '../shared/consistency-preflight'
 import {
-  describeSpaceTimeCoverage, findBlueprintContinuityRisks, findBlueprintSpaceTimeRisks,
+  describeSpaceTimeCoverage, findBlueprintContinuityRisks, findBlueprintSlotAttackRisks,
+  findBlueprintSpaceTimeRisks, findDuplicateSlotAttackRisks,
 } from '../shared/consistency-preflight'
 import { normalizeSpaceRefs, parseSpaceRules } from '../shared/space-time-consistency'
 import { ipc } from './ipc-client'
@@ -39,21 +40,26 @@ export async function readConsistencyPreflight(
     const core = await ipc.invokeWithProjectSession(session, 'db:project-core-get', session.projectPath)
     worldBuildingText = (core as { worldbuilding?: string } | null)?.worldbuilding
   } catch { worldBuildingText = undefined }
-  const findings = (await Promise.all(blueprints.map(async blueprint => {
-    const projections = await ipc.invokeWithProjectSession(
-      session, 'db:continuity-list-before', blueprint.chapterNumber, session.projectPath,
-    )
-    return [
-      ...findBlueprintContinuityRisks(projections, blueprint, exemptions),
-      ...findBlueprintSpaceTimeRisks(worldBuildingText, blueprint, exemptions),
-      // P11-1 的「意图词命中 ⇒ 报缺 attacks」提醒**已撤下**（2026-10-30）。
-      // 它判的是「文本里有没有作废类动词」，而合同要判的是「某一格有没有被改动」——
-      // 既不充分也不必要（「名次作废」有词无格；「他推门进了茶楼」有格无词），
-      // 且调用时不看 registeredSpaces，世界观没有可判定空间时也照弹。
-      // 承接方见 `docs/design/architecture/p11-plan-validity-and-fact-registry-design.md`
-      // 的「P11-1 撤下记录」：状态核对归 P11-3（水位 + 接地判定），字段自洽校验随 P11-4。
-    ]
-  }))).flat()
+  const findings = [
+    ...(await Promise.all(blueprints.map(async blueprint => {
+      const projections = await ipc.invokeWithProjectSession(
+        session, 'db:continuity-list-before', blueprint.chapterNumber, session.projectPath,
+      )
+      return [
+        ...findBlueprintContinuityRisks(projections, blueprint, exemptions),
+        ...findBlueprintSpaceTimeRisks(worldBuildingText, blueprint, exemptions),
+        ...findBlueprintSlotAttackRisks(worldBuildingText, blueprint, exemptions),
+        // P11-1 的「意图词命中 ⇒ 报缺 attacks」提醒**已撤下**（2026-10-30）。
+        // 它判的是「文本里有没有作废类动词」，而合同要判的是「某一格有没有被改动」——
+        // 既不充分也不必要（「名次作废」有词无格；「他推门进了茶楼」有格无词），
+        // 且调用时不看 registeredSpaces，世界观没有可判定空间时也照弹。
+        // 承接方见 `docs/design/architecture/p11-plan-validity-and-fact-registry-design.md`
+        // 的「P11-1 撤下记录」：状态核对归 P11-3（水位 + 接地判定），字段自洽校验随 P11-4。
+      ]
+    }))).flat(),
+    // attacks R3：同一格被两个不同章都声明为作废目标（跨章对账，不依赖设定层）。
+    ...findDuplicateSlotAttackRisks(blueprints, exemptions),
+  ]
   const coverage: ConsistencyPreflightCoverage = {
     registeredSpaces: worldBuildingText === undefined ? null : parseSpaceRules(worldBuildingText).length,
     blueprintSpaceRefs: blueprints.reduce(

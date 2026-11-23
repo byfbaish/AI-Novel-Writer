@@ -1,6 +1,9 @@
 import type { FinalizedContinuityProjection } from './finalized-continuity'
 import type { BlueprintKeyEvent } from './blueprint-key-events'
-import { findSpaceTimeConflicts, type ConsistencySourceLayer, type SpaceTimeFinding } from './space-time-consistency'
+import {
+  findDuplicateSlotAttacks, findSlotAttackConflicts, findSpaceTimeConflicts,
+  type ConsistencySourceLayer, type SpaceTimeFinding,
+} from './space-time-consistency'
 
 export interface ConsistencyExemption {
   stableFactKey: string
@@ -158,6 +161,66 @@ export function findBlueprintSpaceTimeRisks(
   })
     .filter(finding => !activeExemptions.has(finding.stableFactKey))
     // `info` 级不进审稿 items：它不是冲突，只是「没有可判定形式」的说明，落进报告只会变噪声。
+    .filter((finding): finding is SpaceTimeFinding & { severity: 'warning' } => finding.severity === 'warning')
+    .map(finding => ({
+      stableFactKey: finding.stableFactKey,
+      severity: finding.severity,
+      sourceChapter: finding.sourceChapter,
+      evidence: finding.evidence,
+      issue: finding.issue,
+      suggestion: finding.suggestion,
+      sourceLayer: finding.sourceLayer,
+    }))
+}
+
+/**
+ * attacks 族（FACT S2）：**关键事件声明的作废目标 vs 设定层的空间登记**。
+ *
+ * 与上一条同源（都是「设定声明 vs 蓝图使用」），主体换成 `keyEvents[].attacks`。
+ * 计算在 `space-time-consistency.ts`（纯结构比较、零语义解析、缺字段 fail-open）；
+ * 这里同样只做两件事：**接豁免**与**译成 `ConsistencyFinding`**。
+ */
+export function findBlueprintSlotAttackRisks(
+  worldBuildingText: string | null | undefined,
+  blueprint: Pick<BlueprintForPreflight, 'chapterNumber' | 'keyEvents'>,
+  exemptions: readonly ConsistencyExemption[] = [],
+): ConsistencyFinding[] {
+  const activeExemptions = new Set(
+    exemptions.filter(exemption => !exemption.revoked).map(exemption => exemption.stableFactKey),
+  )
+  return findSlotAttackConflicts({
+    chapterNumber: blueprint.chapterNumber,
+    worldBuildingText,
+    keyEvents: blueprint.keyEvents,
+  })
+    .filter(finding => !activeExemptions.has(finding.stableFactKey))
+    .filter((finding): finding is SpaceTimeFinding & { severity: 'warning' } => finding.severity === 'warning')
+    .map(finding => ({
+      stableFactKey: finding.stableFactKey,
+      severity: finding.severity,
+      sourceChapter: finding.sourceChapter,
+      evidence: finding.evidence,
+      issue: finding.issue,
+      suggestion: finding.suggestion,
+      sourceLayer: finding.sourceLayer,
+    }))
+}
+
+/**
+ * attacks 族 R3：**同一格被两个不同章都声明为作废目标**（跨章对账）。
+ *
+ * 不依赖设定层 —— `worldBuildingText` 缺失时它照判（`findSlotAttackConflicts` 的
+ * fail-open 只覆盖 R1/R2）。
+ */
+export function findDuplicateSlotAttackRisks(
+  blueprints: readonly Pick<BlueprintForPreflight, 'chapterNumber' | 'keyEvents'>[],
+  exemptions: readonly ConsistencyExemption[] = [],
+): ConsistencyFinding[] {
+  const activeExemptions = new Set(
+    exemptions.filter(exemption => !exemption.revoked).map(exemption => exemption.stableFactKey),
+  )
+  return findDuplicateSlotAttacks({ blueprints })
+    .filter(finding => !activeExemptions.has(finding.stableFactKey))
     .filter((finding): finding is SpaceTimeFinding & { severity: 'warning' } => finding.severity === 'warning')
     .map(finding => ({
       stableFactKey: finding.stableFactKey,
