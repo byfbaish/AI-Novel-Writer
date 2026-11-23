@@ -4,7 +4,7 @@
 - 判定面：`wt-2` 分支 `card/arch-ac3-s3`，HEAD `b5a14f1cefaa57c5f02894139f2b4bede6f5cce1`，父 `57d05871`
 - 起点：`57d05871`
 - 核盘时间：2026-11-24 01:05–01:10（+08）
-- 回执：`C:\tmp\ac3-s3\workbuddy\receipt-to-owner.md`（120 行／7,787B／`bf056545ec8906d8588101b44a15eb2faaf29a489aa8a932a8b793d7d396a3ae`）
+- 回执：`C:\tmp\ac3-s3\workbuddy\receipt-to-owner.md`（120 行／7,787B／`bf056545ec8906d8588101b44a15eb2faaf29a489aa8a932a8b793d7d396a3ae`；2026-11-24 02:01 外派会话被补话唤醒后改写为 122 行／8,611B／`e92e8bb5fa4b1d3f59ef8132ec81c1fd4f95942f5b0770ff10bc815bdae344a0`，新增 §9／§10；判据基准仍取本行所记的 00:58 版，新件只作补证）
 
 ## 0. 树与改动面
 
