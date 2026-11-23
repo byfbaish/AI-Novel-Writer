@@ -211,7 +211,7 @@ docs/
 | [`chapter-task-anchor-design.md`](design/prompt/chapter-task-anchor-design.md) | ✅ 已落地（2026-11-08）· **判定「必要但不充分」，待裁是否回滚 B1** | **正文请求的显式任务锚点**：此前第 2 章请求里「第2章」出现 **0 次**、「第一章」6 次（来自覆盖层 taskGuidance），9B 把上一章整章重写（8-gram **98.2%**、最长连续 1,601 字）· 改法 = `chapter_number`/`chapter_title` 变量 + 内置首句中英双改 + 装配末尾 `chapterTaskAnchorText()`（**禁用「续写」二字**）· **实机 6 次**：无锚点 2/2 复述（86–98%），有锚点 4 次 2 通过（5.3%/6.5%）2 失败（57.5%/60.1%）⇒ 二值分布、未根治 · §3 记**覆盖层三处路径**与「看 trace `fragments.resolvedFrom`」判据 |
 | [`prompt-block-order-audit.md`](design/prompt/prompt-block-order-audit.md) | 📋 审计（豆包产出，2026-11-08） | **正文 prompt 29 块横向审计**：只有一处结构性倒置（作者事实+世界观 3,644 字符落在指令区之后），挪回会推进 U 形中谷故**不建议挪**；可动仅两项 —— 输出格式↔AI 味反制换序（0 字符）、「本章写作方向+钩子」615 字符挪末段（**须先过照抄门槛**）；含「绝不能挪」8 条与照抄风险专项 |
 
-### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（49 篇）
+### 4.2 架构 / 故事弧 / 一致性 · [`design/architecture/`](design/architecture/)（51 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -254,7 +254,9 @@ docs/
 | [`p13-arc-layer-expansion-design.md`](design/architecture/p13-arc-layer-expansion-design.md) | ✅ 已实施 | 弧光分层信息量必须递增：小弧从「标签」变「材料」+ 大弧「中弧推进」+ 生成时体检 |
 | [`arc-proportion-calibration.md`](design/architecture/arc-proportion-calibration.md) | 📝 已并入下条 | 弧光篇幅比例：30:45:25 / 40:60 / 小弧差 ≤2 倍（现为全层均分） |
 | [`arc-budget-engine-design.md`](design/architecture/arc-budget-engine-design.md) | 📝 立项 · 待裁定 | **骨架预算引擎**（合并平台画像）：章数由本地算、模型只复核；一张画像两个消费者；比例与绝对区间在 150 章下不兼容 |
-| [`o1-arc-event-progress-design.md`](design/architecture/o1-arc-event-progress-design.md) | 📝 待裁定 | **O1 落地：按弧分配、按章生成**——事件按 `→` 编号 + 每章进度线 + `覆盖：#E<n>` 水位，四条不变量（不改批次/cursor/请求数） |
+| [`o1-arc-event-progress-design.md`](design/architecture/o1-arc-event-progress-design.md) | 📝 待裁定 · 已被下条取代 | **O1 旧口径（按弧）**——事件按 `→` 编号 + 每章进度线 + `覆盖：#E<n>` 水位，四条不变量（不改批次/cursor/请求数）。⚠️ 单元模式禁止「覆盖：」行，改判见 [`o1-unit-event-progress-design.md`](design/architecture/o1-unit-event-progress-design.md) |
+| [`o1-unit-event-progress-design.md`](design/architecture/o1-unit-event-progress-design.md) | 📝 待裁定（2026-11-24） | **O1 改判版：单元内逐章事件进度水位**——进度改挂独立行 `进度：E<n>`（不挂覆盖行、不自造结构编号；**须同笔改 `ZH/EN_TWO_LEVEL_SUFFIX` + 两处逐字断言**）+ 折算 `[floor(k·M/N), ceil(k·M/N)]`，**N＝已写章数、按章冻结** + EV-1..4 全 fail-open；只改渲染文本、不新增模板变量、不改请求数与 cursor |
+| [`p6-narrative-thread-range-design.md`](design/architecture/p6-narrative-thread-range-design.md) | 📝 待裁定（2026-11-24） | **叙事线索候选区间化（档 1）** + 生成后建议（档 3）：区间 ≤10 复用 `PLANNING_ACTION_CHAPTER_LIMIT`，**串行 N 次单章请求**（每章预算 4096、超限拒绝不截断；失败即停、已产出整批保留、记失败章号续跑）；「已扫/剩余」由计划区间并集派生，不新建扫描表；档 2 按单元批量明确不做 |
 | [`synopsis-expansion-design.md`](design/architecture/synopsis-expansion-design.md) | ✅ 已实施 | **大纲层扩张机制**：章数不减，改「章级局面」（想要—被挡—尝试—代价—未决）+ 展开四来源 + 弧位块逐章步数上限（代码算，不让模型排） |
 | [`arc-layer-handoff.md`](design/architecture/arc-layer-handoff.md) | ✅ 交接必读 | **弧光层工间交接**：初衷（把硬编码的阶段划分显性化）/ 职责三问 / 怎么长到 10.6k 的正反馈 / 五条已证伪假设 / 六条交接禁忌 / 下一步（先只写大弧层跑一次） |
 | [`arc-tree-expansion-design.md`](design/architecture/arc-tree-expansion-design.md) | 🟡 待评审（`exp/arc-tree-v2`） | **弧光「逐节点展开」验证方案**：一次性生成的病是"同一个上下文里同时做 27 个决定 ⇒ 只能套格式"；本轮只做两层（大弧一次 + 中弧逐个大弧展开、小弧不拆）；复用同一 key 跑 1+N 次拼接，零 DB/契约改动；`arc-node` 的中弧结构位已够大纲对账，不依赖小弧 |
@@ -293,7 +295,7 @@ docs/
 | [`c1-review-architecture-declaration-design.md`](design/review/c1-review-architecture-declaration-design.md) | ✅ 已实施 | 审稿链「远期设定使用规则」声明（路子 B） |
 | [`consistency-check-ordinal-claim-guard-design.md`](design/review/consistency-check-ordinal-claim-guard-design.md) | ✅ 已实施 | 序数/全称断言独立复核 |
 
-### 4.4 角色 · [`design/characters/`](design/characters/)（4 篇）
+### 4.4 角色 · [`design/characters/`](design/characters/)（5 篇）
 
 | 文档 | 状态 | 一句话 |
 |---|---|---|
@@ -301,6 +303,7 @@ docs/
 | [`p2-character-card-ai-generation.md`](design/characters/p2-character-card-ai-generation.md) | ✅ 已实施 | 角色卡管理界面的 AI 生成增强 |
 | [`character-proposal-adoption-merge-design.md`](design/characters/character-proposal-adoption-merge-design.md) | ✅ 已实施 | 采用到已有角色时改为字段合并（不覆盖已引用设定）+ 候选→已有卡的关系可直接采用 |
 | [`character-roster-rebuild-design.md`](design/characters/character-roster-rebuild-design.md) | ✅ 已实施 | 架构重建＝整册替换：同名默认采用、字段覆盖、名单外旧卡退休、同对关系边收敛 |
+| [`c1-relevance-filter-and-regeneration-diff-design.md`](design/characters/c1-relevance-filter-and-regeneration-diff-design.md) | 📝 待裁定（2026-11-24） | **C1 落地**：相关性筛选三档（关系/蓝图声明/大纲世界观命中）只标原因不自动勾选；重生成改**字段级并排 + 三选一 + 排序**，覆盖前留旧卡快照（**新 lane 表 `character_regeneration_snapshots`**，照 M08 先例、不动 M00 基线）、覆盖后按 `operation_id` 逐字段回退；排序 v1 只留「有剧情优先／名字」；不做逐字 diff |
 
 ### 4.5 功能与设置 · [`design/features/`](design/features/)（9 篇）
 
