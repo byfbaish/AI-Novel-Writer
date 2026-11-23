@@ -916,7 +916,7 @@ To: AI writer项目组 · 群内共读（判件基准件）
 
 | 卡 | 结论 | 判据与证据 | 回写落点 |
 |---|---|---|---|
-| L1-FACT-01（卡 `bb3f0d83`） | 达标 | 判定面 `0ec6c89c`（分支 `card/fact-preflight-3rules`，5 文件 `+542/−25` 全在白名单内）；QA 判词 `.batch/night/reports/s2-fact-verdict.md`（73 行／7,530B／`d6a4232c…`）；`Tests 83 passed (83)`／`EXIT=0`；QA 手写 FNV-1a 64 复算 `space:6f155ee620aee7cd` 与测试字面量一致、`slot:` 前缀隔离成立；变异测试（`:415` 守卫改恒假 → 3 条负向转红）证明负向断言非空；`pnpm check:fast` 末行「全部通过」；合并 sha `26731adb`（merge `0ec6c89c`），已推送，远端 HEAD `ef915a60` | ROADMAP `:30`／`:31`（§1 表）＋ §2 `L0-FACT`／`L1-FACT-01` 状态行；看板卡 `bb3f0d83` 由 admin 转 done |
+| L1-FACT-01（卡 `bb3f0d83`） | 达标 | 判定面 `0ec6c89c`（分支 `card/fact-preflight-3rules`，5 文件 `+542/−25` 全在白名单内）；QA 判词 `.batch/night/reports/s2-fact-verdict.md`（73 行／7,530B／`d6a4232c…`）；`Tests 83 passed (83)`／`EXIT=0`；QA 手写 FNV-1a 64 复算 `space:6f155ee620aee7cd` 与测试字面量一致、`slot:` 前缀隔离成立；变异测试（`:415` 守卫改恒假 → 3 条负向转红）证明负向断言非空；`pnpm check:fast` 末行「全部通过」；合并 sha `26731adb`（merge `0ec6c89c`），已推送，S3 终版 HEAD `22c085db` | ROADMAP `:30`／`:31`（§1 表）＋ §2 `L0-FACT`／`L1-FACT-01` 状态行；看板卡 `bb3f0d83` 由 admin 转 done |
 
 - 记账两条进 BACKLOG 不随本阶段修：`R3` 只看调用方传入的 `blueprints`（单章路径恒不触发、跨批次检测不到）；单章对话框未传 `structuredRefs`，既有 `space:` 规则单章路径 fail-open。
 - 本段只追加，不改既有条目。
