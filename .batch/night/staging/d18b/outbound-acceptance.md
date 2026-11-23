@@ -36,7 +36,7 @@ To: D18b 派单方（本件为 admin 验收记录，随同笔提交入库）
 
 1. **`## 第N章 <标题>` 解析失败 → 采信，按实测回填**。`outlineChapterHeading`（`src/shared/chapter-heading.ts:84-94`）要求 `#` 后空白且章号后为分隔符或行尾，空格不算分隔符。已改 `impl-package.md:72` 为「必须 `## 第N章：<标题>`」并写入实测原句；取证脚本改标点不改取值，与判据无涉。产品侧是否放宽到「空格也算分隔符」**不属 D18b 范围**，不在此卡改码，记观察项交负责人决定是否另开卡。
 2. **临时项目落点 → 以派单为准**：`C:\tmp\s5-outbound\d18b\workbuddy\proj\`。已改卡面草案 §0（`d18b-arch-pregate-draft.md:16`）为同名路径；`run-live.mjs` 只读 `seed-meta.json`，两边不会分叉，`--proj` 保留作覆盖手段。
-3. **回执落点 → 由我代落，但不进 `bridge\to-owner`**。勘误：`.batch/night/bridge/*` 实际被 `.gitignore:93` 忽略，写进去**不会**破 `porcelain` 零行（执行方判断有误，不算它的错，它读不到该规则）。仍不入 to-owner 的理由只剩一条：省掉主身一轮注入。落点定为 `.batch/night/staging/d18b/receipt-to-owner.md`（随本笔提交），原件照旧留 `C:\tmp` 供实机参照。
+3. **回执落点 → 由我代落，但不进 `bridge\to-owner`**。勘误：`.batch/night/bridge/*` 实际被 `.gitignore:93` 忽略，写进去**不会**破 `porcelain` 零行（执行方判断有误，不算它的错，它读不到该规则）。仍不入 to-owner 的理由只剩一条：省掉主身一轮注入。落点定为 `.batch/night/staging/d18b/receipt-to-owner.md`（随本笔提交），原件照旧留 `C:\tmp` 供实机参照。主身 11-23 11:16 独立实测同一规则并确认「派单要求落 to-owner 是对的」——该注已写进派单件 §0.2，后续外派不再自保落暂存目录。
 
 ## 4. 下一步（不在此件执行）
 
