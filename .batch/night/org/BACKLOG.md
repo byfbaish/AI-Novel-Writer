@@ -133,6 +133,15 @@ A、D 两卡各自过验，合进 `card/git-track-ops-1117` 后红两处：
 - R3 跨批次同格重复检测不到：`findDuplicateSlotAttacks` 只能看调用方传入的 `blueprints`——单章路径（`ChapterCreationDialog.tsx:362` 只传 1 个）永不触发，批量只覆盖本批窗口；与「单章不传 `structuredRefs`」同性质。处置：待立卡或结项，未排期。
 - 单章路径 `space:` 规则 fail-open：单章对话框未传 `structuredRefs`，既有 `space:` 规则在单章路径上不触发（fail-open 属设计本意，但「单章永不检出」这条边界需写进卡面）。处置：待立卡或结项，未排期。
 
+### AC 系收口转下期（2026-11-24，AC 系 S4 收口登记）
+
+1. `describeNamedEntityCoverage` 已有实现（`src/shared/named-registration-consistency.ts`）但预检侧无调用点（`src/services/consistency-preflight.ts:38-42` 只接 `containsNamed` 半部）⇒ 作者侧「显式未判」不可见。
+2. 语义版人名归一（NER／别名／简称）另开卡：ADR-0027 `docs/adr/0027-architecture-shape-three-decisions.md:55` 明写不覆盖，本轮只做结构化逐字包含。
+3. 两级「卷/单元」结构下 synopsis 覆盖行合同 `src/shared/synopsis-two-level-suffix.ts:37` 禁「覆盖：」行 ⇒ AC3 弧覆盖规则在两级项目恒 fail-open，要判须先改输出合同。
+4. AC2 重名登记无信号：后一条静默覆盖前一条，规则不报也不提示（`src/shared/named-registration-consistency.ts:107` 读入的名单已去重）⇒ 需 UI 提示或规则补强。
+5. 单章对话框 `src/renderer/.../ChapterCreationDialog.tsx:362-372` 未传 `structuredRefs` ⇒ 既有 `space:` 规则单章路径恒 fail-open（AC2 卡已登记，仍开放）。
+6. 台账缺失时 AC2 整条 fail-open（`src/shared/named-registration-consistency.ts:109`），且登记行与台账两处都放行 ⇒ 台账是第二放行来源，卡面与文档不得写「冲突以登记行为准已实现」。
+
 ### 转下期清单（2026-11-21 02:0x 更新，本 Goal S4 认定）
 
 **已在本 Goal 结案**：B-1b、B-1c、B-1d（均「仓库外仓·不纳管」，不删）、B-2（三档结论已出、删除 0）、B-3（E 卡收口）、B-5（规矩已实践）、B-6、B-16（尾行那半）、B-17、B-18（未复发）、B-20（验证记录卡）、B-23（不成立：从未缺过）。

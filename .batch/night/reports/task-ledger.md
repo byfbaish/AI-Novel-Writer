@@ -920,3 +920,13 @@ To: AI writer项目组 · 群内共读（判件基准件）
 
 - 记账两条进 BACKLOG 不随本阶段修：`R3` 只看调用方传入的 `blueprints`（单章路径恒不触发、跨批次检测不到）；单章对话框未传 `structuredRefs`，既有 `space:` 规则单章路径 fail-open。
 - 本段只追加，不改既有条目。
+
+### AC 系三卡（S4 收口登记，2026-11-24）
+
+| 卡 | 结论 | 判据与证据 | 回写落点 |
+|---|---|---|---|
+| CARD-ARCH-AC1（卡 `a7589d74`） | 达标 | 判定面 `6e0f6a63`；判词 `.batch/night/reports/ac1-s1-verdict.md`（135 行／10,173B／`cff7edda…`）；测试 `10 passed`；合并 sha 未合并·待主身（AC1 已并 `2e43a912`） | ROADMAP `L2-ARCH-01-01` 状态行 |
+| CARD-ARCH-AC2（卡 `4027dbef`） | 达标 | 判定面 `5e99d2ad`；判词 `.batch/night/reports/ac2-s2-verdict.md`（101 行／13,812B／`c4c2c40d…`）；测试 `13 passed`；合并 sha 未合并·待主身 | ROADMAP `L2-ARCH-01-02` 状态行 |
+| CARD-ARCH-AC3（卡 `ed210a27`） | 达标 | 判定面 `b5a14f1c`；判词 `.batch/night/reports/ac3-s3-verdict.md`（123 行／10,799B／`55e849f9…`）；测试 `46 passed (46)`；合并 sha 未合并·待主身 | ROADMAP `L2-ARCH-01-03` 状态行 |
+
+- 本段只追加，不改既有条目；合并 sha 待主身推送后由产品经理回填。
