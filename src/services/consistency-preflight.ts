@@ -11,6 +11,7 @@ import { normalizeSpaceRefs, parseSpaceRules } from '../shared/space-time-consis
 import {
   describeNamedEntityCoverage, findUnregisteredPersonRisks, parseNamedPersonRegistrations,
 } from '../shared/named-registration-consistency'
+import { findArcCoverRisks } from '../shared/arc-cover-consistency'
 import { ipc } from './ipc-client'
 
 // 覆盖度的类型与格式化器在 shared（纯函数、可单测）；这里再导出，调用方只认一处入口。
@@ -41,9 +42,18 @@ export async function readConsistencyPreflight(
    * （与既有 `findBlueprintContinuityRisks` 调用点的 catch 同一纪律）。
    */
   let worldBuildingText: string | undefined
+  /** 弧层（AC3）的输入：与 `worldbuilding` 同一次读取，不新增 IPC。读取失败一律 fail-open。 */
+  let arcLayer: { plotStructurePlan?: string; synopsis?: string; totalChapters?: number } | undefined
   try {
-    const core = await ipc.invokeWithProjectSession(session, 'db:project-core-get', session.projectPath)
-    worldBuildingText = (core as { worldbuilding?: string } | null)?.worldbuilding
+    const core = await ipc.invokeWithProjectSession(session, 'db:project-core-get', session.projectPath) as
+      | { worldbuilding?: string; plotStructurePlan?: string; synopsis?: string; totalChapters?: number }
+      | null
+    worldBuildingText = core?.worldbuilding
+    arcLayer = {
+      plotStructurePlan: core?.plotStructurePlan,
+      synopsis: core?.synopsis,
+      totalChapters: core?.totalChapters,
+    }
   } catch { worldBuildingText = undefined }
   /**
    * 角色台账只读**一次**，AC1 与 AC2 共用同一份快照（S4 收口要求：两笔各加一次读取，合并时并成一次）。
@@ -77,6 +87,7 @@ export async function readConsistencyPreflight(
           characterNames: blueprint.characters,
           rosterNames,
         }, exemptions),
+        ...findArcCoverRisks({ chapterNumber: blueprint.chapterNumber, ...arcLayer }, exemptions),
         // P11-1 的「意图词命中 ⇒ 报缺 attacks」提醒**已撤下**（2026-10-30）。
         // 它判的是「文本里有没有作废类动词」，而合同要判的是「某一格有没有被改动」——
         // 既不充分也不必要（「名次作废」有词无格；「他推门进了茶楼」有格无词），
