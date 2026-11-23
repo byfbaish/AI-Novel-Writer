@@ -87,6 +87,26 @@ const SYNOPSIS_UNIT_OVERLAP = `# 情节大纲
 ## 第3卷第1单元第1章（全书第11章）：新卷
 `
 
+/** 第 2 卷两单元 7–9 与 10–10：端点相接、不相交（D15「合法样态不误报」用）。 */
+const SYNOPSIS_UNITS_TOUCHING = `# 情节大纲
+
+## 第2卷第1单元第7章（全书第7章）：甲
+## 第2卷第1单元第9章（全书第9章）：丙
+## 第2卷第2单元第10章（全书第10章）：丁
+## 第3卷第1单元第11章（全书第11章）：新卷
+`
+
+/**
+ * 第 1 卷两单元都是 5–8：单元 1 由归属标题写出 5–8，单元 2 没有归属标题、
+ * 走 even 均分（卷区间 1–8、两单元 ⇒ 1–4 / 5–8）⇒ 区间全等，用于锁「只计一次」。
+ */
+const SYNOPSIS_UNITS_IDENTICAL = `# 情节大纲
+
+## 第1卷第1单元第5章（全书第5章）：甲
+## 第1卷第1单元第8章（全书第8章）：乙
+## 第2卷第1单元第9章（全书第9章）：丙
+`
+
 const OLD_SYNOPSIS = `# 情节大纲
 
 ## 第1章：被裁第三天
@@ -232,6 +252,38 @@ describe('materializeVolumeStructure', () => {
     const units = projection!.volumes[1]!.units
     expect([units[0]!.plannedFirst, units[0]!.plannedLast]).toEqual([7, 9])
     expect([units[1]!.plannedFirst, units[1]!.plannedLast]).toEqual([8, 8])
+  })
+
+  // ── D15 补两例：合法样态不误报 / 全等重叠只计一次（锁现状，不改源码） ────────────
+
+  it('单元区间端点相接（7-9 与 10-10）不算重叠 ⇒ warnings 为空，不报 VOLUME_UNIT_*', () => {
+    const projection = materializeVolumeStructure({
+      plan: PLAN_NO_COUNTS, synopsis: SYNOPSIS_UNITS_TOUCHING, totalChapters: 0,
+    })
+    expect(projection!.volumes[1]!.units.map(unit => [unit.plannedFirst, unit.plannedLast]))
+      .toEqual([[7, 9], [10, 10]])
+    // 闭区间求交（volume-unit-overlap.ts:34-38）：lo = max(7,10) = 10、hi = min(9,10) = 9，
+    // `10 <= 9` 为假 ⇒ 无交集。章号文本连续性（volume-structure.ts:144-158）不参与求交，
+    // 所以「10 紧接 9」不能被读成重叠；整份 warnings 也不许冒出别的假阳性。
+    expect(projection!.warnings).toEqual([])
+  })
+
+  it('两单元区间完全相同（都 5-8）⇒ 该对单元只计 1 条 VOLUME_UNIT_OVERLAP', () => {
+    const projection = materializeVolumeStructure({
+      plan: PLAN_NO_COUNTS, synopsis: SYNOPSIS_UNITS_IDENTICAL, totalChapters: 0,
+    })
+    expect(projection!.volumes[0]!.units.map(unit => [unit.plannedFirst, unit.plannedLast]))
+      .toEqual([[5, 8], [5, 8]])
+    // 一对单元两两求交只产 1 条 overlap（volume-unit-overlap.ts:74-85）；
+    // 逐章覆盖按「覆盖单元集合」归组，5-8 全落在同一组 ⇒ 只 1 条 ambiguous（:96-104）。
+    // 计数写死 === 1，不是 >= 1 —— 后者会把「同一对单元报两遍」也放过。
+    const overlap = projection!.warnings.filter(warning => warning.startsWith('VOLUME_UNIT_OVERLAP:'))
+    expect(overlap).toEqual(['VOLUME_UNIT_OVERLAP:1:1-2:5-8'])
+    expect(overlap).toHaveLength(1)
+    expect(projection!.warnings).toEqual([
+      'VOLUME_UNIT_OVERLAP:1:1-2:5-8',
+      'VOLUME_UNIT_AMBIGUOUS:1:1-2:5-8',
+    ])
   })
 
   it('signature 只看边界：synopsis 只改章正文（标题不变）时签名不变', () => {
