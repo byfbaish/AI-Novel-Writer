@@ -903,8 +903,8 @@ To: AI writer项目组 · 群内共读（判件基准件）
 
 | 卡 | 结论 | 判据与证据 | 回写落点 |
 |---|---|---|---|
-| CARD-S5-D5-3 | PASS | 判词 `.batch/night/reports/s5-d5-d15-d18-verdict.md`（138 行／16,541B／`3695dc7f…`，提交 `2684206e`）；判定面 `7b48f074`；判据 3 [live] run `aeddad33-cf5` 的 R1／R2／R3 hits 均 0；合并 sha「未合并·待主身」 | 缺陷稿 `:70`、backlog `:128` |
-| CARD-S5-D15 | PASS | apply／判定面 `f95ed1da`（仅测试 +52/−0）；QA 独立复跑 `Tests 32 passed (32)`／`EXIT=0`；合并 sha「未合并·待主身」 | 缺陷稿 `:74`、backlog `:138` |
+| CARD-S5-D5-3 | PASS | 判词 `.batch/night/reports/s5-d5-d15-d18-verdict.md`（138 行／16,541B／`3695dc7f…`，提交 `2684206e`）；判定面 `7b48f074`；判据 3 [live] run `aeddad33-cf5` 的 R1／R2／R3 hits 均 0；合并 `89868921`（已推送，现远端 HEAD `ef915a60`） | 缺陷稿 `:70`、backlog `:128` |
+| CARD-S5-D15 | PASS | apply／判定面 `f95ed1da`（仅测试 +52/−0）；QA 独立复跑 `Tests 32 passed (32)`／`EXIT=0`；合并 `64793246`（已推送，现远端 HEAD `ef915a60`） | 缺陷稿 `:74`、backlog `:138` |
 | CARD-S5-D18（主体卡） | 部分收口（判据 4 [live] 未取证，转 S6） | 判据 1/2/3 [static] 通过（apply `7b48f074`，未合并）；本轮唯一一次实机 `aeddad33-cf5` 只有 arch 段、无 `hookInput`／finalize 键；D18b 属 arch 前置闸补验，不顶替判据 4；处置＝QA 方案 ②（转 S6、不降判据） | 缺陷稿 `:80`、backlog `:141`；裁定件 `.batch/night/org/ruling-s5-d18-carry-1123.md`（提交 `8508bff3`） |
 
 - 行号订正（照实记）：派验单 §6.5 把「D5 `:128`／D18 `:141`」写成缺陷稿行号，实为 backlog 现值索引；缺陷稿对应 `:70`／`:74`／`:80`。判词 §7.2 写 D15 在 `:135`，实测为 `:138`（`:135` 是 D12 行），本轮回写按 `:138`。
@@ -916,7 +916,7 @@ To: AI writer项目组 · 群内共读（判件基准件）
 
 | 卡 | 结论 | 判据与证据 | 回写落点 |
 |---|---|---|---|
-| L1-FACT-01（卡 `bb3f0d83`） | 达标 | 判定面 `0ec6c89c`（分支 `card/fact-preflight-3rules`，5 文件 `+542/−25` 全在白名单内）；QA 判词 `.batch/night/reports/s2-fact-verdict.md`（73 行／7,530B／`d6a4232c…`）；`Tests 83 passed (83)`／`EXIT=0`；QA 手写 FNV-1a 64 复算 `space:6f155ee620aee7cd` 与测试字面量一致、`slot:` 前缀隔离成立；变异测试（`:415` 守卫改恒假 → 3 条负向转红）证明负向断言非空；`pnpm check:fast` 末行「全部通过」；合并 sha「未合并·待主身」 | ROADMAP `:30`／`:31`（§1 表）＋ §2 `L0-FACT`／`L1-FACT-01` 状态行；看板卡 `bb3f0d83` 由 admin 转 done |
+| L1-FACT-01（卡 `bb3f0d83`） | 达标 | 判定面 `0ec6c89c`（分支 `card/fact-preflight-3rules`，5 文件 `+542/−25` 全在白名单内）；QA 判词 `.batch/night/reports/s2-fact-verdict.md`（73 行／7,530B／`d6a4232c…`）；`Tests 83 passed (83)`／`EXIT=0`；QA 手写 FNV-1a 64 复算 `space:6f155ee620aee7cd` 与测试字面量一致、`slot:` 前缀隔离成立；变异测试（`:415` 守卫改恒假 → 3 条负向转红）证明负向断言非空；`pnpm check:fast` 末行「全部通过」；合并 sha `26731adb`（merge `0ec6c89c`），已推送，远端 HEAD `ef915a60` | ROADMAP `:30`／`:31`（§1 表）＋ §2 `L0-FACT`／`L1-FACT-01` 状态行；看板卡 `bb3f0d83` 由 admin 转 done |
 
 - 记账两条进 BACKLOG 不随本阶段修：`R3` 只看调用方传入的 `blueprints`（单章路径恒不触发、跨批次检测不到）；单章对话框未传 `structuredRefs`，既有 `space:` 规则单章路径 fail-open。
 - 本段只追加，不改既有条目。
