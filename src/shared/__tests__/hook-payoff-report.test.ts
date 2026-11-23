@@ -47,6 +47,15 @@ describe('C5 未落地体检文案', () => {
     expect(text).toContain('已定稿')
     expect(text).toContain('不改稿')
   })
+
+  it('未落地命中时句首带稳定机读前缀 [hook-unplanted]', () => {
+    const findings = unplantedFindings()
+    expect(findings.some(item => item.code === 'C5-unplanted')).toBe(true)
+
+    const text = summarizeDraftPayoffFindings(findings, zh)
+    expect(text).not.toBeNull()
+    expect(text!.startsWith('[hook-unplanted] ')).toBe(true)
+  })
 })
 
 describe('C5 蹭线提示文案（C5-name-graze）', () => {
@@ -72,6 +81,16 @@ describe('C5 蹭线提示文案（C5-name-graze）', () => {
 
     // 关键：C3 那条线一个字都不能动，也不能被这条提示带出来。
     expect(summarizeDraftCopyFindings(findings, zh)).toBeNull()
+  })
+
+  it('蹭线-only 不带机读前缀，仍说明「蹭线」', () => {
+    const findings = grazeFindings()
+    expect(findings.some(item => item.code === 'C5-unplanted')).toBe(false)
+
+    const c5 = summarizeDraftPayoffFindings(findings, zh)
+    expect(c5).not.toBeNull()
+    expect(c5).not.toContain('[hook-unplanted]')
+    expect(c5).toContain('蹭线')
   })
 
   it('两种 C5 finding 同时存在时各占一句（未落地 + 蹭线）', () => {
