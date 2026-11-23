@@ -6,6 +6,7 @@ import {
   describeSpaceTimeCoverage, findBlueprintContinuityRisks, findBlueprintSlotAttackRisks,
   findBlueprintSpaceTimeRisks, findDuplicateSlotAttackRisks,
 } from '../shared/consistency-preflight'
+import { findCharacterRosterRisks } from '../shared/character-roster-consistency'
 import { normalizeSpaceRefs, parseSpaceRules } from '../shared/space-time-consistency'
 import { ipc } from './ipc-client'
 
@@ -40,6 +41,15 @@ export async function readConsistencyPreflight(
     const core = await ipc.invokeWithProjectSession(session, 'db:project-core-get', session.projectPath)
     worldBuildingText = (core as { worldbuilding?: string } | null)?.worldbuilding
   } catch { worldBuildingText = undefined }
+  /**
+   * AC1/S1：角色名册投影状态。走既有 IPC 取主进程算好的 `status`，渲染层不重算哈希
+   * （设计稿 `:201`）。读取失败（含旧项目 `角色名单元数据未初始化`）⇒ fail-open 不判，
+   * 与上面 `worldbuilding` 的 try/catch 同一纪律。
+   */
+  let rosterSnapshot: Parameters<typeof findCharacterRosterRisks>[0]
+  try {
+    rosterSnapshot = await ipc.invokeWithProjectSession(session, 'db:character-roster-read', session.projectPath)
+  } catch { rosterSnapshot = undefined }
   const findings = [
     ...(await Promise.all(blueprints.map(async blueprint => {
       const projections = await ipc.invokeWithProjectSession(
@@ -59,6 +69,11 @@ export async function readConsistencyPreflight(
     }))).flat(),
     // attacks R3：同一格被两个不同章都声明为作废目标（跨章对账，不依赖设定层）。
     ...findDuplicateSlotAttackRisks(blueprints, exemptions),
+    // AC1/S1：角色名册投影自洽。项目级事实一次只报一条，借当次审核的章号落到现有面板；
+    // 无蓝图（blueprints 为空）时章号取 0，纯函数内部据此 fail-open 不判。
+    ...findCharacterRosterRisks(
+      rosterSnapshot, { chapterNumber: blueprints[0]?.chapterNumber ?? 0 }, exemptions,
+    ),
   ]
   const coverage: ConsistencyPreflightCoverage = {
     registeredSpaces: worldBuildingText === undefined ? null : parseSpaceRules(worldBuildingText).length,
