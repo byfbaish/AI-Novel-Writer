@@ -98,8 +98,11 @@ describe('portable v7 field policy', () => {
     //   `assertPortableSourceSchema` 是 fail-closed（DB 实际列必须全部出现在白名单里），
     //   于是整张表被拒 ⇒ `exportPortableProject` 抛 `PORTABLE_SCHEMA_UNSUPPORTED`，
     //   **项目导出 / 便携备份在运行时不可用**，不只是这条用例红。
-    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 66, fields: 638 })
-    expect(assertPortableSourceSchema(database)).toEqual({ tables: 66, fields: 638 })
+    // M30 / P35（`1e1b4840`）：+1 表 8 列（draft_edit_stats，草稿编辑计量流水）——
+    //   66/638 → 67/646。⚠️ 2026-11-24 补登：与 M22 / D2 同一类疏漏 —— M30 建表时
+    //   **漏了字段策略登记**，fail-closed 让整张表被拒 ⇒ 项目导出 / 便携备份运行时不可用。
+    expect({ tables: tables.length, fields: fieldCount }).toEqual({ tables: 67, fields: 646 })
+    expect(assertPortableSourceSchema(database)).toEqual({ tables: 67, fields: 646 })
     expect(getPortableFieldPolicy('review_cycle_merges', 'cycle_id').disposition).toBe('historical-nonreplayable')
     expect(getPortableFieldPolicy('review_cycle_merges', 'body').disposition).toBe('historical-nonreplayable')
     expect(listPortableFieldPolicyKeys()).toContain('blueprint_commit_operations.operation_id')
@@ -149,7 +152,8 @@ describe('portable v7 field policy', () => {
     // + P2-3 / S6c / M27：+1 表 8 列（upstream_revision_log）—— 271 → 279。
     // + P2-3 / S6：+1 列（drafts.outline_rev）—— 279 → 280。
     // + D2 执行租约（`a5bdd184`）：+3 列（generation_runs 的租约三列）—— 280 → 283。
-    expect(added).toHaveLength(283)
+    // + M30 / P35（`1e1b4840`）：+1 表 8 列（draft_edit_stats）—— 283 → 291。
+    expect(added).toHaveLength(291)
     expect(getPortableFieldPolicy('characters', 'avatar')).toMatchObject({
       origin: 'registered-donor', disposition: 'exclude-machine-authority', signedDisposition: null,
     })
@@ -174,6 +178,24 @@ describe('portable v7 field policy', () => {
       'character_cast_decisions.operation_id', 'character_cast_decisions.relation_to_protagonist',
       'character_cast_decisions.source_revision',
     ])
+    // M30 同样走独立标签（照 M06 / M08 先例），且**不得**落进 m01-m05 delta 桶。
+    // 这 8 列是编辑计量，处置全为 D（`m30-draft-edit-stats.ts:5-13`：改了多少字事后重建不出来）。
+    expect(listPortableFieldPolicyKeys().filter(key => getPortableFieldPolicy(
+      ...key.split('.') as [string, string]).origin === 'm30-delta')).toEqual([
+      'draft_edit_stats.at',
+      'draft_edit_stats.changed_chars',
+      'draft_edit_stats.draft_id',
+      'draft_edit_stats.id',
+      'draft_edit_stats.new_chars',
+      'draft_edit_stats.old_chars',
+      'draft_edit_stats.origin',
+      'draft_edit_stats.save_count',
+    ])
+    for (const field of ['id', 'draft_id', 'at', 'origin', 'changed_chars', 'old_chars', 'new_chars', 'save_count']) {
+      expect(getPortableFieldPolicy('draft_edit_stats', field)).toMatchObject({
+        disposition: 'preserve-domain', signedDisposition: null,
+      })
+    }
     // M11 同样走独立标签：资源定义与账本都是作者权威数据（preserve-domain），跨机迁移不能丢。
     expect(listPortableFieldPolicyKeys().filter(key => getPortableFieldPolicy(
       ...key.split('.') as [string, string]).origin === 'm11-delta')).toEqual([
@@ -273,7 +295,8 @@ describe('portable v7 field policy', () => {
       // P2-3 期 3b / M26：再 +1 列（synopsis_source_ref）⇒ 65/626。
       // P2-3 / S6c / M27：再 +1 表 8 列（upstream_revision_log）⇒ 66/634；S6 再 +1 列 ⇒ 66/635。
       // D2 执行租约（`a5bdd184`）：+3 列 ⇒ 66/638（删索引的 DDL fork 仍必须被拒绝）。
-      expect({ tables: tables.length, fields }).toEqual({ tables: 66, fields: 638 })
+      // M30 / P35（`1e1b4840`）：+1 表 8 列（draft_edit_stats）⇒ 67/646。
+      expect({ tables: tables.length, fields }).toEqual({ tables: 67, fields: 646 })
       expect(() => assertPortableSourceSchema(database)).toThrow('PORTABLE_SCHEMA_UNSUPPORTED')
     } finally { database.close() }
     expect(fs.readFileSync(project.databasePath)).toEqual(before)

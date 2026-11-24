@@ -15,7 +15,7 @@ export interface PortableFieldPolicy {
   disposition: PortableFieldDisposition
   validator: string
   consumer: string
-  origin: 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm08-delta' | 'm11-delta' | 'm12-delta' | 'm13-delta' | 'm14-delta' | 'm15-delta' | 'm16-delta' | 'm17-delta' | 'm18-delta' | 'm19-delta' | 'm20-delta' | 'm21-delta' | 'm22-delta' | 'm23-delta' | 'm24-delta' | 'm25-delta' | 'm26-delta' | 'm27-delta' | 'm28-delta' | 'registered-donor'
+  origin: 'signed-s01' | 'm01-m05-delta' | 'm06-delta' | 'm08-delta' | 'm11-delta' | 'm12-delta' | 'm13-delta' | 'm14-delta' | 'm15-delta' | 'm16-delta' | 'm17-delta' | 'm18-delta' | 'm19-delta' | 'm20-delta' | 'm21-delta' | 'm22-delta' | 'm23-delta' | 'm24-delta' | 'm25-delta' | 'm26-delta' | 'm27-delta' | 'm28-delta' | 'm30-delta' | 'registered-donor'
   signedDisposition: string | null
 }
 
@@ -29,6 +29,18 @@ const tables = fieldPolicyDocument.tables as Record<string, Record<string, Polic
 const deltaTables = new Set<string>(fieldPolicyDocument.deltaTables)
 const m06Tables = new Set<string>(fieldPolicyDocument.m06Tables)
 const m08Tables = new Set<string>(fieldPolicyDocument.m08Tables)
+/**
+ * P0（2026-11-24）：M30 建 `draft_edit_stats`（草稿编辑计量流水）时**漏了字段策略登记**。
+ *
+ * `assertPortableSourceSchema` 是 fail-closed（库里每一列都必须出现在白名单里），
+ * 整张表不在 `tables` 里就会被拒 ⇒ `exportPortableProject` 抛
+ * `PORTABLE_SCHEMA_UNSUPPORTED`，即**项目导出 / 便携备份运行时整条不可用**。
+ *
+ * 处置必须是 `D`（保留原值），不能是 `B`（可重建计量）：`m30-draft-edit-stats.ts:5-13`
+ * 写明「改了多少字事后再也重建不出来」——计量只在保存时算、当场落盘，
+ * 跨机导入若标成可重建，等于把作者的编辑劳动清零。
+ */
+const m30Tables = new Set<string>(fieldPolicyDocument.m30Tables)
 const m11Tables = new Set<string>(fieldPolicyDocument.m11Tables)
 const m12Tables = new Set<string>(fieldPolicyDocument.m12Tables)
 const m13Tables = new Set<string>(fieldPolicyDocument.m13Tables)
@@ -107,7 +119,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
       const rule = rules[code]
       const key = `${table}.${field}`
       const delta = optionalFields.has(key) || deltaTables.has(table) || m06Tables.has(table) || m08Tables.has(table)
-        || m11Tables.has(table) || m12Tables.has(table) || m13Tables.has(table) || m14Tables.has(table) || m15Tables.has(table) || m16Tables.has(table) || m17Tables.has(table) || m18Tables.has(table) || m19Tables.has(table) || m20Fields.has(key) || m21Tables.has(table) || m22Fields.has(key) || m23Fields.has(key) || m24Tables.has(table) || m25Fields.has(key) || m26Fields.has(key) || m27Tables.has(table) || m28Fields.has(key) || table === 'characters' && deltaCharacterFields.has(field)
+        || m11Tables.has(table) || m12Tables.has(table) || m13Tables.has(table) || m14Tables.has(table) || m15Tables.has(table) || m16Tables.has(table) || m17Tables.has(table) || m18Tables.has(table) || m19Tables.has(table) || m20Fields.has(key) || m21Tables.has(table) || m22Fields.has(key) || m23Fields.has(key) || m24Tables.has(table) || m25Fields.has(key) || m26Fields.has(key) || m27Tables.has(table) || m28Fields.has(key) || m30Tables.has(table) || table === 'characters' && deltaCharacterFields.has(field)
       const signedDisposition = delta ? null : signedOverrides[key] ?? signedDefaults[code]
       if (!field || !rule || rule.length !== 3 || !PORTABLE_FIELD_DISPOSITIONS.has(rule[0])
         || typeof rule[1] !== 'string' || !rule[1] || typeof rule[2] !== 'string' || !rule[2]
@@ -135,6 +147,7 @@ function loadFieldPolicy(): ReadonlyMap<string, PortableFieldPolicy> {
                             : m26Fields.has(key) ? 'm26-delta'
                             : m27Tables.has(table) ? 'm27-delta'
                             : m28Fields.has(key) ? 'm28-delta'
+                            : m30Tables.has(table) ? 'm30-delta'
                             : delta ? 'm01-m05-delta' : 'signed-s01', signedDisposition }))
     }
   }
