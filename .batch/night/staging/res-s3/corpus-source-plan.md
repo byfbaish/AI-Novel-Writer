@@ -80,9 +80,11 @@ node scripts/res/corpus-manifest.mjs --dir .runtime/res-corpus/author-v1 --json
 ```
 输出 `{chapters, words, person, author, files:[{name, sha256, words}]}`。
 
+> **本件只定契约，脚本现在不存在**：`scripts/res/` 目录当前都没有，`corpus-manifest.mjs` 随 S3 立项才建。上面这条命令**不是本次验收命令**，本次验收用下面 ② 的 `Test-Path` 与 `Get-ChildItem` 手核 + 报告三行。
+
 ② 五条硬判据（QA 复核，可逐条打勾）：
 1. `Test-Path .runtime/res-corpus/author-v1` 为 true，且**快照内无子目录、无元数据文件**；
-2. `chapters ≥ 20`、`words ≥ 40,000`（20 章 × 2,000 字下限，实际应远高）；
+2. `chapters ≥ 20`、`words ≥ 20,000`，**并另报中位数**（我方章长目标 1,442 字/章，20 章约 2.9 万字；取 40,000 会把短章但合法的情况误判成不过闸。判据是章数，字数只作下限防凑数：中位数低于 800 字才算异常，报出但不单独拦截）；
 3. `person` 唯一值（`第三` 或 `第一`），且与主基线一致；混合即作废；
 4. `author` 唯一值，且等于主基线同一作者；出现第二个作者名即作废；
 5. `git status --porcelain` 里**看不到**该目录（快照不入库）。
