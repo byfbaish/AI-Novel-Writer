@@ -167,7 +167,7 @@ function demandQuantity(demand: TaskBudgetDemand): number {
   return demand.kind === 'draft-units' ? demand.requestedUnits : demand.requestedItems
 }
 
-function outputTokensFor(
+export function outputTokensFor(
   stage: GenerationReasoningStage,
   demand: TaskBudgetDemand,
   quantity: number,
