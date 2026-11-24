@@ -32,7 +32,8 @@ const ZH_TWO_LEVEL_SUFFIX = `【每章的固定格式（强制输出）】
 - 第二行：「定性：<X编号 | 筹码：<名字> | 软肋：<名字> | 无> — <这一章碰到的是哪一条，一句话说清是哪类处境>」；
 - 第三行：「选择：<力源，或例外值 破／守> —— <他这一章做了什么>｜否掉了 <他本可以做的另一件事>，因为 <依据>」，依据只有四种：X<n>：<那条禁区>／顶撞X<n>：<他破了哪条、付了什么代价>／筹码：<名字>／软肋：<名字>；这一章确实没有他的戏，写「无：<为什么他不在场>」；
 - 其后：正文，连贯段落；
-- 最后一行：「钩子：<类型> — <断点>｜种在：<本章哪一处>」。
+- 倒数第二行：「钩子：<类型> — <断点>｜种在：<本章哪一处>」；
+- 最后一行：「进度：E<n>」——本单元事件走到第几步（累计，含本章），只写这一个词加编号，其后不许再写任何内容。
 
 严禁输出「覆盖：」行 —— 本结构只有「卷 / 单元」两级，没有可声明的结构位；不得自造任何形如 V1-U1-Start、M1-1 的编号。
 严禁输出「正文前的声明行」「格式说明」「以下为正文」这类标签行，也不得把本节任何一句话抄进正文。
@@ -138,7 +139,8 @@ Output each chapter in exactly this order, with no extra labels, headings or com
 - Line 2: "Qualify: <X-number | chip: <name> | soft spot: <name> | none> — <which entry this chapter runs into, one clause naming the kind of situation>";
 - Line 3: "Choice: <Self | Others | Rules | Trade | Break | Hold> — what he did in this chapter | ruled out: the other thing he could have done, because <basis>", where the basis is exactly one of: X<n>: <that forbidden line> / break X<n>: <which line he broke and what it cost> / chip: <name> / soft spot: <name>; when this chapter truly has no scene of his, write "none: <why he is absent>";
 - Then: the prose, as connected paragraphs;
-- Last line: "Hook: <one sentence>".
+- Second-to-last line: "Hook: <one sentence>";
+- Last line: "Progress: E<n>" — how far this unit's events have gone by the end of this chapter (cumulative), the word plus the number only.
 
 Never output a "Covers:" line — this structure has only two levels (volume / unit) and no claimable arc slots; never invent identifiers such as V1-U1-Start or M1-1.
 Never output labels such as "declaration line before the prose", "format note" or "the following is the prose", and never copy any sentence of this section into the prose.

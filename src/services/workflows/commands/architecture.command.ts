@@ -11,6 +11,7 @@ import type { MainGenerationRunHandle } from '../../generation/generation-runtim
 import type { ArchitecturePlanningIntent, ArchitectureUnitRange, GenerationRecoveryContext } from '../../../shared/generation-owner-contract'
 import { PLOT_OUTLINE_PROTOCOL, plotOutlinePurpose, plotOutlineRequestContract, plotOutlineCoveredTo, joinPlotOutlineEntries, renderPlotOutlineRange, type PlotOutlineProgress } from '../../../shared/plot-outline-contract'
 import { accumulatedVolumeDeviation, arcSpanForChapters, auditArcDensity, expectedTotalChapters, parseArcStructure, planProgress, planUnitStats, renderUnitBudgetBlock, UNIT_BUDGET_TOLERANCE, upsertVolumeDeviation, volumeDeviationRecordOf, volumeDeviationValue, withProjectedArcGuide, withProjectedUnitArcGuide, type UnitBudgetState, type VolumeDeviationRecord } from '../../../shared/arc-position'
+import { lastDeclaredStep } from '../../../shared/o1-event-progress'
 import { auditOutlineLength, outlineLengthOf, renderOutlineLengthReport } from '../../../shared/outline-budget'
 import { planOutlinePrefixBudget } from '../../../shared/outline-prefix-budget'
 import {
@@ -3664,6 +3665,7 @@ export class GeneratePlotArchitectureCommand extends BaseWorkflowCommand<string>
             unitContext.cursor.volumeIndex,
             unitContext.cursor.unitIndex,
             writingLanguage,
+            { batchSize: to - from + 1, startStep: lastDeclaredStep(sourceExpected.synopsis) ?? 0 },
           )
         : withProjectedArcGuide(guide, core?.plotStructurePlan, totalChapters, from, to, writingLanguage))
       .withNarrativePov(pov)

@@ -1,4 +1,5 @@
 import type { WritingLanguage } from './writing-language'
+import { renderEventProgressHint, unitEventSteps } from './o1-event-progress'
 import {
   normalizeStoryBeatKey,
   STORY_BEATS,
@@ -1352,9 +1353,19 @@ export function renderUnitArcPositionBlock(
   volumeIndex: number,
   unitIndex: number,
   writingLanguage: WritingLanguage,
+  progress?: { readonly batchSize: number; readonly startStep: number },
 ): string {
   const span = arcSpanForUnit(parsed, totalChapters, volumeIndex, unitIndex)
   if (!parsed || !span) return ''
+  // O1（卡 58188c1c）：水位行只追加在块**末尾**，一条请求只注入一次；不传 `progress` 时逐字不变。
+  // 步数由单元内小弧现算（`unitEventSteps`），调用方不传步数 —— 免得两处各说一套 M。
+  const progressHint = progress
+    ? renderEventProgressHint(
+      { stepCount: unitEventSteps(span.midMinors).length, batchSize: progress.batchSize, startStep: progress.startStep },
+      writingLanguage,
+    )
+    : ''
+  const progressTail = progressHint ? `\n${progressHint}` : ''
   const en = writingLanguage === 'en-US'
   const volumeNaming = parsed.naming === 'volume'
   const volumeWord = en ? 'volume' : (volumeNaming ? '卷' : '大弧')
@@ -1388,7 +1399,7 @@ export function renderUnitArcPositionBlock(
       `2. The goal / attempts / turning point of any later ${unitWord} must NOT happen now;`,
       `3. The "${endWord}" of ${volumeWord} ${span.majorIndex} "${span.majorName}" only holds at its LAST ${unitWord} — it is not material you may use now;`,
       '4. This unit\'s length follows the story: stop once the exit state holds. Do not add events to pad the chapter count, and do not wrap up early while things are still unresolved.',
-    ].join('\n')
+    ].join('\n') + progressTail
   }
   return [
     '【本次所处弧位（据「弧光结构」推算，仅用于定位，不改变弧光本身）】',
@@ -1402,7 +1413,7 @@ export function renderUnitArcPositionBlock(
     `2. 本${volumeWord}内后续${unitWord}的「目标 / 尝试 / 转折」不得在本次提前实现；`,
     `3. ${volumeWord} ${span.majorIndex}【${span.majorName}】的「${endWord}」是**本${volumeWord}最后一个${unitWord}**才成立的验收标准，不是本次可用的材料——不得提前兑现其中任何一条；`,
     `4. 本${unitWord}的篇幅由剧情决定：写到「${endWord}」成立就停笔，不要为凑章数加戏，也不要在还有事没发生时草草收尾。`,
-  ].join('\n')
+  ].join('\n') + progressTail
 }
 
 /**
@@ -1416,11 +1427,12 @@ export function withProjectedUnitArcGuide(
   volumeIndex: number,
   unitIndex: number,
   writingLanguage: WritingLanguage,
+  progress?: { readonly batchSize: number; readonly startStep: number },
 ): string {
   const parsed = parseArcStructure(plan)
   const span = arcSpanForUnit(parsed, totalChapters, volumeIndex, unitIndex)
   const trimmed = span && plan ? projectArcStructureText(plan, span) : guide
-  const block = renderUnitArcPositionBlock(parsed, totalChapters, volumeIndex, unitIndex, writingLanguage)
+  const block = renderUnitArcPositionBlock(parsed, totalChapters, volumeIndex, unitIndex, writingLanguage, progress)
   return block ? `${trimmed}\n\n${block}` : trimmed
 }
 

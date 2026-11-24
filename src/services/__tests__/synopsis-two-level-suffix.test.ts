@@ -185,3 +185,45 @@ describe('PromptBuilder 的 systemSuffix 渲染期替换', () => {
     for (const basis of ['X<n>: <that forbidden line>', 'chip: <name>', 'soft spot: <name>']) expect(en).toContain(basis)
   })
 })
+
+/**
+ * O1（卡 58188c1c）：单元模式每章多一行「进度：E<n>」。
+ *
+ * 2026-11-24 项目总负责人裁定：「加『进度：』行不是加一句文案」——`ZH_TWO_LEVEL_SUFFIX`
+ * 写死「除这些行以外不要加任何说明行」，所以清单里加一项就够了（放行范围由清单自身定义）。
+ * 但 `钩子：` 必须**同笔**从「最后一行」降为「倒数第二行」，否则模型会拿到两个「最后一行」。
+ * 这个新行**不是覆盖行**：`:37`／`:143` 两条禁覆盖行原文一字未改（下面逐条盯着）。
+ */
+describe('O1 单元事件进度行：唯一允许的第 6 行', () => {
+  const zh = getSynopsisTwoLevelSuffix('zh-CN')
+  const en = getSynopsisTwoLevelSuffix('en-US')
+
+  it('中文版含且仅含一处「进度：E<n>」，钩子已降为倒数第二行', () => {
+    expect((zh.match(/进度：E<n>/gu) ?? []).length).toBe(1)
+    expect(zh).toContain('- 倒数第二行：「钩子：<类型> — <断点>｜种在：<本章哪一处>」；')
+    expect(zh).toContain('- 最后一行：「进度：E<n>」')
+    expect(zh).not.toContain('最后一行：「钩子：')
+  })
+
+  it('英文版同步：Progress: E<n> 一处、Hook 降为 Second-to-last', () => {
+    expect((en.match(/Progress: E<n>/gu) ?? []).length).toBe(1)
+    expect(en).toContain('- Second-to-last line: "Hook: <one sentence>";')
+    expect(en).toContain('- Last line: "Progress: E<n>"')
+    expect(en).not.toContain('Last line: "Hook:')
+  })
+
+  it('仍含各自禁覆盖行原文（进度行不许写成覆盖行）', () => {
+    expect(zh).toContain('严禁输出「覆盖：」行 —— 本结构只有「卷 / 单元」两级')
+    expect(zh).toContain('不得自造任何形如 V1-U1-Start')
+    expect(zh).not.toContain('覆盖：进度')
+    expect(en).toContain('Never output a "Covers:" line')
+    expect(en).not.toContain('Covers: Progress')
+  })
+
+  it('模板变量数量不变：仍只有一处 {{step_guidance}}', () => {
+    expect((zh.match(/\{\{/gu) ?? []).length).toBe(1)
+    expect((en.match(/\{\{/gu) ?? []).length).toBe(1)
+    expect(zh).toContain('{{step_guidance}}')
+    expect(en).toContain('{{step_guidance}}')
+  })
+})
