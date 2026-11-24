@@ -31,6 +31,7 @@ import { NARRATIVE_THREAD_CANDIDATE_BUDGET } from '../../shared/narrative-thread
 import {
   assertNarrativeThreadBatchBudget,
   assertNarrativeThreadChapterBudget,
+  NARRATIVE_THREAD_PLAN_CHAPTER_LIMIT,
   narrativeThreadPlanRange,
 } from '../../shared/narrative-thread-range-pure'
 import {
@@ -1214,7 +1215,7 @@ export default function NarrativeThreadEditor({
               </label>
               <label className="block">
                 <Label htmlFor="narrative-thread-ai-range-count">{text('章数', 'Chapters')}</Label>
-                <Input id="narrative-thread-ai-range-count" type="number" min={1} max={10} value={aiRangeCount} disabled={aiBusy} onChange={event => setAiRangeCount(Number(event.target.value))} />
+                <Input id="narrative-thread-ai-range-count" type="number" min={1} max={NARRATIVE_THREAD_PLAN_CHAPTER_LIMIT} value={aiRangeCount} disabled={aiBusy} onChange={event => setAiRangeCount(Number(event.target.value))} />
               </label>
             </div>}
             {aiError && <p role="alert" className="text-xs" style={{ color: 'var(--color-error-text)' }}>{aiError}</p>}
@@ -1263,7 +1264,7 @@ export default function NarrativeThreadEditor({
           <DialogFooter>
             {!candidateGenerator && (aiBusy || graphRecovery) && <Button variant="outline" onClick={() => void cancelGraph()}>{text('取消原运行', 'Cancel original run')}</Button>}
             <Button variant="ghost" onClick={closeAI} disabled={aiBusy}>{text('关闭', 'Close')}</Button>
-            <Button variant="ai" onClick={() => void (aiMode === 'plan' ? generatePlanCandidates() : generateEventCandidates())} disabled={aiBusy || Boolean(modelSelectionError) || (aiMode === 'plan' && (aiRangeStart < 1 || aiRangeCount < 1 || aiRangeCount > 10))}>
+            <Button variant="ai" onClick={() => void (aiMode === 'plan' ? generatePlanCandidates() : generateEventCandidates())} disabled={aiBusy || Boolean(modelSelectionError) || (aiMode === 'plan' && (aiRangeStart < 1 || aiRangeCount < 1 || aiRangeCount > NARRATIVE_THREAD_PLAN_CHAPTER_LIMIT))}>
               {aiBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
               {aiBusy ? text('识别中...', 'Analyzing...') : !candidateGenerator && graphRecovery ? text('生成新候选', 'Generate new candidates') : text('生成候选', 'Generate candidates')}
             </Button>
