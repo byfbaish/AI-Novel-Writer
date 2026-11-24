@@ -21,7 +21,7 @@
 | **P6**（#22）档 1 + 档 3 | 档 1：章区间范围化（上限 `NARRATIVE_THREAD_PLAN_CHAPTER_LIMIT`＝10，复用 `assertPlanningActionRange`）；每章 token 预算从 `S07_TASK_BUDGET_POLICY` 派生（zh 单章 3,584／10 章 31,232，对硬顶 32,768 余 1,536）；档 3：生成后主动建议，带「已扫 N 章／剩余 M 章」进度。档 2（按单元批量）按裁定不做 | `cbbe82c3` | `.batch/night/reports/s3-p6-verdict.md`（160 行／14,217B／`3665ffd0…`） | 无 |
 | **O1**（#16）事件进度水位 | 单元内逐章事件进度：注入行追加「本单元事件进度：已到 E n / 共 E M（下一章允许推进到 E x）」，不新增模板变量；纯函数 `o1-event-progress`（缺字段 fail-open）。口径见设计稿 §3.2（分母＝本批章数、带 `s0` 偏移，2026-11-25 订正） | `85c927ae` | `.batch/night/reports/s4-o1-verdict.md`（113 行／14,691B／`4e9b88c7…`） | 无 |
 
-三条卡在看板上已 `done`：`744f13a8`（C1 两项）／`342b428f`（P6）／`58188c1c`（O1）。合并 sha 见 ROADMAP `L2-PLANUI-01-*` 各行（本笔落盘时统一写「未合并·待主身」）。
+三条卡在看板上已 `done`：`744f13a8`（C1 两项）／`342b428f`（P6）／`58188c1c`（O1）。合并 sha 见 ROADMAP `L2-PLANUI-01-*` 各行（并入 `1c0700a1`，卡链尖 `85c927ae`）。
 
 ### 建议（只登记，不排期，等作者定档位）
 

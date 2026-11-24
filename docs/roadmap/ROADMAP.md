@@ -1,6 +1,6 @@
 版本：v0.7
 日期：2026-11-25
-变更要点：PLANUI 收口——`L2-PLANUI-01-01/02/03/04` 四条状态转「达标」，证据句写判定面 sha（C1-a `34aa0000`／C1-b `8a42a566`／P6-c `cbbe82c3`／O1-b `85c927ae`）、判词路径与 sha256、测试数与变异口径；四条原有「阻塞」证据行（看板卡标注）已删，改为实测证据。`L0-PLANUI`／`L1-PLANUI-01` 阻塞→进行中：四条 L2 已全达标，但父级「达标」按 `roadmap-doc-spec.md` §5 第七项需主人签字，本版不代签。合并 sha 先写「未合并·待主身」。条目内容与完成判据一字未改。
+变更要点：PLANUI 收口——`L2-PLANUI-01-01/02/03/04` 四条状态转「达标」，证据句写判定面 sha（C1-a `34aa0000`／C1-b `8a42a566`／P6-c `cbbe82c3`／O1-b `85c927ae`）、判词路径与 sha256、测试数与变异口径；四条原有「阻塞」证据行（看板卡标注）已删，改为实测证据。`L0-PLANUI`／`L1-PLANUI-01` 阻塞→进行中：四条 L2 已全达标，但父级「达标」按 `roadmap-doc-spec.md` §5 第七项需主人签字，本版不代签。合并 sha 已回填：并入 `1c0700a1`（卡链尖 `85c927ae`）。条目内容与完成判据一字未改。
 
 变更要点（上一版 v0.6）：AC 系 S4 收口——`L1-ARCH-01` 与 `L2-ARCH-01-01/02/03` 四条状态转「达标」，证据句写判定面 sha、判词路径与 sha256、测试数、变异口径、接线点；合并 sha 已回填（AC1 `2e43a912`／AC2 `ab79550c`／AC3 `113f7d4d`）。`L0-ARCH` 与 `L1-ARCH-02` 未动（后者仍「阻塞」：第四件前置＝批次身份与证明体系）。条目内容与完成判据一字未改。
 变更要点（上一版 v0.5）：S3 收口——ARCH 六条状态同步：`L0-ARCH`／`L1-ARCH-01`／`L2-ARCH-01-01/02/03` 由「阻塞」改「未开始」，证据句改引 `docs/adr/0027-architecture-shape-three-decisions.md` 与设计稿 `architecture-consistency-design.md:199`／`:219`／`:232`（主人 2026-11-23 裁定 1/2/3）；`L1-ARCH-02` 保留「阻塞」，§1 表前置改「第四件前置（未定）」、证据行保留「必须独立设计」原文并注明依赖第四件前置（批次身份与证明体系，主人裁定本轮不做＝ADR-0027 D4，见裁定④）；条目内容、完成判据与 §6 待填均未动。v0.4 的 S1 收口内容见变更表。
@@ -181,7 +181,7 @@
 - 目标：让大纲按单元分批且双端契约一致
 - 完成判据：`task_board_get 58188c1c-5c3b-4d40-93d2-2477a29e9fb8` → `column: "done"`
 - 前置依赖：无
-- 状态：达标｜证据：判定面 `85c927ae`（`O1-b`，父 `641ffc0c`；卡分支 `card/s4-o1-event-progress`）；判词 `.batch/night/reports/s4-o1-verdict.md`（113 行／14,691B／`4e9b88c7…`）；测试 `Tests 42 passed (42)`，三文件合并 `Tests 106 passed (106)`＝基线 97＋新增 9；四个必发变异（M1／M2／M3／M3b）全真红、复原后新件 sha 逐字回 `bef01e07…`；写回落点 `src/shared/o1-event-progress.ts`＋`src/services/workflows/commands/architecture.command.ts`；合并 sha：未合并·待主身
+- 状态：达标｜证据：判定面 `85c927ae`（`O1-b`，父 `641ffc0c`；卡分支 `card/s4-o1-event-progress`）；判词 `.batch/night/reports/s4-o1-verdict.md`（113 行／14,691B／`4e9b88c7…`）；测试 `Tests 42 passed (42)`，三文件合并 `Tests 106 passed (106)`＝基线 97＋新增 9；四个必发变异（M1／M2／M3／M3b）全真红、复原后新件 sha 逐字回 `bef01e07…`；写回落点 `src/shared/o1-event-progress.ts`＋`src/services/workflows/commands/architecture.command.ts`；合并 sha：并入 `1c0700a1`（卡链尖 `85c927ae`）
 - ID：L2-PLANUI-01-01
 
 ##### L2-PLANUI-01-02 C1 相关性筛选
@@ -189,7 +189,7 @@
 - 目标：让候选与正文的相关性可筛可弃
 - 完成判据：`task_board_get 744f13a8-7a5c-49dc-beab-9e0d7259cc4e` → `column: "done"`（该卡含两项，本项对应第一项）
 - 前置依赖：无
-- 状态：达标｜证据：判定面 `34aa0000`（C1-a 相关性筛选三档）；判词 `.batch/night/reports/s2-c1a-qa-verdict.md`（167 行／10,390B／`30dc2d57…`）；写回落点 `src/shared/character-relevance.ts` 系＋`src/components/characters/CharactersView.tsx`；合并 sha：未合并·待主身
+- 状态：达标｜证据：判定面 `34aa0000`（C1-a 相关性筛选三档）；判词 `.batch/night/reports/s2-c1a-qa-verdict.md`（167 行／10,390B／`30dc2d57…`）；写回落点 `src/shared/character-relevance.ts` 系＋`src/components/characters/CharactersView.tsx`；合并 sha：并入 `1c0700a1`（卡链尖 `8a42a566`）
 - ID：L2-PLANUI-01-02
 
 ##### L2-PLANUI-01-03 C1 重生成前提示
@@ -197,7 +197,7 @@
 - 目标：重生成前给出明确提示与代价
 - 完成判据：同卡 `744f13a8` → `column: "done"`（对应第二项）
 - 前置依赖：无
-- 状态：达标｜证据：判定面 `8a42a566`（C1-b：字段级并排对比＋三选一＋排序＋M31 快照 lane，16 文件 `+1642/−6`）；判词 `.batch/night/reports/s2-c1b-verdict.md` **v2**（143 行／15,110B／`855bd843…`；v1 `1abdf4bf…` 作废）；三测试文件 `Tests 22 passed (22)`＋browser `5 passed`；变异 M2／M4／M5 真红；合并 sha：未合并·待主身
+- 状态：达标｜证据：判定面 `8a42a566`（C1-b：字段级并排对比＋三选一＋排序＋M31 快照 lane，16 文件 `+1642/−6`）；判词 `.batch/night/reports/s2-c1b-verdict.md` **v2**（143 行／15,110B／`855bd843…`；v1 `1abdf4bf…` 作废）；三测试文件 `Tests 22 passed (22)`＋browser `5 passed`；变异 M2／M4／M5 真红；合并 sha：并入 `1c0700a1`（卡链尖 `8a42a566`）
 - ID：L2-PLANUI-01-03
 
 ##### L2-PLANUI-01-04 P6 伏笔/线索批量范围
@@ -205,7 +205,7 @@
 - 目标：伏笔与线索支持按范围批量选择
 - 完成判据：`task_board_get 342b428f-9bff-4c6b-95eb-97ae75a9f4e4` → `column: "done"`
 - 前置依赖：无
-- 状态：达标｜证据：判定面 `cbbe82c3`（P6-a `e219977b`＋P6-b `a1bcabee`＋P6-c `cbbe82c3`）；判词 `.batch/night/reports/s3-p6-verdict.md`（160 行／14,217B／`3665ffd0…`）；browser `38 passed`；每章预算从 `S07_TASK_BUDGET_POLICY` 派生（zh 3,584／10 章 31,232，对 32,768 余 1,536）；合并 sha：未合并·待主身
+- 状态：达标｜证据：判定面 `cbbe82c3`（P6-a `e219977b`＋P6-b `a1bcabee`＋P6-c `cbbe82c3`）；判词 `.batch/night/reports/s3-p6-verdict.md`（160 行／14,217B／`3665ffd0…`）；browser `38 passed`；每章预算从 `S07_TASK_BUDGET_POLICY` 派生（zh 3,584／10 章 31,232，对 32,768 余 1,536）；合并 sha：并入 `1c0700a1`（卡链尖 `cbbe82c3`）
 - ID：L2-PLANUI-01-04
 
 ### L0-RES 正文质量研究（A-1 系）
@@ -360,4 +360,4 @@
 | v0.4 | 2026-11-23 | S1 收口：`:91` 合并 sha 落实值（D15 `64793246`／D18 `89868921`）；§0 ② 计数刷新为当次读数（revision 923，backlog 3／todo 12 = 15 张，done 137 → 139）；**`:73` 判据文字变动说明**——原写「§2 表 20 行状态列无 `🟡`」，该写法的 `grep -c "🟡"` 在整表上恒不为 0（D20 是「🟡 结项（不验）」，属作者 2026-11-06 裁的结项态，本就不该验），故收窄为「D1–D18 范围内 `🟡` = 0，D20 不计入」，判据强度不变、只把范围写明；另同笔清掉看板 5 张 done 卡的 `Roadmap` 镜像 Tag（`23433174`／`76273d1a`／`2a8b0b0d`／`4ee6b83e`／`19bd077a`），落实裁定 3「看板只留执行卡、不建镜像」；归档卡 `3aabf83a`（S6·P54 发版，DSH 插件组、卡面只读）由主身于 2026-11-23 18:10 走 restore→去 Tag→archive 清掉，卡面其余字段未动；至此 `Roadmap` Tag 共 6 处已清，`task_board_list tag=Roadmap` 默认与 `includeArchived:true` 均 `total 0`（revision 931） | 项目总负责人＋群 admin（文字更正） |
 | v0.5 | 2026-11-23 | S3 收口：ARCH 六条状态同步——`L0-ARCH`／`L1-ARCH-01`／`L2-ARCH-01-01/02/03` 阻塞→未开始，证据句改引 ADR-0027 与设计稿 `:199`／`:219`／`:232`；`L1-ARCH-02` 保留阻塞，§1 表前置改「第四件前置（未定）」，证据行保留「必须独立设计」原文并注依赖第四件前置（批次身份与证明体系，主人裁定本轮不做）；按裁定④统一 §1 表行与 §2 证据行口径；条目内容、完成判据、§6 未动 | 项目总负责人 |
 | v0.6 | 2026-11-24 | AC 系 S4 收口：`L1-ARCH-01` 与 `L2-ARCH-01-01/02/03` 四条转「达标」，证据句写判定面 sha（`6e0f6a63`／`5e99d2ad`／`b5a14f1c`）、判词路径与 sha256、测试数（10／13／46）、变异口径（M4 与 AC3 M1／M2 记等价）、接线点（`src/services/consistency-preflight.ts`）；`L0-ARCH` 与 `L1-ARCH-02` 未动（后者仍「阻塞」：第四件前置＝批次身份与证明体系，ADR-0027 D4）；合并 sha 已回填（AC1 `2e43a912`／AC2 `ab79550c`／AC3 `113f7d4d`）。条目内容、完成判据、§6 未动 | 项目总负责人 |
-| v0.7 | 2026-11-25 | PLANUI 收口：`L2-PLANUI-01-01/02/03/04` 四条阻塞／未开始→**达标**，证据句写判定面 sha（O1 `85c927ae`／C1-a `34aa0000`／C1-b `8a42a566`／P6-c `cbbe82c3`）、判词路径与 sha256、测试数（42／106、22＋browser 5、browser 38）与变异口径；四条旧「阻塞」证据行（看板卡标注原文）已删；`L0-PLANUI`／`L1-PLANUI-01` 阻塞→进行中（四条 L2 全达标，父级达标签字待主人，`roadmap-doc-spec.md` §5 第七项）；合并 sha 一律「未合并·待主身」。条目内容、完成判据、§6 未动 | 项目总负责人（S5 收口笔） |
+| v0.7 | 2026-11-25 | PLANUI 收口：`L2-PLANUI-01-01/02/03/04` 四条阻塞／未开始→**达标**，证据句写判定面 sha（O1 `85c927ae`／C1-a `34aa0000`／C1-b `8a42a566`／P6-c `cbbe82c3`）、判词路径与 sha256、测试数（42／106、22＋browser 5、browser 38）与变异口径；四条旧「阻塞」证据行（看板卡标注原文）已删；`L0-PLANUI`／`L1-PLANUI-01` 阻塞→进行中（四条 L2 全达标，父级达标签字待主人，`roadmap-doc-spec.md` §5 第七项）；合并 sha 并入 `1c0700a1`（卡链尖 `85c927ae`）。条目内容、完成判据、§6 未动 | 项目总负责人（S5 收口笔） |
