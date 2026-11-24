@@ -114,3 +114,49 @@ CF_EXIT=0
 ---
 
 判词自述：本文件由 QA 在本轮终验中写就；所有命令在同一工作树 `C:\develop\workspace\AI-writer\develop` 上执行，未改动任何被验文件（porcelain 0 行）。
+
+## 7. S5 末笔 `046050d9` 复核（2026-11-25 01:56，两行闸复跑）
+
+§1–§6 的结论与读数全部不变；本节只判 S5 收口之后的文档整理笔是否落地、以及推送后两行闸。
+
+### 7.1 两行闸（我自己跑的原文）
+
+```
+$ git rev-parse HEAD
+046050d956bf54910b4665ff596ac7fa558c0102
+
+$ git ls-remote origin refs/heads/exp/resource-ledger
+046050d956bf54910b4665ff596ac7fa558c0102	refs/heads/exp/resource-ledger
+
+$ git status --porcelain -uall | wc -l
+0
+```
+
+两行同 sha、porcelain 0 行——**成立**。`HEAD^` = `1c0700a1d2fbf24fac67b9e3943dea59c5792db4`（父提交未被换头，是纯 ff 追加）。
+
+### 7.2 末笔内容（`git show --numstat --format= HEAD`）
+
+```
+116	0	.batch/night/reports/s5-planui-final-verdict.md
+5	4	.batch/night/reports/task-ledger.md
+9	2	docs/design/architecture/o1-unit-event-progress-design.md
+1	1	docs/plans/prompt-assembly-backlog.md
+6	6	docs/roadmap/ROADMAP.md
+```
+
+5 文件 `+137 −13`，无 `src/` 文件。我这 116 行判词已随本笔入库（不再是未跟踪件）。
+
+### 7.3 §5 三条缺口逐条销账
+
+| 发现 | 处置后原文 | 判定 |
+|---|---|---|
+| **F2** O1 稿旧口径 | `:9` 现为「分母取**本批章数 `b`**（本批开工时冻结）、按起点 `s0` 偏移、上界钳 `M-1`」；`grep -n 分母` 命中 `:9`／`:60`／`:62`／`:90`／`:133`／`:201` 六行，逐行读口径一致（`:62` 明确写「2026-11-25 订正…旧写法…已废」，`:201` 句尾仍指「见 §3.2」） | **销** |
+| **F3** 循环 import 未进设计稿 | 新增 `:208` `## 8. 已接受的技术债（2026-11-25 收口登记，本卡不修）`：第 1 条循环 import `arc-position.ts:2` ⇄ `o1-event-progress.ts:39`（只在函数体内调用、无顶层求值；断环需改 `unitEventSteps` 入参形状），第 2 条 `architecture.command.ts:3668` `startStep` 未钳 ⇒ `o1-event-progress.ts:104` 越界 `return null` ⇒ 整批提示行静默消失，修法在 `arc-position.ts:1362` 附近钳 | **销** |
+| **F4** 合并 sha 待回填 | `grep -c "并入 \`1c0700a1\`"` → ROADMAP 6 处、台账 4 处、backlog 1 处；台账 `:946` 另补收口件指纹 `99 行／9,193B／24214f4f…` | **销** |
+| **F1** 三卡 done 那句 | admin 用 `record-external-outcome` 置三卡 `done`（`executionCount: 1`、`external: true`），该句现为真；按 admin 裁不再提交 | **销** |
+
+### 7.4 结论
+
+S5 交付面完整、两行闸成立、四处缺口全销 ⇒ **PASS**。goal 可 pass stage 5 并 complete；父级 `L0-PLANUI`／`L1-PLANUI-01` 的「达标」仍须主人签字（`roadmap-doc-spec.md` §5 第七项），本判词不代签。
+
+本判词自述：§7 于两行闸读数之后追加，追加后工作树仅本文件 1 行 `M`（未跟踪件问题不再存在）；该行改动随下一笔入库或由 admin 裁定保留。
