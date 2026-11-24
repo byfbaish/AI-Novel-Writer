@@ -958,3 +958,8 @@ To: AI writer项目组 · 群内共读（判件基准件）
 - 实验脚本 `scripts/experiments/res-s2-ab-runner.mjs` 与 `.runtime/res-s2` 现场件只作证据、不入主线；`run.lock` 经 admin 授权清除（清前原文 pid 56232，`Get-Process -Id 56232` 已不存在）。
 - 本段只追加，不改既有条目。
 - 口径（负责人 11-25 06:2x 裁）：台账正文**不写自身** sha／行数／字节（自指，改一次变一次，永远追不上）；需要引用时写「见 admin 群内记录」；末行必须带换行（batch-hygiene 是合规项，优先于指纹写法）。
+
+- **判词同名两版**（负责人 11-25 裁，QA 提请）：`res-s2-runner-preflight-qa.md` 在 `C:\develop\workspace\AI-writer\wt-2\.batch\night\reports\` 是 **81 行／10,758 B／`1fe501ba90d23d2b…d280df441`**（该树 `M` 未提交），在 `C:\develop\workspace\AI-writer\develop\.batch\night\reports\` 是 **66 行／7,973 B／`9d58f507…`**（随 `c43f0bd2` 进来）。同名不同版，**按文件名去 develop 取会拿到旧版**，引用一律写「绝对路径＋行数」。
+- **判词正本位置**：`res-s2-appendix12-qa.md`（46 行／6,280 B／`8a656670b0cf0185…83ca3c29`）只在 wt-2、`??` 未跟踪。负责人裁：**不复制第二份**，两份判词正本留在 wt-2 冻结树作证物，develop 那份 66 行版原样不动、不回退，**S3 收口时一次性处置**（或按 wt-2 版做一笔修订提交，或在此台账记一行「判词正本在 wt-2 冻结树」）。纪律：**以后判词一律落 develop 主工作树**，本次根因就是判词落进了实验树。
+- **提交人归属**（author 栏全是 `大管家 <butler@local>`，`git show --format=%an` 分不出，只能靠自报）：`b057bd3d`（四件口径修订）＝负责人自报；`d8f4a846`（rule-registry R24–R26）＝负责人自报；`1266483e`（R24–R26 措辞修订，叠在 `d8f4a846` 上）＝跟班。负责人裁**不合成一笔**——两笔都只在本地未推、内容只差一句措辞，为它再跑一次 `reset --soft` 不值当（刚出过误撤跟班那笔的事）。
+- 本段只追加，不改既有条目。

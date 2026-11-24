@@ -19,7 +19,7 @@
 
 ## 1 判级与「可检」的定义
 
-### 1.1 依据判级（沿用 `docs/design/prompt/d18-chapter-hook-contract-design.md:132-139`）
+### 1.1 依据判级（**本表是词表正本**；d18 `docs/design/prompt/d18-chapter-hook-contract-design.md:132-139` 为历史三级口径、命名不同，只作沿革，不作指针）
 
 | 级别 | 本文件里的含义 | 能否作判据 |
 |---|---|---|
@@ -79,6 +79,8 @@
 
 **去处统计（三处文件统一取此值，2026-11-25 admin 核账后定）**：20 条 = **P17 候选 4**（F-01／F-05／F-06／F-09）＋ **只进报告 4**（F-03／F-08／F-10／F-11）＋ **不做 12**（F-02／F-04／F-07／F-12／F-13／F-14／F-15／F-16／F-17／F-18／F-19／F-20）。
 
+> 2026-11-25 修订注（去处定稿，晚于上一行）：admin 裁定④「进 P17 只限有 basis 且换作者仍 holds」后，F-01／F-05／F-06／F-09 四条（`transfer=fails`、`basis=推演`）降为「只进报告」；现行去处见 [`2026-11-25-formulaic-patterns-judgment-list.md`](2026-11-25-formulaic-patterns-judgment-list.md) §1——**24 条 = P17 候选 2（段长/句长上限，`src/shared/prose-shape.ts:103-104`）＋ 只进报告 9 ＋ 不做 13**。上一行保留为核账历史，不再作为计数依据。
+
 ---
 
 ## 3 四条 P17 候选的可检契约（写得出命令与阈值）
@@ -90,7 +92,7 @@
 - **谁跑**：developer 写脚本；QA 用同一命令复算两遍，两次读数必须逐字相同。
 - **跑什么**：
   ```bash
-  node scripts/res/scan-formulaic.mjs --dir .runtime/res-corpus/author-v1 --feature neg-parallel --json
+  node scripts/res/scan-formulaic.mjs --dir .runtime/res-corpus/multi-author-v1 --feature neg-parallel --json
   ```
   输出每篇 `{chapter, count, per1k, hits:[{offset, text}]}`。
 - **阈值**：`per1k ≥ max(P95_author, 0.3)` 且 `count ≥ 2`。作者库 ≥ 20 章才出判定。
