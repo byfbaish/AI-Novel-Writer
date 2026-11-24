@@ -955,6 +955,12 @@ import type {
   FinalizedDraftImportRequest,
 } from './finalized-draft-import'
 import type {
+  CharacterRegenerationFieldRollbackRequest,
+  CharacterRegenerationFieldRollbackResult,
+  CharacterRegenerationSnapshotReadRequest,
+  CharacterRegenerationSnapshotView,
+} from './character-regeneration-diff'
+import type {
   AuthorManuscriptImportPreview,
   AuthoritativeChapterSequence,
 } from './author-manuscript-import'
@@ -1109,6 +1115,26 @@ export interface DatabaseChannels {
   'db:character-roster-commit': {
     args: [request: CharacterRosterCommitRequest, expectedProjectPath: string]
     return: { success: boolean; receipt?: CharacterRosterCommitReceipt; error?: string }
+  }
+  /**
+   * C1-b：按 `operation_id` 读架构重建覆盖前的逐字段快照。
+   *
+   * `snapshotAvailable=false` 是**正常态**：功能上线前的旧批次没有快照行，对比屏照常显示
+   * 只读差异，但不出回退入口（判据 J8）。读不到不等于出错。
+   */
+  'db:character-regeneration-snapshot-read': {
+    args: [request: CharacterRegenerationSnapshotReadRequest, expectedProjectPath: string]
+    return: {
+      success: boolean
+      snapshotAvailable?: boolean
+      snapshots?: CharacterRegenerationSnapshotView[]
+      error?: string
+    }
+  }
+  /** C1-b：把快照里的旧值逐字段写回（版本不符即拒绝，不强制覆盖）。 */
+  'db:character-regeneration-field-rollback': {
+    args: [request: CharacterRegenerationFieldRollbackRequest, expectedProjectPath: string]
+    return: { success: boolean; result?: CharacterRegenerationFieldRollbackResult; error?: string }
   }
 
   // 3b. world state（W5 只读视图）

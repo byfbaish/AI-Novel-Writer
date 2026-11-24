@@ -5,6 +5,7 @@ import { CHARACTER_ROLES, getCharacterRoleLabels } from '../../shared/character-
 import type { CharacterProposalChoices, CharacterProposalRelationshipChoice } from '../../services/character-proposal-choices'
 import { useLocaleStore } from '../../stores/locale-store'
 import { NativeSelect } from '../ui/NativeSelect'
+import { CharacterRegenerationDiffPanel } from './CharacterRegenerationDiffPanel'
 const editableFields = [
   ['name', '姓名', 'Name'], ['gender', '性别', 'Gender'], ['age', '年龄', 'Age'],
   ['appearance', '外貌', 'Appearance'], ['personality', '性格', 'Personality'],
@@ -49,6 +50,8 @@ export function CharacterProposalSelectionPanel({ batch, identities, choices, on
     <p className="text-xs text-[var(--color-text-secondary)]">{rebuild
       ? text('整册重建会覆盖同名卡的资料：背景/性格/外貌等直接换成本次候选值（候选为空的字段保留现有值）。', 'A full rebuild overwrites same-name cards: background, personality, appearance and the like take this batch\'s values; fields the candidate leaves empty keep their current value.')
       : text('采用到已有角色时不会覆盖已有内容：背景/性格/外貌等叙述字段与候选合并（重复内容自动去重），姓名/性别/年龄/定位以现有卡为准。', 'Adopting onto an existing card never overwrites it: narrative fields (background, personality, appearance…) are merged with the candidate and duplicates are dropped; name, gender, age and role keep the existing card values.')}</p>
+    {/* C1-b：重建才出「字段级并排对比 + 三选一」；增量链（合并不覆盖）没有覆盖，故不出。 */}
+    {rebuild && <CharacterRegenerationDiffPanel batch={batch} choices={choices} onChange={onChange} disabled={disabled} />}
     <div className="max-h-80 space-y-1 overflow-y-auto pr-1">
       {freshItems.map(item => <CandidateItem key={item.selectionKey} item={item} {...rowProps} />)}
       {freshRelations.map((relation, index) => <RelationshipBinding key={`${relation.sourceSelectionKey}:${relation.targetSelectionKey ?? relation.targetName}:${index}`}

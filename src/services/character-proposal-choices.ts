@@ -1,6 +1,7 @@
 import type { ApproveCharacterProposalRequest, CharacterProposalBatch } from '../shared/character-proposal'
 import { isAdoptedCharacterDecision } from '../shared/character-proposal'
 import { defaultCharacterProposalRelationships, defaultCharacterProposalSelections } from './workflows/character-proposal-preview'
+import { applyRegenerationStrategy, type RegenerationStrategy } from '../shared/character-regeneration-diff'
 
 /**
  * A relationship row as the panel holds it while the author decides. `sourceCharacterId` marks
@@ -31,9 +32,14 @@ export interface CharacterProposalChoices {
   edits?: NonNullable<ApproveCharacterProposalRequest['edits']>
 }
 
-export function createCharacterProposalChoices(batch: CharacterProposalBatch): CharacterProposalChoices {
+export function createCharacterProposalChoices(
+  batch: CharacterProposalBatch,
+  strategy: RegenerationStrategy = 'overwrite-all',
+): CharacterProposalChoices {
+  // 三选一只翻「默认选择」这一项（C1-b）；不传时策略等于现状默认，其余字段逐项不变。
   return { proposalBatchId: batch.proposalBatchId, revision: batch.revision,
-    selections: defaultCharacterProposalSelections(batch), relationships: defaultCharacterProposalRelationships(batch) }
+    selections: applyRegenerationStrategy(batch, defaultCharacterProposalSelections(batch), strategy),
+    relationships: defaultCharacterProposalRelationships(batch) }
 }
 
 /**

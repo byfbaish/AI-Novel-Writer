@@ -31,13 +31,14 @@ import { applyM27UpstreamRevisionLog, createM27Migration, verifyM27UpstreamRevis
 import { applyM28DraftOutlineRev, createM28Migration, verifyM28DraftOutlineRev } from './m28-draft-outline-rev'
 import { applyM29GenerationRunLease, createM29Migration, verifyM29GenerationRunLease } from './m29-generation-run-lease'
 import { applyM30DraftEditStats, createM30Migration, verifyM30DraftEditStats } from './m30-draft-edit-stats'
+import { applyM31CharacterRegenerationSnapshots, createM31Migration, verifyM31CharacterRegenerationSnapshots } from './m31-character-regeneration-snapshots'
 import { initializeLegacyBaselineSchema, applyBaselineTables } from './baseline-schema'
 import { ensureBaselineBlueprintTables } from './baseline-blueprint-schema'
 import { SqliteSchemaAdapter, sqliteSchemaFingerprint } from './sqlite-schema-adapter'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof import('better-sqlite3')
-export const CURRENT_DESKTOP_SCHEMA_VERSION = 31
+export const CURRENT_DESKTOP_SCHEMA_VERSION = 32
 let installed: MigrationRegistry | undefined
 
 function installKnownDonorAvatarColumn(db: import('better-sqlite3').Database): void {
@@ -223,7 +224,12 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
     const m30 = createM30Migration({ database: native,
       verifyKnownSchema: db => draftEditStatFingerprints.has(sqliteSchemaFingerprint(native(db)))
         && verifyM30DraftEditStats(native(db)) })
-    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14, m15, m16, m17, m18, m19, m20, m21, m22, m23, m24, m25, m26, m27, m28, m29, m30], [
+    for (const db of references) db.transaction(() => applyM31CharacterRegenerationSnapshots(db))()
+    const regenerationSnapshotSchemas = schemas(32), regenerationSnapshotFingerprints = new Set(regenerationSnapshotSchemas.map(item => item.fingerprint))
+    const m31 = createM31Migration({ database: native,
+      verifyKnownSchema: db => regenerationSnapshotFingerprints.has(sqliteSchemaFingerprint(native(db)))
+        && verifyM31CharacterRegenerationSnapshots(native(db)) })
+    installed = createMigrationRegistry([m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12, m13, m14, m15, m16, m17, m18, m19, m20, m21, m22, m23, m24, m25, m26, m27, m28, m29, m30, m31], [
       ...sourceSchemas, ...baselineSchemas.map(schema => ({ ...schema, version: 0 })),
       ...baselineSchemas, ...generationSchemas, ...identitySchemas,
       ...reviewCycleSchemas, ...importEffectSchemas, ...characterAssetSchemas, ...mergeSnapshotSchemas,
@@ -247,6 +253,7 @@ export function getDesktopMigrationRegistry(): MigrationRegistry {
       ...draftOutlineRevSchemas,
       ...generationRunLeaseSchemas,
       ...draftEditStatSchemas,
+      ...regenerationSnapshotSchemas,
     ])
     return installed
   } finally { reference.close(); donor.close() }

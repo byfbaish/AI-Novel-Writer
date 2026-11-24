@@ -28,7 +28,9 @@ import {
 import { CharacterRepository, hasCharacterIdentitySchema } from '../repositories/character-repository'
 import { commitAuthorCharacterRoster } from '../services/character-roster-author'
 import { CharacterRosterRepository } from '../repositories/character-roster-repository'
+import { hasCharacterRegenerationSnapshotSchema, readCharacterRegenerationSnapshots, rollbackCharacterRegenerationFields } from '../repositories/character-regeneration-snapshot-repository'
 import type { CharacterRosterCommitRequest } from '../../src/shared/character-roster'
+import type { CharacterRegenerationFieldRollbackRequest, CharacterRegenerationSnapshotReadRequest } from '../../src/shared/character-regeneration-diff'
 import { DraftRepository } from '../repositories/draft-repository'
 import { ContentRepository } from '../repositories/content-repository'
 import { DraftEditStatsRepository } from '../repositories/draft-edit-stats-repository'
@@ -846,6 +848,47 @@ export function registerDatabaseController() {
       }
       return { success: true, receipt: CharacterRosterRepository.commit(request,
         request.generationRunHandle ? () => assertGenerationSourcesCurrent(request.generationRunHandle!) : undefined) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // C1-b：架构重建覆盖前的逐字段快照（M31）。读不到＝旧批次，正常态，不是错误。
+  ipcMain.handle('db:character-regeneration-snapshot-read', async (
+    _event,
+    request: CharacterRegenerationSnapshotReadRequest,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const database = getProjectDb()
+      if (!database || !hasCharacterRegenerationSnapshotSchema(database)) return { success: true, snapshotAvailable: false, snapshots: [] }
+      const snapshots = readCharacterRegenerationSnapshots(database, request.operationId)
+      return { success: true, snapshotAvailable: snapshots.length > 0, snapshots }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  // C1-b：逐字段回退（版本不符即拒绝，不强制覆盖）。项目会话校验沿用 roster-commit 的写法。
+  ipcMain.handle('db:character-regeneration-field-rollback', async (
+    _event,
+    request: CharacterRegenerationFieldRollbackRequest,
+    expectedProjectPath: string,
+  ) => {
+    try {
+      assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      const database = getProjectDb()
+      if (!database) throw new Error('PROJECT_DATABASE_REQUIRED')
+      const session = projectAccess.captureCurrentSession()
+      if (!session) throw new Error('CHARACTER_REGENERATION_ROLLBACK_SCOPE_REQUIRED')
+      const verify = () => {
+        projectAccess.assertCurrentSession(session)
+        assertRequiredExpectedProjectPath(getCurrentProjectPath(), expectedProjectPath)
+      }
+      verify()
+      return { success: true, result: rollbackCharacterRegenerationFields(database, request,
+        { projectId: session.projectId, epoch: session.leaseId }) }
     } catch (err) {
       return { success: false, error: String(err) }
     }

@@ -6,6 +6,7 @@ import { resolveScopedCharacterIdentity, type CharacterStaticProvenance } from '
 import { CHARACTER_ROLES } from '../../src/shared/character-role'
 import { CharacterCastDecisionRepository, hasCharacterCastDecisionSchema } from '../repositories/character-cast-decision-repository'
 import { CharacterRosterRepository, commitCharacterIdentities, refreshCharacterIdentityProjection, type CharacterIdentityCommitRequest } from '../repositories/character-roster-repository'
+import { hasCharacterRegenerationSnapshotSchema, readCharacterRegenerationSnapshotSource, retargetCharacterRegenerationSnapshotRevision, writeCharacterRegenerationSnapshots } from '../repositories/character-regeneration-snapshot-repository'
 import { GenerationRunRepository, textHash } from '../repositories/generation-run-repository'
 import { SummaryRepository } from '../repositories/summary-repository'
 import { normalizeFinalizedCharacterProposalSource } from './finalized-character-generation-proof'
@@ -781,7 +782,22 @@ export class CharacterProposalService {
           .filter(character => !character.retired).map(character => character.characterId)),
       })
       const frozenRequest = JSON.stringify(identityRequest)
+      // C1-b（判据 J6–J8）：架构重建会**覆盖同名卡** —— 覆盖前把旧卡整卡字段写进快照，
+      // 供「逐字段回退」。时机必须在 `commitCharacterIdentities` **之前**：写在其后，
+      // 一旦覆盖本身回滚，就会留下描述「从未发生过的状态」的孤儿快照。
+      // 外层 `this.db.transaction(...).immediate()` 已包住整段（通道自开的事务是 savepoint），
+      // 快照与覆盖因此同生共死。
+      const snapshotRevision = rebuild && identityRequest.changes.length && hasCharacterRegenerationSnapshotSchema(this.db)
+        ? this.revision() + 1 : 0
+      if (snapshotRevision) {
+        const snapshots = identityRequest.changes.flatMap(change => {
+          try { return [{ ...readCharacterRegenerationSnapshotSource(this.db, change.characterId), sourceRevision: snapshotRevision }] }
+          catch { return [] }
+        })
+        writeCharacterRegenerationSnapshots(this.db, request.operationId, snapshots, new Date().toISOString())
+      }
       const receipt = commitCharacterIdentities(this.db, identityRequest, candidate => JSON.stringify(candidate) === frozenRequest)
+      if (snapshotRevision) retargetCharacterRegenerationSnapshotRevision(this.db, request.operationId, receipt.revision)
       // 图谱收敛：同一对角色只保留一条关系边。
       // 实测（2026-10-29）：陈砚→赵铎 有 10 条措辞各异的边，因为每次采纳都往同一对之间插一条新的。
       // 只收敛**本批声明过的对**，本批没提到的边不动 —— 重建语境下这些对的关系由本批重写。

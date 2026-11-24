@@ -2,7 +2,7 @@ import { isContentHash, isFinalizedSourceIdentity, sameProjectEpoch, type Projec
 import type { FinalizedSourceIdentity } from './finalized-continuity'
 
 /** Business IDs only. Numeric PRAGMA versions belong to electron/migrations/registry. */
-export const MIGRATION_IDS = ['M00', 'M01', 'M02', 'M03', 'M04', 'M05', 'M06', 'M07', 'M08', 'M09', 'M10', 'M11', 'M12', 'M13', 'M14', 'M15', 'M16', 'M17', 'M18', 'M19', 'M20', 'M21', 'M22', 'M23', 'M24', 'M25', 'M26', 'M27', 'M28', 'M29', 'M30'] as const
+export const MIGRATION_IDS = ['M00', 'M01', 'M02', 'M03', 'M04', 'M05', 'M06', 'M07', 'M08', 'M09', 'M10', 'M11', 'M12', 'M13', 'M14', 'M15', 'M16', 'M17', 'M18', 'M19', 'M20', 'M21', 'M22', 'M23', 'M24', 'M25', 'M26', 'M27', 'M28', 'M29', 'M30', 'M31'] as const
 export type MigrationId = typeof MIGRATION_IDS[number]
 export const PROJECT_MIGRATION_JOURNAL = '.ai-novel-migration/journal.json'
 export const STORAGE_ENVIRONMENT = {
