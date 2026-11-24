@@ -1020,3 +1020,148 @@ describe('main-owned graph recovery', () => {
     expect(invoke.mock.calls.some(([channel]) => ['db:narrative-thread-event-confirm', 'db:draft-get-full', 'graph-generation:execute'].includes(channel))).toBe(false)
   })
 })
+
+describe('章区间与档 3 进度（P6）', () => {
+  const blueprint = (chapterNumber: number) => ({
+    chapterNumber, title: `第${chapterNumber}章题`, role: '发展', purpose: '',
+    keyEvents: '', characters: [], suspenseHook: '', userGuidance: '', notes: '', notesUpdatedAt: '',
+  })
+
+  const finalizedDraft = (chapterNumber: number) => ({
+    id: chapterNumber, chapterNumber, version: 1, status: 'finalized', source: 'write',
+    contentId: chapterNumber, wordCount: 8, createdAt: '', updatedAt: '',
+  })
+
+  const planRow = (targetStartChapter: number, targetEndChapter: number) => ({
+    id: 9, title: '跨章伏笔', type: '伏笔', targetStartChapter, targetEndChapter,
+    authorIntent: '在终章回收。', status: 'planned', dormantChapters: 0, overdue: false,
+    events: [], createdAt: '', updatedAt: '',
+  })
+
+  it('N=3 区间派发：逐章依次发送 begin（chapterNumber 2→3→4）', async () => {
+    const beginRequests: Array<{ input: { kind: string; chapterNumber: number } }> = []
+    const openings = new Map<string, Record<string, unknown>>()
+    const prior = invoke.getMockImplementation() as (channel: string, ...args: unknown[]) => Promise<unknown>
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'generation:list') return []
+      if (channel === 'db:blueprint-get-all') return [2, 3, 4].map(blueprint)
+      if (channel === 'db:draft-list-all' || channel === 'db:narrative-thread-list') return []
+      if (channel === 'graph-generation:begin') {
+        const request = args[0] as { input: { kind: 'plan'; chapterNumber: number }; modelId: string; uiActionNonce: string }
+        beginRequests.push(request)
+        const chapterNumber = request.input.chapterNumber
+        const handle = { projectId: 'thread-project', epoch: 'thread-lease', rootActionId: `root-${chapterNumber}`, runId: `run-${chapterNumber}` }
+        const opening = {
+          view: { handle, operation: 'narrative-thread-plan-candidate', status: 'opened', artifacts: [] },
+          modelId: 'glm', attemptCount: 0, sourceStatus: 'current', effects: [],
+          context: {
+            projectId: 'thread-project', originEpoch: 'thread-lease', key: `key-${chapterNumber}`, createdAt: '',
+            input: request.input, writingLanguage: 'zh-CN', kind: 'plan', blueprint: blueprint(chapterNumber), totalChapters: 10,
+          },
+        }
+        openings.set(handle.runId, opening)
+        return opening
+      }
+      if (channel === 'graph-generation:execute') {
+        const request = args[0] as { handle: { runId: string } }
+        const opening = openings.get(request.handle.runId)!
+        return { run: { ...(opening.view as Record<string, unknown>), status: 'completed' }, outcome: { status: 'completed', finishReason: 'stop' } }
+      }
+      if (channel === 'graph-generation:read') {
+        const request = args[0] as { handle: { runId: string } }
+        const opening = openings.get(request.handle.runId)!
+        const chapterNumber = request.handle.runId.replace('run-', '')
+        return {
+          ...opening,
+          view: { ...(opening.view as Record<string, unknown>), status: 'completed' },
+          artifact: { artifactId: `artifact-${chapterNumber}`, revision: 1, textHash: 'a'.repeat(64) },
+          result: {
+            kind: 'plan',
+            candidates: [{ title: `候选-${chapterNumber}`, type: '伏笔', targetStartChapter: Number(chapterNumber), targetEndChapter: Number(chapterNumber), authorIntent: '跨章线索。' }],
+          },
+        }
+      }
+      return prior(channel, ...args)
+    })
+
+    await act(async () => root?.render(<NarrativeThreadEditor projectKey={PROJECT_PATH} />))
+    await vi.waitFor(() => expect(container?.textContent).toContain('AI 建议伏笔与线索'))
+    await act(async () => Array.from(container!.querySelectorAll('button')).find(button => button.textContent?.includes('AI 建议伏笔与线索'))?.click())
+    await vi.waitFor(() => expect(document.body.querySelector('#narrative-thread-ai-range-count')).not.toBeNull())
+
+    await act(async () => {
+      setValue(document.body.querySelector<HTMLInputElement>('#narrative-thread-ai-range-count')!, '3')
+    })
+    await act(async () => Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '生成候选')?.click())
+
+    await vi.waitFor(() => expect(beginRequests).toHaveLength(3))
+    expect(beginRequests.map(request => request.input)).toEqual([
+      { kind: 'plan', chapterNumber: 2 },
+      { kind: 'plan', chapterNumber: 3 },
+      { kind: 'plan', chapterNumber: 4 },
+    ])
+    expect(invoke.mock.calls.filter(([channel]) => channel === 'graph-generation:execute')).toHaveLength(3)
+  })
+
+  it('失败即停：第 3 章失败后第 4 章不发起，已成功章候选保留并可续跑', async () => {
+    const planCalls: number[] = []
+    const planCandidatesMock = vi.fn(async (input: { blueprint: { chapterNumber: number } }) => {
+      planCalls.push(input.blueprint.chapterNumber)
+      if (input.blueprint.chapterNumber === 3) throw new Error('模型未完整完成')
+      return [{ title: `候选-${input.blueprint.chapterNumber}`, type: '伏笔', targetStartChapter: input.blueprint.chapterNumber, targetEndChapter: input.blueprint.chapterNumber, authorIntent: '跨章线索。' }]
+    })
+    const candidateGenerator: NarrativeThreadCandidateGenerator = {
+      generatePlanCandidates: planCandidatesMock,
+      generateEventCandidates: vi.fn().mockResolvedValue([]),
+    }
+    const prior = invoke.getMockImplementation() as (channel: string, ...args: unknown[]) => Promise<unknown>
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:blueprint-get-all') return [2, 3, 4].map(blueprint)
+      if (channel === 'db:draft-list-all' || channel === 'db:narrative-thread-list') return []
+      return prior(channel, ...args)
+    })
+
+    await act(async () => root?.render(<NarrativeThreadEditor projectKey={PROJECT_PATH} candidateGenerator={candidateGenerator} />))
+    await vi.waitFor(() => expect(container?.textContent).toContain('AI 建议伏笔与线索'))
+    await act(async () => Array.from(container!.querySelectorAll('button')).find(button => button.textContent?.includes('AI 建议伏笔与线索'))?.click())
+    await vi.waitFor(() => expect(document.body.querySelector('#narrative-thread-ai-range-count')).not.toBeNull())
+    await act(async () => {
+      setValue(document.body.querySelector<HTMLInputElement>('#narrative-thread-ai-range-count')!, '3')
+    })
+    await act(async () => Array.from(document.body.querySelectorAll('button')).find(button => button.textContent === '生成候选')?.click())
+
+    await vi.waitFor(() => expect(document.body.textContent).toContain('第 3 章生成失败'))
+    expect(planCalls).toEqual([2, 3])
+    expect(document.body.textContent).not.toContain('第 4 章生成失败')
+    expect(document.body.textContent).toContain('，第 4 章未发起')
+    expect(document.body.textContent).toContain('从第 3 章续跑')
+    // 第 2 章已产出的候选整批保留、可确认。
+    expect(document.body.textContent).toContain('候选-2')
+    expect(Array.from(document.body.querySelectorAll('button')).some(button => button.textContent === '确认计划')).toBe(true)
+  })
+
+  it('档 3 建议条：无计划行时不渲染', async () => {
+    const unitProbe = vi.fn(async () => ({ unit: { from: 1, maxChapters: 32 } }))
+    await act(async () => root?.render(<NarrativeThreadEditor projectKey={PROJECT_PATH} unitProbe={unitProbe} />))
+    await vi.waitFor(() => expect(container?.textContent).toContain('暂无伏笔或叙事线索'))
+    expect(container!.querySelector('[data-testid="narrative-thread-progress"]')).toBeNull()
+    expect(container?.textContent).not.toContain('已扫')
+  })
+
+  it('档 3 建议条：并集 [11,20]、已写 1..32 ⇒ 已扫 10 章 / 剩余 22 章', async () => {
+    plans = [planRow(11, 20)]
+    const prior = invoke.getMockImplementation() as (channel: string, ...args: unknown[]) => Promise<unknown>
+    invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+      if (channel === 'db:draft-list-all') return Array.from({ length: 32 }, (_, index) => finalizedDraft(index + 1))
+      return prior(channel, ...args)
+    })
+    const unitProbe = vi.fn(async () => ({ unit: { from: 1, maxChapters: 32 } }))
+
+    await act(async () => root?.render(<NarrativeThreadEditor projectKey={PROJECT_PATH} unitProbe={unitProbe} />))
+    await vi.waitFor(() => expect(container?.textContent).toContain('已扫 10 章 / 剩余 22 章'))
+    const banner = container!.querySelector('[data-testid="narrative-thread-progress"]')
+    expect(banner).not.toBeNull()
+    expect(banner?.textContent).toContain('第 21–23 章')
+    expect(banner?.textContent).toContain('已扫 10 章 / 剩余 22 章')
+  })
+})

@@ -2,10 +2,10 @@ import { canExecuteGraph, createGraphGeneration } from '../../services/graph-gen
 import type { GraphGenerationInput, GraphGenerationRecovery } from '../../shared/graph-generation'
 import type { MainGenerationRunView, MainGenerationRunHandle } from '../../services/generation/generation-runtime'
 import { formatResourceUri } from '../../shared/project-paths'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { CheckCircle2, Clock3, Loader2, Pencil, Plus, Sparkles, Trash2 } from 'lucide-react'
 
-import type { DatabaseChannels, ModelProfile } from '../../shared/ipc-channels'
+import type { DatabaseChannels, ModelProfile, ProjectSessionContext } from '../../shared/ipc-channels'
 import {
   resolveNarrativeThreadDormantThreshold,
   type NarrativeThreadEventType,
@@ -26,6 +26,20 @@ import {
   type NarrativeThreadEventCandidate,
   type NarrativeThreadPlanCandidate,
 } from '../../services/narrative-thread-candidate-generator'
+import { GENERATION_ABSOLUTE_BUDGET_LIMITS } from '../../services/generation/generation-harness'
+import { NARRATIVE_THREAD_CANDIDATE_BUDGET } from '../../shared/narrative-thread-generation-pure'
+import {
+  assertNarrativeThreadBatchBudget,
+  assertNarrativeThreadChapterBudget,
+  narrativeThreadPlanRange,
+} from '../../shared/narrative-thread-range-pure'
+import {
+  finalizedChapterNumbers,
+  narrativeThreadProgress,
+  type NarrativeThreadProgress,
+} from '../../shared/narrative-thread-progress-pure'
+import { runNarrativeThreadChapters } from '../../services/narrative-thread-batch-runner'
+import { probeSynopsisUnitLaunchForProject } from '../../services/workflows/synopsis-unit-launch'
 import {
   PlotTreeGenerationError,
   PlotTreeInputLimitError,
@@ -74,6 +88,8 @@ interface NarrativeThreadEditorProps {
   initialView?: 'plot-tree' | 'plans'
   viewRequest?: number
   plotTreeGenerator?: (request: GeneratePlotTreeInput) => Promise<PlotTreeSnapshot>
+  /** 档 3 单元探针；默认取 `probeSynopsisUnitLaunchForProject`，测试可注入。 */
+  unitProbe?: (input: { projectSession: ProjectSessionContext; totalChapters: number }) => Promise<{ unit: { from: number; maxChapters?: number } | null }>
 }
 
 type AICandidateMode = 'plan' | 'event'
@@ -178,7 +194,7 @@ function plotTreeErrorMessage(
   return text(...fallback)
 }
 
-type BoundPlanCandidate = NarrativeThreadPlanCandidate & { generationIndex?: number; generationHandle?: MainGenerationRunHandle }
+type BoundPlanCandidate = NarrativeThreadPlanCandidate & { generationIndex?: number; generationHandle?: MainGenerationRunHandle; chapterNumber?: number }
 
 interface BoundEventCandidate extends NarrativeThreadEventCandidate {
   generationIndex?: number
@@ -198,6 +214,7 @@ export default function NarrativeThreadEditor({
   initialView = 'plans',
   viewRequest,
   plotTreeGenerator,
+  unitProbe,
 }: NarrativeThreadEditorProps) {
   const currentProject = useProjectStore(s => s.currentProject)
   const text = useLocaleStore(s => s.text)
@@ -223,7 +240,10 @@ export default function NarrativeThreadEditor({
   const [aiOpen, setAiOpen] = useState(false)
   const [aiMode, setAiMode] = useState<AICandidateMode>('plan')
   const [aiModelId, setAiModelId] = useState<string | null>(null)
-  const [aiBlueprintChapter, setAiBlueprintChapter] = useState(0)
+  const [aiRangeStart, setAiRangeStart] = useState(0)
+  const [aiRangeCount, setAiRangeCount] = useState(1)
+  const [aiProgress, setAiProgress] = useState<NarrativeThreadProgress | null>(null)
+  const [aiFailure, setAiFailure] = useState<{ chapter: number; range: { from: number; to: number } } | null>(null)
   const [planCandidates, setPlanCandidates] = useState<BoundPlanCandidate[]>([])
   const [eventCandidates, setEventCandidates] = useState<BoundEventCandidate[]>([])
   const [aiBusy, setAiBusy] = useState(false)
@@ -337,6 +357,18 @@ export default function NarrativeThreadEditor({
     if (graphClient.current === client) showGraphRecovery(value)
     return effect
   }
+  /** 多章串行时旧 client 已 detach：确认前按候选绑定的原 handle 开一次临时客户端，确认后立即 detach。 */
+  const confirmPlanByHandle = async (index: number, handle: MainGenerationRunHandle) => {
+    const session = captureProjectSession(useProjectStore.getState().currentProject)
+    if (!session || !isProjectSessionPath(session, projectKey)) throw new Error('GRAPH_GENERATION_PROJECT_REQUIRED')
+    const client = createGraphGeneration(session)
+    try {
+      await client.open({ handle })
+      return await client.confirm(index, handle)
+    } finally {
+      client.detach()
+    }
+  }
   const cancelGraph = async () => {
     const client = graphClient.current
     if (!client) return
@@ -362,11 +394,25 @@ export default function NarrativeThreadEditor({
       setThreads(nextThreads)
       setBlueprints(nextBlueprints)
       setEventDraftId(previous => previous || finalized[0]?.id || 0)
-      setAiBlueprintChapter(previous => previous || nextBlueprints[0]?.chapterNumber || 0)
+      setAiRangeStart(previous => previous || nextBlueprints[0]?.chapterNumber || 0)
+      // 档 3：已扫 / 剩余 —— 单元边界来自探针（永不抛错，取不到即 unit=null → 建议条不渲染）；
+      // 已写章只取 finalized（reviewed 不是定稿），绝不数 `db:draft-list-all` 原始返回。
+      const totalChapters = useProjectStore.getState().currentProject?.novelConfig.totalChapters
+      if (totalChapters) {
+        const probe = unitProbe ?? probeSynopsisUnitLaunchForProject
+        let probed: { unit: { from: number; maxChapters?: number } | null } = { unit: null }
+        try {
+          probed = await probe({ projectSession: session, totalChapters })
+        } catch { probed = { unit: null } }
+        const nextProgress = narrativeThreadProgress(nextThreads, probed.unit ?? null, finalizedChapterNumbers(finalized))
+        if (isProjectSessionCurrent(session)) setAiProgress(nextProgress)
+      } else if (isProjectSessionCurrent(session)) {
+        setAiProgress(null)
+      }
     } catch {
       if (isProjectSessionCurrent(session)) toast.error(text('加载叙事线索失败', 'Could not load narrative threads'))
     }
-  }, [projectKey, text])
+  }, [projectKey, text, unitProbe])
 
   const loadPlotTree = useCallback(async () => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
@@ -576,37 +622,92 @@ export default function NarrativeThreadEditor({
     setAiModelId(generationModels.some(model => model.id === defaultModelId)
       ? defaultModelId
       : generationModels[0]?.id ?? null)
-    if (mode === 'plan') setAiBlueprintChapter(blueprints[0]?.chapterNumber ?? 0)
+    if (mode === 'plan') { setAiRangeStart(blueprints[0]?.chapterNumber ?? 0); setAiRangeCount(1) }
     setPlanCandidates([])
     setEventCandidates([])
+    setAiFailure(null)
     setAiError('')
     setAiOpen(true)
   }
 
-  const generatePlanCandidates = async () => {
+  /**
+   * 冻结当前上下文并串行跑一段章区间。
+   * 闸门顺序即判据：单章预算闸 → 批声明闸（区间闸由 `generatePlanCandidates` 先行）。
+   * 任一闸抛错时把原文放 `setAiError`，不加兜底文案覆盖。
+   */
+  const launchPlanRange = async (range: { from: number; to: number }) => {
     const projectSnapshot = useProjectStore.getState().currentProject
     const session = captureProjectSession(projectSnapshot)
-    const blueprint = blueprints.find(item => item.chapterNumber === aiBlueprintChapter)
     const frozenModelId = selectedModel?.id
     const totalChapters = projectSnapshot?.novelConfig.totalChapters
-    if (!session || !isProjectSessionPath(session, projectKey) || !blueprint || !frozenModelId || !totalChapters || aiBusy) return
+    const writingLanguage = resolveWritingLanguage(projectSnapshot?.novelConfig.writingLanguage)
+    if (!session || !isProjectSessionPath(session, projectKey) || !frozenModelId || !totalChapters || aiBusy) return
     const controller = new AbortController()
     candidateAbortRef.current?.abort()
     candidateAbortRef.current = controller
     setAiBusy(true)
     setAiError('')
+    setAiFailure(null)
     setPlanCandidates([])
+    const chapterCount = range.to - range.from + 1
     try {
-      if (!candidateGenerator) { await startGraph({ kind: 'plan', chapterNumber: blueprint.chapterNumber }, frozenModelId); return }
-      const candidates = await candidateGenerator.generatePlanCandidates({
-        modelId: frozenModelId,
-        writingLanguage: resolveWritingLanguage(projectSnapshot.novelConfig.writingLanguage),
-        totalChapters,
-        blueprint,
+      assertNarrativeThreadChapterBudget(writingLanguage, NARRATIVE_THREAD_CANDIDATE_BUDGET.maxRequestedOutputTokensPerAttempt)
+      assertNarrativeThreadBatchBudget(writingLanguage, chapterCount, GENERATION_ABSOLUTE_BUDGET_LIMITS.maxRequestedOutputTokensPerAttempt)
+    } catch (error) {
+      if (isProjectSessionCurrent(session) && !controller.signal.aborted) {
+        setAiError(error instanceof Error ? error.message : String(error))
+      }
+      if (candidateAbortRef.current === controller) candidateAbortRef.current = null
+      if (isProjectSessionCurrent(session)) setAiBusy(false)
+      return
+    }
+    try {
+      const batch = await runNarrativeThreadChapters<BoundPlanCandidate, MainGenerationRunHandle>({
+        range,
         signal: controller.signal,
+        runChapter: async (chapterNumber) => {
+          if (!candidateGenerator) {
+            // 真实 App：每章 open → execute → read → detach，绝不保留 N 个 client。
+            const client = createGraphGeneration(session)
+            graphClient.current?.detach()
+            graphClient.current = client
+            try {
+              const opened = await client.open({
+                input: { kind: 'plan', chapterNumber },
+                modelId: frozenModelId,
+                uiActionNonce: crypto.randomUUID(),
+              })
+              showGraphRecovery(opened)
+              const value = await client.execute()
+              if (!value.result || value.result.kind !== 'plan') throw new Error('GRAPH_GENERATION_INCOMPLETE')
+              const candidates = value.result.candidates.map((candidate, generationIndex) => ({
+                ...candidate,
+                generationIndex,
+                generationHandle: value.view.handle,
+                chapterNumber,
+              }))
+              return { candidates, handle: value.view.handle }
+            } finally {
+              client.detach()
+              if (graphClient.current === client) graphClient.current = null
+            }
+          }
+          const blueprint = blueprints.find(item => item.chapterNumber === chapterNumber)
+          if (!blueprint) throw new Error('NARRATIVE_THREAD_BLUEPRINT_MISSING')
+          const candidates = await candidateGenerator.generatePlanCandidates({
+            modelId: frozenModelId,
+            writingLanguage,
+            totalChapters,
+            blueprint,
+            signal: controller.signal,
+          })
+          return { candidates: candidates.map(candidate => ({ ...candidate, chapterNumber })) }
+        },
       })
       if (!isProjectSessionCurrent(session) || controller.signal.aborted) return
-      setPlanCandidates(candidates)
+      const produced = batch.results.flatMap(result => result.status === 'ok' ? result.candidates : [])
+      setPlanCandidates(produced)
+      if (batch.failedChapter !== null) setAiFailure({ chapter: batch.failedChapter, range })
     } catch {
       if (isProjectSessionCurrent(session) && !controller.signal.aborted) {
         setAiError(text('未生成有效的计划候选，请重试。', 'No valid plan candidates were generated. Try again.'))
@@ -616,6 +717,29 @@ export default function NarrativeThreadEditor({
       if (isProjectSessionCurrent(session) && !controller.signal.aborted) setAiBusy(false)
     }
   }
+
+  const generatePlanCandidates = async () => {
+    const totalChapters = useProjectStore.getState().currentProject?.novelConfig.totalChapters
+    if (!totalChapters) return
+    let range: { from: number; to: number }
+    try {
+      // 区间闸在前：越界 / 超 10 原样报错，不做「自动缩到 10」。
+      range = narrativeThreadPlanRange(aiRangeStart, aiRangeCount, totalChapters)
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : String(error))
+      return
+    }
+    await launchPlanRange(range)
+  }
+
+  const resumePlanRange = async () => {
+    if (!aiFailure) return
+    const range = { from: aiFailure.chapter, to: aiFailure.range.to }
+    setAiRangeStart(range.from)
+    setAiRangeCount(range.to - range.from + 1)
+    await launchPlanRange(range)
+  }
+
 
   const generateEventCandidates = async () => {
     const session = captureProjectSession(useProjectStore.getState().currentProject)
@@ -670,9 +794,20 @@ export default function NarrativeThreadEditor({
     if (!session || !isProjectSessionPath(session, projectKey) || busy) return
     setBusy(true)
     try {
-      if (candidate.generationIndex !== undefined) { await confirmGraph(candidate.generationIndex, candidate.generationHandle); await reload(); return }
+      if (candidate.generationIndex !== undefined && candidate.generationHandle) {
+        await confirmPlanByHandle(candidate.generationIndex, candidate.generationHandle)
+        if (isProjectSessionCurrent(session)) setPlanCandidates(previous => previous.filter(item => item !== candidate))
+        await reload()
+        return
+      }
       const result = await ipc.invokeWithProjectSession(
-        session, 'db:narrative-thread-plan-create', candidate, projectKey,
+        session, 'db:narrative-thread-plan-create', {
+          title: candidate.title,
+          type: candidate.type,
+          targetStartChapter: candidate.targetStartChapter,
+          targetEndChapter: candidate.targetEndChapter,
+          authorIntent: candidate.authorIntent,
+        }, projectKey,
       )
       if (!result.success) throw new Error(result.error)
       if (!isProjectSessionCurrent(session)) return
@@ -892,6 +1027,31 @@ export default function NarrativeThreadEditor({
           </Button>
         </div>
 
+        {aiMode === 'plan' && !aiBusy && aiProgress?.suggestion && (
+          <p
+            role="status"
+            data-testid="narrative-thread-progress"
+            className="flex flex-wrap items-center gap-2 rounded border px-3 py-2 text-xs"
+            style={{ borderColor: 'var(--color-border)' }}
+          >
+            <span>{text(
+              `建议继续：第 ${aiProgress.suggestion.start}–${aiProgress.suggestion.start + aiProgress.suggestion.count - 1} 章（${aiProgress.suggestion.count} 章）· 已扫 ${aiProgress.scanned} 章 / 剩余 ${aiProgress.remaining} 章`,
+              `Suggested next: chapters ${aiProgress.suggestion.start}–${aiProgress.suggestion.start + aiProgress.suggestion.count - 1} (${aiProgress.suggestion.count}) · scanned ${aiProgress.scanned} / remaining ${aiProgress.remaining}`,
+            )}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                if (!aiProgress?.suggestion) return
+                setAiRangeStart(aiProgress.suggestion.start)
+                setAiRangeCount(aiProgress.suggestion.count)
+              }}
+            >
+              {text('采用', 'Use')}
+            </Button>
+          </p>
+        )}
+
         <section className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'var(--color-border)', background: 'var(--color-panel)' }}>
           <div className="flex items-center gap-2 font-medium"><Plus size={16} />{editingId === null ? text('新建计划', 'New plan') : text('编辑计划', 'Edit plan')}</div>
           <div className="grid grid-cols-2 gap-3">
@@ -1045,24 +1205,49 @@ export default function NarrativeThreadEditor({
               )}</p>
               {modelSelectionError && <p role="alert" className="mt-1 text-xs" style={{ color: 'var(--color-error-text)' }}>{modelSelectionError}</p>}
             </label>
-            {aiMode === 'plan' && <label className="block">
-              <Label htmlFor="narrative-thread-ai-blueprint">{text('蓝图章节', 'Blueprint chapter')}</Label>
-              <NativeSelect id="narrative-thread-ai-blueprint" value={aiBlueprintChapter} disabled={aiBusy} onChange={event => setAiBlueprintChapter(Number(event.target.value))}>
-                {blueprints.map(blueprint => <option key={blueprint.chapterNumber} value={blueprint.chapterNumber}>{text(`第${blueprint.chapterNumber}章 · ${blueprint.title}`, `Chapter ${blueprint.chapterNumber} · ${blueprint.title}`)}</option>)}
-              </NativeSelect>
-            </label>}
+            {aiMode === 'plan' && <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <Label htmlFor="narrative-thread-ai-blueprint">{text('起点章', 'Start chapter')}</Label>
+                <NativeSelect id="narrative-thread-ai-blueprint" value={aiRangeStart} disabled={aiBusy} onChange={event => setAiRangeStart(Number(event.target.value))}>
+                  {blueprints.map(blueprint => <option key={blueprint.chapterNumber} value={blueprint.chapterNumber}>{text(`第${blueprint.chapterNumber}章 · ${blueprint.title}`, `Chapter ${blueprint.chapterNumber} · ${blueprint.title}`)}</option>)}
+                </NativeSelect>
+              </label>
+              <label className="block">
+                <Label htmlFor="narrative-thread-ai-range-count">{text('章数', 'Chapters')}</Label>
+                <Input id="narrative-thread-ai-range-count" type="number" min={1} max={10} value={aiRangeCount} disabled={aiBusy} onChange={event => setAiRangeCount(Number(event.target.value))} />
+              </label>
+            </div>}
             {aiError && <p role="alert" className="text-xs" style={{ color: 'var(--color-error-text)' }}>{aiError}</p>}
-            {planCandidates.map((candidate, index) => (
-              <section key={`${candidate.title}:${index}`} className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--color-border)' }}>
-                <div className="font-medium">{candidate.title}</div>
-                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{candidate.type} · {text('目标', 'Target')} {candidate.targetStartChapter}–{candidate.targetEndChapter}</p>
-                <p className="text-sm">{candidate.authorIntent}</p>
-                <div className="flex gap-2">
-                  <Button size="sm" onClick={() => void confirmPlanCandidate(candidate)} disabled={busy || candidate.generationIndex !== undefined && graphRecovery?.sourceStatus !== 'current'}>{text('确认计划', 'Confirm plan')}</Button>
-                  <Button size="sm" variant="ghost" onClick={() => setPlanCandidates(previous => previous.filter(item => item !== candidate))} disabled={busy}>{text('拒绝候选', 'Reject candidate')}</Button>
-                </div>
-              </section>
-            ))}
+            {aiFailure && (
+              <div role="alert" className="space-y-1 text-xs" style={{ color: 'var(--color-error-text)' }}>
+                <p>{text(
+                  `第 ${aiFailure.chapter} 章生成失败${aiFailure.chapter < aiFailure.range.to ? `，第 ${aiFailure.chapter + 1} 章未发起` : ''}`,
+                  `Chapter ${aiFailure.chapter} failed${aiFailure.chapter < aiFailure.range.to ? `; chapter ${aiFailure.chapter + 1} was not started` : ''}`,
+                )}</p>
+                <Button size="sm" variant="outline" onClick={() => void resumePlanRange()} disabled={aiBusy}>
+                  {text(`从第 ${aiFailure.chapter} 章续跑`, `Resume from chapter ${aiFailure.chapter}`)}
+                </Button>
+              </div>
+            )}
+            {planCandidates.map((candidate, index) => {
+              const previousCandidate = planCandidates[index - 1]
+              const showChapterHeading = candidate.chapterNumber !== undefined
+                && candidate.chapterNumber !== previousCandidate?.chapterNumber
+              return (
+                <Fragment key={`${candidate.chapterNumber ?? 'single'}:${candidate.title}:${index}`}>
+                  {showChapterHeading && <p className="text-xs font-medium" style={{ color: 'var(--color-text-muted)' }}>{text(`第 ${candidate.chapterNumber} 章`, `Chapter ${candidate.chapterNumber}`)}</p>}
+                  <section className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--color-border)' }}>
+                    <div className="font-medium">{candidate.title}</div>
+                    <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{candidate.type} · {text('目标', 'Target')} {candidate.targetStartChapter}–{candidate.targetEndChapter}</p>
+                    <p className="text-sm">{candidate.authorIntent}</p>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => void confirmPlanCandidate(candidate)} disabled={busy || candidate.generationIndex !== undefined && graphRecovery?.sourceStatus !== 'current'}>{text('确认计划', 'Confirm plan')}</Button>
+                      <Button size="sm" variant="ghost" onClick={() => setPlanCandidates(previous => previous.filter(item => item !== candidate))} disabled={busy}>{text('拒绝候选', 'Reject candidate')}</Button>
+                    </div>
+                  </section>
+                </Fragment>
+              )
+            })}
             {eventCandidates.map((candidate, index) => (
               <section key={`${candidate.type}:${candidate.evidence}:${index}`} className="rounded-lg border p-3 space-y-2" style={{ borderColor: 'var(--color-border)' }}>
                 <div className="font-medium">{text(...STATUS_LABELS[candidate.type])} · {text(`第${candidate.chapterNumber}章`, `Chapter ${candidate.chapterNumber}`)}</div>
@@ -1078,7 +1263,7 @@ export default function NarrativeThreadEditor({
           <DialogFooter>
             {!candidateGenerator && (aiBusy || graphRecovery) && <Button variant="outline" onClick={() => void cancelGraph()}>{text('取消原运行', 'Cancel original run')}</Button>}
             <Button variant="ghost" onClick={closeAI} disabled={aiBusy}>{text('关闭', 'Close')}</Button>
-            <Button variant="ai" onClick={() => void (aiMode === 'plan' ? generatePlanCandidates() : generateEventCandidates())} disabled={aiBusy || Boolean(modelSelectionError) || (aiMode === 'plan' && !aiBlueprintChapter)}>
+            <Button variant="ai" onClick={() => void (aiMode === 'plan' ? generatePlanCandidates() : generateEventCandidates())} disabled={aiBusy || Boolean(modelSelectionError) || (aiMode === 'plan' && (aiRangeStart < 1 || aiRangeCount < 1 || aiRangeCount > 10))}>
               {aiBusy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
               {aiBusy ? text('识别中...', 'Analyzing...') : !candidateGenerator && graphRecovery ? text('生成新候选', 'Generate new candidates') : text('生成候选', 'Generate candidates')}
             </Button>
