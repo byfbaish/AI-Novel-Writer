@@ -930,3 +930,16 @@ To: AI writer项目组 · 群内共读（判件基准件）
 | CARD-ARCH-AC3（卡 `ed210a27`） | 达标 | 判定面 `b5a14f1c`；判词 `.batch/night/reports/ac3-s3-verdict.md`（123 行／10,799B／`55e849f9…`）；测试 `46 passed (46)`；合并 sha `113f7d4d` | ROADMAP `L2-ARCH-01-03` 状态行 |
 
 - 本段只追加，不改既有条目；合并 sha 待主身推送后由产品经理回填。
+
+### 22. PLANUI 落地（S2–S4 收口登记，2026-11-25）
+
+| 卡 | 结论 | 判据与证据 | 回写落点 |
+|---|---|---|---|
+| CARD-PLANUI-C1（卡 `744f13a8`） | 达标 | 判定面 `34aa0000`（相关性筛选三档）＋`41daa79c`（M30 漏登 `draft_edit_stats` 补登）＋`8a42a566`（字段级并排对比＋三选一＋M31 快照 lane，16 文件 `+1642/−6`）；判词 `.batch/night/reports/s2-c1a-qa-verdict.md`（167 行／10,390B／`30dc2d57…`）与 `s2-c1b-verdict.md` **v2**（143 行／15,110B／`855bd843…`；v1 `1abdf4bf…` 作废）；`Tests 22 passed (22)`＋browser `5 passed`，变异 M2／M4／M5 真红；合并 sha「未合并·待主身」 | ROADMAP `:192`／`:200`（§2 状态行）、`:44`／`:45`（§1 表） |
+| CARD-PLANUI-P6（卡 `342b428f`） | 达标 | 判定面 `cbbe82c3`（P6-a `e219977b`＋P6-b `a1bcabee`＋P6-c `cbbe82c3`）；判词 `.batch/night/reports/s3-p6-verdict.md`（160 行／14,217B／`3665ffd0…`）；browser `38 passed`；每章预算从 `S07_TASK_BUDGET_POLICY` 派生（zh 单章 3,584／10 章 31,232，对 32,768 余 1,536）；档 2 按裁定不做；合并 sha「未合并·待主身」 | ROADMAP `:208`（§2 状态行）、`:46`（§1 表） |
+| CARD-PLANUI-O1（卡 `58188c1c`） | 达标 | 判定面 `85c927ae`（O1-a `641ffc0c`＋O1-b `85c927ae`）；判词 `.batch/night/reports/s4-o1-verdict.md`（113 行／14,691B／`4e9b88c7…`）；`Tests 42 passed (42)`／三文件 `Tests 106 passed (106)`＝基线 97＋9；四个必发变异 M1／M2／M3／M3b 全真红、复原后新件 sha 逐字回 `bef01e07…`；合并 sha「未合并·待主身」 | ROADMAP `:184`（§2 状态行）、`:43`（§1 表）；口径订正见设计稿 §3.2／§3.4 |
+
+- 本轮提交链（全在卡分支，未 push）：`34aa0000`（C1-a，4 文件 +1,036/−1）→ `41daa79c`（P0，3 文件 44/6）→ `8a42a566`（C1-b，16 文件 +1,642/−6）→ `e219977b`／`a1bcabee`／`cbbe82c3`（P6-a/b/c）→ `641ffc0c`（O1-a，2 文件 630/0）→ `85c927ae`（O1-b，5 文件 132/5）。
+- 三卡在看板已 `done`（`744f13a8`／`342b428f`／`58188c1c`）；ROADMAP 四条 `L2-PLANUI-01-01..04` 转「达标」，`L0-PLANUI`／`L1-PLANUI-01` 记「进行中」（父级达标签字待主人，`roadmap-doc-spec.md` §5 第七项）。
+- 记账十二条（外派越线两条、判词 v2、J8 缺实机半、P6 超限静默、豆包 S4 回执未落盘由联络人抄录、循环 import、`startStep` 未钳 fail-open、`t84789` 来源、pre-commit 缺卡号未拦、`picked` 不剪枝、P6 派单措辞瑕疵、J4c 勘误）见 `.batch/night/org/planui-closeout-1125.md` §3。
+- 本段只追加，不改既有条目。

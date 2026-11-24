@@ -127,7 +127,7 @@
 |---|---|
 | `operation_id` | 本次重建批次的操作号（回退时按它取快照；**一次覆盖一个 operation 一组行**） |
 | `character_id` | 被覆盖的卡 |
-| `source_revision` | 覆盖前的 roster `revision`（回退时校验"自那以后有没有被人手改"） |
+| `source_revision` | 这次覆盖**产出**的 roster `revision`（覆盖刚完成时应等于当前 revision；之后任何一次手改都会让两者不等——回退时据此判「已被手改」。若记成覆盖**前**的版本号，正常回退会恒判 stale、逐字段回退一个都用不上。实现见 `src/shared/character-regeneration-diff.ts:49-54`） |
 | `field_json` | 覆盖前该卡整卡字段快照（`appearance`/`personality`/`background`/`abilities`/`motivation`/`relationships`/`arc`/`notes`/`currentState`） |
 | `created_at` | 落盘时间 |
 
