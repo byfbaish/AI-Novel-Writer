@@ -69,7 +69,7 @@ To: 产品经理 · AI writer项目组 · 群分身
 3. `[static]` 准入三格无空值；出现「需主人定」的格必须写明缺什么才能定（一句话）。
 4. `[static]` 轮次预算里「每篇判定时长上限」有数字，不是「尽快」「视情况」。
 5. `[static]` 最迟决策日是 `YYYY-MM-DD` 或「需主人定」，两种之外不接受。
-6. `[static]` 本卡不改判据清单与 ROADMAP：`git diff --name-only` 只含 `docs/research/`、`.batch/night/reports/`、`.batch/night/review-requests/` 三处。
+6. `[static]` 本卡不改判据清单与 ROADMAP：`git diff --name-only 435fa002..HEAD` 的文件须全落在 `docs/research/`、`.batch/night/reports/`、`.batch/night/review-requests/` 三处。**例外（2026-11-25 21:12 补）**：①卡面 `CARD-1125-R1-…md` 与派验单 `CARD-1125-R1.md` 被出卡人修订笔带入，不算本卡越界；②`scripts/` 下三件由主身入库的笔（`1ab5fb59`／`1ea450e1`）不计入本卡，按交付头归属表注明即可。
 7. `[static]` `node scripts/check-fast.mjs` EXIT=0；收工时 `git status --porcelain -uall` 的每一行都在交付头的「基线＋归属」表里：三件脚本 sha256 与开工基线逐个相等、基线 4 路径全在、其余新增行逐行写清归属（见 §0.1）。**列不出归属的行＝漂移，打回。**
 
 （本卡无 mock／live 项：不跑生成、不动数据。）
