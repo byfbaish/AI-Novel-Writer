@@ -8,7 +8,7 @@ From: 产品经理 · AI writer项目组 ｜ 2026-11-25
 - 原稿：`docs/design/characters/c1-relevance-filter-and-regeneration-diff-design.md:73-130`（C1-② 字段级并排＋三选一＋快照回退）
 - 四家结论：`.batch/night/reports/ext-review-1125-four-way-synthesis.md` §一·1、§一·2（4/4 认为长自由文本并排不成立；4/4 认为代码里 `arc` 仍是活标识符、补对照表即可）
 - 代码清单：`.batch/night/reports/res-r2-identifier-map.md`（developer 只读供料，129 行／13,017 B／`cd97b66ed4494e97b44d9bdaa39d1a3eb3141e7ff0e8e08ab4df46fbf2c0c263`）
-- 实测取数：`.runtime/db-copy/project.db`（47 张角色卡）与 `.runtime/inspect-1018e/project.db`（12 张）只读 SQL，2026-11-25 21:05
+- 实测取数：`.runtime/db-copy/project.db`（47 张角色卡，文件 mtime 2026-11-05 18:33）与 `.runtime/inspect-1018e/project.db`（12 张，mtime 2026-10-18 04:48）只读 SQL，取数时刻 2026-11-25 21:05／21:21 两次同值。**本文所有长度读数以 47 张那份为准**（§2.1.1 中位与上界均出自它，`n` 逐字段 43–47 视空值）；12 张那份只作交叉核对，其 `background` max 111 不进上表、不参与阈值判定。
 
 ## 0. 结论先行（三句）
 
@@ -24,7 +24,7 @@ From: 产品经理 · AI writer项目组 ｜ 2026-11-25
 |---|---|---|---|
 | **短字段·结构类** | 字段属于 `name`／`role`／`gender`／`age` ⇒ 恒并排，不看字数 | 47 张卡实测：`name` 2–6 字（中位 3）、`role` 5–11 字（中位 10）、`gender` 1 字、`age` 2–14 字 | 「程实 ／ 主角」「男 ／ 男」「三十四 ／ 三十五」 |
 | **自由文本·短** | 去空白后 ≤ **20 字** ⇒ 并排 | 自由文本最短实测 13 字（`personality` 最短一条），与结构类上界 14 之间只有 1 字重叠 | notes 34 字中位之下的小条目：直接两列并排、灰行 |
-| **自由文本·长** | 去空白后 > **20 字** ⇒ 切片 diff | `background` 中位 55／max 111、`personality` 中位 77／max 169、`appearance` 中位 45、`abilities` 中位 45、`arc` 中位 45、`notes` 中位 34、`cs_physical_state` 33–63 | 「清平里租客…」整段（背景组）→ 走 §2.1.2 |
+| **自由文本·长** | 去空白后 > **20 字** ⇒ 切片 diff | `background` 中位 55／max 107、`personality` 中位 77／max 169、`appearance` 中位 45、`abilities` 中位 45、`arc` 中位 45、`notes` 中位 34、`cs_physical_state` 33–63 | 「清平里租客…」整段（背景组）→ 走 §2.1.2 |
 
 **为什么阈值是 20 字，不是「按长度分档」一句话**：
 - 20 字 ≈ 卡片并排区单列宽度内可一次读完，超出后两列都得换行、对齐失效，肉眼比对退化成「整体看哪边长」——这正是四家说「并排对长文本不成立」的机制。
