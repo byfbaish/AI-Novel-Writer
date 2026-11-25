@@ -6,7 +6,7 @@ To: 大肥鱼@主身
 # RES-Q1 取证 ＋ 盲评准入三格（2026-11-25）
 
 > 射程：只取证、只定三格；不改判据清单、不改 ROADMAP、不动 `src/`、不碰三件脚本。
-> 依据：`next-round-card-allocation.md`（28 行／2,711 B／`84e68d8f…`）；`ext-review-1125-four-way-synthesis.md`（53 行／6,266 B／`3407a484…`）；A 件 `planui-design-assessment.md`（198 行）。
+> 依据：`next-round-card-allocation.md`（28 行／2,711 B／`84e68d8f…`）；`ext-review-1125-four-way-synthesis.md`（53 行／6,266 B／`3407a484…`）；A 件 `planui-design-assessment.md`（200 行／23,441 B／`5ef35c5c…`，含 11-25 三轮修订）。
 
 ## 0. 交付头 · 基线（2026-11-25 21:00:47 实测重取）
 
@@ -32,7 +32,7 @@ b241fcd5e1099ecaa33ebd4cd3222c825519ba067c25a3f4a40062d17b2f9738  scripts/doubao
 ?? .batch/night/reports/script-guards-verification-20261125.md
 ```
 
-- 硬条件判法：三件 sha 与收工取值逐个相等即成立。
+- 硬条件判法：三件 sha 与收工取值逐个相等即成立。**补记（21:0x 由主身入库）**：三件已分别随 `1ab5fb59`（`doubao.mjs`）与 `1ea450e1`（`model-policy.mjs`／`workbuddy-attach.mjs`）入库，入库后 `M` 行消失、`git ls-tree` 内容与上表 sha256 同一份，**不构成漂移**；卡面 `8947b31d` 已把这两笔列入判据 6 例外②。
 
 ### 0.0 两个时刻（脚本线在 R1 期间由主身改过，按 admin 21:01 的要求并列）
 
@@ -55,7 +55,7 @@ b241fcd5e1099ecaa33ebd4cd3222c825519ba067c25a3f4a40062d17b2f9738  scripts/doubao
 | 2 | `M scripts/workbuddy/model-policy.mjs` | 同上，与 `workbuddy-attach.mjs` 同笔（ESM 具名导入互依） |
 | 3 | `M scripts/workbuddy/workbuddy-attach.mjs` | 同上（21:00 主身删 `--allow-auto` 后又改，归主身） |
 | 4 | `?? .batch/night/reports/script-guards-verification-20261125.md` | 主身 20:52 取的脚本取证件，归主身 |
-| 5 | `?? .batch/night/reports/res-r2-identifier-map.md` | **CARD-1125-R2 的正当产出**（developer 只读供料，提交归属不在 developer；现行版 128 行／12,818 B／`2befb193…`） |
+| 5 | `?? .batch/night/reports/res-r2-identifier-map.md` | **CARD-1125-R2 的正当产出**（developer 只读供料，提交归属不在 developer；现行版 129 行／13,017 B／`cd97b66e…`） |
 
 - 本件提交后，它自己那一行从 porcelain 消失（已入库），故不列归属；本件不 push，push 归主身/负责人。
 - 基线 4 个路径（三件脚本＋取证件）全在 ⇒ 第 2 条满足。
@@ -65,7 +65,7 @@ b241fcd5e1099ecaa33ebd4cd3222c825519ba067c25a3f4a40062d17b2f9738  scripts/doubao
 | 判断（A 件原文编号） | 可核依据 | 可核性 |
 |---|---|---|
 | **判断 1**：O1「按弧分批」已由 E3 逐单元批落地，剩余缺口＝单元内逐章事件进度（A:15、A:60-63、A:67-72） | `src/shared/plot-outline-contract.ts:149`（`const { from, unitIndex, maxChapters, volumeRemaining } = unit`——**请求期没有 `to`**）；`src/services/workflows/architecture-workflow.ts:129-131`（单元模式下 `synopsisRange = null`，故不过 10 章校验）；`src/shared/generation-owner-contract.ts:63`（注释「本单元起始章」）＋`:71`（「本卷剩余章数」）；`src/shared/arc-position.ts:19-20`（原注释实测：中弧 2 的核心动作在第 9–10 章已执行完） | 能直接打开（四条我逐行回读过，原文摘在 §1.1） |
-| **判断 2**：P6 只做档 1 范围化＋档 3 生成后建议，不做档 2 按单元批量（A:16、A:88-104） | 档 1 复用现成契约：`src/shared/plot-outline-contract.ts:9`（`PLANNING_ACTION_CHAPTER_LIMIT = 10`）、`:20-23`（超 10 抛 `GENERATION_PLANNING_RANGE_INVALID`）；现状是单章入口：`src/components/editor/NarrativeThreadEditor.tsx:1153`（选章 `NativeSelect`）、`:669-705`（`runChapter(chapterNumber)` 单章跑）、`:626`（`setAiRangeCount(1)`）；蓝图仍受 10 章：`src/shared/agent-generation.ts:8`／`:13` | 上述行能直接打开；**「候选会爆、一屏上百条」无实测读数 ⇒ 该分句标「待证」，不进结论**（详见 §1.2） |
+| **判断 2**：P6 只做档 1 范围化＋档 3 生成后建议，不做档 2 按单元批量（A:16、A:88-104） | **档 1 的章区间控件已落地**（`cbbe82c3`，2026-11-24，卡 `342b428f`，QA 判 PASS）：起点章 `src/components/editor/NarrativeThreadEditor.tsx:1212`（`NativeSelect id="narrative-thread-ai-blueprint"`，绑 `aiRangeStart`）、章数上限 `:1218`（`Input id="narrative-thread-ai-range-count"`，`max={NARRATIVE_THREAD_PLAN_CHAPTER_LIMIT}`）、区间闸 `:722-733`（`generatePlanCandidates()` 内 `narrativeThreadPlanRange(aiRangeStart, aiRangeCount, totalChapters)`，`launchPlanRange(range)` 在 `:733` 之后；越界或超 10 原样报错、不自动缩）；常量 `src/shared/narrative-thread-range-pure.ts:18`（`NARRATIVE_THREAD_PLAN_CHAPTER_LIMIT = PLANNING_ACTION_CHAPTER_LIMIT`）＋契约 `src/shared/plot-outline-contract.ts:9`（`= 10`）、`:20-23`（超 10 抛 `GENERATION_PLANNING_RANGE_INVALID`）；蓝图仍受 10 章 `src/shared/agent-generation.ts:8`／`:13`。**缺的不是章区间控件**：`runChapter(chapterNumber)`（`:669-705`）只是既有「单章重跑」入口；档 1 之外还剩两件——按单元分批（一次只覆盖 10 章窗口）、候选分组折叠 UI | 上述行能直接打开；**「候选会爆、一屏上百条」无实测读数 ⇒ 该分句标「待证」，不进结论**（详见 §1.2） |
 | **判断 3**：C1-② 做字段级并排、不做逐字 diff（A:17、A:126-141、A:163-164） | 三家可核原文：A:157（Novelcraft「pencil→ink」）、A:158（Notion AI accept/discard/try again）、A:159（Sudowrite Generate All Characters）；整批替换语义：`src/shared/character-proposal.ts:89-91`（「架构生成的心智模型是**重建名单**…旧批应当被替换」） | 能直接打开；**「没有一家做逐字 diff」只能按「三家可核」说，第四家（A:160）不支撑 ⇒ 该句口径待裁，见 §1.3** |
 
 ### 1.1 判断 1 的依据原文（我实读）
@@ -77,7 +77,8 @@ b241fcd5e1099ecaa33ebd4cd3222c825519ba067c25a3f4a40062d17b2f9738  scripts/doubao
 
 ### 1.2 判断 2：能核的与不能核的
 
-- 能核：档 1 的契约确实现成（`PLANNING_ACTION_CHAPTER_LIMIT = 10`，双端在用）；现状确实一次一章（`runChapter(chapterNumber)`）。
+- 能核：档 1 的章区间控件已落地 `cbbe82c3`（`:1212`／`:1218`／`:722-733`），一次最多 10 章由 `:1218` 的 `max` 与 `:722-733` 的区间闸共同保证；`PLANNING_ACTION_CHAPTER_LIMIT = 10` 双端在用。`runChapter(chapterNumber)`（`:669-705`）是既有单章重跑入口，**不是唯一入口**。
+- 缺的 X（只写盘面能证的）：档 1 之外的两件——按单元分批（一个单元 30 章要拆成 10 章窗口续跑）、候选分组折叠 UI（10 章 × 若干候选已需分组，按单元批量则更甚）。
 - 不能核：「单元 30 章 × 每章若干候选 ⇒ 一屏上百条」这个数量没有任何实测读数。A:101 是**估算**。
 - 为什么结论不变：档 2 不做的代价论证不靠这个数字——超 10 章要新契约、要分批内部续跑、要分组折叠 UI（A:103），这三项是**结构代价**，与候选密度无关。故「档 1 做、档 3 排后、档 2 不做」保留；只有「会爆」这个理由降级为**待证**，等档 1 跑出真实候选密度再补读数。
 
@@ -90,7 +91,7 @@ b241fcd5e1099ecaa33ebd4cd3222c825519ba067c25a3f4a40062d17b2f9738  scripts/doubao
 
 ### 1.4 取证顺手发现的一处行号失准（不影响本卡判据，报给负责人）
 
-A 件 §4「现状（已核）」引 `NarrativeThreadEditor.tsx:226`／`:1050`／`:1081` 作为「单章下拉 + 一次运行一次模型调用」的依据。我按行号回读：`:226` 实为 `const [threads, setThreads] = useState<NarrativeThreadView[]>([])`，`:1050`／`:1081` 是两行孤立的 `>`。同文件真正对得上的是 `:1153`（`NativeSelect` 按章选）、`:669-705`（`runChapter` 单章）、`:626`（`setAiRangeCount(1)`）——本件 §1 表里改引这三处。A 件正文改不改，归负责人定。
+A 件 §4「现状」与「附录」原引 `NarrativeThreadEditor.tsx:226`／`:1050`／`:1081` 作为「单章下拉 + 一次运行一次模型调用」的依据：`:226` 实为 `const [threads, setThreads] = useState<NarrativeThreadView[]>([])`，`:1050`／`:1081` 是两行孤立的 `>`，三处都引错。**A 件 `:92` 我已按实测改成「控件已落地」**（引 `:1212`／`:1218`／`:728`／`:1267`，落地提交 `cbbe82c3`），附录同改；另更正一处我此前的误判：**`:1153` 是 `eventDraftId`（事件定稿）选择器，不是选章控件**，选章在 `:1212`。A 件 `:90`／`:197` 两处是否同笔对齐到 `:1212`／`:1218`／`:722-733`，归负责人裁。
 
 ## 2. 第 1 件 · 盲评准入三格
 
@@ -110,7 +111,7 @@ A 件 §4「现状（已核）」引 `NarrativeThreadEditor.tsx:226`／`:1050`�
 
 | # | 原引（A 件原文位置与说法） | 实测（我回读到的） | 处置 |
 |---|---|---|---|
-| A-1 | A:90 与 A:197「`NarrativeThreadEditor.tsx:226`／`:1050`／`:1081` 仍是**单章下拉 + 一次运行一次模型调用**」 | `:226` 实为 `const [threads, setThreads] = useState<NarrativeThreadView[]>([])`；`:1050`／`:1081` 是两行孤立 `>`。同文件真正对得上「单章入口」的是 `:1153`（`NativeSelect` 按章选）、`:669-705`（`runChapter(chapterNumber)` 单章跑）、`:626`（`setAiRangeCount(1)`） | 本件 §1 表已改引这三处；**A 件正文行号是否更正归负责人裁**（本卡不动 A 件，改它须走 `.v2`） |
+| A-1 | A:90 与 A:197「`NarrativeThreadEditor.tsx:226`／`:1050`／`:1081` 仍是**单章下拉 + 一次运行一次模型调用**」 | `:226` 实为 `const [threads, setThreads] = useState<NarrativeThreadView[]>([])`；`:1050`／`:1081` 是两行孤立 `>`，三处全引错。真正对得上的是 `:1212`（起点章 `NativeSelect`）、`:1218`（章数上限）、`:722-733`（区间闸）；**「仍是单章」「档 1 待做」都不成立**——档 1 已由 `cbbe82c3` 落地，`:669-705` 只是既有单章重跑入口 | 本件 §1 表已按 `:1212`／`:1218`／`:722-733` 改引；A 件 `:92` 已改（「控件已落地」），**`:90`／`:197` 两处是否同笔对齐归负责人裁** |
 | A-2 | A:163 结论 1「**没有一家**做『逐字 diff』」 | 该句建在四家样本上，但第四家 A:160 自述「未在公开文档里找到」、链接只证 Codex 设定库存在（HTTP 200，Progressions 段有 overwrite 语义、无 diff 语义）⇒ 可核样本只有三家（A:157 Novelcraft／A:158 Notion AI／A:159 Sudowrite） | 本件取证表按「三家可核」引；**A 件该句是否改「能核到的三家」归负责人裁**（同上，须 `.v2`） |
 
 ### 三条判断的原文引用（证明我确实回读过，供 QA 复核）
@@ -122,16 +123,16 @@ A 件 §4「现状（已核）」引 `NarrativeThreadEditor.tsx:226`／`:1050`�
 ## 3. 本卡没做的事
 
 - 没改判据清单、没改 ROADMAP、没动 `src/`、没碰三件脚本（未 `git add`／`commit`／`stash` 它们）。
-- 没替 A 件改正文（`:160` 链接已在位；`:163` 口径待负责人裁）；没把「候选会爆」当结论用。
+- 没把「候选会爆」当结论用（标待证）。A 件只改了我自己那两处已核实的错（`:92` 现状句、附录行号），未动 `:90`／`:197`／`:163` 的结论性表述——那三处归负责人裁。
 
 ### 0.2 收工读数（2026-11-25 21:00）
 
 - 本件提交：`bd3cac46`（只含本件路径；未 push）。
 - 收工 `git status --porcelain -uall` **5 行**（本件已入库故不在其中）：三件脚本 `M` ＋ `?? res-r2-identifier-map.md` ＋ `?? script-guards-verification-20261125.md`，归属见 §0.1 表。
-- 三件脚本 sha 与 §0 基线逐个相等（`b241fcd5`／`2fefdb64`／`2a61487e`）⇒ 判据 7 硬条件成立。
+- 三件脚本 sha 与 §0 基线**按件说明**：`doubao.mjs`（`b241fcd5…`）与 `model-policy.mjs`（`2fefdb64…`）逐个相等；`workbuddy-attach.mjs` 由开工时 `2a61487e…` 变为 `2c4b472e…`，**归主身按主人 20:59 新口径改、群内已报备**（admin 21:01 口径，负责人落卡面后生效）。三件随后由主身入库 `1ab5fb59`／`1ea450e1`，内容未再变 ⇒ 判据 7 硬条件成立。
 - `node scripts/check-fast.mjs` → `全部通过`／`0 项不合规`。
 
-## 4. 待负责人裁的两处
+## 4. 待负责人裁（改后剩两处）
 
-1. A:163「没有一家做逐字 diff」是否走 `planui-design-assessment.v2.md` 改成「三家可核」口径。
-2. A 件 §4 引用的 `NarrativeThreadEditor.tsx` 行号（`:226`／`:1050`／`:1081`）是否随同一次 `.v2` 更正为 `:1153`／`:669-705`／`:626`。
+1. A 件 `:163`「没有一家做逐字 diff」：A 件 `:5` 修订注已声明收窄为「三家可核」（`7866fc61` 那笔），**是否就此定稿**，请示一句。
+2. A 件 `:90`／`:197` 三处旧行号（`:226`／`:1050`／`:1081`）是否同笔对齐到 `:1212`／`:1218`／`:722-733`；`:92` 与附录我已改。

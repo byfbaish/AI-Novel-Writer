@@ -2,7 +2,7 @@
 From: 产品经理 · AI writer项目组 | 4e6e07bd
 To: 大肥鱼@主身 | 主人裁定用
 
-> 2026-11-25 修订：A:163 逐字 diff 口径收窄为「三家可核」；A:90／A:197 三处行号按实测改正（依据 R1 交付件 §1.3／§2.2）。
+> 2026-11-25 修订：§4 结论 1「逐字 diff」口径收窄为「三家可核」；§4 现状与 §4 附录的入口行号按实测改正（依据 R1 交付件 §1.3／§2.2）。**二次更正（21:09，据 R1 交付件 §1.4／QA 复核）**：§4 现状改为「档 1 已落地 `cbbe82c3`」，入口改引 `:1212`／`:1218`／`:722-733`／`:1267`——此前把「事件定稿（`eventDraftId`）选择器」误当选章控件，已按实测更正。
 
 # PLANUI 四条设计评估（O1 / C1-① / C1-② / P6）
 
@@ -89,9 +89,9 @@ To: 大肥鱼@主身 | 主人裁定用
 
 ## 4. P6 定档位：建议「档 1 范围化 + 档 3 生成后建议」，不做档 2 按单元批量
 
-**现状（已核）**：`NarrativeThreadEditor.tsx:1153`（`NativeSelect` 选章）／`:669-705`（`runChapter(chapterNumber)`）／`:626`（`setAiRangeCount(1)`）仍是**单章下拉 + 一次运行一次模型调用**（`aiBlueprintChapter`），与 backlog 描述一致。800 章＝800 次手动运行。
+**现状（已核，2026-11-25 二次更正）**：P6 档 1 的章区间控件**已落地**——`NarrativeThreadEditor.tsx:1212`（起点章 `NativeSelect`，绑 `aiRangeStart`）、`:1218`（章数输入框，`max={NARRATIVE_THREAD_PLAN_CHAPTER_LIMIT}`）、`:722-733`（`generatePlanCandidates()` 内 `narrativeThreadPlanRange(aiRangeStart, aiRangeCount, totalChapters)` 换算本次范围，越界/超 10 原样报错）、`:1267`（一次按钮调用 `generatePlanCandidates()` 生成一批候选）；落地提交 `cbbe82c3`（2026-11-24，卡 `342b428f`，QA 判 PASS）。故「单章下拉 + 800 章 800 次手动运行」**不再成立**：`:669-705` 的 `runChapter(chapterNumber)` 是既有「单章重跑」入口，不是唯一入口。剩余待做只有档 3。
 
-### 档 1：范围化（章区间，复用现成 ≤10 契约）
+### 档 1：范围化（章区间，复用现成 ≤10 契约）——**已落地 `cbbe82c3`（2026-11-24）**
 - **产品上改了什么**：下拉换成「起–止」两个数字（或复用计划面板的区间控件），一次最多 10 章；结果仍是**候选 → 作者确认才写计划**（这点不许改）。
 - **体验差异**：800 章从 800 次降到 80 次；一次能看见"这 10 章里埋了几条线"。
 - **不选它的最坏后果**：作者继续逐章点，**全局清点做不到**——伏笔的价值恰在跨章布局。
@@ -196,5 +196,5 @@ To: 大肥鱼@主身 | 主人裁定用
 - 单元批路由：`src/services/workflows/architecture-workflow.ts:129-131`、`src/App.tsx:436-460`（连写链）
 - 蓝图 10 章：`src/services/workflows/commands/directory.command.ts:319`、`:341`；`src/shared/agent-generation.ts:8-11`
 - 弧/单元命名与投影：`src/shared/arc-position.ts:145-147`、`:210-214`、`:410-416`、`:451-481`
-- P6 单章入口：`src/components/editor/NarrativeThreadEditor.tsx:1153`、`:669-705`、`:626`
+- P6 章区间入口：`src/components/editor/NarrativeThreadEditor.tsx:1212`（起点章）、`:1218`（章数上限）、`:722-733`（区间闸）；`:1267`（一次生成按钮）；单章重跑仍在 `:669-705`
 - C1 现状：`src/components/panels/sidebar/CharactersView.tsx:29`、`:62-68`、`:97-101`、`:239`；`src/shared/character-proposal.ts:81-95`（整批重建语义）
