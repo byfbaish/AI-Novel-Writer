@@ -22,7 +22,7 @@ To: 产品经理 · AI writer项目组 · 群分身
 
 ## 2. 要交什么
 
-新增 `docs/research/2026-11-26-c1-2-field-diff-spec.md`，两节：
+新增 `docs/research/2026-11-25-c1-2-field-diff-spec.md`，两节：
 
 ### 2.1 并排口径改写
 - **短字段**（名字／身份／关系等，给出判定阈值，例如 ≤N 字）→ 保留字段级并排。
