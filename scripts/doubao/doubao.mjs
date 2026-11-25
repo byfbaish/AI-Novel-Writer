@@ -521,6 +521,81 @@ const readModelLabel = client => client.evaluate(js(`
 `))
 
 /**
+ * 显式选模型，并核对「真的切了」。
+ *
+ * 为什么需要它：脚本原先只读标签、从不设模型，会话会一直停在上一轮留下的
+ * 模型上（2026-11-25 那次评审就停在 DeepSeek V4.1 Flash，等于同源评审）。
+ * 现在的口径是「派单必须点名模型，选不中就报错停下」——不许按价格自动降档。
+ *
+ * 注意两件事：①点「豆包 2.1 Pro」这类高级模型会弹出订阅页，本函数识别到
+ * 升级文案即抛错（花钱的事交主人，不自行订阅）；②菜单行的文字由「名字 +
+ * 倍率」组成，匹配用内层名字元素的精确文本，点击用整行矩形。
+ */
+const PAYWALL_RE = '升级豆包订阅|豆包付费|自动续费'
+
+const selectModel = async (client, name) => {
+  if (!name) return { model: await readModelLabel(client), changed: false, skipped: true }
+  const norm = value => (value || '').replace(/\s+/g, ' ').trim()
+  const before = await readModelLabel(client)
+  if (norm(before).startsWith(norm(name))) return { model: before, changed: false }
+
+  const chip = await clickElement(client, `() => document.querySelector(${JSON.stringify(SELECTORS.taskModel)})`)
+  if (!chip) throw new Error('找不到模型选择器 ' + SELECTORS.taskModel + '（界面改版了？先跑 status）')
+  await sleep(1_200)
+
+  const row = await client.evaluate(js(`
+    const target = ${JSON.stringify(String(name))};
+    const norm = s => (s || '').replace(/\\s+/g, ' ').trim();
+    const leaf = [...document.querySelectorAll('*')]
+      .filter(el => norm(el.innerText) === target)
+      .filter(el => { const r = el.getBoundingClientRect(); return r.height > 0 })
+      .sort((a, b) => a.getBoundingClientRect().height - b.getBoundingClientRect().height)[0];
+    if (!leaf) return null;
+    let row = leaf;
+    while (row.parentElement && norm(row.parentElement.innerText) === norm(row.innerText)) row = row.parentElement;
+    const rect = row.getBoundingClientRect();
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+  `))
+  if (!row) {
+    await client.key('Escape', 'Escape', 27).catch(() => {})
+    const names = await client.evaluate(js(`
+      const norm = s => (s || '').replace(/\\s+/g, ' ').trim();
+      const out = [];
+      for (const el of document.querySelectorAll('div')) {
+        const t = norm(el.innerText);
+        if (!t || t.length > 30 || !/x$/.test(t)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < 150 || r.height < 20 || r.height > 50) continue;
+        out.push(t);
+      }
+      return [...new Set(out)];
+    `))
+    throw new Error('模型菜单里没有「' + name + '」，本次不发送。菜单现值：' + ((names ?? []).join(' / ') || '(读不到)'))
+  }
+  await mouseClick(client, row.x, row.y)
+  await sleep(1_600)
+
+  const paywall = await client.evaluate(js(`
+    // 只认「真的弹了订阅窗」：页面常驻一条「使用高级模型需升级豆包订阅」的 toast，
+    // 选 0.01x 的闪速模型也会闪它一下，按 body 文本判会误杀。
+    return [...document.querySelectorAll('div[role="dialog"], [class*="modal"], [class*="dialog"]')]
+      .some(el => {
+        const r = el.getBoundingClientRect();
+        return r.width > 300 && r.height > 200 && /升级豆包订阅|豆包付费/.test(el.innerText || '');
+      });
+  `))
+  if (paywall) {
+    await client.key('Escape', 'Escape', 27).catch(() => {})
+    throw new Error('「' + name + '」需要订阅（已弹出升级页），本次不发送；换免费档模型或先由主人决定是否订阅')
+  }
+  const after = await readModelLabel(client)
+  if (!norm(after).startsWith(norm(name))) {
+    throw new Error('切模型失败：期望 ' + name + '，实际 ' + (after ?? '(空)') + '，本次不发送')
+  }
+  return { model: after, changed: true }
+}
+
+/**
  * Everything the agent has produced since the last user turn.
  *
  * Task-mode execution logs (「已编辑文件 …」「已执行代码 …」) render outside
@@ -592,7 +667,7 @@ const main = async () => {
       if (!text) throw new Error(`任务文件是空的: ${fromFile}`)
     }
     if (!text) {
-      throw new Error('用法: node scripts/doubao/doubao.mjs task "任务描述" | --file 路径 [--project 项目名] [--timeout 600] [--no-charter] [--no-wait]')
+      throw new Error('用法: node scripts/doubao/doubao.mjs task "任务描述" | --file 路径 [--project 项目名] [--model 模型名] [--timeout 600] [--no-charter] [--no-wait]')
     }
     // Preamble is four lines now, so it is always worth injecting: task books
     // no longer carry a 必读 section of their own (2026-11-03). Opt out with
@@ -600,11 +675,13 @@ const main = async () => {
     const charter = !flag('no-charter')
     const body = charter ? CHARTER_PREAMBLE + text : text
     const projectName = option('project', null)
+    const modelName = option('model', null)
     const timeoutMs = Number(option('timeout', 600)) * 1_000
     return withChat(async client => {
       const taskMode = await openTaskMode(client)
       const project = projectName ? await selectProject(client, projectName) : null
-      const model = await readModelLabel(client)
+      const modelPick = await selectModel(client, modelName)
+      const model = modelPick.model
       const focus = await focusEditor(client)
       if (!focus?.ok) throw new Error(`输入框聚焦失败: ${focus?.reason ?? 'unknown'}`)
       const inputPath = await typeText(client, body)
@@ -622,6 +699,7 @@ const main = async () => {
         taskMode,
         project,
         model,
+        modelPick,
         charter,
         inputPath,
         submitted: submitted.method,
