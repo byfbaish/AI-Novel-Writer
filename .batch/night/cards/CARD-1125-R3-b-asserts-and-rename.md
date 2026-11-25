@@ -24,11 +24,11 @@ To: developer · AI writer项目组 · 群分身
 
 ### 2.1 断言与互斥规则（developer，4–6 条）
 新增 `.batch/night/reports/res-b-asserts-1125.md`，每条写：规则原文、触发条件、命中后动作（拒绝入库／标 `conflict`／降级）、可复现命令。至少覆盖：
-1. `completionVerified:true` ⇒ `completionBasisSource ∈ {chapterText}`；
-2. `completionBasisSource:statusRaw ⇒ statusClaimTrust ≠ high`（状态位不可信，只能 low）；
-3. `statusRaw` 缺键 ⇒ `completionBasis` 必须以非 `no-status-tag` 前缀开头（缺键不等于「页面无标签」）；
-4. 同一本书多件并存时的合并优先级（哪件胜出、其余如何记 `conflict`）；
-5. `platformId` 为空 ⇒ `matchBasis ≠ id`。
+1. `completionVerified:true` ⇒ `completionBasisSource = chapterText`；**反向同卡**：`completionBasisSource ∈ {statusRaw, unknown}` ⇒ `completionVerified` 必须显式 `false`（不得缺键、不得 `null`）。命中动作：拒绝入库并记 `conflict:[{field:"completionVerified"}]`。复现：`grep -c '"completionVerified": *true'` 与 `grep -c '"completionBasisSource": *"chapterText"'` 两数相等。
+2. **单向式**（替代原「`statusRaw` ⇒ trust ≠ high」字面版）：`statusClaimTrust:"high"` ⇒ `completionVerified:true` **且** `completionBasisSource:"chapterText"`。任何来源只要不是核过正文就不许 `high`；原字面版拦不住 `high + completionBasisSource:"unknown"`。命中动作：`trust` 降 `low`，并把这对矛盾进报表第 4 行。
+3. `statusRaw` 键存在性三分，**双向卡**，判定必须用「键在不在」（Python `"statusRaw" in obj`，不得用 `get()`）：(a) 键不存在 ⇒ `completionBasis` 不得以 `no-status-tag`／`not-collected`／`not-located` 开头，该行归 unresolved 类、只标 `conflict:"missing-key"`；(b) 键存在且为 `null` ⇒ 三句前缀必须居其一；(c) 键存在且非空 ⇒ 不得带三句前缀。
+4. **不做 assert、降级为报表行**（产品经理 21:31 建议，我采纳）：同书多件并存只由机器出「同 `platformId` 多件」清单（行数、件名、采集时刻），胜出方属人裁定；机器不写 `conflict` 判定。
+5. `platformId` 为空 ⇒ `matchBasis ≠ id`（硬卡，与 §2.2 改名同轮机械校验）。
 
 ### 2.2 四字段改名（admin 落盘）
 `qidianBookId`／`platformBookId` → `platformId`；`matchMethod` → `matchBasis`（按五值映射，映不上写 `manual` 加理由）；单值 `titleAlias` → `akaTitles[]` 一项（`type` 按六值中取一）。改名前逐件留 `wc -lc` ＋ `sha256`。
