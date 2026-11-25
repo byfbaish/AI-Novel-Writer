@@ -30,7 +30,12 @@ To: 产品经理 · AI writer项目组 · 群分身
 2. `git status --porcelain -uall` 四行原文（三件脚本 `M` ＋ 一件 `?? .batch/night/reports/script-guards-verification-20261125.md`）；
 3. 三件脚本各自的 `sha256sum`（各一行）。
 
-**判据 7 随之改口径**：收工时 porcelain 须是**同一组 4 个路径**（三行 `M` 脚本 ＋ 一行 `??` 取证件），其中三件脚本的 sha256 与开工基线逐个相等（＝这三行在卡执行期间没被动过）。白名单里的 `?? .batch/night/reports/script-guards-verification-20261125.md` 归属主身、与本卡无关，**只看路径在不在，内容变动不算漂移**。若三件脚本任一 sha 变了，或出现第 5 行，本卡按「基线漂移」打回，不认结果。
+**判据 7 随之改口径（可归属式，2026-11-25 21:00 修订——理由：R1／R2 在同一棵树里并行，整树冻结会让并行卡互相打回）**：
+1. **硬条件不变**：三件脚本的 `sha256` 与开工基线逐个相等（＝它依赖的三件没被动过）；
+2. 基线那 4 个路径必须全在；
+3. **新增行不再自动判漂移**：交付头须逐行列出收工时 `git status --porcelain -uall` 的每一行，格式 `路径 + 归属`（哪张卡／谁的件）；QA 只核「列全了没有」——用实测 porcelain 与交付头逐行比对，**列不出归属的才算漂移**。
+
+本卡要管的是「执行期间有没有人动它依赖的三件脚本」，不是「整棵树冻结」。
 
 **不豁免的事**：不得 `git add`／`commit`／`stash` 这三件，不得以「反正要入库」为由替它们补证据。卡交付自己那笔提交只含本卡新增件。
 
@@ -65,7 +70,7 @@ To: 产品经理 · AI writer项目组 · 群分身
 4. `[static]` 轮次预算里「每篇判定时长上限」有数字，不是「尽快」「视情况」。
 5. `[static]` 最迟决策日是 `YYYY-MM-DD` 或「需主人定」，两种之外不接受。
 6. `[static]` 本卡不改判据清单与 ROADMAP：`git diff --name-only` 只含 `docs/research/`、`.batch/night/reports/`、`.batch/night/review-requests/` 三处。
-7. `[static]` `node scripts/check-fast.mjs` EXIT=0；提交后 `git status --porcelain -uall` 为**开工基线同一组 4 个路径**（`M scripts/doubao/doubao.mjs`／`M scripts/workbuddy/model-policy.mjs`／`M scripts/workbuddy/workbuddy-attach.mjs`／`?? .batch/night/reports/script-guards-verification-20261125.md`），其中三件脚本 sha256 与交付头所记基线逐个相等（见 §0.1；那行 `??` 只看存在，不看内容）。
+7. `[static]` `node scripts/check-fast.mjs` EXIT=0；收工时 `git status --porcelain -uall` 的每一行都在交付头的「基线＋归属」表里：三件脚本 sha256 与开工基线逐个相等、基线 4 路径全在、其余新增行逐行写清归属（见 §0.1）。**列不出归属的行＝漂移，打回。**
 
 （本卡无 mock／live 项：不跑生成、不动数据。）
 
