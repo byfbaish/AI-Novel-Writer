@@ -1,6 +1,6 @@
 # CARD-1125-R3 · `matchBasisReason` 原文回填备案（94 行：旧 `matchMethod` 原值 → 现值）
 
-规则（负责人 2026-11-25 21:5x 定，最终版）：只要一行有 `matchBasis`，就必须带 `matchBasisReason`——`manual` 行写实情说明句，其余行写原件 `matchMethod` 原文逐字。
+规则（负责人 2026-11-25 21:56 定，最终版）：只要一行有 `matchBasis`，就必须带 `matchBasisReason`——`manual` 行写实情说明句，其余行写原件 `matchMethod` 原文逐字。
 
 ## 执行
 
@@ -8,31 +8,34 @@
 
 ```bash
 python ../../res-corpus/rename-r3-backfill.py --dry     # 出计数与对照，不写盘
-python ../../res-corpus/rename-r3-backfill.py --write   # 写盘，逐件先备份 .bak-2200
+python ../../res-corpus/rename-r3-backfill.py --write   # 写盘；备份 .bak-2200 为首次创建（21:51:31），之后各轮不再新建
 ```
 
-## 实际执行过程（两轮，含一次误触与还原）
+## 实际执行过程（四段：68 → 72 → 误触与还原 → 94 收口）
 
 ```
-第一轮  --dry   : rows_with_reason=117 backfilled=68 manual_kept=49 missing_orig=0
-第一轮  --write : rows_with_reason=117 backfilled=68 manual_kept=49 missing_orig=0
-                → 68 行（batch2.qidian-verified 16 title + pool143.qidian-verified 52 alias）回填为原文
-第二轮  --dry   : non_manual=94 filled_new=26 replaced=0      ← 误把 pool143 的 22 行 author+wordCount 也算进范围
-第二轮  --write : 同上（已落盘，属误触）
-还原            : cp book-meta.pool143.qidian-verified.jsonl.bak-2200 → 现值（22 行恢复为无 matchBasisReason 键）
-第三轮  --dry   : non_manual=72 filled_new=0 replaced=0 other_basis_no_reason=22   ← 幂等，无待改
-第三轮  --write : 同上（数据未变，仅重出本备案）
+① 21:52  --dry   : rows_with_reason=117 backfilled=68 manual_kept=49 missing_orig=0
+   21:52  --write : rows_with_reason=117 backfilled=68 manual_kept=49 missing_orig=0
+                  → 68 行（batch2.qidian-verified 16 title + pool143.qidian-verified 52 alias）回填为原文
+② 21:53  --dry   : non_manual=94 filled_new=26 replaced=0 manual_kept=0   ← 误把 pool143 的 22 行 author+wordCount 也算进范围
+   21:53  --write : 同上，26 行落盘（fanqie 4 + pool143 22）——属误触
+   21:54  还原    : cp book-meta.pool143.qidian-verified.jsonl.bak-2200 → 现值（pool143 22 行恢复为无键）；fanqie 4 行保留
+③ 21:55  --dry/--write : non_manual=72 filled_new=0 already=72 ← 幂等，按 72 口径出备案
+④ 21:56  --dry   : non_manual=94 filled_new=22 already=72 manual_kept=49 missing_orig=0 other_basis_no_reason=0
+   21:56  --write : 补 pool143 22 行 author+wordCount 的键 → 94 行收口
 ```
 
-误触说明：第二轮脚本原按「非 manual 且原件有原文」动手，对 `author+wordCount` 22 行也加了键；这超出「72 = 68 + 4」口径。已按 `.bak-2200` 整件还原 `pool143.qidian-verified`，现盘该 22 行**无** `matchBasisReason` 键，行数与其余内容未变。
+误触与还原说明：②那轮脚本按「非 manual 且原件有原文」动手，对 `author+wordCount` 22 行也加了键；当时口径是「72 = 68 + 4」，故按 `.bak-2200` 整件还原 `pool143.qidian-verified`（22 行恢复为无键，行数与其余内容未变）。负责人 21:56 复核后裁定「只要一行有 `matchBasis` 就必须带键」，即误触方向正确、原口径把范围说小了，于是④把 22 行按同一规则补回，**现盘 94 行全部带键、且逐字等于 `.bak-2130` 原文**（`pool143` 为 80 行／111,951 B／`8759ef82f06805d1…`）。
+
+备份与回滚：`.bak-2200` 只在 21:51:31 首次创建一次，③④两轮写盘**没有新建备份**（脚本对已存在的 `.bak-2200` 不覆盖）；因此回滚依据是本轮唯一一份 `.bak-2200`（72 版状态）与原文来源 `.bak-2130`。
 
 构成（143 行全覆盖）：**16 `title` ＋ 52 `alias`（`pool143`）＋ 4 `title`（`fanqie-indirect`）＋ 22 `author+wordCount`（`pool143`）＝ 94 行回填原文**，另 **49 `manual` 行**（pilot 19／gap.qidian 14／gap.unresolved 9／pool143 6／batch2.addendum 1）写说明句、不在本文对照表内。
 
-口径变更留痕：`68`（16+52，首轮）→ `72`（+`fanqie-indirect` 4）→ **`94`（+`pool143` 22 行 `author+wordCount`）**。第三次扩范围是负责人 21:5x 裁定「只要一行有 `matchBasis` 就必须带键」，起因是我第二轮误触把 22 行加了键、又按 72 口径还原——裁定认为误触方向正确、是原口径把范围说小了，故一次覆盖到底，避免同一列出现两种处置。
+口径变更留痕：`68`（16+52，首轮）→ `72`（+`fanqie-indirect` 4）→ **`94`（+`pool143` 22 行 `author+wordCount`）**。第三次扩范围是负责人 21:56 群内裁定「只要一行有 `matchBasis` 就必须带键」，起因是我第二轮误触把 22 行加了键、又按 72 口径还原——裁定认为误触方向正确、是原口径把范围说小了，故一次覆盖到底，避免同一列出现两种处置。
 
 原文唯一来源：`.bak-2130`（改名前的原始字节，在 `.gitignore` 的 `.runtime/` 内、不入库，故本文件入库留档）。回填前状态另存 `.bak-2200`。
 
-## 逐行对照（72 行）
+## 逐行对照（94 行）
 
 | # | 文件 | `platformId` | `matchBasis` | 旧 `matchMethod` 原值＝回填后的 `matchBasisReason` |
 |---|---|---|---|---|
