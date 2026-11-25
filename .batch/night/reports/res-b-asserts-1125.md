@@ -7,7 +7,7 @@ To: 大肥鱼@主身
 
 - 依据卡面：`.batch/night/cards/CARD-1125-R3-b-asserts-and-rename.md`（提交 `5e313404`，§2.1 五条即本件清单）
 - 依据字段定义：`.batch/night/org/book-meta-requirements.md` §1（`:35` 四字段准入表、`:44-46` 键存在性三分）
-- 取数时刻：**2026-11-25 21:32–21:36**（盘上文件 mtime 已静默 >5 分钟，见 §0 第 2 行）
+- 取数时刻：**2026-11-25 21:32–21:36**（与 §2.2 改名落盘时刻 21:35:09 **有重叠**，静默条件不成立；读数为何仍有效见 §0 第 2 行的说明）
 - 数据面：`.runtime/res-corpus/local-slices/*.jsonl`，14 件／1,197 行（只读；本次零写入、零模型调用、不动 `calls.jsonl`）
 - 基线：`HEAD 5e313404`；`git status --porcelain -uall` 0 行
 
@@ -41,7 +41,7 @@ files 14  rows 1197  statusRaw null 483  statusRaw missing 639  completionBasis 
 | `statusRaw` 显式 `null` | 483 | 需求件 `:46` 一致 |
 | `statusRaw` 缺键 | 639 | 需求件 `:46` 一致 |
 | 三句前缀 | 0／0／0 | **全库没有任何一行写过前缀**（见 A3） |
-| 文件 mtime | 最新 `book-meta-requirements.md 10:16`、数据件 ≤`09:54` | 距取数 ≥11 小时，静默成立 |
+| 文件 mtime | 7 件改名件＝`21:35:09`（§2.2 落盘）；其余 7 件 `08:58`–`09:19` | **静默不成立**：取证窗 21:32–21:36 与改名落盘 21:35:09 重叠；读数跨改名前后同一口径（检查器对 `platformId` 与旧名 `qidianBookId`／`platformBookId` 同时成立），且 QA 用 7 件 `.bak-2130` 原始字节独立重建得同一组数（3/0/44/2/0/483/0/0/4），计数不受改名影响 |
 
 ## 1. 五条断言
 
