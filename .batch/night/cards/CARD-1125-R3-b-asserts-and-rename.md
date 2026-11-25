@@ -35,7 +35,9 @@ To: developer · AI writer项目组 · 群分身
 
 修订注（项目总负责人 21:44，答复 QA 首验 F1）：
 1. `type` 取值原写「六值」，与需求件 `:28`（五值：`promo`／`audit-rename`／`edition-suffix`／`local-file`／`unknown`，`promo-subtitle` 归 `promo`）冲突，按需求件为准，改「五值」。
-2. `matchBasisReason` 的条件②**书面放宽**：`manual` 行必带（写为什么这么定）；非 `manual` 行**可带**，值为原 `matchMethod` 原文留存（现有 68 行：`batch2.qidian-verified` `title` 16、`pool143.qidian-verified` `alias` 52）。理由：原文是来源痕迹，删了不可回溯；键名语义按「理由／原文留存」理解，不删数据。需求件 §2.5 由产品经理补一行写清这条三分（`manual` 必带／非 `manual` 可带原文／无记录不带），卡面与数据以该行为准。
+2. `matchBasisReason` 的条件②**书面放宽**：`manual` 行必带（写为什么这么定）；非 `manual` 行**可带**，值为原 `matchMethod` 原文留存（当时盘面 68 行：`batch2.qidian-verified` `title` 16、`pool143.qidian-verified` `alias` 52）。**本条「可带」与 68 行计数已被注 3 覆盖，现行口径以注 3 为准。**理由：原文是来源痕迹，删了不可回溯；键名语义按「理由／原文留存」理解，不删数据。需求件 §2.5 由产品经理补一行写清这条三分（`manual` 必带／非 `manual` 可带原文／无记录不带），卡面与数据以该行为准。
+
+3. `matchBasisReason` 口径收紧（项目总负责人 21:56 裁，答复 QA 复核；覆盖注 2 的「可带」与 68 行计数）：**只要一行有 `matchBasis`，就必须带 `matchBasisReason`**——`manual` 行写实情说明句，非 `manual` 行写原件 `matchMethod` 原文逐字（不得改写成判断性描述）；原件无记录的不带此键。现行覆盖 **94 行**：`title` 16＋`alias` 52＋`fanqie-indirect` `title` 4＋`author+wordCount` 22；`manual` 49 行的说明句不动。盘面读数 94/94 逐字等于 `.bak-2130` 原文，备案件为 `res-b-reason-backfill-1125.md`。需求件 §2.5 ② 同步由「可带」改为「必带」（v3.2.10）。
 
 ## 3. 判据（每条带分层标）
 
