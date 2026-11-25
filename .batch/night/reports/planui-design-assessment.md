@@ -2,6 +2,8 @@
 From: 产品经理 · AI writer项目组 | 4e6e07bd
 To: 大肥鱼@主身 | 主人裁定用
 
+> 2026-11-25 修订：A:163 逐字 diff 口径收窄为「三家可核」；A:90／A:197 三处行号按实测改正（依据 R1 交付件 §1.3／§2.2）。
+
 # PLANUI 四条设计评估（O1 / C1-① / C1-② / P6）
 
 > 射程：只读仓内既有定义＋市场调研，不改代码、不改 ROADMAP、不改卡面、不动看板。
@@ -87,7 +89,7 @@ To: 大肥鱼@主身 | 主人裁定用
 
 ## 4. P6 定档位：建议「档 1 范围化 + 档 3 生成后建议」，不做档 2 按单元批量
 
-**现状（已核）**：`NarrativeThreadEditor.tsx:226`／`:1050`／`:1081` 仍是**单章下拉 + 一次运行一次模型调用**（`aiBlueprintChapter`），与 backlog 描述一致。800 章＝800 次手动运行。
+**现状（已核）**：`NarrativeThreadEditor.tsx:1153`（`NativeSelect` 选章）／`:669-705`（`runChapter(chapterNumber)`）／`:626`（`setAiRangeCount(1)`）仍是**单章下拉 + 一次运行一次模型调用**（`aiBlueprintChapter`），与 backlog 描述一致。800 章＝800 次手动运行。
 
 ### 档 1：范围化（章区间，复用现成 ≤10 契约）
 - **产品上改了什么**：下拉换成「起–止」两个数字（或复用计划面板的区间控件），一次最多 10 章；结果仍是**候选 → 作者确认才写计划**（这点不许改）。
@@ -160,7 +162,7 @@ To: 大肥鱼@主身 | 主人裁定用
 | 4 | **Novelcrafter** | 官网有 Codex（设定库）与 Planning 分区，但**具体"重新生成是否覆盖/如何对比"未在公开文档里找到** | 只能作为"同类产品都有结构化设定库"的旁证，**不作为方案依据** | [novelcrafter.com/features/codex](https://www.novelcrafter.com/features/codex)（未能读到达标说明） |
 
 **结论（三条，均可直接落到上面方案）**：
-1. **没有一家做"逐字 diff"**——主流是「就地预览 + accept/discard/try again」。所以 C1-② 做**字段级并排**是比行业更贴合本项目（结构化角色卡）的选择，不是保守。
+1. **我们核到的三家（Novelcraft／Notion AI／Sudowrite）都没有做「逐字 diff」**；第四家 Novelcrafter 的页面只能证有结构化设定库、旧条目可被覆盖，不能证 diff 行为——主流是「就地预览 + accept/discard/try again」。所以 C1-② 做**字段级并排**是比行业更贴合本项目（结构化角色卡）的选择，不是保守。
 2. **"生成 ≠ 采纳"是硬边界**：Novelcraft 的 pencil/ink、Notion 的 accept/discard、Sudowrite 的"改实质内容"，三家都把最终决定权留给作者——与本项目"候选 → 作者确认才写"一致，**不要为了省点击改成自动覆盖**。
 3. **批量入口是趋势也是陷阱**：Sudowrite 的 Generate All Characters 是批量，但它的产物是"可留可改的初稿"，不是"覆盖既有"。P6 若走按单元批量，必须配"分组/折叠 + 已扫/剩余进度"，否则候选会把作者淹掉。
 
@@ -194,5 +196,5 @@ To: 大肥鱼@主身 | 主人裁定用
 - 单元批路由：`src/services/workflows/architecture-workflow.ts:129-131`、`src/App.tsx:436-460`（连写链）
 - 蓝图 10 章：`src/services/workflows/commands/directory.command.ts:319`、`:341`；`src/shared/agent-generation.ts:8-11`
 - 弧/单元命名与投影：`src/shared/arc-position.ts:145-147`、`:210-214`、`:410-416`、`:451-481`
-- P6 单章入口：`src/components/editor/NarrativeThreadEditor.tsx:226`、`:1050`、`:1081`
+- P6 单章入口：`src/components/editor/NarrativeThreadEditor.tsx:1153`、`:669-705`、`:626`
 - C1 现状：`src/components/panels/sidebar/CharactersView.tsx:29`、`:62-68`、`:97-101`、`:239`；`src/shared/character-proposal.ts:81-95`（整批重建语义）
