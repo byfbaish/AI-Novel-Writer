@@ -1,9 +1,11 @@
-# 本地库书目信息补全 · 需求清单 v3.2.8（产品经理，2026-11-25）
+# 本地库书目信息补全 · 需求清单 v3.2.9（产品经理，2026-11-25）
 
 对象：`.runtime/res-corpus/local-slices/` 247 本 / 1,151 片。
 补全结果落 `.runtime/res-corpus/local-slices/book-meta.jsonl`（一行一本），与切片同目录、不入库不上传。
 
 **v3 相对 v2**：字段名与取值一律按项目总负责人 11-25 裁定改（`platformId`／`akaTitles[].type`＋`source`／`matchBasis` 五值／`notFoundByTitle`／`bookTitle`＝站内名＋`localBookTitle`）。只改这一份，判据清单 24 条一个字不动——元数据层不占判据名额。
+
+**v3.2.9 相对 v3.2.8**：§2.5 补 `matchBasisReason` 条件键三分（项目总负责人 11-25 裁，随 R3 首验 F1 书面放宽条件②落此）；其余字段定义、数字、判据一个字不动。
 
 ## 0. 三条前置（不可破）
 
@@ -61,6 +63,8 @@
 ## 2.5 数据件键名须对齐本件（改名归补数据那一轮，规则不写进字段定义）
 
 盘上现有键名与本件不一致的，一律按本件改：`qidianBookId`／`platformBookId` → **`platformId`**；自由文本 `matchMethod` 按 `matchBasis` 五值映射，映不上的写 `manual` 并附理由；单值 `titleAlias` → **`akaTitles[]` 一项**（`type` 按上表取值）。改键属 admin 补数据那一轮的动作，本件只写目标形态，不写清洗脚本细节。
+
+**`matchBasisReason`（条件键，负责人 11-25 裁三分）**：键名含义是「理由／原文留存」，不是自由字段，也不替代 `matchBasis`。①`matchBasis:"manual"` 行**必带**，写一句话说明这条匹配是怎么定的（对应本件对 `manual` 须附理由的要求）；②非 `manual` 行**可带**，值只能是原件里原 `matchMethod` 的原文，作来源留档，不得改写成判断性描述；③原件没有匹配方式记录的，`manual` 行带键时值须写明「原件未记匹配方式」，不得编造理由，非 `manual` 行**不带**此键。缺键表示无记录，与空串不同，空串一律不允许。
 
 ## 3. 「没查到」必须分开记（口径按负责人裁定）
 
