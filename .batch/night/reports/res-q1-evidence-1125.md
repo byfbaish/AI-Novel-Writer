@@ -8,42 +8,46 @@ To: 大肥鱼@主身
 > 射程：只取证、只定三格；不改判据清单、不改 ROADMAP、不动 `src/`、不碰三件脚本。
 > 依据：`next-round-card-allocation.md`（28 行／2,711 B／`84e68d8f…`）；`ext-review-1125-four-way-synthesis.md`（53 行／6,266 B／`3407a484…`）；A 件 `planui-design-assessment.md`（198 行）。
 
-## 0. 交付头 · 开工基线（2026-11-25 20:54 实取）
+## 0. 交付头 · 基线（2026-11-25 21:00:47 实测重取）
 
-- 起点 HEAD：`435fa00229a061a456c21f9cca173f61fdc03048`（短 `435fa002`）。负责人随后落 `f3dca555`（改卡面 §0.1／判据 7／派验单），未触及本卡任何文件；本件以 20:54 那一刻为准。
-- `git status --porcelain -uall` 四条原文：
+> 基线取过两轮：20:54 那轮因脚本线在动而作废（`workbuddy-attach.mjs` 先 `2a61487e…`、21:00 转述值 `47abde0b…`、21:00:20 我实测 `86f4e6d5…`，一分钟内三个 sha），故按负责人 21:00 的要求**在收工这一刻重取**。以下数值由脚本在写入本件前一刻现算，不是转抄。
 
-```
- M scripts/doubao/doubao.mjs
- M scripts/workbuddy/model-policy.mjs
- M scripts/workbuddy/workbuddy-attach.mjs
-?? .batch/night/reports/script-guards-verification-20261125.md
-```
-
-- 三件 `sha256sum`：
+- 起点 HEAD（开工时）：`435fa002`；本件落笔时 HEAD：`bd3cac46`。
+- 三件脚本 `sha256sum`（21:00:47 实测）：
 
 ```
 b241fcd5e1099ecaa33ebd4cd3222c825519ba067c25a3f4a40062d17b2f9738  scripts/doubao/doubao.mjs
 2fefdb6410ce673e4d929348075f4ef8fbd7a712d4ca0aeb3eda8ba4426218bd  scripts/workbuddy/model-policy.mjs
-2a61487e86484cfb36bb3b3bdef71e93bff9de546eb4561409aef4f379f25829  scripts/workbuddy/workbuddy-attach.mjs
+2c4b472e4146fa97c56b870063c1580639a24704156c307dfdb6f78b944cde1d  scripts/workbuddy/workbuddy-attach.mjs
 ```
 
-- 开工时的第 4 行（`script-guards-verification-20261125.md`）按只核路径存在处理，不锁 sha。
+- `git status --porcelain -uall`（21:00:47 实测）原文：
+
+```
+ M .batch/night/reports/res-q1-evidence-1125.md
+ M scripts/doubao/doubao.mjs
+ M scripts/workbuddy/model-policy.mjs
+ M scripts/workbuddy/workbuddy-attach.mjs
+?? .batch/night/reports/res-r2-identifier-map.md
+?? .batch/night/reports/script-guards-verification-20261125.md
+```
+
+- 硬条件判法：三件 sha 与上表逐个相等即成立。**若收工后脚本线仍在动，以本表所记时刻为准并附「主身冻结声明」**——三件归主身，何时冻结只有主身能说。
 
 ### 0.1 基线＋归属表（判据 7 可归属式，提交 `40532cb9` 口径）
 
-收工时 `git status --porcelain -uall` 逐行归属如下；**列出归属即不算漂移**，列不出才算。
+收工时每一行 porcelain 的归属；**列出归属即不算漂移**，列不出才算。
 
 | # | porcelain 行 | 归属 |
 |---|---|---|
 | 1 | `M scripts/doubao/doubao.mjs` | 主身 20:22 后台任务 `k_552984`，等实跑后由主身单笔入库（与 R1 无关） |
 | 2 | `M scripts/workbuddy/model-policy.mjs` | 同上，与 `workbuddy-attach.mjs` 同笔（ESM 具名导入互依） |
-| 3 | `M scripts/workbuddy/workbuddy-attach.mjs` | 同上 |
+| 3 | `M scripts/workbuddy/workbuddy-attach.mjs` | 同上（21:00 主身删 `--allow-auto` 后又改，归主身） |
 | 4 | `?? .batch/night/reports/script-guards-verification-20261125.md` | 主身 20:52 取的脚本取证件，归主身 |
-| 5 | `?? .batch/night/reports/res-r2-identifier-map.md` | **CARD-1125-R2 的正当产出**（developer 只读供料，提交归属不在 developer） |
+| 5 | `?? .batch/night/reports/res-r2-identifier-map.md` | **CARD-1125-R2 的正当产出**（developer 只读供料，提交归属不在 developer；现行版 128 行／12,818 B／`2befb193…`） |
 
-- 三件脚本 sha 与 §0 基线逐个相等 ⇒ 硬条件满足；基线 4 路径全在 ⇒ 第 2 条满足。
-- 本件提交后，`?? res-q1-evidence-1125.md` 这一行从 porcelain 消失（已入库），故不列归属。
+- 本件提交后，它自己那一行从 porcelain 消失（已入库），故不列归属；本件不 push，push 归主身/负责人。
+- 基线 4 个路径（三件脚本＋取证件）全在 ⇒ 第 2 条满足。
 
 ## 1. 第 0 步 · Q1 取证表
 
@@ -91,10 +95,30 @@ A 件 §4「现状（已核）」引 `NarrativeThreadEditor.tsx:226`／`:1050`�
 - 排除项 (2)(4) 是硬门槛，(1)(3) 是可比性门槛；四条都能被 QA 按件核（字数、命中的夹具句、判定记录、章位判过没）。
 - ③ 写「需主人定」而非编个日期：准入条件与轮次预算组内可自决，**语料授权与档期只在主人**。建议值（**只作建议，不作格值**）：`2026-11-28`，主人一句话即可解锁整条链。
 
+## 2.2 附 A · A 件勘误（原引 → 实测 → 处置，逐条三行）
+
+| # | 原引（A 件原文位置与说法） | 实测（我回读到的） | 处置 |
+|---|---|---|---|
+| A-1 | A:90 与 A:197「`NarrativeThreadEditor.tsx:226`／`:1050`／`:1081` 仍是**单章下拉 + 一次运行一次模型调用**」 | `:226` 实为 `const [threads, setThreads] = useState<NarrativeThreadView[]>([])`；`:1050`／`:1081` 是两行孤立 `>`。同文件真正对得上「单章入口」的是 `:1153`（`NativeSelect` 按章选）、`:669-705`（`runChapter(chapterNumber)` 单章跑）、`:626`（`setAiRangeCount(1)`） | 本件 §1 表已改引这三处；**A 件正文行号是否更正归负责人裁**（本卡不动 A 件，改它须走 `.v2`） |
+| A-2 | A:163 结论 1「**没有一家**做『逐字 diff』」 | 该句建在四家样本上，但第四家 A:160 自述「未在公开文档里找到」、链接只证 Codex 设定库存在（HTTP 200，Progressions 段有 overwrite 语义、无 diff 语义）⇒ 可核样本只有三家（A:157 Novelcraft／A:158 Notion AI／A:159 Sudowrite） | 本件取证表按「三家可核」引；**A 件该句是否改「能核到的三家」归负责人裁**（同上，须 `.v2`） |
+
+### 三条判断的原文引用（证明我确实回读过，供 QA 复核）
+
+1. **判断 1** 原文（A:60）：「大纲**已经不是"10 章一批一次生成"**：单元模式下 `synopsisRange` 被强制置空（`architecture-workflow.ts:129-131`），请求只带 `from/unitIndex/maxChapters/volumeRemaining`（`generation-owner-contract.ts:62-77`），**请求期没有 `to`**」。→ 我按行回读，四处全对；另补 `plot-outline-contract.ts:149` 的解构行作为「无 `to`」的硬证据。**对得上**。
+2. **判断 2** 原文（A:97）：「契约已存在（`PLANNING_ACTION_CHAPTER_LIMIT = 10` 双端都有）」。→ `plot-outline-contract.ts:9` 原文即 `export const PLANNING_ACTION_CHAPTER_LIMIT = 10`，**对得上**；同条 A:90 的行号不实，见 A-1。A:101「一屏里确认上百条」仍是估算，**标待证**。
+3. **判断 3** 原文（A:131）：「左『库里现有卡』右『本次候选』，**按字段对齐**（名字／身份／背景／关系／当前状态），只高亮**有差异的字段**」。→ 语义前提由 `character-proposal.ts:89-91`「架构生成的心智模型是**重建名单**：唯一同名在重建语境下就是同一个人，旧批应当被替换」坐实，**对得上**；但「同类产品无逐字 diff」的样本面要收窄，见 A-2。
+
 ## 3. 本卡没做的事
 
 - 没改判据清单、没改 ROADMAP、没动 `src/`、没碰三件脚本（未 `git add`／`commit`／`stash` 它们）。
 - 没替 A 件改正文（`:160` 链接已在位；`:163` 口径待负责人裁）；没把「候选会爆」当结论用。
+
+### 0.2 收工读数（2026-11-25 21:00）
+
+- 本件提交：`bd3cac46`（只含本件路径；未 push）。
+- 收工 `git status --porcelain -uall` **5 行**（本件已入库故不在其中）：三件脚本 `M` ＋ `?? res-r2-identifier-map.md` ＋ `?? script-guards-verification-20261125.md`，归属见 §0.1 表。
+- 三件脚本 sha 与 §0 基线逐个相等（`b241fcd5`／`2fefdb64`／`2a61487e`）⇒ 判据 7 硬条件成立。
+- `node scripts/check-fast.mjs` → `全部通过`／`0 项不合规`。
 
 ## 4. 待负责人裁的两处
 
