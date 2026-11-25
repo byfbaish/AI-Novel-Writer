@@ -8,16 +8,31 @@ To: 产品经理 · AI writer项目组 · 群分身
 执行方：产品经理；首验方：QA；终审：项目总负责人
 类型：**A 类**（产出 docs 提交，须配派验单 `review-requests/CARD-1125-R1.md`）
 
-依据：`.batch/night/staging/res-next/next-round-card-allocation.md`（28 行／2,711 B／`84e68d8f…`）；`.batch/night/reports/ext-review-1125-four-way-synthesis.md` §一·3、§四（53 行／6,244 B／`9735ea2d…`）。
+依据：`.batch/night/staging/res-next/next-round-card-allocation.md`（28 行／2,711 B／`84e68d8f…`）；`.batch/night/reports/ext-review-1125-four-way-synthesis.md` §一·3、§四（53 行／6,266 B／`3407a484…`；早前 6,244 B／`9735ea2d…` 已作废，见提交 `c0855f6c`）。
 
 ## 0. 前置【硬】
 
 - 工作目录 `C:\develop\workspace\AI-writer\develop`，分支 `exp/mainline-1119`；禁建 worktree、禁改 `src/`。
 - 开工第一动作三条，任一不符即停手回执：
   1. `git rev-parse --show-toplevel` ＝ `C:/develop/workspace/AI-writer/develop`；
-  2. `git status --porcelain -uall | wc -l` ＝ `0`；
+  2. `git status --porcelain -uall | wc -l` ＝ `0`**（豁免 A-1，2026-11-25 20:53 起生效，见 §0.1；本卡执行时按 §0.1 的基线口径核，不按 0 行核）**；
   3. `test -f .batch/night/reports/ext-review-1125-four-way-synthesis.md` 为真。
 - 本卡只动 `.batch/night/reports/` 与 `docs/research/` 下的**新增**文件，不改判据清单（已 S4 收口）、不改 ROADMAP。
+
+### 0.1 前置豁免 A-1（项目总负责人 2026-11-25 20:53 签，最小豁免）
+
+**为什么豁免**：盘上那 3 行是 `scripts/doubao/doubao.mjs`、`scripts/workbuddy/model-policy.mjs`、`scripts/workbuddy/workbuddy-attach.mjs`——归属已清楚（主身 20:22 后台任务会话 `k_552984`），入库在等实跑证据，与本卡（纯文档）无关；等它们会让唯一优先卡无限期停摆，代价大于收益。
+
+**豁免范围**：只豁免 §0 第 2 条（porcelain 0 行）。其余前置照旧（toplevel、依据文件在位、不动 `src/`）。
+
+**开工必记基线**（写进交付头，缺一即按未交处理）：
+1. `git rev-parse --short HEAD`；
+2. `git status --porcelain -uall` 三行原文；
+3. 这三件的 `sha256sum`（各一行）。
+
+**判据 7 随之改口径**：收工时 porcelain 仍须是**同一组 3 个路径**、且三件 sha256 与开工基线逐个相等（＝这三行在卡执行期间没被动过）。若三件中任一 sha 变了，或出现第 4 行，本卡按「基线漂移」打回，不认结果。
+
+**不豁免的事**：不得 `git add`／`commit`／`stash` 这三件，不得以「反正要入库」为由替它们补证据。卡交付自己那笔提交只含本卡新增件。
 
 ## 1. 起因
 
@@ -50,7 +65,7 @@ To: 产品经理 · AI writer项目组 · 群分身
 4. `[static]` 轮次预算里「每篇判定时长上限」有数字，不是「尽快」「视情况」。
 5. `[static]` 最迟决策日是 `YYYY-MM-DD` 或「需主人定」，两种之外不接受。
 6. `[static]` 本卡不改判据清单与 ROADMAP：`git diff --name-only` 只含 `docs/research/`、`.batch/night/reports/`、`.batch/night/review-requests/` 三处。
-7. `[static]` `node scripts/check-fast.mjs` EXIT=0，`git status --porcelain -uall` 提交后 0 行。
+7. `[static]` `node scripts/check-fast.mjs` EXIT=0；提交后 `git status --porcelain -uall` 为**开工基线同一组 3 个路径**（`M scripts/doubao/doubao.mjs`／`M scripts/workbuddy/model-policy.mjs`／`M scripts/workbuddy/workbuddy-attach.mjs`），且三件 sha256 与交付头所记基线逐个相等（见 §0.1）。
 
 （本卡无 mock／live 项：不跑生成、不动数据。）
 
