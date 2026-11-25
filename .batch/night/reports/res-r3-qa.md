@@ -81,3 +81,25 @@
 4. `git status --porcelain -uall` 0 行、`HEAD` 与 `origin/exp/resource-ledger` 两行 sha 关系照实写（当前落后/领先由出件方给，push 归主身）。
 
 —— QA ·「AI writer项目组」
+
+## 9. 复判（判定面：卡面 `6bdefe4a`／需求件 `f69a37c4`／断言件 `3b07ffe2`，HEAD `3b07ffe2`，`porcelain 0`）
+
+四条最小复核（判词 §8）逐条结果：
+
+1. 非 `manual` 行带 `matchBasisReason` 的命中数 → **68**（`batch2.qidian-verified` `title` 16 ＋ `pool143.qidian-verified` `alias` 52），已被卡面 `6bdefe4a` 修订注 2 书面放宽，F1 的「先决条件」成立。
+2. `grep -n matchBasisReason .batch/night/org/book-meta-requirements.md` → 命中 `:67` 一行（v3.2.9，106 行／15,215 B／`3fe1dba4…`），三分（`manual` 必带／非 `manual` 可带／无记录不带＋空串禁止）齐备。
+3. 断言件 §0 已按实测改写：`:10` 写「与 §2.2 改名落盘时刻 21:35:09 **有重叠**，静默条件不成立」，`:44` 表行写「7 件改名件＝`21:35:09`；其余 7 件 `08:58`–`09:19`｜**静默不成立**」。F2 消。
+4. `HEAD 3b07ffe2`、`git status --porcelain -uall` 0 行、`node scripts/check-fast.mjs` → `0 项不合规`／`全部通过`／`CF_EXIT=0`；三件 blob sha 前 16：断言件 `787270b8a6ad8dc3`、需求件 `3fe1dba42884979c`、卡面 `9983790def7ca58c`。
+
+**F1-b（新增，须一句话定，二选一）**：卡面 `6bdefe4a` 修订注 2 与需求件 `:67` ②都写「值为原 `matchMethod` **原文**」，需求件还明写「不得改写成判断性描述」；但盘上 68 行的值**全部是改写后的说明句**，逐条比对原 `matchMethod`（用 `.bak-2130`）结果为 **0/68 逐字相同**。例：
+
+- `batch2.qidian-verified`：原文「站内搜索 /so/<书名>.html 取书号 → /book/<id>/ 取字段；书号为主键，书名为弱匹配」→ 现值为「书号是检索命中后才取得的，不是既有 id 直查，故按 title 记，不记 id」。
+- `pool143.qidian-verified`：原文「目录《…珍藏版》按书名配对 → 书页核验」→ 现值为「本地名带「珍藏版」后缀，按别名（edition-suffix）配对后书页核验」。
+
+即：规则写「原文」，数据是「精简说明」，字面冲突 68/68。两条修法：
+- (a) 用 `.bak-2130` 回填原文（68 行字段替换，脚本一次、约 5 分钟，两条文本都不用改，溯源最实）；
+- (b) 产品经理把 `:67` ②的「原文」改成「原文或据原文的精简说明（须能回溯到原 `matchMethod`，不得写成与原记录无关的判断）」，卡面修订注 2 同步一句。
+
+我建议 (a)：`manual` 49 行里 42 行本来就写「原件未记匹配方式」，原文回填后整列语义一致，也不会给以后留「说明句算不算留档」的口子。
+
+除此之外，R3 §2.2 改名的判据 4／5／6 与断言件 A1–A5 的结论维持 PASS 不变。
