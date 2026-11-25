@@ -38,6 +38,17 @@ export const ALLOWED_MODELS = HY4_DISABLED
   : [MODEL_HY4, MODEL_HY4_FLASH, MODEL_DEEPSEEK_FLASH]
 
 /**
+ * 跨源评审可临时点名的模型（2026-11-25 主人要求：重要评审要跨家族）。
+ * `--force` 只对这一组生效——白名单外但不在名单里的名字一律拒绝，防止 --force 变成通用后门。
+ */
+export const CROSS_SOURCE_MODELS = ['GLM-5.3', 'GLM 5.4', 'Qwen 3.8 Flash', 'Qwen 4 Max', 'Kimi K3.1 Pro', 'Kimi K3']
+
+/** 付费 Hy4（0.29x）无论有没有 --force 都不许出现：它是被主人明令禁用的那一条，与 `Hy4 flash` 不是一个模型。 */
+export function isPaidHy4(model) {
+  return String(model == null ? '' : model).replace(/\s+/g, ' ').trim().toLowerCase() === 'hy4'
+}
+
+/**
  * 每条白名单模型的授权出处：`<角色>|<渠道>|<ISO>`；无法溯源写 `UNVERIFIED`。
  * 缺这一行列即判不合格（不是 WARN）——status / help 输出靠它自证「谁在何时授权」。
  */

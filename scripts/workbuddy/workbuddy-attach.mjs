@@ -52,8 +52,12 @@ import {
 } from './attach.mjs'
 import {
   ALLOWED_MODELS,
+  CROSS_SOURCE_MODELS,
+  MODEL_DEEPSEEK_FLASH,
   buildPeakBanner,
   describeModelPolicy,
+  isPaidHy4,
+  isDeepSeekPeakAt,
   pickModel,
   rejectUnknownModel,
   sameModel,
@@ -112,6 +116,17 @@ function matches(collection, name) {
 
 class NeedHumanDebug extends Error {}
 
+/**
+ * 评审件识别（只用于「未点名模型」这一分支）：命中即拒，避免跨源评审悄悄落到同源的 DeepSeek。
+ * 判据刻意只认强特征（派单件名 / 跨源字样 / 四家模型名），不认泛词「评审」以免误伤普通回复。
+ */
+function looksLikeCrossSourceReview(prompt) {
+  const text = String(prompt ?? '')
+  if (/EXT-REVIEW|ext-review/i.test(text)) return true
+  if (/跨源|非同源|跨家族/.test(text)) return true
+  return CROSS_SOURCE_MODELS.some(model => text.includes(model))
+}
+
 const EXIT = { ok: 0, fail: 1, notConnected: 2, cliMissing: 3, timeout: 4, peak: 5 }
 
 /**
@@ -123,11 +138,32 @@ const EXIT = { ok: 0, fail: 1, notConnected: 2, cliMissing: 3, timeout: 4, peak:
 function resolveModelTarget(args, { command, prompt }) {
   const explicit = args.model ? String(args.model).trim() : ''
   if (explicit) {
+    // 付费 Hy4（0.29x）是被明令禁用的那一条：--force 也不许用它（2026-11-25 收窄）
+    if (isPaidHy4(explicit)) fail('[refuse] 「Hy4」(0.29x) 已全线禁用，--force 不放行；跨源评审请点名 ' + CROSS_SOURCE_MODELS.join(' / '))
     const rejected = rejectUnknownModel(explicit)
-    if (rejected) fail('[refuse] ' + rejected)
+    // --force = 对该次派单的人工授权（2026-11-25：跨源评审要用 GLM-5.3/Qwen 3.8 Flash），**只对跨源名单生效**
+    if (rejected && !args.force) fail('[refuse] ' + rejected + '\n（本次已获授权可加 --force）')
+    if (rejected && !CROSS_SOURCE_MODELS.includes(explicit)) {
+      fail('[refuse] --force 只对跨源评审名单内的模型生效：' + CROSS_SOURCE_MODELS.join(' / ') + '\n「' + explicit + '」不在名单内，如确要新增请先改 model-policy.mjs 的 CROSS_SOURCE_MODELS')
+    }
+    if (rejected) log('[force] 跨源评审按人工授权放行：' + explicit)
     return { model: explicit, how: 'explicit' }
   }
   if (args.policyOff) return { model: null, how: 'policy-off' }
+  // 主人 2026-11-25 20:59：普通外派按老规矩用 DeepSeek-V4.1-Flash —— 固定默认值，**不按价格/时段挑**。
+  // 例外：跨源评审必须点名跨家族模型；评审件未点名会落到 DeepSeek，与本组同源、等于白跑，故直接拒。
+  if (command === 'task') {
+    if (looksLikeCrossSourceReview(prompt)) {
+      fail('[refuse] 跨源评审必须显式 --model：未点名会落到默认的 ' + MODEL_DEEPSEEK_FLASH + '（与本组同源，等于白跑）\n例：--model "GLM-5.3" --force，或 --model "Hy4 flash"')
+    }
+    // 高峰拦截沿用旧规矩（工作日 09:00–12:00 / 14:00–18:00 原价，不派活）
+    if (isDeepSeekPeakAt()) {
+      log(buildPeakBanner({ now: new Date(), command, prompt }))
+      return { model: null, blocked: true, how: 'peak-blocked' }
+    }
+    log('[default] 未点名模型 → ' + MODEL_DEEPSEEK_FLASH + '（主人 2026-11-25：普通外派按老规矩）')
+    return { model: MODEL_DEEPSEEK_FLASH, how: 'default-deepseek' }
+  }
   const picked = pickModel()
   if (!picked.ok) {
     log(buildPeakBanner({ now: new Date(), command, prompt }))
@@ -168,6 +204,7 @@ async function ensureModel(client, target) {
 
 /** 白名单兜底：就算策略关掉，也不许停在 Hy3 / GLM 这类模型上派活。 */
 function assertAllowedModel(model, { force }) {
+  if (isPaidHy4(model)) fail('[refuse] 「Hy4」(0.29x) 已全线禁用，--force 不放行')
   if (!model || force) return
   const rejected = rejectUnknownModel(model)
   if (rejected) fail('[refuse] ' + rejected + '\n（要临时放行加 --force；建议 --model ' + ALLOWED_MODELS[0] + '）')
@@ -796,6 +833,8 @@ function usage() {
     'WorkBuddy attach 通道（复用桌面登录态，单会话多轮，默认只认 wt-2）',
     '',
     '归属：默认固定 wt-2；要投别的目录先 set WORKBUDDY_ALLOWED_CWDS=<绝对路径>[;<绝对路径>] 注册，用完即失效',
+    '模型：task 必须显式 --model（不再按时段自动挑）。跨源评审可点名 GLM-5.3 / Qwen 3.8 Flash 等并同时加 --force；',
+    '      --force 只对 model-policy.mjs 的 CROSS_SOURCE_MODELS 名单生效，付费 Hy4(0.29x) 一律拒绝。',
     '',
     '  node scripts/workbuddy/workbuddy-attach.mjs status            # 只读诊断：端口/页面/空间/模型/权限/会话',
     '  node scripts/workbuddy/workbuddy-attach.mjs sessions          # 读本地 sqlite 里 wt-2 的历史会话',
@@ -808,11 +847,13 @@ function usage() {
     '',
     '选项：--session <id> 指定会话 · --timeout 秒（默认 900） · --json · --no-wait · --port 9333',
     '     --cwd <目录>（只允许 wt-2；改到别处会被拒） · --force（越过归属护栏，排障用，报告里写明）',
-    '     --model <名字> 显式指定模型（视为人工授权，绕过高峰拦截；只允许 DeepSeek-V4.1-Flash）',
+    '     --model <名字> 显式指定模型（视为人工授权，绕过高峰拦截）',
     '',
-    '模型策略（自动）：工作日 09:00–12:00 / 14:00–18:00 是 DeepSeek 高峰，默认拦下不派活（exit 5）·',
-    '其余时段用 DeepSeek-V4.1-Flash（0.11x + 5 折）。',
-    '关掉自动选型：set WORKBUDDY_MODEL_POLICY=off',
+    '模型选择（2026-11-25 主人定）：',
+    '  · 不点名 --model → 固定用 DeepSeek-V4.1-Flash（普通外派默认；不按时段/价格自动挑）',
+    '  · 跨源评审（EXT-REVIEW / 「跨源」/ 四家模型名）必须点名：--model "GLM-5.3" --force 或 --model "Hy4 flash"',
+    '  · --force 只对跨源名单生效；付费 Hy4(0.29x) 一律拒，--force 也不放行',
+    '  · 关掉选型：set WORKBUDDY_MODEL_POLICY=off',
     '',
     '退出码：0 完成 / 1 失败 / 2 未连接（NEED_HUMAN_DEBUG） / 4 超时 / 5 高峰期不派活',
   ].join('\n')
