@@ -31,7 +31,11 @@ To: developer · AI writer项目组 · 群分身
 5. `platformId` 为空 ⇒ `matchBasis ≠ id`（硬卡，与 §2.2 改名同轮机械校验）。
 
 ### 2.2 四字段改名（admin 落盘）
-`qidianBookId`／`platformBookId` → `platformId`；`matchMethod` → `matchBasis`（按五值映射，映不上写 `manual` 加理由）；单值 `titleAlias` → `akaTitles[]` 一项（`type` 按六值中取一）。改名前逐件留 `wc -lc` ＋ `sha256`。
+`qidianBookId`／`platformBookId` → `platformId`；`matchMethod` → `matchBasis`（按五值映射，映不上写 `manual` 加理由）；单值 `titleAlias` → `akaTitles[]` 一项（`type` 按需求件 §2.5 表五值取一）。改名前逐件留 `wc -lc` ＋ `sha256`。
+
+修订注（项目总负责人 21:44，答复 QA 首验 F1）：
+1. `type` 取值原写「六值」，与需求件 `:28`（五值：`promo`／`audit-rename`／`edition-suffix`／`local-file`／`unknown`，`promo-subtitle` 归 `promo`）冲突，按需求件为准，改「五值」。
+2. `matchBasisReason` 的条件②**书面放宽**：`manual` 行必带（写为什么这么定）；非 `manual` 行**可带**，值为原 `matchMethod` 原文留存（现有 68 行：`batch2.qidian-verified` `title` 16、`pool143.qidian-verified` `alias` 52）。理由：原文是来源痕迹，删了不可回溯；键名语义按「理由／原文留存」理解，不删数据。需求件 §2.5 由产品经理补一行写清这条三分（`manual` 必带／非 `manual` 可带原文／无记录不带），卡面与数据以该行为准。
 
 ## 3. 判据（每条带分层标）
 
