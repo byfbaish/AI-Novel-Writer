@@ -15,7 +15,9 @@
 | A | PLANUI 四条设计评估（O1 / C1-① / C1-② / P6） | `C:\develop\workspace\AI-writer\develop\.batch\night\reports\planui-design-assessment.md` | 198 行 |
 | B | 语料元数据需求件 v3.2.8（字段契约） | `C:\develop\workspace\AI-writer\develop\.batch\night\org\book-meta-requirements.md` | 102 行 |
 | C | RES 判据清单 + 读者侧自然度定义 | `C:\develop\workspace\AI-writer\develop\docs\research\2026-11-25-formulaic-patterns-judgment-list.md`、`2026-11-25-reader-side-naturalness-definition.md` | 146 + 116 行 |
-| D | ROADMAP v0.8（八个 L0 推进次序） | `C:\develop\workspace\AI-writer\develop\docs\roadmap\ROADMAP.md` | 365 行 |
+| D | ROADMAP v0.9（八个 L0 推进次序） | `C:\develop\workspace\AI-writer\develop\docs\roadmap\ROADMAP.md` | 365 行 |
+
+核值时间：2026-11-25 20:35（D 首行「版本：v0.9」；B 首行「247 本 / 1,151 片」、§3 `statusClaimTrust` 只准 `high`／`low`）。A 件三条候选在现值 ROADMAP 已落地，评审时请以「这些改动落到流程里会怎样」为准，不必再论证是否该做。
 
 ### A 的摘要（PLANUI 设计评估，四条裁定候选）
 
@@ -28,9 +30,9 @@
 
 ### B 的摘要（元数据字段契约）
 
-本地小说库 263 个 txt 要补平台元数据，字段契约的关键设计：
+本地小说库 247 本 / 1,151 片要补平台元数据，字段契约的关键设计：
 - `completion`（完结/连载/unknown）只看**正文证据**：末章含「（结局）」「全书完」或末章为番外/外传；
-- 平台页面的状态位只记 `statusRaw` + `statusClaimTrust: low`——因为平台会为算法推荐把已完结的书标「连载」；
+- 平台页面的状态位只记 `statusRaw` + `statusClaimTrust`（只准 `high`／`low` 两值，每条都带）——因为平台会为算法推荐把已完结的书标「连载」；
 - 补 `completionBasis`（判定依据原文）与 `completionBasisSource`（chapterText / platformStaticSet / statusRaw / unknown）四字段；
 - 覆盖率**分母按件写**（pilot 19/19、gap 14/14…），不写「全库 N/N」。
 
