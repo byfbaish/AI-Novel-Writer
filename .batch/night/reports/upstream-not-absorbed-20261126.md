@@ -5,7 +5,7 @@
 - 输入：派单件 `.batch/night/staging/upstream-reabsorb-20261126.md`（57 行）、评估件 `.batch/night/reports/upstream-diff-eval-20261126.md`（`50e7c23a`）、基线 `.batch/night/reports/upstream-baseline-20261126.md`（`b52be88f`）、机器清单 `upstream-diff-inventory.tsv`
 - 配套件：**`upstream-absorb-candidates-20261126.md`**（新增·吸收候选包＋排序＋起卡顺序）
 - 口径补件：`.batch/night/staging/upstream-reabsorb-addendum-20261126.md`（33 行／3,372 B／`9f82e1c9…dbac`，11-26 23:28；主人 C2／C3／C5 三条裁定与件头两栏口径，与本件冲突处**以补件为准**）
-- **⚠ 覆盖范围限制（必读）**：本清单评估的是 **`549522d4..upstream/master`**（4,355 笔）。我方**真实共同祖先**是 `fc576e08`（2026-08-16 v0.8.4），`549522d4` 不是我方祖先（`git merge-base --is-ancestor 549522d4 HEAD` → NO）；因此 **`fc576e08..549522d4` 的约 893 笔（08-16→10-14）从未被任何一件评估覆盖**，本清单**不是全覆盖**，不得当作「上游已评完」。该区段是否扩面评估待主人裁（负责人不自行扩面）。见 `.batch/night/reports/upstream-baseline-20261126.md` §一。
+- **⚠ 覆盖范围限制（必读）**：本清单评估的是 **`549522d4..upstream/master`**（4,355 笔）。我方**真实共同祖先**是 `fc576e08`（2026-08-16 v0.8.4），`549522d4` 不是我方祖先（`git merge-base --is-ancestor 549522d4 HEAD` → NO）；因此 **`fc576e08..549522d4` 的约 893 笔（08-16→10-14）不在本单范围内**，本清单**不是全覆盖**，不得当作「上游已评完」。**主人 11-27 00:18 已裁「评」**：该 893 笔由扩面件（`.batch/night/reports/upstream-reabsorb-893-20261127.md`）按同一套 A1／A2／B／C 定性，交付后合并入本清单；扩面件入库前，本单仍只覆盖上述区间。
 
 ## 0. 新判据（替换旧口径）
 

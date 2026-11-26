@@ -15,7 +15,7 @@
 | **分叉点（真实共同祖先）** | **`fc576e089939789c18261560ea5838b4487e7440`**（`fc576e08`，2026-08-16 `chore(release): prepare v0.8.4 reliability release`） | `git merge-base HEAD upstream/master` |
 | **上游发布点（非我方祖先）** | `549522d4`（#381 rd-4-run-sheet，2026-10-14 03:43 +0800）——**不是我方祖先**，只是上游某次发布点，评估时曾被误当分叉点 | `git merge-base --is-ancestor 549522d4 HEAD` → exit 1（NO） |
 | 真实缺口 | **5,248** 笔（`fc576e08..upstream/master`） | `git rev-list --count fc576e08..upstream/master` |
-| 未评估区段 | **893** 笔（`fc576e08..549522d4`，2026-08-16→10-14）——**从未被任何一件评估覆盖**，是否扩面待主人裁 | `git rev-list --count fc576e08..549522d4` |
+| 未评估区段 | **893** 笔（`fc576e08..549522d4`，2026-08-16→10-14）——**主人 11-27 00:18 裁「评」**：沿用同一套 A1／A2／B／C 四类定性只定性不建卡，定性结果并入不吸收清单、A2 中值得做的另列候选包 §2 由主人挑。**在扩面件入库前不写死为已覆盖** | `git rev-list --count fc576e08..549522d4` |
 | 分叉点树（旧评估起点 `549522d4` 的树） | `ecca898653fcd98b69c9870ec6ecf4063be26a4d` | `git rev-parse upstream-baseline^{tree}` |
 | 分叉点本地副本 | `upstream-baseline`=`8afec2a1`、`relive-src/upstream-baseline`=`5ee50c2a`（重写副本，树同值） | `git rev-parse <ref>^{tree}` |
 | 禁用祖先 | `dd04d3e9`（10-10 #337）是重写史**假祖先**，`merge-base` 不可用 | — |
@@ -30,6 +30,9 @@
 **可用（当前唯一可靠方式）**：git 不认 Windows 系统代理，必须显式给环境变量：
 
 ```bash
+# 0) 起算点一律按 merge-base 现算，不写死 sha（主人 11-27 00:18 定）
+MB=$(git merge-base HEAD upstream/master)   # 现在 = fc576e089939789c18261560ea5838b4487e7440
+
 HTTPS_PROXY=http://127.0.0.1:3067 git fetch upstream
 ```
 
@@ -59,11 +62,12 @@ cd /c/develop/workspace/AI-writer/develop
 # 1) 取最新上游（必须带代理变量）
 HTTPS_PROXY=http://127.0.0.1:3067 git fetch upstream
 
-# 2) 总增量笔数（自真实共同祖先）
-git rev-list --count fc576e08..upstream/master
+# 2) 总增量笔数（自真实共同祖始，按 merge-base 现算，不写死 sha）
+MB=$(git merge-base HEAD upstream/master)
+git rev-list --count "$MB"..upstream/master
 
-# 2b) 其中从未被评估覆盖的区段（08-16→10-14；扩面与否待主人裁）
-git rev-list --count fc576e08..549522d4
+# 2b) 扩面区段（08-16→10-14；主人 11-27 00:18 已裁「评」，定性口径同评估件四类）
+git rev-list --count "$MB"..549522d4
 
 # 3) 差量：自上条基线以来新增的提交（起点 = 本文件 §一 的上游 HEAD）
 git log --oneline f1d7f1d91..upstream/master
@@ -79,4 +83,4 @@ git diff f1d7f1d91..upstream/master -- <路径>
 
 ## 五、已定的不吸收面
 
-见 `.batch/night/reports/upstream-not-absorbed-20261126.md`（B 九簇／C 五簇／324 条非代码路径，逐条理由与重估触发条件）。**该清单只覆盖 `549522d4..upstream/master`，不含 `fc576e08..549522d4` 的约 893 笔**；该区段是否扩面待主人裁。
+见 `.batch/night/reports/upstream-not-absorbed-20261126.md`（B 九簇／C 五簇／324 条非代码路径，逐条理由与重估触发条件）。**覆盖声明（主人 11-27 00:18 裁）**：扩面件 `.batch/night/reports/upstream-reabsorb-893-20261127.md` 入库后，本基线覆盖区间即为 `fc576e08..HEAD` 全区间、**无未评缺口**（`fc576e08..upstream/master` = 5,248 = 已评 4,355 + 扩面 893）；**在扩面件入库前，893 笔仍列「在评」，不得写成已覆盖**。
