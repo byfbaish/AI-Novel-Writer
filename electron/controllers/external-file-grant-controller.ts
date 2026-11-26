@@ -19,20 +19,39 @@ function text(zhCNText: string, enUSText: string): string {
   return mainText(app.getLocale(), zhCNText, enUSText)
 }
 
-/** 不把文件系统绝对路径或内部服务错误原样回传给渲染层。 */
+/**
+ * 不把文件系统绝对路径或内部服务错误原样回传给渲染层。
+ *
+ * 安全文件系统的错误码即 `message`（见 `windows-safe-file-system.ts` 的
+ * `secureError`），与界面语言无关，因此先按码分流；不认识的新码落到末尾兜底，
+ * 不会被误判成其它分支。
+ *
+ * 授权服务层（`external-file-grant-service.ts`）仍以中文诊断字符串抛错，本卡
+ * 白名单不含该文件（卡 5d8dac97 裁定「只做 SECURE_FS 半边」），故下面三条中文
+ * 判据是过渡态，待服务层码化后删除。
+ */
 function grantErrorText(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
+  switch (message) {
+    case 'SECURE_FS_REPARSE_POINT':
+    case 'SECURE_FS_INVALID_PATH':
+    case 'SECURE_FS_NOT_FOUND':
+      return text('外部文件授权路径无效，已拒绝操作。', 'The external file grant path is invalid; the operation was rejected.')
+    case 'SECURE_FS_UNSUPPORTED_PLATFORM':
+    case 'SECURE_FS_HELPER_UNAVAILABLE':
+    case 'SECURE_FS_HELPER_TIMEOUT':
+      return text('安全外部文件服务不可用，已拒绝操作。', 'The secure external file service is unavailable; the operation was rejected.')
+    default:
+      break
+  }
   if (/过期|不存在|已撤销/.test(message)) {
     return text('外部文件授权已失效，请重新选择。', 'The external file grant has expired. Please choose again.')
   }
   if (/权限|webContents/.test(message)) {
     return text('当前窗口无权使用该外部文件授权。', 'This window is not allowed to use the external file grant.')
   }
-  if (/相对路径|父目录遍历|绝对路径|NUL|超出授权范围|目标已变化|SECURE_FS_(REPARSE_POINT|INVALID_PATH|NOT_FOUND)/.test(message)) {
+  if (/相对路径|父目录遍历|绝对路径|NUL|超出授权范围|目标已变化/.test(message)) {
     return text('外部文件授权路径无效，已拒绝操作。', 'The external file grant path is invalid; the operation was rejected.')
-  }
-  if (/SECURE_FS_(UNSUPPORTED_PLATFORM|HELPER_UNAVAILABLE|HELPER_TIMEOUT)/.test(message)) {
-    return text('安全外部文件服务不可用，已拒绝操作。', 'The secure external file service is unavailable; the operation was rejected.')
   }
   return text('外部文件授权操作失败。', 'The external file grant operation failed.')
 }
