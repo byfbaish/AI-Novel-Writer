@@ -15,7 +15,7 @@
 | **分叉点（真实共同祖先）** | **`fc576e089939789c18261560ea5838b4487e7440`**（`fc576e08`，2026-08-16 `chore(release): prepare v0.8.4 reliability release`） | `git merge-base HEAD upstream/master` |
 | **上游发布点（非我方祖先）** | `549522d4`（#381 rd-4-run-sheet，2026-10-14 03:43 +0800）——**不是我方祖先**，只是上游某次发布点，评估时曾被误当分叉点 | `git merge-base --is-ancestor 549522d4 HEAD` → exit 1（NO） |
 | 真实缺口 | **5,248** 笔（`fc576e08..upstream/master`） | `git rev-list --count fc576e08..upstream/master` |
-| 未评估区段 | **893** 笔（`fc576e08..549522d4`，2026-08-16→10-14）——**主人 11-27 00:18 裁「评」**：沿用同一套 A1／A2／B／C 四类定性只定性不建卡，定性结果并入不吸收清单、A2 中值得做的另列候选包 §2 由主人挑。**在扩面件入库前不写死为已覆盖** | `git rev-list --count fc576e08..549522d4` |
+| 原未评估区段（已评完） | **893** 笔（`fc576e08..549522d4`，2026-08-16→10-14），主人 11-27 00:18 裁「评」——结论见 `.batch/night/reports/upstream-reabsorb-893-20261127.md`：851 非 merge 中 716 已等价、135 无等价补丁，其中 105 笔属上游 RD 重设计线（部分由 C4 覆盖），真正需另行决策 30 笔；A1 8 簇整簇零缺口 | `git rev-list --count fc576e08..549522d4` |
 | 分叉点树（旧评估起点 `549522d4` 的树） | `ecca898653fcd98b69c9870ec6ecf4063be26a4d` | `git rev-parse upstream-baseline^{tree}` |
 | 分叉点本地副本 | `upstream-baseline`=`8afec2a1`、`relive-src/upstream-baseline`=`5ee50c2a`（重写副本，树同值） | `git rev-parse <ref>^{tree}` |
 | 禁用祖先 | `dd04d3e9`（10-10 #337）是重写史**假祖先**，`merge-base` 不可用 | — |
@@ -83,4 +83,4 @@ git diff f1d7f1d91..upstream/master -- <路径>
 
 ## 五、已定的不吸收面
 
-见 `.batch/night/reports/upstream-not-absorbed-20261126.md`（B 九簇／C 五簇／324 条非代码路径，逐条理由与重估触发条件）。**覆盖声明（主人 11-27 00:18 裁）**：扩面件 `.batch/night/reports/upstream-reabsorb-893-20261127.md` 入库后，本基线覆盖区间即为 `fc576e08..HEAD` 全区间、**无未评缺口**（`fc576e08..upstream/master` = 5,248 = 已评 4,355 + 扩面 893）；**在扩面件入库前，893 笔仍列「在评」，不得写成已覆盖**。
+见 `.batch/night/reports/upstream-not-absorbed-20261126.md`（B 九簇／C 五簇／324 条非代码路径，逐条理由与重估触发条件）。**覆盖声明（主人 11-27 00:18 裁；扩面件已入库，此处为无条件声明）**：本基线覆盖 **`fc576e08..HEAD` 全区间、无未评缺口**——`fc576e08..upstream/master` = 5,248 = 已评 4,355 + 扩面 893，两件分别是 `.batch/night/reports/upstream-not-absorbed-20261126.md`（4,355 笔区间）与 `.batch/night/reports/upstream-reabsorb-893-20261127.md`（893 笔区间）。QA 首验判词：`.batch/night/review-requests/up-893-20261127-qa.md`。
