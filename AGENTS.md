@@ -57,4 +57,4 @@ node scripts/check-doc-placement.mjs --status-of "期 2"   # 收口：把写着�
 | 动蓝图 / 正文 / 字数 / 弧光 | `notes/generation-pipeline.md` · `notes/prompt-engineering.md` |
 | 加列 / 迁移 / 查库 | `notes/data-and-schema.md` · `notes/upstream-invalidation.md` §5（两处黑名单） |
 | 找接下来做什么 | [`plans/prompt-assembly-backlog.md`](docs/plans/prompt-assembly-backlog.md) 顶部优先级表 |
-| 把活派给外部 agent | [`worktree-parallel.md`](docs/agents/worktree-parallel.md) + `docs/agents/{copilot,workbuddy,doubao,task-board}-channel.md` |
+| 把活派给外部 agent | [`worktree-parallel.md`](docs/agents/worktree-parallel.md) + `docs/agents/{copilot,workbuddy,doubao,task-board}-channel.md`；任务书里写明**不用交互式提问**，卡点走 relay 投 `bridge\to-owner`；状态靠 relay 推送，**不起轮询监督任务** |
