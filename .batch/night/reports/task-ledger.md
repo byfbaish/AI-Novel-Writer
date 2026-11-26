@@ -990,3 +990,19 @@ To: AI writer项目组 · 群内共读（判件基准件）
 - 边界：developer 未 merge、未 cherry-pick、未改 `src/`、未 push；提交前 `git diff --cached --name-only` 只有评估件＋清单，`node scripts/check-fast.mjs` 全部通过。落此条目时盘上 `??` 三件为他人过程件（`upstream-diff-baseline-20261126.md`、`upstream-diff-task-20261126.md`、`review-requests/a01b4c7b.md`），不在本卡产出内。
 - 主人挑中的 A2 条目一律单独立卡，不走 cherry-pick。
 - 本段只追加，不改既有条目。
+
+### 26. 上游吸收重评（2026-11-26 23:20 起，**进行中**）
+
+| 卡号 | 类型 | 执行方 | 派活 | 结项 | 结论 | 依据 |
+|---|---|---|---|---|---|---|
+| a01b4c7b-R（重评） | 评审评估件（重评） | developer（主笔） | 11-26 23:20 | —— | **进行中**（不入主表「结论」列，四值均不适用） | 派单件 `.batch/night/staging/upstream-reabsorb-20261126.md`（57 行，负责人 11-26 23:20 写）；原评估卡 `a01b4c7b` 已 done（见 §25），**本行是新工作，不覆盖原结项** |
+
+- 起因：主人 11-26 23:17 否掉「不吸收清单」的判定口径，要求重评。原 §25 结项行不动。
+- 新判据（主人原话，只一条）：**「不吸收」必须建立在我方已做独立取舍之上；我方自分叉以来没动过的领域，不许用「绑定上游路线」当理由抛弃。C 类不按冲突定，按产品意义定。**
+- 执行口径（admin 给的凭证法，负责人抽查 B3／B8／B9／C3 四数复现一致）：每簇两行计数 `git rev-list --count 549522d4..HEAD -- <path>` ／ `..upstream/master -- <path>`；每条改判须带「我方做了什么」的提交号。件里若以「绑定上游路线／方向不同／路线未定」当理由，QA 首验直接判不合格。
+- 交付两件（都只读分析，不改生产码、不 push）：①改判后的 `.batch/night/reports/upstream-not-absorbed-20261126.md`（§0 换新判据，§1／§2 按十项逐条改判）；②新增「吸收候选包」清单（簇号｜路径｜我方/上游提交数｜吸收什么（函数级）｜按我方接口的适配点｜代价 S/M/L｜依赖前置簇）＋排序（我方改动量从小到大＋依赖关系）＋建议起卡顺序。
+- 十项要点（负责人派单件原文摘要）：B1+B2 合簇并写清我方 `electron/llm/` 那 19 笔；B3 先做内容比对再定谁先进（我方 25 vs 上游 11）；B5 按「向量层最终捡 LanceDB」评估；B6+B7 合簇；B8 当新功能立项评估、B9 吸收候选；C1 已定不要不再评；C2 按产品意义评；C3 原清单事实写错（该文件在 HEAD 与分叉点都 PRESENT，我方 1 笔／上游 12 笔，须查我方那 1 笔内容后重写）；C4 出换壳代价与分期；C5 出依赖跟随清单与逐包 ABI 影响。
+- 流转：首验归 QA，终审与入库归负责人。台账待终审后另记结项行（PASS／不通过），本行只记「进行中」。
+- 我在本轮的两处实测（供件方引用，不作判据）：`git cat-file -e HEAD:src/services/workflows/commands/legacy-character-roster-repair.command.ts` → PRESENT，该路径我方 1 笔 `d57b380c8`（feat: migrate legacy roster recovery to persistent main ownership，8 文件）；`git diff --name-status 549522d4..upstream/master -- src/components | wc -l` → **473**（A 215／D 122／M 133／R 4），与派单件沿用「161」不一致，请件方以本实测为准或自行复现后择一写死。
+- `AGENTS.md` 在工作树里为 `M`（非本行改动方，未认领，未入库）——仅登记状态，不代为认领。
+- 本段只追加，不改既有条目。
