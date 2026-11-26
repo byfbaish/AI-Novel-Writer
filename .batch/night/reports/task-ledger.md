@@ -975,3 +975,18 @@ To: AI writer项目组 · 群内共读（判件基准件）
 - 定时任务：四条 ended 由主人 11-26 裁「暂时保留、不删」，本组不再动。
 - `AGENTS.md` 仍为 `M`（+1/−1，单行改写：禁动区加「语料样本（含原文全文、切片、章名）只落 `.runtime/`，禁止入库、禁止上传」）；负责人未改此文件，改动方待认领；按该文件自身规矩「权威副本是 charter，改规则两边同步 `charter-version`」，现仍 `2026-11-07`，需改动方一并处置（或确认此句属说明不算规则）。
 - 本段只追加，不改既有条目。
+
+### 25. 上游增量可吸收清单 a01b4c7b 结项（2026-11-26）
+
+| 卡号 | 类型 | 执行方 | 派活 | 结项 | 结论 | 依据 |
+|---|---|---|---|---|---|---|
+| a01b4c7b | 评审评估件 | developer（developer） | ~11-26 | 11-26 | PASS（首验带条件通过→C1–C3 改完→终审通过） | 评估件 `.batch/night/reports/upstream-diff-eval-20261126.md`（140 行／14,268 B／`326e31041e5a3a6957b83609a55a4828a8929f8468042491b831af9c60921758`）；机器清单 `.batch/night/reports/upstream-diff-inventory.tsv`（4,320 行／667,855 B／`44a33a3b…aa1e`，4,319 笔＋表头，末字节 `0a`）；派验单 `.batch/night/review-requests/a01b4c7b.md`（25 行／2,526 B）；QA 判词 `.batch/night/review-requests/a01b4c7b-qa.md`（113 行／11,336 B／`a63f1bb6567849e48e4cc…`，提交 `c4ee25f8`）；改完提交 `50e7c23a`（父 `c4ee25f8`，只夹带评估件＋清单） |
+
+- 结论读数：分叉点＝上游 `549522d4`（10-14，树 `ecca8986`，与我方 `upstream-baseline`／`relive-src/upstream-baseline` 同树）；`dd04d3e9` 是重写史假祖先（`merge-base HEAD upstream-baseline` 无输出 EXIT=1）。上游增量 4,348 笔（按日期取到 4,319），与我方 3,640 文件交集 863（M 699／D 161／A 3），其中我方未动 410、已改写 289。聚簇结果 **A1 0／A2 九簇／B 九簇／C 五簇**，非代码 315 路径单列。
+- A1=0 的写法口径（admin 11-26 定，防误读）：A1=0 是「**净 diff 不可摘**」，**不是「打不上」**——谁拿「22 个补丁 14 个 `apply --check` 全过」来推翻 A1=0 都是误读同一件事：净 diff 是我方基线到上游 master 的六周累计结果，不是可摘的单笔提交。判据：22 个净 diff 补丁里 14 个 `git apply --check` 全过，但净 diff ≠ 可摘提交，我方父链已偏 1,086 笔；QA 独立抽样 3 笔非 merge `cherry-pick -n` **0/3 干净**（原法在本机不可执行：git 协议死、无对象），与 A1=0 同向。QA 另记「22 补丁未落盘＝证据未落盘」，自建 baseline→master 三件补丁 `git apply --check` 3/3 OK。
+- 差额 29 的解释：同一时刻 compare 4,355 vs `since` 接口 4,326，差值恒定 29（机制解释自洽，未逐笔定位，GitHub 配额剩 3）。时点差 +7 笔（取数后上游又进 7 笔，非取数错误）。
+- 吸收代价（评估件 §五，QA C1–C3 改后口径）：①取消/失败混淆＝**M**，新建取消类型＋收口 `src/services/workflows/workflow-utils.ts:57/60/63/236` 四处直抛（`isWorkflowCancellation` 全仓 0 命中）；②回收站重发撞名＝**M**，新建机制（收据占位目录＋选目标必填），`reservedManuscriptTargets`／`republishTarget` 我方 0 命中，漏一处丢稿；③网络失败分因＝**S/M**，需先建传输诊断载体（上游改 `electron/llm/transport-diagnostics.ts`，我方 ABSENT），我方 `src/services/generation/prompt-budget-failure.ts:62` 已有 `'network'` 一档，收益是三因细分而非从无到有。
+- 外部约束两条（评估件记）：上游已改名 **`EthanYoQ/Pagekin`**；本机 `github.com:443` 的 git 协议与 ssh 大流量 fetch 均不通，本次走 API＋codeload 快照，文件级结论不受影响，将来要对象级 cherry-pick 须先解决通道。
+- 边界：developer 未 merge、未 cherry-pick、未改 `src/`、未 push；提交前 `git diff --cached --name-only` 只有评估件＋清单，`node scripts/check-fast.mjs` 全部通过。落此条目时盘上 `??` 三件为他人过程件（`upstream-diff-baseline-20261126.md`、`upstream-diff-task-20261126.md`、`review-requests/a01b4c7b.md`），不在本卡产出内。
+- 主人挑中的 A2 条目一律单独立卡，不走 cherry-pick。
+- 本段只追加，不改既有条目。
