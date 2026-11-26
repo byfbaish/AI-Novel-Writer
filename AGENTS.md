@@ -18,7 +18,7 @@
 
 ## 1. 项目地图与禁动区
 
-目录职责见 [`docs/README.md`](docs/README.md) §1。两条查表查不出的边界：**主进程与渲染层各拼一半 prompt**（改 prompt 先读 inventory §2）· **改 `src/` 非组件模块热更新不生效，必须重启 `pnpm dev`**。**禁动区**：`docs/plans/novel-quality-*`、`docs/research/novel-quality-modernization/`（脚本按字面路径引用）、`docs/adr/` 既有条目。
+目录职责见 [`docs/README.md`](docs/README.md) §1。两条查表查不出的边界：**主进程与渲染层各拼一半 prompt**（改 prompt 先读 inventory §2）· **改 `src/` 非组件模块热更新不生效，必须重启 `pnpm dev`**。**禁动区**：`docs/plans/novel-quality-*`、`docs/research/novel-quality-modernization/`（脚本按字面路径引用）、`docs/adr/` 既有条目；**语料样本（含原文全文、切片、章名）只落 `.runtime/`，禁止入库、禁止上传**。
 
 ## 2. T0 不变量（8 条 · 唯一清单，别处只写指针）
 
