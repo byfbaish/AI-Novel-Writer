@@ -95,3 +95,43 @@ To: 大肥鱼@主身
 ## 四、复核范围（改完只验这三处）
 
 M1 → `:55` 与 §1.2 尾段 B3a 的代价／落点；M2 → `:203` D9 行；M3 → `:122`／`:185` 两处 `R 4`→`R 3`。外加 `:108` 顺手把 `DraftEditor.tsx:114` 从 import 点里删掉。改完把新行数／字节／sha 报一遍即可，不必重跑第五条的 324 条与全部 sha。
+
+---
+
+## 五、复判（M1／M2／M3 ＋ 一致性），2026-11-26 23:5x
+
+**对象读数（我实测，与负责人一致）**
+
+| 件 | 行 | 字节 | sha256 | 末字节 |
+|---|---|---|---|---|
+| `upstream-not-absorbed-20261126.md` | 556 | 106,794 | `6e4f26cae70da2dc21863bdc13dff1d8cc60faa3dbaf73d0fb276eab9a219355` | `0a` |
+| `upstream-absorb-candidates-20261126.md` | 71 | 8,903 | `04033674a5a0c24a9c63c5db6fc52b71ee32ea3e0172d3bafa02c104c35e7af9` | `0a` |
+
+### M1 —— **闭合**
+
+- §1.2 现在的表述与盘上代码逐项对得上：8 文件命中、`src/shared/import-run.ts:22-32` 11 值枚举、`import-run-orchestrator.ts:126` `REFERENCE_STAGES` 六阶段／`:127-129` `AUTHOR_STAGES` 五阶段／`:135` `stagesFor(run)` 按 `purpose` 二选一／`:139` `stageIndex` 同源——我逐行读过。
+- 「只缺第三份计划表」这个结论**站得住**：上游 `src/shared/import-run.ts:44-49` 是 `IMPORT_STAGE_PLANS` 三份（`reference` 六阶段、`author` 五阶段、`authorWithInference` 八阶段把 `global→style→blueprints` 插在 `author-postprocess` 之后），我方 `REFERENCE_STAGES`／`AUTHOR_STAGES` 与上游前两份**逐字相同**；`importStagesFor` 的分支是 `purpose === 'reference' ? reference : authorInference ? authorWithInference : author`。`authorInference` 的取数链也核了：上游 `electron/repositories/import-run-repository.ts:914` `function readAuthorInference(runId: string): boolean`，调用点 `:207`（派生 plan）与 `:726`（组快照），字段在 `src/shared/import-run.ts:251/309/329`；我方 `grep -rn 'authorInference' src electron` = **0**，确属新列。
+- B3a 代价 **L→M**、前置改「一页 flag 落库方案（含迁移列）」已落 §1.2 尾段；候选包 §1 `:20`、§2 `:39`、§4 `:64` 三处 B3a 行同步改成 M＋同一措辞，B4 前置（`:40`）也带上了 B3a。
+
+### M2 —— **闭合**
+
+- §3 `:210` D9 行：我方区间笔数已是 **0**，`eef413c3b` 明写「只碰 `.storybook/preview.ts(x)`，属 D8」，D8 行 `:209` 保留该凭证。
+- 新凭证我逐个核了：`src/components/settings/AppearanceSettings.tsx:26` = `export const ANIME_SKIN_URL = \`${skinAssetBase}skins/anime-night.webp\``；`electron/services/release-skin-smoke.ts:12` = `const BUNDLED_ANIME_RENDERER_URL = './skins/anime-night.webp'`；`c365f44f0` 在 `549522d4..HEAD` 命中 **0**（分叉前 08-08「feat: add safe image skins and packaged qualification」），作「分叉前提交」用它成立。
+- 附录 `:538` 那条同步改了，与 §3 表一致。
+
+### M3 —— **闭合**
+
+- `:128` 数字行与 `:192` 复核行都是 `R 3`（R052／R054／R088）且写「合计 473」；215+122+133+3=473 自洽。
+
+### 一致性 —— **不通过（单点）**
+
+- `grep -nE '待主人裁|主人未答|待裁'` 两件 → exit=1、0 命中，**这条形式上过了**；C4 在候选包 `:23`／`:41`／`:51`／`:71` 只有「已裁：一次性更换＋排工 553＋回滚 tag」一个口径，也过了。
+- 但**不吸收件 §1.11 内部仍有两个互相矛盾的定性并存**（同一节内）：
+  1. 「**定性（二次更正）**：原定性（等主人答复）作废。…C4 一次性更换，不分期推进」——已裁；
+  2. 紧接着「**定性（补件 §1 第 4 条）**：**主人尚未答复**，本件不转候选、不判吸收也不判不吸收，只给代价与可独立回滚的分期，**等主人一句话**」——仍是待裁。
+  另同节还留着「**分期（每期可独立回滚）**」三期表与「**本件只给代价不给结论**」，与「一次性更换、不分期」直接冲突。
+- 为什么我没在上一轮点出：这三个字面词（「主人尚未答复／等主人一句话／只给代价不给结论」）不在负责人给的 grep 集合里——**grep 集合选得太窄会漏**，这条我记在案。
+- 另 `:555` 审计注记把改前文写成「定性由『等主人答复』改为『已裁：一次性更换』」，实际改前是「**待主人裁**」；审计句在改写自述的历史，应写准。
+- 改法（只动四处）：§1.11 第 2 段（补件 §1 第 4 条）整段改为「已被 23:37『一次性更换』裁定取代，作废」；分期表标题加「（已作废，仅留代价参考）」；「本件只给代价不给结论」删或改「已裁，见上」；`:555` 的「等主人答复」改「待主人裁」。
+
+**复判结论：M1／M2／M3 三处闭合；一致性未过（§1.11 单节内两个定性并存）。退回只改上述四处，改完报新行数／字节／sha256，我不再重跑全件。**
