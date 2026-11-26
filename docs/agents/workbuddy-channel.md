@@ -19,6 +19,17 @@ node scripts/workbuddy/workbuddy-attach.mjs task "任务文本" --new
 
 桌面端不方便开时**不要绕道**：headless 兜底通道（`codebuddy -p`，独立 npm 包、单独登录、拿不到桌面积分）已于 2026-11-07 连同 npm 包一起移除（§9）。这种活改派 [Copilot 通道](copilot-channel.md) 或 [豆包通道](doubao-channel.md)——它们本来就是独立进程形态。
 
+## 0.1 派单书必须写死的两条（2026-11-26 定，主人裁定）
+
+1. **禁止交互式提问**。外派 agent 一律不许用「选项卡 / 选择题 / 反问用户」把决策抛回来：这类提问会把会话顶到「请先回应挂起的请求」，输入框写不进任务文本、它自己也不往下跑，整条槽位空占（C5 首例，卡了半小时）。
+2. **卡点走文件，不走提问**。真推不动（判据冲突、白名单不够、判据自身矛盾）时，把卡点写成一件：
+
+   `.batch/night/bridge/to-owner/blocker-<YYYYMMDD>-<卡号>.md`
+
+   三段就够：**卡点是什么**（哪两条判据互斥、冲突文件与行）／**已试过什么**（命令与读数）／**需要我方裁什么**（给 2–3 个选项与推荐）。写完继续做其余可做部分，不空等。
+
+脚本侧兜底（同日实施，`workbuddy-attach.mjs`）：等待期间检测到提问卡**立即退出码 6**，把卡片全文落 `ask-card.md`，不再干等到超时；`status --json` 里 `askCardPending` 会直接给真值。所以「被卡住」是一次调用就能看出来的事实，不需要任何轮询。
+
 ## 1. 为什么必须由人启动 Debug 实例
 
 WorkBuddy 的「Debug 模式」**不是命令行开关**，而是启动时读环境变量 `WORKBUDDY_REMOTE_DEBUGGING_PORT`，主进程看到才自己 `appendSwitch('remote-debugging-port', …)`：

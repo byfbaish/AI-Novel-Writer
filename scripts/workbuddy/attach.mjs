@@ -349,6 +349,23 @@ export function readRunState(snapshot) {
 }
 
 /**
+ * 判定会话是否被「提问卡」占住（外派 agent 反向问了我们一道选择题）。
+ *
+ * 现场读数（2026-11-26 C5 实测）：编辑器被替换成占位文案「请先回应挂起的请求」，
+ * 此时既写不进任务文本，也不会自己往下跑；光看 stopLabels 会一直判 idle，
+ * 于是调用方只能干等到超时——这就是「卡住」的真身。
+ * 命中后立即返回，由调用方以 exit 6 收尾并落 ask-card.md，交 relay 给人裁定。
+ */
+export function isAskCardPending(snapshot) {
+  if (!snapshot) return false
+  const text = String(snapshot.editorText ?? '')
+  if (/请先回应挂起的请求/.test(text)) return true
+  // 兜底：占位文案可能改词，只要编辑器正文极短且带「回应/等待你的回答」类字样也算。
+  if (text.length <= 24 && /(回应|回答|等待你的)/.test(text)) return true
+  return false
+}
+
+/**
  * 判定「一问一答已经收尾」：UI idle 且出现了新的助手正文。
  *
  * 基线必须在「切完会话 / 开完草稿之后」取（打字后那一次快照），因为：

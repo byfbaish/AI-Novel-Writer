@@ -39,6 +39,7 @@ import {
   buildCurrentSessionExpression,
   readRunState,
   isSettledSignal,
+  isAskCardPending,
   checkPinnedCwd,
   judgeLanding,
   judgeFreshDraft,
@@ -127,7 +128,7 @@ function looksLikeCrossSourceReview(prompt) {
   return CROSS_SOURCE_MODELS.some(model => text.includes(model))
 }
 
-const EXIT = { ok: 0, fail: 1, notConnected: 2, cliMissing: 3, timeout: 4, peak: 5 }
+const EXIT = { ok: 0, fail: 1, notConnected: 2, cliMissing: 3, timeout: 4, peak: 5, askCard: 6 }
 
 /**
  * 选模型 + 高峰拦截（纯策略见 model-policy.mjs）。
@@ -534,6 +535,8 @@ async function waitForSettled({ client, baselineCount, baselineMessageCount, bas
     if (!snapshot) continue
     if (onTick) onTick(snapshot)
     const state = readRunState(snapshot)
+    // 提问卡：外派 agent 反向提问把编辑器占住，再等也不会自己往下走（见 attach.mjs:isAskCardPending）。
+    if (isAskCardPending(snapshot)) return { settled: false, askCard: true, snapshot, reply: extractReply(snapshot) }
     const reply = extractReply(snapshot)
     const settledNow = isSettledSignal({
       runState: state,
@@ -555,6 +558,16 @@ async function waitForSettled({ client, baselineCount, baselineMessageCount, bas
     }
   }
   return { settled: false, snapshot, reply: extractReply(snapshot ?? {}) }
+}
+
+/** 从快照里挑出提问卡正文：优先最后一条用户侧消息（卡片就挂在那），拿不到退回编辑器占位文案。 */
+function extractAskCardText(snapshot) {
+  const messages = Array.isArray(snapshot?.lastMessages) ? snapshot.lastMessages : []
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const text = String(messages[index]?.text ?? '').trim()
+    if (text && /请裁定|请选择|哪条|1\s|选项/.test(text)) return text
+  }
+  return String(snapshot?.editorText ?? '').trim()
 }
 
 function writeArtifacts(runId, payload) {
@@ -605,6 +618,7 @@ async function commandStatus(args) {
       space: spaceLabelForCwd(args.cwd),
       page: { url: snapshot?.url ?? meta.page.url, editor: Boolean(snapshot?.hasEditor) },
       runState: readRunState(snapshot),
+      askCardPending: isAskCardPending(snapshot),
       chips: snapshot?.chips ?? null,
       currentSessionId: snapshot?.currentSessionId ?? null,
       messageCount: snapshot?.messageCount ?? 0,
@@ -810,6 +824,17 @@ async function commandSend(args, prompt, { forceNewSession, modelTarget }) {
       writeSessionRecord({ sessionId, cwd: session?.cwd ?? args.cwd, savedAt: new Date().toISOString(), runId })
     }
 
+    if (result.askCard) {
+      const askText = extractAskCardText(result.snapshot)
+      if (dir && !dir.skipped) {
+        try { fs.writeFileSync(path.join(dir, 'ask-card.md'), askText + '\n', 'utf8') } catch (error) { /* 留证失败不影响退出码 */ }
+      }
+      log('[blocked] 会话被「提问卡」占住，等你裁定后重投：' + (sessionId ?? '?'))
+      log('产物：' + (dir?.skipped ? '跳过（' + dir.reason + '）' : dir))
+      if (askText) log('--- ask card ---\n' + askText.slice(0, 3000))
+      return EXIT.askCard
+    }
+
     if (!result.settled) {
       log('[fail] 等不到稳定的完成信号（' + elapsed + 's）；产物：' + (dir?.skipped ? '跳过（' + dir.reason + '）' : dir))
       if (result.reply?.text) log(result.reply.text.slice(0, 1500))
@@ -855,7 +880,7 @@ function usage() {
     '  · --force 只对跨源名单生效；付费 Hy4(0.29x) 一律拒，--force 也不放行',
     '  · 关掉选型：set WORKBUDDY_MODEL_POLICY=off',
     '',
-    '退出码：0 完成 / 1 失败 / 2 未连接（NEED_HUMAN_DEBUG） / 4 超时 / 5 高峰期不派活',
+    '退出码：0 完成 / 1 失败 / 2 未连接（NEED_HUMAN_DEBUG） / 4 超时 / 5 高峰期不派活 / 6 被提问卡占住（已落 ask-card.md，等裁定）',
   ].join('\n')
 }
 
