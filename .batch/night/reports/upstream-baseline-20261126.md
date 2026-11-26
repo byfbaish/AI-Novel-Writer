@@ -12,15 +12,18 @@
 | **上游 HEAD（本次基线）** | **`f1d7f1d91bd5bb8e2e2523fda5edaea53a8dc079`** | `git rev-parse upstream/master` |
 | 上游全历史笔数 | 5,482 | `git rev-list --count upstream/master` |
 | 本地 `.git` 体积 | 241M（拉全量后） | `du -sh .git` |
-| **分叉点** | **`549522d4`**（#381 rd-4-run-sheet，2026-10-14 03:43 +0800） | 见 §三 |
-| 分叉点树 | `ecca898653fcd98b69c9870ec6ecf4063be26a4d` | `git rev-parse upstream-baseline^{tree}` |
+| **分叉点（真实共同祖先）** | **`fc576e089939789c18261560ea5838b4487e7440`**（`fc576e08`，2026-08-16 `chore(release): prepare v0.8.4 reliability release`） | `git merge-base HEAD upstream/master` |
+| **上游发布点（非我方祖先）** | `549522d4`（#381 rd-4-run-sheet，2026-10-14 03:43 +0800）——**不是我方祖先**，只是上游某次发布点，评估时曾被误当分叉点 | `git merge-base --is-ancestor 549522d4 HEAD` → exit 1（NO） |
+| 真实缺口 | **5,248** 笔（`fc576e08..upstream/master`） | `git rev-list --count fc576e08..upstream/master` |
+| 未评估区段 | **893** 笔（`fc576e08..549522d4`，2026-08-16→10-14）——**从未被任何一件评估覆盖**，是否扩面待主人裁 | `git rev-list --count fc576e08..549522d4` |
+| 分叉点树（旧评估起点 `549522d4` 的树） | `ecca898653fcd98b69c9870ec6ecf4063be26a4d` | `git rev-parse upstream-baseline^{tree}` |
 | 分叉点本地副本 | `upstream-baseline`=`8afec2a1`、`relive-src/upstream-baseline`=`5ee50c2a`（重写副本，树同值） | `git rev-parse <ref>^{tree}` |
 | 禁用祖先 | `dd04d3e9`（10-10 #337）是重写史**假祖先**，`merge-base` 不可用 | — |
 | 我方 HEAD（基线时点） | `41664021e8737d5aa3af75e930e1b89b6bd3a573` | `git rev-parse HEAD` |
 | 评估件 | `.batch/night/reports/upstream-diff-eval-20261126.md`，140 行／`326e3104…921758` | `sha256sum` |
 | 机器清单 | `.batch/night/reports/upstream-diff-inventory.tsv`，4,320 行／667,855 B／`44a33a3b…e275aa1e` | `sha256sum` |
-| 评估时增量 | API `compare/549522d4...master` → `ahead_by 4348` | `GET /repos/EthanYoQ/Pagekin/compare/549522d4...master` |
-| 本地复算增量 | `4355`（`549522d4..upstream/master`）；与 4348 差 7＝上游在取数后又进 7 笔 | `git rev-list --count 549522d4..upstream/master` |
+| 评估时增量（相对上游发布点 `549522d4`） | API `compare/549522d4...master` → `ahead_by 4348` | `GET /repos/EthanYoQ/Pagekin/compare/549522d4...master` |
+| 本地复算增量（相对 `549522d4`） | `4355`（`549522d4..upstream/master`）；与 4348 差 7＝上游在取数后又进 7 笔。**这是真实缺口的子集**，不是总缺口 | `git rev-list --count 549522d4..upstream/master` |
 
 ## 二、通道（实测，含生效用法）
 
@@ -56,8 +59,11 @@ cd /c/develop/workspace/AI-writer/develop
 # 1) 取最新上游（必须带代理变量）
 HTTPS_PROXY=http://127.0.0.1:3067 git fetch upstream
 
-# 2) 总增量笔数（自共同分叉点）
-git rev-list --count 549522d4..upstream/master
+# 2) 总增量笔数（自真实共同祖先）
+git rev-list --count fc576e08..upstream/master
+
+# 2b) 其中从未被评估覆盖的区段（08-16→10-14；扩面与否待主人裁）
+git rev-list --count fc576e08..549522d4
 
 # 3) 差量：自上条基线以来新增的提交（起点 = 本文件 §一 的上游 HEAD）
 git log --oneline f1d7f1d91..upstream/master
@@ -73,4 +79,4 @@ git diff f1d7f1d91..upstream/master -- <路径>
 
 ## 五、已定的不吸收面
 
-见 `.batch/night/reports/upstream-not-absorbed-20261126.md`（B 九簇／C 五簇／315 条非代码路径，逐条理由与重估触发条件）。
+见 `.batch/night/reports/upstream-not-absorbed-20261126.md`（B 九簇／C 五簇／324 条非代码路径，逐条理由与重估触发条件）。**该清单只覆盖 `549522d4..upstream/master`，不含 `fc576e08..549522d4` 的约 893 笔**；该区段是否扩面待主人裁。
