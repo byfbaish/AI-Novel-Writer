@@ -7,6 +7,8 @@
 
 ## 0. 一句话读法
 
+> **本通道不是默认通道（主人 2026-11-27 00:30 定，即刻生效）**：外派**默认先走豆包**（大概率不计费）；WorkBuddy 只在①需要特定模型、②需要**非同源评审**（避免自己评自己）时才用——它消耗积分。派 WorkBuddy 必须在派单件里写明这两条理由之一，否则一律按豆包处理。通道顺序的权威句在 `.batch/night/staging/ext-dispatch-header.md` §0。
+
 ```bash
 # 1) 诊断（只读，不会动 UI）
 node scripts/workbuddy/workbuddy-attach.mjs status
@@ -82,6 +84,16 @@ WorkBuddy 侧栏的「空间」= **按 cwd 分组的会话列表**（不是 `wor
 | 在 wt-2 下开新会话 | 点「空间 `wt-2`」标题右边的 `+`（`button.workspace-new-task-button`）⇒ 得到 `工作区=wt-2` 的草稿；**会话要等第一条消息发出才落库** |
 | 复用已有会话 | 点带 `data-conversation-id` 的会话卡片（优先 `last-session.json` / `--session` 指定的 id，找不到退回该空间第一张卡片） |
 | 核对真的落在 wt-2 | **两道闸门，`chips.workspace` 不参与**（见 §2.3） |
+
+#### 2.2.1 「空间（分组）」不是目录自动生成的（2026-11-27 实测）
+
+侧栏的空间**不会**因为磁盘上存在同名目录就出现——`C:\develop\workspace\AI-writer\wt-c2` 建好后（含 `node_modules` junction）侧栏里依然只有旧空间，脚本随即报 `no-section`。正确流程是走 GUI：
+
+1. **新建任务** → 2. **选择分组** → 3. **目标目录**；
+2. 分组要先「**新建分组 → 关联文件夹 → 保存**」才会出现在选择列表里；
+3. 只有「新建任务 → 选择该分组」这一条路能得到落在指定目录的会话。
+
+脚本报 `no-section` 时的正确说法是「**需先在 GUI 新建分组并关联该文件夹**」，**不得写成「目录不存在」**——目录在、分组没建是两回事，误判会让人去查磁盘。
 
 **不要**用 `spawn(WorkBuddy.exe, [cwd])` 开新会话：second-instance 转发不可靠（2026-11-05 两次实验：sqlite 里 12s/30s 都没出现新行）。
 **不要**用 `window.wb.conversations.setCurrentConversation(id)` 切会话：返回 `{ok:true}` 但界面不载入（实测 msgs=0）。切会话一律**点卡片**。

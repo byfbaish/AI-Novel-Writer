@@ -7,6 +7,8 @@
 
 ## 0. 一句话读法
 
+> **默认通道（主人 2026-11-27 00:30 定，即刻生效）**：外派**默认先走豆包**——它大概率不计费；WorkBuddy 只在「需要特定模型」或「需要非同源评审（避免自己评自己）」时才用（消耗积分）。派单件不写通道时按**豆包**处理。通道顺序的权威句在 `.batch/night/staging/ext-dispatch-header.md` §0。
+
 ```bash
 node scripts/doubao/bootstrap.mjs --effort 中           # 先：起实例 + 新线程 + 本地电脑 + 档位 + 项目自检
 node scripts/doubao/doubao.mjs task "任务描述" --project <项目名>   # 再：派活

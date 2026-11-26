@@ -4,6 +4,8 @@
 
 ## 0 必读与确认（先回四行，再开工）
 
+> **通道顺序（主人 2026-11-27 00:30 定，即刻生效）**：外派**默认先走豆包**（大概率免单）；**WorkBuddy 只在「需要特定模型」或「需要非同源评审（避免自己评自己）」时才用**——它消耗积分。派单件不写通道时按豆包处理；要派 WorkBuddy 必须在件内写明这两条理由之一。
+
 开工前必读：①仓内 `AGENTS.md`；②`README.md`；③`docs/agents/worktree-parallel.md`；④本卡相关通道件 `docs/agents/{copilot,workbuddy,doubao,task-board}-channel.md` 中与本次任务对口的一份；⑤派单正文点名的卡面或设计稿。
 
 回四行再动手：
