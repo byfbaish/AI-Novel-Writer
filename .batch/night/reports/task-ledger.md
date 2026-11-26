@@ -991,11 +991,11 @@ To: AI writer项目组 · 群内共读（判件基准件）
 - 主人挑中的 A2 条目一律单独立卡，不走 cherry-pick。
 - 本段只追加，不改既有条目。
 
-### 26. 上游吸收重评（2026-11-26 23:20 起，**进行中**）
+### 26. 上游吸收重评（2026-11-26 23:20 起，**已结项，见 §27**）
 
 | 卡号 | 类型 | 执行方 | 派活 | 结项 | 结论 | 依据 |
 |---|---|---|---|---|---|---|
-| a01b4c7b-R（重评） | 评审评估件（重评） | developer（主笔） | 11-26 23:20 | —— | **进行中**（不入主表「结论」列，四值均不适用） | 派单件 `.batch/night/staging/upstream-reabsorb-20261126.md`（57 行，负责人 11-26 23:20 写）；原评估卡 `a01b4c7b` 已 done（见 §25），**本行是新工作，不覆盖原结项** |
+| a01b4c7b-R（重评） | 评审评估件（重评） | developer（主笔） | 11-26 23:20 | 11-26 | **已结项（见 §27）** | 派单件 `.batch/night/staging/upstream-reabsorb-20261126.md`（57 行，负责人 11-26 23:20 写）；原评估卡 `a01b4c7b` 已 done（见 §25），**本行是新工作，不覆盖原结项** |
 
 - 起因：主人 11-26 23:17 否掉「不吸收清单」的判定口径，要求重评。原 §25 结项行不动。
 - 新判据（主人原话，只一条）：**「不吸收」必须建立在我方已做独立取舍之上；我方自分叉以来没动过的领域，不许用「绑定上游路线」当理由抛弃。C 类不按冲突定，按产品意义定。**
@@ -1006,3 +1006,15 @@ To: AI writer项目组 · 群内共读（判件基准件）
 - 我在本轮的两处实测（供件方引用，不作判据）：`git cat-file -e HEAD:src/services/workflows/commands/legacy-character-roster-repair.command.ts` → PRESENT，该路径我方 1 笔 `d57b380c8`（feat: migrate legacy roster recovery to persistent main ownership，8 文件）；`git diff --name-status 549522d4..upstream/master -- src/components | wc -l` → **473**（A 215／D 122／M 133／R 4），与派单件沿用「161」不一致，请件方以本实测为准或自行复现后择一写死。
 - `AGENTS.md` 在工作树里为 `M`（非本行改动方，未认领，未入库）——仅登记状态，不代为认领。
 - 本段只追加，不改既有条目。
+
+### 27. 上游吸收重评 a01b4c7b-R 结项（2026-11-26）
+
+| 卡号 | 类型 | 执行方 | 派活 | 结项 | 结论 | 依据 |
+|---|---|---|---|---|---|---|
+| a01b4c7b-R（重评） | 评审评估件（重评） | developer（主笔） | 11-26 23:20 | 11-26 | PASS（QA 三轮：首验不合格 → 复判通过但一致性打回 → 终判全过） | 入库提交 `171843c95`（2 文件 +614/−377，`check:fast` 全过，porcelain 0；我提交后复核一致）；不吸收件 `.batch/night/reports/upstream-not-absorbed-20261126.md`（556 行／107,111 B／`148c853aab021b75…`，末字节 `0a`）；候选包 `.batch/night/reports/upstream-absorb-candidates-20261126.md`（71 行／8,903 B／`04033674a5a0c24a…`，末字节 `0a`）；判词 `.batch/night/review-requests/reabsorb-20261126-qa.md`（154 行／18,021 B，三节链：首验 `ae9dd403` 不合格 → 复判 `8e195daa0` 通过但一致性打回 → 终判 `501f5760f` 全过）；看板卡 `1799784e-7fcb-4c1c-9037-b35fce5da806` 已置 done；主身回执已投 `bridge\to-owner`（`relay-5149c6d0`） |
+
+- 结论要点（负责人 11-26 收口口径）：真实共同祖先 `fc576e08`（08-16），**不是** `549522d4`；真实缺口 5,248 笔，其中约 893 笔（08-16→10-14 区段）从未被评；B3a 代价由 L 降为 M——缺的只是第三份计划表＋一列 flag（`REFERENCE_STAGES`／`AUTHOR_STAGES` 与上游 `reference`／`author` 逐字相同，`authorInference` 我方 `grep src electron` 0 命中，上游取数链在 `import-run-repository.ts:914`，调用点 `:207`／`:726`）；C4 排工 553 笔、「473」是相对分叉点 `549522d4` 的 `src/components` 路径数（A 215／D 122／M 133／R 4）；C1 已裁不要、C3 一次性吸收不分期、C5 允许 ABI 全仓串行。
+- 一致性打回一轮的根因（负责人自认口径错误，非件方）：grep 集合只取 `待主人裁|主人未答|待裁`，漏掉「主人尚未答复／等主人一句话／只给代价不给结论」三种说法；换宽集合 `尚未答复|等主人|不给结论|待裁|未答|不分期` 复扫后闭合。口径教训记一条：**同一份件里的定性改写，复扫必须用宽集合，窄集合会漏**。
+- 我在本轮的两处实测（供件方引用，不作判据）：①`git cat-file -e HEAD:src/services/workflows/commands/legacy-character-roster-repair.command.ts` → PRESENT，该路径我方 1 笔 `d57b380c8`，原清单「我方无该入口」写错；②`git diff --name-status 549522d4..upstream/master -- src/components | wc -l` → **473**，与派单件沿用「161」不一致，终由负责人写死 473。
+- 尚挂主人的两问（负责人 11-26 已在群提出，主人未答）：①约 893 笔未评区段要不要扩面评估；②五张吸收卡按现排期（C2→C3→C5-pre→C5→C4 换壳押最后）起不起。主人答前台账不预写结论。
+- 本段只追加，不改既有条目；§26 的「进行中」同笔改为「已结项（见 §27）」，其余字段原样。
