@@ -15,9 +15,10 @@
  * 3. 被拒件改名为 `<原名>.rejected.md` 留在原地，不会自动重投。
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 export const DONE_MARKER = '<!-- DONE -->'
 
@@ -101,8 +102,14 @@ export function relayLogPath() {
   return process.env.DSH_RELAY_LOG || join(homedir(), '.dsh', 'profiles', 'desktop', 'dsh-handoff-relay', 'relay.log')
 }
 
-/** 本单派出之后，relay 是否已经把这个联络人叫醒过。 */
-export function deliveredSince({ logPath = relayLogPath(), mention, sinceMs = 0 }) {
+/**
+ * 本单派出之后，relay 是否已经把这个联络人叫醒过。
+ *
+ * `target` 给了就只认「这一个信号件」被投出去（relay.log 的投递行不写件名，
+ * 件名在前一行 watch-warn-source target=<名> dir=<目录>；两行相隔几十毫秒，按 5 秒窗口配对）。
+ * 不给 target 时退化为「这个联络人有没有被叫过」——那种口径会误抑制同窗口里别的卡，只留给调试用。
+ */
+export function deliveredSince({ logPath = relayLogPath(), mention, sinceMs = 0, target = null }) {
   if (!mention) return false
   let text = ''
   try {
@@ -111,16 +118,67 @@ export function deliveredSince({ logPath = relayLogPath(), mention, sinceMs = 0 
     return false
   }
   const needle = `|${mention}`
+  let lastTarget = null
+  let lastTargetAt = 0
   for (const line of text.split('\n')) {
+    const at = Date.parse(line.slice(0, 24))
+    if (line.includes('watch-warn-source') || line.includes('tool-deliver')) {
+      const hit = /target=([^\s]+)/.exec(line)
+      if (hit) {
+        lastTarget = hit[1]
+        lastTargetAt = Number.isFinite(at) ? at : 0
+      }
+      continue
+    }
     if (!line.includes('注入身份') || !line.includes(needle)) continue
-    const stamp = line.slice(0, 24)
-    const at = Date.parse(stamp)
-    if (Number.isFinite(at) && at >= sinceMs) return true
+    if (!(Number.isFinite(at) && at >= sinceMs)) continue
+    if (!target) return true
+    if (lastTarget === target && Math.abs(at - lastTargetAt) <= 5_000) return true
   }
   return false
 }
 
-/** 只读扫描：watch 目录里哪些信号件还没写完（无 DONE）、哪些已就绪。 */
+/**
+ * 看护进程的「事件账本」：`.runtime/<channel>/settle-events.jsonl`。
+ *
+ * 为什么要它：settler 是 detached 起来的，abort / 超时 / 归属不成立都只写自己的
+ * settle-*.log，没人会去翻——锁住了却没人知道漏叫，等于静默。事件账本让
+ * `signals` 一条命令就能看见「最近有哪些单没叫成、为什么」。
+ */
+export function settleEventLogPath(channel, { root } = {}) {
+  const base = root ?? resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', '.runtime')
+  return join(base, channel, 'settle-events.jsonl')
+}
+
+export function appendSettleEvent({ channel, event, signal = null, detail = '', now = Date.now(), root } = {}) {
+  const path = settleEventLogPath(channel, { root })
+  try {
+    mkdirSync(dirname(path), { recursive: true })
+    appendFileSync(path, JSON.stringify({
+      at: new Date(now).toISOString(),
+      event,
+      signal: signal ? basename(signal) : null,
+      detail: String(detail).slice(0, 400),
+    }) + '\n', 'utf8')
+  } catch {
+    // 记账失败不能影响主流程
+  }
+}
+
+/** 最近 N 条事件（新的在后），读不到就返回空数组。 */
+export function readSettleEvents({ channel, limit = 5, root } = {}) {
+  let text = ''
+  try {
+    text = readFileSync(settleEventLogPath(channel, { root }), 'utf8')
+  } catch {
+    return []
+  }
+  return text.split('\n').filter(Boolean).slice(-limit).map(line => {
+    try { return JSON.parse(line) } catch { return { at: null, event: 'unparsable', detail: line } }
+  })
+}
+
+/** 只读扫描：watch 目录里哪些信号件还没写完/** 只读扫描：watch 目录里哪些信号件还没写完（无 DONE）、哪些已就绪。 */
 export function scanSignals(channel, options = {}) {
   const dirs = options.dirs ?? watchDirsOf(channel)
   const result = { channel, dirs: [], pending: 0, ready: 0 }

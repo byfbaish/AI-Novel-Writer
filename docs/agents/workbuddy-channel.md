@@ -48,6 +48,9 @@ node scripts/workbuddy/workbuddy-attach.mjs task "任务文本" --new
 - **判定依据要写在件里**：有回执文件按 `mtime >= 派出时刻` 判收尾；没有则退到「界面静默 `quiet-min` 秒」并标注低置信。
 - **不能预写占位件**：relay 0.6.8 静默窗口到点即投（DONE 只是提前触发），占位件等于叫醒联络人看空件。
 - **信号件必须 @ 联络人**：watch 的 `targetIdentity` 是群地址，缺 `@workbuddy联络人` 一律 `NO_MENTION` 拒收。
+- **失败要看得见**：abort（换会话）、界面上有提问卡、超时、跳过、写成都会记一条到
+  `.runtime/workbuddy/settle-events.jsonl`，`signals` 末尾打最近 5 条。
+- **防重复叫醒按件名配对**：`deliveredSince(..., target)` 只认本单这一个信号件，避免同窗口别的卡被误抑制。
 - **派单书里别让执行方自己写信号件**：settler 写件前会查 `relay.log`，本单派出后已经叫醒过就跳过；
   根治办法仍是任务书只写回执落点（11-27 S1 实机一单被叫三次的教训）。
 - **查漏**：`node scripts/workbuddy/workbuddy-attach.mjs signals`。

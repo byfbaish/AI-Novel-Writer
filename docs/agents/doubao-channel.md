@@ -50,6 +50,14 @@ node scripts/doubao/doubao.mjs task "任务描述" --project <项目名>   # 再
   执行方写到一半就被 relay 静默投递叫醒了一次（12:04:59、12:05:18 两次半截件，12:08:45 settler 又补一份），
   联络人一单被叫三次。现在 settler 写件前会查 `relay.log`：本单派出后已经叫醒过就跳过；
   但**根治办法是任务书只写回执落点**，信号件交给 settler。
+- **看护进程的失败要看得见**：abort（换会话）、超时、归属判定不成立、跳过、写成，都会记一条到
+  `.runtime/doubao/settle-events.jsonl`，`signals` 命令末尾直接把最近 5 条打出来——
+  detach 起来的进程没人会去翻它自己的 log，只写那里等于静默。
+- **防重复叫醒按件名配对**：`deliveredSince(..., target)` 只认「这一个信号件」被投出去
+  （relay.log 的投递行不带件名，件名在前一行 `watch-warn-source target=`，按 5 秒窗口配对），
+  不再因为同一窗口里别的卡投过件就误抑制本单。
+- **归属判定不成立要报警**：`--expect-user` 连续 10 分钟对不上且已有新回复时，记一条 `warn` 事件，
+  别再只留一行 `wait:`——平台若改写开头，表现就是静默漏叫。
 - **查漏**：`node scripts/doubao/doubao.mjs signals` 列出每个 watch 目录里「待完成 / 已就绪」的信号件（自动跳过被拒件）。
 - **判活顺序**：联络人没反应先查 `signals`，再查 `relay.log`，**不要先怀疑对方卡死**（本次就是信号从未产生）。
 

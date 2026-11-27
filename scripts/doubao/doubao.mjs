@@ -39,11 +39,11 @@
 
 import { spawn } from 'node:child_process'
 import { mkdirSync, appendFileSync, readFileSync, statSync, writeFileSync, existsSync, rmSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_PORT, withChat, sleep } from './cdp.mjs'
 import { extractMarkers } from './markers.mjs'
-import { assertInWatchDir, deliveredSince, mentionOf, scanSignals, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
+import { appendSettleEvent, assertInWatchDir, deliveredSince, mentionOf, readSettleEvents, scanSignals, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -706,6 +706,11 @@ const main = async () => {
     const report = scanSignals('doubao', dirOverride ? { dirs: [dirOverride] } : {})
     console.log(JSON.stringify(report, null, 2))
     const pendingNames = report.dirs.flatMap(entry => entry.files.filter(file => !file.done).map(file => file.name))
+    const recentEvents = readSettleEvents({ channel: 'doubao', limit: 5 })
+    if (recentEvents.length) {
+      console.log('\n[settler 最近事件]（没写成件的单都在这里，别只看 PENDING 数）')
+      for (const ev of recentEvents) console.log(`  ${ev.at ?? '?'} ${ev.event} ${ev.signal ?? '-'} ${ev.detail ?? ''}`)
+    }
     console.log(`\n[信号件] 待完成 ${report.pending} 件，已就绪 ${report.ready} 件`
       + (pendingNames.length ? `；待完成：${pendingNames.join('、')}` : ''))
     return
@@ -734,6 +739,9 @@ const main = async () => {
       } catch { /* 日志写不进去不影响信号件本身 */ }
     }
     const startedAt = Date.now()
+    // 事件账本：abort / 超时 / 归属不成立 / 跳过 / 写成，都留一条，别让「锁对了但没人知道」发生。
+    const evt = (event, detail) => appendSettleEvent({ channel: 'doubao', event, signal: signalAbs, detail })
+    const expectWarnMs = Number(option('expect-warn-min', 10)) * 1_000
     const quietMinMs = Number(option('quiet-min', 180)) * 1_000
     const steadyRounds = Math.max(2, Number(option('steady-rounds', 3)))
     const pollMs = 2_000
@@ -761,8 +769,10 @@ const main = async () => {
           if (expectHref) {
             const current = (await readConversationId(client)).href
             if (current !== expectHref) {
+              evt('abort', `href 变了：期望 ${expectHref}，实际 ${current}`)
               log(`abort: 话题已被切走（期望 ${expectHref}，实际 ${current}），不写件`)
               console.error('[settler] 话题已被切走，信号件不写（宁可不叫也不叫错人）')
+        evt('timeout', `turns=${snap?.turnCount ?? '?'}/${minTurns}，steady=${steady}`)
               process.exitCode = 1
               return
             }
@@ -783,7 +793,8 @@ const main = async () => {
           const hasReply = snap.turnCount > minTurns
           // 锁这一条消息：最后一条用户消息必须是我们派的这一单，队列里别人更早的单不算。
           const owned = !expectUser || compact(snap.lastUser ?? '').includes(expectUser)
-          if (!owned && !warnedForeign && hasReply) {
+          if (!owned && !warnedForeign && hasReply && Date.now() - startedAt >= expectWarnMs) {
+            evt('warn', `末条用户消息不含本单摘要，归属判定不成立（turns=${snap.turnCount}，已等 ${Math.round((Date.now() - startedAt) / 1000)}s）`)
             warnedForeign = true
             log(`wait: 最后一条用户消息不是本单（可能前面还有排队的单），继续等`)
           }
@@ -792,7 +803,8 @@ const main = async () => {
           if (byReceipt || byQuiet) {
             // 任务书若自己要求执行方写信号件，执行方往往写早了（relay 到点就投，不等 DONE）——
             // 本单派出后已经叫醒过联络人，就不再叫第二遍（11-27 S1 实机被叫了三次）。
-            if (deliveredSince({ mention: mentionOf('doubao'), sinceMs: startedAt })) {
+            if (deliveredSince({ mention: mentionOf('doubao'), sinceMs: startedAt, target: basename(signalAbs) })) {
+              evt('skip', 'relay 已在本单派出后叫醒过联络人（多半执行方自己写过信号件）')
               log('skip: relay 已在本单派出后叫醒过联络人，不再重复写件（多半执行方自己写过）')
               console.log('[settler] 联络人已被叫醒过（执行方自己写过信号件），跳过')
               return
@@ -809,6 +821,7 @@ const main = async () => {
               evidence,
             })
             log(`done: ${written ?? '(已存在，跳过)'} (依据: ${evidence}, turns=${snap.turnCount}, waited=${Math.round((Date.now() - startedAt) / 1000)}s)`)
+            evt('written', `${written ?? '(已有件，未覆盖)'} · ${evidence}`)
             console.log(written
               ? `[settler] 信号件已写：${written}（依据：${byReceipt ? '回执文件' : '界面静默'}）`
               : '[settler] 信号件已存在，跳过（同一收尾不重复叫醒）')
@@ -818,6 +831,7 @@ const main = async () => {
         }
         log(`timeout: 等不到收尾（turns=${snap?.turnCount ?? '?'}/基线${minTurns}, generating=${Boolean(snap?.placeholder || snap?.stopText)}, steady=${steady}）`)
         console.error('[settler] 超时：没有等到可判定的收尾，信号件不写（宁可漏叫也不写脏件）')
+        evt('timeout', `turns=${snap?.turnCount ?? '?'}/${minTurns}，steady=${steady}`)
         process.exitCode = 1
       }, port)
     } catch (error) {

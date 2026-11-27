@@ -6,9 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
   DONE_MARKER,
+  appendSettleEvent,
   assertInWatchDir,
   assertPathIn,
   deliveredSince,
+  readSettleEvents,
   scanSignals,
   signalBody,
   watchDirsOf,
@@ -136,5 +138,37 @@ describe('deliveredSince（防重复叫醒）', () => {
     expect(deliveredSince({ logPath, mention: 'workbuddy联络人', sinceMs: Date.parse('2026-11-27T04:09:30.000Z') })).toBe(false)
     // 日志不存在时静默为 false（不能因为读不到日志就不写件）
     expect(deliveredSince({ logPath: join(dir, 'nope.log'), mention: '豆包联络人', sinceMs: 0 })).toBe(false)
+  })
+})
+
+describe('deliveredSince 按件名配对（防误抑制）', () => {
+  it('本窗口投的是别的卡，不算本单已被叫醒', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'relay-log-'))
+    const logPath = join(dir, 'relay.log')
+    writeFileSync(logPath, [
+      '2026-11-27T04:00:00.000Z WARN dsh-handoff-relay watch-warn-source target=other-card.done dir=C:\\dsh-relay\\signals\\doubao reason=missing-from',
+      '2026-11-27T04:00:00.030Z INFO 注入身份 from=UNKNOWN to=e99c5ed1|豆包联络人 · AI writer项目组|群分身',
+    ].join('\n'), 'utf8')
+    const since = Date.parse('2026-11-27T03:59:00.000Z')
+    expect(deliveredSince({ logPath, mention: '豆包联络人', sinceMs: since, target: 'mine.done' })).toBe(false)
+    expect(deliveredSince({ logPath, mention: '豆包联络人', sinceMs: since, target: 'other-card.done' })).toBe(true)
+    // 不给 target 时退回旧口径（调用方要知道它会误抑制）
+    expect(deliveredSince({ logPath, mention: '豆包联络人', sinceMs: since })).toBe(true)
+  })
+})
+
+describe('settler 事件账本', () => {
+  it('appendSettleEvent 落 jsonl，readSettleEvents 能读回最近几条', () => {
+    const root = mkdtempSync(join(tmpdir(), 'settle-events-'))
+    appendSettleEvent({ channel: 'doubao', event: 'abort', signal: 'C:\\dsh-relay\\signals\\doubao\\x.done', detail: 'href 变了', root })
+    appendSettleEvent({ channel: 'doubao', event: 'written', signal: 'C:\\dsh-relay\\signals\\doubao\\y.done', detail: '静默 181s', root })
+
+    const events = readSettleEvents({ channel: 'doubao', limit: 5, root })
+    expect(events).toHaveLength(2)
+    expect(events[0].event).toBe('abort')
+    expect(events[0].signal).toBe('x.done')
+    expect(events[1].detail).toContain('181s')
+    // 没有账本时是空数组，不抛
+    expect(readSettleEvents({ channel: 'workbuddy', root })).toEqual([])
   })
 })

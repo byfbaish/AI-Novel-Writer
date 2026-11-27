@@ -22,7 +22,7 @@ import { spawn } from 'node:child_process'
 
 import { listTargets, connect, createClient, sleep } from '../doubao/cdp.mjs'
 import { extractMarkers, isTerminalQueueMarker } from '../doubao/markers.mjs'
-import { assertInWatchDir, deliveredSince, mentionOf, scanSignals, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
+import { appendSettleEvent, assertInWatchDir, deliveredSince, mentionOf, readSettleEvents, scanSignals, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
 import {
   DEFAULT_PORT,
   DEFAULT_TIMEOUT_MS,
@@ -926,6 +926,8 @@ function usage() {
 async function commandSettleSignal(args) {
   const signalAbs = assertInWatchDir('workbuddy', args.signal)
   const startedAt = Date.now()
+  // 事件账本：abort / 阻塞 / 超时 / 跳过 / 写成，都留一条（detached 起来的东西没人翻自己的 log）
+  const evt = (event, detail) => appendSettleEvent({ channel: 'workbuddy', event, signal: signalAbs, detail })
   const quietMinMs = Math.max(30, Number(args.quietMin) || 180) * 1000
   const timeoutMs = args.timeout
   const receiptPath = args.receipt ? path.resolve(args.receipt) : null
@@ -959,11 +961,13 @@ async function commandSettleSignal(args) {
       // 锁会话：settler 盯的是派单时那条会话，被切走就停手（否则按别人的会话判收尾、叫错人）。
       if (args.expectSession && snapshot?.currentSessionId && snapshot.currentSessionId !== args.expectSession) {
         appendLog('abort: 会话已切走（期望 ' + args.expectSession + '，实际 ' + snapshot.currentSessionId + '），不写件')
+        evt('abort', 'session 变了：期望 ' + args.expectSession + '，实际 ' + snapshot.currentSessionId)
         process.stderr.write('[settler] 会话已切走，信号件不写\n')
         return EXIT.fail
       }
       if (isAskCardPending(snapshot)) {
         appendLog('ask-card: 被提问卡占住，信号件不写')
+        evt('blocked-ask', '界面上有提问卡等人回答，收尾判定不可靠')
         process.stderr.write('[settler] 被提问卡占住，信号件不写（等人裁定）\n')
         return EXIT.fail
       }
@@ -993,7 +997,8 @@ async function commandSettleSignal(args) {
       const byQuiet = domIdle && idleMs >= quietMinMs
       if (byReceipt || byQuiet) {
         // 本单派出后已经叫醒过联络人（任务书让执行方自己写过信号件），就不再叫第二遍。
-        if (deliveredSince({ mention: mentionOf('workbuddy'), sinceMs: startedAt })) {
+        if (deliveredSince({ mention: mentionOf('workbuddy'), sinceMs: startedAt, target: path.basename(signalAbs) })) {
+          evt('skip', 'relay 已在本单派出后叫醒过联络人（多半执行方自己写过信号件）')
           appendLog('skip: relay 已在本单派出后叫醒过联络人，不再重复写件')
           log('[settler] 联络人已被叫醒过（执行方自己写过信号件），跳过')
           return EXIT.ok
@@ -1010,6 +1015,7 @@ async function commandSettleSignal(args) {
           evidence,
         })
         appendLog('done: ' + (written ?? '(已存在，跳过)') + ' (依据: ' + evidence + ', waited=' + Math.round((Date.now() - startedAt) / 1000) + 's)')
+        evt('written', (written ?? '(已有件，未覆盖)') + ' · ' + evidence)
         log(written
           ? '[settler] 信号件已写：' + written + '（依据：' + (byReceipt ? '回执文件' : '界面静默') + '）'
           : '[settler] 信号件已存在，跳过（同一收尾不重复叫醒）')
@@ -1018,6 +1024,7 @@ async function commandSettleSignal(args) {
       await sleep(POLL_INTERVAL_MS)
     }
     appendLog('timeout: 等不到收尾（state=' + readRunState(snapshot) + ' steady=' + steady + '）')
+    evt('timeout', 'state=' + readRunState(snapshot) + ' steady=' + steady)
     process.stderr.write('[settler] 超时：没有等到可判定的收尾，信号件不写\n')
     return EXIT.fail
   } finally {
@@ -1105,7 +1112,12 @@ async function main() {
       const report = scanSignals('workbuddy', dirOverride ? { dirs: [path.resolve(dirOverride)] } : {})
       log(JSON.stringify(report, null, 2))
       const pendingNames = report.dirs.flatMap(entry => entry.files.filter(file => !file.done).map(file => file.name))
-      log(`\n[信号件] 待完成 ${report.pending} 件，已就绪 ${report.ready} 件`
+      const recentEvents = readSettleEvents({ channel: 'workbuddy', limit: 5 })
+    if (recentEvents.length) {
+      log('\n[settler 最近事件]（没写成件的单都在这里，别只看 PENDING 数）')
+      for (const ev of recentEvents) log(`  ${ev.at ?? '?'} ${ev.event} ${ev.signal ?? '-'} ${ev.detail ?? ''}`)
+    }
+    log(`\n[信号件] 待完成 ${report.pending} 件，已就绪 ${report.ready} 件`
         + (pendingNames.length ? `；待完成：${pendingNames.join('、')}` : ''))
       return EXIT.ok
     }
