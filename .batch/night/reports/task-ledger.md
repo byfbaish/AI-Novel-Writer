@@ -1054,3 +1054,13 @@ To: AI writer项目组 · 群内共读（判件基准件）
 - 红线：只读、只交一件、不写生产码、不 commit、不 push；件内禁语「暂不做／待定／视情况／建议后续」。参考基线 `1b5a4eff0`；上游 `networkFailureText`（`git show upstream/master:src/services/generation/prompt-budget-failure.ts`）只作对照、不照抄结构。
 - 流转：交件 → 负责人核读数 → 派 QA 首验 → 终审与入库归负责人。本行只登记「进行中」，不预写结论；结项另立 §31。
 - 本段只追加，不改既有条目。
+
+### 31. C3 网络失败细分卡 f5671e1e 设计案终审通过并入档（2026-11-27，**本卡未落码，不作结项**）
+
+- 依据件：`.batch/night/reports/c3-network-failure-design-20261127.md`（**86 行／10,115 B／`c8bb7ed2fbc4cd1b…`／末字节 `0a`**，禁语 0），入库提交 `c6b64a865`（1 文件 +86，`check:fast` 全过、porcelain 0）。我按 `git show c6b64a865:<件>` 复核 blob 与盘上同一 sha。
+- 终审结论（负责人）：设计案通过；三条要害其逐条复核成立——①`transportDiagnosticReason` 是组件私有函数（`src/components/panels/ai-output-failure-presentation.ts:110` 定义，仅 `:166`／`:198` 两处调用），短细纲文案源在 `chapter-failure.ts:129-135`，故共用文案须新建 `src/shared/transport-failure-copy.ts`；②`phase` 四态在主进程真维护（`electron/llm/openai-provider.ts:182` 初值 `'request'`／`:223`／`:251`／`:473`），失败快照在 `electron/services/generation-run-service.ts:333-336` 成型，缺的只是把 `phase` 读成第三桶的判定与文案；③代理不可达在本卡不可做——代理配置只写 `process.env.HTTP_PROXY`（`electron/controllers/llm-controller.ts:63-79`），生成请求是裸 `fetch`（`openai-provider.ts:123`／`:217`），全仓 `NODE_USE_ENV_PROXY`／`EnvHttpProxyAgent`／`setGlobalDispatcher` 命中 0 ⇒ 今天把 `ECONNREFUSED` 标成「代理不可达」＝把直连拒绝误报成代理故障。
+- 两条裁定（负责人 11-27）：①**三因收窄为「两因＋事实句」**——只做「未连上」（`phase === 'request'`）与「中途断」（`phase === 'response' | 'stream'`），代理档判不可做（判法 A 会恒假或必误报、判法 B 有异步配置竞态），待代理真正接入生成请求的前置卡再补第四桶；②**C3 顺延到 C4 之后**（需改 `src/components` 2 个文件，与一次性换壳撞车，先做会被覆盖），卡面已改、退 **backlog** 留档，换壳后重评（上游可能自带同族文案）。
+- 批次顺序备案（admin 11-27 核过）：**C5-pre → C5 → C4 → C3**。
+- 范围量级修正：负责人派单前重算抛出点由「约 20 处」改为 **72 处／11 文件**（全无 `code`），本卡再收窄到 `external-file-grant-service.ts` 的 21 处，其余 51 处立尾项、不进本卡；量级 M→S/M。
+- 状态口径：§30 的「进行中」在本节不改写（本卡未落码、未结项），C3 何时落码待换壳后重评再立新节。
+- 本段只追加，不改既有条目。
