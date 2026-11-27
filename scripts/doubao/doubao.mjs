@@ -772,7 +772,6 @@ const main = async () => {
               evt('abort', `href 变了：期望 ${expectHref}，实际 ${current}`)
               log(`abort: 话题已被切走（期望 ${expectHref}，实际 ${current}），不写件`)
               console.error('[settler] 话题已被切走，信号件不写（宁可不叫也不叫错人）')
-        evt('timeout', `turns=${snap?.turnCount ?? '?'}/${minTurns}，steady=${steady}`)
               process.exitCode = 1
               return
             }
@@ -835,7 +834,9 @@ const main = async () => {
         process.exitCode = 1
       }, port)
     } catch (error) {
+      // 最高频的静默死法就是这里：CDP 连不上、页面没起来。detached 起来的进程没人看 stdout。
       log(`error: ${error?.message ?? error}`)
+      evt('error', String(error?.message ?? error))
       throw error
     }
   }

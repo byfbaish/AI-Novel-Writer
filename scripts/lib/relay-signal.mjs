@@ -178,7 +178,7 @@ export function readSettleEvents({ channel, limit = 5, root } = {}) {
   })
 }
 
-/** 只读扫描：watch 目录里哪些信号件还没写完/** 只读扫描：watch 目录里哪些信号件还没写完（无 DONE）、哪些已就绪。 */
+/** 只读扫描：watch 目录里哪些信号件还没写完（无 DONE）、哪些已就绪。 */
 export function scanSignals(channel, options = {}) {
   const dirs = options.dirs ?? watchDirsOf(channel)
   const result = { channel, dirs: [], pending: 0, ready: 0 }

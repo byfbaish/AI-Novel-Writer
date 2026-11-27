@@ -949,7 +949,15 @@ async function commandSettleSignal(args) {
   appendLog('start signal=' + signalAbs + ' baseline=' + args.baselineAgents + '/' + args.baselineMessages
     + ' timeout=' + timeoutMs + 'ms quietMin=' + quietMinMs / 1000 + 's receipt=' + (receiptPath ?? '-'))
   await sleep(args.settleDelay * 1000)
-  const { client } = await openPage({ port: args.port })
+  let client
+  try {
+    ({ client } = await openPage({ port: args.port }))
+  } catch (error) {
+    // 这条路径以前只有 throw：settler 是 detached + stdio:ignore，连不上 CDP 等于静默死。
+    appendLog('error: openPage ' + (error?.message ?? error))
+    evt('error', 'openPage 失败：' + (error?.message ?? error))
+    throw error
+  }
   try {
     let signature = null
     let steady = 0
@@ -1113,10 +1121,10 @@ async function main() {
       log(JSON.stringify(report, null, 2))
       const pendingNames = report.dirs.flatMap(entry => entry.files.filter(file => !file.done).map(file => file.name))
       const recentEvents = readSettleEvents({ channel: 'workbuddy', limit: 5 })
-    if (recentEvents.length) {
-      log('\n[settler 最近事件]（没写成件的单都在这里，别只看 PENDING 数）')
-      for (const ev of recentEvents) log(`  ${ev.at ?? '?'} ${ev.event} ${ev.signal ?? '-'} ${ev.detail ?? ''}`)
-    }
+      if (recentEvents.length) {
+        log('\n[settler 最近事件]（没写成件的单都在这里，别只看 PENDING 数）')
+        for (const ev of recentEvents) log(`  ${ev.at ?? '?'} ${ev.event} ${ev.signal ?? '-'} ${ev.detail ?? ''}`)
+      }
     log(`\n[信号件] 待完成 ${report.pending} 件，已就绪 ${report.ready} 件`
         + (pendingNames.length ? `；待完成：${pendingNames.join('、')}` : ''))
       return EXIT.ok
