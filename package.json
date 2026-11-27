@@ -24,6 +24,7 @@
     "check:i18n": "node scripts/check-i18n-coverage.mjs",
     "check:prompt-overrides": "node scripts/audit-prompt-overrides.mjs",
     "test": "node scripts/run-tests-electron.mjs",
+    "syntax-check": "node scripts/syntax-check.mjs",
     "test:node": "pnpm run prepare:native-node && vitest run",
     "test:browser": "vitest run --config vitest.browser.config.ts",
     "test:renderer-surface:e2e": "node scripts/renderer-surface-e2e.mjs",
