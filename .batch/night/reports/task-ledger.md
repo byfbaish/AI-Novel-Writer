@@ -1064,3 +1064,18 @@ To: AI writer项目组 · 群内共读（判件基准件）
 - 范围量级修正：负责人派单前重算抛出点由「约 20 处」改为 **72 处／11 文件**（全无 `code`），本卡再收窄到 `external-file-grant-service.ts` 的 21 处，其余 51 处立尾项、不进本卡；量级 M→S/M。
 - 状态口径：§30 的「进行中」在本节不改写（本卡未落码、未结项），C3 何时落码待换壳后重评再立新节。
 - 本段只追加，不改既有条目。
+
+### 32. S1 句法体检器件卡 d2f24410 结项（2026-11-27）
+
+| 卡号 | 类型 | 执行方 | 派活 | 结项 | 结论 | 依据 |
+|---|---|---|---|---|---|---|
+| d2f24410（S1 句法体检器件） | 器件落地·代码＋文档 | 豆包（补正 02 由负责人代落） | 11-27 上午 | 11-27 | PASS（QA 首验 + §11 增量复核三处补正全 PASS） | 交件 `wt-s1` `7321bbbdc` → 主线收口 **`9b329b741`**（`feat(s1): 句法体检器件落地（H+F 判定 + A/B 读数，确定性纯规则，十类定义文档）`，**8 文件 +1265/−0**；`check:fast` 全过、主线复跑 24/24 绿、electron 进程 0）；QA 判词 `.batch/night/review-requests/d2f24410-qa.md`（71 行／10,489 B），§11 增量复核提交 `c092291c2`（1 文件 +21/−2）；`wt-s1` 已移除、分支 `card/s1-syntax-check` 已删（`git worktree list` 只剩主区、`git branch --list '*s1*'` 0 行，我实测） |
+
+- 入库面（我按 `git show --name-only 9b329b741` 复核）：`scripts/syntax-check.mjs`（324 行新增，sha256 `138836e27f1c4ed4…`）／`scripts/lib/syntax/rules.mjs` 334／`scripts/lib/syntax/corpus.mjs` 160／`scripts/lib/syntax/gate.mjs` 55／`scripts/__tests__/syntax-check.test.mjs` 287／`scripts/lib/syntax/phrases.skeleton.json` 5／`docs/research/2026-11-27-syntax-check-category-rules.md`（**99 行／10,475 B／`2a84a6fb53a0ccb9…`**）／`package.json` +1。
+- **读数更正（我实测与负责人自报不一致，以 git 为准）**：负责人报「8 文件 +1187/−1」，`git show --shortstat 9b329b741` 实为 **8 files changed, 1265 insertions(+)**、无删除行。相差 78 行、且删除行为 0。不影响内容正确性（判据由 QA 判），但台账按实测记，后续核 sha／行数请用 1265。
+- 三处补正（QA §11 逐条 PASS，我复核现盘）：①`scripts/syntax-check.mjs:201` ＝ `covered=${coverage.covered}/${countable} (readings only, range=A/B/H/F)`；②文档 `:19`／`:20` A/B 两行 tier 列＝`report（读数，不判罚、不进 prompt）`，`:20` 举例为「他点头。」并带字面 `[示例·非语料]`（该文档 `陈砚` 0 命中、`示例·非语料` 1 处）；`:59` 写明「判罚只看 `verdict_covered`（判定集＝H+F，`rules.mjs` 里唯二 `tier: verdict`）；`covered` 含 A/B，只是读数」；③判据 8 改为**按输出集合比**（同一 `git grep -hE` 正则，现盘 `sort` 与起点 `2692c90bd` `sort` 做 `diff`，空输出＝通过），并补「禁裸类编号当检查词」——按行号比会假红、按文件比会漏同文件新增、全仓范围不可用（`scripts/experiments/` 5 处、`out/*` 数处）。
+- 验收读数（负责人与 QA 一致，我未跑测试、不作二次判定）：确定性两次同 `8a230a9a…`；带词表 `30/49`、`verdict_covered 20/49`；无词表 `15/49`、`3/49`＋`H: disabled`（只作对照、不是回归）；用例 24/24；`check-fast` 全过；新件 `陈砚|我背契` 0 命中。
+- 语料搬运：`.runtime/res-eval/` 的词表、反例库、两个 probe 脚本已从槽位搬到主区，`phrases.v1.json` 344 B／`185c89e706745924…`（我复核一致），换槽不丢语料。
+- 尾项三条（负责人定，未开卡）：①`SECURE_FS_TARGET_IN_USE` 假码遗留；②其余 51 处服务层未码化，另立小卡（属 C5 线）；③prompt 四类待 S1 命中数据再动。
+- 过程留痕（不影响结论）：补正 02 投出时派单件把起点两件旧 sha 写死（doc `cab4febe…`／脚本 `63edeb15…`），负责人先代落后两条必然不符 ⇒ 豆包停在闸门前未写盘，无交叉改动；`queueEmpty` 字段语义曾被读反（`scripts/doubao/doubao.mjs:966` 为 `markers.some(item => item.marker === 'QUEUE')`，`false` ＝队列空），负责人已认错并更正「会话卡住」不成立。
+- 本段只追加，不改既有条目。
