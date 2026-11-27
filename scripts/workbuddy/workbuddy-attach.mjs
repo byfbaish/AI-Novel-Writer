@@ -18,9 +18,11 @@ import path from 'node:path'
 import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { createRequire } from 'node:module'
+import { spawn } from 'node:child_process'
 
 import { listTargets, connect, createClient, sleep } from '../doubao/cdp.mjs'
 import { extractMarkers, isTerminalQueueMarker } from '../doubao/markers.mjs'
+import { assertInWatchDir, scanSignals, signalInstruction, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
 import {
   DEFAULT_PORT,
   DEFAULT_TIMEOUT_MS,
@@ -762,6 +764,29 @@ async function commandSend(args, prompt, { forceNewSession, modelTarget }) {
 
     if (args.noWait) {
       if (!sessionId && afterSend?.currentSessionId) sessionId = afterSend.currentSessionId
+      // 拉一个 detached 子进程盯这轮会话：WorkBuddy 收尾时由它写信号件叫醒联络人。
+      // 没有它，--no-wait 之后「谁来叫醒联络人」这一环就空着（2026-11-27 C5-pre 事故）。
+      if (args.signal) {
+        const signalAbs = assertInWatchDir('workbuddy', args.signal)
+        const title = args.signalTitle ?? slugify(prompt.split('\n')[0] ?? 'workbuddy')
+        const logDir = path.join(resolveRuntimeDir() || RUNTIME_CANDIDATES[0], 'settle')
+        const logFile = path.join(logDir, 'settle-' + slugify(title).slice(0, 40) + '-' + Date.now() + '.log')
+        const child = spawn(process.execPath, [
+          process.argv[1], 'settle-signal',
+          '--port', String(args.port),
+          '--signal', signalAbs,
+          '--title', title,
+          '--baseline-agents', String(baselineCount),
+          '--baseline-messages', String(baselineMessageCount),
+          '--timeout', String(Math.max(Math.round(args.timeout / 1000), 600)),
+          '--delay', '5',
+          ...(args.receipt ? ['--receipt', args.receipt] : []),
+          '--log', logFile,
+        ], { detached: true, stdio: 'ignore', windowsHide: true })
+        child.unref()
+        log('[settler] 已拉起看护进程 pid=' + child.pid + '（基线 agents=' + baselineCount + ' messages=' + baselineMessageCount + '）')
+        log('[settler-log] ' + logFile)
+      }
       // 消息已经发出去了：产物落盘失败（例如沙箱对 .runtime 没有写权限）不能让整条命令以失败退出，
       // 否则调用方会重试，同一条任务书就会被投递两次。
       try {
@@ -869,10 +894,15 @@ function usage() {
     '  node scripts/workbuddy/workbuddy-attach.mjs task "任务" --new  # 强制在 wt-2 空间开新会话',
     '  node scripts/workbuddy/workbuddy-attach.mjs task --file 任务书.md',
     '  node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会话追问（不新建）',
+    '  node scripts/workbuddy/workbuddy-attach.mjs signals          # 只读：watch 目录里的信号件还停在 PENDING 的有哪些',
+    '  node scripts/workbuddy/workbuddy-attach.mjs settle-signal --signal 路径 --baseline-agents N --baseline-messages M',
+    '                                                              # 内部用：等这轮收尾后写信号件（被 task --no-wait 以 detached 子进程拉起）',
     '',
-    '选项：--session <id> 指定会话 · --timeout 秒（默认 900） · --json · --no-wait · --port 9333',
+    '选项：--session <id> 指定会话 · --timeout 秒（默认 900） · --json · --no-wait --signal 信号件路径 · --receipt 回执路径 · --port 9333',
     '     --cwd <目录>（只允许 wt-2；改到别处会被拒） · --force（越过归属护栏，排障用，报告里写明）',
     '     --model <名字> 显式指定模型（视为人工授权，绕过高峰拦截）',
+    '     --no-wait 必须带 --signal，且路径须在 relay watch 目录内（C:\\dsh-relay\\signals\\workbuddy）：',
+    '       不给信号件就没有东西会在完成时叫醒联络人（2026-11-27 C5-pre 事故的教训）。',
     '',
     '模型选择（2026-11-25 主人定）：',
     '  · 不点名 --model → 固定用 DeepSeek-V4.1-Flash（普通外派默认；不按时段/价格自动挑）',
@@ -882,6 +912,102 @@ function usage() {
     '',
     '退出码：0 完成 / 1 失败 / 2 未连接（NEED_HUMAN_DEBUG） / 4 超时 / 5 高峰期不派活 / 6 被提问卡占住（已落 ask-card.md，等裁定）',
   ].join('\n')
+}
+
+/**
+ * 由 task --no-wait 以 detached 子进程拉起：盯住这轮会话，收尾即写信号件。
+ *
+ * 为什么必须由进程来写：--no-wait 的调用方当场返回，WorkBuddy 一小时后才交件，
+ * 中间没有任何人记得「该叫醒联络人」——2026-11-27 C5-pre 就丢在这一环。
+ * 判据沿用 attach.mjs 的 isSettledSignal（UI idle + 出现新回复），并要求连续 3 次稳定；
+ * 有回执文件时以回执出现为准，没有才退到「界面静默 quiet-min 秒」并在信号件里标明低置信。
+ */
+async function commandSettleSignal(args) {
+  const signalAbs = assertInWatchDir('workbuddy', args.signal)
+  const startedAt = Date.now()
+  const quietMinMs = Math.max(30, Number(args.quietMin) || 180) * 1000
+  const timeoutMs = args.timeout
+  const receiptPath = args.receipt ? path.resolve(args.receipt) : null
+  const appendLog = line => {
+    if (!args.settleLog) return
+    try {
+      fs.mkdirSync(path.dirname(args.settleLog), { recursive: true })
+      fs.appendFileSync(args.settleLog, '[' + new Date().toISOString() + '] ' + line + '\n', 'utf8')
+    } catch { /* 日志写不进去不影响信号件本身 */ }
+  }
+  const receiptAfter = () => {
+    if (!receiptPath) return false
+    try {
+      return fs.statSync(receiptPath).mtimeMs >= startedAt
+    } catch {
+      return false
+    }
+  }
+  appendLog('start signal=' + signalAbs + ' baseline=' + args.baselineAgents + '/' + args.baselineMessages
+    + ' timeout=' + timeoutMs + 'ms quietMin=' + quietMinMs / 1000 + 's receipt=' + (receiptPath ?? '-'))
+  await sleep(args.settleDelay * 1000)
+  const { client } = await openPage({ port: args.port })
+  try {
+    let signature = null
+    let steady = 0
+    let lastActivityAt = Date.now()
+    let snapshot = null
+    let reply = null
+    while (Date.now() - startedAt < timeoutMs) {
+      snapshot = await client.evaluate(buildSnapshotExpression())
+      if (isAskCardPending(snapshot)) {
+        appendLog('ask-card: 被提问卡占住，信号件不写')
+        process.stderr.write('[settler] 被提问卡占住，信号件不写（等人裁定）\n')
+        return EXIT.fail
+      }
+      reply = extractReply(snapshot)
+      const state = readRunState(snapshot)
+      const settledNow = isSettledSignal({
+        runState: state,
+        agentCount: snapshot?.agentCount ?? 0,
+        messageCount: snapshot?.messageCount ?? 0,
+        replyText: reply?.text ?? null,
+        baselineCount: args.baselineAgents,
+        baselineMessageCount: args.baselineMessages,
+        baselineReply: '',
+      })
+      const current = state + '|' + (snapshot?.messageCount ?? 0) + '|' + (snapshot?.agentCount ?? 0)
+        + '|' + (reply?.text?.length ?? 0) + '|' + (snapshot?.editorText?.length ?? 0)
+      if (!settledNow || current !== signature) {
+        lastActivityAt = Date.now()
+        steady = 0
+      } else {
+        steady += 1
+      }
+      signature = current
+      const idleMs = Date.now() - lastActivityAt
+      const domIdle = settledNow && steady >= 3
+      const byReceipt = domIdle && receiptAfter()
+      const byQuiet = domIdle && idleMs >= quietMinMs
+      if (byReceipt || byQuiet) {
+        const evidence = byReceipt
+          ? '回执文件已出现（' + receiptPath + '）'
+          : '界面静默 ' + Math.round(idleMs / 1000) + 's 且未见回执文件（低置信：请自行核对是否真交件）'
+        const written = writeSignal({
+          channel: 'workbuddy',
+          path: signalAbs,
+          title: args.signalTitle ?? '(未命名)',
+          receiptPath,
+          replyTail: reply?.text ?? '',
+          evidence,
+        })
+        appendLog('done: ' + written + ' (依据: ' + evidence + ', waited=' + Math.round((Date.now() - startedAt) / 1000) + 's)')
+        log('[settler] 信号件已写：' + written + '（依据：' + (byReceipt ? '回执文件' : '界面静默') + '）')
+        return EXIT.ok
+      }
+      await sleep(POLL_INTERVAL_MS)
+    }
+    appendLog('timeout: 等不到收尾（state=' + readRunState(snapshot) + ' steady=' + steady + '）')
+    process.stderr.write('[settler] 超时：没有等到可判定的收尾，信号件不写\n')
+    return EXIT.fail
+  } finally {
+    client.close()
+  }
 }
 
 async function main() {
@@ -899,7 +1025,16 @@ async function main() {
     limit: Number(options.get('limit') ?? 12),
     session: options.get('session') ?? null,
     model: options.get('model') ?? null,
+    signal: options.get('signal') ?? null,
+    receipt: options.get('receipt') ?? null,
     policyOff: String(process.env.WORKBUDDY_MODEL_POLICY ?? '').trim().toLowerCase() === 'off',
+    // settle-signal 专用：收尾判定与日志
+    signalTitle: options.get('title') ?? null,
+    quietMin: Number(options.get('quiet-min') ?? 180),
+    baselineAgents: Number(options.get('baseline-agents') ?? 0),
+    baselineMessages: Number(options.get('baseline-messages') ?? 0),
+    settleDelay: Number(options.get('delay') ?? 5),
+    settleLog: options.get('log') ?? null,
   }
 
   if (command === 'help' || matches(flags, 'help')) { log(usage()); return EXIT.ok }
@@ -925,12 +1060,37 @@ async function main() {
       if (modelTarget.blocked) return EXIT.peak
       return await commandSend(args, prompt, { forceNewSession: false, modelTarget })
     }
+    if (command === 'settle-signal') return await commandSettleSignal(args)
+    if (command === 'signals') {
+      const dirOverride = options.get('dir')
+      const report = scanSignals('workbuddy', dirOverride ? { dirs: [path.resolve(dirOverride)] } : {})
+      log(JSON.stringify(report, null, 2))
+      const pendingNames = report.dirs.flatMap(entry => entry.files.filter(file => !file.done).map(file => file.name))
+      log(`\n[信号件] 待完成 ${report.pending} 件，已就绪 ${report.ready} 件`
+        + (pendingNames.length ? `；待完成：${pendingNames.join('、')}` : ''))
+      return EXIT.ok
+    }
     if (command === 'task') {
       const file = options.get('file')
-      const prompt = file ? fs.readFileSync(path.resolve(file), 'utf8') : positionals.join(' ').trim()
-      if (!prompt) fail('task 需要任务文本，或用 --file 指定任务书')
+      const basePrompt = file ? fs.readFileSync(path.resolve(file), 'utf8') : positionals.join(' ').trim()
+      if (!basePrompt) fail('task 需要任务文本，或用 --file 指定任务书')
+      // 2026-11-27 C5-pre 事故的闸：--no-wait 不给信号件 = 完成时没人叫醒联络人。
+      if (args.noWait && !args.signal) {
+        fail('--no-wait 必须同时给 --signal <信号件路径>：不给就没有东西会在完成时叫醒联络人。\n'
+          + '  可用目录（须在 relay watch 内）：\n'
+          + watchDirsOf('workbuddy').map(dir => `    ${dir}`).join('\n')
+          + '\n  例：--no-wait --signal C:\\dsh-relay\\signals\\workbuddy\\<卡号>.done')
+      }
+      if (args.signal && !args.noWait) {
+        fail('--signal 只配合 --no-wait 使用：同步等待时调用方自己就拿到了结果，不需要信号件')
+      }
+      // 2026-11-27：不再预写占位件（relay 静默 5 秒后照样投，占位件等于叫醒联络人看空件）。
+      // 信号件改由 detached settler 在收尾时一次性写全；这里只做闸与收尾要求注入。
+      const signalAbs = args.signal ? assertInWatchDir('workbuddy', args.signal) : null
+      const prompt = signalAbs ? basePrompt + signalInstruction('workbuddy', signalAbs) : basePrompt
       const modelTarget = resolveModelTarget(args, { command: 'task', prompt })
       if (modelTarget.blocked) return EXIT.peak
+      if (signalAbs) log('[信号件] 收尾时由 settler 写入：' + signalAbs)
       return await commandSend(args, prompt, { forceNewSession: matches(flags, 'new'), modelTarget })
     }
     fail('未知命令：' + command + '\n\n' + usage())

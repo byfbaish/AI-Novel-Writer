@@ -16,7 +16,9 @@
  *   node scripts/doubao/doubao.mjs threads               # 列出侧栏话题（标题 + 位置）
  *   node scripts/doubao/doubao.mjs thread "标题片段"      # 切到那个话题（真实鼠标点击）
  *   node scripts/doubao/doubao.mjs projects              # 列出任务模式可选项目
- *   node scripts/doubao/doubao.mjs task "任务" [--project 名称] [--timeout 600] [--file 路径] [--no-charter] [--no-wait]
+ *   node scripts/doubao/doubao.mjs task "任务" [--project 名称] [--timeout 600] [--file 路径] [--no-charter] [--no-wait --signal 信号件路径]
+ *   node scripts/doubao/doubao.mjs signals [--dir 目录]      # 只读：watch 目录里的信号件，谁还停在 PENDING
+ *   node scripts/doubao/doubao.mjs settle-signal --signal 路径 --min-turns N  # 内部用：等这轮收尾后写信号件（被 task --no-wait 以 detached 子进程拉起）
  *
  * `--file` reads the task body from a file (long queue text, no shell escaping).
  * `--charter` is ON by default and prepends the "read AGENTS.md first" preamble,
@@ -28,15 +30,20 @@
  *
  * `--no-wait` sends the task and returns immediately (fire-and-forget): use it when
  * the 豆包 agent is busy with an earlier task and you only need the message queued.
+ * **It now requires `--signal <路径>`**: 不给信号件就没有任何东西会在完成时叫醒联络人
+ * （2026-11-27 C5-pre 事故：回执落在无人 watch 的目录，联络人整轮结束后再无叫醒）。
+ * 信号件必须先落在 relay 的 watch 目录里（见 scripts/lib/relay-signal.mjs）。
  *
  * Exit codes: 0 ok / 1 failure / 2 not connected
  */
 
-import { mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { mkdirSync, appendFileSync, readFileSync, statSync, writeFileSync, existsSync, rmSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_PORT, withChat, sleep } from './cdp.mjs'
 import { extractMarkers } from './markers.mjs'
+import { assertInWatchDir, scanSignals, signalInstruction, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -467,6 +474,40 @@ const submit = async client => {
 }
 
 /** Placeholder bubbles that stay on screen for many seconds before real text arrives. */
+
+/**
+ * 收尾判定用的页面快照。判据与 scripts/doubao/watchdog.mjs 的 decide() 第一层一致：
+ * 「生成中」三种指示（占位文本 / 停止类 testid / 页面上的停止生成字样）、编辑器是否为空、
+ * 最后一条回复是否已出现「重新生成」按钮（生成中这个按钮还没有）。
+ * 只靠「文本 3 轮不变」会把「已确认红线 1-4」这种开场白当成收尾，C5-pre 之后不能再这么判。
+ */
+const SETTLE_SNAPSHOT_JS = js(`
+  const scope = document.querySelector('[data-testid="message-list"]') ?? document;
+  const turns = [...scope.querySelectorAll('[data-testid="send_message"], [data-testid="receive_message"]')]
+    .map(t => ({
+      role: t.getAttribute('data-testid') === 'send_message' ? 'user' : 'assistant',
+      text: (t.querySelector('[data-testid="message_text_content"]')?.innerText ?? t.innerText).trim(),
+    }))
+    .filter(t => t.text);
+  const last = turns.filter(t => t.role === 'assistant').at(-1) ?? null;
+  const receives = [...scope.querySelectorAll('[data-testid="receive_message"]')];
+  const lastNode = receives.at(-1) ?? null;
+  const editor = document.querySelector('[data-testid="chat_input_input"] .ProseMirror')
+    ?? document.querySelector('div.tiptap.ProseMirror');
+  const bodyText = document.body.innerText || '';
+  const testids = [...new Set([...document.querySelectorAll('[data-testid]')].map(e => e.getAttribute('data-testid')))];
+  const lastText = (last?.text ?? '').trim();
+  return {
+    turnCount: turns.length,
+    lastAssistant: lastText,
+    placeholder: /^(正在思考|思考中|生成中|正在生成|Thinking|Generating)[.…]*$/iu.test(lastText),
+    stopIds: testids.filter(x => /stop|abort|pause|generating|thinking/i.test(x) && !/regenerat/i.test(x)),
+    stopText: /停止生成|暂停生成|正在生成|正在思考/.test(bodyText.slice(-600)),
+    hasRegenerate: Boolean(lastNode?.querySelector('[data-testid="message_action_regenerate"]')),
+    editorText: editor ? editor.innerText.trim() : null,
+  };
+`)
+
 const PLACEHOLDER = /^(正在思考|思考中|生成中|正在生成|Thinking|Generating)[.…]*$/iu
 
 /** Wait until the last assistant turn stops growing. */
@@ -658,6 +699,101 @@ const main = async () => {
     }, port)
   }
 
+  if (command === 'signals') {
+    const dirOverride = option('dir', null)
+    const report = scanSignals('doubao', dirOverride ? { dirs: [dirOverride] } : {})
+    console.log(JSON.stringify(report, null, 2))
+    const pendingNames = report.dirs.flatMap(entry => entry.files.filter(file => !file.done).map(file => file.name))
+    console.log(`\n[信号件] 待完成 ${report.pending} 件，已就绪 ${report.ready} 件`
+      + (pendingNames.length ? `；待完成：${pendingNames.join('、')}` : ''))
+    return
+  }
+
+  if (command === 'settle-signal') {
+    // 由 task --no-wait 以 detached 子进程拉起：盯住这轮对话，收尾即写信号件。
+    // 为什么要有它：--no-wait 的调用方当场就返回了，豆包一小时后才交件，
+    // 中间没有任何人/进程记得「该叫醒联络人了」——2026-11-27 C5-pre 就丢在这一环。
+    const signalArg = option('signal', null)
+    if (!signalArg) throw new Error('settle-signal 需要 --signal <信号件路径>')
+    const signalAbs = assertInWatchDir('doubao', signalArg)
+    const title = option('title', '(未命名)')
+    const receipt = option('receipt', null)
+    const minTurns = Number(option('min-turns', 0))
+    const delaySeconds = Number(option('delay', 5))
+    const timeoutMs = Number(option('timeout', 3600)) * 1_000
+    const logPath = option('log', null)
+    const log = line => {
+      if (!logPath) return
+      try {
+        mkdirSync(dirname(logPath), { recursive: true })
+        appendFileSync(logPath, `[${new Date().toISOString()}] ${line}\n`, 'utf8')
+      } catch { /* 日志写不进去不影响信号件本身 */ }
+    }
+    const startedAt = Date.now()
+    const quietMinMs = Number(option('quiet-min', 180)) * 1_000
+    const steadyRounds = Math.max(2, Number(option('steady-rounds', 3)))
+    const pollMs = 2_000
+    const receiptPath = receipt ? resolve(receipt) : null
+    const receiptAfter = () => {
+      if (!receiptPath) return false
+      try {
+        return statSync(receiptPath).mtimeMs >= startedAt
+      } catch {
+        return false
+      }
+    }
+    log(`start signal=${signalAbs} minTurns=${minTurns} delay=${delaySeconds}s timeout=${timeoutMs}ms quietMin=${quietMinMs / 1000}s receipt=${receiptPath ?? '-'}`)
+    await sleep(delaySeconds * 1_000)
+    try {
+      return await withChat(async client => {
+        let signature = null
+        let steady = 0
+        let lastActivityAt = Date.now()
+        let snap = null
+        while (Date.now() - startedAt < timeoutMs) {
+          snap = await client.evaluate(SETTLE_SNAPSHOT_JS)
+          const current = `${snap.turnCount}|${snap.lastAssistant?.length ?? 0}|${snap.editorText?.length ?? 0}`
+          const generating = snap.placeholder || snap.stopIds.length > 0 || snap.stopText
+          if (generating || snap.editorText || current !== signature) {
+            lastActivityAt = Date.now()
+            steady = 0
+          } else {
+            steady += 1
+          }
+          signature = current
+          const idleMs = Date.now() - lastActivityAt
+          const domIdle = steady >= steadyRounds && Boolean(snap.lastAssistant) && snap.hasRegenerate
+          const hasReply = snap.turnCount > minTurns
+          const byReceipt = domIdle && hasReply && receiptAfter()
+          const byQuiet = domIdle && hasReply && idleMs >= quietMinMs
+          if (byReceipt || byQuiet) {
+            const evidence = byReceipt
+              ? `回执文件已出现（${receiptPath}）`
+              : `界面静默 ${Math.round(idleMs / 1000)}s 且未见回执文件（低置信：请自行核对是否真交件）`
+            const written = writeSignal({
+              channel: 'doubao',
+              path: signalAbs,
+              title,
+              receiptPath,
+              replyTail: snap.lastAssistant ?? '',
+              evidence,
+            })
+            log(`done: ${written} (依据: ${evidence}, turns=${snap.turnCount}, waited=${Math.round((Date.now() - startedAt) / 1000)}s)`)
+            console.log(`[settler] 信号件已写：${written}（依据：${byReceipt ? '回执文件' : '界面静默'}）`)
+            return
+          }
+          await sleep(pollMs)
+        }
+        log(`timeout: 等不到收尾（turns=${snap?.turnCount ?? '?'}/基线${minTurns}, generating=${Boolean(snap?.placeholder || snap?.stopText)}, steady=${steady}）`)
+        console.error('[settler] 超时：没有等到可判定的收尾，信号件不写（宁可漏叫也不写脏件）')
+        process.exitCode = 1
+      }, port)
+    } catch (error) {
+      log(`error: ${error?.message ?? error}`)
+      throw error
+    }
+  }
+
   if (command === 'task') {
     const fromFile = option('file', null)
     if (fromFile && positional[0]) throw new Error('--file 与位置参数不能同时给')
@@ -667,13 +803,30 @@ const main = async () => {
       if (!text) throw new Error(`任务文件是空的: ${fromFile}`)
     }
     if (!text) {
-      throw new Error('用法: node scripts/doubao/doubao.mjs task "任务描述" | --file 路径 [--project 项目名] [--model 模型名] [--timeout 600] [--no-charter] [--no-wait]')
+      throw new Error('用法: node scripts/doubao/doubao.mjs task "任务描述" | --file 路径 [--project 项目名] [--model 模型名] [--timeout 600] [--no-charter] [--no-wait --signal 信号件路径]')
     }
+    const noWait = flag('no-wait')
+    const signalPath = option('signal', null)
+    // 2026-11-27 C5-pre 事故的闸：--no-wait 是 fire-and-forget，完成时谁来叫醒联络人只能靠信号件。
+    // 不给信号件（或给了 watch 目录以外的路径）就拒发——否则回执落在一个没人看的目录，整单静默丢失。
+    if (noWait && !signalPath) {
+      throw new Error('--no-wait 必须同时给 --signal <信号件路径>：不给就没有东西会在完成时叫醒联络人。\n'
+        + '  可用目录（须在 relay watch 内）：\n'
+        + watchDirsOf('doubao').map(dir => `    ${dir}`).join('\n')
+        + '\n  例：--no-wait --signal C:\\dsh-relay\\signals\\doubao\\<卡号>.done')
+    }
+    if (signalPath && !noWait) {
+      throw new Error('--signal 只配合 --no-wait 使用：同步等待时调用方自己就拿到了结果，不需要信号件')
+    }
+    const signalAbs = signalPath ? assertInWatchDir('doubao', signalPath) : null
+    const signalTitle = (fromFile ? fromFile.split(/[\\/]/).pop() : text.slice(0, 40)).replace(/\s+/g, ' ')
+    const receiptPathRaw = option('receipt', null)
     // Preamble is four lines now, so it is always worth injecting: task books
     // no longer carry a 必读 section of their own (2026-11-03). Opt out with
     // --no-charter only when the task book is a pure read-only query.
     const charter = !flag('no-charter')
-    const body = charter ? CHARTER_PREAMBLE + text : text
+    const body = (charter ? CHARTER_PREAMBLE + text : text)
+      + (signalAbs ? signalInstruction('doubao', signalAbs) : '')
     const projectName = option('project', null)
     const modelName = option('model', null)
     const timeoutMs = Number(option('timeout', 600)) * 1_000
@@ -705,10 +858,32 @@ const main = async () => {
         submitted: submitted.method,
         textFrom: fromFile ?? '(inline)',
         textLength: body.length,
+        signal: signalAbs,
         preview: text.slice(0, 120).replace(/\s+/g, ' '),
       }, null, 2))
-      if (flag('no-wait')) {
+      if (noWait) {
+        // 2026-11-27：信号件不再由调用方"记得"去写，也不再预写占位件（relay 静默 5 秒后照样投，
+        // 占位件会把联络人叫醒看一个空件）。这里拉一个 detached 子进程盯着这轮对话，
+        // 豆包一收尾就由它把信号件一次性写全（含 @联络人与 DONE）→ relay 立刻投递。
+        const baselineTurns = (await client.evaluate(TRANSCRIPT_JS)).length
+        const settlerLog = join(resolveRuntimeDir() || PRIMARY_RUNTIME, `settle-${signalTitle.replace(/[^\w.-]+/g, '_').slice(0, 40)}-${Date.now()}.log`)
+        const timeoutSeconds = Number(option('timeout', 3600))
+        const child = spawn(process.execPath, [
+          process.argv[1], 'settle-signal',
+          '--port', String(port),
+          '--signal', signalAbs,
+          '--title', signalTitle,
+          '--min-turns', String(baselineTurns),
+          '--timeout', String(Math.max(timeoutSeconds, 600)),
+          '--delay', '5',
+          ...(receiptPathRaw ? ['--receipt', receiptPathRaw] : []),
+          '--log', settlerLog,
+        ], { detached: true, stdio: 'ignore', windowsHide: true })
+        child.unref()
         console.log('\n[ok] 已发送（--no-wait）：不等待回复，任务已排进豆包的队列。')
+        console.log(`[信号件] ${signalAbs}`)
+        console.log(`[settler] 已拉起看护进程 pid=${child.pid}（基线 turns=${baselineTurns}，超时 ${Math.max(timeoutSeconds, 600)}s）；豆包收尾后它会写入信号件并叫醒豆包联络人。`)
+        console.log(`[settler-log] ${settlerLog}`)
         return
       }
       const result = await waitForReply(client, timeoutMs)

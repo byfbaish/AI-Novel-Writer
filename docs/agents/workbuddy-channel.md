@@ -32,6 +32,21 @@ node scripts/workbuddy/workbuddy-attach.mjs task "任务文本" --new
 
 脚本侧兜底（同日实施，`workbuddy-attach.mjs`）：等待期间检测到提问卡**立即退出码 6**，把卡片全文落 `ask-card.md`，不再干等到超时；`status --json` 里 `askCardPending` 会直接给真值。所以「被卡住」是一次调用就能看出来的事实，不需要任何轮询。
 
+## 0.2 回执 + 信号件：两个落点缺一不可（2026-11-27 定，C5-pre 事故）
+
+派单书只写回执落点是不够的：没人 watch 的目录不会叫醒任何人。**回执是给人看的，信号件是叫醒人的。**
+
+- **回执落点（人看）**：写在派单书里，执行方交件时落盘。
+- **信号件落点（叫醒）**：必须在 relay 的 watch 目录内 —— `C:\dsh-relay\signals\workbuddy\` 或 `C:\dsh-relay\wakeup\workbuddy\`。
+- **脚本硬闸**：`task --no-wait` 不给 `--signal` **直接拒发**，路径不在 watch 目录也拒发。
+- **谁来写**：`task --no-wait` 拉起 detached 的 `settle-signal` 子进程盯住这轮会话，
+  收尾（`isSettledSignal`：UI idle + 出现新回复，且连续 3 次稳定）时**一次性写全**信号件
+  （首行 `@workbuddy联络人` + 回执落点 + 收尾摘要 + 末行 `<!-- DONE -->`）。日志落在 `.runtime/workbuddy/settle/`。
+- **判定依据要写在件里**：有回执文件按 `mtime >= 派出时刻` 判收尾；没有则退到「界面静默 `quiet-min` 秒」并标注低置信。
+- **不能预写占位件**：relay 0.6.8 静默窗口到点即投（DONE 只是提前触发），占位件等于叫醒联络人看空件。
+- **信号件必须 @ 联络人**：watch 的 `targetIdentity` 是群地址，缺 `@workbuddy联络人` 一律 `NO_MENTION` 拒收。
+- **查漏**：`node scripts/workbuddy/workbuddy-attach.mjs signals`。
+
 ## 1. 为什么必须由人启动 Debug 实例
 
 WorkBuddy 的「Debug 模式」**不是命令行开关**，而是启动时读环境变量 `WORKBUDDY_REMOTE_DEBUGGING_PORT`，主进程看到才自己 `appendSwitch('remote-debugging-port', …)`：
@@ -136,7 +151,7 @@ node scripts/workbuddy/workbuddy-attach.mjs task --file 任务书.md
 node scripts/workbuddy/workbuddy-attach.mjs say "继续执行 T2"  # 同一会话追问（不新建）
 ```
 
-选项：`--session <id>` · `--timeout 秒`（默认 900）· `--json` · `--no-wait` · `--port` · `--model <名字>`（见 §4）· `--cwd <目录>`（默认且只允许 wt-2；指到别处 exit 1）· `--force`（越过归属护栏，排障用，报告里写明）。
+选项：`--session <id>` · `--timeout 秒`（默认 900）· `--json` · `--no-wait --signal <信号件路径>`（路径须在 `C:\dsh-relay\signals\workbuddy`，§0.2）· `--receipt <回执路径>` · `--port` · `--model <名字>`（见 §4）· `--cwd <目录>`（默认且只允许 wt-2；指到别处 exit 1）· `--force`（越过归属护栏，排障用，报告里写明）。
 
 退出码：**0** 成功 · **1** 失败 · **2** 未连接（`NEED_HUMAN_DEBUG`）· **4** 等回复超时 · **5** 高峰时段拒绝派活。（原 **3**「兜底 CLI 缺失」随 headless 通道一起作废，见 §9）
 和豆包一样：**exit 0 只代表「拿到了稳定回复」，不代表任务做对了**——对错看任务书里的验收条件和 `## [Tn] DONE/BLOCKED` 标记。

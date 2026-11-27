@@ -24,6 +24,35 @@ node scripts/doubao/doubao.mjs task "任务描述" --project <项目名>   # 再
 
 细则与 WorkBuddy 侧的脚本兜底（检测到提问卡立即 exit 6 并落 `ask-card.md`）见 [workbuddy-channel.md](workbuddy-channel.md#01-派单书必须写死的两条2026-11-26-定主人裁定)。
 
+## 0.2 回执 + 信号件：两个落点缺一不可（2026-11-27 定，C5-pre 事故）
+
+派单书只写「回执落 `C:\tmp\...`」是不够的：那个目录没人 watch，执行方交完件时联络人这一轮**早已结束**，
+之后 `relay.log` 零条投递——整单停在盘上，谁也不知道该取件了。**回执是给人看的，信号件是叫醒人的。**
+
+- **回执落点（人看）**：写在派单书里，执行方交件时落盘。
+- **信号件落点（叫醒）**：必须在 relay 的 watch 目录内 —— `C:\dsh-relay\signals\doubao\` 或 `C:\dsh-relay\wakeup\doubao\`。
+- **脚本硬闸**：`task --no-wait` 不给 `--signal` **直接拒发**（exit 1），路径不在 watch 目录也拒发。
+- **谁来写**：不再让执行方或调用方「记得」写。`task --no-wait` 会拉起一个 detached 的 `settle-signal` 子进程盯住这轮对话，
+  收尾时**一次性写全**信号件（首行 `@豆包联络人` + 回执落点 + 收尾摘要 + 末行 `<!-- DONE -->`），
+  relay 立刻投给联络人。日志落在 `.runtime/doubao/settle-<标题>-<时间戳>.log`，命令行会打印路径。
+- **判定依据要写在件里**：看到回执文件按 `mtime >= 派出时刻` 才判收尾；没有回执就退到「界面静默 `quiet-min` 秒」，
+  信号件会写明「低置信」，拿到件的人自己再核一次是否真交件。
+- **不能预写占位件**：relay 0.6.8 的 `checkStable` 在静默窗口到点后**即使没有 DONE 也会投递**，
+  DONE 只是提前触发的标记；所以占位件等于叫醒联络人看一个空件（11-27 实测确认，详见 §0.3）。
+- **信号件必须 @ 联络人**：这两条 watch 的 `targetIdentity` 是 `AI writer项目组:豆包联络人`（群地址），
+  relay 按群通道校验，正文没有半角 `@豆包联络人` 一律 `NO_MENTION` 拒收，被拒件改名 `<原名>.rejected.md` 留在原地。
+- **查漏**：`node scripts/doubao/doubao.mjs signals` 列出每个 watch 目录里「待完成 / 已就绪」的信号件（自动跳过被拒件）。
+- **判活顺序**：联络人没反应先查 `signals`，再查 `relay.log`，**不要先怀疑对方卡死**（本次就是信号从未产生）。
+
+## 0.3 relay 0.6.8 源码事实（写信号件前必读）
+
+| 事实 | 出处 | 后果 |
+|---|---|---|
+| 稳定窗口到点即投，不需要 DONE | `dsh-handoff-relay/index.js` `checkStable` → `deliver(..., 'stable')` | 不能预写占位件；半截件会被投出去 |
+| 尾部 `<!-- DONE -->` 命中即提前投 | 同上 `tailHasDone` | 写完立刻投，不必等静默 |
+| `targetIdentity` 是群地址 ⇒ 必须 @ | `channelRequiresMention` / `parseAddress` | 没 `@豆包联络人` 就是 `NO_MENTION` 拒收 |
+| 被拒件留原地、不重投 | `rejectNoMention` 改名逻辑 | 查 `*.rejected.md` 能看到被拒历史 |
+
 ## 1. 为什么不能直接给日常那个豆包加参数
 
 这是踩了两小时的坑，先记住，别再重走：
@@ -256,6 +285,8 @@ node scripts/doubao/bootstrap.mjs --launch            # 例外：脚本自己 sp
 node scripts/doubao/doubao.mjs status                 # 端口/页面/是否任务模式/最后一条回复
 node scripts/doubao/doubao.mjs projects               # 任务模式里可选的项目
 node scripts/doubao/doubao.mjs task "任务" --project "harness-learn" [--timeout 600]
+node scripts/doubao/doubao.mjs task --file 卡.md --no-wait --signal C:\dsh-relay\signals\doubao\<卡号>.done   # 派单留号（§0.2）
+node scripts/doubao/doubao.mjs signals                # 只读：信号件谁还停在 PENDING
 node scripts/doubao/doubao.mjs new                    # 新建普通对话
 node scripts/doubao/doubao.mjs ask "问题" [--new]     # 普通对话提问并等回复
 node scripts/doubao/doubao.mjs read                   # 读当前对话全文
