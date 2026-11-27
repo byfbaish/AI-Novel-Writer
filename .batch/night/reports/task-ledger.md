@@ -1032,3 +1032,25 @@ To: AI writer项目组 · 群内共读（判件基准件）
 - 待办登记（不预写结论）：列名统一 8 处，由 developer 出「旧句→新句」对照（`.batch/night/staging/up-893-column-rename-20261127.md`，56 行／4,087 B／`f5fbf4d3…`），负责人照抄成增量笔入库并注明「只改列名用词，结论/数字未动」；入库后再在本节补一句「8 处统一，另笔提交 xxx」。
 - 列名统一收口（admin 裁定后的另一笔）：`faa5ed713`，件现 281 行／23,346 B／`5ca2b567acb37594…`／末字节 `0a`，`grep -c 待定` ＝ **0**、`无等价补丁` 命中 10 处（`:49`／`:273` 本就写此词，非旧名残留）；`:80`／`:82`／`:108`／`:136`／`:139`／`:146`／`:147` 七行按 developer 对照件逐行照抄，`:70` 的「待定性」一并对齐。该笔实际含 2 文件＋65/−9（件 ＋ 对照件 `.batch/night/staging/up-893-column-rename-20261127.md` 56 行），比负责人自报的「只改列名和用词」多一件对照件——内容无害，本段按 2 文件记。
 - 本段只追加，不改既有条目。
+
+### 29. C2 删除在途占位上流吸收卡 d9117e48 结项（2026-11-27）
+
+| 卡号 | 类型 | 执行方 | 派活 | 结项 | 结论 | 依据 |
+|---|---|---|---|---|---|---|
+| d9117e48（C2 回收站占位） | 上游吸收·代码 | 豆包（DeepSeek V4.1 Flash 高） | 11-27 00:2x | 11-27 | PASS（QA 首验一次通过，含判据 1 反证实跑） | 收口提交 `1b5a4eff0`（**7 文件 +557/−19**，`check:fast` 全过）；QA 判词 `.batch/night/review-requests/d9117e48-qa.md`（94 行／7,331 B／`c10679d19e5325eb…`，提交 `d223554bd`，1 文件 +94）；槽位 `wt-c2`（分支 `card/up-stream-c2-recycle-placeholder`，起点 `b81a7fa6a`）已销、分支已删；主线复跑 27/27 绿、`electron.exe` 0 进程 |
+
+- 交付面（我按 `git show --stat 1b5a4eff0` 复核，7 文件）：`electron/services/manuscript-publisher.ts` +203／`electron/services/chapter-deletion-service.ts` +96／`electron/services/__tests__/chapter-deletion-reservation-chain.test.ts` +110／`electron/services/__tests__/manuscript-deletion-reservation.test.ts` +158／`electron/services/finalization-service.ts` +3／`electron/services/__tests__/manuscript-publisher.test.ts` +3／`electron/services/finalized-draft-import-repository.ts` 3±（白名单两文件即后两者）。工作树阶段读数为 5 ` M` ＋ 2 `??`、`+289/−19`。
+- QA 判词四条（照判词原文摘，我未跑测试、不作二次判定）：①反证真跑——把 `removePublishedManuscript` 换回 `b81a7fa6a` 的按名删语义，同一用例红在 `chapter-deletion-reservation-chain.test.ts:107`（`ENOENT …第1章 同名.txt`）；还原后 `manuscript-publisher.ts` sha256 前 16 仍 `465f09ee40c198ae`，porcelain 与初态逐行相同；②`manuscript-publisher.ts:39` `reserved: ReadonlySet<string>` 无 `?`，全仓 `resolveManuscriptTarget(` 8 处全显式传值；③四文件真路径 **27/27 绿 9.72s**（判词 `:56`；`:58` 记其第一遍路径误写致 3 files/10 tests 的自纠）；④`manuscript-publisher.test.ts` diff 仅 3 行 `+      reserved: new Set(),`，无断言行变动。
+- 旁证（判词 `:92`）：`legacy-project-copy-import.test.ts` 7 例红，在无本卡改动的主区 `b5bab456` 复跑同样 7 例红 ⇒ 既有红，不计入判据 3。
+- 我复核的环境读数：`HEAD 1b5a4eff0`；`git worktree list` 只剩主区；`git branch --list '*c2*'` 0 行；`git status --porcelain -uall` 0 行。读数量级 M（负责人报，与 7 文件 +557/−19 相符）。
+- 本段只追加，不改既有条目。
+
+### 30. C3 网络失败三因细分卡 f5671e1e（进行中，未结项）
+
+- 卡：`f5671e1e`（网络失败三因细分／上流吸收 C3）。**卡面前提由负责人 11-27 10:20 据实更正**：原写「先新建传输诊断载体」作废——载体早已存在，真正缺的是「未连上 vs 中途断 按 `phase` 分档」与「代理不可达」一档。
+- 现状落点（我按 grep 复核行号属实）：`src/shared/generation-contract.ts:4` `export interface GenerationTransportDiagnostics`（含 `phase`／`errorCode`／`causeCode`／`failureCode`）；`electron/services/generation-run-service.ts:325` 已 `settle(..., diagnostics)`；`src/components/panels/ai-output-failure-presentation.ts:110` `transportDiagnosticReason(` 已分六档；代理开关在 `electron/utils/config-utils.ts:137`（诊断对象不带）。
+- 派单件：`.runtime/staging/up-c3/c3-design-request-20261127.md`（40 行／5,479 B／`c068d41cc37d12f7…`，10:15 写）。主笔 developer；交付落点 `.batch/night/reports/c3-network-failure-design-20261127.md`（≤120 行、末字节 `0a`），回执头 `From: up-c3 · developer`。
+- 交付内容（派单原文摘要）：落点表（函数级）／代理不可达的两种判法与误判风险／判据修正版（标 `[static]`／`[mock]`，写明用什么命令证明；不可靠构造的须明说并给替代判据，不许写「尽力覆盖」）／改动面与量级／风险。
+- 红线：只读、只交一件、不写生产码、不 commit、不 push；件内禁语「暂不做／待定／视情况／建议后续」。参考基线 `1b5a4eff0`；上游 `networkFailureText`（`git show upstream/master:src/services/generation/prompt-budget-failure.ts`）只作对照、不照抄结构。
+- 流转：交件 → 负责人核读数 → 派 QA 首验 → 终审与入库归负责人。本行只登记「进行中」，不预写结论；结项另立 §31。
+- 本段只追加，不改既有条目。
