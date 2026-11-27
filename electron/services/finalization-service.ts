@@ -7,6 +7,7 @@ import {
 } from '../repositories/finalization-repository'
 import {
   manuscriptPublisher,
+  listReservedManuscriptTargets,
   resolveManuscriptTarget,
   type PublishManuscriptInput,
 } from './manuscript-publisher'
@@ -121,6 +122,8 @@ export class FinalizationService {
         chapterNumber: request.chapterNumber,
         chapterTitle: request.chapterTitle,
         finalizationId,
+        // 在途删除收据占着的文件名一律换名发布（卡 d9117e48）。
+        reserved: listReservedManuscriptTargets(request.projectRoot),
       })
       record = FinalizationRepository.commit({
         finalizationId,

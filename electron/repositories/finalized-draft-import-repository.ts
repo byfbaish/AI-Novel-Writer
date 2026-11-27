@@ -15,7 +15,7 @@ import {
   countDraftUnits,
   countLegacyDraftUnitsV1,
 } from '../../src/shared/draft-units'
-import { resolveManuscriptTarget } from '../services/manuscript-publisher'
+import { listReservedManuscriptTargets, resolveManuscriptTarget } from '../services/manuscript-publisher'
 
 interface ImportOperationRow {
   operation_id: string
@@ -453,6 +453,7 @@ export class FinalizedDraftImportRepository {
           chapterNumber: chapter.chapterNumber,
           chapterTitle: chapter.title,
           finalizationId: frozenFinalizationId,
+          reserved: listReservedManuscriptTargets(projectRoot),
         })
         db.prepare(`
           INSERT INTO finalization_outbox (

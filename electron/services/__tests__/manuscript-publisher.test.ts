@@ -27,6 +27,7 @@ describe('manuscript publisher target seam', () => {
       chapterNumber: 1,
       chapterTitle: ' CON<>:"/\\|?* . ',
       finalizationId: 'finalization-1',
+      reserved: new Set(),
     })
 
     expect(path.dirname(target.absolutePath)).toBe(projectRoot)
@@ -43,6 +44,7 @@ describe('manuscript publisher target seam', () => {
       chapterNumber: 2,
       chapterTitle: '   ',
       finalizationId: 'finalization-1',
+      reserved: new Set(),
     })
     fs.writeFileSync(first.absolutePath, 'pre-existing user manuscript', 'utf8')
 
@@ -51,6 +53,7 @@ describe('manuscript publisher target seam', () => {
       chapterNumber: 2,
       chapterTitle: '   ',
       finalizationId: 'finalization-2',
+      reserved: new Set(),
     })
 
     expect(first.fileName).toBe('第2章.txt')

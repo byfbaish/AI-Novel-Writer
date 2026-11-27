@@ -9,7 +9,12 @@ import { ChapterDeletionRepository } from '../repositories/chapter-deletion-repo
 import { FinalizationRepository } from '../repositories/finalization-repository'
 import { PostProcessRepository } from '../repositories/post-process-repository'
 import { knowledgeBaseLoader } from './knowledge-base-loader'
-import { removePublishedManuscript } from './manuscript-publisher'
+import {
+  readManuscriptDeletionReservation,
+  releaseManuscriptDeletionReservation,
+  removePublishedManuscript,
+  reserveManuscriptDeletionTarget,
+} from './manuscript-publisher'
 import { readPortableRuntimeFreeze } from './portable-runtime-freeze'
 
 export interface ChapterDeletionProjectionCleaner {
@@ -79,12 +84,20 @@ export class ChapterDeletionService {
     const replayed = await this.resumeExistingOperation(projectRoot, request, '章节删除请求与已冻结操作身份不匹配', false)
     if (replayed) return replayed
     const requiresLegacyKnowledgeAuthorization = this.requiresLegacyKnowledgeAuthorization(request)
-    const frozen = ChapterDeletionRepository.begin({
-      operationId: this.createOperationId(),
-      draftId: request.draftId,
-      chapterNumber: request.chapterNumber,
-      legacyKnowledgeAuthorizationRequired: requiresLegacyKnowledgeAuthorization,
-    })
+    const reserved = this.reserveManuscriptBeforeBegin(projectRoot, request)
+    let frozen: ChapterDeletionOperation
+    try {
+      frozen = ChapterDeletionRepository.begin({
+        operationId: this.createOperationId(),
+        draftId: request.draftId,
+        chapterNumber: request.chapterNumber,
+        legacyKnowledgeAuthorizationRequired: requiresLegacyKnowledgeAuthorization,
+      })
+    } catch (error) {
+      // 事务回滚 = 这张收据没落地，本次新建的占位必须撤回，否则这个名字会被永久避开。
+      if (reserved) releaseManuscriptDeletionReservation(projectRoot, reserved)
+      throw error
+    }
     if (requiresLegacyKnowledgeAuthorization) {
       return legacyKnowledgeAuthorizationRequired(frozen)
     }
@@ -118,12 +131,19 @@ export class ChapterDeletionService {
           + '请先在知识库手动清理这一章的文档，或使用「删除正文」明确删除整章',
       }
     }
-    const begun = ChapterDeletionRepository.begin({
-      operationId: this.createOperationId(),
-      draftId: request.draftId,
-      chapterNumber: request.chapterNumber,
-      keepDraft: true,
-    })
+    const reserved = this.reserveManuscriptBeforeBegin(projectRoot, request)
+    let begun: ChapterDeletionOperation
+    try {
+      begun = ChapterDeletionRepository.begin({
+        operationId: this.createOperationId(),
+        draftId: request.draftId,
+        chapterNumber: request.chapterNumber,
+        keepDraft: true,
+      })
+    } catch (error) {
+      if (reserved) releaseManuscriptDeletionReservation(projectRoot, reserved)
+      throw error
+    }
     return this.resume(projectRoot, begun.operationId)
   }
 
@@ -216,6 +236,55 @@ export class ChapterDeletionService {
     return ChapterDeletionRepository.listIncomplete().filter(operation => !freeze.isFrozen('chapter_deletion_operations', operation.operationId))
   }
 
+  /**
+   * 删除收据落地**之前**先登记占位（卡 d9117e48）。
+   *
+   * 时机不能挪到 `resume`：`begin` 会把 outbox 与草稿事实一起删掉，之后再也读不到
+   * 「当初发布的是哪份正文」，占位就分不清盘上那份是旧稿还是作者刚放回的新稿。
+   * 抢在 `begin` 前登记，还顺带堵住「begin 成功、进程被杀」的窗口。
+   *
+   * @returns 本次新建的目标文件名；已有占位（重试）时返回 `null`，绝不覆盖快照。
+   */
+  private reserveManuscriptBeforeBegin(
+    projectRoot: string,
+    request: DeleteFinalizedChapterRequest,
+  ): string | null {
+    const finalization = FinalizationRepository.getByDraftId(request.draftId)
+    if (!finalization || !finalization.targetFileName) return null
+    const created = reserveManuscriptDeletionTarget({
+      projectRoot,
+      targetFileName: finalization.targetFileName,
+      finalizationId: finalization.finalizationId,
+      chapterNumber: finalization.chapterNumber,
+      chapterTitle: finalization.chapterTitle,
+      content: finalization.contentSnapshot,
+    })
+    return created ? finalization.targetFileName : null
+  }
+
+  /**
+   * 续跑清理前补登记占位。正常路径在 `begin` 前已经登记过，这里只兜底旧收据
+   * （本机制之前落库、还没清完的）：那类收据的 outbox 已随 `begin` 删掉，
+   * 读不到冻结正文，于是以「所有权不明」(`contentDigest` 空) 登记 ——
+   * 清理时保留盘上文件、只清收据，绝不再按文件名猜着删。
+   */
+  private ensureManuscriptReservation(
+    projectRoot: string,
+    operation: ChapterDeletionOperation,
+  ): void {
+    if (operation.manuscriptStatus === 'not_required' || !operation.targetFileName) return
+    if (readManuscriptDeletionReservation(projectRoot, operation.targetFileName)) return
+    const finalization = FinalizationRepository.getByDraftId(operation.draftId)
+    reserveManuscriptDeletionTarget({
+      projectRoot,
+      targetFileName: operation.targetFileName,
+      finalizationId: finalization?.finalizationId || operation.finalizationId,
+      chapterNumber: operation.chapterNumber,
+      chapterTitle: finalization?.chapterTitle || operation.chapterTitle,
+      content: finalization ? finalization.contentSnapshot : null,
+    })
+  }
+
   private async resume(projectRoot: string, operationId: string): Promise<ChapterDeletionResult> {
     let operation = ChapterDeletionRepository.get(operationId)
     if (!operation) return { success: false, committed: false, error: '章节删除操作不存在' }
@@ -228,6 +297,7 @@ export class ChapterDeletionService {
     operation = ChapterDeletionRepository.startAttempt(operationId)
     if (operation.manuscriptStatus === 'pending' || operation.manuscriptStatus === 'failed') {
       try {
+        this.ensureManuscriptReservation(projectRoot, operation)
         await this.cleaner.removeManuscript(projectRoot, operation.targetFileName)
         operation = ChapterDeletionRepository.markProjection(operationId, 'manuscript', 'completed')
       } catch (error) {
