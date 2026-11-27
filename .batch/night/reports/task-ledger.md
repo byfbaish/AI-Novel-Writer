@@ -1079,3 +1079,9 @@ To: AI writer项目组 · 群内共读（判件基准件）
 - 尾项三条（负责人定，未开卡）：①`SECURE_FS_TARGET_IN_USE` 假码遗留；②其余 51 处服务层未码化，另立小卡（属 C5 线）；③prompt 四类待 S1 命中数据再动。
 - 过程留痕（不影响结论）：补正 02 投出时派单件把起点两件旧 sha 写死（doc `cab4febe…`／脚本 `63edeb15…`），负责人先代落后两条必然不符 ⇒ 豆包停在闸门前未写盘，无交叉改动；`queueEmpty` 字段语义曾被读反（`scripts/doubao/doubao.mjs:966` 为 `markers.some(item => item.marker === 'QUEUE')`，`false` ＝队列空），负责人已认错并更正「会话卡住」不成立。
 - 本段只追加，不改既有条目。
+
+- 两笔对账（11-27 12:3x 补）：
+  1. **§32 读数行收敛笔的真实提交号是 `cae021f19`**（`docs(ledger): §32 读数行收敛为实测口径（1265／0，负责人笔误已认）`，1 文件 +1/−1）。我先前在群里报的 `ae617cd7e` 是**台账文件 sha256 的前 16 位、不是提交号**（`git cat-file ae617cd7e` → unknown revision），属我读错、非提交丢失；今后台账提交号与文件指纹分开报，不再混用。
+  2. **QA 判词 §12 随 `b4cf86fe6` 入库**：该笔 `--stat` 为 4 文件 +28/−7 ＝ `.batch/night/review-requests/d2f24410-qa.md` +12／`scripts/doubao/doubao.mjs` +3/−1／`scripts/lib/relay-signal.mjs` +2/−1／`scripts/workbuddy/workbuddy-attach.mjs` +18/−5。属**并发暂存被顺走**（QA 自己那次 commit 撞 HEAD 失败、暂存区被该笔收走），内容与原文一字不差、无数据损失，按「留痕不 redo」处理，不另开补提交；追 sha 时以本节为准。
+- 主线复判（QA 11-27 12:3x，在 `9b329b741` 上复核）：判据 1–8 **全 PASS**；确定性与两臂读数、用例 24/24、`check-fast`、electron 进程 0 均复现；判据 8 三目录命中集合与起点 `2692c90bd` 完全一致（NOW=1 BASE=1、`diff` 空，单条为 `protagonist-golden-traits.md:510` 既有「指节发白」）。S1 至此闭环：收口 `9b329b741`、卡 done。
+- 本段只追加，不改既有条目。
