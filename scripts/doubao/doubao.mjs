@@ -43,7 +43,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_PORT, withChat, sleep } from './cdp.mjs'
 import { extractMarkers } from './markers.mjs'
-import { assertInWatchDir, scanSignals, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
+import { assertInWatchDir, deliveredSince, mentionOf, scanSignals, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -790,6 +790,13 @@ const main = async () => {
           const byReceipt = domIdle && hasReply && owned && receiptAfter()
           const byQuiet = domIdle && hasReply && owned && idleMs >= quietMinMs
           if (byReceipt || byQuiet) {
+            // 任务书若自己要求执行方写信号件，执行方往往写早了（relay 到点就投，不等 DONE）——
+            // 本单派出后已经叫醒过联络人，就不再叫第二遍（11-27 S1 实机被叫了三次）。
+            if (deliveredSince({ mention: mentionOf('doubao'), sinceMs: startedAt })) {
+              log('skip: relay 已在本单派出后叫醒过联络人，不再重复写件（多半执行方自己写过）')
+              console.log('[settler] 联络人已被叫醒过（执行方自己写过信号件），跳过')
+              return
+            }
             const evidence = byReceipt
               ? `回执文件已出现（${receiptPath}）`
               : `界面静默 ${Math.round(idleMs / 1000)}s 且未见回执文件（低置信：请自行核对是否真交件）`

@@ -16,6 +16,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 
 export const DONE_MARKER = '<!-- DONE -->'
@@ -86,6 +87,37 @@ export function writeSignal({ channel, path: filePath, title, receiptPath, reply
   mkdirSync(dirname(abs), { recursive: true })
   writeFileSync(abs, signalBody({ channel, mention, title, receiptPath, replyTail, evidence, now }), 'utf8')
   return abs
+}
+
+/**
+ * relay 的投递日志（可按 DSH_RELAY_LOG 覆盖）。
+ *
+ * 为什么需要它：任务书里如果自己写了「交件后由你写信号件」，执行方往往**写早了**——
+ * relay 0.6.8 在静默窗口到点后不管有没有 DONE 都会投，于是联络人先被半截件叫醒一次。
+ * 2026-11-27 S1（d2f24410）实机就是这样被叫了三次（12:04:59 / 12:05:18 / 12:08:45）。
+ * settler 写件前查一次日志：本单派出之后已经叫醒过，就不再叫第二遍。
+ */
+export function relayLogPath() {
+  return process.env.DSH_RELAY_LOG || join(homedir(), '.dsh', 'profiles', 'desktop', 'dsh-handoff-relay', 'relay.log')
+}
+
+/** 本单派出之后，relay 是否已经把这个联络人叫醒过。 */
+export function deliveredSince({ logPath = relayLogPath(), mention, sinceMs = 0 }) {
+  if (!mention) return false
+  let text = ''
+  try {
+    text = readFileSync(logPath, 'utf8')
+  } catch {
+    return false
+  }
+  const needle = `|${mention}`
+  for (const line of text.split('\n')) {
+    if (!line.includes('注入身份') || !line.includes(needle)) continue
+    const stamp = line.slice(0, 24)
+    const at = Date.parse(stamp)
+    if (Number.isFinite(at) && at >= sinceMs) return true
+  }
+  return false
 }
 
 /** 只读扫描：watch 目录里哪些信号件还没写完（无 DONE）、哪些已就绪。 */

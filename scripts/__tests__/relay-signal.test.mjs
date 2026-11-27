@@ -8,6 +8,7 @@ import {
   DONE_MARKER,
   assertInWatchDir,
   assertPathIn,
+  deliveredSince,
   scanSignals,
   signalBody,
   watchDirsOf,
@@ -113,5 +114,27 @@ describe('writeSignal + scanSignals', () => {
     const report = scanSignals('doubao', { dirs: [join(root, 'nope')] })
     expect(report.dirs[0].missing).toBe(true)
     expect(report.pending + report.ready).toBe(0)
+  })
+})
+
+describe('deliveredSince（防重复叫醒）', () => {
+  it('本单派出后的投递算「已叫醒」，之前的旧投递不算', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'relay-log-'))
+    const logPath = join(dir, 'relay.log')
+    writeFileSync(logPath, [
+      '2026-11-27T03:00:00.000Z INFO 注入身份 from=UNKNOWN to=e99c5ed1|豆包联络人 · AI writer项目组|群分身',
+      '2026-11-27T04:08:45.313Z INFO 注入身份 from=UNKNOWN to=e99c5ed1|豆包联络人 · AI writer项目组|群分身',
+      '2026-11-27T04:09:00.000Z INFO 注入身份 from=UNKNOWN to=aaaa|workbuddy联络人 · AI writer项目组|群分身',
+    ].join('\n'), 'utf8')
+
+    const since = Date.parse('2026-11-27T04:00:00.000Z')
+    expect(deliveredSince({ logPath, mention: '豆包联络人', sinceMs: since })).toBe(true)
+    // 用 04:08:50 之后当起点时，那次投递属于「更早」，不算
+    expect(deliveredSince({ logPath, mention: '豆包联络人', sinceMs: Date.parse('2026-11-27T04:08:50.000Z') })).toBe(false)
+    // 别的联络人不受影响
+    expect(deliveredSince({ logPath, mention: '豆包联络人', sinceMs: Date.parse('2026-11-27T04:09:30.000Z') })).toBe(false)
+    expect(deliveredSince({ logPath, mention: 'workbuddy联络人', sinceMs: Date.parse('2026-11-27T04:09:30.000Z') })).toBe(false)
+    // 日志不存在时静默为 false（不能因为读不到日志就不写件）
+    expect(deliveredSince({ logPath: join(dir, 'nope.log'), mention: '豆包联络人', sinceMs: 0 })).toBe(false)
   })
 })

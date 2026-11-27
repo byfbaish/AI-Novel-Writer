@@ -22,7 +22,7 @@ import { spawn } from 'node:child_process'
 
 import { listTargets, connect, createClient, sleep } from '../doubao/cdp.mjs'
 import { extractMarkers, isTerminalQueueMarker } from '../doubao/markers.mjs'
-import { assertInWatchDir, scanSignals, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
+import { assertInWatchDir, deliveredSince, mentionOf, scanSignals, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
 import {
   DEFAULT_PORT,
   DEFAULT_TIMEOUT_MS,
@@ -992,6 +992,12 @@ async function commandSettleSignal(args) {
       const byReceipt = domIdle && receiptAfter()
       const byQuiet = domIdle && idleMs >= quietMinMs
       if (byReceipt || byQuiet) {
+        // 本单派出后已经叫醒过联络人（任务书让执行方自己写过信号件），就不再叫第二遍。
+        if (deliveredSince({ mention: mentionOf('workbuddy'), sinceMs: startedAt })) {
+          appendLog('skip: relay 已在本单派出后叫醒过联络人，不再重复写件')
+          log('[settler] 联络人已被叫醒过（执行方自己写过信号件），跳过')
+          return EXIT.ok
+        }
         const evidence = byReceipt
           ? '回执文件已出现（' + receiptPath + '）'
           : '界面静默 ' + Math.round(idleMs / 1000) + 's 且未见回执文件（低置信：请自行核对是否真交件）'
