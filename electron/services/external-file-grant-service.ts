@@ -9,6 +9,44 @@ import {
 } from '../security/windows-safe-file-system'
 
 /**
+ * 授权失败的完整码表。抛点是唯一的产码处，控制器只按这里列出的码转界面文案，
+ * 不再匹配中文 message；新增或改名必须同步改本表、抛点与控制器用例。
+ */
+export const EXTERNAL_FILE_GRANT_ERROR_CODES = [
+  'EXTERNAL_FILE_GRANT_PATH_ABSOLUTE',
+  'EXTERNAL_FILE_GRANT_PATH_INVALID_NUL',
+  'EXTERNAL_FILE_GRANT_PATH_TRAVERSAL',
+  'EXTERNAL_FILE_GRANT_PATH_INVALID_NORMALIZE',
+  'EXTERNAL_FILE_GRANT_TARGET_DIRECTORY_NOT_FOUND',
+  'EXTERNAL_FILE_GRANT_TARGET_FILE_NOT_FOUND',
+  'EXTERNAL_FILE_GRANT_TARGET_PARENT_NOT_FOUND',
+  'EXTERNAL_FILE_GRANT_PATH_INVALID_CHILD_NAME',
+  'EXTERNAL_FILE_GRANT_INVALID_TTL_MS',
+  'EXTERNAL_FILE_GRANT_INVALID_MAX_USES',
+  'EXTERNAL_FILE_GRANT_SCOPE_MISMATCH_EXACT_PATH',
+  'EXTERNAL_FILE_GRANT_TARGET_CHANGED_EXACT_PATH',
+  'EXTERNAL_FILE_GRANT_SCOPE_MISMATCH_DIRECTORY',
+  'EXTERNAL_FILE_GRANT_TARGET_CHANGED_DIRECTORY',
+  'EXTERNAL_FILE_GRANT_UNKNOWN_GRANT',
+  'EXTERNAL_FILE_GRANT_EXPIRED',
+  'EXTERNAL_FILE_GRANT_EXHAUSTED',
+  'EXTERNAL_FILE_GRANT_WINDOW_MISMATCH',
+  'EXTERNAL_FILE_GRANT_OPERATION_NOT_GRANTED',
+  'EXTERNAL_FILE_GRANT_EXACT_SUBPATH_REJECTED',
+  'EXTERNAL_FILE_GRANT_TARGET_INVALID',
+] as const
+
+export type ExternalFileGrantErrorCode = typeof EXTERNAL_FILE_GRANT_ERROR_CODES[number]
+
+/**
+ * 与 `windows-safe-file-system.ts` 的 `secureError` 同风格：码挂在 `code` 上，
+ * 中文诊断文案仍留在 `message`（它们是 i18n 现值，逐字保留）。
+ */
+function grantError(code: ExternalFileGrantErrorCode, message: string): Error {
+  return Object.assign(new Error(message), { code })
+}
+
+/**
  * 短期外部文件授权由主进程签发并保存在内存中。渲染进程只能携带授权标识，
  * 不能借此传入任意绝对路径。
  */
@@ -75,13 +113,13 @@ function assertSafeRelativePath(relativePath: string): void {
     || path.win32.isAbsolute(relativePath)
     || path.posix.isAbsolute(relativePath)
   ) {
-    throw new Error('外部文件授权的相对路径不能是绝对路径')
+    throw grantError('EXTERNAL_FILE_GRANT_PATH_ABSOLUTE', '外部文件授权的相对路径不能是绝对路径')
   }
   if (relativePath.includes('\0')) {
-    throw new Error('外部文件授权的相对路径无效')
+    throw grantError('EXTERNAL_FILE_GRANT_PATH_INVALID_NUL', '外部文件授权的相对路径无效')
   }
   if (relativePath.split(/[\\/]+/).some(segment => segment === '..')) {
-    throw new Error('外部文件授权的相对路径不得包含父目录遍历')
+    throw grantError('EXTERNAL_FILE_GRANT_PATH_TRAVERSAL', '外部文件授权的相对路径不得包含父目录遍历')
   }
 }
 
@@ -90,7 +128,7 @@ function normalizedRelativePath(relativePath: string): string {
   try {
     return normalizeSecureRelativePath(relativePath)
   } catch {
-    throw new Error('外部文件授权的相对路径无效')
+    throw grantError('EXTERNAL_FILE_GRANT_PATH_INVALID_NORMALIZE', '外部文件授权的相对路径无效')
   }
 }
 
@@ -107,7 +145,7 @@ export class ExternalFileGrantService {
   issueDirectory(options: DirectoryExternalFileGrantOptions): IssuedExternalFileGrant {
     const targetPath = fs.realpathSync.native(options.directoryPath)
     if (!fs.statSync(targetPath).isDirectory()) {
-      throw new Error('外部文件授权目录必须是已存在的目录')
+      throw grantError('EXTERNAL_FILE_GRANT_TARGET_DIRECTORY_NOT_FOUND', '外部文件授权目录必须是已存在的目录')
     }
     return this.issue({
       webContentsId: options.webContentsId,
@@ -124,7 +162,7 @@ export class ExternalFileGrantService {
   issueFile(options: FileExternalFileGrantOptions): IssuedExternalFileGrant {
     const targetPath = fs.realpathSync.native(options.filePath)
     if (!fs.statSync(targetPath).isFile()) {
-      throw new Error('外部文件授权目标必须是已存在的文件')
+      throw grantError('EXTERNAL_FILE_GRANT_TARGET_FILE_NOT_FOUND', '外部文件授权目标必须是已存在的文件')
     }
     const rootPath = path.dirname(targetPath)
     return this.issue({
@@ -148,10 +186,10 @@ export class ExternalFileGrantService {
     const name = path.basename(requestedPath)
     const rootPath = fs.realpathSync.native(path.dirname(requestedPath))
     if (!fs.statSync(rootPath).isDirectory()) {
-      throw new Error('外部文件授权的父目录必须是已存在的目录')
+      throw grantError('EXTERNAL_FILE_GRANT_TARGET_PARENT_NOT_FOUND', '外部文件授权的父目录必须是已存在的目录')
     }
     if (name === '' || normalizedRelativePath(name) !== name) {
-      throw new Error('外部文件授权的相对路径无效')
+      throw grantError('EXTERNAL_FILE_GRANT_PATH_INVALID_CHILD_NAME', '外部文件授权的相对路径无效')
     }
     return this.issue({
       webContentsId: options.webContentsId,
@@ -192,11 +230,11 @@ export class ExternalFileGrantService {
     maxUses?: number
   }): IssuedExternalFileGrant {
     if (!Number.isFinite(options.ttlMs) || options.ttlMs <= 0) {
-      throw new Error('外部文件授权有效期必须为正数')
+      throw grantError('EXTERNAL_FILE_GRANT_INVALID_TTL_MS', '外部文件授权有效期必须为正数')
     }
     const maxUses = options.maxUses ?? 1
     if (!Number.isSafeInteger(maxUses) || maxUses <= 0) {
-      throw new Error('外部文件授权使用次数必须是正整数')
+      throw grantError('EXTERNAL_FILE_GRANT_INVALID_MAX_USES', '外部文件授权使用次数必须是正整数')
     }
 
     const grantId = this.newGrantId()
@@ -234,7 +272,7 @@ export class ExternalFileGrantService {
    */
   resolveExactPath(request: Omit<ExternalFileGrantRequest, 'relativePath'>): string {
     if (this.revalidate(request).scope !== 'file') {
-      throw new Error('外部文件授权范围不符')
+      throw grantError('EXTERNAL_FILE_GRANT_SCOPE_MISMATCH_EXACT_PATH', '外部文件授权范围不符')
     }
     const target = this.resolve(request)
     const current = captureSecureRootIdentity(target.rootPath)
@@ -242,7 +280,7 @@ export class ExternalFileGrantService {
       current.volumeSerialNumber !== target.rootIdentity.volumeSerialNumber
       || current.fileIndex !== target.rootIdentity.fileIndex
     ) {
-      throw new Error('外部文件授权目标已变化')
+      throw grantError('EXTERNAL_FILE_GRANT_TARGET_CHANGED_EXACT_PATH', '外部文件授权目标已变化')
     }
     return path.join(target.rootPath, target.relativePath)
   }
@@ -251,12 +289,12 @@ export class ExternalFileGrantService {
   resolveDirectoryPath(request: Omit<ExternalFileGrantRequest, 'relativePath'>): string {
     const target = this.revalidate(request)
     if (target.scope !== 'directory' || target.relativePath !== '') {
-      throw new Error('外部文件授权范围不符')
+      throw grantError('EXTERNAL_FILE_GRANT_SCOPE_MISMATCH_DIRECTORY', '外部文件授权范围不符')
     }
     const current = captureSecureRootIdentity(target.rootPath)
     if (current.volumeSerialNumber !== target.rootIdentity.volumeSerialNumber
       || current.fileIndex !== target.rootIdentity.fileIndex) {
-      throw new Error('外部文件授权目标已变化')
+      throw grantError('EXTERNAL_FILE_GRANT_TARGET_CHANGED_DIRECTORY', '外部文件授权目标已变化')
     }
     this.resolve(request)
     return target.rootPath
@@ -268,30 +306,30 @@ export class ExternalFileGrantService {
   ): ResolvedExternalFileGrant {
     const grant = this.grants.get(request.grantId)
     if (!grant) {
-      throw new Error('外部文件授权不存在或已失效')
+      throw grantError('EXTERNAL_FILE_GRANT_UNKNOWN_GRANT', '外部文件授权不存在或已失效')
     }
     if (this.now() >= grant.expiresAt) {
       this.grants.delete(request.grantId)
-      throw new Error('外部文件授权已过期')
+      throw grantError('EXTERNAL_FILE_GRANT_EXPIRED', '外部文件授权已过期')
     }
     if (consumeUse && grant.usesRemaining <= 0) {
-      throw new Error('外部文件授权已用尽')
+      throw grantError('EXTERNAL_FILE_GRANT_EXHAUSTED', '外部文件授权已用尽')
     }
     if (grant.webContentsId !== request.webContentsId) {
-      throw new Error('外部文件授权不属于当前窗口')
+      throw grantError('EXTERNAL_FILE_GRANT_WINDOW_MISMATCH', '外部文件授权不属于当前窗口')
     }
     if (!grant.operations.has(request.operation)) {
-      throw new Error(`外部文件授权未授予 ${request.operation} 操作`)
+      throw grantError('EXTERNAL_FILE_GRANT_OPERATION_NOT_GRANTED', `外部文件授权未授予 ${request.operation} 操作`)
     }
 
     const requestedRelativePath = request.relativePath ?? ''
     let relativePath: string
     if (grant.scope === 'file') {
       if (requestedRelativePath !== '' && requestedRelativePath !== '.') {
-        throw new Error('精确文件授权不接受子路径')
+        throw grantError('EXTERNAL_FILE_GRANT_EXACT_SUBPATH_REJECTED', '精确文件授权不接受子路径')
       }
       if (!grant.fixedRelativePath) {
-        throw new Error('外部文件授权目标无效')
+        throw grantError('EXTERNAL_FILE_GRANT_TARGET_INVALID', '外部文件授权目标无效')
       }
       relativePath = grant.fixedRelativePath
     } else {

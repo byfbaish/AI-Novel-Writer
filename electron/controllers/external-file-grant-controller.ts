@@ -26,10 +26,16 @@ function text(zhCNText: string, enUSText: string): string {
  * `secureError`），与界面语言无关，因此先按码分流；不认识的新码落到末尾兜底，
  * 不会被误判成其它分支。
  *
- * 授权服务层（`external-file-grant-service.ts`）仍以中文诊断字符串抛错，本卡
- * 白名单不含该文件（卡 5d8dac97 裁定「只做 SECURE_FS 半边」），故下面三条中文
- * 判据是过渡态，待服务层码化后删除。
+ * 授权服务层（`external-file-grant-service.ts`）把结构化码挂在 `code` 上、
+ * 中文诊断文案留在 `message`（见其 `grantError`）。这里只认 `code`，不再按
+ * 中文 message 猜分支。
  */
+function externalFileGrantErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object' || !('code' in error)) return undefined
+  const code = (error as { code?: unknown }).code
+  return typeof code === 'string' && code.startsWith('EXTERNAL_FILE_GRANT_') ? code : undefined
+}
+
 function grantErrorText(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
   switch (message) {
@@ -44,14 +50,31 @@ function grantErrorText(error: unknown): string {
     default:
       break
   }
-  if (/过期|不存在|已撤销/.test(message)) {
-    return text('外部文件授权已失效，请重新选择。', 'The external file grant has expired. Please choose again.')
-  }
-  if (/权限|webContents/.test(message)) {
-    return text('当前窗口无权使用该外部文件授权。', 'This window is not allowed to use the external file grant.')
-  }
-  if (/相对路径|父目录遍历|绝对路径|NUL|超出授权范围|目标已变化/.test(message)) {
-    return text('外部文件授权路径无效，已拒绝操作。', 'The external file grant path is invalid; the operation was rejected.')
+  switch (externalFileGrantErrorCode(error)) {
+    case 'EXTERNAL_FILE_GRANT_PATH_ABSOLUTE':
+    case 'EXTERNAL_FILE_GRANT_PATH_INVALID_NUL':
+    case 'EXTERNAL_FILE_GRANT_PATH_TRAVERSAL':
+    case 'EXTERNAL_FILE_GRANT_PATH_INVALID_NORMALIZE':
+    case 'EXTERNAL_FILE_GRANT_PATH_INVALID_CHILD_NAME':
+    case 'EXTERNAL_FILE_GRANT_TARGET_DIRECTORY_NOT_FOUND':
+    case 'EXTERNAL_FILE_GRANT_TARGET_FILE_NOT_FOUND':
+    case 'EXTERNAL_FILE_GRANT_TARGET_PARENT_NOT_FOUND':
+    case 'EXTERNAL_FILE_GRANT_TARGET_INVALID':
+    case 'EXTERNAL_FILE_GRANT_SCOPE_MISMATCH_EXACT_PATH':
+    case 'EXTERNAL_FILE_GRANT_SCOPE_MISMATCH_DIRECTORY':
+    case 'EXTERNAL_FILE_GRANT_TARGET_CHANGED_EXACT_PATH':
+    case 'EXTERNAL_FILE_GRANT_TARGET_CHANGED_DIRECTORY':
+    case 'EXTERNAL_FILE_GRANT_EXACT_SUBPATH_REJECTED':
+      return text('外部文件授权路径无效，已拒绝操作。', 'The external file grant path is invalid; the operation was rejected.')
+    case 'EXTERNAL_FILE_GRANT_UNKNOWN_GRANT':
+    case 'EXTERNAL_FILE_GRANT_EXPIRED':
+    case 'EXTERNAL_FILE_GRANT_EXHAUSTED':
+      return text('外部文件授权已失效，请重新选择。', 'The external file grant has expired. Please choose again.')
+    case 'EXTERNAL_FILE_GRANT_WINDOW_MISMATCH':
+    case 'EXTERNAL_FILE_GRANT_OPERATION_NOT_GRANTED':
+      return text('当前窗口无权使用该外部文件授权。', 'This window is not allowed to use the external file grant.')
+    default:
+      break
   }
   return text('外部文件授权操作失败。', 'The external file grant operation failed.')
 }
