@@ -43,7 +43,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DEFAULT_PORT, withChat, sleep } from './cdp.mjs'
 import { extractMarkers } from './markers.mjs'
-import { assertInWatchDir, scanSignals, signalInstruction, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
+import { assertInWatchDir, scanSignals, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..')
 
@@ -490,6 +490,7 @@ const SETTLE_SNAPSHOT_JS = js(`
     }))
     .filter(t => t.text);
   const last = turns.filter(t => t.role === 'assistant').at(-1) ?? null;
+  const lastUser = turns.filter(t => t.role === 'user').at(-1)?.text ?? '';
   const receives = [...scope.querySelectorAll('[data-testid="receive_message"]')];
   const lastNode = receives.at(-1) ?? null;
   const editor = document.querySelector('[data-testid="chat_input_input"] .ProseMirror')
@@ -500,6 +501,7 @@ const SETTLE_SNAPSHOT_JS = js(`
   return {
     turnCount: turns.length,
     lastAssistant: lastText,
+    lastUser,
     placeholder: /^(正在思考|思考中|生成中|正在生成|Thinking|Generating)[.…]*$/iu.test(lastText),
     stopIds: testids.filter(x => /stop|abort|pause|generating|thinking/i.test(x) && !/regenerat/i.test(x)),
     stopText: /停止生成|暂停生成|正在生成|正在思考/.test(bodyText.slice(-600)),
@@ -719,6 +721,8 @@ const main = async () => {
     const title = option('title', '(未命名)')
     const receipt = option('receipt', null)
     const minTurns = Number(option('min-turns', 0))
+    const expectHref = option('href', null)
+    const expectUser = compact(option('expect-user', '') ?? '')
     const delaySeconds = Number(option('delay', 5))
     const timeoutMs = Number(option('timeout', 3600)) * 1_000
     const logPath = option('log', null)
@@ -750,7 +754,19 @@ const main = async () => {
         let steady = 0
         let lastActivityAt = Date.now()
         let snap = null
+        let warnedForeign = false
         while (Date.now() - startedAt < timeoutMs) {
+          // 锁会话：settler 盯的是「派单时那条对话」，话题被切走就立刻停手——
+          // 否则会按别人的对话判收尾，写出一份内容误导的信号件。
+          if (expectHref) {
+            const current = (await readConversationId(client)).href
+            if (current !== expectHref) {
+              log(`abort: 话题已被切走（期望 ${expectHref}，实际 ${current}），不写件`)
+              console.error('[settler] 话题已被切走，信号件不写（宁可不叫也不叫错人）')
+              process.exitCode = 1
+              return
+            }
+          }
           snap = await client.evaluate(SETTLE_SNAPSHOT_JS)
           const current = `${snap.turnCount}|${snap.lastAssistant?.length ?? 0}|${snap.editorText?.length ?? 0}`
           const generating = snap.placeholder || snap.stopIds.length > 0 || snap.stopText
@@ -762,10 +778,17 @@ const main = async () => {
           }
           signature = current
           const idleMs = Date.now() - lastActivityAt
-          const domIdle = steady >= steadyRounds && Boolean(snap.lastAssistant) && snap.hasRegenerate
+          // hasRegenerate 只作证据不作必要条件：它可能是 hover 才进 DOM 的，拿它当硬门槛会变成永不写件（静默漏叫）。
+          const domIdle = steady >= steadyRounds && Boolean(snap.lastAssistant) && !generating
           const hasReply = snap.turnCount > minTurns
-          const byReceipt = domIdle && hasReply && receiptAfter()
-          const byQuiet = domIdle && hasReply && idleMs >= quietMinMs
+          // 锁这一条消息：最后一条用户消息必须是我们派的这一单，队列里别人更早的单不算。
+          const owned = !expectUser || compact(snap.lastUser ?? '').includes(expectUser)
+          if (!owned && !warnedForeign && hasReply) {
+            warnedForeign = true
+            log(`wait: 最后一条用户消息不是本单（可能前面还有排队的单），继续等`)
+          }
+          const byReceipt = domIdle && hasReply && owned && receiptAfter()
+          const byQuiet = domIdle && hasReply && owned && idleMs >= quietMinMs
           if (byReceipt || byQuiet) {
             const evidence = byReceipt
               ? `回执文件已出现（${receiptPath}）`
@@ -778,8 +801,10 @@ const main = async () => {
               replyTail: snap.lastAssistant ?? '',
               evidence,
             })
-            log(`done: ${written} (依据: ${evidence}, turns=${snap.turnCount}, waited=${Math.round((Date.now() - startedAt) / 1000)}s)`)
-            console.log(`[settler] 信号件已写：${written}（依据：${byReceipt ? '回执文件' : '界面静默'}）`)
+            log(`done: ${written ?? '(已存在，跳过)'} (依据: ${evidence}, turns=${snap.turnCount}, waited=${Math.round((Date.now() - startedAt) / 1000)}s)`)
+            console.log(written
+              ? `[settler] 信号件已写：${written}（依据：${byReceipt ? '回执文件' : '界面静默'}）`
+              : '[settler] 信号件已存在，跳过（同一收尾不重复叫醒）')
             return
           }
           await sleep(pollMs)
@@ -825,8 +850,9 @@ const main = async () => {
     // no longer carry a 必读 section of their own (2026-11-03). Opt out with
     // --no-charter only when the task book is a pure read-only query.
     const charter = !flag('no-charter')
-    const body = (charter ? CHARTER_PREAMBLE + text : text)
-      + (signalAbs ? signalInstruction('doubao', signalAbs) : '')
+    // 2026-11-27（隔离审 M1）：信号件只能有一个写手。不往正文里塞「收尾自己写信号件」——
+    // 否则模型写一份、settler 再写一份，同一张卡会叫醒联络人两次，且模型那份往往写得比收尾早。
+    const body = charter ? CHARTER_PREAMBLE + text : text
     const projectName = option('project', null)
     const modelName = option('model', null)
     const timeoutMs = Number(option('timeout', 600)) * 1_000
@@ -866,6 +892,10 @@ const main = async () => {
         // 占位件会把联络人叫醒看一个空件）。这里拉一个 detached 子进程盯着这轮对话，
         // 豆包一收尾就由它把信号件一次性写全（含 @联络人与 DONE）→ relay 立刻投递。
         const baselineTurns = (await client.evaluate(TRANSCRIPT_JS)).length
+        // 锁会话 + 锁这一条消息：settler 到点时若话题被切走、或最后一条用户消息不是我们这单
+        // （队列里还有别人更早的单），都不能算「本单收尾」。
+        const dispatchHref = (await readConversationId(client)).href
+        const expectUser = compact(text).slice(0, 30)
         const settlerLog = join(resolveRuntimeDir() || PRIMARY_RUNTIME, `settle-${signalTitle.replace(/[^\w.-]+/g, '_').slice(0, 40)}-${Date.now()}.log`)
         const timeoutSeconds = Number(option('timeout', 3600))
         const child = spawn(process.execPath, [
@@ -874,6 +904,8 @@ const main = async () => {
           '--signal', signalAbs,
           '--title', signalTitle,
           '--min-turns', String(baselineTurns),
+          '--href', dispatchHref,
+          '--expect-user', expectUser,
           '--timeout', String(Math.max(timeoutSeconds, 600)),
           '--delay', '5',
           ...(receiptPathRaw ? ['--receipt', receiptPathRaw] : []),

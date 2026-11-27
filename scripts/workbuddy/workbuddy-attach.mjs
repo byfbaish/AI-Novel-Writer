@@ -22,7 +22,7 @@ import { spawn } from 'node:child_process'
 
 import { listTargets, connect, createClient, sleep } from '../doubao/cdp.mjs'
 import { extractMarkers, isTerminalQueueMarker } from '../doubao/markers.mjs'
-import { assertInWatchDir, scanSignals, signalInstruction, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
+import { assertInWatchDir, scanSignals, watchDirsOf, writeSignal } from '../lib/relay-signal.mjs'
 import {
   DEFAULT_PORT,
   DEFAULT_TIMEOUT_MS,
@@ -776,6 +776,7 @@ async function commandSend(args, prompt, { forceNewSession, modelTarget }) {
           '--port', String(args.port),
           '--signal', signalAbs,
           '--title', title,
+          '--expect-session', sessionId ?? '',
           '--baseline-agents', String(baselineCount),
           '--baseline-messages', String(baselineMessageCount),
           '--timeout', String(Math.max(Math.round(args.timeout / 1000), 600)),
@@ -955,6 +956,12 @@ async function commandSettleSignal(args) {
     let reply = null
     while (Date.now() - startedAt < timeoutMs) {
       snapshot = await client.evaluate(buildSnapshotExpression())
+      // 锁会话：settler 盯的是派单时那条会话，被切走就停手（否则按别人的会话判收尾、叫错人）。
+      if (args.expectSession && snapshot?.currentSessionId && snapshot.currentSessionId !== args.expectSession) {
+        appendLog('abort: 会话已切走（期望 ' + args.expectSession + '，实际 ' + snapshot.currentSessionId + '），不写件')
+        process.stderr.write('[settler] 会话已切走，信号件不写\n')
+        return EXIT.fail
+      }
       if (isAskCardPending(snapshot)) {
         appendLog('ask-card: 被提问卡占住，信号件不写')
         process.stderr.write('[settler] 被提问卡占住，信号件不写（等人裁定）\n')
@@ -996,8 +1003,10 @@ async function commandSettleSignal(args) {
           replyTail: reply?.text ?? '',
           evidence,
         })
-        appendLog('done: ' + written + ' (依据: ' + evidence + ', waited=' + Math.round((Date.now() - startedAt) / 1000) + 's)')
-        log('[settler] 信号件已写：' + written + '（依据：' + (byReceipt ? '回执文件' : '界面静默') + '）')
+        appendLog('done: ' + (written ?? '(已存在，跳过)') + ' (依据: ' + evidence + ', waited=' + Math.round((Date.now() - startedAt) / 1000) + 's)')
+        log(written
+          ? '[settler] 信号件已写：' + written + '（依据：' + (byReceipt ? '回执文件' : '界面静默') + '）'
+          : '[settler] 信号件已存在，跳过（同一收尾不重复叫醒）')
         return EXIT.ok
       }
       await sleep(POLL_INTERVAL_MS)
@@ -1033,6 +1042,7 @@ async function main() {
     quietMin: Number(options.get('quiet-min') ?? 180),
     baselineAgents: Number(options.get('baseline-agents') ?? 0),
     baselineMessages: Number(options.get('baseline-messages') ?? 0),
+    expectSession: options.get('expect-session') ?? null,
     settleDelay: Number(options.get('delay') ?? 5),
     settleLog: options.get('log') ?? null,
   }
@@ -1047,6 +1057,21 @@ async function main() {
     return EXIT.fail
   }
   if (pin.forced) process.stderr.write('[warn] --force 已越过归属护栏：本次目标 = ' + args.cwd + '\n')
+
+  // 2026-11-27（隔离审 M4）：闸必须落在命令分发层，不能只写在 task 里——
+  // `say --no-wait` 同样是 fire-and-forget，漏了信号件就是第二个 C5-pre。
+  if (args.noWait) {
+    if (!args.signal) {
+      fail('--no-wait 必须同时给 --signal <信号件路径>：不给就没有东西会在完成时叫醒联络人。\n'
+        + '  可用目录（须在 relay watch 内）：\n'
+        + watchDirsOf('workbuddy').map(dir => '    ' + dir).join('\n')
+        + '\n  例：--no-wait --signal C:\\dsh-relay\\signals\\workbuddy\\<卡号>.done')
+    }
+    assertInWatchDir('workbuddy', args.signal)
+  }
+  if (args.signal && !args.noWait) {
+    fail('--signal 只配合 --no-wait 使用：同步等待时调用方自己就拿到了结果，不需要信号件')
+  }
 
   try {
     if (command === 'status') return await commandStatus(args)
@@ -1074,20 +1099,11 @@ async function main() {
       const file = options.get('file')
       const basePrompt = file ? fs.readFileSync(path.resolve(file), 'utf8') : positionals.join(' ').trim()
       if (!basePrompt) fail('task 需要任务文本，或用 --file 指定任务书')
-      // 2026-11-27 C5-pre 事故的闸：--no-wait 不给信号件 = 完成时没人叫醒联络人。
-      if (args.noWait && !args.signal) {
-        fail('--no-wait 必须同时给 --signal <信号件路径>：不给就没有东西会在完成时叫醒联络人。\n'
-          + '  可用目录（须在 relay watch 内）：\n'
-          + watchDirsOf('workbuddy').map(dir => `    ${dir}`).join('\n')
-          + '\n  例：--no-wait --signal C:\\dsh-relay\\signals\\workbuddy\\<卡号>.done')
-      }
-      if (args.signal && !args.noWait) {
-        fail('--signal 只配合 --no-wait 使用：同步等待时调用方自己就拿到了结果，不需要信号件')
-      }
       // 2026-11-27：不再预写占位件（relay 静默 5 秒后照样投，占位件等于叫醒联络人看空件）。
-      // 信号件改由 detached settler 在收尾时一次性写全；这里只做闸与收尾要求注入。
+      // 信号件只由 detached settler 在收尾时一次性写全——不往任务正文里塞「自己写信号件」，
+      // 否则模型写一份、settler 写一份，同一张卡叫醒两次（隔离审 M1）。
       const signalAbs = args.signal ? assertInWatchDir('workbuddy', args.signal) : null
-      const prompt = signalAbs ? basePrompt + signalInstruction('workbuddy', signalAbs) : basePrompt
+      const prompt = basePrompt
       const modelTarget = resolveModelTarget(args, { command: 'task', prompt })
       if (modelTarget.blocked) return EXIT.peak
       if (signalAbs) log('[信号件] 收尾时由 settler 写入：' + signalAbs)

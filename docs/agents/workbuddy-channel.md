@@ -38,9 +38,12 @@ node scripts/workbuddy/workbuddy-attach.mjs task "任务文本" --new
 
 - **回执落点（人看）**：写在派单书里，执行方交件时落盘。
 - **信号件落点（叫醒）**：必须在 relay 的 watch 目录内 —— `C:\dsh-relay\signals\workbuddy\` 或 `C:\dsh-relay\wakeup\workbuddy\`。
-- **脚本硬闸**：`task --no-wait` 不给 `--signal` **直接拒发**，路径不在 watch 目录也拒发。
-- **谁来写**：`task --no-wait` 拉起 detached 的 `settle-signal` 子进程盯住这轮会话，
-  收尾（`isSettledSignal`：UI idle + 出现新回复，且连续 3 次稳定）时**一次性写全**信号件
+- **脚本硬闸**：`--no-wait` 不给 `--signal` **直接拒发**，路径不在 watch 目录也拒发。闸在命令分发层，
+  **`say --no-wait` 同样受管**——它也是 fire-and-forget，漏了信号件就是第二个 C5-pre。
+- **只有一个写手**：信号件只由 detached `settle-signal` 写，**不往任务正文里塞「收尾自己写信号件」**；
+  同路径已有件则跳过（幂等，不会重复叫人）。settler 锁定派单时的 `sessionId`，会话被切走即退出不写。
+- **settler 怎么判收尾**：`isSettledSignal`（UI idle + 出现新回复）且连续 3 次稳定，再叠加
+  「收到回执文件（`mtime >= 派出时刻`）」或「静默满 `quiet-min` 秒」；命中时**一次性写全**信号件
   （首行 `@workbuddy联络人` + 回执落点 + 收尾摘要 + 末行 `<!-- DONE -->`）。日志落在 `.runtime/workbuddy/settle/`。
 - **判定依据要写在件里**：有回执文件按 `mtime >= 派出时刻` 判收尾；没有则退到「界面静默 `quiet-min` 秒」并标注低置信。
 - **不能预写占位件**：relay 0.6.8 静默窗口到点即投（DONE 只是提前触发），占位件等于叫醒联络人看空件。

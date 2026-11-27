@@ -15,7 +15,7 @@
  * 3. 被拒件改名为 `<原名>.rejected.md` 留在原地，不会自动重投。
  */
 
-import { mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
 export const DONE_MARKER = '<!-- DONE -->'
@@ -73,31 +73,19 @@ export function signalBody({ channel, mention, title, receiptPath, replyTail, ev
   ].join('\n')
 }
 
-/** 写信号件（一次性写全，含 DONE）。`dirs` 只给测试用。 */
-export function writeSignal({ channel, path: filePath, title, receiptPath, replyTail, evidence, mention, now, dirs }) {
+/**
+ * 写信号件（一次性写全，含 DONE）。`dirs` 只给测试用。
+ *
+ * 已存在同路径的件就跳过、返回 null：一次收尾只能叫醒一次。执行方自己写过、
+ * 或调用方重试过，都不该让同一个人再被叫第二遍（relay 按 contentHash 去重，
+ * 两份内容不同的件它会当成两件事分别投递）。
+ */
+export function writeSignal({ channel, path: filePath, title, receiptPath, replyTail, evidence, mention, now, dirs, overwrite = false }) {
   const abs = dirs ? assertPathIn(dirs, filePath) : assertInWatchDir(channel, filePath)
+  if (!overwrite && existsSync(abs)) return null
   mkdirSync(dirname(abs), { recursive: true })
   writeFileSync(abs, signalBody({ channel, mention, title, receiptPath, replyTail, evidence, now }), 'utf8')
   return abs
-}
-
-/** 追加到任务正文末尾的收尾要求（进对话框，不进 watch 目录）。 */
-export function signalInstruction(channel, filePath) {
-  const abs = resolve(filePath)
-  const at = mentionOf(channel)
-  return [
-    '',
-    '---',
-    '',
-    '## 收尾必做（信号件，漏了整单白做）',
-    `交件之后，把信号件写到这里（一次写全，别先写一半）：\`${abs}\``,
-    `第一行必须是 \`@${at}\`（relay 的群通道闸，没有它整件按 NO_MENTION 拒收）；`,
-    '接着写三行：回执路径、产物目录、一句话结论；单独一行写：',
-    '',
-    DONE_MARKER,
-    '',
-    '没有信号件，联络人不会被叫醒，你交的东西没人来取。',
-  ].join('\n')
 }
 
 /** 只读扫描：watch 目录里哪些信号件还没写完（无 DONE）、哪些已就绪。 */
