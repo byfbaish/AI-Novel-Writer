@@ -1064,19 +1064,27 @@ async function main() {
   }
   if (pin.forced) process.stderr.write('[warn] --force 已越过归属护栏：本次目标 = ' + args.cwd + '\n')
 
-  // 2026-11-27（隔离审 M4）：闸必须落在命令分发层，不能只写在 task 里——
-  // `say --no-wait` 同样是 fire-and-forget，漏了信号件就是第二个 C5-pre。
-  if (args.noWait) {
-    if (!args.signal) {
-      fail('--no-wait 必须同时给 --signal <信号件路径>：不给就没有东西会在完成时叫醒联络人。\n'
-        + '  可用目录（须在 relay watch 内）：\n'
-        + watchDirsOf('workbuddy').map(dir => '    ' + dir).join('\n')
-        + '\n  例：--no-wait --signal C:\\dsh-relay\\signals\\workbuddy\\<卡号>.done')
-    }
+  // 2026-11-27 两处闸门（M4）：--no-wait 必须配 --signal；且不许只守着 task 一条路径——
+  // `say --no-wait` 同样是 fire-and-forget，漏信号就是第二次 C5-pre。
+  // settle-signal 是看护进程自己，天生「带 --signal、不带 --no-wait」，必须放它进来：
+  // 这条闸上移到分发层后曾把 settler 自己挡在门外（stdio ignore，失败没人看得见＝静默漏叫）。
+  if (command === 'settle-signal') {
+    if (!args.signal) fail('settle-signal 需要 --signal <信号件路径>')
     assertInWatchDir('workbuddy', args.signal)
-  }
-  if (args.signal && !args.noWait) {
-    fail('--signal 只配合 --no-wait 使用：同步等待时调用方自己就拿到了结果，不需要信号件')
+  } else {
+    if (args.noWait) {
+      if (!args.signal) {
+        fail('--no-wait 必须同时给 --signal <信号件路径>：否则没人知道这单什么时候收尾，'
+          + '联络人不会被叫醒。\n'
+          + '  放进 watch 目录（只有 relay 会看）：\n'
+          + watchDirsOf('workbuddy').map(dir => '    ' + dir).join('\n')
+          + '\n  例如--no-wait --signal C:\\dsh-relay\\signals\\workbuddy\\<卡号>.done')
+      }
+      assertInWatchDir('workbuddy', args.signal)
+    }
+    if (args.signal && !args.noWait) {
+      fail('--signal 只配合 --no-wait 使用：同步等待时调用方自己就拿到了结果，不需要信号件')
+    }
   }
 
   try {

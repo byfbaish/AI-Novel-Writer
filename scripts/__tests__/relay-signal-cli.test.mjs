@@ -79,3 +79,20 @@ describe('writeSignal 幂等', () => {
     expect(second).toBeNull()
   })
 })
+
+describe('settle-signal 入口不能被自己的闸挡住（P0 回归）', () => {
+  it('settle-signal 带 --signal 不带 --no-wait 是它的本职工作，不许被「只配合 --no-wait」拦下', () => {
+    const inside = 'C:\\dsh-relay\\signals\\workbuddy\\gate-regression.done'
+    const { code, text } = run(workbuddy, ['settle-signal', '--signal', inside, '--port', '9'])
+    // 端口 9 连不上是预期（这里只验它越过了分发层那道闸、走到连 CDP）
+    expect(code).not.toBe(0)
+    expect(text).not.toContain('只配合 --no-wait')
+  })
+
+  it('settle-signal 的 --signal 仍必须在 watch 目录内', () => {
+    const outside = join(tmpdir(), 'not-a-watch-dir', 'x.done')
+    const { code, text } = run(workbuddy, ['settle-signal', '--signal', outside, '--port', '9'])
+    expect(code).not.toBe(0)
+    expect(text).toContain('watch 目录')
+  })
+})
